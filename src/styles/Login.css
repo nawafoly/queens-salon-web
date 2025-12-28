@@ -1,0 +1,140 @@
+/* === Login Page === */
+.login-page {
+  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  padding: 4rem 1rem;
+}
+
+.login-container {
+  max-width: 500px;
+  margin: auto;
+  background-color: #fff;
+  border-radius: 15px;
+  padding: 2rem;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.login-logo-img {
+  width: 120px;
+  margin-bottom: 0.5rem;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  opacity: 0.7;
+}
+
+.login-title {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: var(--text-color);
+}
+
+.login-subtitle {
+  color: var(--text-color);
+  opacity: 0.8;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-control-login {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 1);
+  background-color: var(--gray);
+  color: rgba(0, 0, 0, 1);
+}
+
+.password-input-container {
+  position: relative;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.form-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.login-btn {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background-color: var(--primary-color);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  transition: background-color 0.3s ease;
+}
+
+.login-btn:hover {
+  background-color: var(--secondary-color);
+}
+
+.login-demo {
+  background-color: var(--gray);
+  padding: 1rem;
+  margin-top: 2rem;
+  border-radius: 10px;
+}
+
+.demo-account {
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.login-footer {
+  margin-top: 2rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-color);
+}
+
+.register-link,
+.back-home-link {
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+.back-home-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+}
+
+.label-icon {
+  margin-left: 6px;
+}
+
+/* forgot Password */
+.forgot-password-link {
+  color: #b691e6;
+  text-decoration: underline;
+  font-size: 15px;
+  font-weight: 500;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.forgot-password-link:hover {
+  color: #8d54c1;
+}

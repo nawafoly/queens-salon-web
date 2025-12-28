@@ -1,0 +1,315 @@
+/* =========================
+   Dashboard Overview (Polished like Bookings)
+   File: src/styles/DashboardOverview.css
+   ✅ Overview scoped inside .overview-page
+   ✅ يعمل داخل DashboardSkin (بدون خلفية مستقلة)
+========================= */
+
+/* ✅ Overview يعيش داخل DashboardSkin (بدون خلفية ولا min-height) */
+.dashboard-skin .overview-page {
+  background: transparent;
+  min-height: auto;
+  padding: 0;
+  overflow-x: hidden;
+  font-family: "Tajawal", sans-serif;
+}
+
+.dashboard-skin .overview-page * {
+  box-sizing: border-box;
+}
+
+/* ✅ نخلي العرض تحت تحكم DashboardSkin (.dashboard-inner) */
+.dashboard-skin .overview-header,
+.dashboard-skin .overview-content {
+  width: 100%;
+  margin: 0;
+}
+
+/* Header */
+.dashboard-skin .overview-header {
+  margin: 0 0 12px 0;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  border-radius: 18px;
+  padding: 14px 16px;
+  backdrop-filter: blur(8px);
+}
+
+.dashboard-skin .overview-title h1 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 900;
+  color: #2b1b3a;
+}
+
+.dashboard-skin .overview-title p {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(43, 27, 58, 0.75);
+}
+
+/* Content */
+.dashboard-skin .overview-content {
+  display: grid;
+  gap: 12px;
+}
+
+/* =========================
+   Stat Cards
+========================= */
+.dashboard-skin .overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-skin .overview-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Card */
+.dashboard-skin .ov-stat-card {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  border-radius: 18px;
+  padding: 14px 16px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: 0.18s ease;
+}
+
+.dashboard-skin .ov-stat-card[role="button"] {
+  cursor: pointer;
+}
+
+.dashboard-skin .ov-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-skin .ov-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 18px;
+}
+
+.dashboard-skin .ov-info h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+  color: #2b1b3a;
+}
+
+.dashboard-skin .ov-info p {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: rgba(43, 27, 58, 0.75);
+}
+
+/* =========================
+   Section Card
+========================= */
+.dashboard-skin .ov-card {
+  background: #fff;
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  border-radius: 22px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.dashboard-skin .ov-card-inner {
+  padding: 10px 12px 12px 12px;
+}
+
+.dashboard-skin .ov-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.dashboard-skin .ov-card-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 900;
+  color: #2b1b3a;
+}
+
+.dashboard-skin .ov-actions-hint {
+  font-size: 12px;
+  color: rgba(43, 27, 58, 0.65);
+}
+
+/* =========================
+   Table
+========================= */
+.dashboard-skin .ov-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  direction: rtl;
+}
+
+.dashboard-skin .ov-table thead th {
+  background: rgba(139, 92, 246, 0.08);
+  color: #2b1b3a;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.dashboard-skin .ov-table tbody td {
+  padding: 12px 12px;
+  font-size: 13px;
+  color: #2b1b3a;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  vertical-align: middle;
+  text-align: right;
+}
+
+.dashboard-skin .ov-table tbody tr:nth-child(even) td {
+  background: rgba(250, 250, 250, 0.7);
+}
+
+.dashboard-skin .ov-row-click {
+  cursor: pointer;
+}
+
+.dashboard-skin .ov-row-click:hover td {
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.dashboard-skin .ov-empty {
+  text-align: center !important;
+  padding: 16px !important;
+  color: rgba(43, 27, 58, 0.75);
+}
+
+/* =========================
+   Quick Actions
+========================= */
+.dashboard-skin .ov-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-skin .ov-action {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  border-radius: 18px;
+  padding: 14px 16px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.06);
+
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 12px;
+  align-items: center;
+  transition: 0.18s ease;
+}
+
+.dashboard-skin .ov-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-skin .ov-action-ico {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 18px;
+}
+
+.dashboard-skin .ov-action-body h4 {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+  font-weight: 900;
+  color: #2b1b3a;
+}
+
+.dashboard-skin .ov-action-body p {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(43, 27, 58, 0.75);
+}
+
+.dashboard-skin .ov-action .exp-btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 10px;
+}
+
+/* =========================
+   ✅ Sidebar Links FIX (Scoped)
+========================= */
+.dashboard-skin .dashboard-sidebar a {
+  color: inherit !important;
+  text-decoration: none !important;
+}
+
+.dashboard-skin .dashboard-sidebar .sidebar-nav .nav-link {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 10px 12px !important;
+  border-radius: 14px !important;
+  font-weight: 800 !important;
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+
+  background: transparent !important;
+}
+
+.dashboard-skin .dashboard-sidebar .sidebar-nav .nav-link:hover {
+  background: rgba(233, 180, 162, 0.12) !important;
+  transform: translateY(-1px);
+}
+
+.dashboard-skin .dashboard-sidebar .sidebar-nav .nav-link.active {
+  background: rgba(233, 180, 162, 0.18) !important;
+  border: 1px solid rgba(233, 180, 162, 0.28) !important;
+  color: #3b2f2f !important;
+}
+
+/* =========================
+   Responsive
+========================= */
+@media (max-width: 1100px) {
+  .dashboard-skin .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-skin .overview-grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-skin .ov-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-skin .overview-grid,
+  .dashboard-skin .overview-grid-3,
+  .dashboard-skin .ov-actions {
+    grid-template-columns: 1fr;
+  }
+}

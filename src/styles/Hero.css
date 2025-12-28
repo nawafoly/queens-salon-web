@@ -1,0 +1,144 @@
+.hero-section {
+  /* التدرج: أبيض من فوق → لون الخلفية تحت */
+  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  padding: 3rem 0 2rem 0;
+  direction: rtl;
+}
+
+
+.hero-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+.hero-content {
+  width: 100%;
+  text-align: center;
+}
+
+.hero-title {
+  font-size: 2.6rem;
+  font-weight: 700;
+  color: #59443c;
+  margin-bottom: 1.2rem;
+  line-height: 1.2;
+}
+
+.hero-text {
+  font-size: 1.22rem;
+  color: #59443c;
+  margin-bottom: 2.5rem;
+  line-height: 1.9;
+}
+
+.hero-buttons {
+  display: flex;
+  gap: 1.2rem;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.hero-booking-btn {
+  background: var(--primary-color);
+  color: #fff !important;
+  border-radius: 20px;
+  padding: 0.7rem 2.1rem;
+  font-weight: 700;
+  font-size: 1.1rem;
+  transition: background 0.19s, box-shadow 0.19s, transform 0.19s;
+  border: none;
+}
+
+.hero-booking-btn:hover {
+  background-color: var(--secondary-color);
+  color: #fff !important;
+}
+
+.hero-explore-btn {
+  background: transparent;
+  border: 2px solid var(--primary-color);
+  color: var(--primary-color);
+  padding: 0.7rem 2rem;
+  border-radius: 50px;
+  font-weight: 600;
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+}
+
+.hero-explore-btn:hover {
+  background-color: var(--primary-color);
+  color: #fff !important;
+}
+
+.hero-image {
+  margin-top: 1.5rem;
+}
+
+/* صورة البطلة */
+.hero-image img {
+  max-width: 220px;
+  width: 100%;
+  border-radius: 22px;
+  display: block;
+  margin: 0 auto;
+  box-shadow: 0 8px 40px rgba(190, 120, 92, 0.07);
+}
+
+/* ---------- RESPONSIVE ---------- */
+@media (max-width: 991px) {
+  .hero-container {
+    flex-direction: column-reverse;
+    text-align: center;
+    gap: 2.2rem;
+    padding: 0 1.2rem;
+  }
+  .hero-content {
+    text-align: center;
+  }
+  .hero-buttons {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+  }
+  .hero-title {
+    font-size: 2.1rem;
+  }
+  .hero-text {
+    font-size: 1.08rem;
+  }
+  .hero-image img {
+    max-width: 220px;
+    margin-bottom: 1.3rem;
+  }
+}
+
+@media (max-width: 575px) {
+  .hero-section {
+    padding: 1.4rem 0 1.2rem 0;
+  }
+  .hero-container {
+    gap: 1.1rem;
+    padding: 0 0.4rem;
+  }
+  .hero-title {
+    font-size: 1.3rem;
+    margin-bottom: 0.6rem;
+  }
+  .hero-text {
+    font-size: 0.93rem;
+    margin-bottom: 1.1rem;
+  }
+  .hero-image img {
+    max-width: 150px;
+  }
+  .hero-booking-btn, .hero-explore-btn {
+    font-size: 1rem;
+    padding: 0.55rem 1.4rem;
+  }
+}

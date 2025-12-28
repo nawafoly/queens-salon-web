@@ -1,0 +1,354 @@
+/* =========================
+   About Page – Queens Salon
+   ========================= */
+
+/* صفحة About */
+.about-page {
+  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  min-height: 100vh;
+  padding: 40px 0 18px 0;
+  font-family: "Tajawal", sans-serif;
+  direction: rtl;
+  text-align: right;
+}
+
+/* عناوين عامة */
+.section-title {
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: var(--primary-color);
+  margin-bottom: 0.35rem;
+}
+.section-subtitle {
+  color: var(--text-color);
+  font-size: 1.05rem;
+  opacity: 0.88;
+}
+
+/* ================= Intro ================= */
+.about-intro {
+  background: #fff;
+  border-radius: 2.3rem;
+  box-shadow: 0 4px 24px 0 rgba(233, 180, 162, 0.12);
+  padding: 2.2rem 2rem;
+  overflow: hidden;
+}
+
+.about-image {
+  position: relative;
+  border-radius: 1.6rem;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(31, 22, 18, 0.08);
+}
+.about-image img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 1.6rem;
+  transform: scale(1.02);
+  transition: transform 0.5s ease;
+}
+.about-image:hover img {
+  transform: scale(1.06);
+}
+.about-image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.0) 0%, rgba(0, 0, 0, 0.12) 100%);
+  pointer-events: none;
+}
+
+.about-content {
+  padding: 0.4rem 0.2rem;
+}
+.about-title {
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--primary-color);
+  letter-spacing: 0.2px;
+}
+.about-text {
+  color: var(--text-color);
+  font-size: 1.05rem;
+  line-height: 1.95;
+  opacity: 0.92;
+}
+
+/* ================= Team ================= */
+.about-team {
+  margin-top: 2.2rem;
+}
+
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.team-member-enhanced {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 1.8rem;
+  box-shadow: 0 10px 28px rgba(233, 180, 162, 0.12);
+  border: 1px solid rgba(233, 180, 162, 0.18);
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.team-member-enhanced:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 38px rgba(233, 180, 162, 0.18);
+}
+
+.team-member-image-container {
+  position: relative;
+  height: 235px;
+  overflow: hidden;
+}
+.team-member-image-enhanced {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scale(1.03);
+  transition: transform 0.55s ease;
+}
+.team-member-enhanced:hover .team-member-image-enhanced {
+  transform: scale(1.10);
+}
+
+.team-member-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.0) 0%, rgba(20, 12, 10, 0.55) 100%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1rem;
+}
+.team-member-enhanced:hover .team-member-overlay {
+  opacity: 1;
+}
+
+/* أيقونات السوشيال (إذا كانت مكتباتها موجودة) */
+.team-member-social {
+  display: flex;
+  gap: 0.8rem;
+}
+.team-member-social i {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--primary-color);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  transition: transform 0.2s ease;
+}
+.team-member-social i:hover {
+  transform: scale(1.08);
+}
+
+.team-member-content {
+  padding: 1.15rem 1.1rem 1.15rem 1.1rem;
+}
+.team-member-name-enhanced {
+  font-size: 1.18rem;
+  font-weight: 900;
+  color: var(--text-color);
+  margin: 0 0 0.15rem 0;
+}
+.team-member-position-enhanced {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  opacity: 0.92;
+  margin: 0 0 0.65rem 0;
+}
+.team-member-description-enhanced {
+  font-size: 0.99rem;
+  color: var(--text-color);
+  opacity: 0.88;
+  line-height: 1.8;
+  margin: 0 0 0.9rem 0;
+}
+
+/* Tags */
+.team-member-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.skill-tag {
+  background: #f6eee9;
+  color: #a7836e;
+  border: 1px solid rgba(167, 131, 110, 0.25);
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+/* ================= Why Choose Us ================= */
+.why-choose-us {
+  background: #fff;
+  border-radius: 2.3rem;
+  box-shadow: 0 4px 24px 0 rgba(233, 180, 162, 0.12);
+  padding: 2rem 2rem 2.2rem 2rem;
+  margin-top: 2rem;
+}
+
+.why-choose-item {
+  background: #fbf7f4;
+  border: 1px solid rgba(233, 180, 162, 0.18);
+  border-radius: 1.4rem;
+  padding: 1.35rem 1.1rem;
+  height: 100%;
+  box-shadow: 0 10px 24px rgba(233, 180, 162, 0.10);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  text-align: center;
+}
+.why-choose-item:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 32px rgba(233, 180, 162, 0.14);
+}
+
+.why-choose-icon {
+  width: 62px;
+  height: 62px;
+  border-radius: 18px;
+  margin: 0 auto 0.8rem auto;
+  display: grid;
+  place-items: center;
+  background: rgba(232, 180, 162, 0.16);
+  color: var(--primary-color);
+  font-size: 1.6rem;
+}
+
+.why-choose-title {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: var(--text-color);
+  margin-bottom: 0.35rem;
+}
+.why-choose-description {
+  color: var(--text-color);
+  opacity: 0.86;
+  line-height: 1.85;
+  font-size: 0.98rem;
+  margin: 0;
+}
+
+/* ================= Features Lists ================= */
+.about-features {
+  margin-top: 1.3rem;
+}
+.about-features-title {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: var(--primary-color);
+}
+
+.features-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.features-list li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  background: #f9f5f1;
+  border: 1px solid rgba(233, 180, 162, 0.15);
+  border-radius: 1.15rem;
+  padding: 0.85rem 0.85rem;
+  margin-bottom: 0.65rem;
+  color: var(--text-color);
+  font-size: 0.98rem;
+  line-height: 1.7;
+}
+.feature-icon {
+  color: var(--primary-color);
+  margin-top: 0.15rem;
+  font-size: 1.05rem;
+}
+
+/* ================= Animation ================= */
+.animate-fade-in {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: aboutFadeInUp 0.7s ease forwards;
+}
+
+@keyframes aboutFadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ================= Responsive ================= */
+@media (max-width: 991px) {
+  .about-intro,
+  .why-choose-us {
+    padding: 1.4rem 1.1rem;
+    border-radius: 1.6rem;
+  }
+
+  .team-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .about-title {
+    font-size: 1.55rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .about-page {
+    padding: 10px 0 8px 0;
+  }
+
+  .section-title {
+    font-size: 1.25rem;
+  }
+  .section-subtitle {
+    font-size: 0.98rem;
+  }
+
+  .team-grid {
+    grid-template-columns: 1fr;
+    gap: 0.95rem;
+  }
+
+  .team-member-image-container {
+    height: 210px;
+  }
+
+  .team-member-content {
+    padding: 1rem 0.9rem;
+  }
+
+  .why-choose-us {
+    padding: 1.15rem 0.9rem 1.2rem 0.9rem;
+    border-radius: 1.2rem;
+  }
+
+  .features-list li {
+    border-radius: 0.95rem;
+  }
+}
+
+@media (max-width: 575px) {
+  .about-title {
+    font-size: 1.25rem;
+  }
+  .about-text {
+    font-size: 0.98rem;
+  }
+  .team-member-name-enhanced {
+    font-size: 1.08rem;
+  }
+}

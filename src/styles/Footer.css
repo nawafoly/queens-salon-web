@@ -1,0 +1,139 @@
+/* =========================
+   Footer (DARK) - Compact
+========================= */
+
+.footer-dark {
+  background-color: rgb(28, 28, 28);
+  color: #eee;
+  font-family: "Tajawal", sans-serif;
+
+  /* تصغير كبير هنا */
+  padding: 1.6rem 1rem 0.8rem;
+}
+
+/* TOP */
+.footer-dark__top {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+
+  /* تقليل المسافات */
+  gap: 1.2rem;
+
+  /* تقليل الحشو */
+  padding-bottom: 1.1rem;
+
+  border-bottom: 1px solid #333;
+}
+
+/* Columns */
+.footer-col h4 {
+  font-size: 1rem;
+  margin-bottom: 0.6rem;
+  font-weight: 700;
+  color: #f7f7f7;
+}
+
+.footer-col p,
+.footer-col ul {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #bbb;
+  margin: 0;
+}
+
+.footer-col ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.footer-col ul li {
+  margin-bottom: 0.45rem;
+}
+
+.footer-col ul li a {
+  color: #ccc;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.footer-col ul li a:hover {
+  color: var(--primary-color);
+}
+
+/* Logo */
+.footer-col--logo {
+  display: flex;
+  align-items: center;
+  justify-content: center; /* ثابت */
+}
+
+.footer-logo {
+  max-width: 110px; /* كان كبير */
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Social Links (متوافق مع TSX) */
+.social-links {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.social-links a {
+  color: #ddd;
+  font-size: 1.05rem;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.social-links a:hover {
+  color: var(--primary-color);
+  transform: scale(1.08);
+}
+
+/* BOTTOM */
+.footer-dark__bottom {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  /* تصغير */
+  padding: 0.7rem 0;
+
+  font-size: 0.82rem;
+  color: #8a8a8a;
+}
+
+.footer-dark__bottom p {
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .footer-dark {
+    padding: 1.3rem 0.9rem 0.7rem;
+  }
+
+  .footer-dark__top {
+    gap: 1rem;
+    padding-bottom: 0.9rem;
+  }
+
+  .footer-logo {
+    max-width: 100px;
+  }
+}
+
+@media (max-width: 768px) {
+  .footer-dark__top {
+    text-align: center;
+  }
+
+  .footer-col {
+    text-align: center;
+  }
+}

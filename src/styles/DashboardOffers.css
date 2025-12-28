@@ -1,0 +1,628 @@
+/* =========================
+   Dashboard Offers (Polished)
+   File: src/styles/DashboardOffers.css
+   ✅ NO dash-pill base styles هنا
+   ✅ يعتمد على DashboardSkin.css للأزرار
+========================= */
+
+.offers-page {
+  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  min-height: 100vh;
+  padding: 18px 0 18px 0;
+  overflow-x: hidden;
+  font-family: "Tajawal", sans-serif;
+}
+
+.offers-page * {
+  box-sizing: border-box;
+}
+
+/* ✅ أهم إصلاح: تصغير checkbox + منع اللون الأحمر الضخم */
+.offers-page input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  accent-color: #8b5cf6 !important;
+  cursor: pointer;
+}
+
+/* Header */
+.offers-header {
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 14px auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.offers-header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+  color: #2b2b2b;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.offers-sub {
+  margin: 6px 0 0;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+}
+
+/* Card */
+.offers-card {
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 14px auto;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
+  padding: 14px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.05);
+}
+
+.offers-card-title {
+  font-size: 13px;
+  font-weight: 900;
+  color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.offers-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.offers-search {
+  flex: 1;
+  min-width: 240px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  padding: 10px 12px;
+  overflow: hidden;
+}
+
+.offers-search input {
+  border: none;
+  outline: none;
+  width: 100%;
+  font-size: 14px;
+  background: transparent;
+}
+
+.offers-search-ic {
+  opacity: 0.6;
+  font-size: 14px;
+}
+
+.offers-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+/* ===== Stats ===== */
+.offers-stats {
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 14px auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.of-stat {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
+  padding: 14px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.05);
+}
+
+.of-stat h3 {
+  margin: 0 0 6px 0;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.of-stat p {
+  margin: 0;
+  opacity: 0.7;
+  font-size: 13px;
+}
+
+/* ===== Table Card ===== */
+.offers-table-card {
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 18px auto;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
+  padding: 12px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.offers-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 980px;
+}
+
+.offers-table thead th {
+  position: sticky;
+  top: 0;
+  background: rgba(139, 92, 246, 0.08);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.22);
+  font-size: 12px;
+  font-weight: 900;
+  padding: 12px 10px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.offers-table tbody td {
+  background: #fff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 13px;
+  padding: 12px 10px;
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.offers-table tbody tr:hover td {
+  background: rgba(139, 92, 246, 0.05);
+}
+
+.of-img {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* ===== Actions layout ===== */
+.of-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+/* ✅ لمسة فقط: تصغير أيقونات الأزرار في Offers */
+.dashboard-skin .offers-page .dash-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 6px 12px;
+  border-radius: 999px;
+
+  font-size: 13px;
+  font-weight: 500;
+
+  background: rgba(139, 92, 246, 0.08); /* بنفس ثيم البنفسجي */
+  color: #6d28d9;
+
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  cursor: pointer;
+
+  transition: all 0.2s ease;
+}
+
+.dashboard-skin .offers-page .dash-pill:hover {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.28);
+}
+
+.dashboard-skin .offers-page .dash-pill:active {
+  background: rgba(139, 92, 246, 0.18);
+}
+
+.dashboard-skin .offers-page .dash-pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.22);
+}
+
+.dashboard-skin .offers-page .dash-pill svg {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+/* ✅ ألوان toggle فقط (بدون لمس أساس الزر) */
+.dashboard-skin .dash-pill.dash-pill-warning {
+  background: rgba(255, 193, 7, 0.14);
+  border: 1px solid rgba(255, 193, 7, 0.30);
+  color: #b45309;
+}
+.dashboard-skin .dash-pill.dash-pill-warning:hover {
+  filter: brightness(0.98);
+  transform: translateY(-1px);
+}
+
+.dashboard-skin .dash-pill.dash-pill-success {
+  background: rgba(25, 135, 84, 0.12);
+  border: 1px solid rgba(25, 135, 84, 0.28);
+  color: #198754;
+}
+.dashboard-skin .dash-pill.dash-pill-success:hover {
+  filter: brightness(0.98);
+  transform: translateY(-1px);
+}
+
+/* ===== Modal (Offers) ===== */
+.offers-modal-overlay {
+  padding: 16px;
+}
+
+.offers-modal {
+  width: min(1100px, 96vw);
+  max-height: min(86vh, 900px);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+/* Header fixed داخل المودال */
+.of-modal-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 14px 14px;
+}
+
+.of-modal-title h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.of-modal-sub {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* Body scroll واحد */
+.of-form {
+  padding: 14px;
+  overflow: auto;
+  max-height: calc(86vh - 64px - 64px);
+}
+
+/* Footer fixed */
+.of-modal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+
+  background: rgba(255, 255, 255, 0.94);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 12px 14px 14px;
+}
+
+/* form sections */
+.of-section {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
+  padding: 14px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.04);
+  margin-bottom: 12px;
+}
+
+.of-section label {
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  margin-bottom: 6px;
+  opacity: 0.8;
+}
+
+.of-section input,
+.of-section select {
+  width: 100%;
+  border-radius: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  outline: none;
+  font-size: 14px;
+  background: #fff;
+}
+
+.of-section input:focus,
+.of-section select:focus {
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.14);
+}
+
+/* grids */
+.of-grid-2a {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 12px;
+}
+
+.of-field-inline {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+}
+
+.of-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+  align-items: start;
+}
+.of-switch {
+  justify-self: start;
+}
+
+.of-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* scope */
+.of-scope-title {
+  font-weight: 900;
+  margin-bottom: 2px;
+}
+
+.of-scope-hint {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.of-scope-pills {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.of-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.of-pill input {
+  width: 16px !important;
+  height: 16px !important;
+  margin: 0;
+}
+
+/* services search */
+.of-services-search {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.of-services-search input {
+  border: none;
+  outline: none;
+  width: 100%;
+  background: transparent;
+}
+
+.of-services-ic {
+  opacity: 0.6;
+  font-size: 14px;
+}
+
+.of-services-box {
+  margin-top: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.of-services-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.of-services-table thead th {
+  background: rgba(139, 92, 246, 0.08);
+  font-size: 12px;
+  font-weight: 900;
+  padding: 12px 10px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+  text-align: right;
+}
+
+.of-services-table tbody td {
+  padding: 12px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  text-align: right;
+}
+
+.of-group-row td {
+  background: rgba(0, 0, 0, 0.03);
+  font-weight: 900;
+}
+
+/* ✅ NEW: توسيط checkbox داخل جدول الخدمات */
+.of-services-table td:first-child,
+.of-services-table th:first-child {
+  text-align: center;
+}
+
+.of-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.of-check input[type="checkbox"] {
+  margin: 0;
+  width: 16px !important;
+  height: 16px !important;
+  accent-color: #8b5cf6 !important;
+}
+
+/* file picker */
+.of-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.of-file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 12px;
+  border-radius: 14px;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  cursor: pointer;
+  font-weight: 900;
+  font-size: 13px;
+}
+
+.of-file-btn input {
+  display: none;
+}
+
+.of-file-name {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+/* preview */
+.of-image-preview {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.of-image-preview img {
+  width: 90px;
+  height: 90px;
+  border-radius: 16px;
+  object-fit: cover;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 900px) {
+  .offers-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .offers-table {
+    min-width: 860px;
+  }
+
+  .of-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .of-grid-2,
+  .of-grid-2a {
+    grid-template-columns: 1fr;
+  }
+
+  .offers-modal {
+    width: 96vw;
+  }
+}
+
+@media (max-width: 520px) {
+  .offers-header h1 {
+    font-size: 17px;
+  }
+}
+
+/* ✅ سطر checkbox + النص */
+.of-checkline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.of-checkline input[type="checkbox"] {
+  transform: scale(0.9);
+  cursor: pointer;
+}
+
+.of-switch {
+  justify-self: start;
+}
+
+/* ✅ خلي صف الكود مرن وما يقص */
+.of-field-inline {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.of-field-inline > div {
+  min-width: 240px;
+  flex: 1;
+}
+
+.of-field-inline .dash-pill {
+  white-space: nowrap;
+}
+
+/* ✅ iOS tap highlight */
+.dashboard-skin .offers-page .dash-pill {
+  -webkit-tap-highlight-color: transparent;
+}

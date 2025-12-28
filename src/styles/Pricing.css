@@ -1,0 +1,341 @@
+.pricing-page {
+  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  padding: 2.2rem 0 2.5rem;
+  direction: rtl;
+}
+
+.pricing-header {
+  margin-bottom: 1.4rem;
+}
+
+.pricing-title {
+  font-size: 2rem;
+  color: var(--primary-color);
+  font-weight: 800;
+  margin-bottom: 0.35rem;
+}
+
+.pricing-subtitle {
+  color: var(--text-color);
+  opacity: 0.85;
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+/* ===== Cards Grid ===== */
+.pricing-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 1.2rem;
+}
+
+.pricing-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(180, 139, 123, 0.12);
+  border-radius: 22px;
+  padding: 1rem 1rem 0.85rem;
+  text-align: right;
+  cursor: pointer;
+  box-shadow: 0 8px 26px rgba(180, 139, 123, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.pricing-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 34px rgba(180, 139, 123, 0.14);
+}
+
+.card-top {
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+}
+
+.card-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: var(--primary-color);
+  box-shadow: 0 6px 18px rgba(180, 139, 123, 0.10);
+  flex: 0 0 auto;
+  font-size: 1.1rem;
+}
+
+/* نفس class المستخدمة في TSX */
+.card-icon-primary,
+.card-icon-secondary,
+.card-icon-accent,
+.card-icon-info,
+.card-icon-warning {
+  background: linear-gradient(135deg, #fef6f2, #fdeae3 100%);
+  color: var(--primary-color);
+}
+
+.card-titleWrap {
+  flex: 1;
+}
+
+.card-title {
+  font-weight: 800;
+  color: var(--primary-color);
+  font-size: 1.08rem;
+  margin-bottom: 0.35rem;
+}
+
+.card-meta {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.meta-pill {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(180, 139, 123, 0.14);
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.9rem;
+  color: var(--text-color);
+}
+
+.meta-dot {
+  opacity: 0.35;
+}
+
+.card-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px dashed rgba(180, 139, 123, 0.20);
+  color: var(--secondary-color);
+  font-weight: 700;
+}
+
+.cta-arrow {
+  opacity: 0.85;
+}
+
+/* ===== Footer Notes (خفيفة) ===== */
+.pricing-footer {
+  margin-top: 1.2rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.note-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #7c675b;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(180, 139, 123, 0.12);
+  border-radius: 14px;
+  padding: 0.7rem 0.9rem;
+  box-shadow: 0 6px 18px rgba(180, 139, 123, 0.06);
+}
+
+.note-item svg {
+  color: var(--secondary-color);
+}
+
+/* ===== Modal Overlay ===== */
+.pricing-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 18, 14, 0.28);
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+/* Modal Container */
+.pricing-modal {
+  width: min(860px, 96vw);
+  max-height: min(84vh, 720px);
+  background: #fff;
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.modal-header {
+  padding: 1rem 1rem 0.9rem;
+  border-bottom: 1px solid rgba(180, 139, 123, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.modal-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.modal-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #fef6f2, #fdeae3 100%);
+  color: var(--primary-color);
+  box-shadow: 0 6px 18px rgba(180, 139, 123, 0.10);
+}
+
+.modal-title {
+  font-weight: 900;
+  color: var(--primary-color);
+  font-size: 1.12rem;
+}
+
+.modal-sub {
+  color: #7c675b;
+  font-size: 0.95rem;
+  margin-top: 0.2rem;
+}
+
+.modal-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(180, 139, 123, 0.14);
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Body */
+.modal-body {
+  padding: 1rem;
+  overflow: auto;
+}
+
+/* Category */
+.modal-category {
+  padding: 0.85rem 0.85rem 0.6rem;
+  background: rgba(248, 236, 247, 0.35);
+  border: 1px solid rgba(180, 139, 123, 0.10);
+  border-radius: 18px;
+  margin-bottom: 0.9rem;
+}
+
+.modal-category-title {
+  font-weight: 900;
+  color: var(--primary-color);
+  margin-bottom: 0.65rem;
+}
+
+/* List rows - compact */
+.modal-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.modal-row {
+  background: #fff;
+  border: 1px dashed rgba(180, 139, 123, 0.22);
+  border-radius: 14px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.modal-name .name-main {
+  font-weight: 700;
+  color: var(--text-color);
+  font-size: 0.98rem;
+}
+
+.modal-name .name-note {
+  font-size: 0.88rem;
+  color: #8a7a70;
+  margin-top: 0.2rem;
+}
+
+.modal-price {
+  font-weight: 900;
+  color: var(--secondary-color);
+  white-space: nowrap;
+  font-size: 0.98rem;
+}
+
+/* Footer */
+.modal-footer {
+  padding: 0.85rem 1rem 1rem;
+  border-top: 1px solid rgba(180, 139, 123, 0.12);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.modal-primary {
+  background: var(--primary-color);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 0.65rem 1.4rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.modal-primary:hover {
+  background: var(--secondary-color);
+  transform: translateY(-1px);
+}
+
+/* ===== Mobile => Bottom Sheet ===== */
+@media (max-width: 768px) {
+  .pricing-title {
+    font-size: 1.35rem;
+  }
+
+  .pricing-subtitle {
+    font-size: 0.98rem;
+  }
+
+  .pricing-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .pricing-modal {
+    width: 100vw;
+    max-height: 86vh;
+    border-radius: 22px 22px 0 0;
+  }
+
+  .modal-body {
+    padding: 0.85rem;
+  }
+
+  .modal-row {
+    padding: 0.55rem 0.65rem;
+  }
+
+  .modal-name .name-main {
+    font-size: 0.94rem;
+  }
+
+  .modal-price {
+    font-size: 0.95rem;
+  }
+}

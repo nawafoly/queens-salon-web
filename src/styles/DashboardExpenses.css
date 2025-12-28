@@ -1,0 +1,662 @@
+/* =========================
+   Dashboard Expenses (FINAL / SAFE)
+   File: src/styles/DashboardExpenses.css
+   ✅ Scoped
+   ✅ No Bootstrap conflicts
+   ✅ No red borders
+========================= */
+
+.exp-page {
+  direction: rtl;
+  font-family: "Tajawal", Arial, sans-serif;
+
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 18px 14px;
+
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.exp-page * {
+  box-sizing: border-box;
+}
+
+/* =========================
+   🔒 Kill Bootstrap / Browser validation styles
+========================= */
+.exp-page input,
+.exp-page select,
+.exp-page textarea {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.exp-page input:invalid,
+.exp-page select:invalid,
+.exp-page textarea:invalid,
+.exp-page .is-invalid {
+  border-color: #e8e8e8 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.exp-page input:focus,
+.exp-page select:focus,
+.exp-page textarea:focus {
+  border-color: #cdb6ff !important;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12) !important;
+}
+
+/* =========================
+   Header
+========================= */
+.exp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.exp-header h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.exp-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* =========================
+   Stats
+========================= */
+.exp-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.exp-stat {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.exp-stat .k {
+  font-size: 13px;
+  color: #777;
+  margin-bottom: 6px;
+}
+
+.exp-stat .v {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+/* =========================
+   Layout
+========================= */
+.exp-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 14px;
+}
+
+/* =========================
+   Cards
+========================= */
+.exp-card {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.exp-card h3 {
+  margin: 0 0 14px 0;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+/* =========================
+   Forms
+========================= */
+.exp-form,
+.exp-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.exp-form label,
+.exp-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.exp-form input,
+.exp-form select,
+.exp-filters input,
+.exp-filters select {
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 14px;
+}
+
+.span-2 {
+  grid-column: span 2;
+}
+
+.exp-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* =========================
+   Buttons (Scoped)
+========================= */
+.exp-btn {
+  border: 1px solid #e8e8e8;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.exp-btn.primary {
+  background: #8b5cf6;
+  border-color: #8b5cf6;
+  color: #fff;
+}
+
+.exp-btn.ghost {
+  background: #f7f3ff;
+  border-color: #eadcfb;
+  color: #3b1b66;
+}
+
+.exp-btn.danger {
+  background: #fff5f5;
+  border-color: #ffd6d6;
+  color: #b42318;
+}
+
+/* =========================
+   Table
+========================= */
+.exp-table-wrap {
+  margin-top: 14px;
+  border: 1px solid #f0f0f0;
+  border-radius: 16px;
+  overflow-x: auto;
+}
+
+.exp-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 0;          /* ✅ يمنع إجبار سكرول */
+  table-layout: auto;    /* ✅ يخلي الأعمدة طبيعية */
+}
+
+
+/* =========================
+   ✅ Center table text (FINAL)
+========================= */
+
+/* توسيط كل الأعمدة */
+.exp-table th,
+.exp-table td {
+  text-align: center !important;
+  vertical-align: middle;
+}
+
+/* استثناء: الملاحظات خليها أوضح (وسط لكن سطرين لو احتاجت) */
+.exp-table th:nth-child(6),
+.exp-table td:nth-child(6) {
+  text-align: center !important;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+/* استثناء: زر الحذف */
+.exp-table th:last-child,
+.exp-table td:last-child {
+  text-align: center !important;
+}
+
+
+
+.exp-table thead th {
+  background: #fafafa;
+  font-weight: 900;
+}
+
+/* Notes column wider */
+.exp-table th:nth-child(6),
+.exp-table td:nth-child(6) {
+  width: 280px;
+  white-space: normal;
+}
+
+/* Actions column */
+.exp-table th:last-child,
+.exp-table td:last-child {
+  width: 110px;
+  text-align: center;
+}
+
+/* =========================
+   Helpers
+========================= */
+.strong { font-weight: 900; }
+.amount { font-weight: 900; }
+.muted { color: #777; }
+.empty {
+  text-align: center;
+  padding: 18px;
+  color: #777;
+}
+
+/* =========================
+   Mobile: Table → Cards
+========================= */
+@media (max-width: 980px) {
+  .exp-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .exp-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .exp-table {
+    min-width: 0;
+  }
+
+  .exp-table thead {
+    display: none;
+  }
+
+  .exp-table,
+  .exp-table tbody,
+  .exp-table tr,
+  .exp-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .exp-table tr {
+    border: 1px solid #f0f0f0;
+    border-radius: 16px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: #fff;
+  }
+
+  .exp-table td {
+    border: none;
+    padding: 6px 0;
+    white-space: normal;
+  }
+
+  .exp-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 12px;
+    font-weight: 900;
+    color: #777;
+    margin-bottom: 2px;
+  }
+
+  .exp-table td:last-child {
+    padding-top: 10px;
+  }
+
+  .exp-table td:last-child .exp-btn {
+    width: 100%;
+  }
+}
+
+.exp-page table td,
+.exp-page table th {
+  padding: 12px 14px;
+}
+
+/* ===== Breakdown (تحت الجدول) ===== */
+.exp-breakdown {
+  margin-top: 12px;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 18px;
+  padding: 14px;
+  background: #fff;
+}
+
+.bd-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.bd-title {
+  font-weight: 900;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.bd-sub {
+  font-size: 12.5px;
+  opacity: 0.8;
+}
+
+.bd-pill {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.10);
+  background: rgba(139, 92, 246, 0.07);
+  font-weight: 800;
+}
+
+.bd-list {
+  display: grid;
+  gap: 10px;
+}
+
+.bd-item {
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 16px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.bd-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.bd-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bd-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.65);
+  flex: 0 0 auto;
+}
+
+.bd-name {
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bd-right {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.bd-amount {
+  font-weight: 900;
+}
+
+.bd-pct {
+  font-size: 12px;
+  opacity: 0.75;
+  font-weight: 800;
+  min-width: 36px;
+  text-align: left;
+}
+
+.bd-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+.bd-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.55);
+}
+
+.bd-empty {
+  padding: 14px;
+  text-align: center;
+  opacity: 0.75;
+  font-size: 13px;
+}
+
+
+
+
+
+.exp-table input,
+.exp-table select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.12);
+  outline: none;
+  font-family: inherit;
+}
+
+
+/* ✅ كرت التنبيه يصير صف واحد مرتب */
+.exp-alert-card{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+/* ✅ جهة اليسار (الأيقونة + النص) */
+.exp-alert-left{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 260px;
+}
+
+/* ✅ جهة اليمين (كل الأزرار مع بعض) */
+.exp-alert-right{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-inline-start: auto; /* يدفع الأزرار لليمين */
+}
+
+/* ✅ لما الشاشة تصغر: خلي الأزرار تتمدد 100% وتترتب */
+@media (max-width: 640px){
+  .exp-alert-right{
+    width: 100%;
+    justify-content: stretch;
+  }
+  .exp-alert-right .exp-btn{
+    flex: 1;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Buttons (same vibe) */
+.reports-btn {
+  border: 1px solid rgba(124, 58, 237, 0.16);
+  background: rgba(255,255,255,0.92);
+  color: #3f3d56;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center ;
+  gap: 8px;
+  transition: transform .15s ease, background .15s ease;
+}
+
+.reports-btn:hover {
+  background: #f4f2fd;
+  transform: translateY(-1px);
+}
+
+.reports-btn.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 8px 12px;
+  border-radius: 12px;
+
+  font-size: 13px;
+  font-weight: 700;
+
+  background: rgba(139, 92, 246, 0.08);
+  color: #6d28d9;
+
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  cursor: pointer;
+
+  transition: all 0.2s ease;
+}
+
+.reports-btn.primary:hover {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.28);
+}
+
+
+.reports-btn.primary:active {
+  background: rgba(139, 92, 246, 0.18);
+}
+
+.reports-btn.primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.22);
+}
+
+.reports-btn.primary svg {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+
+
+/* =========================
+   Modal Table (Record) - Improve Row Separation + Actions Column
+========================= */
+
+.exp-table-wrap .exp-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.exp-table-wrap .exp-table thead th {
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(124, 58, 237, 0.12);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.exp-table-wrap .exp-table tbody td {
+  padding: 14px 14px;
+  vertical-align: middle;
+}
+
+.exp-table-wrap .exp-table tbody tr {
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.exp-table-wrap .exp-table tbody tr + tr td {
+  border-top: 1px solid rgba(124, 58, 237, 0.10);
+}
+
+.exp-table-wrap .exp-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+/* ✅ عمود الإجراءات: ترتيب واضح */
+.exp-table-wrap .exp-table td[data-label="إجراء"] {
+  width: 160px;
+}
+
+.exp-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.exp-row-actions .exp-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+
+/* ✅ Alert Card */
+.exp-alert-card{
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 12px auto;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(139,92,246,0.16);
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 30px rgba(15,23,42,0.08);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.exp-alert-left{display:flex;align-items:flex-start;gap:12px;}
+.exp-alert-ico{width:36px;height:36px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.12);}
+.exp-alert-title{font-weight:900;font-size:13px;margin-bottom:4px;}
+.exp-alert-desc{font-size:13px;line-height:1.6;opacity:0.95;}
+.exp-alert-hint{display:inline-block;margin-right:6px;opacity:0.75;}
+.exp-alert-actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+.exp-missing-note{font-size:12px;font-weight:800;opacity:.75}
+.exp-row-missing-note td{background: rgba(255, 243, 224, 0.35);}

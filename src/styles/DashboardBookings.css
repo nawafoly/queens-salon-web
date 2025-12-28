@@ -1,0 +1,299 @@
+/* =========================
+   Dashboard Bookings (Polished like Clients)
+   File: src/styles/DashboardBookings.css
+   ✅ Scoped داخل .bookings-page فقط
+========================= */
+
+.bookings-page {
+  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  min-height: 100vh;
+  padding: 18px 0 18px 0;
+  overflow-x: hidden;
+  font-family: "Tajawal", sans-serif;
+}
+
+.bookings-page * { box-sizing: border-box; }
+
+/* Header */
+.bookings-header {
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 12px auto;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  border-radius: 18px;
+  padding: 14px 16px;
+  backdrop-filter: blur(8px);
+}
+
+.bookings-header h1 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  color: #2b1b3a;
+}
+
+.bookings-header p {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(43, 27, 58, 0.75);
+}
+
+.bookings-error {
+  margin-top: 10px;
+  color: #b00020;
+  font-size: 13px;
+}
+
+/* Mini filter card */
+.bk-mini {
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 12px auto;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  border-radius: 18px;
+  padding: 14px 16px;
+  backdrop-filter: blur(8px);
+}
+
+.bk-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.bk-field { min-width: 170px; }
+.bk-field.w-180 { min-width: 180px; }
+.bk-field.w-200 { min-width: 200px; }
+
+.bk-field label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 6px;
+  color: rgba(43, 27, 58, 0.9);
+}
+
+.bk-search {
+  flex: 1;
+  min-width: 260px;
+}
+
+.bk-search-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.bk-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Stats row container */
+.bookings-page .row {
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto;
+}
+
+/* stat-card fallback */
+.bookings-page .stat-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
+  height: 100%;
+}
+
+.bookings-page .stat-info h3 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  color: #2b1b3a;
+}
+
+.bookings-page .stat-info p {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(43, 27, 58, 0.75);
+}
+
+/* Table Card */
+.bookings-table-card {
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 18px auto;
+  background: #fff;
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  border-radius: 22px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.bk-table-wrap { padding: 10px 12px 12px 12px; }
+
+.bookings-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  direction: rtl;
+}
+
+/* thead */
+.bookings-table thead th {
+  background: rgba(139, 92, 246, 0.08);
+  color: #2b1b3a;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* tbody */
+.bookings-table tbody td {
+  padding: 12px 12px;
+  font-size: 13px;
+  color: #2b1b3a;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  vertical-align: middle;
+  text-align: center;
+}
+
+.bookings-table tbody td:first-child {
+  text-align: right;
+  font-weight: 800;
+}
+
+.bookings-table tbody tr:nth-child(even) td { background: rgba(250, 250, 250, 0.7); }
+.bookings-table tbody tr:hover td { background: rgba(139, 92, 246, 0.06); }
+
+.bookings-table td:last-child { white-space: nowrap; }
+
+.bk-actions-cell {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+/* form-control داخل الصفحة فقط */
+ .bookings-page .form-control {
+  border-radius: 12px !important;
+  border: 1px solid rgba(0, 0, 0, 0.10) !important;
+  padding: 10px 12px !important;
+  font-size: 13px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.dashboard-skin .bookings-page .form-control:focus {
+  outline: none !important;
+  border-color: rgba(139, 92, 246, 0.55) !important;
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.12) !important;
+}
+
+/* status badge compact inside bookings */
+.bookings-page .status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  min-width: 88px;
+}
+
+/* ===== مودال محتوى الحجوزات (مقيد داخل .dash-modal فقط) ===== */
+.dash-modal .bk-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 14px;
+
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 18px;
+  padding: 12px;
+  background: #fafafa;
+}
+
+.dash-modal .bk-item {
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: #fff;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+}
+
+.dash-modal .bk-item.stack {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-height: 74px;
+  gap: 6px;
+}
+
+.dash-modal .bk-note-card {
+  margin-top: 14px;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 14px;
+  padding: 12px;
+  background: #fff;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .bookings-header,
+  .bk-mini,
+  .bookings-table-card {
+    width: calc(100% - 20px);
+  }
+
+  .dash-modal .bk-details-grid { grid-template-columns: 1fr; }
+  .bk-actions-cell { justify-content: flex-start; }
+}
+
+.value {
+  font-size: 22px;
+  font-weight: 900;
+  color: #7c3aed !important;
+   }
+
+   .value1 {
+    font-size: 22px;
+    font-weight: 900;
+    color: #2e0c6a !important;
+     }
+
+     /* Status Select – Dashboard Style */
+.bk-field .bk-select {
+  width: 100%;
+  height: 42px;
+
+  padding: 0 12px;
+  border-radius: 12px;
+
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+
+  font-size: 14px;
+  font-family: "Tajawal", sans-serif;
+  color: #2d1b69;
+
+  outline: none;
+  cursor: pointer;
+}
+
+.bk-field .bk-select:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+}

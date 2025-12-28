@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return signedIn() && (request.auth.token.role is string)
+        ? request.auth.token.role
+        : "guest";
+    }
+
+    function isStaff() {
+      return signedIn() && (
+        role() == "owner" ||
+        role() == "admin" ||
+        role() == "reception" ||
+        role() == "staff"
+      );
+    }
+
+    match /bookings/{id} {
+
+      // ✅ الموظفين لهم كامل الصلاحية
+      allow read, write: if isStaff();
+
+      // ✅ العميل/الزائر: إنشاء فقط (بدون قراءة/تعديل/حذف)
+      allow create: if
+        request.resource.data.channel == "client"
+        && request.resource.data.createdBy == "client"
+        && request.resource.data.status in ["pending", "confirmed"]
+        && request.resource.data.clientName is string
+        && request.resource.data.clientPhone is string
+        && request.resource.data.serviceName is string
+        && request.resource.data.employeeName is string
+        && request.resource.data.date is string
+        && request.resource.data.time is string;
+
+      allow read, update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+  }
+}

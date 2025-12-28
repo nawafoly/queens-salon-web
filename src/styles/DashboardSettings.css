@@ -1,0 +1,277 @@
+/* =========================
+   Settings Alerts / Messages
+========================= */
+
+.settings-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.settings-alert.success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #166534;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.settings-alert.error {
+  background: rgba(239, 68, 68, 0.10);
+  color: #991b1b;
+  border: 1px solid rgba(239, 68, 68, 0.22);
+}
+
+.settings-alert.info {
+  background: rgba(139, 92, 246, 0.10);
+  color: #6d28d9;
+  border: 1px solid rgba(139, 92, 246, 0.22);
+}
+
+/* Users Manager inside modal */
+.settings-card + .settings-card {
+  margin-top: 14px;
+}
+
+.ov-table th {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.ov-table td {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* =========================================
+   Dashboard Settings (Queens / Glass) ✅ FINAL
+   File: src/styles/DashboardSettings.css
+   هدفه: يكمل شكل الصفحة داخل dashboard-skin
+========================================= */
+
+/* ✅ Wrapper للعرض */
+.dashboard-skin .settings-page{
+  width: 100%;
+}
+
+.dashboard-skin .settings-wrap{
+  width: min(760px, 100%);
+  margin-inline-start: auto;   /* RTL: يمين */
+  margin-inline-end: 0;
+}
+
+/* ✅ Header */
+.dashboard-skin .settings-header{
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.dashboard-skin .settings-header h1{
+  margin: 0;
+  font-size: 42px;
+  font-weight: 900;
+  color: var(--text);
+  letter-spacing: 0.2px;
+}
+
+.dashboard-skin .settings-hint{
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.dashboard-skin .settings-save{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dashboard-skin .settings-saved{
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.70);
+  border: 1px solid rgba(124,58,237,0.14);
+  font-weight: 900;
+  font-size: 13px;
+  color: rgba(58,47,68,0.88);
+}
+
+/* ✅ Tabs */
+.dashboard-skin .settings-tabs{
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0 16px;
+}
+
+/* ✅ Card Glass */
+.dashboard-skin .settings-card{
+  background: rgba(255,255,255,0.62);
+  border: 1px solid rgba(255,255,255,0.65);
+  box-shadow: var(--shadow-soft);
+  border-radius: 22px;
+  padding: 16px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.dashboard-skin .settings-title{
+  margin: 0 0 12px;
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--text);
+}
+
+/* ✅ Grid */
+.dashboard-skin .settings-grid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 720px){
+  .dashboard-skin .settings-wrap{ width: 100%; }
+  .dashboard-skin .settings-grid{ grid-template-columns: 1fr; }
+  .dashboard-skin .settings-header h1{ font-size: 34px; }
+  .dashboard-skin .settings-title{ font-size: 24px; }
+}
+
+/* ✅ Field */
+.dashboard-skin .settings-field label{
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 900;
+  color: rgba(58,47,68,0.86);
+  font-size: 13px;
+}
+
+/* ✅ Input (Glass / Unified) */
+.dashboard-skin .settings-input{
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+
+  border-radius: 14px;
+  border: 1px solid rgba(124,58,237,0.18);
+
+  background: rgba(255,255,255,0.85);
+  color: rgba(58,47,68,0.92);
+
+  font-family: "Tajawal", sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+
+  outline: none;
+  transition: .15s ease;
+}
+
+.dashboard-skin .settings-input:hover{
+  border-color: rgba(124,58,237,0.28);
+  background: rgba(255,255,255,0.92);
+}
+
+.dashboard-skin .settings-input:focus{
+  border-color: rgba(124,58,237,0.45);
+  box-shadow: 0 0 0 3px rgba(139,92,246,0.14);
+}
+
+.dashboard-skin .settings-input:disabled{
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ✅ Lists */
+.dashboard-skin .settings-list{
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.dashboard-skin .settings-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  padding: 12px 12px;
+  border-radius: 18px;
+
+  background: rgba(255,255,255,0.55);
+  border: 1px solid rgba(124,58,237,0.10);
+}
+
+.dashboard-skin .settings-row span{
+  font-weight: 900;
+  color: rgba(58,47,68,0.86);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ✅ Checkbox (حل الأحمر + شكل أنيق) */
+.dashboard-skin .settings-check{
+  width: 18px;
+  height: 18px;
+  accent-color: rgba(124,58,237,0.95);
+  cursor: pointer;
+}
+
+/* ✅ Note / Footnote */
+.dashboard-skin .settings-note{
+  margin-top: 10px;
+  font-weight: 800;
+  color: rgba(58,47,68,0.78);
+  font-size: 13px;
+}
+
+.dashboard-skin .settings-footnote{
+  margin-top: 12px;
+  color: rgba(58,47,68,0.68);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+/* ✅ Alerts (متوافق مع اللي أرسلته) */
+.settings-alert{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.settings-alert.success{
+  background: rgba(34, 197, 94, 0.12);
+  color: #166534;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+.settings-alert.error{
+  background: rgba(239, 68, 68, 0.10);
+  color: #991b1b;
+  border: 1px solid rgba(239, 68, 68, 0.22);
+}
+.settings-alert.info{
+  background: rgba(139, 92, 246, 0.10);
+  color: #6d28d9;
+  border: 1px solid rgba(139, 92, 246, 0.22);
+}
+
+/* ✅ Table tweaks */
+.dashboard-skin .ov-table th{
+  font-size: 12px;
+  opacity: 0.75;
+}
+.dashboard-skin .ov-table td{
+  font-size: 13px;
+  font-weight: 700;
+}

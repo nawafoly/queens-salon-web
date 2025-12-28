@@ -1,0 +1,128 @@
+/* src/styles/Success.css */
+
+.success-page {
+  min-height: calc(100vh - 120px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 16px;
+  background: linear-gradient(180deg, rgba(240, 229, 255, 0.55), rgba(255, 255, 255, 0.9));
+}
+
+.success-card {
+  width: min(760px, 96vw);
+  background: #fff;
+  border-radius: 24px;
+  padding: 22px 18px;
+  box-shadow: 0 14px 45px rgba(0, 0, 0, 0.12);
+  direction: rtl;
+}
+
+.success-icon {
+  font-size: 42px;
+  display: flex;
+  justify-content: center;
+  margin: 6px 0 10px;
+  opacity: 0.9;
+}
+
+.success-title {
+  text-align: center;
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.success-subtitle {
+  text-align: center;
+  margin: 0 0 16px;
+  color: rgba(0,0,0,0.65);
+  line-height: 1.7;
+}
+
+.success-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.04);
+  margin: 14px 0;
+}
+
+.success-details {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 18px;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 22px 110px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 6px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-ico {
+  opacity: 0.75;
+}
+
+.detail-label {
+  color: rgba(0,0,0,0.6);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.detail-value {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}
+
+.total-row {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 14px;
+  background: #fff;
+  border-radius: 14px;
+  font-weight: 900;
+}
+
+.status-pill {
+  display: inline-flex;
+  justify-content: center;
+  width: fit-content;
+  margin: 10px auto 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 13px;
+  background: rgba(0,0,0,0.06);
+}
+
+.status-pill.confirmed { background: rgba(0, 128, 0, 0.12); }
+.status-pill.pending { background: rgba(255, 165, 0, 0.16); }
+.status-pill.completed { background: rgba(0, 0, 0, 0.08); }
+.status-pill.cancelled { background: rgba(176, 0, 32, 0.12); }
+
+.success-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 16px;
+}

@@ -1,0 +1,184 @@
+/* =========================
+   Services Page (Scoped CSS)
+   ========================= */
+
+   .services-page {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+    background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+    min-height: 100vh;
+    font-family: "Tajawal", sans-serif;
+    direction: rtl;
+    text-align: right;
+  }
+  
+  /* Header */
+  .services-page .services-title {
+    font-size: 2.2rem;
+    font-weight: 900;
+    color: var(--primary-color);
+    margin-bottom: 0.9rem;
+    text-align: center;
+  }
+  
+  .services-page .services-subtitle {
+    font-size: 1.12rem;
+    color: var(--secondary-color);
+    margin-bottom: 2.2rem;
+    text-align: center;
+    opacity: 0.9;
+  }
+  
+  /* Category Card */
+  .services-page .service-category {
+    background: #fff;
+    border-radius: 22px;
+    box-shadow: 0 10px 30px rgba(180, 139, 123, 0.12);
+    padding: 2rem 1.7rem 1.7rem;
+    margin-bottom: 2.5rem;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    border: 1px solid rgba(233, 180, 162, 0.18);
+  }
+  
+  .services-page .service-category:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 14px 36px rgba(180, 139, 123, 0.18);
+  }
+  
+  /* ✅ توحيد شكل الصور */
+  .services-page .service-category-image img {
+    width: 100%;
+    max-width: 420px;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 16px;
+    box-shadow: 0 8px 26px rgba(180, 139, 123, 0.12);
+    display: block;
+    margin: 0 auto;
+  }
+  
+  /* Content */
+  .services-page .service-category-content {
+    text-align: right;
+    padding: 0 1rem;
+  }
+  
+  .services-page .service-category-icon {
+    font-size: 2.1rem;
+    color: var(--primary-color);
+    margin-bottom: 0.7rem;
+    opacity: 0.9;
+  }
+  
+  .services-page .service-category-title {
+    font-size: 1.55rem;
+    font-weight: 900;
+    color: var(--primary-color);
+    margin-bottom: 0.55rem;
+  }
+  
+  .services-page .service-category-description {
+    color: var(--text-color);
+    font-size: 1.06rem;
+    margin-bottom: 1.1rem;
+    opacity: 0.9;
+    line-height: 1.9;
+  }
+  
+  /* Services list */
+  .services-page .service-list {
+    margin-bottom: 1.2rem;
+    background: #fbf7f4;
+    border: 1px solid rgba(233, 180, 162, 0.14);
+    border-radius: 16px;
+    padding: 0.7rem 1rem;
+  }
+  
+  .services-page .service-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0;
+    border-bottom: 1px dashed rgba(233, 180, 162, 0.35);
+    font-size: 1.03rem;
+  }
+  
+  .services-page .service-item:last-child {
+    border-bottom: none;
+  }
+  
+  .services-page .service-name {
+    color: var(--text-color);
+    font-weight: 700;
+  }
+  
+  /* ✅ لمسة فخمة للسعر */
+  .services-page .service-price {
+    color: var(--secondary-color);
+    font-weight: 900;
+    font-size: 0.98rem;
+    background: rgba(233, 180, 162, 0.18);
+    padding: 6px 10px;
+    border-radius: 999px;
+  }
+  
+  /* CTA Button (Special for Services page only) */
+  .services-page .services-primary-btn {
+    background: var(--primary-color);
+    color: #fff !important;
+    font-weight: 900;
+    border-radius: 999px;
+    padding: 0.75rem 2.2rem;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10px 22px rgba(232, 180, 162, 0.18);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    text-decoration: none;
+  }
+  
+  .services-page .services-primary-btn:hover {
+    background: var(--secondary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 14px 28px rgba(232, 180, 162, 0.24);
+  }
+  
+  /* Container padding scope */
+  .services-page .container {
+    padding-left: 0.7rem;
+    padding-right: 0.7rem;
+  }
+  
+  /* ✅ تناوب ترتيب الأقسام على الديسكتوب فقط */
+  @media (min-width: 992px) {
+    .services-page .service-category.reverse .row {
+      flex-direction: row-reverse;
+    }
+  }
+  
+  /* Responsive */
+  @media (max-width: 991.98px) {
+    .services-page .services-title {
+      font-size: 1.7rem;
+    }
+    .services-page .service-category {
+      padding: 1.2rem 1rem 1rem;
+    }
+    .services-page .service-category-image img {
+      max-width: 320px;
+    }
+  }
+  
+  @media (max-width: 767.98px) {
+    .services-page .service-category {
+      padding: 1rem 0.9rem;
+    }
+    .services-page .service-category-content {
+      padding: 0;
+    }
+    .services-page .services-title {
+      font-size: 1.25rem;
+    }
+  }
+  

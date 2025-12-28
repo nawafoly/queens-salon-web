@@ -1,0 +1,326 @@
+/* الصفحة الرئيسية للحجز */
+.booking-page {
+  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  min-height: 100vh;
+  padding: 40px 0 18px 0;
+  font-family: 'Tajawal', sans-serif;
+}
+
+/* البطاقة الأساسية */
+.booking-card {
+  background: #fff;
+  border-radius: 2.3rem;
+  box-shadow: 0 4px 24px 0 rgba(233, 180, 162, 0.12);
+  padding: 2.2rem 2rem 1.2rem 2rem;
+  margin-bottom: 32px;
+  margin-top: 16px;
+}
+
+/* الهيدر */
+.booking-header {
+  text-align: center;
+  margin-bottom: 1.7rem;
+}
+
+.booking-title {
+  font-size: 2rem;
+  font-weight: bold;
+  color: var(--primary-color);
+  margin-bottom: 0.4rem;
+}
+
+.booking-subtitle {
+  color: var(--text-color);
+  font-size: 1.07rem;
+  opacity: 0.85;
+}
+
+/* نموذج الحجز */
+.booking-form label.form-label {
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 0.4rem;
+}
+
+.booking-form .input-group {
+  margin-bottom: 0.5rem;
+}
+
+.input-group-text {
+  background: none !important;
+  color: var(--primary-color);
+  border: none;
+  border-radius: 0.8rem 0 0 0.8rem;
+  font-size: 1.1rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.form-control,
+.form-select {
+  border-radius: 0.8rem !important;
+  background: var(--gray);
+  border: none !important;
+  color: var(--text-color);
+  font-size: 1rem;
+  padding: 0.7rem 1rem;
+  transition: box-shadow 0.2s;
+  box-shadow: 0 2px 8px rgba(233, 180, 162, 0.04);
+}
+
+
+
+.form-control:focus,
+.form-select:focus {
+  border: 1.5px solid var(--primary-color) !important;
+  box-shadow: 0 0 0 0.12rem #e8b4a240;
+  background: #fff;
+}
+
+textarea.form-control {
+  min-height: 60px;
+}
+
+/* زر الحجز */
+.btn-primary,
+.booking-btn {
+  background: var(--primary-color) !important;
+  color: #fff !important;
+  font-weight: 700;
+  border-radius: 1.2rem;
+  font-size: 1.13rem;
+  padding: 0.95rem 0;
+  box-shadow: 0 4px 14px rgba(232, 180, 162, 0.09);
+  margin-top: 12px;
+  transition: background 0.19s, box-shadow 0.19s, transform 0.19s;
+}
+
+.btn-primary:hover,
+.booking-btn:hover {
+  background: var(--secondary-color) !important;
+  color: #fff;
+  transform: scale(1.04);
+}
+
+/* سياسة الحجز */
+.booking-policy {
+  background: #f6eee9;
+  border-radius: 0.95rem;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1.3rem;
+}
+
+.booking-policy h4 {
+  font-size: 1rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  color: var(--primary-color);
+}
+
+.booking-policy ul {
+  margin: 0;
+  padding-right: 1rem;
+}
+
+.booking-policy li {
+  font-size: 0.96rem;
+  color: var(--text-color);
+  margin-bottom: 0.3rem;
+}
+
+/* نافذة نجاح الحجز */
+.booking-success-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(50, 38, 32, 0.26);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.booking-success-content {
+  background: #fff;
+  border-radius: 2.3rem;
+  max-width: 95vw;
+  width: 430px;
+  box-shadow: 0 6px 28px rgba(233, 180, 162, 0.17);
+  padding: 2.2rem 1.2rem 1.7rem 1.2rem;
+  text-align: center;
+  animation: fadeIn 0.7s;
+}
+
+.success-icon {
+  font-size: 2.7rem;
+  color: var(--primary-color);
+  margin-bottom: 0.5rem;
+}
+
+.success-title {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: var(--text-color);
+  margin-bottom: 0.5rem;
+}
+
+.success-message {
+  color: #92736b;
+  font-size: 1.07rem;
+  margin-bottom: 1.2rem;
+}
+
+.booking-details {
+  background: #f9f5f1;
+  border-radius: 0.9rem;
+  padding: 1rem 0.8rem 0.6rem 0.8rem;
+  margin-bottom: 0.95rem;
+  text-align: right;
+}
+
+.booking-detail-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.booking-detail-label {
+  color: #a7836e;
+  font-weight: bold;
+}
+
+.booking-detail-value {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.success-actions {
+  margin-bottom: 1rem;
+}
+
+.success-primary-btn {
+  background: var(--primary-color);
+  color: #fff;
+  font-weight: bold;
+  border: none;
+  border-radius: 1.3rem;
+  padding: 0.8rem 2rem;
+  font-size: 1.07rem;
+  transition: background 0.18s;
+  cursor: pointer;
+}
+
+.success-primary-btn:hover {
+  background: var(--secondary-color);
+}
+
+.redirect-message {
+  font-size: 0.99rem;
+  color: #a7836e;
+}
+
+/* العد التنازلي */
+.countdown {
+  color: var(--primary-color);
+  font-weight: 800;
+  font-size: 1.15rem;
+}
+
+
+.no-employee-warning {
+  color: #d32f2f;
+  background: #fff0f0;
+  border-right: 4px solid #d32f2f;
+  border-radius: 8px;
+  font-size: 1rem;
+  margin-top: 6px;
+  padding: 8px 14px 8px 8px;
+  width: 100%;
+  direction: rtl;
+  text-align: right;
+}
+
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 991px) {
+  .booking-card {
+    padding: 1.2rem 0.7rem 1rem 0.7rem;
+    border-radius: 1.4rem;
+  }
+
+  .booking-header {
+    margin-bottom: 1rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .booking-title {
+    font-size: 1.28rem;
+  }
+
+  .booking-card {
+    margin-top: 0.5rem;
+    padding: 0.7rem 0.3rem 0.5rem 0.3rem;
+    border-radius: 0.8rem;
+  }
+
+  .booking-policy,
+  .booking-success-content,
+  .booking-details {
+    border-radius: 0.7rem;
+    padding: 0.7rem 0.7rem;
+  }
+
+  .booking-success-content {
+    width: 97vw;
+    padding: 1.1rem 0.5rem 1rem 0.5rem;
+    max-width: 98vw;
+  }
+
+  .booking-detail-label,
+  .booking-detail-value {
+    font-size: 0.92rem;
+  }
+
+  .form-control,
+  .form-select {
+    font-size: 0.98rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 0.7rem !important;
+  }
+}
+
+@media (max-width: 575px) {
+  .booking-page {
+    padding: 8px 0 4px 0;
+  }
+
+  .booking-title {
+    font-size: 1.03rem;
+  }
+
+  .booking-policy h4 {
+    font-size: 0.93rem;
+  }
+
+  .form-control,
+  .form-select {
+    font-size: 0.93rem;
+    padding: 0.48rem 0.55rem;
+  }
+}
+

@@ -1,0 +1,534 @@
+/* ================================
+   DashboardClients.css (SCOPED)
+   ✅ كل التنسيقات داخل .clients-page فقط
+   ✅ يعتمد على DashboardModals.css للمودال (dash-modal / overlay)
+================================== */
+
+.clients-page {
+  padding: 18px;
+  direction: rtl;
+  font-family: "Tajawal", Arial, sans-serif;
+}
+
+/* Section spacing (بدل inline marginBottom) */
+.clients-page .cl-section {
+  margin-bottom: 12px;
+}
+
+/* Header */
+.clients-page .clients-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.clients-page .clients-header h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.clients-page .clients-sub {
+  margin: 0;
+  opacity: 0.85;
+  font-size: 13px;
+}
+
+/* Mini card */
+.clients-page .cl-mini {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.clients-page .cl-mini .mini-title {
+  font-weight: 900;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+/* Error card (بدل inline styles) */
+.clients-page .cl-errorCard {
+  border-color: #ffd6d6;
+  background: #fff5f5;
+}
+
+.clients-page .cl-errorTitle {
+  color: #b42318;
+  margin-bottom: 6px;
+}
+
+.clients-page .cl-errorText {
+  font-size: 13px;
+  color: #b42318;
+}
+
+/* Form row */
+.clients-page .cl-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.clients-page .cl-form input {
+  flex: 1;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  padding: 10px 10px;
+  outline: none;
+  font-size: 14px;
+}
+
+.clients-page .cl-form input:focus {
+  border-color: #cdb6ff;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+}
+
+/* hint */
+.clients-page .mini-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #777;
+}
+
+/* Buttons */
+.clients-page .cl-btn {
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e8e8e8;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.clients-page .cl-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.clients-page .cl-btn.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 6px 12px;
+  border-radius: 999px;
+
+  font-size: 13px;
+  font-weight: 500;
+
+  background: rgba(139, 92, 246, 0.08);
+  color: #6d28d9;
+
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  cursor: pointer;
+
+  transition: all 0.2s ease;
+}
+
+.clients-page .cl-btn.primary:hover {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.28);
+}
+
+.clients-page .cl-btn.primary:active {
+  background: rgba(139, 92, 246, 0.18);
+}
+
+.clients-page .cl-btn.primary svg {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.clients-page .cl-btn.ghost {
+  background: #f7f3ff;
+  border-color: #eadcfb;
+  color: #3b1b66;
+}
+
+/* Sorting select */
+.clients-page .cl-select {
+  height: 44px;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  outline: none;
+}
+
+.clients-page .cl-select:focus {
+  border-color: #cdb6ff;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+}
+
+@media (max-width: 980px) {
+  .clients-page .cl-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .clients-page .cl-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .clients-page .cl-select {
+    width: 100%;
+  }
+}
+
+/* Stats grid */
+.clients-page .clients-stats {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0 14px 0;
+}
+
+.clients-page .clients-stats .stat-3 {
+  grid-column: span 3;
+}
+
+.clients-page .clients-stats .stat-6 {
+  grid-column: span 6;
+}
+
+@media (max-width: 980px) {
+
+  .clients-page .clients-stats .stat-3,
+  .clients-page .clients-stats .stat-6 {
+    grid-column: span 12;
+  }
+}
+
+/* White card for tables */
+.clients-page .clients-table-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 10px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.06);
+}
+
+/* Table wrap */
+.clients-page .cl-table-wrap {
+  overflow: auto;
+  border: 1px solid #f0f0f0;
+  border-radius: 14px;
+}
+
+/* Table */
+.clients-page table.clients-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px;
+}
+
+.clients-page table.clients-table th,
+.clients-page table.clients-table td {
+  padding: 10px;
+  border-bottom: 1px solid #f3f3f3;
+  font-size: 13px;
+  text-align: right;
+  vertical-align: middle;
+}
+
+.clients-page table.clients-table thead th {
+  background: #fafafa;
+  font-weight: 900;
+}
+
+/* Center helper cells */
+.clients-page .cl-td-center {
+  text-align: center !important;
+  padding: 16px !important;
+}
+
+/* Small alignment helpers */
+.clients-page .cl-phone,
+.clients-page .cl-date,
+.clients-page .cl-time,
+.clients-page .cl-num,
+.clients-page .cl-money {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.clients-page .cl-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* Name + VIP */
+.clients-page .cl-nameCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clients-page .cl-name {
+  font-weight: 900;
+}
+
+/* Pill unified (نفس روح income/reports) */
+.clients-page .dash-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 6px 12px;
+  border-radius: 999px;
+
+  font-size: 12px;
+  font-weight: 700;
+
+  border: 1px solid rgba(124, 58, 237, 0.14);
+  background: rgba(124, 58, 237, 0.06);
+
+  color: #6b4fa3;
+
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* ===== Primary / Highlight pill ===== */
+.clients-page .dash-pill-primary {
+  background: linear-gradient(
+    135deg,
+    rgba(203, 187, 246, 0.78) 0%,
+    rgba(216, 204, 251, 0.78) 100%
+  );
+
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+
+  color: #2f1346;
+  border: 1px solid rgba(124, 58, 237, 0.22);
+
+  box-shadow: 
+    0 6px 18px rgba(124, 58, 237, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.clients-page .dash-pill-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(70, 27, 145, 0.22);
+}
+
+
+/* Phone row + mini actions */
+.clients-page .cl-phoneRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.clients-page .cl-miniActions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.clients-page .cl-iconBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  background: rgba(139, 92, 246, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.clients-page .cl-iconBtn:hover {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.28);
+}
+
+/* Modal header/body (نترك الشكل الأساسي للمودال من DashboardModals.css) */
+.clients-page .cl-modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.clients-page .cl-modalTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.clients-page .cl-modalBody {
+  margin-top: 12px;
+}
+
+.clients-page .cl-modalHint {
+  margin-top: 10px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* Clients Stats: Fix Alignment */
+.clients-page .clients-stats .stat-card {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(124, 58, 237, 0.14);
+  border-radius: 18px;
+  padding: 14px 14px;
+  box-shadow: 0 10px 26px rgba(17, 24, 39, 0.08);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 92px;
+}
+
+.clients-page .clients-stats .stat-info {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.clients-page .clients-stats .stat-info h3 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.clients-page .clients-stats .stat-info p {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.85;
+  font-weight: 700;
+}
+
+.clients-page .clients-stats .cl-topClientCard {
+  text-align: center;
+}
+
+.clients-page .clients-stats .cl-topTitle {
+  font-size: 14px;
+  margin: 0;
+  font-weight: 900;
+  opacity: 0.85;
+}
+
+.clients-page .clients-stats .cl-topValue {
+  margin: 0;
+  font-weight: 900;
+}
+
+/* Summary + notes inside modal */
+.clients-page .cl-client-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 12px 0;
+}
+
+@media (max-width: 720px) {
+  .clients-page .cl-client-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.clients-page .cl-sum-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(124, 58, 237, 0.14);
+  border-radius: 16px;
+  padding: 12px 12px;
+  text-align: center;
+  box-shadow: 0 10px 22px rgba(17, 24, 39, 0.06);
+}
+
+.clients-page .cl-sum-num {
+  font-weight: 900;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.clients-page .cl-sum-label {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.85;
+  font-weight: 800;
+}
+
+.clients-page .cl-notes {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(124, 58, 237, 0.14);
+  border-radius: 16px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.clients-page .cl-notesHead {
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.clients-page .cl-notesInput {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  padding: 10px;
+  outline: none;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.clients-page .cl-notesInput:focus {
+  border-color: #cdb6ff;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+}
+
+/* صف الفورم */
+.cl-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  /* عشان بالموبايل ينزلون تحت */
+}
+
+/* الانبت هو اللي يتمدد */
+.cl-form .cl-input {
+  flex: 1;
+  min-width: 240px;
+}
+
+/* ✅ السلكت لا يتمدد */
+.cl-form .cl-sort {
+  flex: 0 0 auto !important;
+  width: 180px !important;
+  max-width: 220px;
+}
+
+/* زر التصدير */
+.cl-form .cl-export {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 13px;
+  /* بدل inline style */
+  padding: 10px 12px;
+}
