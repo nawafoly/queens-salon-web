@@ -1,5 +1,5 @@
 // src/pages/DashboardOffers.tsx
-import { useEffect, useMemo, useRef, useState, type FC } from "react";
+import { useEffect, useState, type FC } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPlus,
