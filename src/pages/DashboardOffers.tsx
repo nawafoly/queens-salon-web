@@ -1,18 +1,7 @@
 // src/pages/DashboardOffers.tsx
-import { Fragment, useEffect, useMemo, useRef, useState, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-  faPlus,
-  faTrash,
-  faPen,
-  faBan,
-  faTag,
-  faXmark,
-  faWandMagicSparkles,
-  faImage,
-  faMagnifyingGlass,
-  faCheck,
-} from "@fortawesome/free-solid-svg-icons";
+import { faPlus, faTrash, faTag } from "@fortawesome/free-solid-svg-icons";
 
 import { pricingSections } from "./Pricing";
 
@@ -97,9 +86,7 @@ const DashboardOffers: FC = () => {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Offer | null>(null);
 
-  const [query, setQuery] = useState("");
   const [serviceSearch, setServiceSearch] = useState("");
-  const [pickedImageName, setPickedImageName] = useState("");
 
   const [form, setForm] = useState<OfferForm>({
     title: "",
@@ -124,9 +111,6 @@ const DashboardOffers: FC = () => {
     ],
     []
   );
-
-  const discountLabel =
-    discountOptions.find((o) => o.value === form.discountType)?.label || "اختر";
 
   useEffect(() => {
     if (!discountOpen) return;
@@ -180,22 +164,9 @@ const DashboardOffers: FC = () => {
     const q = serviceSearch.trim().toLowerCase();
     if (!q) return servicesFlat;
     return servicesFlat.filter((s) =>
-      `${s.sectionTitle} ${s.category} ${s.name}`
-        .toLowerCase()
-        .includes(q)
+      `${s.sectionTitle} ${s.category} ${s.name}`.toLowerCase().includes(q)
     );
   }, [servicesFlat, serviceSearch]);
-
-  const servicesGrouped = useMemo(() => {
-    const map = new Map<string, FlatService[]>();
-    servicesFiltered.forEach((s) => {
-      const key = `${s.sectionTitle} — ${s.category}`;
-      const arr = map.get(key) || [];
-      arr.push(s);
-      map.set(key, arr);
-    });
-    return Array.from(map.entries());
-  }, [servicesFiltered]);
 
   const refresh = async () => {
     const data = await listOffers(SALON_ID);
@@ -208,7 +179,6 @@ const DashboardOffers: FC = () => {
 
   const openAdd = () => {
     setEditing(null);
-    setPickedImageName("");
     setForm({
       title: "",
       code: generateCode(),
@@ -242,15 +212,6 @@ const DashboardOffers: FC = () => {
     if (!confirm("حذف العرض؟")) return;
     await removeOffer(o.id, SALON_ID);
     await refresh();
-  };
-
-  const onPickImage = async (file: File | null) => {
-    if (!file) return;
-    if (file.size / (1024 * 1024) > MAX_IMAGE_MB)
-      return alert("الصورة أكبر من الحجم المسموح");
-    setPickedImageName(file.name);
-    const b64 = await fileToBase64(file);
-    setForm((p) => ({ ...p, imageUrl: b64 }));
   };
 
   return (
@@ -290,9 +251,7 @@ const DashboardOffers: FC = () => {
             />
             <input
               value={form.code}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, code: e.target.value }))
-              }
+              onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
             />
             <button onClick={save}>حفظ</button>
           </div>

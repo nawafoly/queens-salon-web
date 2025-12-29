@@ -1,20 +1,10 @@
 // ✅ src/pages/EmployeePortal.tsx
 import { useEffect, useMemo, useState } from "react";
-import {
-  addDoc,
-  collection,
-  getDocs,
-  orderBy,
-  query,
-  serverTimestamp,
-  where,
-} from "firebase/firestore";
+import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBoxOpen,
-  faPlus,
   faRotateRight,
-  faXmark,
   faUsers,
 } from "@fortawesome/free-solid-svg-icons";
 

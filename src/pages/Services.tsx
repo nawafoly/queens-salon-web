@@ -1,4 +1,3 @@
-import React from "react";
 import hair from "../assets/images/hair.png";
 import skin from "../assets/images/skin.jpg";
 import nails from "../assets/images/nails.jpg";
@@ -55,8 +54,7 @@ const Services = () => {
       title: "العناية بالأظافر",
       icon: faHandSparkles,
       image: nails,
-      description:
-        "خدمات المانيكير والباديكير مع تقنيات متطورة وألوان عصرية.",
+      description: "خدمات المانيكير والباديكير مع تقنيات متطورة وألوان عصرية.",
       services: [
         { name: "مانيكير", price: 50 },
         { name: "باديكير", price: 60 },
@@ -163,7 +161,10 @@ const Services = () => {
                     ))}
                   </div>
 
-                  <Link to="/booking" className="services-primary-btn rounded-pill mt-4">
+                  <Link
+                    to="/booking"
+                    className="services-primary-btn rounded-pill mt-4"
+                  >
                     احجزي الآن
                   </Link>
                 </div>

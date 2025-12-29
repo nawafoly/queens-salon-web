@@ -19,7 +19,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 
-import { auth } from "../services/firebase";
+import { auth, db } from "../services/firebase";
 
 // ✅ App settings (Firestore: settings/app + cache localStorage)
 import { AppSettingsService } from "../services/AppSettingsService";

@@ -92,27 +92,6 @@ const statusLabel: Record<BookingStatus, string> = {
 /* =========================
    Helpers: Export
 ========================= */
-function downloadCSV(filename: string, rows: string[][]) {
-  const escapeCell = (cell: string) => {
-    const s = (cell ?? "").toString();
-    if (s.includes('"') || s.includes(",") || s.includes("\n"))
-      return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-
-  const csv = rows.map((r) => r.map(escapeCell).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  URL.revokeObjectURL(url);
-}
 
 function downloadXLSX(filename: string, rows: any[][], sheetName = "Sheet1") {
   const ws = XLSX.utils.aoa_to_sheet(rows);
