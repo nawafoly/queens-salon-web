@@ -367,8 +367,9 @@ const DashboardBookings = () => {
         setLoadError("");
 
         // ✅ Realtime: watchAllBookings
-        watchUnsubRef.current = watchAllBookings(
-          (data) => {
+        // ✅ FIX: watchAllBookings يقبل callback واحد فقط (بدون onError ثاني)
+        watchUnsubRef.current = watchAllBookings((data) => {
+          try {
             const mapped: Booking[] = (Array.isArray(data) ? data : []).map(
               (b: any) => ({
                 id: String(b.id ?? ""),
@@ -401,11 +402,10 @@ const DashboardBookings = () => {
             });
 
             setLoading(false);
-          },
-          (e) => {
-            console.error("watchAllBookings failed:", e);
+          } catch (err: unknown) {
+            console.error("watchAllBookings failed:", err);
 
-            const msg = String(e?.message || "");
+            const msg = String((err as any)?.message || "");
             if (
               msg.toLowerCase().includes("missing or insufficient permissions")
             ) {
@@ -419,7 +419,7 @@ const DashboardBookings = () => {
             setBookings([]);
             setLoading(false);
           }
-        );
+        });
       } else {
         setBookings([]);
         setLoadError("⚠️ سجّل دخول الإدارة أولاً لعرض الحجوزات.");
