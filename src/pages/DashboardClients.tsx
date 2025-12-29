@@ -367,28 +367,28 @@ const DashboardClients: React.FC = () => {
   /* =========================
      Export actions (CSV + XLSX)
   ========================= */
-  const exportCSV = () => {
-    const rows: string[][] = [
-      ["العميلة", "الجوال", "عدد الحجوزات", "آخر زيارة (تاريخ)", "آخر زيارة (وقت)"],
-    ];
+  // const exportCSV = () => {
+  //   const rows: string[][] = [
+  //     ["العميلة", "الجوال", "عدد الحجوزات", "آخر زيارة (تاريخ)", "آخر زيارة (وقت)"],
+  //   ];
 
-    filteredClients.forEach((c) => {
-      rows.push([
-        c.name,
-        c.phone,
-        String(c.bookingsCount),
-        c.lastVisitDate,
-        c.lastVisitTime,
-      ]);
-    });
+  //   filteredClients.forEach((c) => {
+  //     rows.push([
+  //       c.name,
+  //       c.phone,
+  //       String(c.bookingsCount),
+  //       c.lastVisitDate,
+  //       c.lastVisitTime,
+  //     ]);
+  //   });
 
-    const stamp = new Date();
-    const yyyy = stamp.getFullYear();
-    const mm = String(stamp.getMonth() + 1).padStart(2, "0");
-    const dd = String(stamp.getDate()).padStart(2, "0");
+  //   const stamp = new Date();
+  //   const yyyy = stamp.getFullYear();
+  //   const mm = String(stamp.getMonth() + 1).padStart(2, "0");
+  //   const dd = String(stamp.getDate()).padStart(2, "0");
 
-    downloadCSV(`dashboard_clients_${yyyy}-${mm}-${dd}.csv`, rows);
-  };
+  //   downloadCSV(`dashboard_clients_${yyyy}-${mm}-${dd}.csv`, rows);
+  // };
 
   const exportClientsXLSX = () => {
     const rows: any[][] = [
