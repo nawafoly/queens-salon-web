@@ -1,5 +1,5 @@
 // ✅ src/pages/DashboardIncome.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPlus,
@@ -78,13 +78,17 @@ function loadBookings(): any[] {
 
 // ✅ نعتبر الإيراد "محقق" فقط لو confirmed أو completed
 function isRevenueStatus(status: any) {
-  const s = String(status || "").toLowerCase().trim();
+  const s = String(status || "")
+    .toLowerCase()
+    .trim();
   return s === "confirmed" || s === "completed";
 }
 
 // ✅ تطبيع طريقة الدفع
 function normalizePaymentMethod(x: any): PaymentMethod {
-  const s = String(x || "").toLowerCase().trim();
+  const s = String(x || "")
+    .toLowerCase()
+    .trim();
   if (s === "cash") return "cash";
   if (s === "card" || s === "pos_card" || s === "mada_online") return "card";
   if (s === "transfer") return "transfer";
@@ -171,7 +175,9 @@ export default function DashboardIncome() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [q, setQ] = useState("");
-  const [methodFilter, setMethodFilter] = useState<PaymentMethod | "all">("all");
+  const [methodFilter, setMethodFilter] = useState<PaymentMethod | "all">(
+    "all"
+  );
 
   /* =========================
      ✅ Custom Dropdowns: Payment Method
@@ -196,10 +202,11 @@ export default function DashboardIncome() {
   );
 
   const methodOnlyOptions = useMemo(
-    () => paymentOptions.filter((x) => x.value !== "all") as Array<{
-      value: PaymentMethod;
-      label: string;
-    }>,
+    () =>
+      paymentOptions.filter((x) => x.value !== "all") as Array<{
+        value: PaymentMethod;
+        label: string;
+      }>,
     [paymentOptions]
   );
 
@@ -576,7 +583,8 @@ export default function DashboardIncome() {
               disabled={loading}
               title="ترحيل الإيرادات القديمة من LocalStorage إلى Firestore (مرة واحدة)"
             >
-              <FontAwesomeIcon icon={faRotate} /> ترحيل من LocalStorage ({legacyCount})
+              <FontAwesomeIcon icon={faRotate} /> ترحيل من LocalStorage (
+              {legacyCount})
             </button>
           ) : null}
 
@@ -720,8 +728,9 @@ export default function DashboardIncome() {
                     <button
                       key={opt.value}
                       type="button"
-                      className={`dash-dd-item ${methodFilter === opt.value ? "is-active" : ""
-                        }`}
+                      className={`dash-dd-item ${
+                        methodFilter === opt.value ? "is-active" : ""
+                      }`}
                       onClick={() => {
                         setMethodFilter(opt.value as any);
                         setMethodFilterOpen(false);
@@ -744,7 +753,11 @@ export default function DashboardIncome() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
-              <button className="dash-pill dash-pill-outline dash-pill-sm" type="button" title="بحث">
+              <button
+                className="dash-pill dash-pill-outline dash-pill-sm"
+                type="button"
+                title="بحث"
+              >
                 <FontAwesomeIcon icon={faSearch} />
               </button>
             </div>
@@ -777,7 +790,10 @@ export default function DashboardIncome() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: 16 }}>
+                    <td
+                      colSpan={6}
+                      style={{ textAlign: "center", padding: 16 }}
+                    >
                       لا توجد بيانات
                     </td>
                   </tr>
@@ -812,13 +828,20 @@ export default function DashboardIncome() {
       {/* ✅ Add Income Modal */}
       {addOpen ? (
         <div className="modal-overlay" onClick={() => setAddOpen(false)}>
-          <div className="modal-box is-info" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-box is-info"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-head">
               <div className="modal-title-wrap">
                 <div className="modal-icon">➕</div>
                 <h3 className="modal-title">إضافة دخل</h3>
               </div>
-              <button className="dash-pill dash-pill-sm " onClick={() => setAddOpen(false)} type="button">
+              <button
+                className="dash-pill dash-pill-sm "
+                onClick={() => setAddOpen(false)}
+                type="button"
+              >
                 ✕ إغلاق
               </button>
             </div>
@@ -869,7 +892,9 @@ export default function DashboardIncome() {
                           <button
                             key={opt.value}
                             type="button"
-                            className={`dash-dd-item ${method === opt.value ? "is-active" : ""}`}
+                            className={`dash-dd-item ${
+                              method === opt.value ? "is-active" : ""
+                            }`}
                             onClick={() => {
                               setMethod(opt.value);
                               setMethodAddOpen(false);
@@ -906,7 +931,11 @@ export default function DashboardIncome() {
             </div>
 
             <div className="modal-actions">
-              <button className="dash-pill dash-pill-primary" onClick={addIncome} disabled={loading}>
+              <button
+                className="dash-pill dash-pill-primary"
+                onClick={addIncome}
+                disabled={loading}
+              >
                 حفظ
               </button>
               <button
@@ -924,13 +953,20 @@ export default function DashboardIncome() {
       {/* ✅ Alert Modal */}
       {modalMsg ? (
         <div className="modal-overlay" onClick={() => setModalMsg("")}>
-          <div className="modal-box is-info" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-box is-info"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-head">
               <div className="modal-title-wrap">
                 <div className="modal-icon">ℹ️</div>
                 <h3 className="modal-title">تنبيه</h3>
               </div>
-              <button className="modal-close" onClick={() => setModalMsg("")} type="button">
+              <button
+                className="modal-close"
+                onClick={() => setModalMsg("")}
+                type="button"
+              >
                 ✕
               </button>
             </div>
@@ -940,7 +976,11 @@ export default function DashboardIncome() {
             </div>
 
             <div className="modal-actions">
-              <button className="dash-pill dash-pill-primary" onClick={() => setModalMsg("")} type="button">
+              <button
+                className="dash-pill dash-pill-primary"
+                onClick={() => setModalMsg("")}
+                type="button"
+              >
                 حسناً
               </button>
             </div>
@@ -950,8 +990,14 @@ export default function DashboardIncome() {
 
       {/* ✅ Confirm Modal */}
       {confirmState.open ? (
-        <div className="modal-overlay" onClick={() => setConfirmState({ open: false })}>
-          <div className="modal-box is-danger" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setConfirmState({ open: false })}
+        >
+          <div
+            className="modal-box is-danger"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-head">
               <div className="modal-title-wrap">
                 <div className="modal-icon">⚠️</div>

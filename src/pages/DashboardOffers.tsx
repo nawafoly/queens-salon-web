@@ -1,5 +1,5 @@
 // src/pages/DashboardOffers.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPlus,
@@ -237,7 +237,9 @@ const DashboardOffers: React.FC = () => {
   const stats = useMemo(() => {
     const total = offers.length;
     const active = offers.filter((o: any) => Boolean(o.active)).length;
-    const used = offers.filter((o: any) => Number(o.usageCount || 0) > 0).length;
+    const used = offers.filter(
+      (o: any) => Number(o.usageCount || 0) > 0
+    ).length;
     return { total, active, used };
   }, [offers]);
 
@@ -293,7 +295,8 @@ const DashboardOffers: React.FC = () => {
   const save = async () => {
     if (!form.title.trim()) return alert("اكتب عنوان العرض");
     if (!form.code.trim()) return alert("اكتب الكود أو اضغط توليد");
-    if (Number(form.value) <= 0) return alert("قيمة الخصم لازم تكون أكبر من صفر");
+    if (Number(form.value) <= 0)
+      return alert("قيمة الخصم لازم تكون أكبر من صفر");
     if (form.discountType === "percent" && Number(form.value) > 100)
       return alert("النسبة المئوية لا تتجاوز 100%");
     if (form.startDate && form.endDate && form.startDate > form.endDate)
@@ -348,7 +351,8 @@ const DashboardOffers: React.FC = () => {
   };
 
   const remove = async (o: Offer) => {
-    if (Number((o as any).usageCount || 0) > 0) return alert("لا يمكن حذف عرض مستخدم");
+    if (Number((o as any).usageCount || 0) > 0)
+      return alert("لا يمكن حذف عرض مستخدم");
     if (!confirm("حذف العرض؟")) return;
 
     try {
@@ -378,7 +382,9 @@ const DashboardOffers: React.FC = () => {
   const toggleServiceId = (id: string) => {
     setForm((p) => {
       const exists = p.serviceIds.includes(id);
-      const next = exists ? p.serviceIds.filter((x) => x !== id) : [...p.serviceIds, id];
+      const next = exists
+        ? p.serviceIds.filter((x) => x !== id)
+        : [...p.serviceIds, id];
       return { ...p, serviceIds: next };
     });
   };
@@ -391,7 +397,9 @@ const DashboardOffers: React.FC = () => {
           <h1>
             <FontAwesomeIcon icon={faTag} /> العروض والكوبونات
           </h1>
-          <p className="offers-sub">إدارة العروض + صورة + نطاق (الكل/خدمات محددة)</p>
+          <p className="offers-sub">
+            إدارة العروض + صورة + نطاق (الكل/خدمات محددة)
+          </p>
         </div>
       </div>
 
@@ -403,7 +411,10 @@ const DashboardOffers: React.FC = () => {
 
         <div className="offers-row">
           <div className="offers-search">
-            <FontAwesomeIcon className="offers-search-ic" icon={faMagnifyingGlass} />
+            <FontAwesomeIcon
+              className="offers-search-ic"
+              icon={faMagnifyingGlass}
+            />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -411,7 +422,11 @@ const DashboardOffers: React.FC = () => {
             />
           </div>
 
-          <button className="dash-pill dash-pill-primary" type="button" onClick={openAdd}>
+          <button
+            className="dash-pill dash-pill-primary"
+            type="button"
+            onClick={openAdd}
+          >
             <FontAwesomeIcon icon={faPlus} /> إضافة عرض
           </button>
         </div>
@@ -472,13 +487,21 @@ const DashboardOffers: React.FC = () => {
                     </td>
                     <td>{o.title}</td>
                     <td>{o.code}</td>
-                    <td>{o.discountType === "percent" ? `${o.value}%` : `${o.value} ريال`}</td>
+                    <td>
+                      {o.discountType === "percent"
+                        ? `${o.value}%`
+                        : `${o.value} ريال`}
+                    </td>
                     <td>
                       {o.startDate || "—"} → {o.endDate || "—"}
                     </td>
                     <td>{o.active ? "نشط" : "موقوف"}</td>
                     <td>{o.usageCount || 0}</td>
-                    <td>{(o.appliesTo || "all") === "services" ? "خدمات محددة" : "الكل"}</td>
+                    <td>
+                      {(o.appliesTo || "all") === "services"
+                        ? "خدمات محددة"
+                        : "الكل"}
+                    </td>
 
                     <td>
                       <div className="of-actions">
@@ -521,7 +544,10 @@ const DashboardOffers: React.FC = () => {
 
       {/* Modal */}
       {open && (
-        <div className="dash-modal-overlay offers-modal-overlay" onClick={close}>
+        <div
+          className="dash-modal-overlay offers-modal-overlay"
+          onClick={close}
+        >
           <div
             className="dash-modal offers-modal offers-modal--fullscreen"
             onClick={(e) => e.stopPropagation()}
@@ -530,7 +556,9 @@ const DashboardOffers: React.FC = () => {
             <div className="of-modal-head">
               <div className="of-modal-title">
                 <h3>{editing ? "تعديل عرض" : "إضافة عرض"}</h3>
-                <span className="of-modal-sub">املأ البيانات ثم اختر النطاق والصورة</span>
+                <span className="of-modal-sub">
+                  املأ البيانات ثم اختر النطاق والصورة
+                </span>
               </div>
 
               <button
@@ -550,7 +578,9 @@ const DashboardOffers: React.FC = () => {
                     <label>العنوان</label>
                     <input
                       value={form.title}
-                      onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, title: e.target.value }))
+                      }
                       placeholder="مثال: خصم نهاية الأسبوع"
                     />
                   </div>
@@ -560,7 +590,9 @@ const DashboardOffers: React.FC = () => {
                       <label>الكود</label>
                       <input
                         value={form.code}
-                        onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, code: e.target.value }))
+                        }
                         placeholder="QS-XXXX"
                       />
                     </div>
@@ -568,7 +600,9 @@ const DashboardOffers: React.FC = () => {
                     <button
                       className="dash-pill dash-pill-outline dash-pill-sm"
                       type="button"
-                      onClick={() => setForm((p) => ({ ...p, code: generateCode() }))}
+                      onClick={() =>
+                        setForm((p) => ({ ...p, code: generateCode() }))
+                      }
                       title="توليد كود"
                     >
                       <FontAwesomeIcon icon={faWandMagicSparkles} /> توليد
@@ -598,10 +632,15 @@ const DashboardOffers: React.FC = () => {
                               key={opt.value}
                               type="button"
                               className={`dash-dd-item ${
-                                form.discountType === opt.value ? "is-active" : ""
+                                form.discountType === opt.value
+                                  ? "is-active"
+                                  : ""
                               }`}
                               onClick={() => {
-                                setForm((p) => ({ ...p, discountType: opt.value }));
+                                setForm((p) => ({
+                                  ...p,
+                                  discountType: opt.value,
+                                }));
                                 setDiscountOpen(false);
                               }}
                             >
@@ -618,7 +657,12 @@ const DashboardOffers: React.FC = () => {
                     <input
                       type="number"
                       value={form.value}
-                      onChange={(e) => setForm((p) => ({ ...p, value: Number(e.target.value) }))}
+                      onChange={(e) =>
+                        setForm((p) => ({
+                          ...p,
+                          value: Number(e.target.value),
+                        }))
+                      }
                       placeholder="مثال: 50"
                     />
                   </div>
@@ -628,7 +672,9 @@ const DashboardOffers: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={form.active}
-                        onChange={(e) => setForm((p) => ({ ...p, active: e.target.checked }))}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, active: e.target.checked }))
+                        }
                       />
                       <span>العرض نشط</span>
                     </label>
@@ -641,7 +687,9 @@ const DashboardOffers: React.FC = () => {
                     <input
                       type="date"
                       value={form.startDate}
-                      onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, startDate: e.target.value }))
+                      }
                     />
                   </div>
 
@@ -650,7 +698,9 @@ const DashboardOffers: React.FC = () => {
                     <input
                       type="date"
                       value={form.endDate}
-                      onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, endDate: e.target.value }))
+                      }
                     />
                   </div>
                 </div>
@@ -660,7 +710,9 @@ const DashboardOffers: React.FC = () => {
               <div className="of-section of-scope">
                 <div className="of-scope-top">
                   <div className="of-scope-title">نطاق العرض</div>
-                  <div className="of-scope-hint">اختر “خدمات محددة” إذا تبي العرض على خدمات بعينها.</div>
+                  <div className="of-scope-hint">
+                    اختر “خدمات محددة” إذا تبي العرض على خدمات بعينها.
+                  </div>
                 </div>
 
                 <div className="of-scope-pills">
@@ -669,7 +721,13 @@ const DashboardOffers: React.FC = () => {
                       type="radio"
                       name="offerScope"
                       checked={form.appliesTo === "all"}
-                      onChange={() => setForm((p) => ({ ...p, appliesTo: "all", serviceIds: [] }))}
+                      onChange={() =>
+                        setForm((p) => ({
+                          ...p,
+                          appliesTo: "all",
+                          serviceIds: [],
+                        }))
+                      }
                     />
                     <span>ينطبق على جميع الخدمات</span>
                   </label>
@@ -679,7 +737,9 @@ const DashboardOffers: React.FC = () => {
                       type="radio"
                       name="offerScope"
                       checked={form.appliesTo === "services"}
-                      onChange={() => setForm((p) => ({ ...p, appliesTo: "services" }))}
+                      onChange={() =>
+                        setForm((p) => ({ ...p, appliesTo: "services" }))
+                      }
                     />
                     <span>ينطبق على خدمات محددة</span>
                   </label>
@@ -688,7 +748,10 @@ const DashboardOffers: React.FC = () => {
                 {form.appliesTo === "services" && (
                   <>
                     <div className="of-services-search">
-                      <FontAwesomeIcon className="of-services-ic" icon={faMagnifyingGlass} />
+                      <FontAwesomeIcon
+                        className="of-services-ic"
+                        icon={faMagnifyingGlass}
+                      />
                       <input
                         value={serviceSearch}
                         onChange={(e) => setServiceSearch(e.target.value)}
@@ -709,7 +772,10 @@ const DashboardOffers: React.FC = () => {
                         <tbody>
                           {servicesGrouped.length === 0 ? (
                             <tr>
-                              <td colSpan={3} style={{ textAlign: "center", padding: 14 }}>
+                              <td
+                                colSpan={3}
+                                style={{ textAlign: "center", padding: 14 }}
+                              >
                                 لا توجد خدمات
                               </td>
                             </tr>
@@ -726,7 +792,9 @@ const DashboardOffers: React.FC = () => {
                                       <label className="of-check">
                                         <input
                                           type="checkbox"
-                                          checked={form.serviceIds.includes(s.id)}
+                                          checked={form.serviceIds.includes(
+                                            s.id
+                                          )}
                                           onChange={() => toggleServiceId(s.id)}
                                         />
                                       </label>
@@ -762,7 +830,9 @@ const DashboardOffers: React.FC = () => {
                     اختيار ملف
                   </label>
 
-                  <div className="of-file-name">{pickedImageName || "لم يتم اختيار أي ملف"}</div>
+                  <div className="of-file-name">
+                    {pickedImageName || "لم يتم اختيار أي ملف"}
+                  </div>
                 </div>
 
                 {form.imageUrl ? (
@@ -785,10 +855,18 @@ const DashboardOffers: React.FC = () => {
 
             {/* Footer (Fixed) */}
             <div className="of-modal-actions">
-              <button className="dash-pill dash-pill-primary" type="button" onClick={save}>
+              <button
+                className="dash-pill dash-pill-primary"
+                type="button"
+                onClick={save}
+              >
                 حفظ
               </button>
-              <button className="dash-pill dash-pill-outline" type="button" onClick={close}>
+              <button
+                className="dash-pill dash-pill-outline"
+                type="button"
+                onClick={close}
+              >
                 إلغاء
               </button>
             </div>

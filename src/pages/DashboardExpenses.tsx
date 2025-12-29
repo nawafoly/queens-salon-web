@@ -1,5 +1,5 @@
 // ✅ src/pages/DashboardExpenses.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFileCsv } from "@fortawesome/free-solid-svg-icons";
 /**
@@ -130,7 +130,9 @@ function loadLegacyExpenses(): Expense[] {
 
 function parseISODate(iso: string) {
   // iso: YYYY-MM-DD
-  const [y, m, d] = String(iso || "").split("-").map((x) => Number(x));
+  const [y, m, d] = String(iso || "")
+    .split("-")
+    .map((x) => Number(x));
   if (!y || !m || !d) return null;
   return new Date(y, m - 1, d);
 }
@@ -212,7 +214,9 @@ function DashDropdown(props: {
             <button
               key={opt.value}
               type="button"
-              className={`dash-dd-item ${value === opt.value ? "is-active" : ""}`}
+              className={`dash-dd-item ${
+                value === opt.value ? "is-active" : ""
+              }`}
               onClick={() => {
                 onChange(opt.value);
                 setOpen(false);
@@ -270,7 +274,7 @@ const DashboardExpenses: React.FC = () => {
   const [amount, setAmount] = useState<string>("");
   const [date, setDate] = useState(todayISO());
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
-    ("كاش" as unknown) as PaymentMethod
+    "كاش" as unknown as PaymentMethod
   );
   const [note, setNote] = useState("");
 
@@ -310,13 +314,15 @@ const DashboardExpenses: React.FC = () => {
       try {
         const fs = await FinanceSettingsService.get();
 
-        const cats = (fs?.expenseCategories?.length
-          ? fs.expenseCategories
-          : ["أخرى"]) as string[];
+        const cats = (
+          fs?.expenseCategories?.length ? fs.expenseCategories : ["أخرى"]
+        ) as string[];
 
-        const pays = (fs?.paymentMethods?.length
-          ? (fs.paymentMethods as any)
-          : (["كاش"] as any)) as PaymentMethod[];
+        const pays = (
+          fs?.paymentMethods?.length
+            ? (fs.paymentMethods as any)
+            : (["كاش"] as any)
+        ) as PaymentMethod[];
 
         if (!mounted) return;
 
@@ -333,7 +339,7 @@ const DashboardExpenses: React.FC = () => {
         if (!mounted) return;
 
         const cats = ["أخرى"];
-        const pays = (["كاش"] as any) as PaymentMethod[];
+        const pays = ["كاش"] as any as PaymentMethod[];
 
         setCategories(cats);
         setPaymentMethods(pays);
@@ -464,9 +470,9 @@ const DashboardExpenses: React.FC = () => {
       const dir = diff >= 0 ? "أعلى" : "أقل";
       alerts.push({
         icon: diff >= 0 ? "📈" : "📉",
-        text: `مصروفات هذا الشهر ${dir} من الشهر الماضي بـ ${Math.abs(pct).toFixed(
-          0
-        )}%`,
+        text: `مصروفات هذا الشهر ${dir} من الشهر الماضي بـ ${Math.abs(
+          pct
+        ).toFixed(0)}%`,
       });
     } else if (summary.monthTotal > 0) {
       alerts.push({
@@ -545,10 +551,7 @@ const DashboardExpenses: React.FC = () => {
   const byCategoryFiltered = useMemo(() => {
     const map = new Map<string, number>();
     filtered.forEach((e) => {
-      map.set(
-        e.category,
-        (map.get(e.category) || 0) + (Number(e.amount) || 0)
-      );
+      map.set(e.category, (map.get(e.category) || 0) + (Number(e.amount) || 0));
     });
 
     return Array.from(map.entries())
@@ -564,7 +567,7 @@ const DashboardExpenses: React.FC = () => {
     setDate(todayISO());
     setCategory(categories[0] || "أخرى");
     setPaymentMethod(
-      ((paymentMethods[0] || ("كاش" as any)) as unknown) as PaymentMethod
+      (paymentMethods[0] || ("كاش" as any)) as unknown as PaymentMethod
     );
   };
 
@@ -778,9 +781,9 @@ const DashboardExpenses: React.FC = () => {
     // ✅ FIX: get() قد يرجّع Promise
     const fresh = await FinanceSettingsService.get();
 
-    const cats = (fresh?.expenseCategories?.length
-      ? fresh.expenseCategories
-      : ["أخرى"]) as string[];
+    const cats = (
+      fresh?.expenseCategories?.length ? fresh.expenseCategories : ["أخرى"]
+    ) as string[];
 
     setCategories(cats);
     if (!cats.includes(category)) setCategory(cats[0] || "أخرى");
@@ -1440,9 +1443,7 @@ const DashboardExpenses: React.FC = () => {
                                   placeholder="0"
                                 />
                               ) : (
-                                <>
-                                  {money(e.amount)} ريال
-                                </>
+                                <>{money(e.amount)} ريال</>
                               )}
                             </td>
 
@@ -1528,7 +1529,9 @@ const DashboardExpenses: React.FC = () => {
                       الإجمالي بعد الفلترة: <b>{money(totalFiltered)} ريال</b>
                     </div>
                   </div>
-                  <div className="bd-pill">{byCategoryFiltered.length} تصنيف</div>
+                  <div className="bd-pill">
+                    {byCategoryFiltered.length} تصنيف
+                  </div>
                 </div>
 
                 <div className="bd-list">
