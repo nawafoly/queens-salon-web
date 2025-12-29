@@ -1,7 +1,7 @@
 // src/pages/Offers.tsx
 import { useEffect, useMemo, useState } from "react";
 import emma from "../assets/images/emma.jpg";
-import hair from "../assets/images/hair.jpg";
+import hair from "../assets/images/hair.png";
 import skin from "../assets/images/skin.jpg";
 // import nails from "../assets/images/nails.jpg"; // (غير مستخدم حالياً)
 
