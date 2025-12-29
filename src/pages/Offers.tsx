@@ -1,9 +1,9 @@
 // src/pages/Offers.tsx
 import { useEffect, useMemo, useState } from "react";
-import emma from "../assets/images/emma.webp";
-import hair from "../assets/images/hair.webp";
-import skin from "../assets/images/skin.webp";
-// import nails from "../assets/images/nails.webp"; // (غير مستخدم حالياً)
+import emma from "../assets/images/emma.jpg";
+import hair from "../assets/images/hair.jpg";
+import skin from "../assets/images/skin.jpg";
+// import nails from "../assets/images/nails.jpg"; // (غير مستخدم حالياً)
 
 import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
