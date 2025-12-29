@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCut,
@@ -140,7 +140,10 @@ export const pricingSections: Record<string, PricingSection> = {
             name: "بدكير ومناكير كامل يد ورجل (الأدوات مجاناً)",
             price: "190 ريال",
           },
-          { name: "بدكير ومناكير يدين كامل (الأدوات 15 ريال)", price: "79 ريال" },
+          {
+            name: "بدكير ومناكير يدين كامل (الأدوات 15 ريال)",
+            price: "79 ريال",
+          },
           { name: "بدكير قدمين كامل (الأدوات 15 ريال)", price: "90 ريال" },
         ],
       },
@@ -160,7 +163,11 @@ export const pricingSections: Record<string, PricingSection> = {
           { name: "واكس يدين أو رجلين نصف", price: "125 ريال" },
           { name: "واكس يدين أو رجلين كامل", price: "250 ريال" },
           { name: "واكس ظهر أو بطن", price: "100 ريال" },
-          { name: "واكس جسم كامل", price: "200 ريال", note: "من دون البكيني أو الأندر آرم" },
+          {
+            name: "واكس جسم كامل",
+            price: "200 ريال",
+            note: "من دون البكيني أو الأندر آرم",
+          },
         ],
       },
     ],
@@ -172,7 +179,10 @@ function extractMinPrice(priceText: string): number | null {
   // يدعم: "50 ريال" أو "160-180 ريال"
   const cleaned = priceText.replace(/[^\d\-]/g, "");
   if (!cleaned) return null;
-  const parts = cleaned.split("-").filter(Boolean).map((n) => Number(n));
+  const parts = cleaned
+    .split("-")
+    .filter(Boolean)
+    .map((n) => Number(n));
   const valid = parts.filter((n) => Number.isFinite(n));
   if (!valid.length) return null;
   return Math.min(...valid);

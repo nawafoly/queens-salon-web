@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 const ALL_BOOKINGS_KEY = "allBookings";
@@ -46,7 +47,9 @@ export default function PaymentCallback() {
 
         updateLocalBookingPaid(bookingId, paid);
 
-        setMsg(paid ? "تم الدفع بنجاح ✅" : "الدفع لم يكتمل بعد (بانتظار الدفع).");
+        setMsg(
+          paid ? "تم الدفع بنجاح ✅" : "الدفع لم يكتمل بعد (بانتظار الدفع)."
+        );
         setTimeout(() => navigate("/success"), 800);
       } catch {
         setMsg("تعذر التحقق الآن، تم حفظ الحجز وبإمكانك المحاولة لاحقًا.");
@@ -56,7 +59,14 @@ export default function PaymentCallback() {
   }, [navigate, sp]);
 
   return (
-    <div style={{ minHeight: "60vh", display: "grid", placeItems: "center", padding: 24 }}>
+    <div
+      style={{
+        minHeight: "60vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+      }}
+    >
       <div style={{ textAlign: "center", lineHeight: 1.8 }}>
         <h2>تأكيد الدفع</h2>
         <p style={{ color: "#666" }}>{msg}</p>

@@ -1,5 +1,5 @@
 // ✅ src/pages/EmployeePortal.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   addDoc,
   collection,
@@ -31,7 +31,12 @@ type AuthUser = {
 };
 
 type Priority = "normal" | "urgent";
-type RequestStatus = "new" | "in_review" | "approved" | "rejected" | "fulfilled";
+type RequestStatus =
+  | "new"
+  | "in_review"
+  | "approved"
+  | "rejected"
+  | "fulfilled";
 
 type SupplyRequestItem = {
   name: string;

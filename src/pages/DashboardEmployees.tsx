@@ -1,5 +1,5 @@
 // src/pages/DashboardEmployees.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   collection,
   doc,
@@ -54,7 +54,9 @@ const STAFF_PUBLIC_COLLECTION = "staff_public"; // ✅ للعرض فقط (للـ
 function readAuthRole(): UiRole {
   try {
     const raw = JSON.parse(localStorage.getItem("auth_user") || "{}");
-    const r = String(raw?.role || "").toLowerCase().trim();
+    const r = String(raw?.role || "")
+      .toLowerCase()
+      .trim();
     if (r === "owner") return "owner";
     if (r === "admin") return "admin";
     if (r === "reception") return "reception";
@@ -83,7 +85,9 @@ function statusPillClass(active?: boolean) {
 }
 
 function toStaffRole(x: any): StaffRole {
-  const r = String(x || "staff").toLowerCase().trim();
+  const r = String(x || "staff")
+    .toLowerCase()
+    .trim();
   if (r === "admin") return "admin";
   if (r === "reception") return "reception";
   return "staff";
@@ -145,7 +149,9 @@ const DashboardEmployees: React.FC = () => {
 
       // ✅ 1) Owner/Admin يقرأ من employees
       // ✅ 2) Reception/Staff يقرأ من staff_public (عرض فقط)
-      const preferred = canManage ? EMPLOYEES_COLLECTION : STAFF_PUBLIC_COLLECTION;
+      const preferred = canManage
+        ? EMPLOYEES_COLLECTION
+        : STAFF_PUBLIC_COLLECTION;
 
       const tryRead = async (colName: string) => {
         const qy = query(collection(db, colName), orderBy("name", "asc"));
@@ -178,7 +184,9 @@ const DashboardEmployees: React.FC = () => {
         if (preferred === EMPLOYEES_COLLECTION && isPermissionError(e)) {
           const list = await tryRead(STAFF_PUBLIC_COLLECTION);
           setEmployees(list);
-          setErr("تنبيه: تم عرض البيانات من staff_public بسبب صلاحيات القراءة على employees.");
+          setErr(
+            "تنبيه: تم عرض البيانات من staff_public بسبب صلاحيات القراءة على employees."
+          );
           return;
         }
         throw e;
@@ -209,7 +217,11 @@ const DashboardEmployees: React.FC = () => {
         return;
       }
 
-      const qy = query(collection(db, "bookings"), orderBy("createdAt", "desc"), limit(500));
+      const qy = query(
+        collection(db, "bookings"),
+        orderBy("createdAt", "desc"),
+        limit(500)
+      );
       const snap = await getDocs(qy);
 
       const map: Record<string, number> = {};
@@ -306,15 +318,22 @@ const DashboardEmployees: React.FC = () => {
     const q = qText.trim().toLowerCase();
 
     return employees.filter((e) => {
-      if (departmentFilter !== "all" && (e.department || "") !== departmentFilter) return false;
-      if (roleFilter !== "all" && String(e.role || "staff") !== roleFilter) return false;
+      if (
+        departmentFilter !== "all" &&
+        (e.department || "") !== departmentFilter
+      )
+        return false;
+      if (roleFilter !== "all" && String(e.role || "staff") !== roleFilter)
+        return false;
 
       const active = e.isActive !== false;
       if (statusFilter === "active" && !active) return false;
       if (statusFilter === "inactive" && active) return false;
 
       if (!q) return true;
-      const hay = `${e.name} ${e.email || ""} ${e.phone || ""} ${e.department || ""}`.toLowerCase();
+      const hay = `${e.name} ${e.email || ""} ${e.phone || ""} ${
+        e.department || ""
+      }`.toLowerCase();
       return hay.includes(q);
     });
   }, [employees, qText, departmentFilter, roleFilter, statusFilter]);
@@ -411,7 +430,9 @@ const DashboardEmployees: React.FC = () => {
 
       setEmployees((prev) =>
         prev.map((x) =>
-          x.id === selected.id ? { ...x, name, phone, department, role, isActive } : x
+          x.id === selected.id
+            ? { ...x, name, phone, department, role, isActive }
+            : x
         )
       );
 
@@ -470,26 +491,54 @@ const DashboardEmployees: React.FC = () => {
     <div className="employees-page">
       <div className="dashboard-card">
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <div>
-            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>إدارة الموظفات</h1>
+            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>
+              إدارة الموظفات
+            </h1>
             <p style={{ marginTop: 8, opacity: 0.85 }}>
               عرض الموظفات من Firestore (Collection:{" "}
-              <b>{canManage ? EMPLOYEES_COLLECTION : STAFF_PUBLIC_COLLECTION}</b>)
+              <b>
+                {canManage ? EMPLOYEES_COLLECTION : STAFF_PUBLIC_COLLECTION}
+              </b>
+              )
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             <button className="dash-btn" type="button" onClick={loadEmployees}>
               تحديث
             </button>
 
             {canManage ? (
-              <button className="dash-btn primary" type="button" onClick={syncFromUsers}>
+              <button
+                className="dash-btn primary"
+                type="button"
+                onClick={syncFromUsers}
+              >
                 مزامنة من الحسابات
               </button>
             ) : (
-              <button className="dash-btn" type="button" disabled title="reception عرض فقط">
+              <button
+                className="dash-btn"
+                type="button"
+                disabled
+                title="reception عرض فقط"
+              >
                 مزامنة من الحسابات
               </button>
             )}
@@ -497,7 +546,9 @@ const DashboardEmployees: React.FC = () => {
         </div>
 
         {/* Stats */}
-        <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div
+          style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}
+        >
           <div style={{ fontWeight: 900 }}>المعروض: {stats.total}</div>
           <div style={{ fontWeight: 900 }}>النشطة: {stats.active}</div>
           <div style={{ fontWeight: 900 }}>الموقوفة: {stats.inactive}</div>
@@ -576,7 +627,10 @@ const DashboardEmployees: React.FC = () => {
                     const hasBookings = c > 0;
 
                     return (
-                      <tr key={e.id} className={hasBookings ? "emp-row-linked" : ""}>
+                      <tr
+                        key={e.id}
+                        className={hasBookings ? "emp-row-linked" : ""}
+                      >
                         <td className="emp-name">{e.name}</td>
 
                         <td className="emp-center">{e.department || "—"}</td>
@@ -588,27 +642,48 @@ const DashboardEmployees: React.FC = () => {
                         </td>
 
                         <td className="emp-center">
-                          <span className={`emp-pill ${statusPillClass(e.isActive)}`}>
+                          <span
+                            className={`emp-pill ${statusPillClass(
+                              e.isActive
+                            )}`}
+                          >
                             {statusLabel(e.isActive)}
                           </span>
                         </td>
 
                         <td className="emp-center">
-                          <span className={`emp-chip ${hasBookings ? "" : "warn"}`}>{c}</span>
+                          <span
+                            className={`emp-chip ${hasBookings ? "" : "warn"}`}
+                          >
+                            {c}
+                          </span>
                         </td>
 
                         <td className="emp-center">
                           <div className="emp-actions">
-                            <button className="dash-btn" type="button" onClick={() => openBookings(e)}>
+                            <button
+                              className="dash-btn"
+                              type="button"
+                              onClick={() => openBookings(e)}
+                            >
                               آخر 5 حجوزات
                             </button>
 
                             {canManage ? (
-                              <button className="dash-btn primary" type="button" onClick={() => openEdit(e)}>
+                              <button
+                                className="dash-btn primary"
+                                type="button"
+                                onClick={() => openEdit(e)}
+                              >
                                 تعديل
                               </button>
                             ) : (
-                              <button className="dash-btn" type="button" disabled title="reception عرض فقط">
+                              <button
+                                className="dash-btn"
+                                type="button"
+                                disabled
+                                title="reception عرض فقط"
+                              >
                                 تعديل
                               </button>
                             )}
@@ -621,7 +696,8 @@ const DashboardEmployees: React.FC = () => {
               </table>
 
               <div className="emp-footnote">
-                ملاحظة: الاستقبال (reception) عرض فقط. التعديل والمزامنة للـ Owner/Admin.
+                ملاحظة: الاستقبال (reception) عرض فقط. التعديل والمزامنة للـ
+                Owner/Admin.
               </div>
             </div>
           )}
@@ -640,7 +716,11 @@ const DashboardEmployees: React.FC = () => {
                 <h3 className="modal-title">تعديل الموظفة</h3>
               </div>
 
-              <button className="modal-close" type="button" onClick={() => setEditOpen(false)}>
+              <button
+                className="modal-close"
+                type="button"
+                onClick={() => setEditOpen(false)}
+              >
                 ✕
               </button>
             </div>
@@ -652,7 +732,9 @@ const DashboardEmployees: React.FC = () => {
                   <input
                     className="dashboard-input emp-input"
                     value={editForm.name}
-                    onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
+                    onChange={(e) =>
+                      setEditForm((p) => ({ ...p, name: e.target.value }))
+                    }
                     disabled={!canManage || editSaving}
                   />
                 </div>
@@ -663,7 +745,12 @@ const DashboardEmployees: React.FC = () => {
                     <select
                       className="dashboard-input emp-input"
                       value={editForm.department}
-                      onChange={(e) => setEditForm((p) => ({ ...p, department: e.target.value }))}
+                      onChange={(e) =>
+                        setEditForm((p) => ({
+                          ...p,
+                          department: e.target.value,
+                        }))
+                      }
                       disabled={!canManage || editSaving}
                     >
                       {DEPARTMENTS.map((d) => (
@@ -679,7 +766,9 @@ const DashboardEmployees: React.FC = () => {
                     <input
                       className="dashboard-input emp-input"
                       value={editForm.phone}
-                      onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))}
+                      onChange={(e) =>
+                        setEditForm((p) => ({ ...p, phone: e.target.value }))
+                      }
                       disabled={!canManage || editSaving}
                       placeholder="05xxxxxxxx"
                     />
@@ -692,7 +781,12 @@ const DashboardEmployees: React.FC = () => {
                     <select
                       className="dashboard-input emp-input"
                       value={editForm.role}
-                      onChange={(e) => setEditForm((p) => ({ ...p, role: e.target.value as StaffRole }))}
+                      onChange={(e) =>
+                        setEditForm((p) => ({
+                          ...p,
+                          role: e.target.value as StaffRole,
+                        }))
+                      }
                       disabled={!canManage || editSaving}
                     >
                       <option value="staff">موظفة</option>
@@ -706,7 +800,12 @@ const DashboardEmployees: React.FC = () => {
                     <select
                       className="dashboard-input emp-input"
                       value={editForm.isActive ? "on" : "off"}
-                      onChange={(e) => setEditForm((p) => ({ ...p, isActive: e.target.value === "on" }))}
+                      onChange={(e) =>
+                        setEditForm((p) => ({
+                          ...p,
+                          isActive: e.target.value === "on",
+                        }))
+                      }
                       disabled={!canManage || editSaving}
                     >
                       <option value="on">نشطة</option>
@@ -719,7 +818,9 @@ const DashboardEmployees: React.FC = () => {
 
                 <div className="emp-modal-actions">
                   <button
-                    className={`dash-btn primary ${editSaving ? "is-disabled" : ""}`}
+                    className={`dash-btn primary ${
+                      editSaving ? "is-disabled" : ""
+                    }`}
                     type="button"
                     onClick={handleSaveEdit}
                     disabled={!canManage || editSaving}
@@ -727,13 +828,18 @@ const DashboardEmployees: React.FC = () => {
                     {editSaving ? "جاري الحفظ…" : "حفظ"}
                   </button>
 
-                  <button className="dash-btn" type="button" onClick={() => setEditOpen(false)}>
+                  <button
+                    className="dash-btn"
+                    type="button"
+                    onClick={() => setEditOpen(false)}
+                  >
                     إغلاق
                   </button>
                 </div>
 
                 <div className="emp-modal-hint">
-                  * يتم حفظ التعديل في <b>employees</b> + <b>staff_public</b> + مزامنة <b>users</b>
+                  * يتم حفظ التعديل في <b>employees</b> + <b>staff_public</b> +
+                  مزامنة <b>users</b>
                 </div>
               </div>
             </div>
@@ -746,7 +852,10 @@ const DashboardEmployees: React.FC = () => {
       ========================= */}
       {bookingsOpen && selected && (
         <div className="modal-overlay" onClick={() => setBookingsOpen(false)}>
-          <div className="modal-box emp-bookings-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-box emp-bookings-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-head">
               <div className="modal-title-wrap">
                 <div className="modal-icon">📅</div>
@@ -758,7 +867,11 @@ const DashboardEmployees: React.FC = () => {
                 </div>
               </div>
 
-              <button className="modal-close" type="button" onClick={() => setBookingsOpen(false)}>
+              <button
+                className="modal-close"
+                type="button"
+                onClick={() => setBookingsOpen(false)}
+              >
                 ✕
               </button>
             </div>
@@ -768,7 +881,9 @@ const DashboardEmployees: React.FC = () => {
                 {bookingsLoading ? (
                   <p style={{ opacity: 0.75 }}>جاري التحميل…</p>
                 ) : lastBookings.length === 0 ? (
-                  <p style={{ opacity: 0.75 }}>لا توجد حجوزات (أو تحتاج Index/Permissions للقراءة).</p>
+                  <p style={{ opacity: 0.75 }}>
+                    لا توجد حجوزات (أو تحتاج Index/Permissions للقراءة).
+                  </p>
                 ) : (
                   <table className="emp-bookings-table">
                     <thead>
@@ -788,7 +903,9 @@ const DashboardEmployees: React.FC = () => {
                           <td className="emp-center">{b.time || "—"}</td>
                           <td>{b.service || "—"}</td>
                           <td className="emp-center">
-                            <span className="emp-bk-pill">{String(b.status || "pending")}</span>
+                            <span className="emp-bk-pill">
+                              {String(b.status || "pending")}
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -796,7 +913,9 @@ const DashboardEmployees: React.FC = () => {
                   </table>
                 )}
 
-                <div className="emp-modal-hint">* هذه نافذة “عرض فقط”. تعديل الحجوزات يتم من صفحة الحجوزات.</div>
+                <div className="emp-modal-hint">
+                  * هذه نافذة “عرض فقط”. تعديل الحجوزات يتم من صفحة الحجوزات.
+                </div>
               </div>
             </div>
           </div>

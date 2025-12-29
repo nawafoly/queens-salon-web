@@ -1,5 +1,5 @@
 // src/pages/Login.tsx
-import React, { useState } from "react";
+import { useState, type FC } from "react";
 import logoBelak from "../assets/images/ssunnamed.png";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -15,9 +15,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import "../styles/Login.css";
 
-// ✅ Firebase (Auth + Firestore)
-import { auth, db } from "../services/firebase";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+// ✅ Firebase Auth
+import { auth } from "../services/firebase";
 
 // ✅ Firebase login (للإدارة/الموظفات)
 import { loginWithEmail } from "../services/authService";
@@ -42,11 +41,14 @@ interface RegisterFormData {
   birthdate?: string;
 }
 
-const Login: React.FC = () => {
+const Login: FC = () => {
   const [isRegister, setIsRegister] = useState(false);
 
   // حقل واحد للدخول (جوال أو بريد)
-  const [loginData, setLoginData] = useState<{ identifier: string; password: string }>({
+  const [loginData, setLoginData] = useState<{
+    identifier: string;
+    password: string;
+  }>({
     identifier: "",
     password: "",
   });
@@ -185,7 +187,6 @@ const Login: React.FC = () => {
         // ✅ خزّن الجلسة الموحدة
         storeAdminSession(profile);
 
-        // ✅ هنا التصحيح الأساسي: استخدم profileRaw (أو profile) وليس متغير غير معرّف
         if (canAccessDashboard(profile.role)) {
           navigate("/dashboard/overview", { replace: true });
         } else {
@@ -200,7 +201,8 @@ const Login: React.FC = () => {
         const savedUsers = JSON.parse(localStorage.getItem("clients") || "[]");
         const user = savedUsers.find(
           (u: RegisterFormData) =>
-            (u.email === identifier || u.phone === identifier) && u.password === password
+            (u.email === identifier || u.phone === identifier) &&
+            u.password === password
         );
 
         if (user) {
@@ -220,7 +222,6 @@ const Login: React.FC = () => {
       setIsLoading(false);
     }
   };
-
 
   // ✅ التسجيل (عميلات localStorage كما هو)
   const handleRegister = (e: React.FormEvent<HTMLFormElement>) => {
@@ -270,9 +271,15 @@ const Login: React.FC = () => {
         <div className="login-card">
           <div className="login-header">
             <div className="login-logo">
-              <img src={logoBelak} alt="Body Salon Logo" className="login-logo-img" />
+              <img
+                src={logoBelak}
+                alt="Body Salon Logo"
+                className="login-logo-img"
+              />
             </div>
-            <h1 className="login-title">{isRegister ? "تسجيل حساب جديد" : "تسجيل الدخول"}</h1>
+            <h1 className="login-title">
+              {isRegister ? "تسجيل حساب جديد" : "تسجيل الدخول"}
+            </h1>
             <p className="login-subtitle">أهلاً بك في صالون ملكات للتجميل</p>
           </div>
 
@@ -319,7 +326,9 @@ const Login: React.FC = () => {
                 </div>
               </div>
 
-              {errorMsg && <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>}
+              {errorMsg && (
+                <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>
+              )}
 
               <button
                 type="submit"
@@ -413,7 +422,9 @@ const Login: React.FC = () => {
                     className="password-toggle"
                     onClick={() => setShowRegisterPassword((prev) => !prev)}
                   >
-                    <FontAwesomeIcon icon={showRegisterPassword ? faEyeSlash : faEye} />
+                    <FontAwesomeIcon
+                      icon={showRegisterPassword ? faEyeSlash : faEye}
+                    />
                   </button>
                 </div>
               </div>
@@ -451,7 +462,10 @@ const Login: React.FC = () => {
 
               <div className="form-group">
                 <label className="form-label">
-                  <FontAwesomeIcon icon={faCalendarAlt} className="label-icon" />
+                  <FontAwesomeIcon
+                    icon={faCalendarAlt}
+                    className="label-icon"
+                  />
                   تاريخ الميلاد
                 </label>
                 <input
@@ -464,7 +478,9 @@ const Login: React.FC = () => {
                 />
               </div>
 
-              {errorMsg && <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>}
+              {errorMsg && (
+                <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>
+              )}
 
               <button
                 type="submit"

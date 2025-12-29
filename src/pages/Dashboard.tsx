@@ -1,6 +1,12 @@
 // ✅ src/pages/Dashboard.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import { Routes, Route, NavLink, useNavigate, Navigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Routes,
+  Route,
+  NavLink,
+  useNavigate,
+  Navigate,
+} from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faUsers,
@@ -37,6 +43,7 @@ import logo1 from "../assets/images/ssunnamed.png";
 
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "../services/firebase";
+
 import { doc, getDoc } from "firebase/firestore";
 
 import type { Booking, BookingStatus } from "../helpers/dashboardService";
@@ -417,7 +424,12 @@ interface UserInfo {
 }
 
 function mapProfileRoleToDashboardRole(role: ProfileRole): UiRole | null {
-  if (role === "owner" || role === "admin" || role === "reception" || role === "staff") {
+  if (
+    role === "owner" ||
+    role === "admin" ||
+    role === "reception" ||
+    role === "staff"
+  ) {
     return role;
   }
   return null;
@@ -450,116 +462,114 @@ const Dashboard: React.FC = () => {
   const totalExpenses = expensesTotalFS;
   const netProfit = totalIncome - totalExpenses;
 
-/** ✅ refresh من Firestore */
-const refreshDashboard = async () => {
-  // ✅ نحدد آخر خطوة نجحت عشان نعرف وين طاح
-  let step = "start";
+  /** ✅ refresh من Firestore */
+  const refreshDashboard = async () => {
+    // ✅ نحدد آخر خطوة نجحت عشان نعرف وين طاح
+    let step = "start";
 
-  try {
-    // (اختياري) ترحيل بيانات قديمة
-    step = "migrateBookingsIfNeeded";
     try {
-      DashboardService.migrateBookingsIfNeeded?.();
-    } catch (err) {
-      console.warn("REFRESH -> migrateBookingsIfNeeded skipped:", err);
+      // (اختياري) ترحيل بيانات قديمة
+      step = "migrateBookingsIfNeeded";
+      try {
+        DashboardService.migrateBookingsIfNeeded?.();
+      } catch (err) {
+        console.warn("REFRESH -> migrateBookingsIfNeeded skipped:", err);
+      }
+
+      console.log("REFRESH -> start");
+
+      // =========================
+      // 1) BOOKINGS
+      // =========================
+      step = "bookings:listAllBookings";
+      console.log("REFRESH -> listAllBookings()");
+      const docs = await listAllBookings();
+      console.log("REFRESH -> bookings OK:", docs.length);
+
+      step = "bookings:mapFirestoreToUiBooking";
+      const uiBookings = docs.map(mapFirestoreToUiBooking);
+
+      // =========================
+      // 2) TODAY STATS
+      // =========================
+      step = "today:compute";
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+
+      const todayList = uiBookings.filter((b) => String(b.date) === todayStr);
+      const todayRevenue = todayList.reduce(
+        (sum, b) => sum + (Number((b as any).total) || 0),
+        0
+      );
+
+      // =========================
+      // 3) EMPLOYEES COUNT (STATS)
+      // =========================
+      let employeesCount = 0;
+      try {
+        step = "stats:DashboardService.getStats";
+        console.log("REFRESH -> DashboardService.getStats()");
+        const s = await DashboardService.getStats();
+        employeesCount = Number(s?.employeesCount || 0);
+        console.log("REFRESH -> getStats OK:", employeesCount);
+      } catch (err) {
+        console.warn("REFRESH -> getStats failed:", err);
+        employeesCount = 0;
+      }
+
+      // =========================
+      // 4) EXPENSES
+      // =========================
+      step = "expenses:listAllExpensesFS";
+      console.log("REFRESH -> listAllExpensesFS()");
+      const expenses = await listAllExpensesFS();
+      console.log("REFRESH -> expenses OK:", expenses.length);
+
+      step = "expenses:sum";
+      const expensesTotal = expenses.reduce(
+        (sum, e) => sum + (Number((e as any).amount) || 0),
+        0
+      );
+      setExpensesTotalFS(expensesTotal);
+
+      // =========================
+      // 5) SET UI STATE
+      // =========================
+      step = "ui:setStats/setLatestBookings";
+      setStats({
+        todayBookings: todayList.length,
+        totalRevenue: todayRevenue,
+        totalOperations: uiBookings.length,
+        employeesCount,
+      });
+
+      setLatestBookings(uiBookings.slice(0, 5));
+
+      console.log("REFRESH -> done ✅");
+    } catch (e) {
+      console.error("refreshDashboard error:", e);
+
+      const code = (e as any)?.code || (e as any)?.name || "-";
+      const msg = String((e as any)?.message || "");
+
+      // ✅ أهم شي: نطلع step
+      alert(
+        `❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`
+      );
+
+      setStats((prev) => ({
+        ...prev,
+        todayBookings: 0,
+        totalRevenue: 0,
+        totalOperations: 0,
+      }));
+      setLatestBookings([]);
+      setExpensesTotalFS(0);
     }
-
-    console.log("REFRESH -> start");
-
-    // =========================
-    // 1) BOOKINGS
-    // =========================
-    step = "bookings:listAllBookings";
-    console.log("REFRESH -> listAllBookings()");
-    const docs = await listAllBookings();
-    console.log("REFRESH -> bookings OK:", docs.length);
-
-    step = "bookings:mapFirestoreToUiBooking";
-    const uiBookings = docs.map(mapFirestoreToUiBooking);
-
-    // =========================
-    // 2) TODAY STATS
-    // =========================
-    step = "today:compute";
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const dd = String(today.getDate()).padStart(2, "0");
-    const todayStr = `${yyyy}-${mm}-${dd}`;
-
-    const todayList = uiBookings.filter((b) => String(b.date) === todayStr);
-    const todayRevenue = todayList.reduce(
-      (sum, b) => sum + (Number((b as any).total) || 0),
-      0
-    );
-
-    // =========================
-    // 3) EMPLOYEES COUNT (STATS)
-    // =========================
-    let employeesCount = 0;
-    try {
-      step = "stats:DashboardService.getStats";
-      console.log("REFRESH -> DashboardService.getStats()");
-      const s = await DashboardService.getStats();
-      employeesCount = Number(s?.employeesCount || 0);
-      console.log("REFRESH -> getStats OK:", employeesCount);
-    } catch (err) {
-      console.warn("REFRESH -> getStats failed:", err);
-      employeesCount = 0;
-    }
-
-    // =========================
-    // 4) EXPENSES
-    // =========================
-    step = "expenses:listAllExpensesFS";
-    console.log("REFRESH -> listAllExpensesFS()");
-    const expenses = await listAllExpensesFS();
-    console.log("REFRESH -> expenses OK:", expenses.length);
-
-    step = "expenses:sum";
-    const expensesTotal = expenses.reduce(
-      (sum, e) => sum + (Number((e as any).amount) || 0),
-      0
-    );
-    setExpensesTotalFS(expensesTotal);
-
-    // =========================
-    // 5) SET UI STATE
-    // =========================
-    step = "ui:setStats/setLatestBookings";
-    setStats({
-      todayBookings: todayList.length,
-      totalRevenue: todayRevenue,
-      totalOperations: uiBookings.length,
-      employeesCount,
-    });
-
-    setLatestBookings(uiBookings.slice(0, 5));
-
-    console.log("REFRESH -> done ✅");
-  } catch (e) {
-    console.error("refreshDashboard error:", e);
-
-    const code = (e as any)?.code || (e as any)?.name || "-";
-    const msg = String((e as any)?.message || "");
-
-    // ✅ أهم شي: نطلع step
-    alert(
-      `❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`
-    );
-
-    setStats((prev) => ({
-      ...prev,
-      todayBookings: 0,
-      totalRevenue: 0,
-      totalOperations: 0,
-    }));
-    setLatestBookings([]);
-    setExpensesTotalFS(0);
-  }
-};
-
-
+  };
 
   // ✅ Badge المصروفات بدون ملاحظات
   useEffect(() => {
@@ -622,17 +632,20 @@ const refreshDashboard = async () => {
           return;
         }
 
-        const userRef = doc(db, "users", user.uid);
+        // ✅ SOURCE OF TRUTH: salons/main/users/{uid}
+        const userRef = doc(db, "salons", "main", "users", user.uid);
         const userSnap = await getDoc(userRef);
 
         if (!userSnap.exists()) {
-          console.warn("User doc missing: users/" + user.uid);
+          console.warn("User doc missing: salons/main/users/" + user.uid);
           navigate("/login");
           return;
         }
 
         const roleFromDoc = String(userSnap.data()?.role || "guest");
-        const isStaffRole = ["owner", "admin", "reception", "staff"].includes(roleFromDoc);
+        const isStaffRole = ["owner", "admin", "reception", "staff"].includes(
+          roleFromDoc
+        );
 
         if (!isStaffRole) {
           console.warn("Not staff role:", roleFromDoc);
@@ -720,7 +733,8 @@ const refreshDashboard = async () => {
   const canSeeEmployeePortal = Boolean(isStaff || isOwner || isAdmin);
 
   const allowStaffChangeStatus = settings.policies.allowStaffChangeStatus;
-  const allowReceptionChangeStatus = settings.policies.allowReceptionChangeStatus; // ✅ NEW
+  const allowReceptionChangeStatus =
+    settings.policies.allowReceptionChangeStatus; // ✅ NEW
   const allowStaffViewClients = settings.policies.allowStaffViewClients;
 
   const canSeeSection = (key: SectionKey) => settings.sections[key] !== false;
@@ -824,7 +838,11 @@ const refreshDashboard = async () => {
             </button>
 
             <div className="sidebar-header">
-              <img src={logo1} alt="Queens Salon Logo" className="sidebar-logo" />
+              <img
+                src={logo1}
+                alt="Queens Salon Logo"
+                className="sidebar-logo"
+              />
             </div>
 
             <div className="user-info">
@@ -865,18 +883,19 @@ const refreshDashboard = async () => {
                   </li>
                 )}
 
-                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
-                  <li>
-                    <NavLink
-                      to="/dashboard/bookings"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faCalendarAlt} />
-                      الحجوزات
-                    </NavLink>
-                  </li>
-                )}
+                {(hasAdminPower || isReception) &&
+                  canSeeSection("bookings") && (
+                    <li>
+                      <NavLink
+                        to="/dashboard/bookings"
+                        className="nav-link"
+                        onClick={() => setIsSidebarOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                        الحجوزات
+                      </NavLink>
+                    </li>
+                  )}
 
                 {(hasAdminPower || isReception) && canSeeSection("clients") && (
                   <>
@@ -983,7 +1002,11 @@ const refreshDashboard = async () => {
             </nav>
 
             <div className="sidebar-footer">
-              <button className="exp-btn ghost" onClick={handleLogout} type="button">
+              <button
+                className="exp-btn ghost"
+                onClick={handleLogout}
+                type="button"
+              >
                 <FontAwesomeIcon icon={faSignOutAlt} />
                 تسجيل الخروج
               </button>
@@ -1013,7 +1036,9 @@ const refreshDashboard = async () => {
               <div className="dash-topbar-right">
                 <div className="dash-topbar-user">
                   <span className="dash-topbar-name">{userInfo.name}</span>
-                  <span className="dash-topbar-role">{getRoleTitle(userInfo.role)}</span>
+                  <span className="dash-topbar-role">
+                    {getRoleTitle(userInfo.role)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1074,9 +1099,10 @@ const refreshDashboard = async () => {
                   }
                 />
 
-                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
-                  <Route path="bookings" element={<DashboardBookings />} />
-                )}
+                {(hasAdminPower || isReception) &&
+                  canSeeSection("bookings") && (
+                    <Route path="bookings" element={<DashboardBookings />} />
+                  )}
 
                 {(hasAdminPower || (isReception && allowStaffViewClients)) &&
                   canSeeSection("clients") && (
@@ -1103,12 +1129,12 @@ const refreshDashboard = async () => {
                   <Route path="expenses" element={<DashboardExpenses />} />
                 )}
 
-                {/* ✅✅✅ أهم تعديل: خلي settings تلتقط أي مسار داخلها */}
+                {/* ✅✅✅ settings تلتقط أي مسار داخلها */}
                 {hasAdminPower && canSeeSection("settings") && (
                   <Route path="settings/*" element={<DashboardSettings />} />
                 )}
 
-                {/* ✅✅✅ أهم تعديل: fallback يكون ABSOLUTE عشان ما يضيف overview على المسار الحالي */}
+                {/* ✅✅✅ fallback absolute */}
                 <Route
                   path="*"
                   element={
@@ -1127,7 +1153,10 @@ const refreshDashboard = async () => {
 
       {/* ✅ Modal تفاصيل الحجز */}
       {selectedBooking && (
-        <div className="dash-modal-overlay" onClick={() => setSelectedBooking(null)}>
+        <div
+          className="dash-modal-overlay"
+          onClick={() => setSelectedBooking(null)}
+        >
           <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
             <div className="dash-modal-head">
               <h3 style={{ margin: 0 }}>تفاصيل الحجز</h3>
@@ -1151,7 +1180,11 @@ const refreshDashboard = async () => {
               </div>
               <div className="ov-detail-item">
                 <b>الخدمة</b>
-                <div>{selectedBooking.serviceName || selectedBooking.serviceId || "-"}</div>
+                <div>
+                  {selectedBooking.serviceName ||
+                    selectedBooking.serviceId ||
+                    "-"}
+                </div>
               </div>
               <div className="ov-detail-item">
                 <b>الموظفة</b>
@@ -1167,7 +1200,11 @@ const refreshDashboard = async () => {
               </div>
               <div className="ov-detail-item">
                 <b>الإجمالي</b>
-                <div>{selectedBooking.total ? `${selectedBooking.total} ريال` : "-"}</div>
+                <div>
+                  {selectedBooking.total
+                    ? `${selectedBooking.total} ريال`
+                    : "-"}
+                </div>
               </div>
 
               <div className="ov-detail-item ov-detail-item--wide">

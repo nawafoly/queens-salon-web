@@ -1,11 +1,18 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFileCsv, faFilter, faRotate } from "@fortawesome/free-solid-svg-icons";
+import {
+  faFileCsv,
+  faFilter,
+  faRotate,
+} from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/DashboardReports.css";
 import "../styles/DashboardModals.css"; // ✅ نفس مودالات الداشبورد
 
-import { listAllBookings, type BookingStatus } from "../services/firestoreBookings";
+import {
+  listAllBookings,
+  type BookingStatus,
+} from "../services/firestoreBookings";
 
 type Booking = {
   id?: string;
@@ -71,15 +78,19 @@ export default function DashboardReports() {
           </button>
 
           <button
-              className="reports-btn"
-              onClick={load}
-              disabled={loading}
-              title="Excel .xlsx"
-            >
-              <FontAwesomeIcon icon={faFileCsv} /> تصدير Excel
-            </button>
+            className="reports-btn"
+            onClick={load}
+            disabled={loading}
+            title="Excel .xlsx"
+          >
+            <FontAwesomeIcon icon={faFileCsv} /> تصدير Excel
+          </button>
 
-          <button className="reports-btn primary" onClick={load} disabled={loading}>
+          <button
+            className="reports-btn primary"
+            onClick={load}
+            disabled={loading}
+          >
             <FontAwesomeIcon icon={faRotate} />
             {loading ? "جارٍ التحديث..." : "تحديث"}
           </button>

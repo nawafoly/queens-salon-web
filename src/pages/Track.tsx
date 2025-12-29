@@ -1,5 +1,5 @@
 // src/pages/Track.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../styles/Track.css";
 import { getTrackById } from "../services/firestoreBookings";
@@ -113,9 +113,7 @@ const Track: React.FC = () => {
 
         {loading && <div className="track-state">جاري التحميل...</div>}
 
-        {!loading && error && (
-          <div className="track-error">⚠️ {error}</div>
-        )}
+        {!loading && error && <div className="track-error">⚠️ {error}</div>}
 
         {!loading && notFound && (
           <div className="track-notfound">
