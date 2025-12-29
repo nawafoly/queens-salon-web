@@ -1,9 +1,10 @@
 // src/pages/Offers.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import emma from "../assets/images/emma.jpg";
-import hair from "../assets/images/hair.png";
-import skin from "../assets/images/skin.jpg";
-import nails from "../assets/images/nails.jpg";
+import { useEffect, useMemo, useState } from "react";
+import emma from "../assets/images/emma.webp";
+import hair from "../assets/images/hair.webp";
+import skin from "../assets/images/skin.webp";
+// import nails from "../assets/images/nails.webp"; // (غير مستخدم حالياً)
+
 import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -21,7 +22,10 @@ import "../styles/Offers.css";
 import { onSnapshot, collection, query, orderBy } from "firebase/firestore";
 import { db } from "../services/firebase";
 
-import type { Offer as StoredOffer, DiscountType } from "../services/firestoreOffers";
+import type {
+  Offer as StoredOffer,
+  DiscountType,
+} from "../services/firestoreOffers";
 
 // ✅ UI Offer shape (compatible with your card template)
 type UiOffer = {
@@ -91,7 +95,8 @@ const Offers = () => {
           const endDate = String(o.endDate ?? "");
           const startDate = String(o.startDate ?? "");
 
-          const img = String(o.imageUrl || "") || pickFallbackImage(discountType);
+          const img =
+            String(o.imageUrl || "") || pickFallbackImage(discountType);
 
           const computedPercent =
             discountType === "percent" ? Math.min(100, Math.max(0, value)) : 0;
@@ -193,8 +198,8 @@ const Offers = () => {
                 </h1>
 
                 <p className="lead mb-4">
-                  العروض تُدار من لوحة الأونر وتظهر هنا تلقائيًا… اختاري العرض وطبّقي الكود عند
-                  الحجز
+                  العروض تُدار من لوحة الأونر وتظهر هنا تلقائيًا… اختاري العرض
+                  وطبّقي الكود عند الحجز
                 </p>
 
                 <div className="hero-stats justify-content-center">
@@ -212,7 +217,10 @@ const Offers = () => {
                   </div>
                 </div>
 
-                <Link to="/booking" className="btn btn-primary btn-lg rounded-pill mt-4">
+                <Link
+                  to="/booking"
+                  className="btn btn-primary btn-lg rounded-pill mt-4"
+                >
                   احجزي الآن
                 </Link>
               </div>
@@ -226,7 +234,9 @@ const Offers = () => {
         <div className="container">
           <div className="text-center mb-5">
             <h2 className="h1 fw-bold text-gradient mb-2">كل العروض</h2>
-            <p className="lead text-gray">رتّبيها واقرئيها بسهولة… واختاري الأفضل لك</p>
+            <p className="lead text-gray">
+              رتّبيها واقرئيها بسهولة… واختاري الأفضل لك
+            </p>
           </div>
 
           <div className="cards-grid-2">
@@ -259,7 +269,10 @@ const Offers = () => {
                     <div className="offer-content">
                       <h3 className="offer-title">{offer.title}</h3>
 
-                      <div className="offer-mini-row" style={{ flexWrap: "wrap" }}>
+                      <div
+                        className="offer-mini-row"
+                        style={{ flexWrap: "wrap" }}
+                      >
                         <span className="discount-badge">
                           {offer.discountType === "percent"
                             ? `وفّري ${offer.discountPercent}%`
@@ -290,8 +303,12 @@ const Offers = () => {
                       </div>
 
                       <div className="offer-validity">
-                        <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
-                        ساري حتى: {new Date(offer.validUntil).toLocaleDateString("ar-SA")}
+                        <FontAwesomeIcon
+                          icon={faCalendarAlt}
+                          className="me-2 text-primary"
+                        />
+                        ساري حتى:{" "}
+                        {new Date(offer.validUntil).toLocaleDateString("ar-SA")}
                       </div>
 
                       {/* ✅ Collapsible details */}
@@ -314,7 +331,10 @@ const Offers = () => {
                         </div>
 
                         {!expired && (
-                          <Link to="/booking" className="btn btn-primary w-100 btn-lg rounded-pill">
+                          <Link
+                            to="/booking"
+                            className="btn btn-primary w-100 btn-lg rounded-pill"
+                          >
                             احجزي واستعملي الكود
                           </Link>
                         )}
@@ -323,12 +343,20 @@ const Offers = () => {
                       {/* ✅ Toggle (disabled on expired) */}
                       <button
                         type="button"
-                        className={`toggle-details ${expired ? "disabled" : ""}`}
+                        className={`toggle-details ${
+                          expired ? "disabled" : ""
+                        }`}
                         disabled={expired}
-                        onClick={() => setOpenOfferId(expanded ? null : offer.id)}
+                        onClick={() =>
+                          setOpenOfferId(expanded ? null : offer.id)
+                        }
                       >
-                        <span>{expanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}</span>
-                        <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} />
+                        <span>
+                          {expanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}
+                        </span>
+                        <FontAwesomeIcon
+                          icon={expanded ? faChevronUp : faChevronDown}
+                        />
                       </button>
                     </div>
                   </div>
@@ -340,7 +368,8 @@ const Offers = () => {
           {/* ✅ Empty state */}
           {offers.length === 0 && (
             <div style={{ textAlign: "center", marginTop: 20, opacity: 0.8 }}>
-              لا توجد عروض من لوحة التحكم حالياً — أضيفي عرض من Dashboard وسيظهر هنا تلقائيًا.
+              لا توجد عروض من لوحة التحكم حالياً — أضيفي عرض من Dashboard وسيظهر
+              هنا تلقائيًا.
             </div>
           )}
         </div>
@@ -351,18 +380,27 @@ const Offers = () => {
         <div className="container">
           <div className="row justify-content-center text-center">
             <div className="col-lg-8">
-              <h2 className="h1 fw-bold text-gradient mb-3">لا تفوتي الفرصة!</h2>
+              <h2 className="h1 fw-bold text-gradient mb-3">
+                لا تفوتي الفرصة!
+              </h2>
               <p className="lead mb-4">
-                عروضنا محدودة الوقت. احجزي موعدك الآن واستمتعي بأفضل خدمات التجميل بأسعار مميزة
+                عروضنا محدودة الوقت. احجزي موعدك الآن واستمتعي بأفضل خدمات
+                التجميل بأسعار مميزة
               </p>
 
               <div className="d-flex gap-3 justify-content-center flex-wrap">
-                <Link to="/booking" className="btn btn-primary btn-lg rounded-pill">
+                <Link
+                  to="/booking"
+                  className="btn btn-primary btn-lg rounded-pill"
+                >
                   <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
                   احجزي موعدك
                 </Link>
 
-                <Link to="/contact" className="btn btn-outline btn-lg rounded-pill">
+                <Link
+                  to="/contact"
+                  className="btn btn-outline btn-lg rounded-pill"
+                >
                   <FontAwesomeIcon icon={faTag} className="me-2" />
                   استفسري عن العروض
                 </Link>

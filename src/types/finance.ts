@@ -1,6 +1,26 @@
 // ✅ src/types/finance.ts
 
-export type PaymentMethod = "cash" | "card" | "transfer" | "other";
+export type PaymentMethod =
+  | "cash"
+  | "card"
+  | "transfer"
+  | "other"
+  | "كاش"
+  | "شبكة"
+  | "تحويل";
+
+export type BookingIncomeStatus =
+  | "pending"
+  | "confirmed"
+  | "completed"
+  | "cancelled";
+
+export type FinanceSettings = {
+  expenseCategories: string[];
+  paymentMethods: PaymentMethod[];
+  currency: string; // "SAR"
+  incomeBookingStatuses: BookingIncomeStatus[]; // ["completed"] by default
+};
 
 /** مصروف */
 export type Expense = {

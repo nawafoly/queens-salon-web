@@ -39,8 +39,10 @@ const DEFAULT_SETTINGS: FinanceSettings = {
 function normalizeStatuses(v: any): BookingIncomeStatus[] {
   if (!Array.isArray(v)) return ["completed"];
   const cleaned = v
-    .map((x) => String(x).toLowerCase().trim())
-    .filter((x) => x === "completed" || x === "confirmed") as BookingIncomeStatus[];
+    .map((x: any) => String(x).toLowerCase().trim())
+    .filter(
+      (x: string) => x === "completed" || x === "confirmed"
+    ) as BookingIncomeStatus[];
   return cleaned.length ? cleaned : ["completed"];
 }
 
@@ -49,7 +51,7 @@ function sanitize(input: any): FinanceSettings {
 
   const expenseCategories =
     Array.isArray(s.expenseCategories) && s.expenseCategories.length
-      ? s.expenseCategories
+      ? (s.expenseCategories as string[])
       : DEFAULT_SETTINGS.expenseCategories;
 
   const paymentMethods =
@@ -77,9 +79,7 @@ export const FinanceSettingsService = {
     const ref = doc(db, ...DOC_PATH);
     const snap = await getDoc(ref);
 
-    if (!snap.exists()) {
-      return DEFAULT_SETTINGS;
-    }
+    if (!snap.exists()) return DEFAULT_SETTINGS;
 
     return sanitize(snap.data());
   },
@@ -118,12 +118,10 @@ export const FinanceSettingsService = {
     if (!n) return;
 
     const current = await this.get();
-    if (
-      current.expenseCategories.some(
-        (c) => c.trim().toLowerCase() === n.toLowerCase()
-      )
-    )
-      return;
+    const exists = current.expenseCategories.some(
+      (c: string) => c.trim().toLowerCase() === n.toLowerCase()
+    );
+    if (exists) return;
 
     await this.save({
       ...current,
@@ -135,7 +133,9 @@ export const FinanceSettingsService = {
     const current = await this.get();
     await this.save({
       ...current,
-      expenseCategories: current.expenseCategories.filter((c) => c !== name),
+      expenseCategories: current.expenseCategories.filter(
+        (c: string) => c !== name
+      ),
     });
   },
 
@@ -157,7 +157,9 @@ export const FinanceSettingsService = {
     const current = await this.get();
     await this.save({
       ...current,
-      paymentMethods: current.paymentMethods.filter((p) => p !== name),
+      paymentMethods: current.paymentMethods.filter(
+        (p: PaymentMethod) => p !== name
+      ),
     });
   },
 
