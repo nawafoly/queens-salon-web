@@ -1,9 +1,13 @@
 // src/pages/DashboardOffers.tsx
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faTrash, faTag } from "@fortawesome/free-solid-svg-icons";
+import {
+  faPlus,
+  faTrash,
+  faTag,
+} from "@fortawesome/free-solid-svg-icons";
 
-import { pricingSections } from "./Pricing";
+
 
 // ✅ CSS
 import "../styles/DashboardModals.css";
@@ -34,7 +38,7 @@ type OfferForm = {
   serviceIds: string[];
 };
 
-const MAX_IMAGE_MB = 2;
+
 const SALON_ID = "main";
 
 function generateCode(prefix = "QS") {
@@ -49,44 +53,18 @@ function makeOfferId() {
   return `O-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsDataURL(file);
-  });
-}
 
-function extractMinPrice(priceText: string): number {
-  const cleaned = String(priceText || "").replace(/[^\d\-]/g, "");
-  if (!cleaned) return 0;
 
-  const parts = cleaned
-    .split("-")
-    .filter(Boolean)
-    .map((n) => Number(n))
-    .filter((n) => Number.isFinite(n));
 
-  if (!parts.length) return 0;
-  return Math.min(...parts);
-}
 
-type FlatService = {
-  id: string;
-  sectionId: string;
-  sectionTitle: string;
-  category: string;
-  name: string;
-  basePrice: number;
-};
+
 
 const DashboardOffers: FC = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Offer | null>(null);
 
-  const [serviceSearch, setServiceSearch] = useState("");
+
 
   const [form, setForm] = useState<OfferForm>({
     title: "",
@@ -101,35 +79,13 @@ const DashboardOffers: FC = () => {
     serviceIds: [],
   });
 
-  const [discountOpen, setDiscountOpen] = useState(false);
-  const discountWrapRef = useRef<HTMLDivElement | null>(null);
 
-  const discountOptions = useMemo(
-    () => [
-      { value: "fixed" as DiscountType, label: "مبلغ ثابت" },
-      { value: "percent" as DiscountType, label: "نسبة مئوية" },
-    ],
-    []
-  );
 
-  useEffect(() => {
-    if (!discountOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const el = discountWrapRef.current;
-      if (!el) return;
-      if (el.contains(e.target as Node)) return;
-      setDiscountOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDiscountOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [discountOpen]);
+
+
+
+
+
 
   useEffect(() => {
     if (!open) return;
@@ -140,33 +96,11 @@ const DashboardOffers: FC = () => {
     };
   }, [open]);
 
-  const servicesFlat: FlatService[] = useMemo(() => {
-    const out: FlatService[] = [];
-    Object.entries(pricingSections).forEach(([sectionId, section]) => {
-      section.services.forEach((cat, catIdx) => {
-        cat.items.forEach((it, itemIdx) => {
-          const id = `${sectionId}-${catIdx}-${itemIdx}`;
-          out.push({
-            id,
-            sectionId,
-            sectionTitle: section.title,
-            category: cat.category,
-            name: `${cat.category} - ${it.name}`,
-            basePrice: extractMinPrice(it.price),
-          });
-        });
-      });
-    });
-    return out;
-  }, []);
 
-  const servicesFiltered = useMemo(() => {
-    const q = serviceSearch.trim().toLowerCase();
-    if (!q) return servicesFlat;
-    return servicesFlat.filter((s) =>
-      `${s.sectionTitle} ${s.category} ${s.name}`.toLowerCase().includes(q)
-    );
-  }, [servicesFlat, serviceSearch]);
+
+
+
+
 
   const refresh = async () => {
     const data = await listOffers(SALON_ID);
@@ -214,6 +148,8 @@ const DashboardOffers: FC = () => {
     await refresh();
   };
 
+
+
   return (
     <div className="dashboard-skin offers-page">
       <h1>
@@ -251,7 +187,9 @@ const DashboardOffers: FC = () => {
             />
             <input
               value={form.code}
-              onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, code: e.target.value }))
+              }
             />
             <button onClick={save}>حفظ</button>
           </div>
