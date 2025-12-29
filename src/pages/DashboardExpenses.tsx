@@ -1,7 +1,7 @@
 // ✅ src/pages/DashboardExpenses.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFileCsv, faFilter, faRotate } from "@fortawesome/free-solid-svg-icons";
+import { faFileCsv } from "@fortawesome/free-solid-svg-icons";
 /**
  * ✅ قاعدة الاستيراد:
  * - المشترك/العام أولاً
@@ -302,21 +302,49 @@ const DashboardExpenses: React.FC = () => {
     note: "",
   });
 
-  // ✅ تحميل الإعدادات مرة واحدة
+  // ✅ تحميل الإعدادات مرة واحدة (FIX: get() قد يرجّع Promise)
   useEffect(() => {
-    const fs = FinanceSettingsService.get();
-    const cats = (fs?.expenseCategories?.length
-      ? fs.expenseCategories
-      : ["أخرى"]) as string[];
-    const pays = (fs?.paymentMethods?.length
-      ? (fs.paymentMethods as any)
-      : (["كاش"] as any)) as PaymentMethod[];
+    let mounted = true;
 
-    setCategories(cats);
-    setPaymentMethods(pays);
+    (async () => {
+      try {
+        const fs = await FinanceSettingsService.get();
 
-    setCategory((prev) => (prev && cats.includes(prev) ? prev : cats[0] || "أخرى"));
-    setPaymentMethod((prev) => (prev ? prev : pays[0]));
+        const cats = (fs?.expenseCategories?.length
+          ? fs.expenseCategories
+          : ["أخرى"]) as string[];
+
+        const pays = (fs?.paymentMethods?.length
+          ? (fs.paymentMethods as any)
+          : (["كاش"] as any)) as PaymentMethod[];
+
+        if (!mounted) return;
+
+        setCategories(cats);
+        setPaymentMethods(pays);
+
+        setCategory((prev) =>
+          prev && cats.includes(prev) ? prev : cats[0] || "أخرى"
+        );
+        setPaymentMethod((prev) => (prev ? prev : pays[0]));
+      } catch (e) {
+        console.error("FinanceSettingsService.get() failed:", e);
+
+        if (!mounted) return;
+
+        const cats = ["أخرى"];
+        const pays = (["كاش"] as any) as PaymentMethod[];
+
+        setCategories(cats);
+        setPaymentMethods(pays);
+        setCategory((prev) => (prev && cats.includes(prev) ? prev : "أخرى"));
+        setPaymentMethod((prev) => (prev ? prev : pays[0]));
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -436,7 +464,9 @@ const DashboardExpenses: React.FC = () => {
       const dir = diff >= 0 ? "أعلى" : "أقل";
       alerts.push({
         icon: diff >= 0 ? "📈" : "📉",
-        text: `مصروفات هذا الشهر ${dir} من الشهر الماضي بـ ${Math.abs(pct).toFixed(0)}%`,
+        text: `مصروفات هذا الشهر ${dir} من الشهر الماضي بـ ${Math.abs(pct).toFixed(
+          0
+        )}%`,
       });
     } else if (summary.monthTotal > 0) {
       alerts.push({
@@ -491,7 +521,8 @@ const DashboardExpenses: React.FC = () => {
       if (from && e.date < from) return false;
       if (to && e.date > to) return false;
       if (fCategory !== "الكل" && e.category !== fCategory) return false;
-      if (fPayment !== "الكل" && String(e.paymentMethod) !== String(fPayment)) return false;
+      if (fPayment !== "الكل" && String(e.paymentMethod) !== String(fPayment))
+        return false;
 
       if (query) {
         const hay = `${e.title} ${e.category} ${e.note || ""}`.toLowerCase();
@@ -514,7 +545,10 @@ const DashboardExpenses: React.FC = () => {
   const byCategoryFiltered = useMemo(() => {
     const map = new Map<string, number>();
     filtered.forEach((e) => {
-      map.set(e.category, (map.get(e.category) || 0) + (Number(e.amount) || 0));
+      map.set(
+        e.category,
+        (map.get(e.category) || 0) + (Number(e.amount) || 0)
+      );
     });
 
     return Array.from(map.entries())
@@ -734,14 +768,16 @@ const DashboardExpenses: React.FC = () => {
     downloadTextFile(filename, csv);
   };
 
-  const addCategoryQuick = () => {
+  const addCategoryQuick = async () => {
     const n = newCategory.trim();
     if (!n) return;
 
     FinanceSettingsService.addCategory(n);
     setNewCategory("");
 
-    const fresh = FinanceSettingsService.get();
+    // ✅ FIX: get() قد يرجّع Promise
+    const fresh = await FinanceSettingsService.get();
+
     const cats = (fresh?.expenseCategories?.length
       ? fresh.expenseCategories
       : ["أخرى"]) as string[];
@@ -913,7 +949,11 @@ const DashboardExpenses: React.FC = () => {
               <DashDropdown
                 value={category}
                 onChange={(v) => setCategory(v)}
-                options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: "أخرى" }]}
+                options={
+                  categoryOptionsNoAll.length
+                    ? categoryOptionsNoAll
+                    : [{ value: "أخرى", label: "أخرى" }]
+                }
                 disabled={loading}
               />
             </label>
@@ -930,7 +970,11 @@ const DashboardExpenses: React.FC = () => {
 
             <label>
               التاريخ
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
             </label>
 
             <label>
@@ -938,8 +982,14 @@ const DashboardExpenses: React.FC = () => {
               {/* ✅ Custom Dropdown بدل select */}
               <DashDropdown
                 value={String(paymentMethod)}
-                onChange={(v) => setPaymentMethod(v as unknown as PaymentMethod)}
-                options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: "كاش" }]}
+                onChange={(v) =>
+                  setPaymentMethod(v as unknown as PaymentMethod)
+                }
+                options={
+                  paymentOptionsNoAll.length
+                    ? paymentOptionsNoAll
+                    : [{ value: "كاش", label: "كاش" }]
+                }
                 disabled={loading}
               />
             </label>
@@ -962,7 +1012,12 @@ const DashboardExpenses: React.FC = () => {
               >
                 إضافة المصروف
               </button>
-              <button className="reports-btn" onClick={resetForm} type="button" disabled={loading}>
+              <button
+                className="reports-btn"
+                onClick={resetForm}
+                type="button"
+                disabled={loading}
+              >
                 تفريغ
               </button>
             </div>
@@ -978,11 +1033,17 @@ const DashboardExpenses: React.FC = () => {
                 onChange={(e) => setNewCategory(e.target.value)}
                 placeholder="مثال: تأمين"
               />
-              <button className="reports-btn" onClick={addCategoryQuick} type="button">
+              <button
+                className="reports-btn"
+                onClick={addCategoryQuick}
+                type="button"
+              >
                 إضافة
               </button>
             </div>
-            <div className="mini-hint">لاحقًا بنحطه داخل صفحة الإعدادات بشكل مرتب.</div>
+            <div className="mini-hint">
+              لاحقًا بنحطه داخل صفحة الإعدادات بشكل مرتب.
+            </div>
           </div>
         </div>
 
@@ -992,7 +1053,9 @@ const DashboardExpenses: React.FC = () => {
 
           {/* أعلى 3 تصنيفات (هذا الشهر) */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 20, marginBottom: 8 }}>أعلى 3 تصنيفات (هذا الشهر)</div>
+            <div style={{ fontSize: 20, marginBottom: 8 }}>
+              أعلى 3 تصنيفات (هذا الشهر)
+            </div>
 
             {(() => {
               const monthKey = todayISO().slice(0, 7);
@@ -1009,7 +1072,8 @@ const DashboardExpenses: React.FC = () => {
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 3);
 
-              if (!top3.length) return <div style={{ fontSize: 13, opacity: 0.75 }}>—</div>;
+              if (!top3.length)
+                return <div style={{ fontSize: 13, opacity: 0.75 }}>—</div>;
 
               return (
                 <div style={{ display: "grid", gap: 8 }}>
@@ -1038,17 +1102,32 @@ const DashboardExpenses: React.FC = () => {
 
           {/* آخر 5 مصروفات */}
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 8,
+              }}
+            >
               <div style={{ fontSize: 20 }}>آخر 5 مصروفات</div>
             </div>
 
             {(() => {
               const latest = [...items]
-                .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0))
+                .sort(
+                  (a, b) =>
+                    (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0)
+                )
                 .slice(0, 5);
 
               if (!latest.length) {
-                return <div style={{ fontSize: 13, opacity: 0.75 }}>لا يوجد مصروفات بعد.</div>;
+                return (
+                  <div style={{ fontSize: 13, opacity: 0.75 }}>
+                    لا يوجد مصروفات بعد.
+                  </div>
+                );
               }
 
               return (
@@ -1113,7 +1192,15 @@ const DashboardExpenses: React.FC = () => {
               direction: "rtl",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
               <div>
                 <h3 style={{ margin: 0 }}>سجل المصروفات</h3>
                 <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
@@ -1122,7 +1209,12 @@ const DashboardExpenses: React.FC = () => {
               </div>
 
               <div className="ep-filter-row">
-              <button className="exp-btn" onClick={loadExpenses} disabled={loading} type="button">
+                <button
+                  className="exp-btn"
+                  onClick={loadExpenses}
+                  disabled={loading}
+                  type="button"
+                >
                   تحديث
                 </button>
 
@@ -1136,7 +1228,11 @@ const DashboardExpenses: React.FC = () => {
                   <FontAwesomeIcon icon={faFileCsv} /> تصدير Excel
                 </button>
 
-                <button className="exp-btn primary" onClick={() => setRecordOpen(false)} type="button">
+                <button
+                  className="exp-btn primary"
+                  onClick={() => setRecordOpen(false)}
+                  type="button"
+                >
                   إغلاق
                 </button>
               </div>
@@ -1146,12 +1242,20 @@ const DashboardExpenses: React.FC = () => {
               <div className="exp-filters">
                 <label>
                   من
-                  <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+                  <input
+                    type="date"
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                  />
                 </label>
 
                 <label>
                   إلى
-                  <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+                  <input
+                    type="date"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                  />
                 </label>
 
                 <label>
@@ -1200,7 +1304,13 @@ const DashboardExpenses: React.FC = () => {
                     تصفير الفلاتر
                   </button>
 
-                  <div style={{ marginInlineStart: "auto", fontSize: 13, opacity: 0.85 }}>
+                  <div
+                    style={{
+                      marginInlineStart: "auto",
+                      fontSize: 13,
+                      opacity: 0.85,
+                    }}
+                  >
                     الإجمالي بعد الفلترة: <b>{money(totalFiltered)} ريال</b>
                   </div>
                 </div>
@@ -1240,7 +1350,10 @@ const DashboardExpenses: React.FC = () => {
                                   type="date"
                                   value={editForm.date}
                                   onChange={(ev) =>
-                                    setEditForm((p) => ({ ...p, date: ev.target.value }))
+                                    setEditForm((p) => ({
+                                      ...p,
+                                      date: ev.target.value,
+                                    }))
                                   }
                                 />
                               ) : (
@@ -1249,12 +1362,15 @@ const DashboardExpenses: React.FC = () => {
                             </td>
 
                             {/* المصروف */}
-                            <td data-label="المصروف" className="strong">
+                            <td data-label="التصنيف" className="strong">
                               {isEdit ? (
                                 <input
                                   value={editForm.title}
                                   onChange={(ev) =>
-                                    setEditForm((p) => ({ ...p, title: ev.target.value }))
+                                    setEditForm((p) => ({
+                                      ...p,
+                                      title: ev.target.value,
+                                    }))
                                   }
                                   placeholder="اسم المصروف"
                                 />
@@ -1268,8 +1384,17 @@ const DashboardExpenses: React.FC = () => {
                               {isEdit ? (
                                 <DashDropdown
                                   value={editForm.category}
-                                  onChange={(v) => setEditForm((p) => ({ ...p, category: v }))}
-                                  options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: "أخرى" }]}
+                                  onChange={(v) =>
+                                    setEditForm((p) => ({
+                                      ...p,
+                                      category: v,
+                                    }))
+                                  }
+                                  options={
+                                    categoryOptionsNoAll.length
+                                      ? categoryOptionsNoAll
+                                      : [{ value: "أخرى", label: "أخرى" }]
+                                  }
                                   disabled={loading}
                                 />
                               ) : (
@@ -1282,8 +1407,17 @@ const DashboardExpenses: React.FC = () => {
                               {isEdit ? (
                                 <DashDropdown
                                   value={editForm.paymentMethod}
-                                  onChange={(v) => setEditForm((p) => ({ ...p, paymentMethod: v }))}
-                                  options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: "كاش" }]}
+                                  onChange={(v) =>
+                                    setEditForm((p) => ({
+                                      ...p,
+                                      paymentMethod: v,
+                                    }))
+                                  }
+                                  options={
+                                    paymentOptionsNoAll.length
+                                      ? paymentOptionsNoAll
+                                      : [{ value: "كاش", label: "كاش" }]
+                                  }
                                   disabled={loading}
                                 />
                               ) : (
@@ -1298,7 +1432,10 @@ const DashboardExpenses: React.FC = () => {
                                   inputMode="decimal"
                                   value={editForm.amount}
                                   onChange={(ev) =>
-                                    setEditForm((p) => ({ ...p, amount: ev.target.value }))
+                                    setEditForm((p) => ({
+                                      ...p,
+                                      amount: ev.target.value,
+                                    }))
                                   }
                                   placeholder="0"
                                 />
@@ -1315,7 +1452,10 @@ const DashboardExpenses: React.FC = () => {
                                 <input
                                   value={editForm.note}
                                   onChange={(ev) =>
-                                    setEditForm((p) => ({ ...p, note: ev.target.value }))
+                                    setEditForm((p) => ({
+                                      ...p,
+                                      note: ev.target.value,
+                                    }))
                                   }
                                   placeholder="ملاحظة..."
                                 />
@@ -1366,7 +1506,6 @@ const DashboardExpenses: React.FC = () => {
                                 </div>
                               )}
                             </td>
-
                           </tr>
                         );
                       })
@@ -1396,7 +1535,9 @@ const DashboardExpenses: React.FC = () => {
                   {byCategoryFiltered.length ? (
                     byCategoryFiltered.map((c) => {
                       const pct =
-                        totalFiltered > 0 ? Math.round((c.value / totalFiltered) * 100) : 0;
+                        totalFiltered > 0
+                          ? Math.round((c.value / totalFiltered) * 100)
+                          : 0;
 
                       return (
                         <div key={c.name} className="bd-item">
@@ -1407,13 +1548,18 @@ const DashboardExpenses: React.FC = () => {
                             </div>
 
                             <div className="bd-right">
-                              <span className="bd-amount">{money(c.value)} ريال</span>
+                              <span className="bd-amount">
+                                {money(c.value)} ريال
+                              </span>
                               <span className="bd-pct">{pct}%</span>
                             </div>
                           </div>
 
                           <div className="bd-bar">
-                            <div className="bd-fill" style={{ width: `${pct}%` }} />
+                            <div
+                              className="bd-fill"
+                              style={{ width: `${pct}%` }}
+                            />
                           </div>
                         </div>
                       );
@@ -1431,14 +1577,21 @@ const DashboardExpenses: React.FC = () => {
       {/* ✅ Alert Modal */}
       {modalMsg ? (
         <div className="modal-overlay" onClick={() => setModalMsg("")}>
-          <div className="modal-box is-info" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-box is-info"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-head">
               <div className="modal-title-wrap">
                 <div className="modal-icon">ℹ️</div>
                 <h3 className="modal-title">تنبيه</h3>
               </div>
 
-              <button className="modal-close" onClick={() => setModalMsg("")} type="button">
+              <button
+                className="modal-close"
+                onClick={() => setModalMsg("")}
+                type="button"
+              >
                 ✕
               </button>
             </div>
@@ -1448,7 +1601,11 @@ const DashboardExpenses: React.FC = () => {
             </div>
 
             <div className="modal-actions">
-              <button className="dash-pill dash-pill-primary" onClick={() => setModalMsg("")} type="button">
+              <button
+                className="dash-pill dash-pill-primary"
+                onClick={() => setModalMsg("")}
+                type="button"
+              >
                 حسناً
               </button>
             </div>
@@ -1458,15 +1615,25 @@ const DashboardExpenses: React.FC = () => {
 
       {/* ✅ Confirm Modal */}
       {confirmState.open ? (
-        <div className="modal-overlay" onClick={() => setConfirmState({ open: false })}>
-          <div className="modal-box is-danger" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setConfirmState({ open: false })}
+        >
+          <div
+            className="modal-box is-danger"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-head">
               <div className="modal-title-wrap">
                 <div className="modal-icon">⚠️</div>
                 <h3 className="modal-title">{confirmState.title || "تأكيد"}</h3>
               </div>
 
-              <button className="modal-close" onClick={() => setConfirmState({ open: false })} type="button">
+              <button
+                className="modal-close"
+                onClick={() => setConfirmState({ open: false })}
+                type="button"
+              >
                 ✕
               </button>
             </div>
