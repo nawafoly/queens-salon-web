@@ -144,7 +144,6 @@ function getActiveOffers(): OfferLike[] {
         });
 }
 
-const DAYS = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة"];
 const hours = generateSalonTimeSlots();
 
 /* ==============================
