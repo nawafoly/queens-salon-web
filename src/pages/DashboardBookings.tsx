@@ -125,14 +125,16 @@ function saveNotesMap(map: Record<string, string>) {
 }
 
 /** ✅ قراءة الدور من localStorage بشكل آمن
- * ✅ تعديل مهم: يقرأ من auth_user أولاً (الأصح) ثم userRole كـ fallback
+ * ✅ المصدر الصحيح: user_profile_v1 (اللي Login يخزنه فعليًا)
+ * ✅ ثم userRole كـ fallback
  */
 function getUiRole(): UiRole {
+  // ✅ 1) user_profile_v1
   try {
-    const authUserRaw = localStorage.getItem("auth_user");
-    if (authUserRaw) {
-      const au = JSON.parse(authUserRaw);
-      const r = String(au?.role || "").toLowerCase().trim();
+    const rawProfile = localStorage.getItem("user_profile_v1");
+    if (rawProfile) {
+      const p = JSON.parse(rawProfile);
+      const r = String(p?.role || "").toLowerCase().trim();
       if (r === "owner") return "owner";
       if (r === "admin") return "admin";
       if (r === "reception") return "reception";
@@ -143,7 +145,10 @@ function getUiRole(): UiRole {
     // ignore
   }
 
-  const raw = (localStorage.getItem("userRole") || "").toLowerCase().trim();
+  // ✅ 2) fallback: userRole
+  const raw = String(localStorage.getItem("userRole") || "")
+    .toLowerCase()
+    .trim();
 
   if (raw === "owner") return "owner";
   if (raw === "admin") return "admin";
@@ -367,7 +372,7 @@ const DashboardBookings = () => {
         setLoadError("");
 
         // ✅ Realtime: watchAllBookings
-        // ✅ FIX: watchAllBookings يقبل callback واحد فقط (بدون onError ثاني)
+        // ✅ watchAllBookings يقبل callback واحد فقط
         watchUnsubRef.current = watchAllBookings((data) => {
           try {
             const mapped: Booking[] = (Array.isArray(data) ? data : []).map(
@@ -1313,7 +1318,11 @@ const DashboardBookings = () => {
                     <b>تغيير الحالة:</b>
 
                     {/* ✅ Custom Dropdown بدل <select> */}
-                    <div className="dash-dd-wrap" ref={modalStatusWrapRef} style={{ marginTop: 8 }}>
+                    <div
+                      className="dash-dd-wrap"
+                      ref={modalStatusWrapRef}
+                      style={{ marginTop: 8 }}
+                    >
                       <button
                         type="button"
                         className="dash-select dash-select--sm"

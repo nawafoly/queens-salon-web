@@ -26,16 +26,17 @@ export type UserProfile = {
 
   createdAt?: any;
   updatedAt?: any;
+
+  // (اختياري) لو عندك active في البيانات
+  active?: boolean;
 };
 
 const SALON_ID = "main";
 
-// ✅ ROOT users/{uid}
-function rootUserRef(uid: string) {
-  return doc(db, "users", uid);
-}
+// ✅ Bootstrap Admin (طوق أمان)
+const BOOTSTRAP_EMAIL = "nawafaaa0@gmail.com";
 
-// ✅ salons/main/users/{uid}
+// ✅ المصدر الوحيد المعتمد للرول
 function salonUserRef(uid: string) {
   return doc(db, "salons", SALON_ID, "users", uid);
 }
@@ -61,8 +62,6 @@ function normalizeRole(roleRaw: unknown): UiRole {
     return r as UiRole;
   }
 
-  // ✅ بدل ما نرجّع client لأي شيء غريب، نخليه guest
-  // (عشان ما ينقلب owner إلى client بسبب قيمة غير متوقعة)
   return "guest";
 }
 
@@ -73,41 +72,37 @@ function buildDefaultName(role: UiRole) {
   return "مستخدم";
 }
 
+function isBootstrap(user: User) {
+  return safeStr(user.email).toLowerCase().trim() === BOOTSTRAP_EMAIL;
+}
+
 /**
- * ✅ createOrLoadUserProfile
- * - يقرأ أولاً من users/{uid}
- * - ثم fallback إلى salons/main/users/{uid}
- * - إذا ما لقى الاثنين: ينشئ client في users/{uid}
+ * ✅ createOrLoadUserProfile (SOURCE OF TRUTH = salons/main/users/{uid})
+ * - يقرأ فقط من salons/main/users/{uid}
+ * - لو ما لقى: ينشئ guest هناك (بدون لمس ROOT)
+ * - Bootstrap email: يفرض role=owner حتى لو الوثيقة غلط
  */
 export async function createOrLoadUserProfile(user: User): Promise<UserProfile> {
   const uid = user.uid;
+  const ref = salonUserRef(uid);
 
-  const refRoot = rootUserRef(uid);
-  const refSalon = salonUserRef(uid);
-
-  const snapRoot = await getDoc(refRoot);
-  const snapSalon = snapRoot.exists() ? null : await getDoc(refSalon);
+  const snap = await getDoc(ref);
 
   const authEmail = safeStr(user.email);
   const authDisplayName = safeStr(user.displayName);
 
-  // ✅ اختر المصدر الصحيح
-  const snap = snapRoot.exists() ? snapRoot : snapSalon;
-  const ref = snapRoot.exists() ? refRoot : refSalon;
-
-  if (snap && snap.exists()) {
+  // ✅ لو الوثيقة موجودة
+  if (snap.exists()) {
     const data = snap.data() as any;
-    const role = normalizeRole(data?.role);
+
+    // ✅ Bootstrap override
+    const role: UiRole = isBootstrap(user) ? "owner" : normalizeRole(data?.role);
 
     let name =
       safeStr(data?.name).trim() ||
       safeStr(data?.displayName).trim() ||
       authDisplayName.trim() ||
       buildDefaultName(role);
-
-    if ((role === "owner" || role === "admin") && (!name || name === "مستخدم")) {
-      name = "مدير الصالون";
-    }
 
     const profile: UserProfile = {
       uid,
@@ -120,15 +115,19 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       membershipId: safeStr(data?.membershipId),
       membershipPercent:
         typeof data?.membershipPercent === "number" ? data.membershipPercent : 0,
+      active: typeof data?.active === "boolean" ? data.active : true,
       createdAt: data?.createdAt,
       updatedAt: data?.updatedAt,
     };
 
-    // ✅ patch خفيف لو ناقص بيانات
+    // ✅ Patch خفيف لو ناقص/Bootstrap needs role fix
     const patch: any = {};
     if (!safeStr(data?.email) && authEmail) patch.email = authEmail;
-    if (!safeStr(data?.name) || data?.name === "مستخدم") patch.name = name;
-    if (!safeStr(data?.displayName) || data?.displayName === "مستخدم") patch.displayName = name;
+    if (!safeStr(data?.name) && name) patch.name = name;
+    if (!safeStr(data?.displayName) && name) patch.displayName = name;
+
+    // ✅ لو Bootstrap أو role ناقص/غلط
+    if (isBootstrap(user) && normalizeRole(data?.role) !== "owner") patch.role = "owner";
     if (!data?.role) patch.role = role;
 
     if (Object.keys(patch).length) {
@@ -146,10 +145,9 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     return profile;
   }
 
-  // ✅ لا يوجد أي وثيقة: أنشئ client (ROOT)
-  const role: UiRole = "client";
+  // ✅ لا توجد وثيقة: أنشئ guest في salons/main/users
+  const role: UiRole = isBootstrap(user) ? "owner" : "guest";
   const name = authDisplayName.trim() || buildDefaultName(role);
-  const membershipId = `client-${new Date().getFullYear()}-${uid.slice(0, 6)}`;
 
   const profile: UserProfile = {
     uid,
@@ -159,14 +157,15 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     city: "",
     birthdate: "",
     role,
-    membershipId,
+    membershipId: "",
     membershipPercent: 0,
+    active: true,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
   await setDoc(
-    refRoot,
+    ref,
     {
       ...profile,
       displayName: name,
@@ -185,15 +184,13 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
 
 /**
  * ✅ updateUserProfile
- * - يحدث في users/{uid} إذا موجود
- * - وإلا يحدث في salons/main/users/{uid}
+ * - يحدث فقط في salons/main/users/{uid}
  */
-export async function updateUserProfile(uid: string, updates: Partial<UserProfile>) {
-  const refRoot = rootUserRef(uid);
-  const refSalon = salonUserRef(uid);
-
-  const rootSnap = await getDoc(refRoot);
-  const targetRef = rootSnap.exists() ? refRoot : refSalon;
+export async function updateUserProfile(
+  uid: string,
+  updates: Partial<UserProfile>
+) {
+  const ref = salonUserRef(uid);
 
   const cleaned: any = {};
   Object.entries(updates).forEach(([k, v]) => {
@@ -203,9 +200,9 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
   });
 
   cleaned.updatedAt = serverTimestamp();
-  await setDoc(targetRef, cleaned, { merge: true });
+  await setDoc(ref, cleaned, { merge: true });
 
-  // ✅ حدّث الكاش المحلي
+  // ✅ تحديث الكاش المحلي
   try {
     const current = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
     const merged = { ...(current || {}), ...updates, uid };
