@@ -7,11 +7,23 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type {
-  FinanceSettings,
-  PaymentMethod,
-  BookingIncomeStatus,
-} from "../types/finance";
+// ✅ Local Types (حل مشاكل الـ exports + توافق الدفع العربي)
+export type BookingIncomeStatus = "completed" | "confirmed";
+
+export type PaymentMethod =
+  | "كاش"
+  | "شبكة"
+  | "تحويل"
+  | "cash"
+  | "card"
+  | "transfer";
+
+export type FinanceSettings = {
+  expenseCategories: string[];
+  paymentMethods: PaymentMethod[];
+  currency: string; // "SAR"
+  incomeBookingStatuses: BookingIncomeStatus[];
+};
 
 const SALON_ID = "main";
 const DOC_PATH = ["salons", SALON_ID, "settings", "finance"] as const;
