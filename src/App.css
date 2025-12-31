@@ -247,3 +247,18 @@ p {
     font-size: 0.9rem;
   }
 }
+
+/* ✅ Force Light Theme (Mobile Dark Mode Fix) */
+:root {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+
+  html,
+  body {
+    background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%) !important;
+    background-color: #fdf9f6 !important;
+    color: #5a4a42 !important;
+  }
+} 
