@@ -20,7 +20,6 @@ body {
   padding: 0;
 }
 
-/* === Root Variables === */
 :root {
   /* أساسي */
   --primary-color: #e8b4a2;
@@ -37,8 +36,9 @@ body {
   --text-color: #5a4a42;
   --white: #ffffff;
   --black: #000000;
+}
 
-
+/* ✅ هذا القوس كان ناقص */
 
 /* === Global Styles === */
 body {
@@ -48,6 +48,7 @@ body {
   direction: rtl;
   text-align: right;
 }
+
 
 .app {
   display: flex;
