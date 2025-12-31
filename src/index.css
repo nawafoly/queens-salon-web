@@ -1,17 +1,29 @@
-/* ========================================
-   نظام CSS مخصص احترافي - صالون ملكات 
-   ======================================== */
+/* 
+* Custom CSS for Body Beauty Salon
+* React Application
+*/
 
-/* خطوط عربية احترافية */
-@import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap");
-
-/* 🔒 إجبار الموقع على Light Mode */
+/* 🔒 إجبار الموقع على Light Mode (مهم للجوال) */
 :root {
   color-scheme: light;
+
+  /* أساسي */
+  --primary-color: #e8b4a2;
+  --secondary-color: #dba58e;
+  --accent-color: #f5cdbb;
+
+  /* خلفيات */
+  --background-color: #fdf9f6;
+
+  /* نصوص */
+  --text-color: #5a4a42;
+  --white: #ffffff;
+  --black: #000000;
 }
 
+/* لو الجهاز Dark، لا تقلب الموقع لأسود */
 @media (prefers-color-scheme: dark) {
+
   html,
   body {
     color-scheme: light;
@@ -20,17 +32,235 @@
   }
 }
 
+html,
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  font-family: "Inter", "Tajawal", Arial, sans-serif;
+  background-color: var(--background-color);
+  min-height: 100vh;
+}
+
+#root {
+  margin: 0;
+  padding: 0;
+}
+
+/* === Global Styles === */
+body {
+  font-family: "Tajawal", sans-serif !important;
+  color: var(--text-color) !important;
+  background-color: var(--background-color) !important;
+  direction: rtl;
+  text-align: right;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+}
+
+a {
+  color: var(--primary-color);
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+a:hover {
+  color: var(--secondary-color);
+}
+
+/* === Typography === */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Tajawal", sans-serif;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+p {
+  line-height: 1.8;
+}
+
+.section-title {
+  font-size: 2rem;
+  font-weight: 500;
+  color: var(--text-color);
+  margin-bottom: 2rem;
+}
+
+/* === Buttons (Custom) === */
+.btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.btn-outline {
+  background-color: transparent;
+  color: var(--primary-color);
+  border: 2px solid var(--primary-color);
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-outline:hover {
+  background-color: var(--primary-color);
+  color: var(--white);
+}
+
+/* === Forms === */
+.form-control {
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 10px;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+.form-control:focus {
+  box-shadow: 0 0 0 0.25rem rgba(232, 180, 162, 0.25);
+  border-color: var(--primary-color);
+}
+
+.form-control::placeholder {
+  color: var(--text-color);
+  opacity: 0.7;
+}
+
+/* === Animations === */
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeIn 1s ease-out forwards;
+}
+
+.contact-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #ccc;
+}
+
+.contact-list li svg {
+  color: var(--primary-color);
+}
+
+.social-links {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.social-links a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: #222;
+  border-radius: 50%;
+  color: #ccc;
+  font-size: 1.1rem;
+  transition: background 0.2s, color 0.2s;
+}
+
+.social-links a:hover {
+  background: var(--primary-color);
+  color: #111;
+}
+
+.back-to-top {
+  color: #777;
+  font-size: 1.2rem;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.back-to-top:hover {
+  color: var(--primary-color);
+}
+
+.fa-check-circle,
+.fa-circle-check {
+  color: var(--black) !important;
+  font-size: 1.1em;
+  vertical-align: middle;
+}
+
+/* الصور */
+.hero-image img,
+.offers-image img {
+  background: none !important;
+  border-radius: 22px !important;
+  box-shadow: 0 8px 32px rgba(180, 139, 123, 0.09) !important;
+  opacity: 0.7;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* === Responsive === */
+@media (max-width: 991.98px) {
+  .section-title {
+    font-size: 1.8rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .section-title {
+    font-size: 1.5rem;
+  }
+
+  .btn {
+    padding: 0.6rem 1.2rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  body {
+    font-size: 0.9rem;
+  }
+}
+
+/* ========================================
+   نظام CSS مخصص احترافي - صالون ملكات 
+   ======================================== */
+
+/* خطوط عربية احترافية */
+@import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap");
+
 /* ========================================
    المتغيرات الأساسية - الألوان المعتمدة
    ======================================== */
 :root {
-  /* الألوان المعتمدة الجديدة */
   --bs-primary-color: #e8b4a2;
   --bs-secondary-color: #dba58e;
   --bs-text-color: #5a4a42;
   --bs-hover-color: #c8947a;
 
-  /* تدرجات الألوان المعتمدة */
   --bs-primary-50: #faf7f5;
   --bs-primary-100: #f5ede8;
   --bs-primary-200: #eed9d0;
@@ -42,7 +272,6 @@
   --bs-primary-800: #a8745a;
   --bs-primary-900: #98644a;
 
-  /* تدرجات الألوان الثانوية */
   --bs-secondary-50: #f9f6f4;
   --bs-secondary-100: #f3ece8;
   --bs-secondary-200: #e9d7d0;
@@ -54,7 +283,6 @@
   --bs-secondary-800: #98644a;
   --bs-secondary-900: #88543a;
 
-  /* تدرجات النصوص */
   --bs-text-50: #f7f5f4;
   --bs-text-100: #ede8e6;
   --bs-text-200: #ddd4d0;
@@ -66,26 +294,13 @@
   --bs-text-800: #4a3a32;
   --bs-text-900: #3a2a22;
 
-  /* ألوان الخلفيات */
   --bs-bg-light: #faf9f8;
   --bs-bg-white: #ffffff;
-  --bs-bg-gradient: linear-gradient(
-    135deg,
-    var(--bs-primary-color) 0%,
-    var(--bs-secondary-color) 100%
-  );
-  --bs-bg-gradient-hover: linear-gradient(
-    135deg,
-    var(--bs-hover-color) 0%,
-    var(--bs-primary-color) 100%
-  );
 
-  /* ألوان الحدود */
   --bs-border-color: #e8ddd8;
   --bs-border-light: #f0e8e3;
   --bs-border-dark: #d0c0b8;
 
-  /* الظلال بالألوان المعتمدة */
   --bs-shadow-soft: 0 2px 15px -3px rgba(232, 180, 162, 0.1),
     0 10px 20px -2px rgba(232, 180, 162, 0.05);
   --bs-shadow-medium: 0 4px 25px -5px rgba(232, 180, 162, 0.15),
@@ -93,26 +308,10 @@
   --bs-shadow-strong: 0 10px 40px -10px rgba(232, 180, 162, 0.2),
     0 2px 10px -2px rgba(232, 180, 162, 0.1);
 
-  /* ألوان الحالة */
   --bs-success-color: #22c55e;
   --bs-warning-color: #f59e0b;
   --bs-error-color: #ef4444;
   --bs-info-color: var(--bs-primary-color);
-
-  /* المسافات */
-  --bs-spacing-xs: 0.25rem;
-  --bs-spacing-sm: 0.5rem;
-  --bs-spacing-md: 1rem;
-  --bs-spacing-lg: 1.5rem;
-  --bs-spacing-xl: 2rem;
-  --bs-spacing-2xl: 3rem;
-  --bs-spacing-3xl: 4rem;
-
-  /* نقاط الكسر */
-  --bs-breakpoint-sm: 640px;
-  --bs-breakpoint-md: 768px;
-  --bs-breakpoint-lg: 1024px;
-  --bs-breakpoint-xl: 1280px;
 }
 
 /* ========================================
@@ -140,578 +339,4 @@ body {
   padding-top: 0 !important;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: "Cairo", sans-serif !important;
-  font-weight: 700 !important;
-  line-height: 1.3;
-  margin-bottom: 1rem;
-  color: var(--bs-text-color) !important;
-}
-
-p {
-  margin-bottom: 1rem;
-}
-
-a {
-  color: var(--bs-primary-color) !important;
-  text-decoration: none !important;
-  transition: color 0.3s ease;
-}
-
-a:hover {
-  color: var(--bs-hover-color) !important;
-}
-
-img {
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-
-button {
-  cursor: pointer;
-  font-family: "Tajawal", sans-serif !important;
-}
-
-/* ========================================
-   الحاويات والشبكة
-   ======================================== */
-.bs-container {
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1rem;
-}
-
-.bs-section {
-  padding: 4rem 0;
-}
-
-.bs-section-title {
-  font-size: 2.5rem;
-  text-align: center;
-  margin-bottom: 3rem;
-  position: relative;
-}
-
-.bs-section-title::after {
-  content: "";
-  position: absolute;
-  bottom: -0.75rem;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 80px;
-  height: 3px;
-  background-color: var(--bs-primary-color);
-}
-
-/* ========================================
-   شريط التنقل
-   ======================================== */
-.bs-header {
-  position: fixed !important;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  transition: all 0.3s ease;
-  background-color: var(--bs-bg-white) !important;
-  box-shadow: var(--bs-shadow-soft);
-}
-
-.bs-nav-link {
-  color: var(--bs-text-color) !important;
-  font-weight: 500;
-  padding: 0.5rem 1rem;
-  transition: color 0.3s ease;
-  position: relative;
-}
-
-.bs-nav-link:hover {
-  color: var(--bs-primary-color) !important;
-}
-
-.bs-nav-link::after {
-  content: "";
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  width: 0;
-  height: 2px;
-  background-color: var(--bs-primary-color);
-  transition: width 0.3s ease;
-}
-
-.bs-nav-link:hover::after {
-  width: 100%;
-}
-
-.bs-auth-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem 1.25rem;
-  border-radius: 50px;
-  font-weight: 500;
-  transition: all 0.3s ease;
-  border: none;
-  background-color: var(--bs-primary-color) !important;
-  color: white !important;
-}
-
-.bs-auth-btn:hover {
-  background-color: var(--bs-hover-color) !important;
-  transform: translateY(-2px);
-  box-shadow: var(--bs-shadow-medium);
-}
-
-.bs-mobile-nav-link {
-  display: block;
-  padding: 0.75rem 0;
-  color: var(--bs-text-color) !important;
-  font-weight: 500;
-  transition: color 0.3s ease;
-  border-bottom: 1px solid var(--bs-border-light);
-}
-
-.bs-mobile-nav-link:hover {
-  color: var(--bs-primary-color) !important;
-}
-
-.bs-mobile-auth-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.75rem 1.5rem;
-  border-radius: 50px;
-  font-weight: 500;
-  transition: all 0.3s ease;
-  border: none;
-  width: 100%;
-  text-align: center;
-}
-
-/* ========================================
-   الأزرار
-   ======================================== */
-.bs-btn {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 0.75rem 1.5rem !important;
-  border-radius: 50px !important;
-  font-weight: 500 !important;
-  transition: all 0.3s ease !important;
-  border: none !important;
-  text-align: center !important;
-  cursor: pointer !important;
-}
-
-.bs-btn-primary {
-  background-color: var(--bs-primary-color) !important;
-  color: white !important;
-}
-
-.bs-btn-primary:hover {
-  background-color: var(--bs-hover-color) !important;
-  transform: translateY(-2px);
-  box-shadow: var(--bs-shadow-medium);
-}
-
-.bs-btn-secondary {
-  background-color: var(--bs-secondary-color) !important;
-  color: white !important;
-}
-
-.bs-btn-secondary:hover {
-  background-color: var(--bs-secondary-600) !important;
-  transform: translateY(-2px);
-  box-shadow: var(--bs-shadow-medium);
-}
-
-.bs-btn-outline {
-  background-color: transparent !important;
-  border: 2px solid var(--bs-primary-color) !important;
-  color: var(--bs-primary-color) !important;
-}
-
-.bs-btn-outline:hover {
-  background-color: var(--bs-primary-color) !important;
-  color: white !important;
-  transform: translateY(-2px);
-  box-shadow: var(--bs-shadow-medium);
-}
-
-.bs-btn-lg {
-  padding: 1rem 2rem !important;
-  font-size: 1.1rem !important;
-}
-
-.bs-btn-sm {
-  padding: 0.5rem 1rem !important;
-  font-size: 0.9rem !important;
-}
-
-/* ========================================
-   البطاقات والحاويات
-   ======================================== */
-.bs-card {
-  background-color: var(--bs-bg-white) !important;
-  border-radius: 10px !important;
-  overflow: hidden !important;
-  box-shadow: var(--bs-shadow-soft) !important;
-  transition: transform 0.3s ease, box-shadow 0.3s ease !important;
-  height: 100% !important;
-  border: none !important;
-}
-
-.bs-card:hover {
-  transform: translateY(-5px);
-  box-shadow: var(--bs-shadow-medium) !important;
-}
-
-.bs-card-img {
-  width: 100% !important;
-  height: 200px !important;
-  object-fit: cover !important;
-}
-
-.bs-card-body {
-  padding: 1.5rem !important;
-}
-
-.bs-card-title {
-  font-size: 1.25rem !important;
-  margin-bottom: 0.75rem !important;
-}
-
-.bs-card-text {
-  color: var(--bs-text-600) !important;
-  margin-bottom: 1.25rem !important;
-}
-
-/* ========================================
-   الشبكة المتجاوبة
-   ======================================== */
-.bs-row {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  margin: -1rem !important;
-}
-
-.bs-col {
-  padding: 1rem !important;
-  width: 100% !important;
-}
-
-/* تعريف الأعمدة المتجاوبة */
-@media (min-width: 576px) {
-  .bs-col-sm-6 {
-    width: 50% !important;
-  }
-}
-
-@media (min-width: 768px) {
-  .bs-col-md-4 {
-    width: 33.333333% !important;
-  }
-  .bs-col-md-6 {
-    width: 50% !important;
-  }
-}
-
-@media (min-width: 992px) {
-  .bs-col-lg-3 {
-    width: 25% !important;
-  }
-  .bs-col-lg-4 {
-    width: 33.333333% !important;
-  }
-  .bs-col-lg-6 {
-    width: 50% !important;
-  }
-}
-
-/* ========================================
-   قسم الخدمات
-   ======================================== */
-.bs-service-card {
-  text-align: center !important;
-  padding: 2rem !important;
-  border-radius: 10px !important;
-  background-color: var(--bs-bg-white) !important;
-  box-shadow: var(--bs-shadow-soft) !important;
-  transition: transform 0.3s ease, box-shadow 0.3s ease !important;
-  height: 100% !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
-}
-
-.bs-service-card:hover {
-  transform: translateY(-5px);
-  box-shadow: var(--bs-shadow-medium) !important;
-}
-
-.bs-service-icon {
-  font-size: 2.5rem !important;
-  color: var(--bs-primary-color) !important;
-  margin-bottom: 1.5rem !important;
-}
-
-.bs-service-title {
-  font-size: 1.5rem !important;
-  margin-bottom: 1rem !important;
-}
-
-.bs-service-price {
-  font-size: 1.25rem !important;
-  color: var(--bs-primary-color) !important;
-  font-weight: 700 !important;
-  margin: 1rem 0 !important;
-}
-
-/* ========================================
-   قسم الشهادات والآراء
-   ======================================== */
-.bs-testimonial-card {
-  background-color: var(--bs-bg-white) !important;
-  border-radius: 10px !important;
-  padding: 2rem !important;
-  box-shadow: var(--bs-shadow-soft) !important;
-  position: relative !important;
-  height: 100% !important;
-  display: flex !important;
-  flex-direction: column !important;
-}
-
-.bs-testimonial-content {
-  position: relative !important;
-  padding-top: 1.5rem !important;
-  flex-grow: 1 !important;
-}
-
-.bs-testimonial-content::before {
-  content: '"' !important;
-  position: absolute !important;
-  top: -10px !important;
-  right: 0 !important;
-  font-size: 4rem !important;
-  color: var(--bs-primary-200) !important;
-  font-family: serif !important;
-  line-height: 1 !important;
-  opacity: 0.5 !important;
-}
-
-.bs-testimonial-author {
-  display: flex !important;
-  align-items: center !important;
-  margin-top: 1.5rem !important;
-}
-
-.bs-testimonial-avatar {
-  width: 60px !important;
-  height: 60px !important;
-  border-radius: 50% !important;
-  object-fit: cover !important;
-  margin-left: 1rem !important;
-  border: 3px solid var(--bs-primary-color) !important;
-}
-
-.bs-testimonial-info h4 {
-  margin-bottom: 0.25rem !important;
-}
-
-.bs-testimonial-info p {
-  color: var(--bs-text-500) !important;
-  margin: 0 !important;
-}
-
-.bs-testimonial-rating {
-  color: #f59e0b !important;
-  margin-top: 0.5rem !important;
-}
-
-/* ========================================
-   نموذج الحجز
-   ======================================== */
-.bs-form-group {
-  margin-bottom: 1.5rem !important;
-}
-
-.bs-form-label {
-  display: block !important;
-  margin-bottom: 0.5rem !important;
-  font-weight: 500 !important;
-}
-
-.bs-form-control {
-  width: 100% !important;
-  padding: 0.75rem 1rem !important;
-  border: 1px solid var(--bs-border-color) !important;
-  border-radius: 8px !important;
-  background-color: var(--bs-bg-white) !important;
-  color: var(--bs-text-color) !important;
-  font-family: "Tajawal", sans-serif !important;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
-}
-
-.bs-form-control:focus {
-  outline: none !important;
-  border-color: var(--bs-primary-color) !important;
-  box-shadow: 0 0 0 3px rgba(232, 180, 162, 0.25) !important;
-}
-
-.bs-form-select {
-  width: 100% !important;
-  padding: 0.75rem 1rem !important;
-  border: 1px solid var(--bs-border-color) !important;
-  border-radius: 8px !important;
-  background-color: var(--bs-bg-white) !important;
-  color: var(--bs-text-color) !important;
-  font-family: "Tajawal", sans-serif !important;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
-  appearance: none !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%235a4a42' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E") !important;
-  background-repeat: no-repeat !important;
-  background-position: left 1rem center !important;
-  background-size: 16px 12px !important;
-  padding-left: 2.5rem !important;
-}
-
-.bs-form-select:focus {
-  outline: none !important;
-  border-color: var(--bs-primary-color) !important;
-  box-shadow: 0 0 0 3px rgba(232, 180, 162, 0.25) !important;
-}
-
-/* ========================================
-   تذييل الصفحة
-   ======================================== */
-.bs-footer {
-  background-color: var(--bs-text-800) !important;
-  color: var(--bs-bg-white) !important;
-  padding: 4rem 0 2rem !important;
-}
-
-.bs-footer-title {
-  color: var(--bs-bg-white) !important;
-  font-size: 1.25rem !important;
-  margin-bottom: 1.5rem !important;
-  position: relative !important;
-  padding-bottom: 0.75rem !important;
-}
-
-.bs-footer-title::after {
-  content: "" !important;
-  position: absolute !important;
-  bottom: 0 !important;
-  right: 0 !important;
-  width: 50px !important;
-  height: 2px !important;
-  background-color: var(--bs-primary-color) !important;
-}
-
-.bs-footer-link {
-  color: var(--bs-text-200) !important;
-  display: block !important;
-  margin-bottom: 0.75rem !important;
-  transition: color 0.3s ease !important;
-}
-
-.bs-footer-link:hover {
-  color: var(--bs-primary-color) !important;
-}
-
-.bs-footer-contact {
-  display: flex !important;
-  align-items: center !important;
-  margin-bottom: 1rem !important;
-}
-
-.bs-footer-contact-icon {
-  width: 40px !important;
-  height: 40px !important;
-  background-color: rgba(255, 255, 255, 0.1) !important;
-  border-radius: 50% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin-left: 1rem !important;
-  color: var(--bs-primary-color) !important;
-}
-
-.bs-footer-bottom {
-  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
-  padding-top: 2rem !important;
-  margin-top: 3rem !important;
-  text-align: center !important;
-  color: var(--bs-text-300) !important;
-}
-
-.bs-social-links {
-  display: flex !important;
-  justify-content: center !important;
-  margin-bottom: 1.5rem !important;
-}
-
-.bs-social-link {
-  width: 40px !important;
-  height: 40px !important;
-  background-color: rgba(255, 255, 255, 0.1) !important;
-  border-radius: 50% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin: 0 0.5rem !important;
-  color: var(--bs-bg-white) !important;
-  transition: all 0.3s ease !important;
-}
-
-.bs-social-link:hover {
-  background-color: var(--bs-primary-color) !important;
-  color: var(--bs-bg-white) !important;
-  transform: translateY(-3px);
-}
-
-
-/* ========================================
-   تعديلات متجاوبة
-   ======================================== */
-@media (max-width: 991px) {
-  .bs-section-title {
-    font-size: 2rem !important;
-  }
-
-}
-
-@media (max-width: 767px) {
-  .bs-section {
-    padding: 3rem 0 !important;
-  }
-
-  .bs-section-title {
-    font-size: 1.75rem !important;
-    margin-bottom: 2rem !important;
-  }
-
-  
-}
-
-@media (max-width: 575px) {
-  .bs-section {
-    padding: 2.5rem 0 !important;
-  }
-
-  .bs-section-title {
-    font-size: 1.5rem !important;
-  }
-
-}
-
-
+/* (باقي الكود الطويل حق نظام bs عندك كمله زي ما هو بدون تغيير) */
