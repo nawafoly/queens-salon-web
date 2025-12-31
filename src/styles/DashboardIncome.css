@@ -4,47 +4,12 @@
    ✅ Scoped داخل .income-page فقط
 ========================= */
 
-/* ✅ Centered container مثل باقي صفحات الداشبورد */
-.income-page .income-container{
+.income-page .income-container {
   width: min(1180px, calc(100% - 28px));
   margin: 0 auto;
 }
 
-/* ✅ stat-card ستايل خاص بالدخل (عشان ما يعتمد على ملف ثاني) */
-.income-page .stat-card{
-  background: rgba(255,255,255,0.75);
-  border: 1px solid rgba(124,58,237,0.10);
-  border-radius: 18px;
-  padding: 14px 14px;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 10px 26px rgba(124,58,237,0.10);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 74px;
-}
-
-.income-page .stat-card .stat-info h3{
-  margin: 0;
-  font-weight: 900;
-  letter-spacing: .2px;
-  font-variant-numeric: tabular-nums;
-}
-
-.income-page .stat-card .stat-info p{
-  margin: 6px 0 0;
-  color: #666;
-  font-weight: 700;
-  font-size: 13px;
-}
-
-/* ✅ نخلي quick stats يطلع كروت مضبوط مو نص طاير */
-.income-page .income-quick{
-  margin-top: 14px;
-}
-
-/* Header layout */
+/* ✅ Header layout */
 .income-page .income-header {
   display: flex;
   justify-content: space-between;
@@ -60,7 +25,87 @@
   align-items: center;
 }
 
-/* quick stats */
+/* ✅ Inputs */
+.income-page .form-control {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: rgba(255, 255, 255, 0.96);
+  outline: none;
+  font-weight: 700;
+  font-size: 13px;
+  transition: box-shadow .15s ease, border-color .15s ease;
+}
+
+.income-page .form-control:focus {
+  border-color: rgba(139, 92, 246, 0.42);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
+}
+
+.income-page .income-filters {
+  margin-top: 12px;
+  background: rgba(255,255,255,0.75);
+  border: 1px solid rgba(124,58,237,0.10);
+  border-radius: 18px;
+  padding: 12px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 26px rgba(124,58,237,0.08);
+}
+
+.income-page .income-filter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.income-page .income-filter-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 900;
+  color: #2b2b2b;
+}
+
+.income-page .income-filter-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 992px) {
+  .income-page .income-filter-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .income-page .income-filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.income-page .income-input {
+  position: relative;
+}
+
+.income-page .income-input__icon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.65;
+  font-size: 14px;
+}
+
+.income-page .income-input .form-control {
+  padding-right: 36px;
+}
+
+/* ✅ quick stats */
 .income-page .income-quick {
   display: grid;
   grid-template-columns: repeat(4, minmax(160px, 1fr));
@@ -74,16 +119,33 @@
   }
 }
 
-.income-page .income-filter-head,
-.income-page .income-table-head {
+/* ✅ stat-card ستايل خاص بالدخل */
+.income-page .stat-card {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  border-radius: 18px;
+  padding: 14px 14px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 26px rgba(124, 58, 237, 0.10);
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
+  min-height: 74px;
 }
 
-.income-page .income-table-head {
-  margin-bottom: 10px;
+.income-page .stat-card .stat-info h3 {
+  margin: 0;
+  font-weight: 900;
+  letter-spacing: .2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.income-page .stat-card .stat-info p {
+  margin: 6px 0 0;
+  color: #666;
+  font-weight: 800;
+  font-size: 13px;
 }
 
 /* =========================
@@ -97,6 +159,8 @@
 }
 
 .income-page table.dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
   margin-bottom: 0;
 }
 
@@ -106,12 +170,16 @@
   font-weight: 900;
   white-space: nowrap;
   text-align: center;
+  padding: 12px 10px;
+  font-size: 13px;
 }
 
 .income-page table.dashboard-table tbody td {
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   vertical-align: middle;
   text-align: center;
+  padding: 12px 10px;
+  font-size: 13px;
 }
 
 .income-page table.dashboard-table tbody tr:last-child td {
@@ -181,7 +249,8 @@
   background: #fff;
 }
 
-/* .income-page .dash-pill-primary {
+/* ✅ Primary Pill */
+.income-page .dash-pill-primary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -190,17 +259,16 @@
   border-radius: 999px;
 
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 800;
 
-  background: rgba(139, 92, 246, 0.14); 
+  background: rgba(139, 92, 246, 0.14);
   color: #6d28d9;
 
   border: 1px solid rgba(139, 92, 246, 0.28);
   cursor: pointer;
 
   transition: all 0.2s ease;
-} */
-
+}
 
 .income-page .dash-pill-primary:hover {
   background: rgba(139, 92, 246, 0.20);
@@ -221,7 +289,6 @@
   opacity: 0.95;
 }
 
-
 @media (max-width: 768px) {
   .income-page .income-actions {
     width: 100%;
@@ -231,9 +298,35 @@
   }
 }
 
+/* ✅ icon delete button */
+.income-page .dash-icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: rgba(255, 255, 255, 0.96);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+
+.income-page .dash-icon-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(139, 92, 246, 0.28);
+  box-shadow: 0 10px 20px rgba(124,58,237,0.12);
+}
+
+.income-page .dash-icon-btn:disabled {
+  opacity: 0.6;
+  transform: none;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 /* =========================
    Income Page Modals (Scoped)
-   ✅ هذا الجزء الآن فعّال لأن TSX صار يستخدم نفس الكلاسات
 ========================= */
 .income-page .income-page-modal {
   position: fixed;
@@ -281,20 +374,20 @@
   padding: 14px 14px 16px;
 }
 
-.RemoveBot{
+.income-page .RemoveBot {
   border-radius: 20px;
 }
 
-
-.reports-btn {
+/* ✅ IMPORTANT: Scoped reports-btn */
+.income-page .reports-btn {
   border: 1px solid rgba(124, 58, 237, 0.18);
-  background: rgba(255,255,255,0.96);
+  background: rgba(255, 255, 255, 0.96);
   color: #3f3d56;
   border-radius: 14px;
 
   padding: 9px 14px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
 
   cursor: pointer;
   display: inline-flex;
@@ -302,24 +395,16 @@
   gap: 8px;
 
   box-shadow: 0 4px 10px rgba(124, 58, 237, 0.08);
-  transition:
-    transform .15s ease,
-    background .15s ease,
-    box-shadow .15s ease;
+  transition: transform .15s ease, background .15s ease, box-shadow .15s ease;
 }
 
-.reports-btn:hover {
+.income-page .reports-btn:hover {
   background: #fff;
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(124, 58, 237, 0.14);
 }
 
-.reports-btn:active {
+.income-page .reports-btn:active {
   transform: translateY(0);
   box-shadow: 0 3px 8px rgba(124, 58, 237, 0.12);
 }
-
-
-
-
-

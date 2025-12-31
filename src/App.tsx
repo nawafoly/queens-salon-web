@@ -1,6 +1,5 @@
 // src/App.tsx
-import { useEffect, useState } from "react";
-
+import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import "react-toastify/dist/ReactToastify.css";
@@ -48,9 +47,7 @@ const KNOWN_ROLES: UiRole[] = [
 ];
 
 function normalizeRole(role: any): UiRole {
-  const r = String(role || "")
-    .toLowerCase()
-    .trim();
+  const r = String(role || "").toLowerCase().trim();
   if (r === "administrator") return "admin";
   if (r === "receptionist") return "reception";
   if (r === "frontdesk") return "reception";

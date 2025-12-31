@@ -16,12 +16,13 @@ import "../styles/Footer.css";
 const Footer: React.FC = () => {
   return (
     <footer className="footer-dark">
-      {/* أعلى الفوتر */}
-      <div className="footer-dark__top">
+      <div className="footer-inner">
+        {/* Logo */}
         <div className="footer-col footer-col--logo">
           <img src={logo} alt="Queens Salon" className="footer-logo" />
         </div>
 
+        {/* Links */}
         <div className="footer-col">
           <h4>روابط تهمك</h4>
           <ul>
@@ -34,6 +35,7 @@ const Footer: React.FC = () => {
           </ul>
         </div>
 
+        {/* Contact + Social */}
         <div className="footer-col">
           <h4>معلومات التواصل</h4>
           <p>تواصلي الآن مع فريقنا المتخصص لاختيار أفضل الخدمات</p>
@@ -61,8 +63,7 @@ const Footer: React.FC = () => {
         </div>
       </div>
 
-      {/* أسفل الفوتر */}
-      <div className="footer-dark__bottom">
+      <div className="footer-bottom">
         <p>© جميع الحقوق محفوظة لصالون ملكات 2025</p>
       </div>
     </footer>

@@ -1,5 +1,5 @@
 // src/pages/Track.tsx
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../styles/Track.css";
 import { getTrackById } from "../services/firestoreBookings";
@@ -8,8 +8,8 @@ type TrackData = {
   status?: "pending" | "confirmed" | "cancelled" | "completed" | string;
   serviceName?: string;
   employeeName?: string;
-  date?: string; // YYYY-MM-DD
-  time?: string; // HH:mm
+  date?: string;
+  time?: string;
   updatedAt?: any;
 };
 
@@ -37,7 +37,7 @@ const Track: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [data, setData] = useState<TrackData | null>(null);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
 
   const effectiveId = useMemo(() => (trackId || "").trim(), [trackId]);
 
@@ -52,22 +52,19 @@ const Track: React.FC = () => {
 
     (async () => {
       try {
-        // ✅ الصحيح: القراءة من booking_tracks عبر service (قراءة عامة)
         const res = await getTrackById(effectiveId);
-
         if (!alive) return;
 
         if (!res) {
           setNotFound(true);
-          setData(null);
         } else {
-          // res يرجع كائن مناسب
           setData({
             status: res.status,
             serviceName: res.serviceName,
             employeeName: res.employeeName,
             date: res.date,
             time: res.time,
+            updatedAt: res.updatedAt,
           });
         }
       } catch (e: any) {
@@ -90,71 +87,113 @@ const Track: React.FC = () => {
     navigate(`/track/${encodeURIComponent(v)}`);
   };
 
+  const showContact =
+    !loading &&
+    (notFound ||
+      data?.status === "pending" ||
+      data?.status === "cancelled");
+
   return (
     <div className="track-page">
       <div className="track-card">
         <div className="track-head">
           <div className="track-badge">📌</div>
           <h2 className="track-title">تتبع الحجز</h2>
-          <p className="track-subtitle">أدخل رقم التتبع لمشاهدة حالة الحجز</p>
+          <p className="track-subtitle">
+            أدخل رقم التتبع لمشاهدة حالة الحجز
+          </p>
         </div>
 
-        <form className="track-form" onSubmit={onSubmit}>
-          <input
-            className="track-input"
-            value={inputId}
-            onChange={(e) => setInputId(e.target.value)}
-            placeholder="مثال: RQH9CkGj2X0WwWsuAp7O"
-          />
-          <button className="track-btn" type="submit" disabled={loading}>
-            {loading ? "..." : "تتبع"}
-          </button>
-        </form>
+        <div className="track-body">
+          {/* القسم الأيسر */}
+          <div className="track-panel">
+            <form className="track-form" onSubmit={onSubmit}>
+              <input
+                className="track-input"
+                value={inputId}
+                onChange={(e) => setInputId(e.target.value)}
+                placeholder="مثال: RQH9CkGj2X0WwWsuAp7O"
+                autoComplete="off"
+                dir="ltr"
+              />
+              <button
+                className="track-btn"
+                type="submit"
+                disabled={loading}
+              >
+                {loading ? "..." : "تتبع"}
+              </button>
+            </form>
 
-        {loading && <div className="track-state">جاري التحميل...</div>}
+            {loading && (
+              <div className="track-skeleton">
+                <div className="skel" />
+                <div className="skel" />
+                <div className="skel" />
+              </div>
+            )}
 
-        {!loading && error && <div className="track-error">⚠️ {error}</div>}
+            {!loading && error && (
+              <div className="track-error">⚠️ {error}</div>
+            )}
 
-        {!loading && notFound && (
-          <div className="track-notfound">
-            ❌ رقم التتبع غير موجود. تأكد من الرقم وحاول مرة أخرى.
+            {!loading && notFound && (
+              <div className="track-notfound">
+                ❌ رقم التتبع غير موجود. تأكد من الرقم وحاول مرة أخرى.
+              </div>
+            )}
+
+            {showContact && (
+              <a
+                href="/contact"
+                className="track-btn-ghost"
+              >
+                تواصل معنا للاستفسار
+              </a>
+
+            )}
           </div>
-        )}
 
-        {!loading && data && (
-          <div className="track-result">
-            <div className={`track-status ${statusClass(data.status)}`}>
-              <span>الحالة</span>
-              <strong>{statusLabel(data.status)}</strong>
-            </div>
+          {/* القسم الأيمن */}
+          <div className="track-side">
+            {!loading && data ? (
+              <div className="track-result">
+                <div className={`track-status ${statusClass(data.status)}`}>
+                  <span>الحالة</span>
+                  <strong>{statusLabel(data.status)}</strong>
+                </div>
 
-            <div className="track-grid">
-              <div className="track-row">
-                <span>الخدمة</span>
-                <strong>{data.serviceName || "-"}</strong>
+                <div className="track-grid">
+                  <div className="track-row">
+                    <span>الخدمة</span>
+                    <strong>{data.serviceName || "-"}</strong>
+                  </div>
+                  <div className="track-row">
+                    <span>الموظفة</span>
+                    <strong>{data.employeeName || "-"}</strong>
+                  </div>
+                  <div className="track-row">
+                    <span>التاريخ</span>
+                    <strong>{data.date || "-"}</strong>
+                  </div>
+                  <div className="track-row">
+                    <span>الوقت</span>
+                    <strong>{data.time || "-"}</strong>
+                  </div>
+                </div>
+
+                <div className="track-hint">
+                  ℹ️ في حال تأخر تأكيد الحجز أو وجود أي استفسار،
+                  يسعدنا تواصلك معنا مباشرة.
+                </div>
               </div>
-
-              <div className="track-row">
-                <span>الموظفة</span>
-                <strong>{data.employeeName || "-"}</strong>
+            ) : (
+              <div className="track-state">
+                أدخل رقم التتبع وستظهر تفاصيل الحجز هنا.
               </div>
-
-              <div className="track-row">
-                <span>التاريخ</span>
-                <strong>{data.date || "-"}</strong>
-              </div>
-
-              <div className="track-row">
-                <span>الوقت</span>
-                <strong>{data.time || "-"}</strong>
-              </div>
-            </div>
-
-            <div className="track-hint">
-              ℹ️ هذه صفحة تتبع عامة تعرض معلومات الحجز الأساسية فقط.
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

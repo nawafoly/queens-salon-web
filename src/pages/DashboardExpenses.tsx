@@ -28,6 +28,23 @@ import {
 type UiRole = "owner" | "admin" | "staff" | "client" | "guest";
 
 function getUiRole(): UiRole {
+  // ✅ اقرأ من auth_user أولاً (الأصح) ثم fallback
+  try {
+    const rawAuth = localStorage.getItem("auth_user");
+    if (rawAuth) {
+      const au = JSON.parse(rawAuth);
+      const r = String(au?.role || "")
+        .toLowerCase()
+        .trim();
+      if (r === "owner") return "owner";
+      if (r === "admin") return "admin";
+      if (r === "staff") return "staff";
+      if (r === "client") return "client";
+    }
+  } catch {
+    // ignore
+  }
+
   const raw = (localStorage.getItem("userRole") || "").toLowerCase().trim();
   if (raw === "owner") return "owner";
   if (raw === "admin") return "admin";
@@ -77,7 +94,7 @@ function downloadTextFile(filename: string, content: string) {
 function firebaseMsg(e: any) {
   const msg = String(e?.message || e || "");
   if (msg.includes("Missing or insufficient permissions")) {
-    return "⚠️ لا توجد صلاحيات كافية. تأكد من Firestore Rules + role داخل users/{uid} + تسجيل الدخول.";
+    return "⚠️ لا توجد صلاحيات كافية. تأكد من Firestore Rules + role داخل salons/main/users/{uid} + تسجيل الدخول.";
   }
   if (msg.includes("not-found")) {
     return "⚠️ المسار غير موجود. تأكد من اسم الـ collection ومسار السيرفس.";
@@ -306,50 +323,64 @@ const DashboardExpenses: React.FC = () => {
     note: "",
   });
 
-  // ✅ تحميل الإعدادات مرة واحدة (FIX: get() قد يرجّع Promise)
   useEffect(() => {
-    let mounted = true;
+    const fallbackPays = ["كاش", "شبكة", "تحويل"] as any;
+
+    let unsub: undefined | (() => void);
 
     (async () => {
-      try {
-        const fs = await FinanceSettingsService.get();
+      const fs = await FinanceSettingsService.get();
 
-        const cats = (
-          fs?.expenseCategories?.length ? fs.expenseCategories : ["أخرى"]
+      const cats = (
+        fs?.expenseCategories?.length ? fs.expenseCategories : ["أخرى"]
+      ) as string[];
+
+      const pays = (
+        fs?.paymentMethods?.length ? (fs.paymentMethods as any) : fallbackPays
+      ) as PaymentMethod[];
+
+      setCategories(cats);
+      setPaymentMethods(pays);
+
+      setCategory((prev) =>
+        prev && cats.includes(prev) ? prev : cats[0] || "أخرى"
+      );
+
+      setPaymentMethod((prev) => {
+        const pv = String(prev || "");
+        const ok = pays.some((x) => String(x) === pv);
+        return (ok ? prev : (pays[0] as any)) as PaymentMethod;
+      });
+
+      // ✅ LIVE updates
+      unsub = FinanceSettingsService.subscribe((next) => {
+        const cats2 = (
+          next?.expenseCategories?.length ? next.expenseCategories : ["أخرى"]
         ) as string[];
 
-        const pays = (
-          fs?.paymentMethods?.length
-            ? (fs.paymentMethods as any)
-            : (["كاش"] as any)
+        const pays2 = (
+          next?.paymentMethods?.length
+            ? (next.paymentMethods as any)
+            : fallbackPays
         ) as PaymentMethod[];
 
-        if (!mounted) return;
-
-        setCategories(cats);
-        setPaymentMethods(pays);
+        setCategories(cats2);
+        setPaymentMethods(pays2);
 
         setCategory((prev) =>
-          prev && cats.includes(prev) ? prev : cats[0] || "أخرى"
+          prev && cats2.includes(prev) ? prev : cats2[0] || "أخرى"
         );
-        setPaymentMethod((prev) => (prev ? prev : pays[0]));
-      } catch (e) {
-        console.error("FinanceSettingsService.get() failed:", e);
 
-        if (!mounted) return;
-
-        const cats = ["أخرى"];
-        const pays = ["كاش"] as any as PaymentMethod[];
-
-        setCategories(cats);
-        setPaymentMethods(pays);
-        setCategory((prev) => (prev && cats.includes(prev) ? prev : "أخرى"));
-        setPaymentMethod((prev) => (prev ? prev : pays[0]));
-      }
+        setPaymentMethod((prev) => {
+          const pv = String(prev || "");
+          const ok = pays2.some((x) => String(x) === pv);
+          return (ok ? prev : (pays2[0] as any)) as PaymentMethod;
+        });
+      });
     })();
 
     return () => {
-      mounted = false;
+      if (unsub) unsub();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -522,7 +553,7 @@ const DashboardExpenses: React.FC = () => {
 
   // ====== الفلاتر (للسجل داخل المودال) ======
   const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
+    const queryText = q.trim().toLowerCase();
     return items.filter((e) => {
       if (from && e.date < from) return false;
       if (to && e.date > to) return false;
@@ -530,15 +561,20 @@ const DashboardExpenses: React.FC = () => {
       if (fPayment !== "الكل" && String(e.paymentMethod) !== String(fPayment))
         return false;
 
-      if (query) {
+      if (queryText) {
         const hay = `${e.title} ${e.category} ${e.note || ""}`.toLowerCase();
-        if (!hay.includes(query)) return false;
+        if (!hay.includes(queryText)) return false;
       }
-      // ✅ NEW: فلترة الناقص ملاحظة فقط
+
+      // ✅ فلترة الناقص ملاحظة فقط (هذا الشهر فقط)
       if (onlyMissingNotes) {
+        const monthKey = todayISO().slice(0, 7);
+        if (!(e.date || "").startsWith(monthKey)) return false;
+
         const n = String(e.note ?? "").trim();
         if (n) return false;
       }
+
       return true;
     });
   }, [items, from, to, fCategory, fPayment, q, onlyMissingNotes]);
@@ -566,9 +602,7 @@ const DashboardExpenses: React.FC = () => {
     setNote("");
     setDate(todayISO());
     setCategory(categories[0] || "أخرى");
-    setPaymentMethod(
-      (paymentMethods[0] || ("كاش" as any)) as unknown as PaymentMethod
-    );
+    setPaymentMethod((paymentMethods[0] || "كاش") as any as PaymentMethod);
   };
 
   const addExpense = async () => {
@@ -771,22 +805,22 @@ const DashboardExpenses: React.FC = () => {
     downloadTextFile(filename, csv);
   };
 
-  const addCategoryQuick = async () => {
+  const addCategoryQuick = () => {
     const n = newCategory.trim();
     if (!n) return;
 
     FinanceSettingsService.addCategory(n);
     setNewCategory("");
 
-    // ✅ FIX: get() قد يرجّع Promise
-    const fresh = await FinanceSettingsService.get();
+    (async () => {
+      const fresh = await FinanceSettingsService.get();
+      const cats = (
+        fresh?.expenseCategories?.length ? fresh.expenseCategories : ["أخرى"]
+      ) as string[];
 
-    const cats = (
-      fresh?.expenseCategories?.length ? fresh.expenseCategories : ["أخرى"]
-    ) as string[];
-
-    setCategories(cats);
-    if (!cats.includes(category)) setCategory(cats[0] || "أخرى");
+      setCategories(cats);
+      if (!cats.includes(category)) setCategory(cats[0] || "أخرى");
+    })();
 
     setModalMsg("تمت إضافة التصنيف ✅ (راح ننقله للإعدادات لاحقًا)");
   };
@@ -825,7 +859,60 @@ const DashboardExpenses: React.FC = () => {
 
   return (
     <div className="exp-page">
-      {/* ===== Header + Actions (بدون تكرار) ===== */}
+      {/* ✅ Header ثابت: الأزرار تظهر دائمًا (حل اختفاء التصدير) */}
+      <div className="exp-header">
+        <h1>المصروفات</h1>
+
+        <div className="exp-header-actions">
+          {hasLegacy && !migrated ? (
+            <button
+              className="exp-btn"
+              onClick={migrateLegacyExpensesOnce}
+              disabled={loading}
+              title="ترحيل المصروفات القديمة من LocalStorage إلى Firestore (مرة واحدة)"
+              type="button"
+            >
+              ترحيل من LocalStorage ({legacyCount})
+            </button>
+          ) : null}
+
+          <button
+            className="exp-btn"
+            onClick={loadExpenses}
+            disabled={loading}
+            type="button"
+          >
+            تحديث
+          </button>
+
+          <button
+            className="reports-btn"
+            type="button"
+            onClick={() => {
+              setOnlyMissingNotes(false);
+              setRecordOpen(true);
+            }}
+            disabled={loading}
+          >
+            عرض السجل
+          </button>
+
+          <button
+            className="reports-btn primary"
+            type="button"
+            onClick={() => {
+              // ✅ تصدير يعتمد على filtered الحالية
+              exportCsv();
+            }}
+            disabled={loading}
+            title="CSV"
+          >
+            <FontAwesomeIcon icon={faFileCsv} /> تصدير
+          </button>
+        </div>
+      </div>
+
+      {/* ✅ Alert Card (يظهر إذا فيه ناقص ملاحظات) - بدون ما يتحكم في الأزرار */}
       {missingNotesCountFS > 0 ? (
         <div className="exp-alert-card">
           <div className="exp-alert-left">
@@ -839,18 +926,6 @@ const DashboardExpenses: React.FC = () => {
           </div>
 
           <div className="exp-alert-right">
-            {hasLegacy && !migrated ? (
-              <button
-                className="exp-btn"
-                onClick={migrateLegacyExpensesOnce}
-                disabled={loading}
-                title="ترحيل المصروفات القديمة من LocalStorage إلى Firestore (مرة واحدة)"
-                type="button"
-              >
-                ترحيل من LocalStorage ({legacyCount})
-              </button>
-            ) : null}
-
             <button
               className="reports-btn"
               type="button"
@@ -931,7 +1006,7 @@ const DashboardExpenses: React.FC = () => {
         )}
       </div>
 
-      {/* ===== Main Grid: Add Form فقط ===== */}
+      {/* ===== Main Grid ===== */}
       <div className="exp-grid" style={{ marginTop: 12 }}>
         <div className="exp-card">
           <h3>إضافة مصروف</h3>
@@ -948,7 +1023,6 @@ const DashboardExpenses: React.FC = () => {
 
             <label>
               التصنيف
-              {/* ✅ Custom Dropdown بدل select */}
               <DashDropdown
                 value={category}
                 onChange={(v) => setCategory(v)}
@@ -982,7 +1056,6 @@ const DashboardExpenses: React.FC = () => {
 
             <label>
               طريقة الدفع
-              {/* ✅ Custom Dropdown بدل select */}
               <DashDropdown
                 value={String(paymentMethod)}
                 onChange={(v) =>
@@ -991,7 +1064,11 @@ const DashboardExpenses: React.FC = () => {
                 options={
                   paymentOptionsNoAll.length
                     ? paymentOptionsNoAll
-                    : [{ value: "كاش", label: "كاش" }]
+                    : [
+                        { value: "كاش", label: "كاش" },
+                        { value: "شبكة", label: "شبكة" },
+                        { value: "تحويل", label: "تحويل" },
+                      ]
                 }
                 disabled={loading}
               />
@@ -1226,9 +1303,9 @@ const DashboardExpenses: React.FC = () => {
                   type="button"
                   onClick={exportCsv}
                   disabled={loading}
-                  title="Excel .xlsx"
+                  title="CSV"
                 >
-                  <FontAwesomeIcon icon={faFileCsv} /> تصدير Excel
+                  <FontAwesomeIcon icon={faFileCsv} /> تصدير
                 </button>
 
                 <button
@@ -1263,7 +1340,6 @@ const DashboardExpenses: React.FC = () => {
 
                 <label>
                   التصنيف
-                  {/* ✅ Custom Dropdown بدل select */}
                   <DashDropdown
                     value={fCategory}
                     onChange={(v) => setFCategory(v)}
@@ -1274,7 +1350,6 @@ const DashboardExpenses: React.FC = () => {
 
                 <label>
                   الدفع
-                  {/* ✅ Custom Dropdown بدل select */}
                   <DashDropdown
                     value={fPayment}
                     onChange={(v) => setFPayment(v)}
@@ -1346,7 +1421,6 @@ const DashboardExpenses: React.FC = () => {
 
                         return (
                           <tr key={e.id}>
-                            {/* التاريخ */}
                             <td data-label="التاريخ">
                               {isEdit ? (
                                 <input
@@ -1364,8 +1438,7 @@ const DashboardExpenses: React.FC = () => {
                               )}
                             </td>
 
-                            {/* المصروف */}
-                            <td data-label="التصنيف" className="strong">
+                            <td data-label="المصروف" className="strong">
                               {isEdit ? (
                                 <input
                                   value={editForm.title}
@@ -1382,16 +1455,12 @@ const DashboardExpenses: React.FC = () => {
                               )}
                             </td>
 
-                            {/* التصنيف */}
                             <td data-label="التصنيف">
                               {isEdit ? (
                                 <DashDropdown
                                   value={editForm.category}
                                   onChange={(v) =>
-                                    setEditForm((p) => ({
-                                      ...p,
-                                      category: v,
-                                    }))
+                                    setEditForm((p) => ({ ...p, category: v }))
                                   }
                                   options={
                                     categoryOptionsNoAll.length
@@ -1405,7 +1474,6 @@ const DashboardExpenses: React.FC = () => {
                               )}
                             </td>
 
-                            {/* الدفع */}
                             <td data-label="الدفع">
                               {isEdit ? (
                                 <DashDropdown
@@ -1419,7 +1487,11 @@ const DashboardExpenses: React.FC = () => {
                                   options={
                                     paymentOptionsNoAll.length
                                       ? paymentOptionsNoAll
-                                      : [{ value: "كاش", label: "كاش" }]
+                                      : [
+                                          { value: "كاش", label: "كاش" },
+                                          { value: "شبكة", label: "شبكة" },
+                                          { value: "تحويل", label: "تحويل" },
+                                        ]
                                   }
                                   disabled={loading}
                                 />
@@ -1428,7 +1500,6 @@ const DashboardExpenses: React.FC = () => {
                               )}
                             </td>
 
-                            {/* المبلغ */}
                             <td data-label="المبلغ" className="amount">
                               {isEdit ? (
                                 <input
@@ -1447,7 +1518,6 @@ const DashboardExpenses: React.FC = () => {
                               )}
                             </td>
 
-                            {/* ملاحظات */}
                             <td data-label="ملاحظات" className="muted">
                               {isEdit ? (
                                 <input
@@ -1465,7 +1535,6 @@ const DashboardExpenses: React.FC = () => {
                               )}
                             </td>
 
-                            {/* إجراء */}
                             <td data-label="إجراء">
                               {isEdit ? (
                                 <div className="exp-row-actions">

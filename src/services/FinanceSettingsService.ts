@@ -7,23 +7,11 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
-// ✅ Local Types (حل مشاكل الـ exports + توافق الدفع العربي)
-export type BookingIncomeStatus = "completed" | "confirmed";
-
-export type PaymentMethod =
-  | "كاش"
-  | "شبكة"
-  | "تحويل"
-  | "cash"
-  | "card"
-  | "transfer";
-
-export type FinanceSettings = {
-  expenseCategories: string[];
-  paymentMethods: PaymentMethod[];
-  currency: string; // "SAR"
-  incomeBookingStatuses: BookingIncomeStatus[];
-};
+import type {
+  FinanceSettings,
+  UiPaymentMethod,
+  BookingIncomeStatus,
+} from "../types/finance";
 
 const SALON_ID = "main";
 const DOC_PATH = ["salons", SALON_ID, "settings", "finance"] as const;
@@ -39,7 +27,7 @@ const DEFAULT_CATEGORIES: string[] = [
   "أخرى",
 ];
 
-const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = ["كاش", "شبكة", "تحويل"];
+const DEFAULT_PAYMENT_METHODS: UiPaymentMethod[] = ["كاش", "شبكة", "تحويل"];
 
 const DEFAULT_SETTINGS: FinanceSettings = {
   expenseCategories: DEFAULT_CATEGORIES,
@@ -51,9 +39,9 @@ const DEFAULT_SETTINGS: FinanceSettings = {
 function normalizeStatuses(v: any): BookingIncomeStatus[] {
   if (!Array.isArray(v)) return ["completed"];
   const cleaned = v
-    .map((x: any) => String(x).toLowerCase().trim())
+    .map((x) => String(x).toLowerCase().trim())
     .filter(
-      (x: string) => x === "completed" || x === "confirmed"
+      (x) => x === "completed" || x === "confirmed"
     ) as BookingIncomeStatus[];
   return cleaned.length ? cleaned : ["completed"];
 }
@@ -63,12 +51,12 @@ function sanitize(input: any): FinanceSettings {
 
   const expenseCategories =
     Array.isArray(s.expenseCategories) && s.expenseCategories.length
-      ? (s.expenseCategories as string[])
+      ? s.expenseCategories
       : DEFAULT_SETTINGS.expenseCategories;
 
   const paymentMethods =
     Array.isArray(s.paymentMethods) && s.paymentMethods.length
-      ? (s.paymentMethods as PaymentMethod[])
+      ? (s.paymentMethods as UiPaymentMethod[])
       : DEFAULT_SETTINGS.paymentMethods;
 
   const currency =
@@ -91,7 +79,9 @@ export const FinanceSettingsService = {
     const ref = doc(db, ...DOC_PATH);
     const snap = await getDoc(ref);
 
-    if (!snap.exists()) return DEFAULT_SETTINGS;
+    if (!snap.exists()) {
+      return DEFAULT_SETTINGS;
+    }
 
     return sanitize(snap.data());
   },
@@ -130,10 +120,12 @@ export const FinanceSettingsService = {
     if (!n) return;
 
     const current = await this.get();
-    const exists = current.expenseCategories.some(
-      (c: string) => c.trim().toLowerCase() === n.toLowerCase()
-    );
-    if (exists) return;
+    if (
+      current.expenseCategories.some(
+        (c) => c.trim().toLowerCase() === n.toLowerCase()
+      )
+    )
+      return;
 
     await this.save({
       ...current,
@@ -145,15 +137,13 @@ export const FinanceSettingsService = {
     const current = await this.get();
     await this.save({
       ...current,
-      expenseCategories: current.expenseCategories.filter(
-        (c: string) => c !== name
-      ),
+      expenseCategories: current.expenseCategories.filter((c) => c !== name),
     });
   },
 
   // ===== payment methods =====
   async addPaymentMethod(name: string) {
-    const n = (name || "").trim() as PaymentMethod;
+    const n = (name || "").trim() as UiPaymentMethod;
     if (!n) return;
 
     const current = await this.get();
@@ -165,13 +155,11 @@ export const FinanceSettingsService = {
     });
   },
 
-  async removePaymentMethod(name: PaymentMethod) {
+  async removePaymentMethod(name: UiPaymentMethod) {
     const current = await this.get();
     await this.save({
       ...current,
-      paymentMethods: current.paymentMethods.filter(
-        (p: PaymentMethod) => p !== name
-      ),
+      paymentMethods: current.paymentMethods.filter((p) => p !== name),
     });
   },
 

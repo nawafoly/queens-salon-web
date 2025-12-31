@@ -15,6 +15,12 @@ import { db } from "../services/firebase";
 import "../styles/DashboardEmployees.css";
 import "../styles/DashboardModals.css";
 
+// ✅ Bookings service (matches salons/main/bookings)
+import {
+  listAllBookings,
+  type BookingDocWithId,
+} from "../services/firestoreBookings";
+
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 type StaffRole = "staff" | "reception" | "admin";
 
@@ -28,15 +34,14 @@ type EmployeeDoc = {
   isActive?: boolean;
 };
 
-type BookingDoc = {
+type BookingRow = {
   id: string;
-  name?: string;
-  phone?: string;
-  service?: string;
+  clientName?: string;
+  clientPhone?: string;
+  serviceName?: string;
   date?: string;
   time?: string;
   status?: string;
-  createdAt?: any;
 };
 
 const DEPARTMENTS = [
@@ -47,9 +52,11 @@ const DEPARTMENTS = [
   "قسم الخدمات (الشمع وإزالة الشعر)",
 ];
 
-// ✅ Collections
-const EMPLOYEES_COLLECTION = "employees";
-const STAFF_PUBLIC_COLLECTION = "staff_public"; // ✅ للعرض فقط (للـ reception/staff)
+// ✅ New scoped collections
+const SALON_ID = "main";
+const EMPLOYEES_COLLECTION = ["salons", SALON_ID, "employees"] as const;
+const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
+const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
 
 function readAuthRole(): UiRole {
   try {
@@ -65,6 +72,21 @@ function readAuthRole(): UiRole {
     return "guest";
   } catch {
     return "guest";
+  }
+}
+
+/** ✅ Bootstrap Admin UI check (matches your rules safety emails)
+ * - مهم: Bootstrap Admin فقط اللي يقدر يقرأ/يكتب users حسب Rules
+ */
+function isBootstrapAdminUI(): boolean {
+  try {
+    const raw = JSON.parse(localStorage.getItem("auth_user") || "{}");
+    const email = String(raw?.email || "")
+      .toLowerCase()
+      .trim();
+    return email === "nawafaaa0@gmail.com" || email === "nawafaaa6@gmail.com";
+  } catch {
+    return false;
   }
 }
 
@@ -103,9 +125,10 @@ function isPermissionError(e: any) {
   );
 }
 
-const DashboardEmployees: React.FC = () => {
+const DashboardEmployees = () => {
   const uiRole = useMemo(() => readAuthRole(), []);
   const canManage = uiRole === "owner" || uiRole === "admin"; // ✅ reception عرض فقط
+  const isBootstrap = useMemo(() => isBootstrapAdminUI(), []);
 
   // data
   const [loading, setLoading] = useState(true);
@@ -129,7 +152,7 @@ const DashboardEmployees: React.FC = () => {
 
   const [bookingsOpen, setBookingsOpen] = useState(false);
   const [bookingsLoading, setBookingsLoading] = useState(false);
-  const [lastBookings, setLastBookings] = useState<BookingDoc[]>([]);
+  const [lastBookings, setLastBookings] = useState<BookingRow[]>([]);
 
   const [editForm, setEditForm] = useState({
     name: "",
@@ -149,12 +172,15 @@ const DashboardEmployees: React.FC = () => {
 
       // ✅ 1) Owner/Admin يقرأ من employees
       // ✅ 2) Reception/Staff يقرأ من staff_public (عرض فقط)
-      const preferred = canManage
-        ? EMPLOYEES_COLLECTION
-        : STAFF_PUBLIC_COLLECTION;
+      const preferred = canManage ? "employees" : "staff_public";
 
-      const tryRead = async (colName: string) => {
-        const qy = query(collection(db, colName), orderBy("name", "asc"));
+      const tryRead = async (which: "employees" | "staff_public") => {
+        const colRef =
+          which === "employees"
+            ? collection(db, ...EMPLOYEES_COLLECTION)
+            : collection(db, ...STAFF_PUBLIC_COLLECTION);
+
+        const qy = query(colRef, orderBy("name", "asc"));
         const snap = await getDocs(qy);
 
         const list: EmployeeDoc[] = snap.docs
@@ -167,7 +193,7 @@ const DashboardEmployees: React.FC = () => {
               phone: String(x?.phone || "").trim() || undefined,
               department: String(x?.department || "").trim() || undefined,
               role: toStaffRole(x?.role),
-              isActive: x?.isActive !== false,
+              isActive: x?.isActive !== false && x?.active !== false,
             };
           })
           .filter((e) => e.name);
@@ -176,13 +202,13 @@ const DashboardEmployees: React.FC = () => {
       };
 
       try {
-        const list = await tryRead(preferred);
+        const list = await tryRead(preferred as any);
         setEmployees(list);
         return;
       } catch (e: any) {
         // ✅ لو حاول employees وفشل بسبب Permissions نجرب staff_public تلقائيًا
-        if (preferred === EMPLOYEES_COLLECTION && isPermissionError(e)) {
-          const list = await tryRead(STAFF_PUBLIC_COLLECTION);
+        if (preferred === "employees" && isPermissionError(e)) {
+          const list = await tryRead("staff_public");
           setEmployees(list);
           setErr(
             "تنبيه: تم عرض البيانات من staff_public بسبب صلاحيات القراءة على employees."
@@ -206,36 +232,32 @@ const DashboardEmployees: React.FC = () => {
   }, []);
 
   // =========================
-  // ✅ Load bookings counts (optional / best-effort)
+  // ✅ Load bookings counts (best-effort) from salons/main/bookings
   // =========================
   const loadCounts = async () => {
     try {
-      // لو تبغى تشددها: خلها فقط للـ owner/admin/reception
-      // (لأن staff غالبًا ما يحتاج يشوف أرقام الجميع)
+      // ✅ staff/client/guest ما يحتاجون يشوفون أرقام الجميع
       if (uiRole === "staff" || uiRole === "guest" || uiRole === "client") {
         setCounts({});
         return;
       }
 
-      const qy = query(
-        collection(db, "bookings"),
-        orderBy("createdAt", "desc"),
-        limit(500)
-      );
-      const snap = await getDocs(qy);
-
+      const all = await listAllBookings(); // ✅ salons/main/bookings
       const map: Record<string, number> = {};
-      snap.docs.forEach((d) => {
-        const x: any = d.data();
-        const uid = String(x?.employeeUid || "").trim();
-        const st = String(x?.status || "pending").toLowerCase();
 
-        if (!uid) return;
+      all.forEach((b: BookingDocWithId) => {
+        const st = String(b.status || "pending").toLowerCase();
         if (st === "cancelled") return;
 
-        map[uid] = (map[uid] || 0) + 1;
+        // ✅ اعتمد employeeId إن وجد، وإلا fallback على الاسم
+        const empKey =
+          (b.employeeId || "").trim() || (b.employeeName || "").trim();
+        if (!empKey) return;
+
+        map[empKey] = (map[empKey] || 0) + 1;
       });
 
+      // ✅ مهم: employees.id هو uid، بس بعض الحجوزات القديمة قد تكون بدون employeeId
       setCounts(map);
     } catch {
       setCounts({});
@@ -248,47 +270,52 @@ const DashboardEmployees: React.FC = () => {
   }, []);
 
   // =========================
-  // ✅ Sync employees from users (Owner/Admin only)
+  // ✅ Sync employees from users (Bootstrap only)
   // =========================
   const syncFromUsers = async () => {
     if (!canManage) return;
 
+    // ✅ حسب الـ Rules: قراءة users مسموحة للـ Bootstrap فقط
+    if (!isBootstrap) {
+      alert("❌ المزامنة تتطلب دخول Bootstrap Admin حسب الصلاحيات الحالية.");
+      return;
+    }
+
     try {
-      // ✅ نجلب حسابات الموظفات فقط
-      // ملاحظة: حذفنا orderBy لتقليل مشاكل الـ Index
+      // ✅ نجلب حسابات الموظفات فقط من salons/main/users
       const qy = query(
-        collection(db, "users"),
+        collection(db, ...USERS_COLLECTION),
         where("role", "in", ["staff", "reception", "admin"]),
         limit(200)
       );
       const snap = await getDocs(qy);
 
-      // ✅ نكتب/نحدث employees/{uid}
       const ops = snap.docs.map(async (d) => {
         const x: any = d.data();
         const uid = d.id;
 
-        const name = String(x?.displayName || "").trim() || "موظفة";
+        const name = String(x?.displayName || x?.name || "").trim() || "موظفة";
         const email = String(x?.email || "").trim() || undefined;
         const role = toStaffRole(x?.role);
         const active = x?.active !== false;
 
+        // ✅ employees scoped
         await setDoc(
-          doc(db, EMPLOYEES_COLLECTION, uid),
+          doc(db, ...EMPLOYEES_COLLECTION, uid),
           {
             name,
             email,
             role,
             isActive: active,
+            department: String(x?.department || "").trim() || undefined,
             updatedAt: new Date().toISOString(),
           },
           { merge: true }
         );
 
-        // ✅ (اختياري قوي) تحديث staff_public للعرض
-        // إذا تبي reception/staff يشوفون نفس القائمة بدون صلاحيات employees
+        // ✅ staff_public scoped (للـ reception/staff عرض فقط)
         await setDoc(
-          doc(db, STAFF_PUBLIC_COLLECTION, uid),
+          doc(db, ...STAFF_PUBLIC_COLLECTION, uid),
           {
             name,
             email,
@@ -321,10 +348,12 @@ const DashboardEmployees: React.FC = () => {
       if (
         departmentFilter !== "all" &&
         (e.department || "") !== departmentFilter
-      )
+      ) {
         return false;
-      if (roleFilter !== "all" && String(e.role || "staff") !== roleFilter)
+      }
+      if (roleFilter !== "all" && String(e.role || "staff") !== roleFilter) {
         return false;
+      }
 
       const active = e.isActive !== false;
       if (statusFilter === "active" && !active) return false;
@@ -365,7 +394,7 @@ const DashboardEmployees: React.FC = () => {
   };
 
   // =========================
-  // ✅ Save Edit (employees + users sync)
+  // ✅ Save Edit (employees + staff_public + users(bootstrap only))
   // =========================
   const handleSaveEdit = async () => {
     if (!canManage || !selected) return;
@@ -391,21 +420,7 @@ const DashboardEmployees: React.FC = () => {
       setEditSaving(true);
 
       await setDoc(
-        doc(db, EMPLOYEES_COLLECTION, selected.id),
-        {
-          name,
-          phone,
-          department,
-          role,
-          isActive,
-          updatedAt: new Date().toISOString(),
-        },
-        { merge: true }
-      );
-
-      // ✅ حافظنا على تحديث staff_public عشان القراءة للعرض تكون سليمة
-      await setDoc(
-        doc(db, STAFF_PUBLIC_COLLECTION, selected.id),
+        doc(db, ...EMPLOYEES_COLLECTION, selected.id),
         {
           name,
           phone,
@@ -418,15 +433,32 @@ const DashboardEmployees: React.FC = () => {
       );
 
       await setDoc(
-        doc(db, "users", selected.id),
+        doc(db, ...STAFF_PUBLIC_COLLECTION, selected.id),
         {
-          displayName: name,
+          name,
+          phone,
+          department,
           role,
-          active: isActive,
+          isActive,
           updatedAt: new Date().toISOString(),
         },
         { merge: true }
       );
+
+      // ✅ update user profile (scoped) — ONLY if bootstrap admin
+      if (isBootstrap) {
+        await setDoc(
+          doc(db, ...USERS_COLLECTION, selected.id),
+          {
+            displayName: name,
+            role,
+            active: isActive,
+            department,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      }
 
       setEmployees((prev) =>
         prev.map((x) =>
@@ -448,7 +480,7 @@ const DashboardEmployees: React.FC = () => {
   };
 
   // =========================
-  // ✅ Load last 5 bookings for employee
+  // ✅ Load last 5 bookings for employee (from listAllBookings)
   // =========================
   const openBookings = async (emp: EmployeeDoc) => {
     setSelected(emp);
@@ -457,29 +489,40 @@ const DashboardEmployees: React.FC = () => {
     setLastBookings([]);
 
     try {
-      const qy = query(
-        collection(db, "bookings"),
-        where("employeeUid", "==", emp.id),
-        orderBy("createdAt", "desc"),
-        limit(5)
-      );
-      const snap = await getDocs(qy);
+      const all = await listAllBookings();
 
-      const list: BookingDoc[] = snap.docs.map((d) => {
-        const x: any = d.data();
-        return {
-          id: d.id,
-          name: x?.name,
-          phone: x?.phone,
-          service: x?.serviceName || x?.service || "",
-          date: x?.date,
-          time: x?.time,
-          status: x?.status,
-          createdAt: x?.createdAt,
-        };
-      });
+      const empKey = emp.id; // uid
+      const empName = (emp.name || "").trim();
 
-      setLastBookings(list);
+      const rows = all
+        .filter((b) => {
+          // match by employeeId first, else by employeeName
+          const byId = String(b.employeeId || "").trim();
+          const byName = String(b.employeeName || "").trim();
+          return (
+            (byId && byId === empKey) ||
+            (!byId && empName && byName === empName)
+          );
+        })
+        .sort((a, b) => {
+          // sort by date/time desc (best-effort)
+          const da = String(a.date || "");
+          const dbb = String(b.date || "");
+          if (da !== dbb) return dbb.localeCompare(da);
+          return String(b.time || "").localeCompare(String(a.time || ""));
+        })
+        .slice(0, 5)
+        .map((b) => ({
+          id: b.id,
+          clientName: b.clientName,
+          clientPhone: b.clientPhone,
+          serviceName: b.serviceName,
+          date: b.date,
+          time: b.time,
+          status: b.status,
+        }));
+
+      setLastBookings(rows);
     } catch {
       setLastBookings([]);
     } finally {
@@ -488,439 +531,458 @@ const DashboardEmployees: React.FC = () => {
   };
 
   return (
-    <div className="employees-page">
-      <div className="dashboard-card">
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>
-              إدارة الموظفات
-            </h1>
-            <p style={{ marginTop: 8, opacity: 0.85 }}>
-              عرض الموظفات من Firestore (Collection:{" "}
-              <b>
-                {canManage ? EMPLOYEES_COLLECTION : STAFF_PUBLIC_COLLECTION}
-              </b>
-              )
-            </p>
-          </div>
-
+    <div className="dashboard-skin">
+      <div className="employees-page">
+        <div className="dashboard-card">
+          {/* Header */}
           <div
             style={{
               display: "flex",
-              gap: 10,
-              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
               flexWrap: "wrap",
             }}
           >
-            <button className="dash-btn" type="button" onClick={loadEmployees}>
-              تحديث
-            </button>
+            <div>
+              <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900 }}>
+                إدارة الموظفات
+              </h1>
+              <p style={{ marginTop: 8, opacity: 0.85 }}>
+                عرض الموظفات من Firestore (Collection:{" "}
+                <b>
+                  {canManage
+                    ? "salons/main/employees"
+                    : "salons/main/staff_public"}
+                </b>
+                )
+              </p>
+            </div>
 
-            {canManage ? (
-              <button
-                className="dash-btn primary"
-                type="button"
-                onClick={syncFromUsers}
-              >
-                مزامنة من الحسابات
-              </button>
-            ) : (
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
               <button
                 className="dash-btn"
                 type="button"
-                disabled
-                title="reception عرض فقط"
+                onClick={loadEmployees}
               >
-                مزامنة من الحسابات
+                تحديث
               </button>
+
+              {canManage ? (
+                <button
+                  className="dash-btn primary"
+                  type="button"
+                  onClick={syncFromUsers}
+                  title={
+                    !isBootstrap
+                      ? "يتطلب دخول Bootstrap Admin حسب الصلاحيات"
+                      : "مزامنة من الحسابات"
+                  }
+                >
+                  مزامنة من الحسابات
+                </button>
+              ) : (
+                <button
+                  className="dash-btn"
+                  type="button"
+                  disabled
+                  title="reception عرض فقط"
+                >
+                  مزامنة من الحسابات
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div
+            style={{
+              marginTop: 10,
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ fontWeight: 900 }}>المعروض: {stats.total}</div>
+            <div style={{ fontWeight: 900 }}>النشطة: {stats.active}</div>
+            <div style={{ fontWeight: 900 }}>الموقوفة: {stats.inactive}</div>
+          </div>
+
+          {/* Filters */}
+          <div className="emp-filters">
+            <input
+              className="dashboard-input emp-input"
+              placeholder="بحث بالاسم / القسم / الإيميل / الجوال…"
+              value={qText}
+              onChange={(e) => setQText(e.target.value)}
+            />
+
+            <select
+              className="dashboard-input emp-input"
+              value={departmentFilter}
+              onChange={(e) => setDepartmentFilter(e.target.value)}
+            >
+              <option value="all">كل الأقسام</option>
+              {DEPARTMENTS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="dashboard-input emp-input"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+            >
+              <option value="all">كل الأدوار</option>
+              <option value="staff">موظفة</option>
+              <option value="reception">استقبال</option>
+              <option value="admin">مديرة</option>
+            </select>
+
+            <select
+              className="dashboard-input emp-input"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">كل الحالات</option>
+              <option value="active">نشطة</option>
+              <option value="inactive">موقوفة</option>
+            </select>
+          </div>
+
+          {/* Table */}
+          <div style={{ marginTop: 14 }}>
+            {loading ? (
+              <p style={{ opacity: 0.75 }}>جاري التحميل…</p>
+            ) : err ? (
+              <p style={{ color: "#991b1b", fontWeight: 900 }}>❌ {err}</p>
+            ) : filtered.length === 0 ? (
+              <p style={{ opacity: 0.75 }}>لا توجد موظفات حالياً.</p>
+            ) : (
+              <div className="table-responsive">
+                <table className="ov-table">
+                  <thead>
+                    <tr>
+                      <th>الاسم</th>
+                      <th className="emp-center">القسم</th>
+                      <th className="emp-center">الدور</th>
+                      <th className="emp-center">الجوال</th>
+                      <th className="emp-center">الحالة</th>
+                      <th className="emp-center">الحجوزات</th>
+                      <th className="emp-center">إجراءات</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {filtered.map((e) => {
+                      const empKey = e.id || e.name;
+                      const c = counts[empKey] || counts[e.name] || 0;
+                      const hasBookings = c > 0;
+
+                      return (
+                        <tr
+                          key={e.id}
+                          className={hasBookings ? "emp-row-linked" : ""}
+                        >
+                          <td className="emp-name">{e.name}</td>
+                          <td className="emp-center">{e.department || "—"}</td>
+                          <td className="emp-center">{roleLabel(e.role)}</td>
+                          <td className="emp-center" dir="ltr">
+                            {e.phone || "—"}
+                          </td>
+                          <td className="emp-center">
+                            <span
+                              className={`emp-pill ${statusPillClass(
+                                e.isActive
+                              )}`}
+                            >
+                              {statusLabel(e.isActive)}
+                            </span>
+                          </td>
+                          <td className="emp-center">
+                            <span
+                              className={`emp-chip ${
+                                hasBookings ? "" : "warn"
+                              }`}
+                            >
+                              {c}
+                            </span>
+                          </td>
+                          <td className="emp-center">
+                            <div className="emp-actions">
+                              <button
+                                className="dash-btn"
+                                type="button"
+                                onClick={() => openBookings(e)}
+                              >
+                                آخر 5 حجوزات
+                              </button>
+
+                              {canManage ? (
+                                <button
+                                  className="dash-btn primary"
+                                  type="button"
+                                  onClick={() => openEdit(e)}
+                                >
+                                  تعديل
+                                </button>
+                              ) : (
+                                <button
+                                  className="dash-btn"
+                                  type="button"
+                                  disabled
+                                  title="reception عرض فقط"
+                                >
+                                  تعديل
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                <div className="emp-footnote">
+                  ملاحظة: الاستقبال (reception) عرض فقط. التعديل والمزامنة للـ
+                  Owner/Admin. (تحديث users يتطلب Bootstrap)
+                </div>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Stats */}
-        <div
-          style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}
-        >
-          <div style={{ fontWeight: 900 }}>المعروض: {stats.total}</div>
-          <div style={{ fontWeight: 900 }}>النشطة: {stats.active}</div>
-          <div style={{ fontWeight: 900 }}>الموقوفة: {stats.inactive}</div>
-        </div>
-
-        {/* Filters */}
-        <div className="emp-filters">
-          <input
-            className="dashboard-input emp-input"
-            placeholder="بحث بالاسم / القسم / الإيميل / الجوال…"
-            value={qText}
-            onChange={(e) => setQText(e.target.value)}
-          />
-
-          <select
-            className="dashboard-input emp-input"
-            value={departmentFilter}
-            onChange={(e) => setDepartmentFilter(e.target.value)}
-          >
-            <option value="all">كل الأقسام</option>
-            {DEPARTMENTS.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="dashboard-input emp-input"
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-          >
-            <option value="all">كل الأدوار</option>
-            <option value="staff">موظفة</option>
-            <option value="reception">استقبال</option>
-            <option value="admin">مديرة</option>
-          </select>
-
-          <select
-            className="dashboard-input emp-input"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">كل الحالات</option>
-            <option value="active">نشطة</option>
-            <option value="inactive">موقوفة</option>
-          </select>
-        </div>
-
-        {/* Table */}
-        <div style={{ marginTop: 14 }}>
-          {loading ? (
-            <p style={{ opacity: 0.75 }}>جاري التحميل…</p>
-          ) : err ? (
-            <p style={{ color: "#991b1b", fontWeight: 900 }}>❌ {err}</p>
-          ) : filtered.length === 0 ? (
-            <p style={{ opacity: 0.75 }}>لا توجد موظفات حالياً.</p>
-          ) : (
-            <div className="table-responsive">
-              <table className="ov-table">
-                <thead>
-                  <tr>
-                    <th>الاسم</th>
-                    <th className="emp-center">القسم</th>
-                    <th className="emp-center">الدور</th>
-                    <th className="emp-center">الجوال</th>
-                    <th className="emp-center">الحالة</th>
-                    <th className="emp-center">الحجوزات</th>
-                    <th className="emp-center">إجراءات</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {filtered.map((e) => {
-                    const c = counts[e.id] || 0;
-                    const hasBookings = c > 0;
-
-                    return (
-                      <tr
-                        key={e.id}
-                        className={hasBookings ? "emp-row-linked" : ""}
-                      >
-                        <td className="emp-name">{e.name}</td>
-
-                        <td className="emp-center">{e.department || "—"}</td>
-
-                        <td className="emp-center">{roleLabel(e.role)}</td>
-
-                        <td className="emp-center" dir="ltr">
-                          {e.phone || "—"}
-                        </td>
-
-                        <td className="emp-center">
-                          <span
-                            className={`emp-pill ${statusPillClass(
-                              e.isActive
-                            )}`}
-                          >
-                            {statusLabel(e.isActive)}
-                          </span>
-                        </td>
-
-                        <td className="emp-center">
-                          <span
-                            className={`emp-chip ${hasBookings ? "" : "warn"}`}
-                          >
-                            {c}
-                          </span>
-                        </td>
-
-                        <td className="emp-center">
-                          <div className="emp-actions">
-                            <button
-                              className="dash-btn"
-                              type="button"
-                              onClick={() => openBookings(e)}
-                            >
-                              آخر 5 حجوزات
-                            </button>
-
-                            {canManage ? (
-                              <button
-                                className="dash-btn primary"
-                                type="button"
-                                onClick={() => openEdit(e)}
-                              >
-                                تعديل
-                              </button>
-                            ) : (
-                              <button
-                                className="dash-btn"
-                                type="button"
-                                disabled
-                                title="reception عرض فقط"
-                              >
-                                تعديل
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              <div className="emp-footnote">
-                ملاحظة: الاستقبال (reception) عرض فقط. التعديل والمزامنة للـ
-                Owner/Admin.
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* =========================
-          ✅ Edit Modal
-      ========================= */}
-      {editOpen && selected && (
-        <div className="modal-overlay" onClick={() => setEditOpen(false)}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <div className="modal-title-wrap">
-                <div className="modal-icon">👩‍💼</div>
-                <h3 className="modal-title">تعديل الموظفة</h3>
-              </div>
-
-              <button
-                className="modal-close"
-                type="button"
-                onClick={() => setEditOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <div className="emp-modal-grid">
-                <div>
-                  <label className="emp-label">الاسم</label>
-                  <input
-                    className="dashboard-input emp-input"
-                    value={editForm.name}
-                    onChange={(e) =>
-                      setEditForm((p) => ({ ...p, name: e.target.value }))
-                    }
-                    disabled={!canManage || editSaving}
-                  />
+        {/* =========================
+            ✅ Edit Modal
+        ========================= */}
+        {editOpen && selected && (
+          <div className="modal-overlay" onClick={() => setEditOpen(false)}>
+            <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <div className="modal-title-wrap">
+                  <div className="modal-icon">👩‍💼</div>
+                  <h3 className="modal-title">تعديل الموظفة</h3>
                 </div>
 
-                <div className="emp-two">
-                  <div>
-                    <label className="emp-label">القسم</label>
-                    <select
-                      className="dashboard-input emp-input"
-                      value={editForm.department}
-                      onChange={(e) =>
-                        setEditForm((p) => ({
-                          ...p,
-                          department: e.target.value,
-                        }))
-                      }
-                      disabled={!canManage || editSaving}
-                    >
-                      {DEPARTMENTS.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <button
+                  className="modal-close"
+                  type="button"
+                  onClick={() => setEditOpen(false)}
+                >
+                  ✕
+                </button>
+              </div>
 
+              <div className="modal-body">
+                <div className="emp-modal-grid">
                   <div>
-                    <label className="emp-label">الجوال</label>
+                    <label className="emp-label">الاسم</label>
                     <input
                       className="dashboard-input emp-input"
-                      value={editForm.phone}
+                      value={editForm.name}
                       onChange={(e) =>
-                        setEditForm((p) => ({ ...p, phone: e.target.value }))
+                        setEditForm((p) => ({ ...p, name: e.target.value }))
                       }
                       disabled={!canManage || editSaving}
-                      placeholder="05xxxxxxxx"
                     />
                   </div>
-                </div>
 
-                <div className="emp-two">
-                  <div>
-                    <label className="emp-label">الدور</label>
-                    <select
-                      className="dashboard-input emp-input"
-                      value={editForm.role}
-                      onChange={(e) =>
-                        setEditForm((p) => ({
-                          ...p,
-                          role: e.target.value as StaffRole,
-                        }))
-                      }
-                      disabled={!canManage || editSaving}
-                    >
-                      <option value="staff">موظفة</option>
-                      <option value="reception">استقبال</option>
-                      <option value="admin">مديرة</option>
-                    </select>
+                  <div className="emp-two">
+                    <div>
+                      <label className="emp-label">القسم</label>
+                      <select
+                        className="dashboard-input emp-input"
+                        value={editForm.department}
+                        onChange={(e) =>
+                          setEditForm((p) => ({
+                            ...p,
+                            department: e.target.value,
+                          }))
+                        }
+                        disabled={!canManage || editSaving}
+                      >
+                        {DEPARTMENTS.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="emp-label">الجوال</label>
+                      <input
+                        className="dashboard-input emp-input"
+                        value={editForm.phone}
+                        onChange={(e) =>
+                          setEditForm((p) => ({ ...p, phone: e.target.value }))
+                        }
+                        disabled={!canManage || editSaving}
+                        placeholder="05xxxxxxxx"
+                      />
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="emp-label">الحالة</label>
-                    <select
-                      className="dashboard-input emp-input"
-                      value={editForm.isActive ? "on" : "off"}
-                      onChange={(e) =>
-                        setEditForm((p) => ({
-                          ...p,
-                          isActive: e.target.value === "on",
-                        }))
-                      }
+                  <div className="emp-two">
+                    <div>
+                      <label className="emp-label">الدور</label>
+                      <select
+                        className="dashboard-input emp-input"
+                        value={editForm.role}
+                        onChange={(e) =>
+                          setEditForm((p) => ({
+                            ...p,
+                            role: e.target.value as StaffRole,
+                          }))
+                        }
+                        disabled={!canManage || editSaving}
+                      >
+                        <option value="staff">موظفة</option>
+                        <option value="reception">استقبال</option>
+                        <option value="admin">مديرة</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="emp-label">الحالة</label>
+                      <select
+                        className="dashboard-input emp-input"
+                        value={editForm.isActive ? "on" : "off"}
+                        onChange={(e) =>
+                          setEditForm((p) => ({
+                            ...p,
+                            isActive: e.target.value === "on",
+                          }))
+                        }
+                        disabled={!canManage || editSaving}
+                      >
+                        <option value="on">نشطة</option>
+                        <option value="off">موقوفة</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {editMsg && <div className="emp-modal-hint">{editMsg}</div>}
+
+                  <div className="emp-modal-actions">
+                    <button
+                      className={`dash-btn primary ${
+                        editSaving ? "is-disabled" : ""
+                      }`}
+                      type="button"
+                      onClick={handleSaveEdit}
                       disabled={!canManage || editSaving}
                     >
-                      <option value="on">نشطة</option>
-                      <option value="off">موقوفة</option>
-                    </select>
+                      {editSaving ? "جاري الحفظ…" : "حفظ"}
+                    </button>
+
+                    <button
+                      className="dash-btn"
+                      type="button"
+                      onClick={() => setEditOpen(false)}
+                    >
+                      إغلاق
+                    </button>
                   </div>
-                </div>
 
-                {editMsg && <div className="emp-modal-hint">{editMsg}</div>}
-
-                <div className="emp-modal-actions">
-                  <button
-                    className={`dash-btn primary ${
-                      editSaving ? "is-disabled" : ""
-                    }`}
-                    type="button"
-                    onClick={handleSaveEdit}
-                    disabled={!canManage || editSaving}
-                  >
-                    {editSaving ? "جاري الحفظ…" : "حفظ"}
-                  </button>
-
-                  <button
-                    className="dash-btn"
-                    type="button"
-                    onClick={() => setEditOpen(false)}
-                  >
-                    إغلاق
-                  </button>
-                </div>
-
-                <div className="emp-modal-hint">
-                  * يتم حفظ التعديل في <b>employees</b> + <b>staff_public</b> +
-                  مزامنة <b>users</b>
+                  <div className="emp-modal-hint">
+                    * يتم حفظ التعديل في <b>salons/main/employees</b> +{" "}
+                    <b>salons/main/staff_public</b>
+                    {isBootstrap && (
+                      <>
+                        {" "}
+                        + مزامنة <b>salons/main/users</b>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* =========================
-          ✅ Bookings Modal (Last 5)
-      ========================= */}
-      {bookingsOpen && selected && (
-        <div className="modal-overlay" onClick={() => setBookingsOpen(false)}>
-          <div
-            className="modal-box emp-bookings-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-head">
-              <div className="modal-title-wrap">
-                <div className="modal-icon">📅</div>
-                <div>
-                  <h3 className="modal-title">آخر 5 حجوزات</h3>
-                  <div className="emp-bookings-sub">
-                    للموظفة: <b>{selected.name}</b>
+        {/* =========================
+            ✅ Bookings Modal (Last 5)
+        ========================= */}
+        {bookingsOpen && selected && (
+          <div className="modal-overlay" onClick={() => setBookingsOpen(false)}>
+            <div
+              className="modal-box emp-bookings-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div className="modal-title-wrap">
+                  <div className="modal-icon">📅</div>
+                  <div>
+                    <h3 className="modal-title">آخر 5 حجوزات</h3>
+                    <div className="emp-bookings-sub">
+                      للموظفة: <b>{selected.name}</b>
+                    </div>
                   </div>
                 </div>
+
+                <button
+                  className="modal-close"
+                  type="button"
+                  onClick={() => setBookingsOpen(false)}
+                >
+                  ✕
+                </button>
               </div>
 
-              <button
-                className="modal-close"
-                type="button"
-                onClick={() => setBookingsOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <div className="emp-bookings-wrap">
-                {bookingsLoading ? (
-                  <p style={{ opacity: 0.75 }}>جاري التحميل…</p>
-                ) : lastBookings.length === 0 ? (
-                  <p style={{ opacity: 0.75 }}>
-                    لا توجد حجوزات (أو تحتاج Index/Permissions للقراءة).
-                  </p>
-                ) : (
-                  <table className="emp-bookings-table">
-                    <thead>
-                      <tr>
-                        <th>العميلة</th>
-                        <th className="emp-center">التاريخ</th>
-                        <th className="emp-center">الوقت</th>
-                        <th>الخدمة</th>
-                        <th className="emp-center">الحالة</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lastBookings.map((b) => (
-                        <tr key={b.id}>
-                          <td>{b.name || "—"}</td>
-                          <td className="emp-center">{b.date || "—"}</td>
-                          <td className="emp-center">{b.time || "—"}</td>
-                          <td>{b.service || "—"}</td>
-                          <td className="emp-center">
-                            <span className="emp-bk-pill">
-                              {String(b.status || "pending")}
-                            </span>
-                          </td>
+              <div className="modal-body">
+                <div className="emp-bookings-wrap">
+                  {bookingsLoading ? (
+                    <p style={{ opacity: 0.75 }}>جاري التحميل…</p>
+                  ) : lastBookings.length === 0 ? (
+                    <p style={{ opacity: 0.75 }}>لا توجد حجوزات.</p>
+                  ) : (
+                    <table className="emp-bookings-table">
+                      <thead>
+                        <tr>
+                          <th>العميلة</th>
+                          <th className="emp-center">التاريخ</th>
+                          <th className="emp-center">الوقت</th>
+                          <th>الخدمة</th>
+                          <th className="emp-center">الحالة</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                      </thead>
+                      <tbody>
+                        {lastBookings.map((b) => (
+                          <tr key={b.id}>
+                            <td>{b.clientName || "—"}</td>
+                            <td className="emp-center">{b.date || "—"}</td>
+                            <td className="emp-center">{b.time || "—"}</td>
+                            <td>{b.serviceName || "—"}</td>
+                            <td className="emp-center">
+                              <span className="emp-bk-pill">
+                                {String(b.status || "pending")}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
 
-                <div className="emp-modal-hint">
-                  * هذه نافذة “عرض فقط”. تعديل الحجوزات يتم من صفحة الحجوزات.
+                  <div className="emp-modal-hint">
+                    * هذه نافذة “عرض فقط”. تعديل الحجوزات يتم من صفحة الحجوزات.
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

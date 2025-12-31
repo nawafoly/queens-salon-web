@@ -1,26 +1,6 @@
 // ✅ src/types/finance.ts
 
-export type PaymentMethod =
-  | "cash"
-  | "card"
-  | "transfer"
-  | "other"
-  | "كاش"
-  | "شبكة"
-  | "تحويل";
-
-export type BookingIncomeStatus =
-  | "pending"
-  | "confirmed"
-  | "completed"
-  | "cancelled";
-
-export type FinanceSettings = {
-  expenseCategories: string[];
-  paymentMethods: PaymentMethod[];
-  currency: string; // "SAR"
-  incomeBookingStatuses: BookingIncomeStatus[]; // ["completed"] by default
-};
+export type PaymentMethod = "cash" | "card" | "transfer" | "other";
 
 /** مصروف */
 export type Expense = {
@@ -73,3 +53,20 @@ export type IncomeItem = {
   /** millis */
   createdAt: number;
 };
+
+// ===== Settings Types (Salon UI) =====
+
+/** طرق الدفع في الإعدادات (واجهة المستخدم) */
+export type UiPaymentMethod = "كاش" | "شبكة" | "تحويل";
+
+/** حالات الحجز التي تُحسب كدخل */
+export type BookingIncomeStatus = "confirmed" | "completed";
+
+/** إعدادات المالية */
+export type FinanceSettings = {
+  expenseCategories: string[];
+  paymentMethods: UiPaymentMethod[];
+  currency: string;
+  incomeBookingStatuses: BookingIncomeStatus[];
+};
+

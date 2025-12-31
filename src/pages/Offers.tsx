@@ -1,10 +1,8 @@
 // src/pages/Offers.tsx
 import { useEffect, useMemo, useState } from "react";
-import emma from "../assets/images/emma.jpg";
-import hair from "../assets/images/hair.png";
-import skin from "../assets/images/skin.jpg";
-// import nails from "../assets/images/nails.jpg"; // (غير مستخدم حالياً)
-
+import emma from "../assets/images/emma.webp";
+import hair from "../assets/images/hair.webp";
+import skin from "../assets/images/skin.webp";
 import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -219,8 +217,7 @@ const Offers = () => {
 
                 <Link
                   to="/booking"
-                  className="btn btn-primary btn-lg rounded-pill mt-4"
-                >
+                  className="offers-cta-btn mt-4">
                   احجزي الآن
                 </Link>
               </div>
@@ -343,9 +340,8 @@ const Offers = () => {
                       {/* ✅ Toggle (disabled on expired) */}
                       <button
                         type="button"
-                        className={`toggle-details ${
-                          expired ? "disabled" : ""
-                        }`}
+                        className={`toggle-details ${expired ? "disabled" : ""
+                          }`}
                         disabled={expired}
                         onClick={() =>
                           setOpenOfferId(expanded ? null : offer.id)
@@ -388,11 +384,8 @@ const Offers = () => {
                 التجميل بأسعار مميزة
               </p>
 
-              <div className="d-flex gap-3 justify-content-center flex-wrap">
-                <Link
-                  to="/booking"
-                  className="btn btn-primary btn-lg rounded-pill"
-                >
+              <div className="cta-actions">
+                <Link to="/booking" className="btn btn-primary btn-lg rounded-pill">
                   <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
                   احجزي موعدك
                 </Link>

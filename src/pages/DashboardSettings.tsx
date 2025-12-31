@@ -1,5 +1,5 @@
 // src/pages/DashboardSettings.tsx
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import {
   onAuthStateChanged,
@@ -36,9 +36,7 @@ type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
  * ونحوّلها فورًا لصيغة UI role (lowercase)
  */
 function mapFirestoreRoleToUi(roleRaw: string): UiRole {
-  const role = String(roleRaw || "")
-    .toLowerCase()
-    .trim();
+  const role = String(roleRaw || "").toLowerCase().trim();
   if (role === "owner") return "owner";
   if (role === "admin") return "admin";
   if (role === "reception") return "reception";
@@ -49,9 +47,7 @@ function mapFirestoreRoleToUi(roleRaw: string): UiRole {
 
 /** ✅ أهم قرار: نخزن role في Firestore lowercase دائمًا */
 function toFirestoreRole(role: UiRole) {
-  const r = String(role || "guest")
-    .toLowerCase()
-    .trim();
+  const r = String(role || "guest").toLowerCase().trim();
   if (r === "owner") return "owner";
   if (r === "admin") return "admin";
   if (r === "reception") return "reception";
@@ -63,12 +59,10 @@ function toFirestoreRole(role: UiRole) {
 /** ✅ Secondary Auth: إنشاء مستخدم بدون ما يطلعك من حساب الإدارة */
 function getSecondaryAuth() {
   const options = (auth as any)?.app?.options;
-  if (!options)
-    throw new Error("Missing Firebase app options from auth.app.options");
+  if (!options) throw new Error("Missing Firebase app options from auth.app.options");
 
   const name = "secondary-auth-app";
-  const app =
-    getApps().find((a) => a.name === name) || initializeApp(options, name);
+  const app = getApps().find((a) => a.name === name) || initializeApp(options, name);
   return getAuth(app);
 }
 
@@ -96,9 +90,7 @@ const DashboardSettings: React.FC = () => {
   const [tab, setTab] = useState<"salon" | "sections" | "policies">("salon");
 
   // ✅ أولاً: نعرض الكاش مباشرة (سريع)
-  const [settings, setSettings] = useState<AppSettings>(() =>
-    AppSettingsService.getCached()
-  );
+  const [settings, setSettings] = useState<AppSettings>(() => AppSettingsService.getCached());
   const [savedMsg, setSavedMsg] = useState<string>("");
 
   // ✅ Modal: Advanced Settings (داخل صفحة الإعدادات)
@@ -121,9 +113,7 @@ const DashboardSettings: React.FC = () => {
   const [createLoading, setCreateLoading] = useState(false);
   const [createMsg, setCreateMsg] = useState<string>("");
 
-  const allowAdminManageUsers = Boolean(
-    (settings as any)?.policies?.allowAdminManageUsers
-  );
+  const allowAdminManageUsers = Boolean((settings as any)?.policies?.allowAdminManageUsers);
 
   const canManageUsers = useMemo(() => {
     if (isOwner) return true;
@@ -307,11 +297,7 @@ const DashboardSettings: React.FC = () => {
       const secondary = getSecondaryAuth();
 
       // ✅ إنشاء user في Auth (بدون ما يطلعك من حساب الإدارة لأننا نستخدم secondary)
-      const cred = await createUserWithEmailAndPassword(
-        secondary,
-        email,
-        password
-      );
+      const cred = await createUserWithEmailAndPassword(secondary, email, password);
       const uid = cred.user.uid;
 
       // ✅ إنشاء وثيقة users/{uid} (role lowercase)
@@ -333,21 +319,14 @@ const DashboardSettings: React.FC = () => {
       await signOut(secondary).catch(() => {});
 
       setCreateMsg("✅ تم إنشاء الحساب بنجاح");
-      setCreateForm({
-        displayName: "",
-        email: "",
-        password: "",
-        role: "staff",
-      });
+      setCreateForm({ displayName: "", email: "", password: "", role: "staff" });
 
       await loadUsers();
     } catch (e: any) {
       console.error("create user error:", e);
       const m = String(e?.message || "");
-      if (m.includes("email-already-in-use"))
-        setCreateMsg("❌ هذا الإيميل مستخدم مسبقًا");
-      else if (m.includes("weak-password"))
-        setCreateMsg("❌ كلمة المرور ضعيفة (جرّب 6 أحرف أو أكثر)");
+      if (m.includes("email-already-in-use")) setCreateMsg("❌ هذا الإيميل مستخدم مسبقًا");
+      else if (m.includes("weak-password")) setCreateMsg("❌ كلمة المرور ضعيفة (جرّب 6 أحرف أو أكثر)");
       else setCreateMsg("❌ تعذر إنشاء الحساب. تأكد من الصلاحيات/Rules");
     } finally {
       setCreateLoading(false);
@@ -407,15 +386,11 @@ const DashboardSettings: React.FC = () => {
             </button>
 
             <button
-              className={`exp-btn primary ${
-                !hasAdminPower ? "is-disabled" : ""
-              }`}
+              className={`exp-btn primary ${!hasAdminPower ? "is-disabled" : ""}`}
               onClick={handleSave}
               disabled={!hasAdminPower}
               type="button"
-              title={
-                !hasAdminPower ? "تحتاج صلاحية Owner/Admin" : "حفظ الإعدادات"
-              }
+              title={!hasAdminPower ? "تحتاج صلاحية Owner/Admin" : "حفظ الإعدادات"}
             >
               حفظ
             </button>
@@ -462,10 +437,7 @@ const DashboardSettings: React.FC = () => {
                   value={(settings as any)?.salonName || ""}
                   onChange={(e) =>
                     hasAdminPower &&
-                    setSettings({
-                      ...(settings as any),
-                      salonName: e.target.value,
-                    })
+                    setSettings({ ...(settings as any), salonName: e.target.value })
                   }
                   disabled={!hasAdminPower}
                 />
@@ -477,8 +449,7 @@ const DashboardSettings: React.FC = () => {
                   className="settings-input"
                   value={(settings as any)?.phone || ""}
                   onChange={(e) =>
-                    hasAdminPower &&
-                    setSettings({ ...(settings as any), phone: e.target.value })
+                    hasAdminPower && setSettings({ ...(settings as any), phone: e.target.value })
                   }
                   disabled={!hasAdminPower}
                 />
@@ -490,19 +461,14 @@ const DashboardSettings: React.FC = () => {
                   className="settings-input"
                   value={(settings as any)?.city || ""}
                   onChange={(e) =>
-                    hasAdminPower &&
-                    setSettings({ ...(settings as any), city: e.target.value })
+                    hasAdminPower && setSettings({ ...(settings as any), city: e.target.value })
                   }
                   disabled={!hasAdminPower}
                 />
               </div>
             </div>
 
-            {!hasAdminPower && (
-              <div className="settings-note">
-                * للتعديل تحتاج صلاحية Owner/Admin.
-              </div>
-            )}
+            {!hasAdminPower && <div className="settings-note">* للتعديل تحتاج صلاحية Owner/Admin.</div>}
           </div>
         )}
 
@@ -538,7 +504,8 @@ const DashboardSettings: React.FC = () => {
 
             <div className="settings-footnote">
               * هذه مربوطة فعليًا بالـ Dashboard (الروابط + الراوتس).
-              <br />* صفحة الإعدادات لا يمكن إخفاؤها (مقصودة).
+              <br />
+              * صفحة الإعدادات لا يمكن إخفاؤها (مقصودة).
             </div>
           </div>
         )}
@@ -553,9 +520,7 @@ const DashboardSettings: React.FC = () => {
                 <input
                   className="settings-check"
                   type="checkbox"
-                  checked={
-                    !!(settings as any)?.policies?.allowStaffChangeStatus
-                  }
+                  checked={!!(settings as any)?.policies?.allowStaffChangeStatus}
                   onChange={() => togglePolicy("allowStaffChangeStatus")}
                   disabled={!hasAdminPower}
                 />
@@ -566,9 +531,7 @@ const DashboardSettings: React.FC = () => {
                 <input
                   className="settings-check"
                   type="checkbox"
-                  checked={
-                    !!(settings as any)?.policies?.allowReceptionChangeStatus
-                  }
+                  checked={!!(settings as any)?.policies?.allowReceptionChangeStatus}
                   onChange={() => togglePolicy("allowReceptionChangeStatus")}
                   disabled={!hasAdminPower}
                 />
@@ -598,36 +561,26 @@ const DashboardSettings: React.FC = () => {
             </div>
 
             <div className="settings-footnote">
-              * هذا الخيار يتحكم إذا الـ Admin يقدر ينشئ/يدير حسابات من
-              الإعدادات المتقدمة.
+              * هذا الخيار يتحكم إذا الـ Admin يقدر ينشئ/يدير حسابات من الإعدادات المتقدمة.
             </div>
           </div>
         )}
 
         {/* ✅ Advanced Settings Modal */}
         {isAdvancedOpen && (
-          <div
-            className="modal-overlay"
-            onClick={() => setIsAdvancedOpen(false)}
-          >
+          <div className="modal-overlay" onClick={() => setIsAdvancedOpen(false)}>
             <div className="modal-box" onClick={(e) => e.stopPropagation()}>
               <div className="modal-head">
                 <div className="modal-title-wrap">
                   <div className="modal-icon">⚙️</div>
                   <h3 className="modal-title">
-                    {advancedView === "main"
-                      ? "إعدادات متقدمة"
-                      : "إدارة الحسابات"}
+                    {advancedView === "main" ? "إعدادات متقدمة" : "إدارة الحسابات"}
                   </h3>
                 </div>
 
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   {advancedView === "users" && (
-                    <button
-                      className="dash-btn"
-                      type="button"
-                      onClick={() => setAdvancedView("main")}
-                    >
+                    <button className="dash-btn" type="button" onClick={() => setAdvancedView("main")}>
                       رجوع
                     </button>
                   )}
@@ -648,28 +601,21 @@ const DashboardSettings: React.FC = () => {
                 {advancedView === "main" ? (
                   <>
                     <p style={{ margin: 0, opacity: 0.85 }}>
-                      هنا نضيف كل إعدادات النظام بدون ما نرجع نلعب في كود
-                      الصفحات.
+                      هنا نضيف كل إعدادات النظام بدون ما نرجع نلعب في كود الصفحات.
                     </p>
 
                     <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                       <button
-                        className={`exp-btn primary ${
-                          !hasAdminPower ? "is-disabled" : ""
-                        }`}
+                        className={`exp-btn primary ${!hasAdminPower ? "is-disabled" : ""}`}
                         disabled={!hasAdminPower}
                         type="button"
-                        onClick={() =>
-                          alert("قريبًا: إدارة الأدوار والصلاحيات")
-                        }
+                        onClick={() => alert("قريبًا: إدارة الأدوار والصلاحيات")}
                       >
                         إدارة الأدوار والصلاحيات
                       </button>
 
                       <button
-                        className={`exp-btn ${
-                          !hasAdminPower ? "is-disabled" : ""
-                        }`}
+                        className={`exp-btn ${!hasAdminPower ? "is-disabled" : ""}`}
                         disabled={!hasAdminPower}
                         type="button"
                         onClick={() => alert("قريبًا: إعدادات الحجوزات")}
@@ -678,9 +624,7 @@ const DashboardSettings: React.FC = () => {
                       </button>
 
                       <button
-                        className={`exp-btn ${
-                          !hasAdminPower ? "is-disabled" : ""
-                        }`}
+                        className={`exp-btn ${!hasAdminPower ? "is-disabled" : ""}`}
                         disabled={!hasAdminPower}
                         type="button"
                         onClick={() => alert("قريبًا: إعدادات الداشبورد")}
@@ -689,9 +633,7 @@ const DashboardSettings: React.FC = () => {
                       </button>
 
                       <button
-                        className={`exp-btn primary ${
-                          !canManageUsers ? "is-disabled" : ""
-                        }`}
+                        className={`exp-btn primary ${!canManageUsers ? "is-disabled" : ""}`}
                         disabled={!canManageUsers}
                         type="button"
                         onClick={async () => {
@@ -711,8 +653,7 @@ const DashboardSettings: React.FC = () => {
 
                     {hasAdminPower && !canManageUsers && isAdmin && (
                       <div className="settings-note" style={{ marginTop: 10 }}>
-                        * Admin: فعّل “السماح للـ Admin بإدارة حسابات
-                        المستخدمين” من تبويب صلاحيات النظام.
+                        * Admin: فعّل “السماح للـ Admin بإدارة حسابات المستخدمين” من تبويب صلاحيات النظام.
                       </div>
                     )}
                   </>
@@ -720,8 +661,7 @@ const DashboardSettings: React.FC = () => {
                   <>
                     {!canManageUsers ? (
                       <div className="settings-note">
-                        غير مصرح. هذه الميزة للـ Owner، أو Admin إذا تم تفعيل
-                        allowAdminManageUsers.
+                        غير مصرح. هذه الميزة للـ Owner، أو Admin إذا تم تفعيل allowAdminManageUsers.
                       </div>
                     ) : (
                       <>
@@ -735,10 +675,7 @@ const DashboardSettings: React.FC = () => {
                                 className="settings-input"
                                 value={createForm.displayName}
                                 onChange={(e) =>
-                                  setCreateForm((p) => ({
-                                    ...p,
-                                    displayName: e.target.value,
-                                  }))
+                                  setCreateForm((p) => ({ ...p, displayName: e.target.value }))
                                 }
                                 placeholder="مثال: سارة"
                                 disabled={createLoading}
@@ -751,10 +688,7 @@ const DashboardSettings: React.FC = () => {
                                 className="settings-input"
                                 value={createForm.email}
                                 onChange={(e) =>
-                                  setCreateForm((p) => ({
-                                    ...p,
-                                    email: e.target.value,
-                                  }))
+                                  setCreateForm((p) => ({ ...p, email: e.target.value }))
                                 }
                                 placeholder="name@example.com"
                                 disabled={createLoading}
@@ -768,10 +702,7 @@ const DashboardSettings: React.FC = () => {
                                 type="password"
                                 value={createForm.password}
                                 onChange={(e) =>
-                                  setCreateForm((p) => ({
-                                    ...p,
-                                    password: e.target.value,
-                                  }))
+                                  setCreateForm((p) => ({ ...p, password: e.target.value }))
                                 }
                                 placeholder="6 أحرف أو أكثر"
                                 disabled={createLoading}
@@ -784,10 +715,7 @@ const DashboardSettings: React.FC = () => {
                                 className="settings-input"
                                 value={createForm.role}
                                 onChange={(e) =>
-                                  setCreateForm((p) => ({
-                                    ...p,
-                                    role: e.target.value as UiRole,
-                                  }))
+                                  setCreateForm((p) => ({ ...p, role: e.target.value as UiRole }))
                                 }
                                 disabled={createLoading}
                               >
@@ -808,22 +736,16 @@ const DashboardSettings: React.FC = () => {
                             }}
                           >
                             <button
-                              className={`exp-btn primary ${
-                                createLoading ? "is-disabled" : ""
-                              }`}
+                              className={`exp-btn primary ${createLoading ? "is-disabled" : ""}`}
                               type="button"
                               disabled={createLoading}
                               onClick={handleCreateUser}
                             >
-                              {createLoading
-                                ? "جاري الإنشاء..."
-                                : "إنشاء الحساب"}
+                              {createLoading ? "جاري الإنشاء..." : "إنشاء الحساب"}
                             </button>
 
                             <button
-                              className={`exp-btn ${
-                                usersLoading ? "is-disabled" : ""
-                              }`}
+                              className={`exp-btn ${usersLoading ? "is-disabled" : ""}`}
                               type="button"
                               disabled={usersLoading}
                               onClick={loadUsers}
@@ -832,60 +754,35 @@ const DashboardSettings: React.FC = () => {
                             </button>
 
                             {createMsg && (
-                              <span
-                                className="settings-alert success"
-                                style={{ marginInlineStart: 6 }}
-                              >
+                              <span className="settings-alert success" style={{ marginInlineStart: 6 }}>
                                 {createMsg}
                               </span>
                             )}
                           </div>
 
-                          <div
-                            className="settings-footnote"
-                            style={{ marginTop: 10 }}
-                          >
-                            * يتم إنشاء الحساب في Firebase Auth + حفظ الدور داخل
-                            Firestore في users/{`{uid}`}.
-                            <br />* لا يتم تسجيل خروجك لأننا نستخدم Secondary
-                            Auth.
+                          <div className="settings-footnote" style={{ marginTop: 10 }}>
+                            * يتم إنشاء الحساب في Firebase Auth + حفظ الدور داخل Firestore في users/{`{uid}`}.
+                            <br />
+                            * لا يتم تسجيل خروجك لأننا نستخدم Secondary Auth.
                           </div>
                         </div>
 
                         <div className="settings-card">
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                            }}
-                          >
-                            <h3
-                              className="settings-title"
-                              style={{ margin: 0 }}
-                            >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <h3 className="settings-title" style={{ margin: 0 }}>
                               قائمة الحسابات
                             </h3>
                             <span style={{ opacity: 0.7, fontSize: 12 }}>
-                              {usersLoading
-                                ? "جاري التحميل..."
-                                : `${users.length} حساب`}
+                              {usersLoading ? "جاري التحميل..." : `${users.length} حساب`}
                             </span>
                           </div>
 
                           {usersLoading ? (
-                            <p style={{ margin: "10px 0 0", opacity: 0.75 }}>
-                              تحميل…
-                            </p>
+                            <p style={{ margin: "10px 0 0", opacity: 0.75 }}>تحميل…</p>
                           ) : users.length === 0 ? (
-                            <p style={{ margin: "10px 0 0", opacity: 0.75 }}>
-                              لا توجد حسابات لعرضها.
-                            </p>
+                            <p style={{ margin: "10px 0 0", opacity: 0.75 }}>لا توجد حسابات لعرضها.</p>
                           ) : (
-                            <div
-                              className="table-responsive"
-                              style={{ marginTop: 10 }}
-                            >
+                            <div className="table-responsive" style={{ marginTop: 10 }}>
                               <table className="ov-table">
                                 <thead>
                                   <tr>
@@ -909,13 +806,10 @@ const DashboardSettings: React.FC = () => {
                             </div>
                           )}
 
-                          <div
-                            className="settings-footnote"
-                            style={{ marginTop: 10 }}
-                          >
+                          <div className="settings-footnote" style={{ marginTop: 10 }}>
                             * المرحلة الحالية: إنشاء الحسابات + عرضها.
-                            <br />* المرحلة القادمة: تعديل الدور/تعطيل
-                            الحساب/إعادة تعيين كلمة المرور.
+                            <br />
+                            * المرحلة القادمة: تعديل الدور/تعطيل الحساب/إعادة تعيين كلمة المرور.
                           </div>
                         </div>
                       </>

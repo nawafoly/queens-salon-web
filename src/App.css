@@ -38,10 +38,7 @@ body {
   --white: #ffffff;
   --black: #000000;
 
-  /* رمادي */
-  --gray: #f5f5f5;
-  --dark-gray: #333333;
-}
+
 
 /* === Global Styles === */
 body {
@@ -249,4 +246,3 @@ p {
     font-size: 0.9rem;
   }
 }
-

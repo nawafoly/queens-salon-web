@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import ava from '../assets/images/ava.jpg';
-import emma from '../assets/images/emma.jpg';
-import sophie from '../assets/images/sophie.jpg';
+import ava from "../assets/images/ava.webp";
+import emma from "../assets/images/emma.webp";
+import sophie from "../assets/images/sophie.webp";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faStar, faQuoteRight, faUser, faEnvelope, faPaperPlane } from '@fortawesome/free-solid-svg-icons';
 
@@ -109,26 +109,27 @@ const Reviews: React.FC = () => {
   };
 
   const renderStars = (rating: number) => {
-    const stars = [];
+    const stars: React.ReactElement[] = [];
     for (let i = 0; i < 5; i++) {
       stars.push(
-        <FontAwesomeIcon 
-          key={i} 
-          icon={faStar} 
-          className={i < rating ? 'star-filled' : 'star-empty'} 
+        <FontAwesomeIcon
+          key={i}
+          icon={faStar}
+          className={i < rating ? "star-filled" : "star-empty"}
         />
       );
     }
     return stars;
   };
 
+
   // تنسيق التاريخ بالعربية
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      year: 'numeric' as const, 
-      month: 'long' as const, 
-      day: 'numeric' as const 
+    const options: Intl.DateTimeFormatOptions = {
+      year: 'numeric' as const,
+      month: 'long' as const,
+      day: 'numeric' as const
     };
     return date.toLocaleDateString('ar-SA', options);
   };
@@ -140,7 +141,7 @@ const Reviews: React.FC = () => {
         <p className="reviews-subtitle text-center mb-5">
           اطلعي على تجارب عميلاتنا وشاركينا رأيك في خدماتنا
         </p>
-        
+
         <div className="row">
           <div className="col-lg-8 mb-5">
             <div className="reviews-list">
@@ -176,11 +177,11 @@ const Reviews: React.FC = () => {
               ))}
             </div>
           </div>
-          
+
           <div className="col-lg-4">
             <div className="review-form-container">
               <h2 className="review-form-title mb-4">شاركينا رأيك</h2>
-              
+
               <form className="review-form" onSubmit={handleSubmit}>
                 <div className="mb-3">
                   <label htmlFor="name" className="form-label">الاسم</label>
@@ -200,7 +201,7 @@ const Reviews: React.FC = () => {
                     />
                   </div>
                 </div>
-                
+
                 <div className="mb-3">
                   <label htmlFor="email" className="form-label">البريد الإلكتروني</label>
                   <div className="input-group">
@@ -219,7 +220,7 @@ const Reviews: React.FC = () => {
                     />
                   </div>
                 </div>
-                
+
                 <div className="mb-3">
                   <label className="form-label">التقييم</label>
                   <div className="rating-selector">
@@ -234,7 +235,7 @@ const Reviews: React.FC = () => {
                     ))}
                   </div>
                 </div>
-                
+
                 <div className="mb-4">
                   <label htmlFor="review" className="form-label">رأيك</label>
                   <textarea
@@ -248,7 +249,7 @@ const Reviews: React.FC = () => {
                     required
                   ></textarea>
                 </div>
-                
+
                 <button type="submit" className="btn btn-primary rounded-pill w-100">
                   <FontAwesomeIcon icon={faPaperPlane} className="me-2" />
                   إرسال التقييم

@@ -86,6 +86,19 @@ function getAuthUser(): AuthUser | null {
   }
 }
 
+// ✅ ثابت للصالون
+const SALON_ID = "main";
+
+// ✅ توحيد المسارات حسب منهجنا
+function staffPublicCol() {
+  return collection(db, "salons", SALON_ID, "staff_public");
+}
+
+function supplyRequestsCol() {
+  // ✅ بدل root supplyRequests
+  return collection(db, "salons", SALON_ID, "supplyRequests");
+}
+
 export default function EmployeePortal() {
   const authUser = useMemo(() => getAuthUser(), []);
 
@@ -109,7 +122,7 @@ export default function EmployeePortal() {
 
     try {
       const qStaff = query(
-        collection(db, "salons", "main", "staff_public"),
+        staffPublicCol(),
         where("active", "==", true),
         orderBy("name")
       );
@@ -128,14 +141,14 @@ export default function EmployeePortal() {
     }
   };
 
-  // ===== تحميل الطلبات =====
+  // ===== تحميل الطلبات لموظفة واحدة =====
   const loadRequestsFor = async (uid: string) => {
     setLoading(true);
     setErrorMsg("");
 
     try {
       const qReq = query(
-        collection(db, "supplyRequests"),
+        supplyRequestsCol(),
         where("employeeUid", "==", uid),
         orderBy("createdAt", "desc")
       );
@@ -149,20 +162,19 @@ export default function EmployeePortal() {
       setRequests(list);
     } catch (e) {
       setErrorMsg("تعذر تحميل الطلبات");
+      setRequests([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // ===== تحميل كل الطلبات (للإدارة) =====
   const loadAllRequests = async () => {
     setLoading(true);
     setErrorMsg("");
 
     try {
-      const qReq = query(
-        collection(db, "supplyRequests"),
-        orderBy("createdAt", "desc")
-      );
+      const qReq = query(supplyRequestsCol(), orderBy("createdAt", "desc"));
 
       const snap = await getDocs(qReq);
       const list = snap.docs.map((d) => ({
@@ -173,6 +185,7 @@ export default function EmployeePortal() {
       setRequests(list);
     } catch (e) {
       setErrorMsg("تعذر تحميل الطلبات");
+      setRequests([]);
     } finally {
       setLoading(false);
     }
@@ -190,6 +203,7 @@ export default function EmployeePortal() {
     return loadAllRequests();
   };
 
+  // ===== تحميل أولي =====
   useEffect(() => {
     if (!authUser) return;
 
@@ -201,6 +215,31 @@ export default function EmployeePortal() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ✅ لما الإدارة تغيّر الموظفة من القائمة -> حدّث الطلبات تلقائيًا
+  useEffect(() => {
+    if (!authUser) return;
+    if (!canManageView) return;
+
+    if (selectedStaffUid !== "__ALL__") {
+      loadRequestsFor(selectedStaffUid);
+    } else {
+      loadAllRequests();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStaffUid]);
+
+  // ✅ حماية: لو ما فيه مستخدم (بعد الهوكس عشان ما نكسر قواعد React Hooks)
+  if (!authUser) {
+    return (
+      <div className="ep-wrap">
+        <div className="ep-card">
+          <h3>غير مصرح</h3>
+          <p>لا يوجد مستخدم مسجل دخول. سجّل دخول ثم جرّب.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="ep-wrap">

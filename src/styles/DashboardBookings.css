@@ -4,10 +4,11 @@
    ✅ Scoped داخل .bookings-page فقط
 ========================= */
 
+/* ✅ مهم: لا نعمل خلفية هنا لأن DashboardSkin هو اللي يتحكم */
 .bookings-page {
-  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
-  min-height: 100vh;
-  padding: 18px 0 18px 0;
+  background: transparent;
+  min-height: auto;
+  padding: 0;
   overflow-x: hidden;
   font-family: "Tajawal", sans-serif;
 }
@@ -89,11 +90,7 @@
   flex-wrap: wrap;
 }
 
-/* Stats row container */
-.bookings-page .row {
-  width: min(1180px, calc(100% - 28px));
-  margin: 0 auto;
-}
+/* ✅ حذفنا بلوك .bookings-page .row لأنه يكسر Bootstrap grid */
 
 /* stat-card fallback */
 .bookings-page .stat-card {
@@ -178,7 +175,7 @@
 }
 
 /* form-control داخل الصفحة فقط */
- .bookings-page .form-control {
+.bookings-page .form-control {
   border-radius: 12px !important;
   border: 1px solid rgba(0, 0, 0, 0.10) !important;
   padding: 10px 12px !important;
@@ -266,15 +263,15 @@
   font-size: 22px;
   font-weight: 900;
   color: #7c3aed !important;
-   }
+}
 
-   .value1 {
-    font-size: 22px;
-    font-weight: 900;
-    color: #2e0c6a !important;
-     }
+.value1 {
+  font-size: 22px;
+  font-weight: 900;
+  color: #2e0c6a !important;
+}
 
-     /* Status Select – Dashboard Style */
+/* Status Select – Dashboard Style */
 .bk-field .bk-select {
   width: 100%;
   height: 42px;
@@ -297,5 +294,3 @@
   border-color: #8b5cf6;
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
 }
-
-

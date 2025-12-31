@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 const ALL_BOOKINGS_KEY = "allBookings";

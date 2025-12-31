@@ -24,7 +24,7 @@
   --bs-body-bg: transparent;
 
   --bs-light: rgba(255, 255, 255, 0.55);
-  --bs-dark: #3a2a42;
+
 }
 
 /* 🚫 منع Bootstrap من تلوين nav-link داخل الداشبورد */
@@ -64,7 +64,8 @@
 
   --line: rgba(120, 80, 170, 0.12);
 
-  overflow: visible; /* ✅ لا نحط overflow هنا عشان sticky يشتغل */
+  overflow: visible;
+  /* ✅ لا نحط overflow هنا عشان sticky يشتغل */
 }
 
 /* ✅ مهم: أي overflow على الأب يكسر sticky */
@@ -91,7 +92,9 @@
   padding: 18px 0;
 }
 
-.dashboard-skin * { box-sizing: border-box; }
+.dashboard-skin * {
+  box-sizing: border-box;
+}
 
 /* =========================
    ✅ Loading
@@ -111,7 +114,12 @@
   border-top-color: rgba(90, 60, 150, 0.45);
   animation: dashspin 1s linear infinite;
 }
-@keyframes dashspin { to { transform: rotate(360deg); } }
+
+@keyframes dashspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 /* =========================
    ✅ Layout
@@ -206,12 +214,16 @@
   color: rgba(70, 50, 95, 0.82);
   transition: transform .15s ease, background .15s ease;
 }
+
 .dashboard-skin .dash-topbar-toggle:hover {
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.75);
 }
+
 @media (max-width: 767px) {
-  .dashboard-skin .dash-topbar-toggle { display: inline-flex; }
+  .dashboard-skin .dash-topbar-toggle {
+    display: inline-flex;
+  }
 }
 
 /* =========================
@@ -284,7 +296,11 @@
 }
 
 /* Nav */
-.dashboard-skin .sidebar-nav { margin-top: 12px; padding: 6px; }
+.dashboard-skin .sidebar-nav {
+  margin-top: 12px;
+  padding: 6px;
+}
+
 .dashboard-skin .sidebar-nav ul {
   margin: 0;
   padding: 0;
@@ -338,6 +354,7 @@
   align-items: center;
   gap: 8px;
 }
+
 .dashboard-skin .dash-badge {
   min-width: 22px;
   height: 22px;
@@ -363,7 +380,10 @@
   z-index: 9998;
   backdrop-filter: blur(2px);
 }
-.dashboard-skin .dash-mobile-close { display: none; }
+
+.dashboard-skin .dash-mobile-close {
+  display: none;
+}
 
 @media (min-width: 768px) {
   .dashboard-skin .dashboard-sidebar {
@@ -389,7 +409,10 @@
     border-radius: var(--radius-xl);
     overflow-y: auto;
   }
-  .dashboard-skin .dashboard-sidebar.is-open { transform: translateX(0); }
+
+  .dashboard-skin .dashboard-sidebar.is-open {
+    transform: translateX(0);
+  }
 
   .dashboard-skin .dash-mobile-close {
     display: inline-flex;
@@ -408,7 +431,9 @@
     z-index: 2;
   }
 
-  .dashboard-skin .dashboard-main { padding: 14px; }
+  .dashboard-skin .dashboard-main {
+    padding: 14px;
+  }
 }
 
 /* =========================
@@ -422,10 +447,9 @@
 }
 
 /* =========================================
-   ✅ Status Badges (حبوب ناعمة)
-   استخدم: className="status-badge confirmed|pending|cancelled|completed"
+   ✅ Status Badges
 ========================================= */
-.dashboard-skin .status-badge{
+.dashboard-skin .status-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -434,47 +458,42 @@
   font-size: 14px;
   font-weight: 800;
   line-height: 1;
-  border: 1px solid rgba(0,0,0,0.07);
-  box-shadow: 0 10px 22px rgba(0,0,0,0.05);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
   white-space: nowrap;
 }
 
-.dashboard-skin .status-badge.confirmed{
+.dashboard-skin .status-badge.confirmed {
   background: #E8F8EE;
   color: #147A3D;
-  border-color: rgba(20,122,61,0.18);
+  border-color: rgba(20, 122, 61, 0.18);
 }
 
-.dashboard-skin .status-badge.pending{
+.dashboard-skin .status-badge.pending {
   background: #FFF2DD;
   color: #A45400;
-  border-color: rgba(164,84,0,0.18);
+  border-color: rgba(164, 84, 0, 0.18);
 }
 
-.dashboard-skin .status-badge.cancelled{
+.dashboard-skin .status-badge.cancelled {
   background: #FFE6E6;
   color: #B42318;
-  border-color: rgba(180,35,24,0.18);
+  border-color: rgba(180, 35, 24, 0.18);
 }
 
-.dashboard-skin .status-badge.completed{
+.dashboard-skin .status-badge.completed {
   background: #EDEBFF;
   color: #4C1D95;
-  border-color: rgba(76,29,149,0.18);
+  border-color: rgba(76, 29, 149, 0.18);
 }
 
 /* =========================
-   ✅ Buttons 
-   Small: .dash-btn
-   Large: .exp-btn
-   ✅ Scoped: .dashboard-skin فقط
+   ✅ Buttons (dash-btn / exp-btn)
 ========================= */
-
-/* Base (shared vibe) */
 .dashboard-skin .dash-btn,
-.dashboard-skin .exp-btn{
+.dashboard-skin .exp-btn {
   border: 1px solid rgba(124, 58, 237, 0.16);
-  background: rgba(255,255,255,0.92);
+  background: rgba(255, 255, 255, 0.92);
   color: #3f3d56;
   border-radius: 12px;
 
@@ -491,28 +510,26 @@
 }
 
 .dashboard-skin .dash-btn:hover,
-.dashboard-skin .exp-btn:hover{
+.dashboard-skin .exp-btn:hover {
   background: #f4f2fd;
   transform: translateY(-1px);
   border-color: rgba(124, 58, 237, 0.26);
 }
 
-/* Sizes (difference only) */
-.dashboard-skin .dash-btn{
-  padding: 8px 12px;          /* small */
+.dashboard-skin .dash-btn {
+  padding: 8px 12px;
   min-height: 38px;
 }
 
-.dashboard-skin .exp-btn{
-  padding: 11px 16px;         /* large */
+.dashboard-skin .exp-btn {
+  padding: 11px 16px;
   min-height: 44px;
-  border-radius: 16px;        /* أكبر شوي مثل روحك */
+  border-radius: 16px;
   font-weight: 900;
 }
 
-/* Primary (same vibe) */
 .dashboard-skin .dash-btn.primary,
-.dashboard-skin .exp-btn.primary{
+.dashboard-skin .exp-btn.primary {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -525,65 +542,61 @@
 }
 
 .dashboard-skin .dash-btn.primary:hover,
-.dashboard-skin .exp-btn.primary:hover{
+.dashboard-skin .exp-btn.primary:hover {
   background: rgba(139, 92, 246, 0.14);
   border-color: rgba(139, 92, 246, 0.28);
 }
 
 .dashboard-skin .dash-btn.primary:active,
-.dashboard-skin .exp-btn.primary:active{
+.dashboard-skin .exp-btn.primary:active {
   background: rgba(139, 92, 246, 0.18);
 }
 
 .dashboard-skin .dash-btn.primary:focus-visible,
-.dashboard-skin .exp-btn.primary:focus-visible{
+.dashboard-skin .exp-btn.primary:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.22);
 }
 
 .dashboard-skin .dash-btn svg,
-.dashboard-skin .exp-btn svg{
+.dashboard-skin .exp-btn svg {
   font-size: 13px;
   opacity: 0.9;
 }
 
-/* Ghost (اختياري لو تستخدمه) */
 .dashboard-skin .dash-btn.ghost,
-.dashboard-skin .exp-btn.ghost{
-  background: rgba(255,255,255,0.70);
+.dashboard-skin .exp-btn.ghost {
+  background: rgba(255, 255, 255, 0.70);
 }
 
-/* Danger (اختياري) */
 .dashboard-skin .dash-btn.danger,
-.dashboard-skin .exp-btn.danger{
+.dashboard-skin .exp-btn.danger {
   background: rgba(239, 68, 68, 0.10);
   color: #991b1b;
   border-color: rgba(239, 68, 68, 0.22);
 }
 
 .dashboard-skin .dash-btn.danger:hover,
-.dashboard-skin .exp-btn.danger:hover{
+.dashboard-skin .exp-btn.danger:hover {
   background: rgba(239, 68, 68, 0.14);
   border-color: rgba(239, 68, 68, 0.30);
 }
 
-/* Small utility (اختياري) */
-.dashboard-skin .dash-btn.sm{
+.dashboard-skin .dash-btn.sm {
   padding: 6px 10px;
   font-size: 12.5px;
   min-height: 34px;
 }
 
 /* =========================
-   ✅ Custom Dropdown: Clients Sort (مثل DashboardClients)
-   ✅ Scoped داخل الداشبورد فقط
+   ✅ Custom Dropdown: Clients Sort
 ========================= */
-.dashboard-skin .cl-sort-wrap{
+.dashboard-skin .cl-sort-wrap {
   position: relative;
   flex: 0 0 auto;
 }
 
-.dashboard-skin .cl-sort-btn{
+.dashboard-skin .cl-sort-btn {
   width: 180px;
   display: inline-flex;
   align-items: center;
@@ -592,272 +605,20 @@
   padding-right: 34px;
 }
 
-.dashboard-skin .cl-sort-caret{
+.dashboard-skin .cl-sort-caret {
   position: absolute;
   right: 12px;
   top: 50%;
   width: 8px;
   height: 8px;
   transform: translateY(-55%) rotate(45deg);
-  border-right: 2px solid rgba(124,58,237,0.9);
-  border-bottom: 2px solid rgba(124,58,237,0.9);
-}
-
-.dashboard-skin .cl-sort-menu{
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 220px;
-  max-height: 220px;
-  overflow: auto;
-
-  background: rgba(255,255,255,0.98);
-  border: 1px solid rgba(124,58,237,0.18);
-  border-radius: 14px;
-  box-shadow: 0 18px 40px rgba(105, 60, 160, 0.16);
-  backdrop-filter: blur(10px);
-  padding: 6px;
-  z-index: 99999;
-}
-
-.dashboard-skin .cl-sort-item{
-  width: 100%;
-  text-align: right;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: transparent;
-  font-family: "Tajawal", sans-serif;
-  font-size: 14px;
-  font-weight: 800;
-  color: rgba(58,47,68,0.88);
-  cursor: pointer;
-  transition: .15s ease;
-}
-
-.dashboard-skin .cl-sort-item:hover{
-  background: rgba(124,58,237,0.10);
-  border-color: rgba(124,58,237,0.18);
-  color: #5b21b6;
-}
-
-.dashboard-skin .cl-sort-item.is-active{
-  background: linear-gradient(135deg, rgba(124,58,237,0.18), rgba(167,139,250,0.20));
-  border-color: rgba(124,58,237,0.22);
-  color: #4c1d95;
-}
-
-.dashboard-skin .cl-sort-menu::-webkit-scrollbar{ width: 10px; }
-.dashboard-skin .cl-sort-menu::-webkit-scrollbar-track{
-  background: rgba(124,58,237,0.08);
-  border-radius: 999px;
-}
-.dashboard-skin .cl-sort-menu::-webkit-scrollbar-thumb{
-  background: rgba(124,58,237,0.35);
-  border-radius: 999px;
-}
-.dashboard-skin .cl-sort-menu::-webkit-scrollbar-thumb:hover{
-  background: rgba(124,58,237,0.55);
+  border-right: 2px solid rgba(124, 58, 237, 0.9);
+  border-bottom: 2px solid rgba(124, 58, 237, 0.9);
 }
 
 /* =========================
    ✅ Select (Unified) - SINGLE SOURCE
-   Scoped: .dashboard-skin only
 ========================= */
-.dashboard-skin .dash-select{
-  width: 100%;
-  height: 42px;
-
-  padding: 0 12px;
-  border-radius: 14px;
-
-  background: rgba(255,255,255,0.85);
-  border: 1px solid rgba(124,58,237,0.18);
-
-  font-family: "Tajawal", sans-serif;
-  font-size: 14px;
-  font-weight: 700;
-  color: rgba(58,47,68,0.90);
-
-  outline: none;
-  cursor: pointer;
-  transition: .15s ease;
-
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-image: none;
-}
-
-/* focus */
-.dashboard-skin .dash-select:focus{
-  border-color: rgba(124,58,237,0.45);
-  box-shadow: 0 0 0 3px rgba(139,92,246,0.14);
-}
-
-/* hover */
-.dashboard-skin .dash-select:hover{
-  border-color: rgba(124,58,237,0.28);
-  background: rgba(255,255,255,0.92);
-}
-
-/* arrow helper (اختياري) */
-.dashboard-skin .bk-field{
-  position: relative;
-}
-.dashboard-skin .bk-field .dash-select{
-  padding-right: 38px;
-}
-.dashboard-skin .bk-field::after{
-  content: "";
-  position: absolute;
-  right: 14px;
-  top: 38px;
-  width: 8px;
-  height: 8px;
-  transform: rotate(45deg);
-  border-right: 2px solid rgba(124,58,237,0.85);
-  border-bottom: 2px solid rgba(124,58,237,0.85);
-  pointer-events: none;
-}
-
-/* ✅ Small select helper (أنت تستخدمها بالجدول) */
-.dashboard-skin .dash-select--sm{
-  height: 38px;
-  border-radius: 12px;
-  font-size: 13px;
-  padding: 0 10px;
-}
-
-/* =========================
-   ✅ Custom Dropdown (Unified / Scoped)
-========================= */
-.dashboard-skin .dash-dd-wrap{
-  position: relative;
-  flex: 0 0 auto;
-}
-
-.dashboard-skin .dash-dd-btn{
-  width: 180px;
-  justify-content: center;
-  position: relative;
-  padding-right: 34px;
-}
-
-/* Small button variant */
-.dashboard-skin .dash-dd-btn.sm{
-  width: 160px;
-  height: 38px;
-  border-radius: 12px;
-  font-size: 13px;
-}
-
-/* caret */
-.dashboard-skin .dash-dd-caret{
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  transform: translateY(-55%) rotate(45deg);
-  border-right: 2px solid rgba(124,58,237,0.9);
-  border-bottom: 2px solid rgba(124,58,237,0.9);
-  pointer-events: none;
-}
-
-/* menu */
-.dashboard-skin .dash-dd-menu{
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 220px;
-  max-height: 240px;
-  overflow: auto;
-
-  background: rgba(255,255,255,0.98);
-  border: 1px solid rgba(124,58,237,0.18);
-  border-radius: 14px;
-  box-shadow: 0 18px 40px rgba(105, 60, 160, 0.16);
-  backdrop-filter: blur(10px);
-  padding: 6px;
-  z-index: 99999;
-}
-
-/* item */
-.dashboard-skin .dash-dd-item{
-  width: 100%;
-  text-align: right;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: transparent;
-
-  font-family: "Tajawal", sans-serif;
-  font-size: 14px;
-  font-weight: 800;
-  color: rgba(58,47,68,0.88);
-
-  cursor: pointer;
-  transition: .15s ease;
-}
-
-.dashboard-skin .dash-dd-item:hover{
-  background: rgba(124,58,237,0.10);
-  border-color: rgba(124,58,237,0.18);
-  color: #5b21b6;
-}
-
-.dashboard-skin .dash-dd-item.is-active{
-  background: linear-gradient(135deg, rgba(124,58,237,0.18), rgba(167,139,250,0.20));
-  border-color: rgba(124,58,237,0.22);
-  color: #4c1d95;
-}
-
-/* menu scrollbar */
-.dashboard-skin .dash-dd-menu::-webkit-scrollbar{ width: 10px; }
-.dashboard-skin .dash-dd-menu::-webkit-scrollbar-track{
-  background: rgba(124,58,237,0.08);
-  border-radius: 999px;
-}
-.dashboard-skin .dash-dd-menu::-webkit-scrollbar-thumb{
-  background: rgba(124,58,237,0.35);
-  border-radius: 999px;
-}
-.dashboard-skin .dash-dd-menu::-webkit-scrollbar-thumb:hover{
-  background: rgba(124,58,237,0.55);
-}
-
-/* =========================
-   ✅ Scrollbar for native select (اختياري)
-========================= */
-.dashboard-skin select::-webkit-scrollbar { width: 10px; }
-
-.dashboard-skin select::-webkit-scrollbar-track {
-  background: rgba(124, 58, 237, 0.10);
-  border-radius: 999px;
-}
-
-.dashboard-skin select::-webkit-scrollbar-thumb {
-  background: rgba(124, 58, 237, 0.45);
-  border-radius: 999px;
-}
-
-.dashboard-skin select::-webkit-scrollbar-thumb:hover {
-  background: rgba(124, 58, 237, 0.65);
-}
-
-/* =========================
-   ✅ Dashboard Custom Dropdowns (ONE SOURCE OF TRUTH)
-   File: src/styles/DashboardSkin.css
-   Scope: .dashboard-skin فقط
-   Classes: .dash-dd-wrap / .dash-select / .dash-dd-menu / .dash-dd-item
-========================= */
-
-.dashboard-skin .dash-dd-wrap {
-  position: relative;
-  width: 100%;
-}
-
 .dashboard-skin .dash-select {
   width: 100%;
   min-height: 44px;
@@ -870,17 +631,26 @@
   padding: 10px 12px;
   border-radius: 14px;
 
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(124, 58, 237, 0.16);
-  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.10);
-  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.90);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  box-shadow: none;
 
-  color: #3a2a42;
+  font-family: "Tajawal", sans-serif;
+  font-size: 14px;
   font-weight: 600;
-  cursor: pointer;
+  color: #3a2a42;
 
+  cursor: pointer;
   text-align: right;
+
   outline: none;
+  -webkit-tap-highlight-color: transparent;
+
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  background-image: none !important;
 }
 
 .dashboard-skin .dash-select:hover {
@@ -888,13 +658,20 @@
   box-shadow: 0 12px 28px rgba(124, 58, 237, 0.14);
 }
 
-.dashboard-skin .dash-select:focus {
-  border-color: rgba(124, 58, 237, 0.30);
-  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.12),
-    0 14px 34px rgba(124, 58, 237, 0.12);
+.dashboard-skin .dash-select:focus,
+.dashboard-skin .dash-select:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.12) !important;
+  border-color: rgba(124, 58, 237, 0.28) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
 }
 
-/* سهم بسيط */
+.dashboard-skin .dash-select:active {
+  background: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: none !important;
+}
+
+/* سهم بسيط (✅ بدون مسافة داخل pseudo-element) */
 .dashboard-skin .dash-select::after {
   content: "▾";
   font-size: 14px;
@@ -902,12 +679,75 @@
   line-height: 1;
 }
 
-/* القائمة */
+/* arrow helper (اختياري) */
+.dashboard-skin .bk-field {
+  position: relative;
+}
+
+.dashboard-skin .bk-field .dash-select {
+  padding-right: 38px;
+}
+
+.dashboard-skin .bk-field::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 38px;
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  border-right: 2px solid rgba(124, 58, 237, 0.85);
+  border-bottom: 2px solid rgba(124, 58, 237, 0.85);
+  pointer-events: none;
+}
+
+/* ✅ Small select helper */
+.dashboard-skin .dash-select--sm {
+  min-height: 38px;
+  border-radius: 12px;
+  font-size: 13px;
+  padding: 0 10px;
+}
+
+/* =========================
+   ✅ Custom Dropdown (Unified / Scoped)
+========================= */
+.dashboard-skin .dash-dd-wrap {
+  position: relative;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.dashboard-skin .dash-dd-btn {
+  width: 180px;
+  justify-content: center;
+  position: relative;
+  padding-right: 34px;
+}
+
+/* caret */
+.dashboard-skin .dash-dd-caret {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-55%) rotate(45deg);
+  border-right: 2px solid rgba(124, 58, 237, 0.9);
+  border-bottom: 2px solid rgba(124, 58, 237, 0.9);
+  pointer-events: none;
+}
+
+/* menu */
 .dashboard-skin .dash-dd-menu {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
   left: 0;
+
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
 
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(124, 58, 237, 0.14);
@@ -916,13 +756,11 @@
   box-shadow: 0 22px 60px rgba(0, 0, 0, 0.14);
   backdrop-filter: blur(10px);
 
-  overflow: hidden;
-  z-index: 999999;
-
   padding: 6px;
+  z-index: 999999;
 }
 
-/* عناصر القائمة */
+/* item */
 .dashboard-skin .dash-dd-item {
   width: 100%;
   padding: 10px 12px;
@@ -940,22 +778,56 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+
+  transition: .15s ease;
 }
 
 .dashboard-skin .dash-dd-item:hover {
   background: rgba(26, 12, 51, 0.08);
 }
 
+/* menu scrollbar */
+.dashboard-skin .dash-dd-menu::-webkit-scrollbar {
+  width: 10px;
+}
 
+.dashboard-skin .dash-dd-menu::-webkit-scrollbar-track {
+  background: rgba(124, 58, 237, 0.08);
+  border-radius: 999px;
+}
 
-/* ✅ إذا القائمة طويلة */
-.dashboard-skin .dash-dd-menu {
-  max-height: 280px;
-  overflow: auto;
+.dashboard-skin .dash-dd-menu::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.35);
+  border-radius: 999px;
+}
+
+.dashboard-skin .dash-dd-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.55);
+}
+
+/* =========================
+   ✅ Scrollbar for native select (اختياري)
+========================= */
+.dashboard-skin select::-webkit-scrollbar {
+  width: 10px;
+}
+
+.dashboard-skin select::-webkit-scrollbar-track {
+  background: rgba(124, 58, 237, 0.10);
+  border-radius: 999px;
+}
+
+.dashboard-skin select::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.45);
+  border-radius: 999px;
+}
+
+.dashboard-skin select::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.65);
 }
 
 /* ✅ خلي صف الفورم يمسك العناصر صح */
-.clients-page .cl-form{
+.clients-page .cl-form {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
@@ -963,55 +835,145 @@
 }
 
 /* ✅ الدروب داون (الفرز) لا يتمدد عرض الشاشة */
-.clients-page .cl-form .cl-sort-wrap{
+.clients-page .cl-form .cl-sort-wrap {
   flex: 0 0 auto;
-  width: 240px; /* تقدر تغيّرها */
+  width: 240px;
   position: relative;
 }
 
 /* ✅ زر الدروب داون يكون بعرض الحاوية */
-.clients-page .cl-form .cl-sort-wrap .dash-select{
+.clients-page .cl-form .cl-sort-wrap .dash-select {
   width: 100%;
 }
 
 /* ✅ القائمة تنفتح تحت الزر وبنفس العرض */
-.clients-page .cl-form .cl-sort-wrap .dash-dd-menu{
+.clients-page .cl-form .cl-sort-wrap .dash-dd-menu {
   width: 100%;
 }
 
 /* =========================
-   Fix: Dash Dropdown Focus Glow
+   ✅ REMOVE "Abu Al-Ghabash" Scrollbars (FINAL)
 ========================= */
 
-.dashboard-skin .dash-select{
-  background: rgba(255,255,255,0.9);
-  border: 1px solid rgba(124,58,237,0.18);
-  box-shadow: none;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
+/* 1) امنع أي overflow أفقي يطلع شريط تحت */
+.dashboard-skin.dashboard-page,
+.dashboard-skin.dashboard-page .container-fluid,
+.dashboard-skin.dashboard-page .row,
+.dashboard-skin.dashboard-page .dashboard-main,
+.dashboard-skin.dashboard-page .dashboard-inner {
+  overflow-x: hidden !important;
 }
 
-.dashboard-skin .dash-select:focus,
-.dashboard-skin .dash-select:focus-visible{
-  outline: none !important;
-  box-shadow: 0 0 0 2px rgba(124,58,237,0.12) !important;
-  border-color: rgba(124,58,237,0.28) !important;
-  background: rgba(255,255,255,0.92) !important; /* مهم: يمنع الأزرق */
+/* 2) Sidebar drawer (على الموبايل) خليها تسكرول بس بدون شريط */
+@media (max-width: 991px) {
+  .dashboard-skin .dashboard-sidebar {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+
+    scrollbar-width: none !important;     /* Firefox */
+    -ms-overflow-style: none !important;  /* old Edge */
+  }
+
+  .dashboard-skin .dashboard-sidebar::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+  }
 }
 
-/* لو المتصفح يطبق active غصب */
-.dashboard-skin .dash-select:active{
-  background: rgba(255,255,255,0.92) !important;
-  box-shadow: none !important;
+/* 3) اي شيء داخلي يسوي scroll (dropdown/menu/select) نخفي الشريط */
+.dashboard-skin .dash-dd-menu,
+.dashboard-skin select,
+.dashboard-skin .dashboard-inner,
+.dashboard-skin .dashboard-main {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.dashboard-skin .dash-dd-menu::-webkit-scrollbar,
+.dashboard-skin select::-webkit-scrollbar,
+.dashboard-skin .dashboard-inner::-webkit-scrollbar,
+.dashboard-skin .dashboard-main::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* =========================
-   Hide Arrow in Custom Dropdown
+   ✅ Topbar: اجعل زر القائمة ثابت يمين (Mobile)
 ========================= */
-
-
-.dashboard-skin .dash-select {
-  background-image: none !important;
+.dashboard-skin .dash-topbar {
+  position: relative; /* مهم عشان absolute يشتغل داخلها */
 }
 
+@media (max-width: 767px) {
+  /* مساحة لزر القائمة يمين */
+  .dashboard-skin .dash-topbar {
+    padding-right: 60px;
+  }
 
+  /* زر القائمة يصير فوق يمين */
+  .dashboard-skin .dash-topbar-toggle {
+    display: inline-flex;
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    z-index: 2;
+  }
+
+  /* خفف الزحمة داخل اليسار */
+  .dashboard-skin .dash-topbar-left {
+    width: 100%;
+    gap: 10px;
+  }
+}
+
+/* =========================
+   ✅ Sidebar Footer: تطوير زر الرئيسية + الخروج
+========================= */
+.dashboard-skin .sidebar-footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(140, 90, 190, 0.12);
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-skin .sidebar-footer .exp-btn {
+  width: 100%;
+  justify-content: center;
+  min-height: 46px;
+  border-radius: 16px;
+}
+
+/* زر الرئيسية (فخم) */
+.dashboard-skin .sidebar-footer .exp-btn.home {
+  background: linear-gradient(
+    135deg,
+    rgba(202, 166, 221, 0.22),
+    rgba(255, 255, 255, 0.85)
+  );
+  border-color: rgba(190, 150, 255, 0.28);
+  color: rgba(58, 47, 68, 0.95);
+  box-shadow: 0 16px 28px rgba(105, 60, 160, 0.10);
+}
+
+.dashboard-skin .sidebar-footer .exp-btn.home:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(
+    135deg,
+    rgba(202, 166, 221, 0.28),
+    rgba(255, 255, 255, 0.92)
+  );
+}
+
+/* زر الخروج (خطر واضح) */
+.dashboard-skin .sidebar-footer .exp-btn.logout {
+  background: rgba(239, 68, 68, 0.10);
+  border-color: rgba(239, 68, 68, 0.22);
+  color: #991b1b;
+}
+
+.dashboard-skin .sidebar-footer .exp-btn.logout:hover {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.30);
+  transform: translateY(-1px);
+}

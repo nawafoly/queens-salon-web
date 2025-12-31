@@ -395,7 +395,7 @@ const Profile: React.FC = () => {
               ✏️ تعديل البيانات
             </button>
 
-            <button className="btn btn-outline-dark" onClick={handleLogout}>
+            <button className="btn" onClick={handleLogout}>
               🚪 تسجيل الخروج
             </button>
 

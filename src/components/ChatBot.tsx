@@ -1,15 +1,12 @@
+// ✅ src/components/ChatBot.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { FaCommentDots } from "react-icons/fa";
-import type { IconBaseProps } from "react-icons";
+
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCommentDots } from "@fortawesome/free-solid-svg-icons";
 
 import { generateSalonTimeSlots } from "../helpers/timeSlots";
 import "../styles/ChatBot.css";
-
-/** ✅ حل TS2786 لبعض إعدادات TS */
-const FixedFaCommentDots = (props: IconBaseProps) => (
-  <FaCommentDots {...props} />
-);
 
 type Sender = "user" | "bot";
 
@@ -280,6 +277,31 @@ function buildOffersReply() {
   };
 }
 
+function formatAvailableTimes(times: string[]) {
+  if (!times.length) return "للأسف ما فيه أوقات متاحة بهذا اليوم.";
+  const chunk = times.slice(0, 10);
+  return (
+    "⏰ **الأوقات المتاحة:**\n" +
+    chunk.map((t) => `• ${t}`).join("\n") +
+    (times.length > chunk.length
+      ? `\n\n… وفيه ${times.length - chunk.length} وقت إضافي.`
+      : "")
+  );
+}
+
+function getAvailableTimesForDate(dateISO: string) {
+  const all = getAllBookings();
+  const taken = new Set(
+    all
+      .filter((b) => String(b.date || "").trim() === dateISO)
+      .map((b) => String(b.time || "").trim())
+      .filter(Boolean)
+  );
+
+  const available = hours.filter((t) => !taken.has(String(t).trim()));
+  return available;
+}
+
 const ChatBot: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -387,6 +409,22 @@ const ChatBot: React.FC = () => {
     ]);
   };
 
+  const replyContact = () => {
+    return {
+      text:
+        "📍 **طرق التواصل:**\n" +
+        "• الجوال: 05xxxxxxxx\n" +
+        "• واتساب: 05xxxxxxxx\n" +
+        "• الموقع: الرياض (اكتبي موقعك وأرسل لك اللوكيشن)\n" +
+        "• ساعات العمل: يوميًا 12:00م — 11:00م\n\n" +
+        "تبغين أحجز لك موعد الآن؟",
+      actions: [
+        { type: "route", label: "احجزي الآن", value: "/booking" },
+        { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
+      ] as Action[],
+    };
+  };
+
   // ✅ “أكبر رد” (منطق بشري)
   const smartReply = (
     inputText: string
@@ -394,7 +432,7 @@ const ChatBot: React.FC = () => {
     const qRaw = inputText.trim();
     const q = normalizeArabic(qRaw);
 
-    // ✅ ترحيب بشري
+    // ✅ ترحيب
     if (isGreeting(q)) {
       const greet = pick([
         "وعليكم السلام 💜 نورتِنا!",
@@ -480,7 +518,16 @@ const ChatBot: React.FC = () => {
       };
     }
 
-    // ✅ الأسعار (قبل العروض + مضبوط للكتابة المختلفة)
+    // ✅ طرق التواصل
+    if (
+      /(تواصل|اتصال|رقم|واتس|واتساب|عنوان|لوكيشن|موقع|اين موقعكم|وينكم)/i.test(
+        qRaw
+      )
+    ) {
+      return replyContact();
+    }
+
+    // ✅ أسعار (قائمة كاملة)
     if (
       /(عرض\s*قائمة\s*الاسعار|عرض\s*قائمة\s*الأسعار|قائمة\s*الاسعار|قائمة\s*الأسعار|كم.*اسعاركم|بكم خدماتكم)/i.test(
         qRaw
@@ -504,7 +551,23 @@ const ChatBot: React.FC = () => {
       };
     }
 
-    // ✅ العروض والخصومات (نستبعد جملة الأسعار)
+    // ✅ سعر خدمة محددة
+    const priceReply = getServicePriceReply(qRaw);
+    if (priceReply) {
+      return {
+        text: priceReply,
+        actions: [
+          {
+            type: "send",
+            label: "مواعيد متاحة",
+            value: "أوقات متاحة 2025-12-20",
+          },
+          { type: "route", label: "احجزي الآن", value: "/booking" },
+        ],
+      };
+    }
+
+    // ✅ العروض والخصومات
     if (
       /(^|\s)(عروض|خصومات|برومو|كوبون)(\s|$)/i.test(qRaw) ||
       /العروض والخصومات/i.test(qRaw) ||
@@ -514,258 +577,200 @@ const ChatBot: React.FC = () => {
       return buildOffersReply();
     }
 
-    // ✅ حجز / موعد بطريقة بشرية
-    if (/(ابي حجز|ابغى حجز|احجز|حجز|موعد)/i.test(qRaw)) {
-      const service = findServiceFromText(qRaw);
+    // ✅ طلب مواعيد متاحة (بالنص)
+    if (
+      /(اوقات متاحه|أوقات متاحة|مواعيد متاحه|مواعيد|وقت متاح|available)/i.test(
+        qRaw
+      )
+    ) {
       const date = extractDate(qRaw);
-      const time = extractTime(qRaw);
+      const service = findServiceFromText(qRaw) || "الخدمة";
 
-      if (!service && !date) {
+      if (!date) {
         return {
           text:
-            "أكيد 💜 خلينا نرتّب الحجز بسرعة:\n" +
-            "• ايش الخدمة اللي تبينها؟ (قص/مكياج/صبغة/بدكير...)\n" +
-            "• وايش التاريخ؟ بصيغة YYYY-MM-DD\n" +
-            "مثال: **أبغى حجز مكياج 2025-12-20**",
-          actions: [
-            { type: "route", label: "افتحي صفحة الحجز", value: "/booking" },
-            {
-              type: "send",
-              label: "قائمة الأسعار",
-              value: "عرض قائمة الأسعار",
-            },
-          ],
-        };
-      }
-
-      if (service && !date) {
-        return {
-          text:
-            `تمام 💜 خدمة **${service}**.\n` +
-            "اكتبي التاريخ بصيغة YYYY-MM-DD عشان أطلع لك التوفر الفعلي.\n" +
-            `مثال: **أوقات متاحة ${service} 2025-12-20**`,
+            "تمام 💜 ارسلي لي **التاريخ بصيغة YYYY-MM-DD** مثل: 2025-12-20\n" +
+            "وقولي لي الخدمة (قص/مكياج/صبغة...) عشان أطلع لك الأوقات المتاحة.",
           actions: [
             {
               type: "send",
               label: "مثال جاهز",
-              value: `أوقات متاحة ${service} 2025-12-20`,
+              value: "أوقات متاحة مكياج 2025-12-20",
             },
-            { type: "route", label: "احجزي الآن", value: "/booking" },
+            { type: "route", label: "صفحة الحجز", value: "/booking" },
           ],
         };
       }
 
-      if (service && date) {
-        const allBookings = getAllBookings();
+      const available = getAvailableTimesForDate(date);
 
-        // ✅ مقارنة مرنة (لأن بعض المشاريع تخزن القسم بدل اسم الخدمة)
-        const bookedTimes = allBookings
-          .filter((b) => (b.service || "").includes(service) && b.date === date)
-          .map((b) => b.time);
-
-        const availableTimes = hours.filter((t) => !bookedTimes.includes(t));
-
-        return {
-          text: availableTimes.length
-            ? `🗓️ المتاح لـ **${service}** بتاريخ **${date}**:\n` +
-              availableTimes.map((t) => `• ${t}`).join("\n") +
-              (time
-                ? `\n\nذكرتِ وقت **${time}**—إذا تبينه اكتبي: احجز ${service} ${date} ${time}`
-                : "")
-            : `للأسف ما فيه مواعيد متاحة لـ **${service}** بتاريخ **${date}**.\nجرّبي تاريخ ثاني 💜`,
-          actions: [
-            { type: "route", label: "افتحي صفحة الحجز", value: "/booking" },
-            {
-              type: "send",
-              label: "العروض والخصومات",
-              value: "العروض والخصومات",
-            },
-          ],
-        };
-      }
-    }
-
-    // ✅ سعر خدمة محددة
-    const priceReply = getServicePriceReply(qRaw);
-    if (priceReply) {
-      const extra = pick([
-        "إذا قلتي تاريخ مناسب لك، أطلع لك المواعيد المتاحة ✨",
-        "تحبين نحجز لك مباشرة؟",
-        "تبين أشوف لك عروض عليها إذا موجودة؟",
-      ]);
       return {
-        text: `${priceReply}\n${extra}`,
+        text:
+          `✅ خدمة: **${service}**\n📅 تاريخ: **${date}**\n\n` +
+          formatAvailableTimes(available) +
+          "\n\nتبغين أحجز لك؟ اكتبي الوقت مثل: 18:00",
         actions: [
           { type: "route", label: "احجزي الآن", value: "/booking" },
-          {
-            type: "send",
-            label: "العروض والخصومات",
-            value: "العروض والخصومات",
-          },
+          { type: "send", label: "طرق التواصل", value: "طرق التواصل" },
+        ],
+      };
+    }
+
+    // ✅ إذا أعطى تاريخ + وقت مباشرة
+    const date = extractDate(qRaw);
+    const time = extractTime(qRaw);
+    const service = findServiceFromText(qRaw);
+
+    if (date && time) {
+      const available = getAvailableTimesForDate(date);
+      const ok = available.includes(time);
+
+      if (!ok) {
+        return {
+          text:
+            `الوقت **${time}** في تاريخ **${date}** غالبًا محجوز.\n` +
+            "تبغين أطلع لك أقرب أوقات متاحة؟",
+          actions: [
+            {
+              type: "send",
+              label: "أوقات متاحة",
+              value: `أوقات متاحة ${date}`,
+            },
+          ],
+        };
+      }
+
+      return {
+        text:
+          `تمام 💜 الوقت **${time}** متاح بتاريخ **${date}**` +
+          (service ? ` لخدمة **${service}**` : "") +
+          "\nتبغين نفتح لك صفحة الحجز وتكمّلين البيانات؟",
+        actions: [
+          { type: "route", label: "افتحي الحجز", value: "/booking" },
           { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
         ],
       };
     }
 
-    // ✅ تواصل
-    if (/طرق التواصل|تواصل|واتساب|رقم|جوال|رقمكم/i.test(qRaw)) {
-      return {
-        text:
-          "أكيد 💜 هذي طرق التواصل:\n" +
-          "📱 واتساب: 0500000000\n" +
-          "☎️ هاتف: 011-0000000\n" +
-          "📸 انستجرام: @queens_salon\n\n" +
-          "إذا قلتي لي وش تحتاجين بالضبط، أوصلك للشخص المناسب بسرعة ✨",
-        actions: [{ type: "route", label: "صفحة التواصل", value: "/contact" }],
-      };
-    }
-
-    // ✅ 9.5) قائمة الخدمات (إذا كتب: الخدمات / خدماتكم / ايش عندكم)
-    if (/(الخدمات|خدمات|ايش عندكم|وش عندكم|اقسام|الأقسام)/i.test(qRaw)) {
-      return {
-        text:
-          "أكيد 💜 هذي أبرز أقسام وخدمات صالون ملكات:\n" +
-          "• الشعر (قص/تسريحة/استشوار)\n" +
-          "• الصبغات (صبغة/هايلايت/بالياج)\n" +
-          "• المكياج (سهرة/عرايس)\n" +
-          "• الأظافر (بدكير/منكير)\n" +
-          "• البشرة (تنظيف/عناية)\n" +
-          "• إزالة الشعر (واكس)\n\n" +
-          "اختاري قسم، وأنا أعطيك **السعر** أو **المواعيد المتاحة** ✨",
-        actions: [
-          { type: "send", label: "الشعر", value: "الشعر" },
-          { type: "send", label: "الصبغات", value: "الصبغات" },
-          { type: "send", label: "مكياج", value: "مكياج" },
-          { type: "send", label: "بدكير/منكير", value: "بدكير" },
-          { type: "send", label: "عناية بالبشرة", value: "عناية بالبشرة" },
-          { type: "send", label: "إزالة شعر", value: "إزالة شعر" },
-        ],
-        showAllPricesBtn: true,
-      };
-    }
-
-    // ✅ 9.6) إذا كتب "الشعر" كقسم (مو خدمة)
-    if (/^(الشعر|شعر|قسم الشعر)$/i.test(qRaw.trim())) {
-      return {
-        text:
-          "تمام 💜 قسم الشعر عندنا يشمل خيارات كثيرة… تبين أي واحد؟\n" +
-          "• قص الشعر\n" +
-          "• تسريحة/استشوار\n" +
-          "• صبغة شعر\n" +
-          "• علاج بروتين\n\n" +
-          "قولي الخيار أو اضغطي زر 👇",
-        actions: [
-          { type: "send", label: "قص الشعر", value: "قص الشعر" },
-          { type: "send", label: "تسريحة شعر", value: "تسريحة شعر" },
-          { type: "send", label: "صبغة شعر", value: "صبغة شعر" },
-          { type: "send", label: "علاج بروتين", value: "علاج بروتين" },
-          {
-            type: "send",
-            label: "مواعيد متاحة",
-            value: "أوقات متاحة الشعر 2025-12-20",
-          },
-          { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
-        ],
-        showAllPricesBtn: true,
-      };
-    }
-
-    // ✅ fallback إنساني
-    const fallback = pick([
-      "أكيد 💜 فهمت عليك… بس عشان أساعدك بدقة: تبين أسعار ولا عروض ولا حجز؟",
-      "تمام 💜 وش الخدمة اللي تقصدين بالضبط؟ (قص/مكياج/صبغة/بدكير…)",
-      "أنا معك 💜 اكتبي اسم الخدمة أو التاريخ وأنا أرتب لك كل شيء.",
-      "اختاري من الأزرار تحت أو اكتبي سؤالك بكلمة وحدة 💜",
-    ]);
-
+    // ✅ رد افتراضي ذكي
     return {
-      text: fallback,
+      text:
+        "تمام 💜 تقدرين تسأليني عن:\n" +
+        "• الأسعار\n• العروض\n• المواعيد المتاحة\n• طرق التواصل\n\n" +
+        "اكتبي: (قائمة الأسعار) أو (العروض والخصومات) أو (أوقات متاحة 2025-12-20).",
       actions: pageActions,
       showAllPricesBtn: true,
     };
   };
 
-  const handleSend = (custom?: string) => {
-    const sendText = (custom ?? input).trim();
-    if (!sendText) return;
+  const pushBot = (payload: {
+    text: string;
+    actions?: Action[];
+    showAllPricesBtn?: boolean;
+  }) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        sender: "bot",
+        text: payload.text,
+        actions: payload.actions,
+        showAllPricesBtn: payload.showAllPricesBtn,
+      },
+    ]);
+  };
+
+  const sendText = (text: string) => {
+    const t = String(text || "").trim();
+    if (!t) return;
 
     setMessages((prev) => [
       ...prev,
-      { id: Date.now(), sender: "user", text: sendText },
+      { id: Date.now(), sender: "user", text: t },
     ]);
-    setInput("");
 
-    setTimeout(() => {
-      const reply = smartReply(sendText);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          sender: "bot",
-          text: reply.text,
-          actions: reply.actions,
-          showAllPricesBtn: reply.showAllPricesBtn,
-        },
-      ]);
-    }, 400);
+    const res = smartReply(t);
+    pushBot(res);
+  };
+
+  const handleSend = () => {
+    const t = input.trim();
+    if (!t) return;
+    setInput("");
+    sendText(t);
   };
 
   const handleAction = (a: Action) => {
-    if (a.type === "send") handleSend(a.value);
-    if (a.type === "route") navigate(a.value);
+    if (a.type === "route") {
+      navigate(a.value);
+      return;
+    }
+    sendText(a.value);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") handleSend();
-  };
+  // close on ESC
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
-    <>
-      {/* زر الفقاعة */}
-      {!open && (
-        <button
-          className="chatbot-fab"
-          onClick={() => setOpen(true)}
-          aria-label="افتح الشات"
-          title="الدردشة مع خبيرتك"
-        >
-          <FixedFaCommentDots size={28} />
-        </button>
-      )}
+    <div className={`chatbot ${open ? "open" : ""}`}>
+      {/* Floating button */}
+      <button
+        className="chatbot-toggle"
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        aria-label="Chatbot"
+      >
+        <FontAwesomeIcon icon={faCommentDots} />
+      </button>
 
-      {/* نافذة الشات */}
-      <div className={`chatbot-container ${open ? "open" : ""}`}>
-        <div className="chatbot-header">
-          <span>خبيرتك ملكات</span>
+      {/* Panel */}
+      {open && (
+        <div className="chatbot-panel">
+          <div className="chatbot-header">
+            <div className="chatbot-title">
+              صالون ملكات • المساعدة
+              <span className="chatbot-sub">أسعار • عروض • مواعيد</span>
+            </div>
+            <button
+              className="chatbot-close"
+              type="button"
+              onClick={() => setOpen(false)}
+            >
+              ✕
+            </button>
+          </div>
 
-          <span
-            className="chatbot-close"
-            onClick={() => setOpen(false)}
-            title="إغلاق"
-          >
-            ×
-          </span>
-        </div>
-
-        {open && (
           <div className="chatbot-body">
-            <div className="chatbot-messages">
-              {messages.map((msg) => (
-                <div key={msg.id} className={`msg ${msg.sender}`}>
-                  <div className="msg-text">{msg.text}</div>
+            {messages.map((m) => (
+              <div key={m.id} className={`chatbot-msg ${m.sender}`}>
+                <div className="bubble">
+                  <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
 
-                  {msg.showAllPricesBtn && msg.sender === "bot" && (
-                    <button className="bot-price-btn" onClick={sendAllPrices}>
-                      عرض جميع الأسعار
-                    </button>
-                  )}
+                  {m.sender === "bot" && m.showAllPricesBtn ? (
+                    <div style={{ marginTop: 10 }}>
+                      <button
+                        className="chatbot-quick"
+                        type="button"
+                        onClick={sendAllPrices}
+                      >
+                        عرض قائمة الأسعار 💰
+                      </button>
+                    </div>
+                  ) : null}
 
-                  {msg.actions?.length ? (
-                    <div className="suggestions-list">
-                      {msg.actions.map((a, idx) => (
+                  {m.sender === "bot" && m.actions?.length ? (
+                    <div className="chatbot-actions">
+                      {m.actions.map((a, idx) => (
                         <button
-                          key={idx}
-                          className="suggestion-btn"
+                          key={`${m.id}_a_${idx}`}
+                          className="chatbot-action"
+                          type="button"
                           onClick={() => handleAction(a)}
                         >
                           {a.label}
@@ -774,55 +779,46 @@ const ChatBot: React.FC = () => {
                     </div>
                   ) : null}
                 </div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="chatbot-footer">
+            <div className="chatbot-hints">
+              {pageActions.slice(0, 3).map((a, i) => (
+                <button
+                  key={`hint_${i}`}
+                  className="chatbot-hint"
+                  type="button"
+                  onClick={() => handleAction(a)}
+                >
+                  {a.label}
+                </button>
               ))}
-              <div ref={messagesEndRef} />
             </div>
 
             <div className="chatbot-input-row">
-              <div
-                className={`input-container${input.trim() ? " active" : ""}`}
-              >
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="اسألي عن الأسعار، العروض، أو الحجز..."
-                />
-                <button
-                  className={`send-button ${input.trim() ? "active" : ""}`}
-                  onClick={() => handleSend()}
-                  disabled={!input.trim()}
-                  aria-label="إرسال"
-                >
-                  ↑
-                </button>
-              </div>
-            </div>
-
-            <div className="chatbot-footer-tools">
-              <button
-                className="tool-link"
-                onClick={() => {
-                  localStorage.removeItem(STORAGE.CHAT);
-                  setMessages([
-                    {
-                      id: Date.now(),
-                      sender: "bot",
-                      text: "تم تصفير المحادثة ✅\nتبغين عروض ولا أسعار ولا حجز؟",
-                      actions: pageActions,
-                      showAllPricesBtn: true,
-                    },
-                  ]);
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="اكتبي سؤالك هنا..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSend();
                 }}
+              />
+              <button
+                className="chatbot-send"
+                type="button"
+                onClick={handleSend}
               >
-                تصفير المحادثة
+                إرسال
               </button>
             </div>
           </div>
-        )}
-      </div>
-    </>
+        </div>
+      )}
+    </div>
   );
 };
 

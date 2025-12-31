@@ -1,5 +1,5 @@
 // src/pages/DashboardClients.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faSearch,
@@ -89,9 +89,7 @@ const statusLabel: Record<BookingStatus, string> = {
   completed: "مكتمل",
 };
 
-/* =========================
-   Helpers: Export
-========================= */
+
 
 function downloadXLSX(filename: string, rows: any[][], sheetName = "Sheet1") {
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -148,8 +146,7 @@ const DashboardClients: React.FC = () => {
   };
 
   // ✅ صلاحيات العرض لصفحة العميلات (NEW)
-  const allowStaffViewClients =
-    settings?.policies?.allowStaffViewClients === true;
+  const allowStaffViewClients = settings?.policies?.allowStaffViewClients === true;
 
   const canViewClients =
     uiRole === "owner" ||
@@ -345,50 +342,15 @@ const DashboardClients: React.FC = () => {
   }, [filteredClients.length, bookings.length, clients]);
 
   /* =========================
-     Export actions (CSV + XLSX)
+     Export actions (XLSX)
   ========================= */
-  // const exportCSV = () => {
-  //   const rows: string[][] = [
-  //     ["العميلة", "الجوال", "عدد الحجوزات", "آخر زيارة (تاريخ)", "آخر زيارة (وقت)"],
-  //   ];
-
-  //   filteredClients.forEach((c) => {
-  //     rows.push([
-  //       c.name,
-  //       c.phone,
-  //       String(c.bookingsCount),
-  //       c.lastVisitDate,
-  //       c.lastVisitTime,
-  //     ]);
-  //   });
-
-  //   const stamp = new Date();
-  //   const yyyy = stamp.getFullYear();
-  //   const mm = String(stamp.getMonth() + 1).padStart(2, "0");
-  //   const dd = String(stamp.getDate()).padStart(2, "0");
-
-  //   downloadCSV(`dashboard_clients_${yyyy}-${mm}-${dd}.csv`, rows);
-  // };
-
   const exportClientsXLSX = () => {
     const rows: any[][] = [
-      [
-        "العميلة",
-        "الجوال",
-        "عدد الحجوزات",
-        "آخر زيارة (تاريخ)",
-        "آخر زيارة (وقت)",
-      ],
+      ["العميلة", "الجوال", "عدد الحجوزات", "آخر زيارة (تاريخ)", "آخر زيارة (وقت)"],
     ];
 
     filteredClients.forEach((c) => {
-      rows.push([
-        c.name,
-        c.phone,
-        c.bookingsCount,
-        c.lastVisitDate,
-        c.lastVisitTime,
-      ]);
+      rows.push([c.name, c.phone, c.bookingsCount, c.lastVisitDate, c.lastVisitTime]);
     });
 
     const stamp = new Date();
@@ -562,9 +524,7 @@ const DashboardClients: React.FC = () => {
                       <td className="cl-nameCell">
                         <span className="cl-name">{c.name}</span>
                         {c.bookingsCount >= 5 ? (
-                          <span className="dash-pill dash-pill-primary">
-                            VIP
-                          </span>
+                          <span className="dash-pill dash-pill-primary">VIP</span>
                         ) : null}
                       </td>
 
@@ -578,9 +538,7 @@ const DashboardClients: React.FC = () => {
                                 className="cl-iconBtn"
                                 type="button"
                                 title="نسخ الجوال"
-                                onClick={() =>
-                                  navigator.clipboard.writeText(c.phone)
-                                }
+                                onClick={() => navigator.clipboard.writeText(c.phone)}
                               >
                                 📋
                               </button>
@@ -588,10 +546,7 @@ const DashboardClients: React.FC = () => {
                               <a
                                 className="cl-iconBtn"
                                 title="واتساب"
-                                href={`https://wa.me/${c.phone.replace(
-                                  /^0/,
-                                  "966"
-                                )}`}
+                                href={`https://wa.me/${c.phone.replace(/^0/, "966")}`}
                                 target="_blank"
                                 rel="noreferrer"
                               >
@@ -633,17 +588,12 @@ const DashboardClients: React.FC = () => {
 
       {/* Client Bookings Modal (Unified) */}
       {selectedClient && (
-        <div
-          className="dash-modal-overlay"
-          onClick={() => setSelectedClient(null)}
-        >
+        <div className="dash-modal-overlay" onClick={() => setSelectedClient(null)}>
           <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
             <div className="cl-modalHeader">
               <h3 className="cl-modalTitle">
                 سجل حجوزات: {selectedClient.name}{" "}
-                {selectedClient.phone !== "—"
-                  ? `— ${selectedClient.phone}`
-                  : ""}
+                {selectedClient.phone !== "—" ? `— ${selectedClient.phone}` : ""}
               </h3>
 
               <button
@@ -657,21 +607,15 @@ const DashboardClients: React.FC = () => {
 
             <div className="cl-modalBody">
               {(() => {
-                const totalSpend = selectedBookings.reduce(
-                  (sum: number, x: any) => {
-                    const n = Number(x?.total);
-                    return sum + (Number.isFinite(n) ? n : 0);
-                  },
-                  0
-                );
+                const totalSpend = selectedBookings.reduce((sum: number, x: any) => {
+                  const n = Number(x?.total);
+                  return sum + (Number.isFinite(n) ? n : 0);
+                }, 0);
 
                 const last = selectedBookings[0];
 
                 const saveNote = () => {
-                  const next = {
-                    ...notesMap,
-                    [selectedClient.key]: noteText.trim(),
-                  };
+                  const next = { ...notesMap, [selectedClient.key]: noteText.trim() };
                   setNotesMap(next);
                   localStorage.setItem(NOTES_KEY, JSON.stringify(next));
                 };
@@ -680,9 +624,7 @@ const DashboardClients: React.FC = () => {
                   <>
                     <div className="cl-client-summary">
                       <div className="cl-sum-card">
-                        <div className="cl-sum-num">
-                          {selectedBookings.length}
-                        </div>
+                        <div className="cl-sum-num">{selectedBookings.length}</div>
                         <div className="cl-sum-label">عدد الحجوزات</div>
                       </div>
 
@@ -695,29 +637,21 @@ const DashboardClients: React.FC = () => {
 
                       <div className="cl-sum-card">
                         <div className="cl-sum-num">
-                          {totalSpend
-                            ? `${totalSpend.toLocaleString()} ريال`
-                            : "—"}
+                          {totalSpend ? `${totalSpend.toLocaleString()} ريال` : "—"}
                         </div>
                         <div className="cl-sum-label">إجمالي الصرف</div>
                       </div>
                     </div>
 
                     <div className="cl-notes">
-                      <div className="cl-notesHead">
-                        ملاحظات إدارية (داخلية)
-                      </div>
+                      <div className="cl-notesHead">ملاحظات إدارية (داخلية)</div>
                       <textarea
                         className="cl-notesInput"
                         value={noteText}
                         onChange={(e) => setNoteText(e.target.value)}
                         placeholder="مثال: تفضّل موظفة معينة / حساسية / أوقات مناسبة..."
                       />
-                      <button
-                        className="cl-btn primary"
-                        type="button"
-                        onClick={saveNote}
-                      >
+                      <button className="cl-btn primary" type="button" onClick={saveNote}>
                         حفظ الملاحظة
                       </button>
                     </div>
@@ -757,11 +691,8 @@ const DashboardClients: React.FC = () => {
                               <td className="cl-time">{b.time}</td>
                               <td>
                                 <span className={`status-badge ${b.status}`}>
-                                  {statusLabel[
-                                    (b.status as BookingStatus) ?? "pending"
-                                  ] ??
-                                    (b.status as any) ??
-                                    "pending"}
+                                  {statusLabel[(b.status as BookingStatus) ?? "pending"] ??
+                                    ((b.status as any) ?? "pending")}
                                 </span>
                               </td>
                               <td className="cl-money">

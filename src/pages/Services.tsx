@@ -1,9 +1,10 @@
-import hair from "../assets/images/hair.png";
-import skin from "../assets/images/skin.jpg";
-import nails from "../assets/images/nails.jpg";
-import emma from "../assets/images/emma.jpg";
-import sophie from "../assets/images/sophie.jpg";
-import ava from "../assets/images/ava.jpg";
+import hair from "../assets/images/hair.webp";
+import skin from "../assets/images/skin.webp";
+
+import nails from "../assets/images/nails.webp";
+import emma from "../assets/images/emma.webp";
+import sophie from "../assets/images/sophie.webp";
+import ava from "../assets/images/ava.webp";
 import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -123,9 +124,8 @@ const Services = () => {
 
         {serviceCategories.map((category, idx) => (
           <div
-            className={`service-category mb-5 ${
-              idx % 2 === 1 ? "reverse" : ""
-            }`}
+            className={`service-category mb-5 ${idx % 2 === 1 ? "reverse" : ""
+              }`}
             key={category.id}
             id={category.id}
           >

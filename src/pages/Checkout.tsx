@@ -1,9 +1,6 @@
 // src/pages/Checkout.tsx
 import { useEffect, useMemo, useState } from "react";
-import {
-  createBooking,
-  type BookingStatus,
-} from "../services/firestoreBookings";
+import { createBooking, type BookingStatus } from "../services/firestoreBookings";
 import { incrementOfferUsage } from "../services/firestoreOffers";
 
 import { useNavigate } from "react-router-dom";
@@ -21,8 +18,7 @@ import {
   faTag,
 } from "@fortawesome/free-solid-svg-icons";
 
-// ✅ Firebase Auth (Anonymous)
-import { getAuth, signInAnonymously } from "firebase/auth";
+import { getAuth } from "firebase/auth"; // ✅ NEW
 
 import "../styles/Checkout.css";
 
@@ -40,7 +36,7 @@ type BookingData = {
   service?: string;
   serviceName?: string;
 
-  employee?: string;
+  employee?: string; // (حاليًا اسم الموظفة عندك)
   date?: string;
   time?: string;
 
@@ -50,6 +46,7 @@ type BookingData = {
   paymentMethod?: PaymentMethod | string;
   paymentStatus?: PaymentStatus;
 
+  // ✅ coupon/offer data
   couponCode?: string;
   offerId?: string | null;
   offerTitle?: string | null;
@@ -60,6 +57,7 @@ type BookingData = {
 };
 
 const BOOKING_KEY = "currentBooking";
+const ALL_BOOKINGS_KEY = "allBookings";
 const SALON_ID = "main";
 
 function methodLabel(m: PaymentMethod) {
@@ -69,9 +67,7 @@ function methodLabel(m: PaymentMethod) {
 }
 
 function normalizePaymentMethod(x: any): PaymentMethod {
-  const s = String(x || "")
-    .toLowerCase()
-    .trim();
+  const s = String(x || "").toLowerCase().trim();
 
   if (s === "mada_online" || s.includes("اونلاين") || s.includes("online"))
     return "mada_online";
@@ -118,7 +114,7 @@ export default function Checkout() {
     const service = booking.serviceName || booking.service || "";
     const employee = booking.employee || "";
 
-    const total = Number(booking.total ?? booking.finalPrice ?? 0);
+    const total = Number((booking.total ?? booking.finalPrice) ?? 0);
     const paymentMethod = normalizePaymentMethod(booking.paymentMethod);
 
     const paymentStatus: PaymentStatus =
@@ -148,13 +144,7 @@ export default function Checkout() {
       <div className="checkout-page">
         <div className="checkout-card">
           <h2>تأكيد الحجز</h2>
-          <p
-            style={{
-              color: "#777",
-              textAlign: "center",
-              margin: "10px 0 20px",
-            }}
-          >
+          <p style={{ color: "#777", textAlign: "center", margin: "10px 0 20px" }}>
             ما لقينا بيانات حجز للتأكيد. ارجع لصفحة الحجز وسوّي حجز جديد.
           </p>
           <button
@@ -168,53 +158,36 @@ export default function Checkout() {
     );
   }
 
-  const upsertBookingAndGoSuccess = async (opts?: {
-    paymentStatus?: PaymentStatus;
-  }) => {
+  const upsertBookingAndGoSuccess = async (opts?: { paymentStatus?: PaymentStatus }) => {
     try {
       const id = view.bookingId || `B-${Date.now()}`;
       const normalizedPayment = normalizePaymentMethod(view.paymentMethod);
 
-      // ✅ دائمًا pending
+      // ✅ NEW: نخلي الحالة دائمًا Pending (قيد المراجعة)
       const bookingStatus: BookingStatus = "pending";
 
-      // ✅ حاول تسجّل Anonymous.. لو مقفول لا توقف الصفحة
+      // ✅ NEW: لو فيه تسجيل دخول نخزّن uid (وإذا ما فيه يصير null)
       const auth = getAuth();
-      let uid: string | null = auth.currentUser?.uid ?? null;
+      const uid = auth.currentUser?.uid ?? null;
 
-      if (!uid) {
-        try {
-          await signInAnonymously(auth);
-          uid = auth.currentUser?.uid ?? null;
-        } catch (err: any) {
-          if (err?.code === "auth/admin-restricted-operation") {
-            console.warn(
-              "Anonymous Auth disabled in Firebase. Proceeding without uid."
-            );
-            uid = null;
-          } else {
-            throw err;
-          }
-        }
-      }
-
-      const discountNote = view.offerId
-        ? `Offer: ${
-            view.offerTitle || view.couponCode || "-"
-          } | discount=${Number(view.discountAmount || 0)}`
-        : "";
+      // ✅ ملاحظة: نضيف معلومات الخصم داخل note
+      const discountNote =
+        view.offerId
+          ? `Offer: ${view.offerTitle || view.couponCode || "-"} | discount=${Number(
+              view.discountAmount || 0
+            )}`
+          : "";
 
       const baseNote =
         normalizedPayment === "mada_online"
-          ? `Payment: ${normalizedPayment} / ${
-              opts?.paymentStatus || "pending"
-            }`
+          ? `Payment: ${normalizedPayment} / ${opts?.paymentStatus || "pending"}`
           : `Payment: ${normalizedPayment}`;
 
       const noteFinal = [baseNote, discountNote].filter(Boolean).join(" | ");
 
+      // ✅ 1) إنشاء الحجز في Firestore
       const firestoreId = await createBooking({
-        userId: uid,
+        userId: uid,                 // ✅ بدل null
         createdBy: "client",
         channel: "client",
 
@@ -230,11 +203,11 @@ export default function Checkout() {
         total: Number(view.total || 0),
         finalPrice: Number(view.total || 0),
 
-        status: bookingStatus,
+        status: bookingStatus,        // ✅ pending دائمًا
         note: noteFinal || undefined,
       });
 
-      // ✅ بعد نجاح الحجز: زوّد usageCount للعرض (إذا موجود)
+      // ✅ 2) بعد نجاح إنشاء الحجز: زوّد usageCount للعرض (إذا موجود)
       try {
         if (view.offerId) {
           await incrementOfferUsage(SALON_ID, view.offerId);
@@ -243,11 +216,13 @@ export default function Checkout() {
         console.warn("incrementOfferUsage failed:", e);
       }
 
+      const trackId = firestoreId;
+
       const updatedCurrent: BookingData = {
         ...booking,
         bookingId: id,
         id: firestoreId,
-        trackId: firestoreId,
+        trackId,
 
         paymentMethod: normalizedPayment,
         paymentStatus: opts?.paymentStatus || "pending",
@@ -255,23 +230,16 @@ export default function Checkout() {
       };
 
       localStorage.setItem(BOOKING_KEY, JSON.stringify(updatedCurrent));
+      localStorage.removeItem(ALL_BOOKINGS_KEY);
+
       navigate("/success");
     } catch (e: any) {
       console.error(e);
 
-      if (
-        e?.code === "SLOT_TAKEN" ||
-        String(e?.message || "") === "SLOT_TAKEN"
-      ) {
+      // ✅ NEW: لو السلوّت محجوز
+      if (e?.code === "SLOT_TAKEN" || String(e?.message || "") === "SLOT_TAKEN") {
         alert("هذا الوقت محجوز بالفعل لهذه الموظفة. اختاري وقتًا آخر.");
         navigate("/booking");
-        return;
-      }
-
-      if (e?.code === "auth/admin-restricted-operation") {
-        alert(
-          "ميزة Anonymous في Firebase Auth مقفولة. فعّلها من Authentication → Sign-in method."
-        );
         return;
       }
 

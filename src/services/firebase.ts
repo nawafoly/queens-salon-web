@@ -1,34 +1,42 @@
 // src/services/firebase.ts
-import { initializeApp, getApps } from "firebase/app";
+import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// 🔐 Firebase config from Vite env
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string,
+  messagingSenderId: import.meta.env
+    .VITE_FIREBASE_MESSAGING_SENDER_ID as string,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID as string,
 };
 
-// 🧪 Debug (يساعدك لو رجعت المشكلة)
-console.log("Firebase Project:", firebaseConfig.projectId);
+console.log("Firebase Project:", import.meta.env.VITE_FIREBASE_PROJECT_ID);
 
-// 🛡️ منع إعادة التهيئة
-const app =
-  getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+const app = initializeApp(firebaseConfig);
 
-// 🔐 Auth
 export const auth = getAuth(app);
-
-// 🗄️ Firestore
 export const db = getFirestore(app);
 
-// ✅ Debug helpers (DEV فقط)
+// ✅ Debug helpers for console (DEV only)
 if (import.meta.env.DEV) {
   (window as any).__fb = { auth, db };
 }
 
-export default app;
+// ===== Settings Types (Salon UI) =====
+
+/** طرق الدفع في الإعدادات (واجهة) */
+export type UiPaymentMethod = "كاش" | "شبكة" | "تحويل";
+
+/** حالات الحجز التي تُحسب كدخل */
+export type BookingIncomeStatus = "confirmed" | "completed";
+
+/** إعدادات المالية */
+export type FinanceSettings = {
+  expenseCategories: string[];
+  paymentMethods: UiPaymentMethod[];
+  currency: string;
+  incomeBookingStatuses: BookingIncomeStatus[];
+};

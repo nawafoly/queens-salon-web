@@ -1,12 +1,6 @@
 // ✅ src/pages/Dashboard.tsx
-import { useEffect, useMemo, useState } from "react";
-import {
-  Routes,
-  Route,
-  NavLink,
-  useNavigate,
-  Navigate,
-} from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { Routes, Route, NavLink, useNavigate, Navigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faUsers,
@@ -23,6 +17,7 @@ import {
   faWallet,
   faXmark,
   faBars,
+  faHouse, // ✅ NEW
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/DashboardSkin.css";
@@ -42,9 +37,7 @@ import EmployeePortal from "./EmployeePortal";
 import logo1 from "../assets/images/ssunnamed.png";
 
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth, db } from "../services/firebase";
-
-import { doc, getDoc } from "firebase/firestore";
+import { auth } from "../services/firebase";
 
 import type { Booking, BookingStatus } from "../helpers/dashboardService";
 import { DashboardService } from "../helpers/dashboardService";
@@ -196,12 +189,12 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 }) => {
   const statusLabel = useMemo(
     () =>
-      ({
-        confirmed: "مؤكد",
-        pending: "في الانتظار",
-        cancelled: "ملغي",
-        completed: "مكتمل",
-      } as Record<BookingStatus, string>),
+    ({
+      confirmed: "مؤكد",
+      pending: "في الانتظار",
+      cancelled: "ملغي",
+      completed: "مكتمل",
+    } as Record<BookingStatus, string>),
     []
   );
 
@@ -424,12 +417,7 @@ interface UserInfo {
 }
 
 function mapProfileRoleToDashboardRole(role: ProfileRole): UiRole | null {
-  if (
-    role === "owner" ||
-    role === "admin" ||
-    role === "reception" ||
-    role === "staff"
-  ) {
+  if (role === "owner" || role === "admin" || role === "reception" || role === "staff") {
     return role;
   }
   return null;
@@ -464,11 +452,9 @@ const Dashboard: React.FC = () => {
 
   /** ✅ refresh من Firestore */
   const refreshDashboard = async () => {
-    // ✅ نحدد آخر خطوة نجحت عشان نعرف وين طاح
     let step = "start";
 
     try {
-      // (اختياري) ترحيل بيانات قديمة
       step = "migrateBookingsIfNeeded";
       try {
         DashboardService.migrateBookingsIfNeeded?.();
@@ -478,9 +464,7 @@ const Dashboard: React.FC = () => {
 
       console.log("REFRESH -> start");
 
-      // =========================
       // 1) BOOKINGS
-      // =========================
       step = "bookings:listAllBookings";
       console.log("REFRESH -> listAllBookings()");
       const docs = await listAllBookings();
@@ -489,9 +473,7 @@ const Dashboard: React.FC = () => {
       step = "bookings:mapFirestoreToUiBooking";
       const uiBookings = docs.map(mapFirestoreToUiBooking);
 
-      // =========================
       // 2) TODAY STATS
-      // =========================
       step = "today:compute";
       const today = new Date();
       const yyyy = today.getFullYear();
@@ -505,9 +487,7 @@ const Dashboard: React.FC = () => {
         0
       );
 
-      // =========================
       // 3) EMPLOYEES COUNT (STATS)
-      // =========================
       let employeesCount = 0;
       try {
         step = "stats:DashboardService.getStats";
@@ -520,9 +500,7 @@ const Dashboard: React.FC = () => {
         employeesCount = 0;
       }
 
-      // =========================
       // 4) EXPENSES
-      // =========================
       step = "expenses:listAllExpensesFS";
       console.log("REFRESH -> listAllExpensesFS()");
       const expenses = await listAllExpensesFS();
@@ -535,9 +513,7 @@ const Dashboard: React.FC = () => {
       );
       setExpensesTotalFS(expensesTotal);
 
-      // =========================
       // 5) SET UI STATE
-      // =========================
       step = "ui:setStats/setLatestBookings";
       setStats({
         todayBookings: todayList.length,
@@ -555,10 +531,7 @@ const Dashboard: React.FC = () => {
       const code = (e as any)?.code || (e as any)?.name || "-";
       const msg = String((e as any)?.message || "");
 
-      // ✅ أهم شي: نطلع step
-      alert(
-        `❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`
-      );
+      alert(`❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`);
 
       setStats((prev) => ({
         ...prev,
@@ -606,7 +579,7 @@ const Dashboard: React.FC = () => {
         sections: { ...prev.sections, ...(cached?.sections || {}) },
         policies: { ...prev.policies, ...(cached?.policies || {}) },
       }));
-    } catch {}
+    } catch { }
 
     // 2) realtime
     const unsub = AppSettingsService.subscribe((remote: any) => {
@@ -629,27 +602,6 @@ const Dashboard: React.FC = () => {
       try {
         if (!user) {
           navigate("/login");
-          return;
-        }
-
-        // ✅ SOURCE OF TRUTH: salons/main/users/{uid}
-        const userRef = doc(db, "salons", "main", "users", user.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) {
-          console.warn("User doc missing: salons/main/users/" + user.uid);
-          navigate("/login");
-          return;
-        }
-
-        const roleFromDoc = String(userSnap.data()?.role || "guest");
-        const isStaffRole = ["owner", "admin", "reception", "staff"].includes(
-          roleFromDoc
-        );
-
-        if (!isStaffRole) {
-          console.warn("Not staff role:", roleFromDoc);
-          navigate("/profile");
           return;
         }
 
@@ -733,8 +685,7 @@ const Dashboard: React.FC = () => {
   const canSeeEmployeePortal = Boolean(isStaff || isOwner || isAdmin);
 
   const allowStaffChangeStatus = settings.policies.allowStaffChangeStatus;
-  const allowReceptionChangeStatus =
-    settings.policies.allowReceptionChangeStatus; // ✅ NEW
+  const allowReceptionChangeStatus = settings.policies.allowReceptionChangeStatus;
   const allowStaffViewClients = settings.policies.allowStaffViewClients;
 
   const canSeeSection = (key: SectionKey) => settings.sections[key] !== false;
@@ -777,7 +728,6 @@ const Dashboard: React.FC = () => {
   const handleOpenBooking = (booking: Booking) => setSelectedBooking(booking);
 
   const handleChangeStatus = async (id: string, status: BookingStatus) => {
-    // ✅ الاستقبال له مفتاحه الخاص الآن
     const canReceptionChange = isReception && allowReceptionChangeStatus;
     const canStaffChange = isStaff && allowStaffChangeStatus;
 
@@ -785,9 +735,7 @@ const Dashboard: React.FC = () => {
       try {
         await updateBookingStatusFS(id, status);
         await refreshDashboard();
-        setSelectedBooking((prev) =>
-          prev && prev.id === id ? { ...prev, status } : prev
-        );
+        setSelectedBooking((prev) => (prev && prev.id === id ? { ...prev, status } : prev));
       } catch (e) {
         console.error(e);
         alert("تعذر تحديث الحالة. تأكد من الصلاحيات/Rules.");
@@ -811,22 +759,13 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="dashboard-skin dashboard-page">
-      {isSidebarOpen && (
-        <div
-          className="dash-side-overlay"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
+    <div className="dashboard-skin dashboard-page dashboard-skin-page">
+      {isSidebarOpen && <div className="dash-side-overlay" onClick={() => setIsSidebarOpen(false)} />}
 
       <div className="container-fluid">
         <div className="row">
           {/* Sidebar */}
-          <div
-            className={`col-md-3 col-lg-2 dashboard-sidebar ${
-              isSidebarOpen ? "is-open" : ""
-            }`}
-          >
+          <div className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""}`}>
             <button
               type="button"
               className="dash-mobile-close"
@@ -838,11 +777,7 @@ const Dashboard: React.FC = () => {
             </button>
 
             <div className="sidebar-header">
-              <img
-                src={logo1}
-                alt="Queens Salon Logo"
-                className="sidebar-logo"
-              />
+              <img src={logo1} alt="Queens Salon Logo" className="sidebar-logo" />
             </div>
 
             <div className="user-info">
@@ -872,40 +807,27 @@ const Dashboard: React.FC = () => {
 
                 {canSeeEmployeePortal && (
                   <li>
-                    <NavLink
-                      to="/dashboard/staff"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/staff" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserTie} />
                       بوابة الموظفات
                     </NavLink>
                   </li>
                 )}
 
-                {(hasAdminPower || isReception) &&
-                  canSeeSection("bookings") && (
-                    <li>
-                      <NavLink
-                        to="/dashboard/bookings"
-                        className="nav-link"
-                        onClick={() => setIsSidebarOpen(false)}
-                      >
-                        <FontAwesomeIcon icon={faCalendarAlt} />
-                        الحجوزات
-                      </NavLink>
-                    </li>
-                  )}
+                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
+                  <li>
+                    <NavLink to="/dashboard/bookings" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faCalendarAlt} />
+                      الحجوزات
+                    </NavLink>
+                  </li>
+                )}
 
                 {(hasAdminPower || isReception) && canSeeSection("clients") && (
                   <>
                     {hasAdminPower || (isReception && allowStaffViewClients) ? (
                       <li>
-                        <NavLink
-                          to="/dashboard/clients"
-                          className="nav-link"
-                          onClick={() => setIsSidebarOpen(false)}
-                        >
+                        <NavLink to="/dashboard/clients" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                           <FontAwesomeIcon icon={faUsers} />
                           العميلات
                         </NavLink>
@@ -916,11 +838,7 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("employees") && (
                   <li>
-                    <NavLink
-                      to="/dashboard/employees"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/employees" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserTie} />
                       الموظفات
                     </NavLink>
@@ -929,11 +847,7 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("offers") && (
                   <li>
-                    <NavLink
-                      to="/dashboard/offers"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/offers" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faPercent} />
                       العروض والكوبونات
                     </NavLink>
@@ -942,11 +856,7 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("reports") && (
                   <li>
-                    <NavLink
-                      to="/dashboard/reports"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/reports" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartPie} />
                       التقارير
                     </NavLink>
@@ -955,11 +865,7 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("income") && (
                   <li>
-                    <NavLink
-                      to="/dashboard/income"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/income" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faWallet} />
                       الإيرادات
                     </NavLink>
@@ -968,19 +874,11 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("expenses") && (
                   <li>
-                    <NavLink
-                      to="/dashboard/expenses"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/expenses" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faMoneyBillWave} />
                       <span className="dash-nav-label">
                         المصروفات
-                        {missingExpenseNotesCount > 0 && (
-                          <span className="dash-badge">
-                            {missingExpenseNotesCount}
-                          </span>
-                        )}
+                        {missingExpenseNotesCount > 0 && <span className="dash-badge">{missingExpenseNotesCount}</span>}
                       </span>
                     </NavLink>
                   </li>
@@ -988,11 +886,7 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("settings") && (
                   <li>
-                    <NavLink
-                      to="/dashboard/settings"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/settings" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCog} />
                       الإعدادات
                     </NavLink>
@@ -1001,15 +895,26 @@ const Dashboard: React.FC = () => {
               </ul>
             </nav>
 
+            {/* ✅ Footer: زر الرئيسية + الخروج */}
             <div className="sidebar-footer">
-              <button
-                className="exp-btn ghost"
-                onClick={handleLogout}
-                type="button"
-              >
-                <FontAwesomeIcon icon={faSignOutAlt} />
-                تسجيل الخروج
-              </button>
+              <div className="sidebar-footer">
+                <button
+                  className="exp-btn home"
+                  type="button"
+                  onClick={() => navigate("/")}
+                  title="الصفحة الرئيسية"
+                  aria-label="الصفحة الرئيسية"
+                >
+                  <FontAwesomeIcon icon={faHouse} />
+                  الصفحة الرئيسية
+                </button>
+
+                <button className="exp-btn logout" onClick={handleLogout} type="button">
+                  <FontAwesomeIcon icon={faSignOutAlt} />
+                  تسجيل الخروج
+                </button>
+              </div>
+
             </div>
           </div>
 
@@ -1033,19 +938,17 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
 
+              {/* ✅ FIX: right section واحد فقط (بدون تكرار) */}
               <div className="dash-topbar-right">
                 <div className="dash-topbar-user">
                   <span className="dash-topbar-name">{userInfo.name}</span>
-                  <span className="dash-topbar-role">
-                    {getRoleTitle(userInfo.role)}
-                  </span>
+                  <span className="dash-topbar-role">{getRoleTitle(userInfo.role)}</span>
                 </div>
               </div>
             </div>
 
             <div className="dashboard-inner">
               <Routes>
-                {/* ✅ Index واحد فقط */}
                 <Route
                   index
                   element={
@@ -1090,24 +993,16 @@ const Dashboard: React.FC = () => {
 
                 <Route
                   path="staff"
-                  element={
-                    canSeeEmployeePortal ? (
-                      <EmployeePortal />
-                    ) : (
-                      <Navigate to="/dashboard" replace />
-                    )
-                  }
+                  element={canSeeEmployeePortal ? <EmployeePortal /> : <Navigate to="/dashboard" replace />}
                 />
 
-                {(hasAdminPower || isReception) &&
-                  canSeeSection("bookings") && (
-                    <Route path="bookings" element={<DashboardBookings />} />
-                  )}
+                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
+                  <Route path="bookings" element={<DashboardBookings />} />
+                )}
 
-                {(hasAdminPower || (isReception && allowStaffViewClients)) &&
-                  canSeeSection("clients") && (
-                    <Route path="clients" element={<DashboardClients />} />
-                  )}
+                {(hasAdminPower || (isReception && allowStaffViewClients)) && canSeeSection("clients") && (
+                  <Route path="clients" element={<DashboardClients />} />
+                )}
 
                 {hasAdminPower && canSeeSection("employees") && (
                   <Route path="employees" element={<DashboardEmployees />} />
@@ -1129,21 +1024,13 @@ const Dashboard: React.FC = () => {
                   <Route path="expenses" element={<DashboardExpenses />} />
                 )}
 
-                {/* ✅✅✅ settings تلتقط أي مسار داخلها */}
                 {hasAdminPower && canSeeSection("settings") && (
                   <Route path="settings/*" element={<DashboardSettings />} />
                 )}
 
-                {/* ✅✅✅ fallback absolute */}
                 <Route
                   path="*"
-                  element={
-                    isStaff ? (
-                      <Navigate to="/dashboard/staff" replace />
-                    ) : (
-                      <Navigate to="/dashboard/overview" replace />
-                    )
-                  }
+                  element={isStaff ? <Navigate to="/dashboard/staff" replace /> : <Navigate to="/dashboard/overview" replace />}
                 />
               </Routes>
             </div>
@@ -1153,18 +1040,11 @@ const Dashboard: React.FC = () => {
 
       {/* ✅ Modal تفاصيل الحجز */}
       {selectedBooking && (
-        <div
-          className="dash-modal-overlay"
-          onClick={() => setSelectedBooking(null)}
-        >
+        <div className="dash-modal-overlay" onClick={() => setSelectedBooking(null)}>
           <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
             <div className="dash-modal-head">
               <h3 style={{ margin: 0 }}>تفاصيل الحجز</h3>
-              <button
-                className="exp-btn ghost"
-                type="button"
-                onClick={() => setSelectedBooking(null)}
-              >
+              <button className="exp-btn ghost" type="button" onClick={() => setSelectedBooking(null)}>
                 <FontAwesomeIcon icon={faXmark} /> إغلاق
               </button>
             </div>
@@ -1180,11 +1060,7 @@ const Dashboard: React.FC = () => {
               </div>
               <div className="ov-detail-item">
                 <b>الخدمة</b>
-                <div>
-                  {selectedBooking.serviceName ||
-                    selectedBooking.serviceId ||
-                    "-"}
-                </div>
+                <div>{selectedBooking.serviceName || selectedBooking.serviceId || "-"}</div>
               </div>
               <div className="ov-detail-item">
                 <b>الموظفة</b>
@@ -1200,28 +1076,19 @@ const Dashboard: React.FC = () => {
               </div>
               <div className="ov-detail-item">
                 <b>الإجمالي</b>
-                <div>
-                  {selectedBooking.total
-                    ? `${selectedBooking.total} ريال`
-                    : "-"}
-                </div>
+                <div>{selectedBooking.total ? `${selectedBooking.total} ريال` : "-"}</div>
               </div>
 
               <div className="ov-detail-item ov-detail-item--wide">
                 <b>الحالة</b>
 
                 {hasAdminPower ||
-                (isReception && allowReceptionChangeStatus) ||
-                (isStaff && allowStaffChangeStatus) ? (
+                  (isReception && allowReceptionChangeStatus) ||
+                  (isStaff && allowStaffChangeStatus) ? (
                   <select
                     className="dash-select"
                     value={selectedBooking.status}
-                    onChange={(e) =>
-                      handleChangeStatus(
-                        selectedBooking.id,
-                        e.target.value as BookingStatus
-                      )
-                    }
+                    onChange={(e) => handleChangeStatus(selectedBooking.id, e.target.value as BookingStatus)}
                   >
                     <option value="confirmed">مؤكد</option>
                     <option value="pending">في الانتظار</option>
@@ -1229,9 +1096,7 @@ const Dashboard: React.FC = () => {
                     <option value="cancelled">ملغي</option>
                   </select>
                 ) : (
-                  <span className={`status-badge ${selectedBooking.status}`}>
-                    {selectedBooking.status}
-                  </span>
+                  <span className={`status-badge ${selectedBooking.status}`}>{selectedBooking.status}</span>
                 )}
 
                 {!hasAdminPower &&
@@ -1245,18 +1110,10 @@ const Dashboard: React.FC = () => {
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-              <button
-                className="exp-btn ghost"
-                onClick={() => navigate("/dashboard/bookings")}
-                type="button"
-              >
+              <button className="exp-btn ghost" onClick={() => navigate("/dashboard/bookings")} type="button">
                 فتح صفحة الحجوزات
               </button>
-              <button
-                className="exp-btn primary"
-                onClick={() => setSelectedBooking(null)}
-                type="button"
-              >
+              <button className="exp-btn primary" onClick={() => setSelectedBooking(null)} type="button">
                 تم
               </button>
             </div>

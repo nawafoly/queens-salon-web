@@ -1,7 +1,7 @@
 import React from "react";
-import sophie from "../assets/images/sophie.jpg";
-import emma from "../assets/images/emma.jpg";
-import ava from "../assets/images/ava.jpg";
+import sophie from "../assets/images/sophie.webp";
+import emma from "../assets/images/emma.webp";
+import ava from "../assets/images/ava.webp";
 
 import "../styles/Testimonials.css";
 

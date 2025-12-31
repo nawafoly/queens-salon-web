@@ -155,7 +155,7 @@ export async function createBooking(data: BookingDoc) {
   return bookingId;
 }
 
-/** ✅ هذا هو التصدير اللي كان ناقص */
+/** ✅ إنشاء حجز من لوحة التحكم */
 export async function createDashboardBooking(args: {
   createdBy: string;
   clientName: string;
@@ -211,26 +211,40 @@ export async function listAllBookings(): Promise<BookingDocWithId[]> {
     .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
     .sort(
       (a, b) =>
-        (b.createdAt as any)?.toMillis?.() -
-        (a.createdAt as any)?.toMillis?.()
+        (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.()
     );
 }
 
+/**
+ * ✅ Realtime watcher for all bookings
+ * يدعم onError اختياريًا (لأن DashboardBookings يستدعيه بوسيطين)
+ */
 export function watchAllBookings(
-  onData: (rows: BookingDocWithId[]) => void
+  onData: (rows: BookingDocWithId[]) => void,
+  onError?: (err: unknown) => void
 ) {
   const q = query(collection(db, ...BOOKINGS_COL));
-  return onSnapshot(q, (snap) => {
-    const rows = snap.docs
-      .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
-      .sort(
-        (a, b) =>
-          (b.createdAt as any)?.toMillis?.() -
-          (a.createdAt as any)?.toMillis?.()
-      );
-    onData(rows);
-  });
+
+  // onSnapshot supports: (next, error)
+  return onSnapshot(
+    q,
+    (snap) => {
+      const rows = snap.docs
+        .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
+        .sort(
+          (a, b) =>
+            (b.createdAt as any)?.toMillis?.() -
+            (a.createdAt as any)?.toMillis?.()
+        );
+
+      onData(rows);
+    },
+    (err) => {
+      if (onError) onError(err);
+    }
+  );
 }
+
 
 export async function listUserBookings(userId: string) {
   const q = query(
@@ -263,10 +277,7 @@ export async function updateBookingDetails(
   bookingId: string,
   patch: Partial<BookingDoc>
 ) {
-  await updateDoc(
-    doc(db, ...BOOKINGS_COL, bookingId),
-    stripUndefined(patch)
-  );
+  await updateDoc(doc(db, ...BOOKINGS_COL, bookingId), stripUndefined(patch));
 
   await updateDoc(
     doc(db, ...TRACKS_COL, bookingId),

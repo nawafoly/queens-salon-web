@@ -129,15 +129,8 @@ function safeKey(s: string) {
     .replaceAll("/", "-")
     .replace(/\s+/g, "_");
 }
-function buildSlotId(
-  salonId: string,
-  employeeKey: string,
-  date: string,
-  time: string
-) {
-  return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(
-    employeeKey
-  )}`;
+function buildSlotId(salonId: string, employeeKey: string, date: string, time: string) {
+  return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
 }
 
 function calcDiscount(basePrice: number, offer: FsOffer) {
@@ -383,17 +376,13 @@ const Booking: React.FC = () => {
         setSlotChecking(true);
 
         const slotId = buildSlotId(SALON_ID, employeeKey, date, time);
-        const snap = await getDoc(
-          doc(db, "salons", SALON_ID, "booking_slots", slotId)
-        );
+        const snap = await getDoc(doc(db, "booking_slots", slotId));
 
         if (cancelled) return;
 
         if (snap.exists()) {
           setSlotBusy(true);
-          setSlotMsg(
-            "هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت."
-          );
+          setSlotMsg("هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت.");
         } else {
           setSlotBusy(false);
           setSlotMsg("");
@@ -549,9 +538,7 @@ const Booking: React.FC = () => {
 
     // ✅ NEW: إذا الوقت محجوز لا تكمل
     if (slotBusy) {
-      alert(
-        "هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت"
-      );
+      alert("هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت");
       return;
     }
 
@@ -797,9 +784,7 @@ const Booking: React.FC = () => {
                     disabled={!selectedSectionId}
                   >
                     <option value="" disabled>
-                      {selectedSectionId
-                        ? "اختاري الخدمة"
-                        : "اختاري القسم أولاً"}
+                      {selectedSectionId ? "اختاري الخدمة" : "اختاري القسم أولاً"}
                     </option>
 
                     {servicesGrouped.map(([catName, list]) => (
@@ -859,9 +844,7 @@ const Booking: React.FC = () => {
                     </div>
 
                     {staffError && (
-                      <div className="no-employee-warning mt-2">
-                        {staffError}
-                      </div>
+                      <div className="no-employee-warning mt-2">{staffError}</div>
                     )}
 
                     {!staffError &&
@@ -928,16 +911,15 @@ const Booking: React.FC = () => {
                   </div>
 
                   {/* ✅ NEW: رسالة توفر الوقت + تحميل */}
-                  {slotChecking &&
-                    formData.employee &&
-                    formData.date &&
-                    formData.time && (
-                      <div className="mt-2 booking-offer-msg">
-                        جاري التحقق من توفر هذا الوقت...
-                      </div>
-                    )}
+                  {slotChecking && formData.employee && formData.date && formData.time && (
+                    <div className="mt-2 booking-offer-msg">
+                      جاري التحقق من توفر هذا الوقت...
+                    </div>
+                  )}
                   {slotMsg && (
-                    <div className="no-employee-warning mt-2">{slotMsg}</div>
+                    <div className="no-employee-warning mt-2">
+                      {slotMsg}
+                    </div>
                   )}
                 </div>
 
@@ -991,7 +973,7 @@ const Booking: React.FC = () => {
                     />
                     <button
                       type="button"
-                      className="btn btn-dark"
+                      className="btn"
                       onClick={handleApplyCoupon}
                       disabled={!formData.service}
                     >
@@ -1086,9 +1068,7 @@ const Booking: React.FC = () => {
 
               <div className="booking-detail-item">
                 <span className="booking-detail-label">الموظفة:</span>
-                <span className="booking-detail-value">
-                  {formData.employee}
-                </span>
+                <span className="booking-detail-value">{formData.employee}</span>
               </div>
 
               <div className="booking-detail-item">
