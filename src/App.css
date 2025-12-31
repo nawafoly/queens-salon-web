@@ -20,7 +20,6 @@ body {
   padding: 0;
 }
 
-/* === Root Variables === */
 :root {
   /* أساسي */
   --primary-color: #e8b4a2;
@@ -37,8 +36,9 @@ body {
   --text-color: #5a4a42;
   --white: #ffffff;
   --black: #000000;
+}
 
-
+/* ✅ هذا القوس كان ناقص */
 
 /* === Global Styles === */
 body {
@@ -48,6 +48,7 @@ body {
   direction: rtl;
   text-align: right;
 }
+
 
 .app {
   display: flex;
@@ -246,3 +247,18 @@ p {
     font-size: 0.9rem;
   }
 }
+
+/* ✅ Force Light Theme (Mobile Dark Mode Fix) */
+:root {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+
+  html,
+  body {
+    background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%) !important;
+    background-color: #fdf9f6 !important;
+    color: #5a4a42 !important;
+  }
+} 
