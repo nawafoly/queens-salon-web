@@ -224,7 +224,7 @@
   );
 
   /* 🔥 الحل هنا */
-  color: var() !important;
+  color: inherit !important;
 
   font-weight: 900;
   letter-spacing: 0.2px;
@@ -539,3 +539,4 @@
 .offers-page .of-services-search input {
   color: #1f1f1f !important;
 }
+
