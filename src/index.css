@@ -6,6 +6,20 @@
 @import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap");
 
+/* 🔒 إجبار الموقع على Light Mode */
+:root {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  html,
+  body {
+    color-scheme: light;
+    background-color: #fdf9f6 !important;
+    color: #5a4a42 !important;
+  }
+}
+
 /* ========================================
    المتغيرات الأساسية - الألوان المعتمدة
    ======================================== */
