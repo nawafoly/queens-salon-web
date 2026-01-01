@@ -95,7 +95,7 @@
   margin: 0;
   font-size: 36px;
   letter-spacing: 0.2px;
-  color: var(--primary-color);
+  color: var(--text-strong);
 }
 
 .track-subtitle {

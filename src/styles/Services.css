@@ -16,14 +16,15 @@
   .services-page .services-title {
     font-size: 2.2rem;
     font-weight: 900;
-    color: var(--primary-color);
+    color: var(--text-strong);
     margin-bottom: 0.9rem;
     text-align: center;
+    /* opacity: 0.9;  */
   }
   
   .services-page .services-subtitle {
     font-size: 1.12rem;
-    color: var(--secondary-color);
+    color: var(--text-strong);
     margin-bottom: 2.2rem;
     text-align: center;
     opacity: 0.9;
@@ -73,7 +74,7 @@
   .services-page .service-category-title {
     font-size: 1.55rem;
     font-weight: 900;
-    color: var(--primary-color);
+    color: var(--text-strong);
     margin-bottom: 0.55rem;
   }
   
@@ -114,7 +115,7 @@
   
   /* ✅ لمسة فخمة للسعر */
   .services-page .service-price {
-    color: var(--secondary-color);
+    color: var(--info-color-soft);
     font-weight: 900;
     font-size: 0.98rem;
     background: rgba(233, 180, 162, 0.18);

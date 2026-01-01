@@ -2,24 +2,35 @@
 * Custom CSS for Body Beauty Salon
 * React Application
 */
+@import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap");
 
 /* 🔒 إجبار الموقع على Light Mode (مهم للجوال) */
 :root {
   color-scheme: light;
 
-  /* أساسي */
+  /* 🎨 الألوان الأساسية */
   --primary-color: #e8b4a2;
   --secondary-color: #dba58e;
   --accent-color: #f5cdbb;
 
-  /* خلفيات */
+  /* 🧱 الخلفيات */
   --background-color: #fdf9f6;
 
-  /* نصوص */
-  --text-color: #5a4a42;
+    /* 🔵 ألوان إضافية (Accent / Info) */
+  --info-color: #559BD9;        /* أزرق ناعم */
+  --info-color-soft: rgb(28, 79, 124);
+
+  /* 📝 النصوص */
+  --text-color: #5a4a42;        /* النص الافتراضي */
+  --text-strong: #7c3e24;      /* 🔥 نص غامق / عناوين / أزرار */
+
+  /* ألوان عامة */
   --white: #ffffff;
   --black: #000000;
 }
+
+
+
 
 /* لو الجهاز Dark، لا تقلب الموقع لأسود */
 @media (prefers-color-scheme: dark) {

@@ -29,11 +29,11 @@ const Hero = () => {
 
           {/* Actions */}
           <div className="hero-buttons">
-            <Link to="/booking" className="btn hero-booking-btn">
+            <Link to="/booking" className="hero-booking-btn">
               احجزي الآن
             </Link>
 
-            <Link to="/services" className="btn hero-explore-btn">
+            <Link to="/services" className="hero-explore-btn">
               استكشفي خدماتنا
             </Link>
           </div>

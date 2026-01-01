@@ -65,7 +65,7 @@
 .about-title {
   font-size: 2rem;
   font-weight: 900;
-  color: var(--primary-color);
+  color: var(--text-strong);
   letter-spacing: 0.2px;
 }
 .about-text {
@@ -163,7 +163,7 @@
 .team-member-position-enhanced {
   font-size: 0.98rem;
   font-weight: 700;
-  color: var(--primary-color);
+  color: var(--text-strong);
   opacity: 0.92;
   margin: 0 0 0.65rem 0;
 }
@@ -248,7 +248,7 @@
 .about-features-title {
   font-size: 1.15rem;
   font-weight: 900;
-  color: var(--primary-color);
+  color: var(--text-color);
 }
 
 .features-list {

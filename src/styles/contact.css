@@ -8,7 +8,7 @@
 .contact-title {
   font-size: 2.2rem;
   font-weight: 700;
-  color: var(--primary-color);
+
 }
 
 .contact-subtitle {
@@ -25,7 +25,7 @@
 }
 
 .contact-form-title {
-  color: var(--primary-color);
+  color: var( --text-strong);
   font-size: 1.3rem;
   font-weight: 700;
 }
@@ -53,7 +53,7 @@
 
 .form-label {
   font-weight: 600;
-  color: var(--primary-color);
+  color: var(--text-color);
   margin-bottom: 0.4rem;
   font-size: 1rem;
   display: block;
@@ -108,7 +108,7 @@
 }
 
 .contact-info-title {
-  color: var(--primary-color);
+  color: var(--text-color);
   font-size: 1.3rem;
   font-weight: 700;
   margin-bottom: 1.4rem;
@@ -132,7 +132,7 @@
   font-size: 1.01rem;
   font-weight: 700;
   margin-bottom: 0.2rem;
-  color: var(--primary-color);
+  color: var(--info-color-soft);
 }
 
 .contact-info-content p,
@@ -146,6 +146,7 @@
   list-style: none;
   padding: 0;
   margin: 0.2rem 0 0 0;
+  color: var(--text-color) ;
 }
 
 .working-hours li {
@@ -153,6 +154,12 @@
   gap: 0.5rem;
   font-size: 0.97rem;
   color: var(--secondary-color);
+}
+
+.working-hours span {
+  min-width: 70px;
+  display: inline-block;
+  color: var(--text-color);
 }
 
 .day {
@@ -171,6 +178,17 @@
   box-shadow: 0 2px 10px rgba(180, 139, 123, 0.05);
   border: none;
 }
+
+.text-center {
+  background: linear-gradient(90deg, var(--text-strong), #8b6f61);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+
 
 @media (max-width: 991.98px) {
   .contact-form-container, .contact-info-container {

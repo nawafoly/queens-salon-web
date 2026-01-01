@@ -18,7 +18,7 @@
 .offers-page .text-gray { color: rgba(17, 24, 39, 0.72); }
 
 .offers-page .text-gradient {
-  background: linear-gradient(90deg, #c98f79, #e9b6a3);
+  background: var(--text-strong);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -163,7 +163,7 @@
   margin: 2px 0 10px;
   font-size: 20px;
   font-weight: 900;
-  color: #111827;
+  color: var(--info-color-soft);
 }
 
 .offers-page .offer-mini-row {
@@ -276,7 +276,7 @@
   padding: 12px 10px;
   border-radius: 16px;
   font-weight: 900;
-  color: #111827;
+  color: var(--text-color);
   cursor: pointer;
   border: 1px solid rgba(17,24,39,.08);
   background: rgba(255,255,255,.86);
@@ -311,11 +311,31 @@
 }
 
 /* ✅ زر outline */
+/* زر العروض – ستايل زجاجي ناعم */
 .offers-page .btn-outline {
-  background: rgba(255,255,255,.9);
-  border: 1px solid rgba(17,24,39,.12);
-  color: #111827;
+  background: hsl(0, 0%, 95%, 0.5);           /* نفس خفة الهيرو */
+  border: 2px solid hsl(11, 73%, 81%, 0.6);   /* نفس إطار الهيرو */
+  color: var(--text-strong);                  /* نص موحّد */
+  padding: 0.6rem 1.6rem;
+  border-radius: 50px;
+  font-weight: 600;
+  font-size: 1rem;
+
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+
+  transition:
+    background 0.3s ease,
+    color 0.3s ease,
+    box-shadow 0.3s ease;
 }
+
+.offers-page .btn-outline:hover {
+  background: rgba(232, 180, 162, 0.45);      /* نفس hover */
+  color: var(--text-strong);
+  box-shadow: 0 6px 18px rgba(232, 180, 162, 0.25);
+}
+
 
 .offers-page .btn-outline:hover { background: rgba(255,255,255,1); }
 

@@ -100,7 +100,7 @@ const Track: React.FC = () => {
           <div className="track-badge">📌</div>
           <h2 className="track-title">تتبع الحجز</h2>
           <p className="track-subtitle">
-            أدخل رقم التتبع لمشاهدة حالة الحجز
+            أدخل رقم الحجز لمشاهدة حالة الحجز
           </p>
         </div>
 

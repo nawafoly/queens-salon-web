@@ -10,7 +10,7 @@
 
 .pricing-title {
   font-size: 2rem;
-  color: var(--primary-color);
+  color: var(--text-color);
   font-weight: 800;
   margin-bottom: 0.35rem;
 }
@@ -82,7 +82,7 @@
 
 .card-title {
   font-weight: 800;
-  color: var(--primary-color);
+  color: var(--text-strong);
   font-size: 1.08rem;
   margin-bottom: 0.35rem;
 }
@@ -150,15 +150,19 @@
   position: fixed;
   inset: 0;
   background: rgba(30, 18, 14, 0.28);
-  z-index: 5000;
+  z-index: 999999;              /* 🔥 أعلى من النافبار */
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 18px;
+
+  isolation: isolate;           /* 🔥 يمنع تداخل stacking */
 }
 
 /* Modal Container */
 .pricing-modal {
+  position: relative;
+  z-index: 1000000;             /* 🔥 فوق الـ overlay نفسه */
   width: min(860px, 96vw);
   max-height: min(84vh, 720px);
   background: #fff;
@@ -168,6 +172,7 @@
   display: flex;
   flex-direction: column;
 }
+
 
 /* Header */
 .modal-header {
@@ -238,7 +243,7 @@
 
 .modal-category-title {
   font-weight: 900;
-  color: var(--primary-color);
+  color: var(--text-color);
   margin-bottom: 0.65rem;
 }
 
@@ -273,7 +278,7 @@
 
 .modal-price {
   font-weight: 900;
-  color: var(--secondary-color);
+  color: var(--info-color-soft);
   white-space: nowrap;
   font-size: 0.98rem;
 }
