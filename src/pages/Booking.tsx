@@ -13,6 +13,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { generateSalonTimeSlots } from "../helpers/timeSlots";
 import "../styles/Booking.css";
+import { useRef } from "react";
 
 // ✅ NEW: Firestore slot availability check
 import { doc, getDoc } from "firebase/firestore";
@@ -129,8 +130,15 @@ function safeKey(s: string) {
     .replaceAll("/", "-")
     .replace(/\s+/g, "_");
 }
-function buildSlotId(salonId: string, employeeKey: string, date: string, time: string) {
-  return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
+function buildSlotId(
+  salonId: string,
+  employeeKey: string,
+  date: string,
+  time: string
+) {
+  return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(
+    employeeKey
+  )}`;
 }
 
 function calcDiscount(basePrice: number, offer: FsOffer) {
@@ -155,6 +163,8 @@ function calcDiscount(basePrice: number, offer: FsOffer) {
 
 const Booking: React.FC = () => {
   const navigate = useNavigate();
+
+  const dateInputRef = useRef<HTMLInputElement | null>(null); // ✅ هنا
 
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
 
@@ -201,12 +211,12 @@ const Booking: React.FC = () => {
         sectionId === "hair" || sectionId === "coloring"
           ? "الشعر"
           : sectionId === "makeup"
-          ? "المكياج"
-          : sectionId === "nails"
-          ? "الأظافر"
-          : sectionId === "waxing"
-          ? "البشرة"
-          : "الشعر";
+            ? "المكياج"
+            : sectionId === "nails"
+              ? "الأظافر"
+              : sectionId === "waxing"
+                ? "البشرة"
+                : "الشعر";
 
       section.services.forEach((cat, catIdx) => {
         cat.items.forEach((it, itemIdx) => {
@@ -382,7 +392,9 @@ const Booking: React.FC = () => {
 
         if (snap.exists()) {
           setSlotBusy(true);
-          setSlotMsg("هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت.");
+          setSlotMsg(
+            "هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت."
+          );
         } else {
           setSlotBusy(false);
           setSlotMsg("");
@@ -538,7 +550,9 @@ const Booking: React.FC = () => {
 
     // ✅ NEW: إذا الوقت محجوز لا تكمل
     if (slotBusy) {
-      alert("هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت");
+      alert(
+        "هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت"
+      );
       return;
     }
 
@@ -750,10 +764,11 @@ const Booking: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="mb-4">
+                {/* ✅ تعديل تنسيق فقط: bk-field + dash-select */}
+                <div className="mb-4 bk-field">
                   <label className="form-label">القسم</label>
                   <select
-                    className="form-select"
+                    className="form-select dash-select"
                     value={selectedSectionId}
                     onChange={handleSectionChange}
                     required
@@ -769,13 +784,14 @@ const Booking: React.FC = () => {
                   </select>
                 </div>
 
-                <div className="mb-4">
+                {/* ✅ تعديل تنسيق فقط: bk-field + dash-select */}
+                <div className="mb-4 bk-field">
                   <label htmlFor="service" className="form-label">
                     الخدمة المطلوبة
                   </label>
 
                   <select
-                    className="form-select"
+                    className="form-select dash-select"
                     id="service"
                     name="service"
                     value={formData.service}
@@ -831,8 +847,8 @@ const Booking: React.FC = () => {
                           {staffLoading
                             ? "جاري تحميل الموظفات..."
                             : !selectedSectionId
-                            ? "اختاري القسم أولاً"
-                            : "اختاري الموظفة"}
+                              ? "اختاري القسم أولاً"
+                              : "اختاري الموظفة"}
                         </option>
 
                         {filteredEmployees.map((emp) => (
@@ -844,7 +860,9 @@ const Booking: React.FC = () => {
                     </div>
 
                     {staffError && (
-                      <div className="no-employee-warning mt-2">{staffError}</div>
+                      <div className="no-employee-warning mt-2">
+                        {staffError}
+                      </div>
                     )}
 
                     {!staffError &&
@@ -865,11 +883,32 @@ const Booking: React.FC = () => {
                     <label htmlFor="date" className="form-label">
                       التاريخ
                     </label>
-                    <div className="input-group">
+
+                    <div
+                      className="input-group booking-date-group"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        dateInputRef.current?.focus();
+                        dateInputRef.current?.showPicker?.();
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          dateInputRef.current?.focus();
+                          dateInputRef.current?.showPicker?.();
+                        }
+                      }}
+                      aria-label="اختيار التاريخ"
+                      title="اختيار التاريخ"
+                    >
                       <span className="input-group-text">
                         <FontAwesomeIcon icon={faCalendarAlt} />
                       </span>
+
                       <input
+                        ref={dateInputRef}
                         type="date"
                         className="form-control"
                         id="date"
@@ -878,6 +917,9 @@ const Booking: React.FC = () => {
                         onChange={handleChange}
                         min={new Date().toISOString().split("T")[0]}
                         required
+                        onFocus={() => {
+                          dateInputRef.current?.showPicker?.();
+                        }}
                       />
                     </div>
                   </div>
@@ -911,22 +953,24 @@ const Booking: React.FC = () => {
                   </div>
 
                   {/* ✅ NEW: رسالة توفر الوقت + تحميل */}
-                  {slotChecking && formData.employee && formData.date && formData.time && (
-                    <div className="mt-2 booking-offer-msg">
-                      جاري التحقق من توفر هذا الوقت...
-                    </div>
-                  )}
+                  {slotChecking &&
+                    formData.employee &&
+                    formData.date &&
+                    formData.time && (
+                      <div className="mt-2 booking-offer-msg">
+                        جاري التحقق من توفر هذا الوقت...
+                      </div>
+                    )}
                   {slotMsg && (
-                    <div className="no-employee-warning mt-2">
-                      {slotMsg}
-                    </div>
+                    <div className="no-employee-warning mt-2">{slotMsg}</div>
                   )}
                 </div>
 
-                <div className="mb-4">
+                {/* ✅ تعديل تنسيق فقط: bk-field + dash-select */}
+                <div className="mb-4 bk-field">
                   <label className="form-label">طريقة الدفع</label>
                   <select
-                    className="form-select"
+                    className="form-select dash-select"
                     name="paymentMethod"
                     value={formData.paymentMethod}
                     onChange={handleChange}

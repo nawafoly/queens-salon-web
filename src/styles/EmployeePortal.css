@@ -1,394 +1,255 @@
-/* =========================
-   EmployeePortal.css (Responsive + Clean)
-   Targets: 320 / 375 / 414 / 430
-========================= */
+/* ✅ src/pages/DashboardEmployees.css */
 
-.ep-wrap {
-    padding: 16px;
-    overflow-x: hidden;
-    max-width: 100%;
-    direction: rtl;
+/* ---- Base bits ---- */
+.dash-sub {
+  margin: 6px 0 0;
+  opacity: 0.75;
+  font-size: 0.95rem;
+}
+
+/* ✅ Alert */
+.dash-alert {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* ✅ Card */
+.dash-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
+
+  padding: 14px;
+  margin: 12px 0;
+
+  box-sizing: border-box;
+}
+
+/* ✅ Filters row */
+.dash-row {
+  display: grid;
+  grid-template-columns: 1fr 220px 220px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.dash-meta {
+  margin-top: 10px;
+  opacity: 0.75;
+  font-size: 0.92rem;
+}
+
+/* ✅ Inputs */
+.dash-input,
+.dash-select,
+.dash-textarea {
+  width: 100%;
+  min-width: 0;
+
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  padding: 10px 12px;
+
+  outline: none;
+  background: #fff;
+  line-height: 1.25;
+
+  box-sizing: border-box;
+}
+
+.dash-input:focus,
+.dash-select:focus,
+.dash-textarea:focus {
+  border-color: rgba(0, 0, 0, 0.35);
+}
+
+.dash-textarea {
+  resize: vertical;
+}
+
+.dash-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+/* ✅ Grid list */
+.dash-grid {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 18px;
+
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: stretch;
+}
+
+/* ✅ Staff card */
+.staff-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  /* مهم داخل grid */
+}
+
+/* Header row inside staff card */
+.staff-card .staff-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+/* ✅ prevent long text breaking layout */
+.staff-name {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.staff-name b {
+  overflow-wrap: anywhere;
+}
+
+/* Actions */
+.staff-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* Status pill */
+.staff-pill {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: rgba(255, 255, 255, 0.75);
+
+  width: fit-content;
+}
+
+.staff-pill.on {
+  background: rgba(0, 200, 120, 0.10);
+}
+
+.staff-pill.off {
+  background: rgba(200, 0, 60, 0.08);
+}
+
+/* Bio */
+.staff-bio {
+  margin-top: 10px;
+  line-height: 1.75;
+  opacity: 0.92;
+  overflow-wrap: anywhere;
+}
+
+.staff-bio.muted {
+  opacity: 0.62;
+}
+
+/* Chips */
+.staff-chips {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.staff-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px dashed rgba(0, 0, 0, 0.18);
+  font-size: 0.85rem;
+  background: rgba(255, 255, 255, 0.75);
+  max-width: 100%;
+  word-break: break-word;
+}
+
+/* ID */
+.staff-id {
+  margin-top: 10px;
+  opacity: 0.55;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+/* Multi-pick buttons */
+.staff-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.staff-picks .pick {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+
+  line-height: 1.1;
+  min-height: 38px;
+}
+
+.staff-picks .pick.on {
+  border-color: rgba(232, 180, 162, 0.95);
+  background: rgba(232, 180, 162, 0.18);
+}
+
+/* ✅ Responsive */
+@media (max-width: 900px) {
+  .dash-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
-  
-  /* منع أي عنصر يسبب سكرول أفقي */
-  .ep-wrap,
-  .ep-card,
-  .ep-item,
-  .ep-modal,
-  .ep-form,
-  .ep-row {
-    max-width: 100%;
+}
+
+@media (max-width: 768px) {
+  .dash-row {
+    grid-template-columns: 1fr;
   }
-  
-  .ep-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  
-  .ep-sub {
-    margin-top: 6px;
-    opacity: 0.7;
-    font-size: 13px;
-  }
-  
-  .ep-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  
-  .ep-btn {
-    border: 1px solid #ddd;
-    background: #fff;
-    padding: 10px 12px;
-    border-radius: 12px;
-    cursor: pointer;
-    display: inline-flex;
-    gap: 8px;
-    align-items: center;
-    user-select: none;
-  }
-  
-  .ep-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-  
-  .ep-btn.primary {
-    background: #111;
-    color: #fff;
-    border-color: #111;
-  }
-  
-  .ep-btn.danger {
-    background: #b00020;
-    color: #fff;
-    border-color: #b00020;
-  }
-  
-  /* ✅ Banner */
-  .ep-banner {
-    margin-top: 12px;
-    border: 1px solid rgba(0,0,0,0.08);
-    background: #fff;
-    border-radius: 14px;
-    padding: 10px 12px;
-    font-size: 13px;
-    line-height: 1.6;
-  }
-  
-  /* ✅ Topbar fallback (لو ما عندك dash styles) */
-  .dash-topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 12px;
-  }
-  
-  .dash-topbar-title h2 {
-    margin: 0;
-    font-size: 22px;
-  }
-  
-  .dash-topbar-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  
-  /* Cards */
-  .ep-card {
-    margin-top: 14px;
-    border: 1px solid #eee;
-    background: #fff;
-    border-radius: 16px;
-    padding: 14px;
-  }
-  
-  .ep-card--filters {
-    margin-bottom: 14px;
-  }
-  
-  .ep-card-title {
-    font-weight: 800;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-  
-  .ep-muted {
-    margin-top: 10px;
-    opacity: 0.7;
-  }
-  
-  /* ✅ Stats */
-  .ep-stats {
-    margin-top: 14px;
-    display: grid;
-    gap: 12px;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  }
-  
-  .ep-stat {
-    border: 1px solid rgba(0,0,0,0.07);
-    background: #fff;
-    border-radius: 16px;
-    padding: 12px;
-  }
-  
-  .ep-stat .k {
-    opacity: 0.75;
-    font-size: 13px;
-  }
-  
-  .ep-stat .v {
-    margin-top: 6px;
-    font-size: 22px;
-    font-weight: 900;
-  }
-  
-  /* List */
-  .ep-list {
-    margin-top: 12px;
-    display: flex;
+
+  .staff-card .staff-top {
     flex-direction: column;
-    gap: 10px;
+    align-items: stretch;
   }
-  
-  .ep-item {
-    border: 1px solid #eee;
-    border-radius: 14px;
+
+  .staff-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 430px) {
+  .dash-card {
     padding: 12px;
+    border-radius: 16px;
   }
-  
-  .ep-item-top {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: flex-start;
+
+  .dash-grid {
+    grid-template-columns: 1fr;
   }
-  
-  .ep-item-title2 {
-    font-weight: 800;
+
+  .staff-pill {
+    font-size: 0.83rem;
   }
-  
-  .ep-item-meta {
-    margin-top: 6px;
-    opacity: 0.75;
-    font-size: 13px;
-  }
-  
-  /* Badges */
-  .ep-badge {
-    border: 1px solid #ddd;
-    padding: 6px 10px;
-    border-radius: 999px;
-    font-size: 12px;
-    white-space: nowrap;
-  }
-  
-  .ep-badge.new { background: #fff7e6; }
-  .ep-badge.in_review { background: #eef6ff; }
-  .ep-badge.approved { background: #eaffea; }
-  .ep-badge.rejected { background: #ffecec; }
-  .ep-badge.fulfilled { background: #f0f0f0; }
-  
-  /* Chips */
-  .ep-chips {
-    margin-top: 10px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  
-  .ep-chip {
-    border: 1px dashed #ccc;
-    border-radius: 999px;
-    padding: 6px 10px;
-    font-size: 13px;
-    max-width: 100%;
-    white-space: normal;
-    word-break: break-word;
-  }
-  
-  /* Modal */
-  .ep-modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    z-index: 9999;
-  }
-  
-  .ep-modal {
-    width: min(820px, 100%);
-    background: #fff;
-    border-radius: 18px;
-    overflow: hidden;
-    max-height: 86vh;
-    display: flex;
-    flex-direction: column;
-  }
-  
-  .ep-modal-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 14px;
-    border-bottom: 1px solid #eee;
-  }
-  
-  .ep-form {
-    padding: 14px;
-    display: grid;
-    gap: 12px;
-  }
-  
-  .ep-form label {
-    display: grid;
-    gap: 6px;
-    font-size: 14px;
-  }
-  
-  .ep-form input,
-  .ep-form select {
-    padding: 10px 12px;
-    border: 1px solid #ddd;
-    border-radius: 12px;
-    width: 100%;
-    min-width: 0;
-    background: #fff;
-  }
-  
-  /* Items */
-  .ep-items-block {
-    border: 1px solid #eee;
-    border-radius: 14px;
-    padding: 12px;
-  }
-  
-  .ep-items-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  
-  .ep-row {
-    display: grid;
-    grid-template-columns: 1.4fr 0.6fr 0.7fr auto;
-    gap: 8px;
-    margin-bottom: 8px;
-    min-width: 0;
-  }
-  
-  /* Footer buttons */
-  .ep-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 6px;
-  }
-  
-  /* ✅ Filter Row (Admin/Owner/Reception) */
-  .ep-filter-row {
-    margin-top: 10px;
-    display: grid;
-    gap: 10px;
-    align-items: center;
-    grid-template-columns: 240px 1fr 110px; /* desktop */
-  }
-  
-  .ep-filter-control {
-    width: 100%;
-    min-width: 0;
-  }
-  
-  .ep-filter-btn {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  /* =========================
-     ✅ Mobile <= 430
-  ========================= */
-  @media (max-width: 430px) {
-    .ep-wrap { padding: 12px; }
-  
-    .dash-topbar {
-      flex-direction: column;
-      align-items: stretch;
-    }
-  
-    .dash-topbar-actions .ep-btn {
-      width: 100%;
-      justify-content: center;
-    }
-  
-    .ep-sub { font-size: 12px; }
-  
-    .ep-card { padding: 12px; border-radius: 16px; }
-    .ep-item { padding: 12px; }
-  
-    .ep-item-top {
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-  
-    .ep-filter-row { grid-template-columns: 1fr; }
-  
-    .ep-modal-overlay {
-      padding: 12px;
-      align-items: flex-end;
-    }
-  
-    .ep-modal {
-      width: 100%;
-      border-radius: 18px;
-      max-height: calc(100vh - 24px);
-    }
-  
-    .ep-modal-head { padding: 12px; }
-    .ep-form { padding: 12px; }
-  
-    .ep-row {
-      grid-template-columns: 1fr;
-      gap: 8px;
-    }
-  
-    .ep-row .ep-btn {
-      width: 100%;
-      justify-content: center;
-    }
-  
-    .ep-footer {
-      flex-direction: column;
-      align-items: stretch;
-    }
-  
-    .ep-footer .ep-btn {
-      width: 100%;
-      justify-content: center;
-    }
-  
-    .ep-chip { font-size: 12.5px; }
-  }
-  
-  /* ✅ Tight mode <= 320 */
-  @media (max-width: 320px) {
-    .ep-wrap { padding: 10px; }
-    .ep-btn { padding: 9px 10px; border-radius: 12px; }
-    .ep-card { padding: 11px; }
-    .ep-item-meta { font-size: 12px; }
-    .ep-chip { font-size: 12px; padding: 6px 9px; }
-  }
-  
+}

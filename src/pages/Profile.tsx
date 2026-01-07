@@ -1,7 +1,6 @@
 // src/pages/Profile.tsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { QRCodeCanvas } from "qrcode.react";
 import "../styles/Profile.css";
 
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -14,24 +13,14 @@ import {
 } from "../services/userProfile";
 
 // =======================
-// بيانات تجريبية (Fallback)
-// =======================
-const DEMO_POINTS = 80;
-const DEMO_MAX_POINTS = 100;
-const DEMO_QR_VALUE = "client-2024-0001";
-const DEMO_RATING = 4.2;
-const DEMO_REVIEWS = [
-  "خدمة ممتازة وتعامل راقي 🌸",
-  "الصراحة أحلى مشغل في الرياض.",
-  "موظفات محترمات والشغل نظيف 👌",
-];
-
 // دعم واتساب
-const SUPPORT_PHONE = "+966573235247";
+// =======================
+const SUPPORT_PHONE = "966573235247"; // ✅ بدون +
+// نص الرسالة
 const SUPPORT_MSG = "مرحباً، أحتاج مساعدة في حسابي في صالون ملكات.";
 
-function getWhatsAppLink(phone: string, msg: string) {
-  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+function getWhatsAppLink(phoneDigits: string, msg: string) {
+  return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(msg)}`;
 }
 
 // =======================
@@ -52,7 +41,6 @@ const getServiceName = (id: string) =>
   services.find((s) => s.id === id)?.name || id;
 
 // =======================
-
 interface BookingData {
   name: string;
   phone: string;
@@ -65,6 +53,39 @@ interface BookingData {
 
 type ProfileMode = "firebase" | "local";
 
+// تحويل الحالة لكلاسات لطيفة
+function statusClass(status?: string) {
+  const s = String(status || "").trim();
+  if (s === "مؤكد" || s === "confirmed") return "confirmed";
+  if (s === "انتظار" || s === "pending") return "pending";
+  if (s === "مكتمل" || s === "completed") return "completed";
+  if (s === "ملغي" || s === "cancelled") return "ملغي";
+  return "";
+}
+
+function normalizeKsaPhone(raw: string) {
+  const digits = String(raw || "").replace(/\D/g, ""); // شيل أي شيء غير أرقام
+  if (!digits) return "";
+
+  // لو يبدأ بـ 9665xxxxxxx => حوله إلى 05xxxxxxxx
+  if (digits.startsWith("9665") && digits.length === 12) {
+    return "0" + digits.slice(3);
+  }
+
+  // لو يبدأ بـ 5xxxxxxxx => حوله إلى 05xxxxxxxx
+  if (digits.startsWith("5") && digits.length === 9) {
+    return "0" + digits;
+  }
+
+  // لو يبدأ بـ 05xxxxxxxx (تمام)
+  if (digits.startsWith("05") && digits.length === 10) {
+    return digits;
+  }
+
+  return digits; // fallback
+}
+
+
 const Profile: React.FC = () => {
   const navigate = useNavigate();
 
@@ -72,17 +93,29 @@ const Profile: React.FC = () => {
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
   const [profileDoc, setProfileDoc] = useState<UserProfile | null>(null);
 
+  // ✅ حماية صفحة البروفايل (حسب authToken مثل نظامك الحالي)
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    if (!token) navigate("/login");
+  }, [navigate]);
+
   // ✅ قراءة بروفايل مخزن (أولوية للعرض)
-  const cachedProfile = (() => {
+  const cachedProfile = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem("user_profile_v1") || "null");
     } catch {
       return null;
     }
-  })();
+  }, []);
 
-  // قديم (لو عندك ناس مسجلين باللوكال)
-  const currentUser = JSON.parse(localStorage.getItem("currentUser") || "null");
+  // قديم (لو فيه عميلات باللوكال)
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("currentUser") || "null");
+    } catch {
+      return null;
+    }
+  }, []);
 
   const [userData, setUserData] = useState({
     name:
@@ -102,45 +135,32 @@ const Profile: React.FC = () => {
   });
 
   // =======================
-  // ✅ حماية الصفحة حسب نظامك (authToken)
-  // =======================
-  useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    if (!token) {
-      navigate("/login");
-    }
-  }, [navigate]);
-
-  // =======================
   // Firebase / Local mode
   // =======================
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
-      // ✅ لو ما فيه مستخدم Firebase، لا تطرد أحد
-      // خلك local mode لكن اعرض cachedProfile إن وجد
+      // لا يوجد Firebase user => Local
       if (!user) {
         setProfileMode("local");
         setFirebaseUid(null);
         setProfileDoc(null);
 
-        const cached = (() => {
-          try {
-            return JSON.parse(localStorage.getItem("user_profile_v1") || "null");
-          } catch {
-            return null;
+        // لو فيه cache نعرضه
+        try {
+          const cached = JSON.parse(
+            localStorage.getItem("user_profile_v1") || "null"
+          );
+          if (cached) {
+            setUserData((prev) => ({
+              ...prev,
+              name: cached.name || prev.name,
+              phone: cached.phone || prev.phone,
+              email: cached.email || prev.email,
+              city: cached.city || prev.city,
+              birthdate: cached.birthdate || prev.birthdate,
+            }));
           }
-        })();
-
-        if (cached) {
-          setUserData((prev) => ({
-            ...prev,
-            name: cached.name || prev.name,
-            phone: cached.phone || prev.phone,
-            email: cached.email || prev.email,
-            city: cached.city || prev.city,
-            birthdate: cached.birthdate || prev.birthdate,
-          }));
-        }
+        } catch {}
 
         return;
       }
@@ -150,14 +170,8 @@ const Profile: React.FC = () => {
         setFirebaseUid(user.uid);
 
         const p = await createOrLoadUserProfile(user);
-        // ✅ خزن الاسم لاستخدامه في كل الموقع
-        if (p?.name) {
-          localStorage.setItem("userName", String(p.name));
-          window.dispatchEvent(new Event("authChanged"));
-        }
 
         setProfileDoc(p);
-
         setUserData((prev) => ({
           ...prev,
           name: p.name || prev.name,
@@ -167,8 +181,11 @@ const Profile: React.FC = () => {
           birthdate: p.birthdate || prev.birthdate,
         }));
 
+        // تحديث كاش عام للموقع
         localStorage.setItem("user_profile_v1", JSON.stringify(p));
-        // ✅ عشان Navbar يتحدث فورًا
+        if (p?.name) localStorage.setItem("userName", String(p.name));
+        if (p?.email) localStorage.setItem("userEmail", String(p.email));
+        if (p?.phone) localStorage.setItem("userPhone", String(p.phone));
         window.dispatchEvent(new Event("authChanged"));
       } catch (e) {
         console.error("Profile load error:", e);
@@ -188,12 +205,18 @@ const Profile: React.FC = () => {
     const allBookings: BookingData[] = JSON.parse(
       localStorage.getItem("allBookings") || "[]"
     );
-    setBookings(allBookings.filter((b) => b.phone === userData.phone).reverse());
+  
+    const myPhone = normalizeKsaPhone(userData.phone);
+  
+    setBookings(
+      allBookings
+        .filter((b) => normalizeKsaPhone(b.phone) === myPhone)
+        .reverse()
+    );
   }, [userData.phone]);
+  
 
-  const [nextBooking, setNextBooking] = useState<BookingData | null>(null);
-
-  useEffect(() => {
+  const nextBooking = useMemo(() => {
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
     const tomorrowStr = new Date(today.getTime() + 24 * 60 * 60 * 1000)
@@ -207,27 +230,40 @@ const Profile: React.FC = () => {
         b.status !== "مكتمل"
     );
 
-    setNextBooking(next || null);
+    return next || null;
   }, [bookings]);
 
   // =======================
-  // عضوية / نقاط
+  // عضوية / رقم عضوية (بدون QR)
   // =======================
   const membershipPercent =
     typeof profileDoc?.membershipPercent === "number"
       ? profileDoc.membershipPercent
-      : DEMO_POINTS;
+      : 0;
 
   const membershipId =
     profileDoc?.membershipId ||
     (profileMode === "firebase" && firebaseUid
       ? `client-${new Date().getFullYear()}-${firebaseUid.slice(0, 6)}`
-      : DEMO_QR_VALUE);
+      : "client-0000");
 
-  const progress = Math.min(
-    Math.round((membershipPercent / DEMO_MAX_POINTS) * 100),
-    100
-  );
+  const progress = Math.min(Math.max(Number(membershipPercent) || 0, 0), 100);
+
+  const copyMembershipId = async () => {
+    try {
+      await navigator.clipboard.writeText(String(membershipId));
+      alert("تم نسخ رقم العضوية ✅");
+    } catch {
+      // fallback
+      const ta = document.createElement("textarea");
+      ta.value = String(membershipId);
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      alert("تم نسخ رقم العضوية ✅");
+    }
+  };
 
   // =======================
   // Avatar
@@ -237,6 +273,9 @@ const Profile: React.FC = () => {
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // (اختياري) لو تبي تحد 2MB زي تفضيلك
+    // if (file.size > 2 * 1024 * 1024) { alert("الصورة لازم أقل من 2MB"); return; }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -248,18 +287,16 @@ const Profile: React.FC = () => {
   };
 
   // =======================
-  // ✅ Modal تعديل البيانات
+  // Modal تعديل البيانات
   // =======================
   const [showEditModal, setShowEditModal] = useState(false);
   const [editData, setEditData] = useState({ ...userData });
 
-  useEffect(() => {
-    setEditData({ ...userData });
-  }, [userData]);
+  useEffect(() => setEditData({ ...userData }), [userData]);
 
   const handleSaveEdit = async () => {
     try {
-      // ✅ Firebase mode
+      // Firebase mode
       if (profileMode === "firebase" && firebaseUid) {
         await updateUserProfile(firebaseUid, {
           name: editData.name,
@@ -283,13 +320,15 @@ const Profile: React.FC = () => {
 
         localStorage.setItem("user_profile_v1", JSON.stringify(merged));
         localStorage.setItem("userName", editData.name);
+        localStorage.setItem("userEmail", editData.email);
+        localStorage.setItem("userPhone", editData.phone);
         window.dispatchEvent(new Event("authChanged"));
 
         setShowEditModal(false);
         return;
       }
 
-      // ✅ localStorage mode
+      // localStorage mode
       let clients = JSON.parse(localStorage.getItem("clients") || "[]");
       clients = clients.map((u: any) =>
         u.phone === userData.phone ? { ...u, ...editData } : u
@@ -300,6 +339,8 @@ const Profile: React.FC = () => {
         JSON.stringify({ ...(currentUser || {}), ...editData })
       );
       localStorage.setItem("userName", editData.name);
+      localStorage.setItem("userEmail", editData.email);
+      localStorage.setItem("userPhone", editData.phone);
       window.dispatchEvent(new Event("authChanged"));
 
       setUserData(editData);
@@ -314,14 +355,10 @@ const Profile: React.FC = () => {
   // تسجيل الخروج
   // =======================
   const handleLogout = async () => {
-    // لو فيه Firebase session
     try {
       await signOut(auth);
-    } catch {
-      // ignore
-    }
+    } catch {}
 
-    // ❌ لا تستخدم localStorage.clear() لأنه يمسح كل النظام
     localStorage.removeItem("authToken");
     localStorage.removeItem("userRole");
     localStorage.removeItem("userName");
@@ -330,42 +367,43 @@ const Profile: React.FC = () => {
     localStorage.removeItem("userUid");
     localStorage.removeItem("showWelcome");
     localStorage.removeItem("userEmail");
+    localStorage.removeItem("userPhone");
     localStorage.removeItem("user_profile_v1");
-    // نخلي حجوزات/بيانات النظام الأخرى بدون مسح كامل
+    localStorage.removeItem("userAvatar");
 
     window.dispatchEvent(new Event("authChanged"));
     window.location.href = "/login";
   };
 
-  // =======================
-  // Render
-  // =======================
   return (
-    <div className="profile-page py-5" style={{ minHeight: "100vh" }}>
+    <div className="profile-page">
       <div className="container" style={{ maxWidth: 820 }}>
         {nextBooking && (
-          <div className="alert alert-info text-center mb-4">
+          <div className="profile-next-alert">
             لديك حجز قريب: {getServiceName(nextBooking.service)} بتاريخ{" "}
             {nextBooking.date} الساعة {nextBooking.time}
           </div>
         )}
 
-        <div className="profile-card shadow p-4 text-center bg-white">
-          <div style={{ width: 100, height: 100, margin: "auto" }}>
+        {/* ===== Card ===== */}
+        <div className="profile-card">
+          {/* Avatar */}
+          <div className="profile-avatar">
             {userData.avatar ? (
-              <img
-                src={userData.avatar}
-                alt="avatar"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                }}
-              />
+              <img src={userData.avatar} alt="avatar" />
             ) : (
-              <span style={{ fontSize: 70 }}>👩‍🦰</span>
+              <span>👩‍🦰</span>
             )}
+
+            <button
+              type="button"
+              className="avatar-upload-btn"
+              title="تغيير الصورة"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              ✚
+            </button>
+
             <input
               ref={fileInputRef}
               type="file"
@@ -375,42 +413,104 @@ const Profile: React.FC = () => {
             />
           </div>
 
-          <h3 className="mt-3">{userData.name}</h3>
-          <div>{userData.phone}</div>
-
-          <div className="my-3">
-            <div>نسبة العضوية: {progress}%</div>
-            <div className="progress">
-              <div className="progress-bar" style={{ width: `${progress}%` }} />
-            </div>
+          <h2>{userData.name || "عميلة"}</h2>
+          <div className="profile-details">
+            {userData.phone ? <div>{userData.phone}</div> : null}
+            {userData.email ? <div>{userData.email}</div> : null}
           </div>
 
-          <QRCodeCanvas value={membershipId} size={100} />
+          {/* Membership */}
+          <div className="profile-progress">
+            <div
+              className="profile-progress-bar"
+              style={{ width: `${progress}%` }}
+            />
+            <div className="profile-points-label">نسبة العضوية: {progress}%</div>
+          </div>
 
-          <div className="mt-3 d-flex gap-2 justify-content-center flex-wrap">
+          {/* Membership ID + Copy */}
+          <div className="profile-id-row" title="رقم العضوية">
+            <span>{membershipId}</span>
+            <span
+              className="profile-id-copy"
+              role="button"
+              tabIndex={0}
+              onClick={copyMembershipId}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") copyMembershipId();
+              }}
+              title="نسخ رقم العضوية"
+            >
+              📋
+            </span>
+          </div>
+
+          {/* Actions */}
+          <div className="profile-actions">
             <button
               className="btn btn-outline-primary"
+              type="button"
               onClick={() => setShowEditModal(true)}
             >
               ✏️ تعديل البيانات
             </button>
 
-            <button className="btn" onClick={handleLogout}>
-              🚪 تسجيل الخروج
-            </button>
-
             <a
-              className="btn btn-success"
+              className="profile-support-btn"
               href={getWhatsAppLink(SUPPORT_PHONE, SUPPORT_MSG)}
               target="_blank"
               rel="noreferrer"
             >
               💬 دعم واتساب
             </a>
+
+            <button className="btn btn-outline-danger" onClick={handleLogout}>
+              🚪 تسجيل الخروج
+            </button>
           </div>
         </div>
 
-        {/* ✅ Edit Modal */}
+        {/* ===== Bookings ===== */}
+        <div className="profile-bookings">
+          <h3>حجوزاتي</h3>
+
+          {bookings.length === 0 ? (
+            <div style={{ textAlign: "center", color: "#7e695c" }}>
+              لا يوجد حجوزات مرتبطة بهذا الرقم حالياً.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>الخدمة</th>
+                    <th>الموظفة</th>
+                    <th>التاريخ</th>
+                    <th>الوقت</th>
+                    <th>الحالة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bookings.map((b, idx) => (
+                    <tr key={idx}>
+                      <td>{getServiceName(b.service)}</td>
+                      <td>{b.employee || "-"}</td>
+                      <td>{b.date}</td>
+                      <td>{b.time}</td>
+                      <td>
+                        <span className={`status-badge ${statusClass(b.status)}`}>
+                          {b.status || "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ===== Edit Modal ===== */}
         {showEditModal && (
           <div
             className="profile-modal-overlay"
@@ -492,12 +592,6 @@ const Profile: React.FC = () => {
             </div>
           </div>
         )}
-
-        {/* (اختياري) بيانات تجريبية - لو تبي تعرضها لاحقًا */}
-        <div style={{ display: "none" }}>
-          {DEMO_RATING}
-          {DEMO_REVIEWS.join(",")}
-        </div>
       </div>
     </div>
   );

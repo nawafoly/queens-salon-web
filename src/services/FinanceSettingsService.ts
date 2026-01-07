@@ -98,7 +98,7 @@ export const FinanceSettingsService = {
         }
         cb(sanitize(snap.data()));
       },
-      () => {}
+      () => { }
     );
 
     return unsub;

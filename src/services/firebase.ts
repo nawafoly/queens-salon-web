@@ -1,28 +1,33 @@
 // src/services/firebase.ts
-import { initializeApp } from "firebase/app";
+
+import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getFunctions } from "firebase/functions";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string,
-  messagingSenderId: import.meta.env
-    .VITE_FIREBASE_MESSAGING_SENDER_ID as string,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string,
   appId: import.meta.env.VITE_FIREBASE_APP_ID as string,
 };
 
 console.log("Firebase Project:", import.meta.env.VITE_FIREBASE_PROJECT_ID);
 
-const app = initializeApp(firebaseConfig);
+// ✅ يمنع تهيئة مكررة (HMR / dev / build)
+export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// ✅ Debug helpers for console (DEV only)
+// ✅ مهم: نفس Region حق الفنكشن
+export const functions = getFunctions(app, "us-central1");
+
+// ✅ Debug فقط (بدون emulators)
 if (import.meta.env.DEV) {
-  (window as any).__fb = { auth, db };
+  (window as any).__fb = { auth, db, functions };
 }
 
 // ===== Settings Types (Salon UI) =====

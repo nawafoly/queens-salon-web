@@ -14,9 +14,6 @@ import {
   faCircleInfo,
   faArrowRight,
   faCopy,
-  faQrcode,
-  faLink,
-  faLocationArrow,
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/Success.css";
@@ -48,11 +45,22 @@ type UiBookingView = {
 const BOOKING_KEY = "currentBooking";
 
 function statusLabel(s: string) {
-  if (s === "confirmed") return "مؤكد";
-  if (s === "pending") return "بانتظار";
-  if (s === "completed") return "مكتمل";
-  if (s === "cancelled") return "ملغي";
+  const v = String(s || "").toLowerCase().trim();
+  if (v === "confirmed" || s === "مؤكد") return "مؤكد";
+  if (v === "pending" || s === "بانتظار" || s === "بالانتظار") return "بالانتظار";
+  if (v === "completed" || s === "مكتمل") return "مكتمل";
+  if (v === "cancelled" || s === "ملغي") return "ملغي";
   return s || "-";
+}
+
+// ✅ مهم: تثبيت كلاس الحالة مهما كانت قيمة status (إنجليزي/عربي)
+function statusClass(s: string) {
+  const v = String(s || "").toLowerCase().trim();
+  if (v === "confirmed" || s === "مؤكد") return "confirmed";
+  if (v === "pending" || s === "بانتظار" || s === "بالانتظار") return "pending";
+  if (v === "completed" || s === "مكتمل") return "completed";
+  if (v === "cancelled" || s === "ملغي") return "cancelled";
+  return "default";
 }
 
 function safeNum(v: any) {
@@ -66,7 +74,6 @@ function loadLocalBooking(): UiBookingView | null {
     if (!raw) return null;
 
     const b = JSON.parse(raw);
-
     const id = String(b?.id || b?.bookingId || "").trim();
 
     return {
@@ -92,8 +99,18 @@ export default function Success() {
   const [loading, setLoading] = useState(true);
   const [doc, setDoc] = useState<BookingDocWithId | null>(null);
   const [error, setError] = useState<string>("");
-
   const [localView, setLocalView] = useState<UiBookingView | null>(null);
+
+  // ✅ Toast بدل alert (قابل للتنسيق)
+  const [toastMsg, setToastMsg] = useState<string>("");
+  const [toastType, setToastType] = useState<"success" | "error">("success");
+
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToastMsg(msg);
+    setToastType(type);
+    window.clearTimeout((showToast as any)._t);
+    (showToast as any)._t = window.setTimeout(() => setToastMsg(""), 1600);
+  };
 
   const firestoreId = useMemo(() => {
     try {
@@ -171,7 +188,7 @@ export default function Success() {
         date: doc.date || "-",
         time: doc.time || "-",
         total: safeNum(doc.finalPrice ?? doc.total ?? 0),
-        status: doc.status || "-",
+        status: doc.status || "pending",
         source: "firestore",
       };
     }
@@ -184,39 +201,21 @@ export default function Success() {
 
     try {
       await navigator.clipboard.writeText(id);
-      alert("تم نسخ رقم الحجز ✅");
+      showToast("تم نسخ رقم الحجز ✅", "success");
     } catch {
-      const ta = document.createElement("textarea");
-      ta.value = id;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      ta.remove();
-      alert("تم نسخ رقم الحجز ✅");
+      // fallback
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = id;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+        showToast("تم نسخ رقم الحجز ✅", "success");
+      } catch {
+        showToast("تعذر النسخ، انسخ الرقم يدويًا", "error");
+      }
     }
-  };
-
-  // ✅ رابط تتبع صحيح: /track/:id
-  const trackingUrl = useMemo(() => {
-    const id = view?.id?.trim();
-    if (!id || id === "-") return "";
-    return `${window.location.origin}/track/${encodeURIComponent(id)}`;
-  }, [view?.id]);
-
-  const copyTrackingLink = async () => {
-    if (!trackingUrl) return;
-    try {
-      await navigator.clipboard.writeText(trackingUrl);
-      alert("تم نسخ رابط تتبع الحجز ✅");
-    } catch {
-      alert("انسخ الرابط يدويًا: " + trackingUrl);
-    }
-  };
-
-  const goTrackNow = () => {
-    const id = view?.id?.trim();
-    if (!id || id === "-") return;
-    navigate(`/track/${id}`);
   };
 
   return (
@@ -253,28 +252,17 @@ export default function Success() {
               تم استلام طلب حجزك، وسيتم التواصل معك قريبًا لتأكيد الموعد.
             </p>
 
-            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+            <div className="success-sourcehint">
               {view.source === "firestore"
                 ? "تم جلب البيانات من النظام (Firestore)."
                 : "تم عرض البيانات من الجهاز (localStorage) لضمان ظهور التفاصيل حتى لو كانت الصلاحيات مغلقة."}
             </div>
 
             <div className="success-details">
-              <div className="detail-row">
+              {/* ✅ رقم الحجز (بدون زر نسخ هنا) */}
+              <div className="detail-row detail-row--id">
                 <span className="detail-label">رقم الحجز</span>
                 <span className="detail-value mono">{view.id}</span>
-
-                {view.id && view.id !== "-" && (
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary"
-                    style={{ marginInlineStart: "auto" }}
-                    onClick={copyBookingId}
-                    title="نسخ رقم الحجز"
-                  >
-                    <FontAwesomeIcon icon={faCopy} /> نسخ
-                  </button>
-                )}
               </div>
 
               <div className="detail-row">
@@ -301,20 +289,23 @@ export default function Success() {
                 <span className="detail-value">{view.employeeName}</span>
               </div>
 
+              {/* ✅ رجعنا التاريخ */}
               <div className="detail-row">
                 <FontAwesomeIcon icon={faCalendarAlt} className="detail-ico" />
                 <span className="detail-label">التاريخ</span>
                 <span className="detail-value">{view.date}</span>
               </div>
 
+              {/* ✅ رجعنا الوقت */}
               <div className="detail-row">
                 <FontAwesomeIcon icon={faClock} className="detail-ico" />
                 <span className="detail-label">الوقت</span>
                 <span className="detail-value">{view.time}</span>
               </div>
 
-              <div className="detail-row">
-                <span className={`status-pill ${view.status}`}>
+              {/* ✅ الحالة (ثابتة اللون) */}
+              <div className="detail-row detail-row--full">
+                <span className={`status-pill ${statusClass(view.status)}`}>
                   {statusLabel(view.status)}
                 </span>
               </div>
@@ -325,39 +316,23 @@ export default function Success() {
                   {view.total ? `${view.total.toLocaleString()} ريال` : "—"}
                 </span>
               </div>
-
-              {trackingUrl && (
-                <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={goTrackNow}
-                  >
-                    <FontAwesomeIcon icon={faLocationArrow} /> تتبع حجزي الآن
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary"
-                    onClick={copyTrackingLink}
-                  >
-                    <FontAwesomeIcon icon={faLink} /> نسخ رابط التتبع
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary"
-                    onClick={() => alert("QR Code نضيفه بعد خطوة بسيطة (مكتبة qrcode.react)")}
-                  >
-                    <FontAwesomeIcon icon={faQrcode} /> QR Code
-                  </button>
-                </div>
-              )}
             </div>
+
+            {/* ✅ زر النسخ المستقل لوحده تحت */}
+            {view.id && view.id !== "-" && (
+              <button
+                type="button"
+                className="success-copy-btn"
+                onClick={copyBookingId}
+                title="نسخ رقم الحجز"
+              >
+                <FontAwesomeIcon icon={faCopy} /> نسخ رقم الحجز
+              </button>
+            )}
 
             <div className="success-actions">
               <button
-                className="btn btn-primary"
+                className="success-btn success-home"
                 onClick={() => navigate("/")}
                 type="button"
               >
@@ -365,7 +340,7 @@ export default function Success() {
               </button>
 
               <button
-                className="btn btn-outline-secondary"
+                className="success-btn success-booking"
                 onClick={() => navigate("/booking")}
                 type="button"
               >
@@ -389,6 +364,11 @@ export default function Success() {
               </button>
             </div>
           </>
+        )}
+
+        {/* ✅ Toast (بديل alert) */}
+        {toastMsg && (
+          <div className={`success-toast ${toastType}`}>{toastMsg}</div>
         )}
       </div>
     </div>

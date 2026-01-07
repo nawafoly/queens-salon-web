@@ -1,5 +1,5 @@
 // src/pages/DashboardEmployees.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   collection,
   doc,
@@ -10,7 +10,9 @@ import {
   setDoc,
   where,
 } from "firebase/firestore";
-import { db } from "../services/firebase";
+
+// ✅ use unified instances
+import { db, functions } from "../services/firebase";
 
 import "../styles/DashboardEmployees.css";
 import "../styles/DashboardModals.css";
@@ -21,8 +23,14 @@ import {
   type BookingDocWithId,
 } from "../services/firestoreBookings";
 
-type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
+// ✅ Callable Cloud Function (avoid CORS)
+import { httpsCallable } from "firebase/functions";
+
+// ✅ Use shared UiRole definition
+import type { UiRole } from "../services/userProfile";
+
 type StaffRole = "staff" | "reception" | "admin";
+type StaffCreateRole = StaffRole;
 
 type EmployeeDoc = {
   id: string; // uid
@@ -32,6 +40,11 @@ type EmployeeDoc = {
   role?: StaffRole;
   department?: string;
   isActive?: boolean;
+
+  specialties?: string[];
+  bio?: string;
+
+  showOnAbout?: boolean;
 };
 
 type BookingRow = {
@@ -43,6 +56,10 @@ type BookingRow = {
   time?: string;
   status?: string;
 };
+
+type RoleFilter = "all" | StaffRole;
+type StatusFilter = "all" | "active" | "inactive";
+type DepartmentFilter = "all" | string;
 
 const DEPARTMENTS = [
   "قسم الشعر",
@@ -58,12 +75,73 @@ const EMPLOYEES_COLLECTION = ["salons", SALON_ID, "employees"] as const;
 const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
 const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
 
+/* =========================
+   ✅ Arabic Labels (Specialties + Status)
+========================= */
+const SPECIALTY_LABELS: Record<string, string> = {
+  hair: "قسم الشعر",
+  coloring: "الصبغات والمعالجات",
+  makeup: "المكياج",
+  nails: "البديكير والمناكير",
+  waxing: "الشمع وإزالة الشعر",
+  skincare: "العناية بالبشرة",
+};
+
+const SPECIALTY_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(SPECIALTY_LABELS).map(([k, v]) => [v, k])
+);
+
+function toArabicSpecialty(key: string) {
+  const k = String(key || "").trim();
+  return SPECIALTY_LABELS[k] ?? k;
+}
+
+function normalizeSpecialtyKey(input: string) {
+  const x = String(input || "").trim();
+  if (!x) return "";
+  if (SPECIALTY_REVERSE[x]) return SPECIALTY_REVERSE[x];
+  return x.toLowerCase();
+}
+
+const BOOKING_STATUS_LABELS: Record<string, string> = {
+  pending: "قيد الانتظار",
+  confirmed: "مؤكد",
+  cancelled: "ملغي",
+  canceled: "ملغي",
+  completed: "مكتمل",
+  no_show: "لم يحضر",
+};
+
+function toArabicBookingStatus(s?: string) {
+  const key = String(s || "pending").toLowerCase().trim();
+  return BOOKING_STATUS_LABELS[key] ?? key;
+}
+
+/* =========================
+   ✅ Callable Function Setup
+========================= */
+type AdminCreateStaffInput = {
+  email: string;
+  password: string;
+  displayName: string;
+  phone?: string;
+  role: StaffCreateRole;
+  specialties?: string[];
+  bio?: string;
+};
+
+type AdminCreateStaffResult = {
+  uid: string;
+  email: string;
+  role?: string;
+  displayName?: string;
+};
+
 function readAuthRole(): UiRole {
   try {
     const raw = JSON.parse(localStorage.getItem("auth_user") || "{}");
-    const r = String(raw?.role || "")
-      .toLowerCase()
-      .trim();
+    const r = String(raw?.role || "").toLowerCase().trim();
+
     if (r === "owner") return "owner";
     if (r === "admin") return "admin";
     if (r === "reception") return "reception";
@@ -75,16 +153,12 @@ function readAuthRole(): UiRole {
   }
 }
 
-/** ✅ Bootstrap Admin UI check (matches your rules safety emails)
- * - مهم: Bootstrap Admin فقط اللي يقدر يقرأ/يكتب users حسب Rules
- */
+/** ✅ Bootstrap Admin UI check (حسب منهجك: ايميل واحد فقط) */
 function isBootstrapAdminUI(): boolean {
   try {
     const raw = JSON.parse(localStorage.getItem("auth_user") || "{}");
-    const email = String(raw?.email || "")
-      .toLowerCase()
-      .trim();
-    return email === "nawafaaa0@gmail.com" || email === "nawafaaa6@gmail.com";
+    const email = String(raw?.email || "").toLowerCase().trim();
+    return email === "nawafaaa0@gmail.com";
   } catch {
     return false;
   }
@@ -107,12 +181,17 @@ function statusPillClass(active?: boolean) {
 }
 
 function toStaffRole(x: any): StaffRole {
-  const r = String(x || "staff")
-    .toLowerCase()
-    .trim();
+  const r = String(x || "staff").toLowerCase().trim();
   if (r === "admin") return "admin";
   if (r === "reception") return "reception";
   return "staff";
+}
+
+function normalizeSpecialties(x: any): string[] {
+  if (Array.isArray(x))
+    return x.map(String).map((s) => s.trim()).filter(Boolean);
+  if (typeof x === "string") return [x.trim()].filter(Boolean);
+  return [];
 }
 
 function isPermissionError(e: any) {
@@ -123,6 +202,28 @@ function isPermissionError(e: any) {
     msg.includes("missing or insufficient permissions") ||
     msg.includes("permission")
   );
+}
+
+function safeEmail(v: string) {
+  return String(v || "").trim().toLowerCase();
+}
+
+function parseSpecialtiesCSV(v: string): string[] {
+  return String(v || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map(normalizeSpecialtyKey)
+    .filter(Boolean);
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const DashboardEmployees = () => {
@@ -137,22 +238,47 @@ const DashboardEmployees = () => {
 
   // filters
   const [qText, setQText] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState<string>("all");
-  const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [departmentFilter, setDepartmentFilter] =
+    useState<DepartmentFilter>("all");
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   // bookings counts (best-effort)
   const [counts, setCounts] = useState<Record<string, number>>({});
 
-  // modals
+  // modals (edit)
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editMsg, setEditMsg] = useState("");
   const [selected, setSelected] = useState<EmployeeDoc | null>(null);
 
+  // modals (bookings)
   const [bookingsOpen, setBookingsOpen] = useState(false);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [lastBookings, setLastBookings] = useState<BookingRow[]>([]);
+
+  // create modal
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createMsg, setCreateMsg] = useState("");
+  const [createdInfo, setCreatedInfo] = useState<{
+    uid: string;
+    email: string;
+    role: string;
+    displayName: string;
+    password: string;
+  } | null>(null);
+
+  const [createForm, setCreateForm] = useState({
+    displayName: "",
+    email: "",
+    password: "",
+    phone: "",
+    role: "staff" as StaffCreateRole,
+    department: DEPARTMENTS[0],
+    specialtiesText: "",
+    bio: "",
+  });
 
   const [editForm, setEditForm] = useState({
     name: "",
@@ -160,62 +286,46 @@ const DashboardEmployees = () => {
     department: DEPARTMENTS[0],
     role: "staff" as StaffRole,
     isActive: true,
+    specialties: [] as string[],
+    bio: "",
   });
 
   // =========================
   // ✅ Load employees
   // =========================
-  const loadEmployees = async () => {
+  const loadEmployees = useCallback(async () => {
     try {
       setLoading(true);
       setErr("");
 
-      // ✅ 1) Owner/Admin يقرأ من employees
-      // ✅ 2) Reception/Staff يقرأ من staff_public (عرض فقط)
-      const preferred = canManage ? "employees" : "staff_public";
+      const colRef = collection(db, ...STAFF_PUBLIC_COLLECTION);
+      const snap = await getDocs(query(colRef, orderBy("name", "asc")));
 
-      const tryRead = async (which: "employees" | "staff_public") => {
-        const colRef =
-          which === "employees"
-            ? collection(db, ...EMPLOYEES_COLLECTION)
-            : collection(db, ...STAFF_PUBLIC_COLLECTION);
+      const list: EmployeeDoc[] = snap.docs
+        .map((d) => {
+          const x: any = d.data();
+          const name = String(x?.name || x?.displayName || "").trim();
+          const activeFlag = x?.isActive !== false && x?.active !== false;
 
-        const qy = query(colRef, orderBy("name", "asc"));
-        const snap = await getDocs(qy);
+          return {
+            id: d.id,
+            name,
+            email: String(x?.email || "").trim() || undefined,
+            phone: String(x?.phone || "").trim() || undefined,
+            department: String(x?.department || "").trim() || undefined,
+            role: toStaffRole(x?.role),
+            isActive: activeFlag,
+            specialties: normalizeSpecialties(x?.specialties),
+            bio: String(x?.bio || "").trim() || "",
+            showOnAbout: x?.showOnAbout === true,
+          };
+        })
+        .filter((e) => e.name);
 
-        const list: EmployeeDoc[] = snap.docs
-          .map((d) => {
-            const x: any = d.data();
-            return {
-              id: d.id,
-              name: String(x?.name || x?.displayName || "").trim(),
-              email: String(x?.email || "").trim() || undefined,
-              phone: String(x?.phone || "").trim() || undefined,
-              department: String(x?.department || "").trim() || undefined,
-              role: toStaffRole(x?.role),
-              isActive: x?.isActive !== false && x?.active !== false,
-            };
-          })
-          .filter((e) => e.name);
+      setEmployees(list);
 
-        return list;
-      };
-
-      try {
-        const list = await tryRead(preferred as any);
-        setEmployees(list);
-        return;
-      } catch (e: any) {
-        // ✅ لو حاول employees وفشل بسبب Permissions نجرب staff_public تلقائيًا
-        if (preferred === "employees" && isPermissionError(e)) {
-          const list = await tryRead("staff_public");
-          setEmployees(list);
-          setErr(
-            "تنبيه: تم عرض البيانات من staff_public بسبب صلاحيات القراءة على employees."
-          );
-          return;
-        }
-        throw e;
+      if (list.length === 0) {
+        setErr("لا توجد بيانات في staff_public حالياً. تأكد من Firestore.");
       }
     } catch (e: any) {
       console.error("load employees error:", e);
@@ -224,32 +334,29 @@ const DashboardEmployees = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadEmployees();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadEmployees]);
 
   // =========================
-  // ✅ Load bookings counts (best-effort) from salons/main/bookings
+  // ✅ Load bookings counts (best-effort)
   // =========================
-  const loadCounts = async () => {
+  const loadCounts = useCallback(async () => {
     try {
-      // ✅ staff/client/guest ما يحتاجون يشوفون أرقام الجميع
       if (uiRole === "staff" || uiRole === "guest" || uiRole === "client") {
         setCounts({});
         return;
       }
 
-      const all = await listAllBookings(); // ✅ salons/main/bookings
+      const all = await listAllBookings();
       const map: Record<string, number> = {};
 
       all.forEach((b: BookingDocWithId) => {
         const st = String(b.status || "pending").toLowerCase();
-        if (st === "cancelled") return;
+        if (st === "cancelled" || st === "canceled") return;
 
-        // ✅ اعتمد employeeId إن وجد، وإلا fallback على الاسم
         const empKey =
           (b.employeeId || "").trim() || (b.employeeName || "").trim();
         if (!empKey) return;
@@ -257,32 +364,28 @@ const DashboardEmployees = () => {
         map[empKey] = (map[empKey] || 0) + 1;
       });
 
-      // ✅ مهم: employees.id هو uid، بس بعض الحجوزات القديمة قد تكون بدون employeeId
       setCounts(map);
     } catch {
       setCounts({});
     }
-  };
+  }, [uiRole]);
 
   useEffect(() => {
     loadCounts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadCounts]);
 
   // =========================
   // ✅ Sync employees from users (Bootstrap only)
   // =========================
-  const syncFromUsers = async () => {
+  const syncFromUsers = useCallback(async () => {
     if (!canManage) return;
 
-    // ✅ حسب الـ Rules: قراءة users مسموحة للـ Bootstrap فقط
     if (!isBootstrap) {
       alert("❌ المزامنة تتطلب دخول Bootstrap Admin حسب الصلاحيات الحالية.");
       return;
     }
 
     try {
-      // ✅ نجلب حسابات الموظفات فقط من salons/main/users
       const qy = query(
         collection(db, ...USERS_COLLECTION),
         where("role", "in", ["staff", "reception", "admin"]),
@@ -298,34 +401,23 @@ const DashboardEmployees = () => {
         const email = String(x?.email || "").trim() || undefined;
         const role = toStaffRole(x?.role);
         const active = x?.active !== false;
+        const department = String(x?.department || "").trim() || undefined;
 
-        // ✅ employees scoped
-        await setDoc(
-          doc(db, ...EMPLOYEES_COLLECTION, uid),
-          {
-            name,
-            email,
-            role,
-            isActive: active,
-            department: String(x?.department || "").trim() || undefined,
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
+        const baseData = {
+          name,
+          email,
+          role,
+          isActive: active,
+          department,
+          updatedAt: new Date().toISOString(),
+        };
 
-        // ✅ staff_public scoped (للـ reception/staff عرض فقط)
-        await setDoc(
-          doc(db, ...STAFF_PUBLIC_COLLECTION, uid),
-          {
-            name,
-            email,
-            role,
-            isActive: active,
-            department: String(x?.department || "").trim() || undefined,
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
+        await setDoc(doc(db, ...EMPLOYEES_COLLECTION, uid), baseData, {
+          merge: true,
+        });
+        await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, uid), baseData, {
+          merge: true,
+        });
       });
 
       await Promise.all(ops);
@@ -336,7 +428,7 @@ const DashboardEmployees = () => {
       console.error("syncFromUsers error:", e);
       alert("❌ تعذر عمل المزامنة (تحقق من Rules / Index)");
     }
-  };
+  }, [canManage, isBootstrap, loadEmployees, loadCounts]);
 
   // =========================
   // ✅ Filtering
@@ -345,24 +437,30 @@ const DashboardEmployees = () => {
     const q = qText.trim().toLowerCase();
 
     return employees.filter((e) => {
-      if (
-        departmentFilter !== "all" &&
-        (e.department || "") !== departmentFilter
-      ) {
+      if (departmentFilter !== "all" && (e.department || "") !== departmentFilter)
         return false;
-      }
-      if (roleFilter !== "all" && String(e.role || "staff") !== roleFilter) {
+
+      if (roleFilter !== "all" && String(e.role || "staff") !== roleFilter)
         return false;
-      }
 
       const active = e.isActive !== false;
       if (statusFilter === "active" && !active) return false;
       if (statusFilter === "inactive" && active) return false;
 
       if (!q) return true;
-      const hay = `${e.name} ${e.email || ""} ${e.phone || ""} ${
-        e.department || ""
-      }`.toLowerCase();
+
+      const hay = [
+        e.name,
+        e.email || "",
+        e.phone || "",
+        e.department || "",
+        e.bio || "",
+        (e.specialties || []).join(" "),
+        e.showOnAbout ? "about" : "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
       return hay.includes(q);
     });
   }, [employees, qText, departmentFilter, roleFilter, statusFilter]);
@@ -380,7 +478,7 @@ const DashboardEmployees = () => {
   // =========================
   // ✅ Open Edit Modal
   // =========================
-  const openEdit = (emp: EmployeeDoc) => {
+  const openEdit = useCallback((emp: EmployeeDoc) => {
     setSelected(emp);
     setEditMsg("");
     setEditForm({
@@ -389,14 +487,16 @@ const DashboardEmployees = () => {
       department: emp.department || DEPARTMENTS[0],
       role: (emp.role || "staff") as StaffRole,
       isActive: emp.isActive !== false,
+      specialties: emp.specialties || [],
+      bio: emp.bio || "",
     });
     setEditOpen(true);
-  };
+  }, []);
 
   // =========================
-  // ✅ Save Edit (employees + staff_public + users(bootstrap only))
+  // ✅ Save Edit
   // =========================
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = useCallback(async () => {
     if (!canManage || !selected) return;
 
     const name = editForm.name.trim();
@@ -405,47 +505,39 @@ const DashboardEmployees = () => {
     const role = editForm.role;
     const isActive = !!editForm.isActive;
 
+    const specialties = (editForm.specialties || [])
+      .map((x) => normalizeSpecialtyKey(String(x)))
+      .filter(Boolean);
+
+    const bio = String(editForm.bio || "").trim();
+
     setEditMsg("");
 
-    if (!name) {
-      setEditMsg("❌ الاسم مطلوب");
-      return;
-    }
-    if (!department) {
-      setEditMsg("❌ القسم مطلوب");
-      return;
-    }
+    if (!name) return setEditMsg("❌ الاسم مطلوب");
+    if (!department) return setEditMsg("❌ القسم مطلوب");
 
     try {
       setEditSaving(true);
 
-      await setDoc(
-        doc(db, ...EMPLOYEES_COLLECTION, selected.id),
-        {
-          name,
-          phone,
-          department,
-          role,
-          isActive,
-          updatedAt: new Date().toISOString(),
-        },
-        { merge: true }
-      );
+      const payload = {
+        name,
+        phone,
+        department,
+        role,
+        isActive,
+        specialties,
+        bio,
+        updatedAt: new Date().toISOString(),
+      };
 
-      await setDoc(
-        doc(db, ...STAFF_PUBLIC_COLLECTION, selected.id),
-        {
-          name,
-          phone,
-          department,
-          role,
-          isActive,
-          updatedAt: new Date().toISOString(),
-        },
-        { merge: true }
-      );
+      await setDoc(doc(db, ...EMPLOYEES_COLLECTION, selected.id), payload, {
+        merge: true,
+      });
 
-      // ✅ update user profile (scoped) — ONLY if bootstrap admin
+      await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, selected.id), payload, {
+        merge: true,
+      });
+
       if (isBootstrap) {
         await setDoc(
           doc(db, ...USERS_COLLECTION, selected.id),
@@ -462,9 +554,7 @@ const DashboardEmployees = () => {
 
       setEmployees((prev) =>
         prev.map((x) =>
-          x.id === selected.id
-            ? { ...x, name, phone, department, role, isActive }
-            : x
+          x.id === selected.id ? { ...x, ...payload } : x
         )
       );
 
@@ -477,12 +567,12 @@ const DashboardEmployees = () => {
       setEditSaving(false);
       setTimeout(() => setEditMsg(""), 2500);
     }
-  };
+  }, [canManage, selected, editForm, isBootstrap]);
 
   // =========================
-  // ✅ Load last 5 bookings for employee (from listAllBookings)
+  // ✅ Load last 5 bookings for employee
   // =========================
-  const openBookings = async (emp: EmployeeDoc) => {
+  const openBookings = useCallback(async (emp: EmployeeDoc) => {
     setSelected(emp);
     setBookingsOpen(true);
     setBookingsLoading(true);
@@ -491,21 +581,16 @@ const DashboardEmployees = () => {
     try {
       const all = await listAllBookings();
 
-      const empKey = emp.id; // uid
+      const empKey = emp.id;
       const empName = (emp.name || "").trim();
 
       const rows = all
         .filter((b) => {
-          // match by employeeId first, else by employeeName
           const byId = String(b.employeeId || "").trim();
           const byName = String(b.employeeName || "").trim();
-          return (
-            (byId && byId === empKey) ||
-            (!byId && empName && byName === empName)
-          );
+          return (byId && byId === empKey) || (!byId && empName && byName === empName);
         })
         .sort((a, b) => {
-          // sort by date/time desc (best-effort)
           const da = String(a.date || "");
           const dbb = String(b.date || "");
           if (da !== dbb) return dbb.localeCompare(da);
@@ -528,7 +613,146 @@ const DashboardEmployees = () => {
     } finally {
       setBookingsLoading(false);
     }
-  };
+  }, []);
+
+  // =========================
+  // ✅ Open Create Modal
+  // =========================
+  const openCreate = useCallback(() => {
+    if (!canManage) return;
+    setCreateMsg("");
+    setCreatedInfo(null);
+    setCreateForm({
+      displayName: "",
+      email: "",
+      password: "",
+      phone: "",
+      role: "staff",
+      department: DEPARTMENTS[0],
+      specialtiesText: "",
+      bio: "",
+    });
+    setCreateOpen(true);
+  }, [canManage]);
+
+  // =========================
+  // ✅ Create user (Callable Function)
+  // =========================
+  const handleCreate = useCallback(async () => {
+    if (!canManage) return;
+
+    const displayName = String(createForm.displayName || "").trim();
+    const email = safeEmail(createForm.email);
+    const password = String(createForm.password || "").trim();
+    const phone = String(createForm.phone || "").trim();
+    const role = createForm.role as StaffCreateRole;
+
+    const department = String(createForm.department || "").trim();
+    const specialties = parseSpecialtiesCSV(createForm.specialtiesText);
+    const bio = String(createForm.bio || "").trim();
+
+    setCreateMsg("");
+
+    if (!displayName) return setCreateMsg("❌ الاسم مطلوب");
+    if (!email || !email.includes("@")) return setCreateMsg("❌ الإيميل غير صحيح");
+    if (!password || password.length < 6)
+      return setCreateMsg("❌ كلمة المرور لازم 6 أحرف على الأقل");
+    if (role === "staff" && !department)
+      return setCreateMsg("❌ القسم مطلوب للموظفة");
+
+    try {
+      setCreateSaving(true);
+
+      const fn = httpsCallable<AdminCreateStaffInput, AdminCreateStaffResult>(
+        functions,
+        "adminCreateStaffUser"
+      );
+
+      const payload: AdminCreateStaffInput = {
+        email,
+        password,
+        displayName,
+        phone: phone || undefined,
+        role,
+        specialties: role === "staff" ? specialties : undefined,
+        bio: role === "staff" ? bio : undefined,
+      };
+
+      const callRes = await fn(payload);
+      const res = callRes.data;
+
+      const base = {
+        name: displayName,
+        email,
+        phone: phone || undefined,
+        role,
+        isActive: true,
+        department: department || undefined,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (role === "staff") {
+        await setDoc(doc(db, ...EMPLOYEES_COLLECTION, res.uid), {
+          ...base,
+          role: "staff",
+          department,
+          specialties,
+          bio,
+        }, { merge: true });
+
+        await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, res.uid), {
+          ...base,
+          role: "staff",
+          department,
+          specialties,
+          bio,
+          showOnAbout: true,
+        }, { merge: true });
+      } else {
+        await setDoc(doc(db, ...EMPLOYEES_COLLECTION, res.uid), {
+          ...base,
+          showOnAbout: false,
+        }, { merge: true });
+
+        await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, res.uid), {
+          ...base,
+          showOnAbout: false,
+        }, { merge: true });
+      }
+
+      setCreatedInfo({
+        uid: res.uid,
+        email: res.email || email,
+        role: String(res.role || role),
+        displayName: res.displayName || displayName,
+        password,
+      });
+
+      setCreateMsg("✅ تم إنشاء المستخدم بنجاح");
+      await loadEmployees();
+      await loadCounts();
+    } catch (e: any) {
+      console.error("create staff error:", e);
+
+      if (isPermissionError(e)) {
+        setCreateMsg("❌ صلاحيات غير كافية (تحقق من الـ Rules / Claims)");
+      } else {
+        const msg = String(e?.message || "");
+        const code = String(e?.code || "").toLowerCase();
+
+        if (msg.toLowerCase().includes("already") || msg.includes("exists")) {
+          setCreateMsg("❌ هذا الإيميل موجود مسبقاً");
+        } else if (code.includes("unavailable") || code.includes("internal")) {
+          setCreateMsg("❌ تعذر إنشاء المستخدم (تحقق من Functions Logs / هل هي onCall؟)");
+        } else {
+          setCreateMsg("❌ تعذر إنشاء المستخدم (تحقق من Functions / Console)");
+        }
+      }
+    } finally {
+      setCreateSaving(false);
+      setTimeout(() => setCreateMsg(""), 3500);
+    }
+  }, [canManage, createForm, loadEmployees, loadCounts]);
 
   return (
     <div className="dashboard-skin">
@@ -549,12 +773,7 @@ const DashboardEmployees = () => {
               </h1>
               <p style={{ marginTop: 8, opacity: 0.85 }}>
                 عرض الموظفات من Firestore (Collection:{" "}
-                <b>
-                  {canManage
-                    ? "salons/main/employees"
-                    : "salons/main/staff_public"}
-                </b>
-                )
+                <b>salons/main/staff_public</b>)
               </p>
             </div>
 
@@ -566,13 +785,29 @@ const DashboardEmployees = () => {
                 flexWrap: "wrap",
               }}
             >
-              <button
-                className="dash-btn"
-                type="button"
-                onClick={loadEmployees}
-              >
+              <button className="dash-btn" type="button" onClick={loadEmployees}>
                 تحديث
               </button>
+
+              {canManage ? (
+                <button
+                  className="dash-btn primary"
+                  type="button"
+                  onClick={openCreate}
+                  title="إضافة موظفة/استقبال/مديرة بحساب دخول"
+                >
+                  + إضافة موظفة
+                </button>
+              ) : (
+                <button
+                  className="dash-btn"
+                  type="button"
+                  disabled
+                  title="reception عرض فقط"
+                >
+                  + إضافة موظفة
+                </button>
+              )}
 
               {canManage ? (
                 <button
@@ -618,7 +853,7 @@ const DashboardEmployees = () => {
           <div className="emp-filters">
             <input
               className="dashboard-input emp-input"
-              placeholder="بحث بالاسم / القسم / الإيميل / الجوال…"
+              placeholder="بحث بالاسم / القسم / الإيميل / الجوال / النبذة…"
               value={qText}
               onChange={(e) => setQText(e.target.value)}
             />
@@ -639,7 +874,7 @@ const DashboardEmployees = () => {
             <select
               className="dashboard-input emp-input"
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
+              onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
             >
               <option value="all">كل الأدوار</option>
               <option value="staff">موظفة</option>
@@ -650,7 +885,7 @@ const DashboardEmployees = () => {
             <select
               className="dashboard-input emp-input"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             >
               <option value="all">كل الحالات</option>
               <option value="active">نشطة</option>
@@ -692,7 +927,22 @@ const DashboardEmployees = () => {
                           key={e.id}
                           className={hasBookings ? "emp-row-linked" : ""}
                         >
-                          <td className="emp-name">{e.name}</td>
+                          <td className="emp-name">
+                            {e.name}
+                            {e.role === "staff" && e.showOnAbout ? (
+                              <span
+                                style={{
+                                  marginInlineStart: 10,
+                                  fontSize: 12,
+                                  fontWeight: 900,
+                                  opacity: 0.85,
+                                }}
+                                title="تظهر في صفحة About"
+                              >
+                                • About ✅
+                              </span>
+                            ) : null}
+                          </td>
                           <td className="emp-center">{e.department || "—"}</td>
                           <td className="emp-center">{roleLabel(e.role)}</td>
                           <td className="emp-center" dir="ltr">
@@ -700,18 +950,14 @@ const DashboardEmployees = () => {
                           </td>
                           <td className="emp-center">
                             <span
-                              className={`emp-pill ${statusPillClass(
-                                e.isActive
-                              )}`}
+                              className={`emp-pill ${statusPillClass(e.isActive)}`}
                             >
                               {statusLabel(e.isActive)}
                             </span>
                           </td>
                           <td className="emp-center">
                             <span
-                              className={`emp-chip ${
-                                hasBookings ? "" : "warn"
-                              }`}
+                              className={`emp-chip ${hasBookings ? "" : "warn"}`}
                             >
                               {c}
                             </span>
@@ -760,6 +1006,323 @@ const DashboardEmployees = () => {
             )}
           </div>
         </div>
+
+        {/* =========================
+            ✅ Create Modal
+        ========================= */}
+        {createOpen && (
+          <div className="modal-overlay" onClick={() => setCreateOpen(false)}>
+            <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <div className="modal-title-wrap">
+                  <div className="modal-icon">➕</div>
+                  <h3 className="modal-title">إضافة مستخدم للموظفات</h3>
+                </div>
+
+                <button
+                  className="modal-close"
+                  type="button"
+                  onClick={() => setCreateOpen(false)}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="modal-body">
+                <div className="emp-modal-grid">
+                  <div className="emp-two">
+                    <div>
+                      <label className="emp-label">الاسم</label>
+                      <input
+                        className="dashboard-input emp-input"
+                        value={createForm.displayName}
+                        onChange={(e) =>
+                          setCreateForm((p) => ({
+                            ...p,
+                            displayName: e.target.value,
+                          }))
+                        }
+                        disabled={!canManage || createSaving}
+                        placeholder="مثال: خديجة صالحة"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="emp-label">الدور</label>
+                      <select
+                        className="dashboard-input emp-input"
+                        value={createForm.role}
+                        onChange={(e) =>
+                          setCreateForm((p) => ({
+                            ...p,
+                            role: e.target.value as StaffCreateRole,
+                          }))
+                        }
+                        disabled={!canManage || createSaving}
+                      >
+                        <option value="staff">موظفة (تظهر في About)</option>
+                        <option value="reception">
+                          استقبال (لا تظهر في About)
+                        </option>
+                        <option value="admin">مديرة (لا تظهر في About)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="emp-two">
+                    <div>
+                      <label className="emp-label">الإيميل</label>
+                      <input
+                        className="dashboard-input emp-input"
+                        value={createForm.email}
+                        onChange={(e) =>
+                          setCreateForm((p) => ({
+                            ...p,
+                            email: e.target.value,
+                          }))
+                        }
+                        disabled={!canManage || createSaving}
+                        placeholder="example@domain.com"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="emp-label">كلمة المرور</label>
+                      <input
+                        className="dashboard-input emp-input"
+                        value={createForm.password}
+                        onChange={(e) =>
+                          setCreateForm((p) => ({
+                            ...p,
+                            password: e.target.value,
+                          }))
+                        }
+                        disabled={!canManage || createSaving}
+                        placeholder="******"
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="emp-two">
+                    <div>
+                      <label className="emp-label">الجوال</label>
+                      <input
+                        className="dashboard-input emp-input"
+                        value={createForm.phone}
+                        onChange={(e) =>
+                          setCreateForm((p) => ({
+                            ...p,
+                            phone: e.target.value,
+                          }))
+                        }
+                        disabled={!canManage || createSaving}
+                        placeholder="05xxxxxxxx"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="emp-label">
+                        القسم{" "}
+                        {createForm.role !== "staff" ? "(اختياري)" : "(مطلوب)"}
+                      </label>
+                      <select
+                        className="dashboard-input emp-input"
+                        value={createForm.department}
+                        onChange={(e) =>
+                          setCreateForm((p) => ({
+                            ...p,
+                            department: e.target.value,
+                          }))
+                        }
+                        disabled={!canManage || createSaving}
+                      >
+                        {DEPARTMENTS.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {createForm.role === "staff" && (
+                    <>
+                      <div>
+                        <label className="emp-label">
+                          التخصصات (اكتبها مفصولة بفواصل)
+                        </label>
+                        <input
+                          className="dashboard-input emp-input"
+                          value={createForm.specialtiesText}
+                          onChange={(e) =>
+                            setCreateForm((p) => ({
+                              ...p,
+                              specialtiesText: e.target.value,
+                            }))
+                          }
+                          disabled={!canManage || createSaving}
+                          placeholder="hair, nails, makeup (أو: قسم الشعر, الأظافر)"
+                          dir="ltr"
+                        />
+                        <div
+                          style={{
+                            marginTop: 6,
+                            opacity: 0.75,
+                            fontSize: 12,
+                          }}
+                        >
+                          مثال: <b>{toArabicSpecialty("hair")}</b> = hair
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="emp-label">
+                          نبذة عن الموظفة (تظهر في About)
+                        </label>
+                        <textarea
+                          className="dashboard-input emp-input"
+                          value={createForm.bio}
+                          onChange={(e) =>
+                            setCreateForm((p) => ({ ...p, bio: e.target.value }))
+                          }
+                          disabled={!canManage || createSaving}
+                          placeholder="مثال: خبيرة في القص والصبغات والعناية بالشعر…"
+                          style={{ minHeight: 110, resize: "vertical" }}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {createMsg && <div className="emp-modal-hint">{createMsg}</div>}
+
+                  {createdInfo && (
+                    <div
+                      className="emp-modal-hint"
+                      style={{
+                        border: "1px dashed rgba(0,0,0,0.2)",
+                        borderRadius: 12,
+                        padding: 12,
+                        lineHeight: 1.7,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                        ✅ بيانات الدخول (انسخها وأرسلها للموظفة):
+                      </div>
+
+                      <div dir="ltr">
+                        <b>UID:</b> {createdInfo.uid}
+                      </div>
+                      <div dir="ltr">
+                        <b>Email:</b> {createdInfo.email}
+                      </div>
+                      <div dir="ltr">
+                        <b>Password:</b> {createdInfo.password}
+                      </div>
+                      <div>
+                        <b>Role:</b> {createdInfo.role}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          flexWrap: "wrap",
+                          marginTop: 10,
+                        }}
+                      >
+                        <button
+                          className="dash-btn"
+                          type="button"
+                          onClick={async () => {
+                            const ok = await copyText(createdInfo.uid);
+                            setCreateMsg(ok ? "✅ تم نسخ UID" : "❌ تعذر النسخ");
+                          }}
+                        >
+                          نسخ UID
+                        </button>
+
+                        <button
+                          className="dash-btn"
+                          type="button"
+                          onClick={async () => {
+                            const ok = await copyText(createdInfo.email);
+                            setCreateMsg(ok ? "✅ تم نسخ Email" : "❌ تعذر النسخ");
+                          }}
+                        >
+                          نسخ Email
+                        </button>
+
+                        <button
+                          className="dash-btn"
+                          type="button"
+                          onClick={async () => {
+                            const ok = await copyText(createdInfo.password);
+                            setCreateMsg(
+                              ok ? "✅ تم نسخ Password" : "❌ تعذر النسخ"
+                            );
+                          }}
+                        >
+                          نسخ Password
+                        </button>
+
+                        <button
+                          className="dash-btn primary"
+                          type="button"
+                          onClick={async () => {
+                            const text =
+                              `Email: ${createdInfo.email}\n` +
+                              `Password: ${createdInfo.password}\n` +
+                              `Role: ${createdInfo.role}\n` +
+                              `UID: ${createdInfo.uid}`;
+                            const ok = await copyText(text);
+                            setCreateMsg(ok ? "✅ تم نسخ الكل" : "❌ تعذر النسخ");
+                          }}
+                        >
+                          نسخ الكل
+                        </button>
+                      </div>
+
+                      <div style={{ marginTop: 8, opacity: 0.85 }}>
+                        * صفحة About: تظهر فقط لو الدور <b>staff</b> (تم ضبطها
+                        تلقائيًا).
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="emp-modal-actions">
+                    <button
+                      className={`dash-btn primary ${
+                        createSaving ? "is-disabled" : ""
+                      }`}
+                      type="button"
+                      onClick={handleCreate}
+                      disabled={!canManage || createSaving}
+                    >
+                      {createSaving ? "جاري الإنشاء…" : "إنشاء المستخدم"}
+                    </button>
+
+                    <button
+                      className="dash-btn"
+                      type="button"
+                      onClick={() => setCreateOpen(false)}
+                    >
+                      إغلاق
+                    </button>
+                  </div>
+
+                  <div className="emp-modal-hint">
+                    * الإنشاء يتم عبر Cloud Function (Callable) بدون CORS.
+                    <br />
+                    * About: فقط <b>staff</b> تظهر، أما <b>reception/admin</b> لا.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* =========================
             ✅ Edit Modal
@@ -871,6 +1434,50 @@ const DashboardEmployees = () => {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="emp-label">التخصصات (تكتب key أو عربي)</label>
+                    <input
+                      className="dashboard-input emp-input"
+                      value={(editForm.specialties || []).join(", ")}
+                      onChange={(e) =>
+                        setEditForm((p) => ({
+                          ...p,
+                          specialties: e.target.value
+                            .split(",")
+                            .map((x) => normalizeSpecialtyKey(x))
+                            .filter(Boolean),
+                        }))
+                      }
+                      disabled={!canManage || editSaving}
+                      placeholder="hair, nails (أو: قسم الشعر, الأظافر)"
+                      dir="ltr"
+                    />
+                    <div style={{ marginTop: 6, opacity: 0.75, fontSize: 12 }}>
+                      عرض بالعربي:{" "}
+                      <b>
+                        {(editForm.specialties || [])
+                          .map(toArabicSpecialty)
+                          .join("، ") || "—"}
+                      </b>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="emp-label">
+                      نبذة عن الموظفة (تظهر بالـ About)
+                    </label>
+                    <textarea
+                      className="dashboard-input emp-input"
+                      value={editForm.bio}
+                      onChange={(e) =>
+                        setEditForm((p) => ({ ...p, bio: e.target.value }))
+                      }
+                      disabled={!canManage || editSaving}
+                      placeholder="مثال: خبيرة في الصبغات والعناية بالشعر…"
+                      style={{ minHeight: 110, resize: "vertical" }}
+                    />
+                  </div>
+
                   {editMsg && <div className="emp-modal-hint">{editMsg}</div>}
 
                   <div className="emp-modal-actions">
@@ -965,7 +1572,7 @@ const DashboardEmployees = () => {
                             <td>{b.serviceName || "—"}</td>
                             <td className="emp-center">
                               <span className="emp-bk-pill">
-                                {String(b.status || "pending")}
+                                {toArabicBookingStatus(b.status)}
                               </span>
                             </td>
                           </tr>

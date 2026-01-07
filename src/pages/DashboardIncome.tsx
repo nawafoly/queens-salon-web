@@ -91,11 +91,25 @@ function isRevenueStatus(status: any) {
   return s === "confirmed" || s === "completed";
 }
 
+/**
+ * ✅ PATCH: تطبيع طريقة الدفع (يدعم العربي + القديم)
+ * ✅ هذا مهم للـ Migration من LocalStorage حتى ما تتحول "كاش/شبكة" إلى other
+ */
 function normalizePaymentMethod(x: any): PaymentMethod {
-  const s = String(x || "").toLowerCase().trim();
+  const s = String(x ?? "").toLowerCase().trim();
+
+  // already normalized
   if (s === "cash") return "cash";
   if (s === "card" || s === "pos_card" || s === "mada_online") return "card";
   if (s === "transfer") return "transfer";
+  if (s === "other") return "other";
+
+  // arabic / legacy
+  if (s.includes("كاش") || s.includes("نقد")) return "cash";
+  if (s.includes("شبكة") || s.includes("مدى") || s.includes("بطاق"))
+    return "card";
+  if (s.includes("تحويل")) return "transfer";
+
   return "other";
 }
 

@@ -51,6 +51,9 @@ const BOOKINGS_COL = ["salons", SALON_ID, "bookings"] as const;
 const SLOTS_COL = ["salons", SALON_ID, "booking_slots"] as const;
 const TRACKS_COL = ["salons", SALON_ID, "booking_tracks"] as const;
 
+// ✅ NEW: Income collection (linked to booking by same id)
+const INCOME_COL = ["salons", SALON_ID, "income"] as const;
+
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   const cleaned: Record<string, any> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -103,6 +106,20 @@ function slotTakenError() {
   return e;
 }
 
+// ✅ Helper: parse payment method from note like "Payment: cash" / "Payment: card"
+function parsePaymentMethod(note?: string): string {
+  const s = String(note || "").toLowerCase();
+  // Very tolerant parsing
+  if (s.includes("card") || s.includes("شبكة") || s.includes("مدى")) return "card";
+  if (s.includes("cash") || s.includes("كاش") || s.includes("نقد")) return "cash";
+  return "cash"; // default
+}
+
+function getAmount(b: BookingDoc): number {
+  const v = Number(b.finalPrice ?? b.total ?? 0);
+  return Number.isFinite(v) ? v : 0;
+}
+
 /* =========================
    CREATE
 ========================= */
@@ -122,21 +139,61 @@ export async function createBooking(data: BookingDoc) {
 
   const bookingId = await runTransaction(db, async (tx) => {
     const slotSnap = await tx.get(slotRef);
-    if (slotSnap.exists()) throw slotTakenError();
 
+    // ✅ NEW: لو السلوّت موجود، افحص هل هو لنفس العميل (retry)؟
+    if (slotSnap.exists()) {
+      const slotData: any = slotSnap.data() || {};
+      const existingBookingId = String(slotData.bookingId || "").trim();
+
+      if (existingBookingId) {
+        const existingBookingRef = doc(db, ...BOOKINGS_COL, existingBookingId);
+        const existingBookingSnap = await tx.get(existingBookingRef);
+
+        if (existingBookingSnap.exists()) {
+          const existingBooking = normalizeBooking(existingBookingSnap.data());
+
+          const sameUser =
+            // لو عندنا uid: الأفضل مطابقته
+            (data.userId && existingBooking.userId && data.userId === existingBooking.userId) ||
+            // fallback: نفس رقم الجوال
+            (!data.userId && String(existingBooking.clientPhone || "") === String(data.clientPhone || ""));
+
+          const sameSlot =
+            String(existingBooking.date || "") === String(data.date || "") &&
+            String(existingBooking.time || "") === String(data.time || "") &&
+            safeKey(existingBooking.employeeId?.trim() || existingBooking.employeeName.trim()) ===
+              safeKey(employeeKey);
+
+          // ✅ إذا نفس العميل ونفس السلوّت: رجّع نفس الحجز (بدون خطأ)
+          if (sameUser && sameSlot) {
+            return existingBookingId;
+          }
+        }
+      }
+
+      // ❌ السلوّت لعميلة ثانية (أو بيانات غير متطابقة)
+      throw slotTakenError();
+    }
+
+    // ✅ السلوّت فاضي: اقفله + أنشئ الحجز (Atomic)
     tx.set(slotRef, {
       bookingId: bookingRef.id,
       employeeId: data.employeeId ?? null,
       employeeName: data.employeeName,
       date: data.date,
       time: data.time,
+      // ✅ NEW: نخزن معلومات العميل لتسهيل retry لاحقاً
+      userId: data.userId ?? null,
+      clientPhone: data.clientPhone,
       createdAt: serverTimestamp(),
     });
 
     tx.set(bookingRef, payload);
+
     return bookingRef.id;
   });
 
+  // ✅ tracks: idempotent (merge) سواء كان جديد أو retry
   await setDoc(
     doc(db, ...TRACKS_COL, bookingId),
     {
@@ -225,7 +282,6 @@ export function watchAllBookings(
 ) {
   const q = query(collection(db, ...BOOKINGS_COL));
 
-  // onSnapshot supports: (next, error)
   return onSnapshot(
     q,
     (snap) => {
@@ -245,7 +301,6 @@ export function watchAllBookings(
   );
 }
 
-
 export async function listUserBookings(userId: string) {
   const q = query(
     collection(db, ...BOOKINGS_COL),
@@ -262,14 +317,79 @@ export async function listUserBookings(userId: string) {
    UPDATE
 ========================= */
 
+/**
+ * ✅ updateBookingStatus (FIXED)
+ * - إذا Confirmed/Completed: ينشئ/يحدث دخل تلقائيًا داخل salons/main/income/{bookingId}
+ * - إذا Pending/Cancelled: يحذف دخل الحجز (إن وجد)
+ * - FIX: ممنوع tx.get بعد أي write داخل transaction
+ */
 export async function updateBookingStatus(
   bookingId: string,
   status: BookingStatus
 ) {
-  await updateDoc(doc(db, ...BOOKINGS_COL, bookingId), { status });
-  await updateDoc(doc(db, ...TRACKS_COL, bookingId), {
-    status,
-    updatedAt: serverTimestamp(),
+  const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
+  const trackRef = doc(db, ...TRACKS_COL, bookingId);
+  const incomeRef = doc(db, ...INCOME_COL, bookingId);
+
+  await runTransaction(db, async (tx) => {
+    // ✅ READS FIRST
+    const snap = await tx.get(bookingRef);
+    if (!snap.exists()) {
+      throw new Error("BOOKING_NOT_FOUND");
+    }
+
+    const booking = normalizeBooking(snap.data());
+    const amount = getAmount(booking);
+
+    // ✅ اقرأ income قبل أي write (عشان لو بنحذفه)
+    const incomeSnap = await tx.get(incomeRef);
+
+    // ✅ WRITES ONLY بعد هذا السطر
+    tx.update(bookingRef, { status });
+
+    tx.set(
+      trackRef,
+      {
+        bookingId,
+        serviceName: booking.serviceName,
+        employeeName: booking.employeeName,
+        date: booking.date,
+        time: booking.time,
+        status,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    const shouldCreateIncome = status === "confirmed" || status === "completed";
+    const shouldDeleteIncome = status === "pending" || status === "cancelled";
+
+    if (shouldCreateIncome) {
+      const method = parsePaymentMethod(booking.note);
+
+      tx.set(
+        incomeRef,
+        {
+          bookingId,
+          amount,
+          date: booking.date,
+          method, // "cash" | "card" (string)
+          source: "booking",
+          clientName: booking.clientName,
+          clientPhone: booking.clientPhone,
+          serviceName: booking.serviceName,
+          employeeName: booking.employeeName,
+          status,
+          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } else if (shouldDeleteIncome) {
+      if (incomeSnap.exists()) {
+        tx.delete(incomeRef);
+      }
+    }
   });
 }
 

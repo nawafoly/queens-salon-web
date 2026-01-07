@@ -1,54 +1,144 @@
+// src/pages/About.tsx
+import { useEffect, useMemo, useState } from "react";
 
 import ava from "../assets/images/ava.webp";
 import emma from "../assets/images/emma.webp";
 import sophie from "../assets/images/sophie.webp";
 import unnamed from "../assets/images/unnamed.webp";
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCheck, faStar, faAward, faHandHoldingHeart } from '@fortawesome/free-solid-svg-icons';
-import '../styles/About.css';
+
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faCheck,
+  faStar,
+  faAward,
+  faHandHoldingHeart,
+} from "@fortawesome/free-solid-svg-icons";
+
+import "../styles/About.css";
+
+// ✅ Firestore
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../services/firebase";
+
+type TeamMember = {
+  id: string;
+  name: string;
+  position: string;
+  image: string; // placeholder image
+  description: string;
+
+  specialties?: string[];
+  bio?: string;
+  avatarUrl?: string;
+  active?: boolean;
+};
+
+const SALON_ID = "main";
+const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
+
+function normalizeSpecialties(v: any): string[] {
+  if (Array.isArray(v)) return v.map(String).map((s) => s.trim()).filter(Boolean);
+  if (typeof v === "string" && v.trim()) return [v.trim()];
+  return [];
+}
+
+function buildPositionFromSpecialties(specialties: string[]) {
+  if (!specialties.length) return "أخصائية";
+  // مثال: "أخصائية: hair • nails"
+  return `أخصائية: ${specialties.slice(0, 3).join(" • ")}`;
+}
 
 const About = () => {
-  const teamMembers = [
-    {
-      id: 1,
-      name: 'سارة الأحمد',
-      position: 'مديرة الصالون',
-      image: ava,
-      description: 'خبرة أكثر من 10 سنوات في مجال التجميل والعناية بالبشرة.'
-    },
-    {
-      id: 2,
-      name: 'نورة العتيبي',
-      position: 'أخصائية الشعر',
-      image: emma,
-      description: 'متخصصة في قص وصبغ الشعر بأحدث التقنيات العالمية.'
-    },
-    {
-      id: 3,
-      name: 'هند السعيد',
-      position: 'خبيرة العناية بالبشرة',
-      image: sophie,
-      description: 'حاصلة على شهادات متخصصة في العناية بالبشرة والتجميل.'
-    }
-  ];
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamLoading, setTeamLoading] = useState(true);
+  const [teamErr, setTeamErr] = useState("");
+
+  const placeholders = useMemo(() => [ava, emma, sophie], []);
 
   const whyChooseUs = [
     {
       icon: faStar,
-      title: 'خدمة متميزة',
-      description: 'نقدم خدمة احترافية ومتميزة تلبي جميع احتياجاتك وتفوق توقعاتك.'
+      title: "خدمة متميزة",
+      description:
+        "نقدم خدمة احترافية ومتميزة تلبي جميع احتياجاتك وتفوق توقعاتك.",
     },
     {
       icon: faAward,
-      title: 'فريق محترف',
-      description: 'فريقنا من الخبيرات المتخصصات في مجال التجميل والعناية بالجمال.'
+      title: "فريق محترف",
+      description: "فريقنا من الخبيرات المتخصصات في مجال التجميل والعناية بالجمال.",
     },
     {
       icon: faHandHoldingHeart,
-      title: 'منتجات طبيعية',
-      description: 'نستخدم منتجات طبيعية وآمنة على البشرة والشعر من أفضل الماركات العالمية.'
-    }
+      title: "منتجات طبيعية",
+      description:
+        "نستخدم منتجات طبيعية وآمنة على البشرة والشعر من أفضل الماركات العالمية.",
+    },
   ];
+
+  // ✅ تحميل الفريق من staff_public (يعتمد على active فقط)
+  const loadTeam = async () => {
+    try {
+      setTeamLoading(true);
+      setTeamErr("");
+
+      const colRef = collection(db, ...STAFF_PUBLIC_COLLECTION);
+      const snap = await getDocs(colRef);
+
+      const rows: TeamMember[] = snap.docs
+        .map((d, idx) => {
+          const x: any = d.data();
+
+          const name = String(x?.name || "").trim();
+          const active = x?.active !== false; // ✅ default true
+
+          const specialties = normalizeSpecialties(x?.specialties);
+          const bio = String(x?.bio || "").trim();
+          const avatarUrl = String(x?.avatarUrl || "").trim() || undefined;
+
+          const position = buildPositionFromSpecialties(specialties);
+
+          const desc =
+            bio ||
+            (specialties.length
+              ? `متخصصة في: ${specialties.join(" • ")}`
+              : "خبيرة ضمن فريق صالون ملكات.");
+
+          return {
+            id: d.id,
+            name,
+            active,
+            specialties,
+            bio,
+            avatarUrl,
+            position,
+            description: desc,
+            image: placeholders[idx % placeholders.length], // fallback
+          };
+        })
+        // ✅ فقط اللي active + عنده اسم
+        .filter((m) => m.name && m.active);
+
+      // ✅ ترتيب محلي بالاسم
+      rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
+
+      setTeamMembers(rows);
+
+      if (rows.length === 0) {
+        setTeamErr("لا يوجد فريق منشور في صفحة About حالياً. (staff_public)");
+      }
+    } catch (e: any) {
+      console.error("About loadTeam error:", e);
+      setTeamErr(e?.message || "تعذر تحميل فريق الصالون");
+      setTeamMembers([]);
+    } finally {
+      setTeamLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTeam();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="about-page py-5">
@@ -57,7 +147,7 @@ const About = () => {
           <div className="row align-items-center">
             <div className="col-lg-6 mb-4 mb-lg-0">
               <div className="about-image">
-                <img src={unnamed} alt="Body Beauty Salon" className="img-fluid rounded" />
+                <img src={unnamed} alt="Queens Salon" className="img-fluid rounded" />
               </div>
             </div>
 
@@ -65,16 +155,19 @@ const About = () => {
               <div className="about-content">
                 <h1 className="about-title mb-4">عن صالون ملكات</h1>
                 <p className="about-text mb-4">
-                  تأسس صالون ملكات للتجميل في عام 2020 بهدف تقديم خدمات تجميلية متكاملة وعالية الجودة للسيدات.
-                  نسعى دائماً لتوفير تجربة فريدة ومميزة لعميلاتنا في جو من الراحة والخصوصية.
+                  تأسس صالون ملكات للتجميل في عام 2020 بهدف تقديم خدمات تجميلية
+                  متكاملة وعالية الجودة للسيدات. نسعى دائماً لتوفير تجربة فريدة
+                  ومميزة لعميلاتنا في جو من الراحة والخصوصية.
                 </p>
                 <p className="about-text mb-4">
-                  يضم صالوننا فريقاً من الخبيرات المتخصصات في مجالات العناية بالشعر والبشرة والمكياج والأظافر،
-                  ونستخدم أفضل المنتجات العالمية لضمان نتائج مثالية.
+                  يضم صالوننا فريقاً من الخبيرات المتخصصات في مجالات العناية بالشعر
+                  والبشرة والمكياج والأظافر، ونستخدم أفضل المنتجات العالمية لضمان
+                  نتائج مثالية.
                 </p>
                 <p className="about-text">
-                  رؤيتنا هي أن نكون الوجهة الأولى للسيدات الباحثات عن التميز والجودة في خدمات التجميل،
-                  ونسعى دائماً لمواكبة أحدث صيحات الموضة والتجميل العالمية.
+                  رؤيتنا هي أن نكون الوجهة الأولى للسيدات الباحثات عن التميز
+                  والجودة في خدمات التجميل، ونسعى دائماً لمواكبة أحدث صيحات الموضة
+                  والتجميل العالمية.
                 </p>
               </div>
             </div>
@@ -84,46 +177,70 @@ const About = () => {
         <section className="about-team mb-5">
           <div className="text-center mb-5">
             <h2 className="section-title">فريقنا المتميز</h2>
-            <p className="section-subtitle">
-              تعرفي على فريق الخبيرات المتخصصات في صالون ملكات
-            </p>
+            <p className="section-subtitle">تعرفي على فريق الخبيرات المتخصصات</p>
+            <div className="about-team-hint">
+              (يتم العرض تلقائياً من Firestore: <b>salons/main/staff_public</b>)
+            </div>
           </div>
 
-          <div className="team-grid">
-            {teamMembers.map((member, index) => (
-              <div key={member.id}>
-                <div
-                  className="team-member-enhanced animate-fade-in"
-                  style={{ animationDelay: `${index * 0.2}s` }}
-                >
-                  <div className="team-member-image-container">
-                    <img
-                      src={member.image}
-                      alt={member.name}
-                      className="team-member-image-enhanced"
-                    />
-                    <div className="team-member-overlay">
-                      <div className="team-member-social">
-                        <i className="fab fa-instagram"></i>
-                        <i className="fab fa-twitter"></i>
+          {teamLoading ? (
+            <p style={{ opacity: 0.75, textAlign: "center" }}>جاري تحميل الفريق…</p>
+          ) : teamErr ? (
+            <p style={{ color: "#991b1b", fontWeight: 900, textAlign: "center" }}>
+              {teamErr}
+            </p>
+          ) : (
+            <div className="team-grid">
+              {teamMembers.map((member, index) => (
+                <div key={member.id}>
+                  <div
+                    className="team-member-enhanced animate-fade-in"
+                    style={{ animationDelay: `${index * 0.2}s` }}
+                  >
+                    <div className="team-member-image-container">
+                      <img
+                        src={member.avatarUrl || member.image}
+                        alt={member.name}
+                        className="team-member-image-enhanced"
+                      />
+                      <div className="team-member-overlay">
+                        <div className="team-member-social">
+                          <i className="fab fa-instagram"></i>
+                          <i className="fab fa-twitter"></i>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="team-member-content">
+                      <h3 className="team-member-name-enhanced">{member.name}</h3>
+
+                      <p className="team-member-position-enhanced">
+                        {member.position}
+                      </p>
+
+                      <p className="team-member-description-enhanced">
+                        {member.description}
+                      </p>
+
+                      {!!member.specialties?.length && (
+                        <div className="team-member-chips">
+                          {member.specialties.slice(0, 6).map((sp, i) => (
+                            <span key={`${member.id}-sp-${i}`} className="team-chip">
+                              {sp}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="team-member-skills">
+                        <span className="skill-tag">موظفة معتمدة</span>
                       </div>
                     </div>
                   </div>
-
-                  <div className="team-member-content">
-                    <h3 className="team-member-name-enhanced">{member.name}</h3>
-                    <p className="team-member-position-enhanced">{member.position}</p>
-                    <p className="team-member-description-enhanced">{member.description}</p>
-
-                    <div className="team-member-skills">
-                      <span className="skill-tag">خبيرة معتمدة</span>
-                      <span className="skill-tag">10+ سنوات خبرة</span>
-                    </div>
-                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="why-choose-us">
@@ -147,22 +264,52 @@ const About = () => {
               <div className="col-lg-6 mb-4">
                 <h3 className="about-features-title mb-4">ماذا يميزنا؟</h3>
                 <ul className="features-list">
-                  <li><FontAwesomeIcon icon={faCheck} className="feature-icon" /> أحدث التقنيات في مجال التجميل</li>
-                  <li><FontAwesomeIcon icon={faCheck} className="feature-icon" /> منتجات عالمية ذات جودة عالية</li>
-                  <li><FontAwesomeIcon icon={faCheck} className="feature-icon" /> أسعار مناسبة وعروض دورية</li>
-                  <li><FontAwesomeIcon icon={faCheck} className="feature-icon" /> خصوصية تامة وراحة مطلقة</li>
-                  <li><FontAwesomeIcon icon={faCheck} className="feature-icon" /> مواعيد مرنة تناسب جميع العميلات</li>
+                  <li>
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> أحدث
+                    التقنيات في مجال التجميل
+                  </li>
+                  <li>
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> منتجات
+                    عالمية ذات جودة عالية
+                  </li>
+                  <li>
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> أسعار
+                    مناسبة وعروض دورية
+                  </li>
+                  <li>
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> خصوصية
+                    تامة وراحة مطلقة
+                  </li>
+                  <li>
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> مواعيد
+                    مرنة تناسب جميع العميلات
+                  </li>
                 </ul>
               </div>
 
               <div className="col-lg-6">
                 <h3 className="about-features-title mb-4">قيمنا</h3>
                 <ul className="features-list">
-                  <li><FontAwesomeIcon icon={faCheck} className="feature-icon" /> الاحترافية في تقديم الخدمات</li>
-                  <li><FontAwesomeIcon icon={faCheck} className="feature-icon" /> الالتزام بأعلى معايير النظافة</li>
-                  <li><FontAwesomeIcon icon={faCheck} className="feature-icon" /> الاهتمام بتفاصيل رغبات العميلات</li>
-                  <li><FontAwesomeIcon icon={faCheck} className="feature-icon" /> التطوير المستمر لمهارات الفريق</li>
-                  <li><FontAwesomeIcon icon={faCheck} className="feature-icon" /> الصدق والشفافية في التعامل</li>
+                  <li>
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الاحترافية
+                    في تقديم الخدمات
+                  </li>
+                  <li>
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الالتزام
+                    بأعلى معايير النظافة
+                  </li>
+                  <li>
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الاهتمام
+                    بتفاصيل رغبات العميلات
+                  </li>
+                  <li>
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> التطوير
+                    المستمر لمهارات الفريق
+                  </li>
+                  <li>
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الصدق
+                    والشفافية في التعامل
+                  </li>
                 </ul>
               </div>
             </div>
@@ -174,4 +321,3 @@ const About = () => {
 };
 
 export default About;
-

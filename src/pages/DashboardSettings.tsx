@@ -75,6 +75,9 @@ type UserRow = {
   createdAt?: any;
 };
 
+const SALON_ID = "main";
+const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
+
 const DashboardSettings: React.FC = () => {
   const [uiRole, setUiRole] = useState<UiRole>("guest");
   const [authLoading, setAuthLoading] = useState(true);
@@ -121,7 +124,7 @@ const DashboardSettings: React.FC = () => {
     return false;
   }, [isOwner, isAdmin, allowAdminManageUsers]);
 
-  // ✅ المصدر الحقيقي للدور: Firestore users/{uid}.role
+  // ✅ المصدر الحقيقي للدور: salons/main/users/{uid}.role
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setAuthLoading(true);
@@ -132,7 +135,7 @@ const DashboardSettings: React.FC = () => {
           return;
         }
 
-        const userRef = doc(db, "users", user.uid);
+        const userRef = doc(db, ...USERS_COLLECTION, user.uid);
         const snap = await getDoc(userRef);
 
         // ✅ لو ما فيه وثيقة، ننشئها بـ role lowercase
@@ -140,10 +143,10 @@ const DashboardSettings: React.FC = () => {
           await setDoc(
             userRef,
             {
-              role: "staff", // ✅ كان "STAFF"
+              role: "staff",
               displayName: user.displayName || "مستخدم",
               email: (user.email || "").toLowerCase(),
-              createdAt: new Date().toISOString(),
+              createdAt: serverTimestamp(),
               active: true,
             },
             { merge: true }
@@ -153,7 +156,6 @@ const DashboardSettings: React.FC = () => {
         const snap2 = await getDoc(userRef);
         const data = snap2.exists() ? (snap2.data() as any) : {};
 
-        // ✅ إذا كان الدور قديم Uppercase نحوله ونثبت نسخة lowercase مرة واحدة
         const mapped = mapFirestoreRoleToUi(data?.role);
         setUiRole(mapped);
 
@@ -246,7 +248,7 @@ const DashboardSettings: React.FC = () => {
 
     setUsersLoading(true);
     try {
-      const q = query(collection(db, "users"), orderBy("createdAt", "desc"));
+      const q = query(collection(db, ...USERS_COLLECTION), orderBy("createdAt", "desc"));
       const snap = await getDocs(q);
 
       const list: UserRow[] = snap.docs.map((d) => {
@@ -254,7 +256,7 @@ const DashboardSettings: React.FC = () => {
         return {
           uid: d.id,
           email: String(x?.email || ""),
-          displayName: String(x?.displayName || ""),
+          displayName: String(x?.displayName || x?.name || ""),
           role: mapFirestoreRoleToUi(x?.role),
           active: x?.active !== false,
           createdAt: x?.createdAt,
@@ -300,13 +302,13 @@ const DashboardSettings: React.FC = () => {
       const cred = await createUserWithEmailAndPassword(secondary, email, password);
       const uid = cred.user.uid;
 
-      // ✅ إنشاء وثيقة users/{uid} (role lowercase)
+      // ✅ إنشاء وثيقة salons/main/users/{uid} (role lowercase)
       await setDoc(
-        doc(db, "users", uid),
+        doc(db, ...USERS_COLLECTION, uid),
         {
           email,
           displayName,
-          role: toFirestoreRole(role), // ✅ كان ADMIN/STAFF .. صار admin/staff
+          role: toFirestoreRole(role),
           active: true,
           createdAt: serverTimestamp(),
           createdByUid: (auth as any)?.currentUser?.uid || "",
@@ -331,6 +333,57 @@ const DashboardSettings: React.FC = () => {
     } finally {
       setCreateLoading(false);
       setTimeout(() => setCreateMsg(""), 3500);
+    }
+  };
+
+  // ✅ NEW: تعديل الدور مباشرة من الجدول
+  const updateUserRole = async (uid: string, newRole: UiRole) => {
+    if (!canManageUsers) return;
+
+    // ✅ حماية: admin لا يمنح owner
+    if (!isOwner && newRole === "owner") return;
+
+    // ✅ حماية إضافية: لا تغيّر نفسك هنا
+    if ((auth as any)?.currentUser?.uid === uid) {
+      setCreateMsg("❌ لا يمكن تعديل دور حسابك من هنا");
+      setTimeout(() => setCreateMsg(""), 2500);
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, ...USERS_COLLECTION, uid), { role: toFirestoreRole(newRole) }, { merge: true });
+
+      setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, role: newRole } : u)));
+      setCreateMsg("✅ تم تحديث الدور");
+      setTimeout(() => setCreateMsg(""), 1200);
+    } catch (e) {
+      console.error("updateUserRole error:", e);
+      setCreateMsg("❌ تعذر تحديث الدور (Rules?)");
+      setTimeout(() => setCreateMsg(""), 2500);
+    }
+  };
+
+  // ✅ NEW: تفعيل/إيقاف الحساب
+  const toggleUserActive = async (uid: string, active: boolean) => {
+    if (!canManageUsers) return;
+
+    // ✅ حماية: لا توقف نفسك بالغلط
+    if ((auth as any)?.currentUser?.uid === uid) {
+      setCreateMsg("❌ لا يمكن إيقاف حسابك من هنا");
+      setTimeout(() => setCreateMsg(""), 2500);
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, ...USERS_COLLECTION, uid), { active }, { merge: true });
+
+      setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, active } : u)));
+      setCreateMsg("✅ تم تحديث حالة الحساب");
+      setTimeout(() => setCreateMsg(""), 1200);
+    } catch (e) {
+      console.error("toggleUserActive error:", e);
+      setCreateMsg("❌ تعذر تحديث حالة الحساب (Rules?)");
+      setTimeout(() => setCreateMsg(""), 2500);
     }
   };
 
@@ -435,10 +488,7 @@ const DashboardSettings: React.FC = () => {
                 <input
                   className="settings-input"
                   value={(settings as any)?.salonName || ""}
-                  onChange={(e) =>
-                    hasAdminPower &&
-                    setSettings({ ...(settings as any), salonName: e.target.value })
-                  }
+                  onChange={(e) => hasAdminPower && setSettings({ ...(settings as any), salonName: e.target.value })}
                   disabled={!hasAdminPower}
                 />
               </div>
@@ -448,9 +498,7 @@ const DashboardSettings: React.FC = () => {
                 <input
                   className="settings-input"
                   value={(settings as any)?.phone || ""}
-                  onChange={(e) =>
-                    hasAdminPower && setSettings({ ...(settings as any), phone: e.target.value })
-                  }
+                  onChange={(e) => hasAdminPower && setSettings({ ...(settings as any), phone: e.target.value })}
                   disabled={!hasAdminPower}
                 />
               </div>
@@ -460,9 +508,7 @@ const DashboardSettings: React.FC = () => {
                 <input
                   className="settings-input"
                   value={(settings as any)?.city || ""}
-                  onChange={(e) =>
-                    hasAdminPower && setSettings({ ...(settings as any), city: e.target.value })
-                  }
+                  onChange={(e) => hasAdminPower && setSettings({ ...(settings as any), city: e.target.value })}
                   disabled={!hasAdminPower}
                 />
               </div>
@@ -573,9 +619,7 @@ const DashboardSettings: React.FC = () => {
               <div className="modal-head">
                 <div className="modal-title-wrap">
                   <div className="modal-icon">⚙️</div>
-                  <h3 className="modal-title">
-                    {advancedView === "main" ? "إعدادات متقدمة" : "إدارة الحسابات"}
-                  </h3>
+                  <h3 className="modal-title">{advancedView === "main" ? "إعدادات متقدمة" : "إدارة الحسابات"}</h3>
                 </div>
 
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -674,9 +718,7 @@ const DashboardSettings: React.FC = () => {
                               <input
                                 className="settings-input"
                                 value={createForm.displayName}
-                                onChange={(e) =>
-                                  setCreateForm((p) => ({ ...p, displayName: e.target.value }))
-                                }
+                                onChange={(e) => setCreateForm((p) => ({ ...p, displayName: e.target.value }))}
                                 placeholder="مثال: سارة"
                                 disabled={createLoading}
                               />
@@ -687,9 +729,7 @@ const DashboardSettings: React.FC = () => {
                               <input
                                 className="settings-input"
                                 value={createForm.email}
-                                onChange={(e) =>
-                                  setCreateForm((p) => ({ ...p, email: e.target.value }))
-                                }
+                                onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))}
                                 placeholder="name@example.com"
                                 disabled={createLoading}
                               />
@@ -701,9 +741,7 @@ const DashboardSettings: React.FC = () => {
                                 className="settings-input"
                                 type="password"
                                 value={createForm.password}
-                                onChange={(e) =>
-                                  setCreateForm((p) => ({ ...p, password: e.target.value }))
-                                }
+                                onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
                                 placeholder="6 أحرف أو أكثر"
                                 disabled={createLoading}
                               />
@@ -714,9 +752,7 @@ const DashboardSettings: React.FC = () => {
                               <select
                                 className="settings-input"
                                 value={createForm.role}
-                                onChange={(e) =>
-                                  setCreateForm((p) => ({ ...p, role: e.target.value as UiRole }))
-                                }
+                                onChange={(e) => setCreateForm((p) => ({ ...p, role: e.target.value as UiRole }))}
                                 disabled={createLoading}
                               >
                                 <option value="staff">موظفة</option>
@@ -761,7 +797,8 @@ const DashboardSettings: React.FC = () => {
                           </div>
 
                           <div className="settings-footnote" style={{ marginTop: 10 }}>
-                            * يتم إنشاء الحساب في Firebase Auth + حفظ الدور داخل Firestore في users/{`{uid}`}.
+                            * يتم إنشاء الحساب في Firebase Auth + حفظ الدور داخل Firestore في{" "}
+                            <b>salons/main/users/{`{uid}`}</b>.
                             <br />
                             * لا يتم تسجيل خروجك لأننا نستخدم Secondary Auth.
                           </div>
@@ -792,13 +829,41 @@ const DashboardSettings: React.FC = () => {
                                     <th>الحالة</th>
                                   </tr>
                                 </thead>
+
                                 <tbody>
                                   {users.map((u) => (
                                     <tr key={u.uid}>
                                       <td>{u.displayName || "-"}</td>
                                       <td>{u.email || "-"}</td>
-                                      <td>{u.role}</td>
-                                      <td>{u.active ? "نشط" : "موقوف"}</td>
+
+                                      {/* ✅ role editor */}
+                                      <td>
+                                        <select
+                                          className="settings-input"
+                                          style={{ minWidth: 120 }}
+                                          value={u.role}
+                                          disabled={!canManageUsers || usersLoading}
+                                          onChange={(e) => updateUserRole(u.uid, e.target.value as UiRole)}
+                                          title="تعديل الدور"
+                                        >
+                                          <option value="staff">staff</option>
+                                          <option value="reception">reception</option>
+                                          <option value="admin">admin</option>
+                                        </select>
+                                      </td>
+
+                                      {/* ✅ active toggle */}
+                                      <td>
+                                        <button
+                                          type="button"
+                                          className={`exp-btn ${u.active ? "" : "primary"}`}
+                                          disabled={!canManageUsers || usersLoading}
+                                          onClick={() => toggleUserActive(u.uid, !u.active)}
+                                          title={u.active ? "إيقاف الحساب" : "تفعيل الحساب"}
+                                        >
+                                          {u.active ? "نشط ✅" : "موقوف ⛔"}
+                                        </button>
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -807,9 +872,9 @@ const DashboardSettings: React.FC = () => {
                           )}
 
                           <div className="settings-footnote" style={{ marginTop: 10 }}>
-                            * المرحلة الحالية: إنشاء الحسابات + عرضها.
+                            * المرحلة الحالية: إنشاء الحسابات + عرضها + تعديل الدور + تفعيل/إيقاف.
                             <br />
-                            * المرحلة القادمة: تعديل الدور/تعطيل الحساب/إعادة تعيين كلمة المرور.
+                            * المرحلة القادمة: إعادة تعيين كلمة المرور (أفضل عبر Cloud Function).
                           </div>
                         </div>
                       </>

@@ -3,19 +3,33 @@
 .profile-page {
   background: #faf8f6;
   min-height: 100vh;
-  padding-top: 30px;
+  padding: 30px 0 50px;
+  direction: rtl;
+  font-family: "Tajawal", sans-serif;
 }
 
+.profile-next-alert {
+  background: #eef6ff;
+  border: 1px solid #d8ebff;
+  color: #2b5b86;
+  padding: 10px 12px;
+  border-radius: 12px;
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+/* ===== Card ===== */
 .profile-card {
   background: #fff;
   border-radius: 20px;
   box-shadow: 0 6px 38px #b691e619, 0 1.5px 9px #fff4;
   padding: 38px 16px 25px 16px;
-  margin-bottom: 40px;
+  margin-bottom: 18px;
   text-align: center;
   position: relative;
 }
 
+/* Avatar */
 .profile-avatar {
   width: 110px;
   height: 110px;
@@ -47,277 +61,10 @@
   background: #fff;
 }
 
-.profile-card h2 {
-  font-weight: 700;
-  margin-bottom: 2px;
-  color: #5a4a42;
-  font-size: 2.1rem;
-  letter-spacing: 0.5px;
-}
-
-.profile-card .profile-details {
-  font-size: 1rem;
-  color: #7e695c;
-  margin-bottom: 12px;
-  word-break: break-word;
-}
-
-.profile-card .btn {
-  min-width: 140px;
-  margin-bottom: 8px;
-  font-weight: 500;
-}
-
-.profile-card .btn:not(:last-child) {
-  margin-inline-end: 7px;
-}
-
-.profile-card .btn-outline-primary {
-  border-color: #b691e6;
-  color: #b691e6;
-}
-
-.profile-card .btn-outline-primary:hover,
-.profile-card .btn-outline-primary:focus {
-  background: #f4eeff;
-  color: #6a498f;
-}
-
-.profile-card .btn-outline-warning {
-  border-color: #e8b4a2;
-  color: #e8b4a2;
-}
-
-.profile-card .btn-outline-warning:hover {
-  background: #fff1ec;
-  color: #c67d53;
-}
-
-.profile-card .btn-outline-danger {
-  border-color: #f85e7a;
-  color: #f85e7a;
-}
-
-.profile-card .btn-outline-danger:hover {
-  background: #ffe8ed;
-  color: #b63a49;
-}
-
-
-
-/* ===== Progress bar for membership points ===== */
-.profile-progress {
-  width: 85%;
-  max-width: 380px;
-  margin: 20px auto 5px auto;
-  background: #f2e8e3;
-  border-radius: 16px;
-  height: 18px;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 2px 8px #b691e619;
-}
-
-.profile-progress-bar {
-  background: linear-gradient(90deg, #b691e6 10%, #e8b4a2 100%);
-  height: 100%;
-  border-radius: 16px 0 0 16px;
-  transition: width 0.6s cubic-bezier(.65,.05,.36,1);
-}
-
-.profile-points-label {
-  position: absolute;
-  top: 2px;
-  left: 10px;
-  color: #fff;
-  font-size: 0.93rem;
-  font-weight: 600;
-  text-shadow: 0 1px 4px #3333;
-  letter-spacing: 0.5px;
-}
-
-/* ==== رقم العضوية والـQR ==== */
-.profile-id-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  margin: 10px auto 5px auto;
-  font-size: 1.06rem;
-  color: #9e93aa;
-  font-weight: 500;
-}
-
-.profile-id-row .profile-id-copy {
-  cursor: pointer;
-  font-size: 1.2rem;
-  margin-inline-start: 5px;
-  color: #b691e6;
-}
-
-.profile-id-row .profile-id-copy:hover {
-  color: #6a498f;
-}
-
-/* ==== تقييم النجوم ==== */
-.profile-stars {
-  color: #fbc02d;
-  font-size: 1.38rem;
-  margin-bottom: 3px;
-}
-
-.profile-reviews {
-  color: #7e695c;
-  font-size: 1.01rem;
-}
-
-/* ==== الدعم ==== */
-.profile-support-btn {
-  margin: 14px 0 0 0;
-  display: inline-block;
-  background: #23c781;
-  color: #fff;
-  border-radius: 7px;
-  padding: 6px 18px;
-  font-size: 1.09rem;
-  font-weight: 600;
-  border: none;
-  box-shadow: 0 1.5px 7px #8aefd166;
-  cursor: pointer;
-  transition: background 0.16s;
-  text-decoration: none;
-}
-.profile-support-btn:hover {
-  background: #18a165;
-  color: #fff;
-}
-
-/* ==== جدول الحجوزات ==== */
-.profile-bookings {
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 6px 38px #b691e619, 0 1.5px 9px #fff4;
-  margin-top: 12px;
-  padding: 25px 12px;
-}
-
-.profile-bookings h3 {
-  color: #5a4a42;
-  font-size: 1.22rem;
-  font-weight: 700;
-  margin-bottom: 16px;
-}
-
-.profile-bookings table {
-  background: #fff;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.profile-bookings th, .profile-bookings td {
-  vertical-align: middle !important;
-  text-align: center;
-  font-size: 1.03rem;
-  color: #685244;
-}
-
-.profile-bookings th {
-  background: #f4ede7;
-  font-weight: 600;
-}
-
-.profile-bookings td {
-  background: #fff;
-  font-weight: 400;
-}
-
-.profile-bookings .btn-danger.btn-sm {
-  padding: 2px 10px;
-  font-size: 0.93rem;
-  border-radius: 6px;
-}
-
-/* ==== حالات الحجز ==== */
-.status-badge {
-  display: inline-block;
-  padding: 2px 12px;
-  border-radius: 14px;
-  font-size: 0.97rem;
-  font-weight: 600;
-  background: #ececec;
-  color: #726e6e;
-}
-
-.status-badge.confirmed { background: #b0ffd6; color: #16915b; }
-.status-badge.pending   { background: #fff6ae; color: #b67e00; }
-.status-badge.completed { background: #b7b2f7; color: #594bbb; }
-.status-badge.ملغي     { background: #ffdde1; color: #d05a68; }
-
-/* ==== Modal ==== */
-.modal-backdrop {
-  position: fixed !important;
-  z-index: 1200 !important;
-  background: rgba(37, 28, 43, 0.17);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.modal-dialog {
-  border-radius: 14px;
-  box-shadow: 0 8px 38px 0 #b7b7d133, 0 1.5px 9px #fff4;
-  padding: 26px 20px 18px 20px;
-  min-width: 320px;
-  max-width: 95vw;
-  background: #fff;
-}
-
-.modal-dialog input, .modal-dialog select {
-  background: #faf8f6;
-  border-radius: 8px;
-  border: 1px solid #d5c6bc;
-  padding: 7px 12px;
-  margin-bottom: 9px;
-  font-size: 1.04rem;
-}
-
-.modal-dialog label {
-  font-weight: 500;
-  color: #695c4a;
-  margin-bottom: 3px;
-}
-
-.modal-dialog .btn {
-  margin-top: 6px;
-  min-width: 86px;
-  font-weight: 600;
-}
-
-/* ==== Responsive ==== */
-@media (max-width: 600px) {
-  .profile-card, .profile-bookings {
-    padding: 10px 5px 10px 5px;
-  }
-  .profile-avatar {
-    width: 75px;
-    height: 75px;
-    margin-bottom: 8px;
-  }
-  .profile-card h2 {
-    font-size: 1.22rem;
-  }
-  .profile-progress {
-    width: 96%;
-    min-width: 120px;
-    font-size: 0.85rem;
-  }
-}
-
-
 .avatar-upload-btn {
   position: absolute;
   bottom: 8px;
-  right: 8px;    /* أو left: 8px لو تبيها يسار */
+  right: 8px;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -330,49 +77,206 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.18s, border 0.18s;
+  transition: background 0.18s, border 0.18s, color 0.18s;
   z-index: 2;
   outline: none;
 }
-
 .avatar-upload-btn:hover {
   background: #f4eeff;
   border-color: #6a498f;
   color: #6a498f;
 }
 
-.profile-modal-overlay {
-  position: fixed;
-  top: 0; left: 0; width: 100vw; height: 100vh;
-  background: rgba(0,0,0,0.22);
-  z-index: 2000;
+.profile-card h2 {
+  font-weight: 800;
+  margin-bottom: 4px;
+  color: #5a4a42;
+  font-size: 2rem;
+  letter-spacing: 0.2px;
+}
+
+.profile-details {
+  font-size: 1rem;
+  color: #7e695c;
+  margin-bottom: 14px;
+  word-break: break-word;
+}
+
+/* ===== Membership ===== */
+.profile-progress {
+  width: min(420px, 92%);
+  margin: 14px auto 8px;
+  background: #f2e8e3;
+  border-radius: 16px;
+  height: 18px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 8px #b691e619;
+}
+
+.profile-progress-bar {
+  background: linear-gradient(90deg, #b691e6 10%, #e8b4a2 100%);
+  height: 100%;
+  border-radius: 16px 0 0 16px;
+  transition: width 0.6s cubic-bezier(0.65, 0.05, 0.36, 1);
+}
+
+.profile-points-label {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: auto;
-  animation: fadeInModal 0.18s;
-}
-@keyframes fadeInModal {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  color: #fff;
+  font-size: 0.93rem;
+  font-weight: 700;
+  text-shadow: 0 1px 4px #3333;
 }
 
-.profile-modal-dialog {
+/* ID row */
+.profile-id-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px auto 6px;
+  font-size: 1.02rem;
+  color: #9e93aa;
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+
+.profile-id-row .profile-id-copy {
+  cursor: pointer;
+  font-size: 1.15rem;
+  color: #b691e6;
+  user-select: none;
+}
+.profile-id-row .profile-id-copy:hover {
+  color: #6a498f;
+}
+
+/* Actions */
+.profile-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.profile-card .btn {
+  min-width: 150px;
+  margin-bottom: 4px;
+  font-weight: 700;
+  border-radius: 12px;
+}
+
+.profile-card .btn-outline-primary {
+  border-color: #b691e6;
+  color: #b691e6;
+}
+.profile-card .btn-outline-primary:hover,
+.profile-card .btn-outline-primary:focus {
+  background: #f4eeff;
+  color: #6a498f;
+}
+
+.profile-card .btn-outline-danger {
+  border-color: #f85e7a;
+  color: #f85e7a;
+}
+.profile-card .btn-outline-danger:hover {
+  background: #ffe8ed;
+  color: #b63a49;
+}
+
+/* WhatsApp button */
+.profile-support-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #23c781;
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 18px;
+  min-width: 150px;
+  font-size: 1.02rem;
+  font-weight: 800;
+  border: none;
+  box-shadow: 0 1.5px 7px #8aefd166;
+  cursor: pointer;
+  transition: background 0.16s;
+  text-decoration: none;
+}
+.profile-support-btn:hover {
+  background: #18a165;
+  color: #fff;
+}
+
+/* ===== Bookings ===== */
+.profile-bookings {
   background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 6px 38px #b691e619, 0 1.5px 9px #fff4;
+  margin-top: 12px;
+  padding: 22px 12px;
+}
+
+.profile-bookings h3 {
+  color: #5a4a42;
+  font-size: 1.22rem;
+  font-weight: 900;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.profile-bookings table {
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.profile-bookings th,
+.profile-bookings td {
+  vertical-align: middle !important;
+  text-align: center;
+  font-size: 1.02rem;
+  color: #685244;
+}
+
+.profile-bookings th {
+  background: #f4ede7;
+  font-weight: 800;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 12px;
   border-radius: 14px;
-  box-shadow: 0 8px 32px #c9b8ac66;
-  padding: 24px 18px;
-  min-width: 320px;
-  max-width: 95vw;
-  position: relative;
-  animation: modalPop .19s;
+  font-size: 0.95rem;
+  font-weight: 800;
+  background: #ececec;
+  color: #726e6e;
 }
-@keyframes modalPop {
-  from { opacity: 0; transform: scale(0.94);}
-  to   { opacity: 1; transform: scale(1);}
+.status-badge.confirmed {
+  background: #b0ffd6;
+  color: #16915b;
+}
+.status-badge.pending {
+  background: #fff6ae;
+  color: #b67e00;
+}
+.status-badge.completed {
+  background: #b7b2f7;
+  color: #594bbb;
+}
+.status-badge.ملغي {
+  background: #ffdde1;
+  color: #d05a68;
 }
 
-
+/* ===== Modal ===== */
 .profile-modal-overlay {
   position: fixed;
   inset: 0;
@@ -390,4 +294,24 @@
   border-radius: 14px;
   padding: 18px;
   box-shadow: 0 18px 55px rgba(0, 0, 0, 0.25);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .profile-card,
+  .profile-bookings {
+    padding: 14px 10px;
+  }
+  .profile-avatar {
+    width: 78px;
+    height: 78px;
+    margin-bottom: 10px;
+  }
+  .profile-card h2 {
+    font-size: 1.25rem;
+  }
+  .profile-card .btn,
+  .profile-support-btn {
+    min-width: 160px;
+  }
 }

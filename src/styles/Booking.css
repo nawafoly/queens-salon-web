@@ -1,9 +1,18 @@
+/* =========================
+   Booking.css (FULL) - Queens Salon
+   ✅ Unified Inputs + Unified Dropdown (dash-select + bk-field) scoped to .booking-page
+========================= */
+
 /* الصفحة الرئيسية للحجز */
 .booking-page {
   background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
   min-height: 100vh;
   padding: 40px 0 18px 0;
-  font-family: 'Tajawal', sans-serif;
+  font-family: "Tajawal", sans-serif;
+
+  /* ✅ Firefox scrollbar base */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(232, 180, 162, 0.95) rgba(255, 255, 255, 0.55);
 }
 
 /* البطاقة الأساسية */
@@ -42,45 +51,177 @@
   margin-bottom: 0.4rem;
 }
 
+/* =========================
+   ✅ Unified InputGroup Shell
+   (اسم/جوال/موظفة/وقت/تاريخ)
+========================= */
 .booking-form .input-group {
-  margin-bottom: 0.5rem;
-}
-
-.input-group-text {
-  background: none !important;
-  color: var(--primary-color);
-  border: none;
-  border-radius: 0.8rem 0 0 0.8rem;
-  font-size: 1.1rem;
-  padding: 0.7rem 0.8rem;
-}
-
-.form-control,
-.form-select {
-  border-radius: 0.8rem !important;
-  background: var(--gray);
-  border: none !important;
-  color: var(--text-color);
-  font-size: 1rem;
-  padding: 0.7rem 1rem;
-  transition: box-shadow 0.2s;
+  background: rgba(243, 244, 246, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  overflow: hidden;
   box-shadow: 0 2px 8px rgba(233, 180, 162, 0.04);
 }
 
+/* نلغي حدود العناصر الداخلية لأنها صارت على الغلاف */
+.booking-form .input-group .form-control,
+.booking-form .input-group .form-select {
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  color: var(--text-color);
+  height: 46px;
+}
 
+/* الأيقونة داخل نفس الإطار */
+.booking-form .input-group .input-group-text {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--primary-color);
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  height: 46px;
+}
 
-.form-control:focus,
-.form-select:focus {
-  border: 1.5px solid var(--primary-color) !important;
-  box-shadow: 0 0 0 0.12rem #e8b4a240;
+/* خط فاصل بسيط بين الأيقونة والحقل (RTL + LTR) */
+.booking-form .input-group .input-group-text {
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
+}
+[dir="rtl"] .booking-form .input-group .input-group-text {
+  border-left: 0;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Focus على المجموعة كاملة */
+.booking-form .input-group:focus-within {
+  border-color: rgba(232, 180, 162, 0.9);
+  box-shadow: 0 0 0 0.18rem #e8b4a240;
   background: #fff;
+}
+
+/* =========================
+   ✅ Base Inputs / Textarea
+========================= */
+.booking-page .form-control {
+  border-radius: 0.8rem !important;
+  background: rgba(243, 244, 246, 0.9) !important;
+  border: 1px solid rgba(90, 74, 66, 0.18) !important;
+  color: var(--text-color);
+  font-size: 1rem;
+  padding: 0.7rem 1rem;
+  transition: box-shadow 0.2s, border-color 0.2s, background 0.2s;
+  box-shadow: 0 2px 8px rgba(233, 180, 162, 0.04);
+}
+
+.booking-page .form-control:focus {
+  outline: none !important;
+  border-color: rgba(232, 180, 162, 0.9) !important;
+  box-shadow: 0 0 0 0.2rem rgba(232, 180, 162, 0.22) !important;
+  background: #fff !important;
 }
 
 textarea.form-control {
   min-height: 60px;
 }
 
-/* زر الحجز */
+/* =========================
+   ✅ Unified Select (Booking)
+   (القسم/الخدمة/الدفع/وأي select عليه dash-select)
+========================= */
+
+/* wrapper للـ select علشان السهم */
+.booking-page .bk-field {
+  position: relative;
+}
+
+/* ✅ dash-select لازم يكون "native select" */
+.booking-page .dash-select {
+  width: 100%;
+  min-height: 46px;
+
+  padding: 12px 14px;
+  border-radius: 14px;
+
+  background: rgba(243, 244, 246, 0.9);
+  border: 1px solid rgba(90, 74, 66, 0.18);
+
+  font-family: "Tajawal", sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-color);
+
+  cursor: pointer;
+  text-align: right;
+
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  /* مهم: نلغي أي background-image قديم */
+  background-image: none !important;
+
+  transition: box-shadow 0.18s ease, border-color 0.18s ease,
+    background 0.18s ease, transform 0.18s ease;
+}
+
+/* hover */
+.booking-page .dash-select:hover {
+  border-color: rgba(232, 180, 162, 0.55);
+  box-shadow: 0 12px 28px rgba(232, 180, 162, 0.14);
+  transform: translateY(-1px);
+}
+
+/* focus */
+.booking-page .dash-select:focus,
+.booking-page .dash-select:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 0.18rem rgba(232, 180, 162, 0.22) !important;
+  border-color: rgba(232, 180, 162, 0.75) !important;
+  background: #fff !important;
+}
+
+/* ✅ سهم (caret) موحّد — يشتغل مع bk-field */
+.booking-page .bk-field .dash-select {
+  padding-left: 44px; /* مساحة للسهم (RTL بيكون يسار) */
+}
+
+.booking-page .bk-field::after {
+  content: "";
+  position: absolute;
+  left: 16px; /* RTL: السهم يسار */
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-50%) rotate(45deg);
+  border-right: 2px solid rgba(232, 180, 162, 0.95);
+  border-bottom: 2px solid rgba(232, 180, 162, 0.95);
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+/* لو كان LTR لأي سبب */
+[dir="ltr"] .booking-page .bk-field::after {
+  right: 16px;
+  left: auto;
+}
+
+/* تحسين شكل الخيارات */
+.booking-page select option,
+.booking-page select optgroup {
+  font-family: "Tajawal", sans-serif;
+}
+
+/* =========================
+   زر الحجز
+========================= */
 .btn-primary,
 .booking-btn {
   background: var(--primary-color) !important;
@@ -97,48 +238,49 @@ textarea.form-control {
 .btn-primary:hover,
 .booking-btn:hover {
   background: var(--secondary-color) !important;
-  color: #fff;
+  color: #fff9f9;
   transform: scale(1.04);
 }
 
-/* سياسة الحجز */
-.booking-policy {
-  background: #f6eee9;
-  border-radius: 0.95rem;
-  padding: 1rem 1.2rem;
-  margin-bottom: 1.3rem;
+/* صندوق السعر */
+.booking-price-box {
+  background: #f9f5f1;
+  border: 1px solid rgba(232, 180, 162, 0.18);
+  border-radius: 12px;
+  padding: 10px 12px;
 }
 
-.booking-policy h4 {
+/* رسائل */
+.booking-offer-msg {
+  color: rgba(90, 74, 66, 0.85);
+  font-weight: 600;
+}
+
+.no-employee-warning {
+  color: #d32f2f;
+  background: #fff0f0;
+  border-right: 4px solid #d32f2f;
+  border-radius: 8px;
   font-size: 1rem;
-  font-weight: bold;
-  margin-bottom: 0.5rem;
-  color: var(--primary-color);
+  margin-top: 6px;
+  padding: 8px 14px 8px 8px;
+  width: 100%;
+  direction: rtl;
+  text-align: right;
 }
 
-.booking-policy ul {
-  margin: 0;
-  padding-right: 1rem;
-}
-
-.booking-policy li {
-  font-size: 0.96rem;
-  color: var(--text-color);
-  margin-bottom: 0.3rem;
-}
-
-/* نافذة نجاح الحجز */
+/* =========================
+   نافذة نجاح الحجز
+========================= */
 .booking-success-modal {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: rgba(50, 38, 32, 0.26);
   z-index: 4000;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 18px;
 }
 
 .booking-success-content {
@@ -221,41 +363,79 @@ textarea.form-control {
   color: #a7836e;
 }
 
-/* العد التنازلي */
 .countdown {
   color: var(--primary-color);
   font-weight: 800;
   font-size: 1.15rem;
 }
 
-
-.no-employee-warning {
-  color: #d32f2f;
-  background: #fff0f0;
-  border-right: 4px solid #d32f2f;
-  border-radius: 8px;
-  font-size: 1rem;
-  margin-top: 6px;
-  padding: 8px 14px 8px 8px;
-  width: 100%;
-  direction: rtl;
-  text-align: right;
-}
-
-
 @keyframes fadeIn {
   from {
     opacity: 0;
     transform: scale(0.97);
   }
-
   to {
     opacity: 1;
     transform: scale(1);
   }
 }
 
-/* ========== Responsive ========== */
+/* =========================
+   Date picker UX
+========================= */
+/* إخفاء أيقونة التقويم الافتراضية (Chrome / Edge / Safari) */
+.booking-page input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+/* إخفاء أيقونة التقويم في Firefox */
+.booking-page input[type="date"] {
+  appearance: none;
+  -moz-appearance: textfield;
+}
+
+.booking-page .booking-date-group {
+  cursor: pointer;
+}
+
+.booking-page .booking-date-group * {
+  cursor: pointer;
+}
+
+/* =========================
+   ✅ Premium Scrollbar (Queens) — فخم مثل الداشبورد
+========================= */
+
+/* Chrome / Edge / Safari */
+.booking-page ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.booking-page ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(232, 180, 162, 0.18);
+}
+
+.booking-page ::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(232, 180, 162, 0.95),
+    rgba(219, 165, 142, 0.95)
+  );
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 6px 16px rgba(232, 180, 162, 0.25);
+}
+
+.booking-page ::-webkit-scrollbar-thumb:hover {
+  box-shadow: 0 10px 22px rgba(232, 180, 162, 0.35);
+}
+
+/* =========================
+   Responsive
+========================= */
 @media (max-width: 991px) {
   .booking-card {
     padding: 1.2rem 0.7rem 1rem 0.7rem;
@@ -278,7 +458,6 @@ textarea.form-control {
     border-radius: 0.8rem;
   }
 
-  .booking-policy,
   .booking-success-content,
   .booking-details {
     border-radius: 0.7rem;
@@ -296,10 +475,9 @@ textarea.form-control {
     font-size: 0.92rem;
   }
 
-  .form-control,
-  .form-select {
+  .booking-page .form-control,
+  .booking-page .dash-select {
     font-size: 0.98rem;
-    padding: 0.65rem 0.85rem;
     border-radius: 0.7rem !important;
   }
 }
@@ -313,14 +491,21 @@ textarea.form-control {
     font-size: 1.03rem;
   }
 
-  .booking-policy h4 {
+  .booking-page .form-control,
+  .booking-page .dash-select {
     font-size: 0.93rem;
-  }
-
-  .form-control,
-  .form-select {
-    font-size: 0.93rem;
-    padding: 0.48rem 0.55rem;
   }
 }
 
+/* زر رمادي (نسخ / حجز جديد) */
+.booking-page .btn-gray,
+.booking-page .btn-secondary {
+  color: #2f2f2f !important; /* نص داكن */
+  font-weight: 600;
+}
+
+/* لو فيه زر disabled */
+.booking-page .btn-gray:disabled {
+  color: #6b6b6b !important;
+  opacity: 0.7;
+}

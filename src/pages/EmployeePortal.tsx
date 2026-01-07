@@ -1,80 +1,59 @@
-// ✅ src/pages/EmployeePortal.tsx
+// ✅ src/pages/DashboardEmployees.tsx
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faBoxOpen,
+  faPlus,
+  faPen,
+  faTrash,
   faRotateRight,
-  faUsers,
+  faToggleOn,
+  faToggleOff,
+  faUserTie,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
 import "../styles/EmployeePortal.css";
+import "../styles/DashboardModals.css";
 
-type UiRole = "owner" | "admin" | "reception" | "staff";
+type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 
 type AuthUser = {
   uid: string;
   email: string;
   role: UiRole;
-  displayName: string;
+  displayName?: string;
 };
 
-type Priority = "normal" | "urgent";
-type RequestStatus =
-  | "new"
-  | "in_review"
-  | "approved"
-  | "rejected"
-  | "fulfilled";
-
-type SupplyRequestItem = {
+type StaffPublicDoc = {
   name: string;
-  qty: number;
-  unit: string;
-};
-
-type SupplyRequestDoc = {
-  createdAt: any;
-  employeeUid: string;
-  employeeName: string;
-  department: string;
-  priority: Priority;
-  reason: string;
-  note?: string;
-  status: RequestStatus;
-  items: SupplyRequestItem[];
-};
-
-type SupplyRequestUi = SupplyRequestDoc & { id: string };
-
-// ✅ الموظفات من staff_public
-type StaffPublic = {
-  uid: string;
-  name: string;
-  specialties: string[];
   active: boolean;
+  specialties: string[]; // مثال: ["hair","coloring"]
+  bio?: string;          // نبذة تظهر للزبائن
+  avatarUrl?: string;    // صورة (اختياري)
+  createdAt?: any;
+  updatedAt?: any;
 };
 
-const STATUS_LABEL: Record<RequestStatus, string> = {
-  new: "جديد",
-  in_review: "تحت المراجعة",
-  approved: "تمت الموافقة",
-  rejected: "مرفوض",
-  fulfilled: "تم التوفير/التسليم",
-};
+type StaffPublicUi = StaffPublicDoc & { id: string };
 
-const SPECIALTY_LABELS: Record<string, string> = {
-  hair: "الشعر",
-  coloring: "الصبغات",
-  makeup: "المكياج",
-  nails: "الأظافر",
-  waxing: "الشمع",
-};
+const SALON_ID = "main";
 
-function translateSpecialties(list: string[] = []) {
-  return list.map((s) => SPECIALTY_LABELS[s] || s).join("، ");
-}
+const SPECIALTY_OPTIONS: { key: string; label: string }[] = [
+  { key: "hair", label: "الشعر" },
+  { key: "coloring", label: "الصبغات" },
+  { key: "makeup", label: "المكياج" },
+  { key: "nails", label: "الأظافر" },
+  { key: "waxing", label: "الشمع" },
+];
 
 function getAuthUser(): AuthUser | null {
   try {
@@ -86,227 +65,431 @@ function getAuthUser(): AuthUser | null {
   }
 }
 
-// ✅ ثابت للصالون
-const SALON_ID = "main";
-
-// ✅ توحيد المسارات حسب منهجنا
 function staffPublicCol() {
   return collection(db, "salons", SALON_ID, "staff_public");
 }
 
-function supplyRequestsCol() {
-  // ✅ بدل root supplyRequests
-  return collection(db, "salons", SALON_ID, "supplyRequests");
+function staffPublicDoc(id: string) {
+  return doc(db, "salons", SALON_ID, "staff_public", id);
 }
 
-export default function EmployeePortal() {
-  const authUser = useMemo(() => getAuthUser(), []);
+function normalizeSpecialties(v: any): string[] {
+  if (Array.isArray(v)) return v.filter(Boolean);
+  if (typeof v === "string" && v.trim()) return [v.trim()];
+  return [];
+}
 
-  const isStaff = authUser?.role === "staff";
-  const canManageView =
-    authUser?.role === "owner" ||
-    authUser?.role === "admin" ||
-    authUser?.role === "reception";
+export default function DashboardEmployees() {
+  const authUser = useMemo(() => getAuthUser(), []);
+  const canManage =
+    authUser?.role === "owner" || authUser?.role === "admin" || authUser?.role === "reception";
 
   const [loading, setLoading] = useState(false);
-  const [requests, setRequests] = useState<SupplyRequestUi[]>([]);
+  const [list, setList] = useState<StaffPublicUi[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ staff_public
-  const [staffList, setStaffList] = useState<StaffPublic[]>([]);
-  const [selectedStaffUid, setSelectedStaffUid] = useState<string>("__ALL__");
+  // Filters
+  const [qText, setQText] = useState("");
+  const [onlyActive, setOnlyActive] = useState<"all" | "active" | "inactive">("all");
+  const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
 
-  // ===== تحميل الموظفات من staff_public =====
-  const loadStaffList = async () => {
-    if (!canManageView) return;
+  // Modal state
+  const [isOpen, setIsOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
 
-    try {
-      const qStaff = query(
-        staffPublicCol(),
-        where("active", "==", true),
-        orderBy("name")
-      );
+  // Form
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [active, setActive] = useState(true);
+  const [specialties, setSpecialties] = useState<string[]>([]);
 
-      const snap = await getDocs(qStaff);
-
-      const list: StaffPublic[] = snap.docs.map((d) => ({
-        uid: d.id,
-        ...(d.data() as any),
-      }));
-
-      setStaffList(list);
-    } catch (e) {
-      console.warn("loadStaffList error:", e);
-      setStaffList([]);
-    }
+  const resetForm = () => {
+    setEditId(null);
+    setName("");
+    setBio("");
+    setAvatarUrl("");
+    setActive(true);
+    setSpecialties([]);
   };
 
-  // ===== تحميل الطلبات لموظفة واحدة =====
-  const loadRequestsFor = async (uid: string) => {
+  const openCreate = () => {
+    resetForm();
+    setIsOpen(true);
+  };
+
+  const openEdit = (x: StaffPublicUi) => {
+    setEditId(x.id);
+    setName(x.name ?? "");
+    setBio(x.bio ?? "");
+    setAvatarUrl(x.avatarUrl ?? "");
+    setActive(!!x.active);
+    setSpecialties(normalizeSpecialties(x.specialties));
+    setIsOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsOpen(false);
+    resetForm();
+  };
+
+  const load = async () => {
     setLoading(true);
     setErrorMsg("");
 
     try {
-      const qReq = query(
-        supplyRequestsCol(),
-        where("employeeUid", "==", uid),
-        orderBy("createdAt", "desc")
-      );
+      // ✅ بدون where+orderBy لتفادي مشكلة index
+      const snap = await getDocs(staffPublicCol());
 
-      const snap = await getDocs(qReq);
-      const list = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as any),
-      }));
+      const rows: StaffPublicUi[] = snap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          name: data?.name ?? "",
+          active: !!data?.active,
+          specialties: normalizeSpecialties(data?.specialties),
+          bio: data?.bio ?? "",
+          avatarUrl: data?.avatarUrl ?? "",
+          createdAt: data?.createdAt,
+          updatedAt: data?.updatedAt,
+        };
+      });
 
-      setRequests(list);
+      // ✅ ترتيب محلي بالاسم
+      rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
+
+      setList(rows);
     } catch (e) {
-      setErrorMsg("تعذر تحميل الطلبات");
-      setRequests([]);
+      console.warn("load staff_public error:", e);
+      setErrorMsg("تعذر تحميل الموظفات");
+      setList([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // ===== تحميل كل الطلبات (للإدارة) =====
-  const loadAllRequests = async () => {
-    setLoading(true);
-    setErrorMsg("");
-
-    try {
-      const qReq = query(supplyRequestsCol(), orderBy("createdAt", "desc"));
-
-      const snap = await getDocs(qReq);
-      const list = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as any),
-      }));
-
-      setRequests(list);
-    } catch (e) {
-      setErrorMsg("تعذر تحميل الطلبات");
-      setRequests([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const refresh = async () => {
-    if (!authUser) return;
-
-    if (isStaff) return loadRequestsFor(authUser.uid);
-
-    if (selectedStaffUid !== "__ALL__") {
-      return loadRequestsFor(selectedStaffUid);
-    }
-
-    return loadAllRequests();
-  };
-
-  // ===== تحميل أولي =====
   useEffect(() => {
-    if (!authUser) return;
-
-    if (canManageView) {
-      loadStaffList();
-      loadAllRequests();
-    } else if (isStaff) {
-      loadRequestsFor(authUser.uid);
-    }
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ لما الإدارة تغيّر الموظفة من القائمة -> حدّث الطلبات تلقائيًا
-  useEffect(() => {
-    if (!authUser) return;
-    if (!canManageView) return;
+  const toggleSpecialty = (key: string) => {
+    setSpecialties((prev) => {
+      if (prev.includes(key)) return prev.filter((x) => x !== key);
+      return [...prev, key];
+    });
+  };
 
-    if (selectedStaffUid !== "__ALL__") {
-      loadRequestsFor(selectedStaffUid);
-    } else {
-      loadAllRequests();
+  const save = async () => {
+    if (!canManage) return;
+    const cleanName = name.trim();
+    if (!cleanName) {
+      setErrorMsg("اكتب اسم الموظفة");
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStaffUid]);
+    if (specialties.length === 0) {
+      setErrorMsg("اختَر خدمة واحدة على الأقل");
+      return;
+    }
 
-  // ✅ حماية: لو ما فيه مستخدم (بعد الهوكس عشان ما نكسر قواعد React Hooks)
+    setLoading(true);
+    setErrorMsg("");
+
+    const payload: StaffPublicDoc = {
+      name: cleanName,
+      active: !!active,
+      specialties: specialties,
+      bio: bio.trim(),
+      avatarUrl: avatarUrl.trim(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      if (!editId) {
+        // ✅ إنشاء: نجعل الـ id تلقائي (أو تقدر تسميه بنفسك)
+        const id = cleanName
+          .replace(/\s+/g, "_")
+          .replace(/[^\w\u0600-\u06FF_]/g, "")
+          .slice(0, 40);
+
+        await setDoc(staffPublicDoc(id || crypto.randomUUID()), {
+          ...payload,
+          createdAt: serverTimestamp(),
+        });
+      } else {
+        await updateDoc(staffPublicDoc(editId), payload as any);
+      }
+
+      closeModal();
+      await load();
+    } catch (e) {
+      console.warn("save staff_public error:", e);
+      setErrorMsg("تعذر حفظ الموظفة");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!canManage) return;
+    const ok = confirm("متأكد حذف الموظفة؟");
+    if (!ok) return;
+
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      await deleteDoc(staffPublicDoc(id));
+      await load();
+    } catch (e) {
+      console.warn("delete staff_public error:", e);
+      setErrorMsg("تعذر حذف الموظفة");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filtered = useMemo(() => {
+    let rows = [...list];
+
+    // active filter
+    if (onlyActive === "active") rows = rows.filter((x) => x.active);
+    if (onlyActive === "inactive") rows = rows.filter((x) => !x.active);
+
+    // specialty filter
+    if (specialtyFilter !== "all") {
+      rows = rows.filter((x) => normalizeSpecialties(x.specialties).includes(specialtyFilter));
+    }
+
+    // search
+    const t = qText.trim().toLowerCase();
+    if (t) {
+      rows = rows.filter((x) => {
+        const n = (x.name || "").toLowerCase();
+        const b = (x.bio || "").toLowerCase();
+        return n.includes(t) || b.includes(t);
+      });
+    }
+
+    return rows;
+  }, [list, onlyActive, specialtyFilter, qText]);
+
+  // ✅ حماية بسيطة
   if (!authUser) {
     return (
-      <div className="ep-wrap">
-        <div className="ep-card">
-          <h3>غير مصرح</h3>
-          <p>لا يوجد مستخدم مسجل دخول. سجّل دخول ثم جرّب.</p>
+      <div className="dashboard-page">
+        <div className="container">
+          <div className="dash-card">
+            <h3>غير مصرح</h3>
+            <p>سجّل دخول ثم جرّب.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!canManage) {
+    return (
+      <div className="dashboard-page">
+        <div className="container">
+          <div className="dash-card">
+            <h3>صلاحيات غير كافية</h3>
+            <p>هذه الصفحة للإدارة فقط.</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="ep-wrap">
-      <div className="dash-topbar">
-        <h2>بوابة الموظفات</h2>
-
-        <button onClick={refresh} className="ep-btn" disabled={loading}>
-          <FontAwesomeIcon icon={faRotateRight} /> تحديث
-        </button>
-      </div>
-
-      {errorMsg && <div className="ep-banner">{errorMsg}</div>}
-
-      {/* ✅ فلترة إدارية */}
-      {canManageView && (
-        <div className="ep-card ep-card--filters">
-          <div className="ep-card-title">
-            <FontAwesomeIcon icon={faUsers} /> عرض طلبات الموظفات
+    <div className="dashboard-page">
+      <div className="container">
+        <div className="dash-topbar dash-topbar--sticky">
+          <div className="dash-topbar-title">
+            <h2>
+              <FontAwesomeIcon icon={faUserTie} /> إدارة الموظفات
+            </h2>
+            <p className="dash-sub">
+              المصدر: <b>salons/main/staff_public</b>
+            </p>
           </div>
 
-          <select
-            value={selectedStaffUid}
-            onChange={(e) => setSelectedStaffUid(e.target.value)}
-            className="ep-filter-control"
-          >
-            <option value="__ALL__">الكل</option>
+          <div className="dash-topbar-actions">
+            <button className="exp-btn" onClick={load} disabled={loading} type="button">
+              <FontAwesomeIcon icon={faRotateRight} /> تحديث
+            </button>
 
-            {staffList.map((s) => (
-              <option key={s.uid} value={s.uid}>
-                {s.name} — {translateSpecialties(s.specialties)}
-              </option>
+            <button className="exp-btn primary" onClick={openCreate} disabled={loading} type="button">
+              <FontAwesomeIcon icon={faPlus} /> إضافة موظفة
+            </button>
+          </div>
+        </div>
+
+        {errorMsg && <div className="dash-alert">{errorMsg}</div>}
+
+        {/* Filters */}
+        <div className="dash-card">
+          <div className="dash-row">
+            <input
+              className="dash-input"
+              placeholder="بحث بالاسم أو النبذة..."
+              value={qText}
+              onChange={(e) => setQText(e.target.value)}
+            />
+
+            <select
+              className="dash-select"
+              value={onlyActive}
+              onChange={(e) => setOnlyActive(e.target.value as any)}
+            >
+              <option value="all">كل الحالات</option>
+              <option value="active">نشطة</option>
+              <option value="inactive">غير نشطة</option>
+            </select>
+
+            <select
+              className="dash-select"
+              value={specialtyFilter}
+              onChange={(e) => setSpecialtyFilter(e.target.value)}
+            >
+              <option value="all">كل الخدمات</option>
+              {SPECIALTY_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="dash-meta">
+            المعروض: <b>{filtered.length}</b> • الإجمالي: <b>{list.length}</b>
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="dash-grid">
+          {loading && <div className="dash-card">جاري التحميل…</div>}
+
+          {!loading && filtered.length === 0 && (
+            <div className="dash-card">لا توجد موظفات حسب الفلاتر الحالية.</div>
+          )}
+
+          {!loading &&
+            filtered.map((x) => (
+              <div className="dash-card staff-card" key={x.id}>
+                <div className="staff-top">
+                  <div className="staff-name">
+                    <b>{x.name}</b>
+                    <span className={`staff-pill ${x.active ? "on" : "off"}`}>
+                      <FontAwesomeIcon icon={x.active ? faToggleOn : faToggleOff} />{" "}
+                      {x.active ? "نشطة" : "غير نشطة"}
+                    </span>
+                  </div>
+
+                  <div className="staff-actions">
+                    <button className="exp-btn ghost" onClick={() => openEdit(x)} type="button">
+                      <FontAwesomeIcon icon={faPen} /> تعديل
+                    </button>
+                    <button className="exp-btn danger" onClick={() => remove(x.id)} type="button">
+                      <FontAwesomeIcon icon={faTrash} /> حذف
+                    </button>
+                  </div>
+                </div>
+
+                {x.bio ? <div className="staff-bio">{x.bio}</div> : <div className="staff-bio muted">بدون نبذة</div>}
+
+                <div className="staff-chips">
+                  {normalizeSpecialties(x.specialties).map((s) => {
+                    const label = SPECIALTY_OPTIONS.find((o) => o.key === s)?.label ?? s;
+                    return (
+                      <span className="staff-chip" key={s}>
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+
+                <div className="staff-id">ID: {x.id}</div>
+              </div>
             ))}
-          </select>
-        </div>
-      )}
-
-      {/* ✅ الطلبات */}
-      <div className="ep-card">
-        <div className="ep-card-title">
-          <FontAwesomeIcon icon={faBoxOpen} /> الطلبات
         </div>
 
-        {loading && <p>جاري التحميل…</p>}
-        {!loading && requests.length === 0 && <p>لا توجد طلبات.</p>}
-
-        <div className="ep-list">
-          {requests.map((r) => (
-            <div key={r.id} className="ep-item">
-              <div className="ep-item-top">
-                <b>{STATUS_LABEL[r.status]}</b>
-                {!isStaff && <span> • {r.employeeName}</span>}
+        {/* Modal */}
+        {isOpen && (
+          <div className="modal-overlay" onClick={closeModal}>
+            <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-head">
+                <b>{editId ? "تعديل موظفة" : "إضافة موظفة"}</b>
+                <button className="exp-btn ghost" onClick={closeModal} type="button">
+                  إغلاق
+                </button>
               </div>
 
-              <div className="ep-item-meta">
-                {r.department} • {r.reason}
+              <div className="modal-body">
+                <div className="dash-row">
+                  <div className="dash-field">
+                    <label>اسم الموظفة</label>
+                    <input className="dash-input" value={name} onChange={(e) => setName(e.target.value)} />
+                  </div>
+
+                  <div className="dash-field">
+                    <label>الحالة</label>
+                    <select className="dash-select" value={active ? "1" : "0"} onChange={(e) => setActive(e.target.value === "1")}>
+                      <option value="1">نشطة</option>
+                      <option value="0">غير نشطة</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="dash-field">
+                  <label>نبذة تظهر للزبائن (About/Booking)</label>
+                  <textarea
+                    className="dash-textarea"
+                    rows={3}
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    placeholder="مثال: خبيرة شعر وصبغات بخبرة 8 سنوات..."
+                  />
+                </div>
+
+                <div className="dash-field">
+                  <label>رابط الصورة (اختياري)</label>
+                  <input
+                    className="dash-input"
+                    value={avatarUrl}
+                    onChange={(e) => setAvatarUrl(e.target.value)}
+                    placeholder="https://..."
+                  />
+                </div>
+
+                <div className="dash-field">
+                  <label>الخدمات (اختيار متعدد)</label>
+                  <div className="staff-picks">
+                    {SPECIALTY_OPTIONS.map((o) => (
+                      <button
+                        key={o.key}
+                        type="button"
+                        className={`pick ${specialties.includes(o.key) ? "on" : ""}`}
+                        onClick={() => toggleSpecialty(o.key)}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              <div className="ep-chips">
-                {r.items.map((it, i) => (
-                  <span key={i} className="ep-chip">
-                    {it.name} × {it.qty} {it.unit}
-                  </span>
-                ))}
+              <div className="modal-foot">
+                <button className="exp-btn" onClick={closeModal} type="button">
+                  إلغاء
+                </button>
+                <button className="exp-btn primary" onClick={save} disabled={loading} type="button">
+                  حفظ
+                </button>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

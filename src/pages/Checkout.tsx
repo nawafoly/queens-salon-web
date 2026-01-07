@@ -18,7 +18,7 @@ import {
   faTag,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { getAuth } from "firebase/auth"; // ✅ NEW
+import { getAuth } from "firebase/auth";
 
 import "../styles/Checkout.css";
 
@@ -36,7 +36,7 @@ type BookingData = {
   service?: string;
   serviceName?: string;
 
-  employee?: string; // (حاليًا اسم الموظفة عندك)
+  employee?: string;
   date?: string;
   time?: string;
 
@@ -46,7 +46,6 @@ type BookingData = {
   paymentMethod?: PaymentMethod | string;
   paymentStatus?: PaymentStatus;
 
-  // ✅ coupon/offer data
   couponCode?: string;
   offerId?: string | null;
   offerTitle?: string | null;
@@ -76,7 +75,6 @@ function normalizePaymentMethod(x: any): PaymentMethod {
   if (s === "cash" || s === "كاش" || s === "نقد") return "cash";
 
   if (s === "pos_mada") return "pos_card";
-
   if (s === "card" || s === "شبكة" || s === "مدى" || s === "mada")
     return "pos_card";
   if (s === "transfer" || s === "تحويل" || s === "بنكي" || s === "bank")
@@ -89,6 +87,9 @@ function normalizePaymentMethod(x: any): PaymentMethod {
 export default function Checkout() {
   const navigate = useNavigate();
   const [booking, setBooking] = useState<BookingData | null>(null);
+
+  // ✅ NEW: منع التكرار (double submit)
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const raw = localStorage.getItem(BOOKING_KEY);
@@ -159,18 +160,20 @@ export default function Checkout() {
   }
 
   const upsertBookingAndGoSuccess = async (opts?: { paymentStatus?: PaymentStatus }) => {
+    // ✅ NEW: قفل التنفيذ إذا شغال
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
     try {
-      const id = view.bookingId || `B-${Date.now()}`;
       const normalizedPayment = normalizePaymentMethod(view.paymentMethod);
 
-      // ✅ NEW: نخلي الحالة دائمًا Pending (قيد المراجعة)
+      // ✅ الحالة دائمًا Pending (قيد المراجعة)
       const bookingStatus: BookingStatus = "pending";
 
-      // ✅ NEW: لو فيه تسجيل دخول نخزّن uid (وإذا ما فيه يصير null)
+      // ✅ uid لو فيه تسجيل دخول
       const auth = getAuth();
       const uid = auth.currentUser?.uid ?? null;
 
-      // ✅ ملاحظة: نضيف معلومات الخصم داخل note
       const discountNote =
         view.offerId
           ? `Offer: ${view.offerTitle || view.couponCode || "-"} | discount=${Number(
@@ -187,7 +190,7 @@ export default function Checkout() {
 
       // ✅ 1) إنشاء الحجز في Firestore
       const firestoreId = await createBooking({
-        userId: uid,                 // ✅ بدل null
+        userId: uid,
         createdBy: "client",
         channel: "client",
 
@@ -203,11 +206,11 @@ export default function Checkout() {
         total: Number(view.total || 0),
         finalPrice: Number(view.total || 0),
 
-        status: bookingStatus,        // ✅ pending دائمًا
+        status: bookingStatus,
         note: noteFinal || undefined,
       });
 
-      // ✅ 2) بعد نجاح إنشاء الحجز: زوّد usageCount للعرض (إذا موجود)
+      // ✅ 2) زيادة استخدام العرض (إذا موجود)
       try {
         if (view.offerId) {
           await incrementOfferUsage(SALON_ID, view.offerId);
@@ -216,13 +219,13 @@ export default function Checkout() {
         console.warn("incrementOfferUsage failed:", e);
       }
 
-      const trackId = firestoreId;
-
       const updatedCurrent: BookingData = {
         ...booking,
-        bookingId: id,
+
+        // ✅ أنظف: خلي bookingId = firestoreId
+        bookingId: firestoreId,
         id: firestoreId,
-        trackId,
+        trackId: firestoreId,
 
         paymentMethod: normalizedPayment,
         paymentStatus: opts?.paymentStatus || "pending",
@@ -236,7 +239,6 @@ export default function Checkout() {
     } catch (e: any) {
       console.error(e);
 
-      // ✅ NEW: لو السلوّت محجوز
       if (e?.code === "SLOT_TAKEN" || String(e?.message || "") === "SLOT_TAKEN") {
         alert("هذا الوقت محجوز بالفعل لهذه الموظفة. اختاري وقتًا آخر.");
         navigate("/booking");
@@ -246,6 +248,8 @@ export default function Checkout() {
       alert(
         "صار خطأ أثناء حفظ الحجز في النظام. تأكد من Firestore Rules ثم جرّب مرة ثانية."
       );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -257,7 +261,8 @@ export default function Checkout() {
     await upsertBookingAndGoSuccess({ paymentStatus: "pending" });
   };
 
-  const isOnline = view.paymentMethod === "mada_online";
+  // ✅ أوضح: اعتمد على normalize / أو view.paymentMethod لأنه normalized بالفعل
+  const isOnline = normalizePaymentMethod(view.paymentMethod) === "mada_online";
 
   const primaryBtnText = isOnline
     ? "متابعة: دفع مدى أونلاين (مبدئي)"
@@ -345,14 +350,21 @@ export default function Checkout() {
           <span>{Number(view.total ?? 0).toLocaleString()} ريال</span>
         </div>
 
-        <button className="btn btn-primary confirm-btn" onClick={primaryAction}>
-          <FontAwesomeIcon icon={primaryBtnIcon} /> {primaryBtnText}
+        <button
+          className="btn btn-primary confirm-btn"
+          onClick={primaryAction}
+          disabled={isSubmitting}
+          style={isSubmitting ? { opacity: 0.75, cursor: "not-allowed" } : undefined}
+        >
+          <FontAwesomeIcon icon={primaryBtnIcon} />{" "}
+          {isSubmitting ? "جاري حفظ الحجز..." : primaryBtnText}
         </button>
 
         <button
           className="btn btn-outline-secondary confirm-btn"
           style={{ marginTop: 10 }}
           onClick={() => navigate("/booking")}
+          disabled={isSubmitting}
         >
           <FontAwesomeIcon icon={faArrowRight} /> تعديل الحجز
         </button>

@@ -30,14 +30,14 @@ export type UserProfile = {
 
 const SALON_ID = "main";
 
-// ✅ ROOT users/{uid}
-function rootUserRef(uid: string) {
-  return doc(db, "users", uid);
-}
-
-// ✅ salons/main/users/{uid}
+// ✅ salons/main/users/{uid} (Source of Truth)
 function salonUserRef(uid: string) {
   return doc(db, "salons", SALON_ID, "users", uid);
+}
+
+// (اختياري: توافق فقط - لا نعتمد عليه لتحديد role)
+function rootUserRef(uid: string) {
+  return doc(db, "users", uid);
 }
 
 function safeStr(v: unknown) {
@@ -61,8 +61,7 @@ function normalizeRole(roleRaw: unknown): UiRole {
     return r as UiRole;
   }
 
-  // ✅ بدل ما نرجّع client لأي شيء غريب، نخليه guest
-  // (عشان ما ينقلب owner إلى client بسبب قيمة غير متوقعة)
+  // ✅ أي قيمة غير معروفة = guest (أمان)
   return "guest";
 }
 
@@ -73,36 +72,55 @@ function buildDefaultName(role: UiRole) {
   return "مستخدم";
 }
 
+function isBootstrapAdminEmail(email: string) {
+  const e = String(email || "").toLowerCase().trim();
+  return e === "nawafaaa0@gmail.com" || e === "nawafaaa6@gmail.com";
+}
+
+function writeLocalCache(profile: UserProfile) {
+  localStorage.setItem("user_profile_v1", JSON.stringify(profile));
+  localStorage.setItem("userName", profile.name);
+  localStorage.setItem("userRole", profile.role);
+  if (profile.email) localStorage.setItem("userEmail", profile.email);
+  window.dispatchEvent(new Event("authChanged"));
+}
+
+function stripUndefined(obj: Record<string, any>) {
+  const out: Record<string, any> = {};
+  Object.entries(obj).forEach(([k, v]) => {
+    if (v === undefined) return;
+    out[k] = v;
+  });
+  return out;
+}
+
 /**
- * ✅ createOrLoadUserProfile
- * - يقرأ أولاً من users/{uid}
- * - ثم fallback إلى salons/main/users/{uid}
- * - إذا ما لقى الاثنين: ينشئ client في users/{uid}
+ * ✅ createOrLoadUserProfile (FINAL ✅)
+ * - Source of Truth: salons/main/users/{uid}
+ * - Bootstrap Admin safety: nawafaaa0@gmail.com / nawafaaa6@gmail.com
+ * - If missing doc:
+ *    - bootstrap => admin
+ *    - otherwise => client (AUTO ✅)
+ * - ROOT users/{uid}: optional mirror فقط (لا يعتمد عليه للـ role)
  */
 export async function createOrLoadUserProfile(user: User): Promise<UserProfile> {
   const uid = user.uid;
 
-  const refRoot = rootUserRef(uid);
+  const authEmail = safeStr(user.email).trim();
+  const authDisplayName = safeStr(user.displayName).trim();
+
   const refSalon = salonUserRef(uid);
+  const snapSalon = await getDoc(refSalon);
 
-  const snapRoot = await getDoc(refRoot);
-  const snapSalon = snapRoot.exists() ? null : await getDoc(refSalon);
-
-  const authEmail = safeStr(user.email);
-  const authDisplayName = safeStr(user.displayName);
-
-  // ✅ اختر المصدر الصحيح
-  const snap = snapRoot.exists() ? snapRoot : snapSalon;
-  const ref = snapRoot.exists() ? refRoot : refSalon;
-
-  if (snap && snap.exists()) {
-    const data = snap.data() as any;
+  // ✅ 1) موجود في المسار المعتمد (لا تغيّر role)
+  if (snapSalon.exists()) {
+    const data = snapSalon.data() as any;
     const role = normalizeRole(data?.role);
 
     let name =
       safeStr(data?.name).trim() ||
       safeStr(data?.displayName).trim() ||
-      authDisplayName.trim() ||
+      authDisplayName ||
       buildDefaultName(role);
 
     if ((role === "owner" || role === "admin") && (!name || name === "مستخدم")) {
@@ -124,32 +142,51 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       updatedAt: data?.updatedAt,
     };
 
-    // ✅ patch خفيف لو ناقص بيانات
+    // ✅ patch خفيف: فقط حقول ناقصة — بدون لمس role إذا موجود
     const patch: any = {};
     if (!safeStr(data?.email) && authEmail) patch.email = authEmail;
     if (!safeStr(data?.name) || data?.name === "مستخدم") patch.name = name;
     if (!safeStr(data?.displayName) || data?.displayName === "مستخدم") patch.displayName = name;
+
+    // ⚠️ role: فقط لو ما كان موجود أصلاً
     if (!data?.role) patch.role = role;
 
     if (Object.keys(patch).length) {
       patch.updatedAt = serverTimestamp();
-      await setDoc(ref, patch, { merge: true });
+      await setDoc(refSalon, patch, { merge: true });
     }
 
-    // ✅ كاش محلي موحد
-    localStorage.setItem("user_profile_v1", JSON.stringify(profile));
-    localStorage.setItem("userName", profile.name);
-    localStorage.setItem("userRole", profile.role);
-    if (profile.email) localStorage.setItem("userEmail", profile.email);
-    window.dispatchEvent(new Event("authChanged"));
+    // ✅ (اختياري) mirror للـ ROOT للتوافق فقط بدون تغيير صلاحيات/role
+    try {
+      await setDoc(
+        rootUserRef(uid),
+        {
+          uid,
+          email: profile.email,
+          displayName: profile.name,
+          name: profile.name,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch {
+      // تجاهل لو Rules تمنع
+    }
 
+    writeLocalCache(profile);
     return profile;
   }
 
-  // ✅ لا يوجد أي وثيقة: أنشئ client (ROOT)
-  const role: UiRole = "client";
-  const name = authDisplayName.trim() || buildDefaultName(role);
-  const membershipId = `client-${new Date().getFullYear()}-${uid.slice(0, 6)}`;
+  // ✅ 2) مفقود: أنشئ تلقائيًا حسب البريد (Bootstrap Admin Safety)
+  const bootstrap = isBootstrapAdminEmail(authEmail);
+  const role: UiRole = bootstrap ? "admin" : "client"; // ✅ AUTO client
+
+  const name = authDisplayName || (bootstrap ? "مدير الصالون" : buildDefaultName(role));
+
+  const membershipId =
+    role === "client"
+      ? `client-${new Date().getFullYear()}-${uid.slice(0, 6)}`
+      : undefined;
 
   const profile: UserProfile = {
     uid,
@@ -165,50 +202,83 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     updatedAt: serverTimestamp(),
   };
 
+  // ✅ اكتب في المسار المعتمد فقط
   await setDoc(
-    refRoot,
+    refSalon,
     {
-      ...profile,
+      ...stripUndefined(profile as any),
       displayName: name,
     },
     { merge: true }
   );
 
-  localStorage.setItem("user_profile_v1", JSON.stringify(profile));
-  localStorage.setItem("userName", profile.name);
-  localStorage.setItem("userRole", profile.role);
-  if (profile.email) localStorage.setItem("userEmail", profile.email);
-  window.dispatchEvent(new Event("authChanged"));
+  // ✅ (اختياري) mirror للـ ROOT للتوافق فقط
+  try {
+    await setDoc(
+      rootUserRef(uid),
+      {
+        uid,
+        email: authEmail,
+        displayName: name,
+        name,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch {}
 
+  writeLocalCache(profile);
   return profile;
 }
 
 /**
- * ✅ updateUserProfile
- * - يحدث في users/{uid} إذا موجود
- * - وإلا يحدث في salons/main/users/{uid}
+ * ✅ updateUserProfile (FINAL ✅)
+ * - يحدث فقط في salons/main/users/{uid} (Source of Truth)
+ * - ❌ ممنوع تعديل role من هنا (أمان)
+ * - ويعمل mirror للـ ROOT (اختياري) بدون ما يلمس role
  */
 export async function updateUserProfile(uid: string, updates: Partial<UserProfile>) {
-  const refRoot = rootUserRef(uid);
   const refSalon = salonUserRef(uid);
-
-  const rootSnap = await getDoc(refRoot);
-  const targetRef = rootSnap.exists() ? refRoot : refSalon;
 
   const cleaned: any = {};
   Object.entries(updates).forEach(([k, v]) => {
     if (v === undefined || v === null) return;
     if (typeof v === "string" && v.trim() === "") return;
+
+    // ✅ أمان: لا تسمح بتغيير role من تحديثات العميلة
+    if (k === "role") return;
+
     cleaned[k] = v;
   });
 
   cleaned.updatedAt = serverTimestamp();
-  await setDoc(targetRef, cleaned, { merge: true });
+  await setDoc(refSalon, cleaned, { merge: true });
+
+  // ✅ mirror اختياري (بدون role)
+  try {
+    const mirror: any = {};
+    if (typeof cleaned.email === "string") mirror.email = cleaned.email;
+    if (typeof cleaned.name === "string") {
+      mirror.name = cleaned.name;
+      mirror.displayName = cleaned.name;
+    }
+    mirror.updatedAt = serverTimestamp();
+
+    if (Object.keys(mirror).length) {
+      await setDoc(rootUserRef(uid), mirror, { merge: true });
+    }
+  } catch {}
 
   // ✅ حدّث الكاش المحلي
   try {
     const current = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
     const merged = { ...(current || {}), ...updates, uid };
+
+    // ✅ تأكيد: ما نغيّر role في الكاش من update
+    if (merged?.role && updates?.role) {
+      merged.role = current?.role || merged.role;
+    }
+
     localStorage.setItem("user_profile_v1", JSON.stringify(merged));
     if (merged?.name) localStorage.setItem("userName", String(merged.name));
     if (merged?.role) localStorage.setItem("userRole", String(merged.role));

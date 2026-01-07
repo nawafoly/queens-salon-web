@@ -65,6 +65,10 @@ function isDashboardRole(role: UiRole) {
   );
 }
 
+function isClientRole(role: UiRole) {
+  return role === "client";
+}
+
 function getNameFromStorage(): string {
   // أولوية الاسم: user_profile_v1 ثم userName
   try {
@@ -133,10 +137,29 @@ const App: React.FC = () => {
   /* ================================
      Guards
   ================================ */
+
+  // ✅ Dashboard Guard:
+  // - owner/admin/reception/staff => يسمح
+  // - client => يروح /client
+  // - guest => يروح /login
   const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
     const role = getRoleFromStorage();
-    if (!isDashboardRole(role)) return <Navigate to="/login" replace />;
-    return <>{children}</>;
+
+    if (isDashboardRole(role)) return <>{children}</>;
+    if (isClientRole(role)) return <Navigate to="/client" replace />;
+    return <Navigate to="/login" replace />;
+  };
+
+  // ✅ Client Guard:
+  // - client => يسمح
+  // - owner/admin/reception/staff => يروح /dashboard
+  // - guest => يروح /login
+  const ClientGuard = ({ children }: { children: React.ReactNode }) => {
+    const role = getRoleFromStorage();
+
+    if (isClientRole(role)) return <>{children}</>;
+    if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/login" replace />;
   };
 
   const ProfileGuard = ({ children }: { children: React.ReactNode }) => {
@@ -171,6 +194,16 @@ const App: React.FC = () => {
           {/* Track */}
           <Route path="/track" element={<Track />} />
           <Route path="/track/:trackId" element={<Track />} />
+
+          {/* ✅ Client Dashboard (Protected) - نستخدم Profile كـ ClientDashboard */}
+          <Route
+            path="/client"
+            element={
+              <ClientGuard>
+                <Profile />
+              </ClientGuard>
+            }
+          />
 
           {/* Dashboard (Protected) */}
           <Route

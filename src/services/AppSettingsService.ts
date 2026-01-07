@@ -70,8 +70,7 @@ function sanitize(input: any): AppSettings {
   return {
     ...defaultSettings,
 
-    salonName:
-      typeof s.salonName === "string" ? s.salonName : defaultSettings.salonName,
+    salonName: typeof s.salonName === "string" ? s.salonName : defaultSettings.salonName,
     phone: typeof s.phone === "string" ? s.phone : defaultSettings.phone,
     city: typeof s.city === "string" ? s.city : defaultSettings.city,
 
@@ -79,10 +78,7 @@ function sanitize(input: any): AppSettings {
       overview: safeBool(sectionsRaw.overview, defaultSettings.sections.overview),
       bookings: safeBool(sectionsRaw.bookings, defaultSettings.sections.bookings),
       clients: safeBool(sectionsRaw.clients, defaultSettings.sections.clients),
-      employees: safeBool(
-        sectionsRaw.employees,
-        defaultSettings.sections.employees
-      ),
+      employees: safeBool(sectionsRaw.employees, defaultSettings.sections.employees),
       offers: safeBool(sectionsRaw.offers, defaultSettings.sections.offers),
       reports: safeBool(sectionsRaw.reports, defaultSettings.sections.reports),
       income: safeBool(sectionsRaw.income, defaultSettings.sections.income),
@@ -108,8 +104,7 @@ function sanitize(input: any): AppSettings {
       ),
     },
 
-    updatedAt:
-      typeof s.updatedAt === "string" ? s.updatedAt : defaultSettings.updatedAt,
+    updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : defaultSettings.updatedAt,
   };
 }
 
@@ -129,7 +124,27 @@ function cacheRead(): AppSettings | null {
   }
 }
 
+/** ✅ إنشاء settings/app مرة واحدة لو غير موجود */
+async function ensureRemoteExists() {
+  const ref = doc(db, DOC_PATH.col, DOC_PATH.id);
+  const snap = await getDoc(ref);
+  if (snap.exists()) return;
+
+  const payload: AppSettings = sanitize({
+    ...defaultSettings,
+    updatedAt: new Date().toISOString(),
+  });
+
+  await setDoc(ref, payload, { merge: true });
+  cacheWrite(payload);
+}
+
 export const AppSettingsService = {
+  /** ✅ مرجع ثابت للديفولت */
+  getDefaults(): AppSettings {
+    return defaultSettings;
+  },
+
   getCached(): AppSettings {
     return cacheRead() || defaultSettings;
   },
@@ -139,6 +154,8 @@ export const AppSettingsService = {
 
     const snap = await getDoc(ref);
     if (!snap.exists()) {
+      // ✅ بدل ما نرجّع ديفولت فقط: ننشئ الوثيقة في Firestore
+      await ensureRemoteExists();
       cacheWrite(defaultSettings);
       return defaultSettings;
     }
@@ -153,8 +170,15 @@ export const AppSettingsService = {
 
     const unsub = onSnapshot(
       ref,
-      (snap) => {
+      async (snap) => {
         if (!snap.exists()) {
+          // ✅ إذا غير موجود: ننشئه ثم نرجع defaults
+          try {
+            await ensureRemoteExists();
+          } catch (e) {
+            console.error("ensureRemoteExists error:", e);
+          }
+
           cb(defaultSettings);
           cacheWrite(defaultSettings);
           return;
@@ -164,7 +188,12 @@ export const AppSettingsService = {
         cacheWrite(remote);
         cb(remote);
       },
-      () => {}
+      (err) => {
+        console.error("AppSettingsService subscribe error:", err);
+        // fallback على الكاش عشان ما تفضى الصفحة
+        const cached = cacheRead() || defaultSettings;
+        cb(cached);
+      }
     );
 
     return unsub;

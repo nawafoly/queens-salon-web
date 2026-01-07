@@ -1,5 +1,5 @@
 // src/pages/Login.tsx
-import { useState } from "react";
+import React, { useState } from "react";
 import logoBelak from "../assets/images/ssunnamed.png";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -15,13 +15,14 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import "../styles/Login.css";
 
-// ✅ Firebase (Auth + Firestore)
+// ✅ Firebase Auth
 import { auth } from "../services/firebase";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 
-// ✅ Firebase login (للإدارة/الموظفات)
+// ✅ Firebase login (يدخل كل اللي عنده ايميل: إدارة + عميلات)
 import { loginWithEmail } from "../services/authService";
 
-// ✅ User profile/roles
+// ✅ User profile/roles (Firestore SoT)
 import {
   createOrLoadUserProfile,
   updateUserProfile,
@@ -45,7 +46,10 @@ const Login: React.FC = () => {
   const [isRegister, setIsRegister] = useState(false);
 
   // حقل واحد للدخول (جوال أو بريد)
-  const [loginData, setLoginData] = useState<{ identifier: string; password: string }>({
+  const [loginData, setLoginData] = useState<{
+    identifier: string;
+    password: string;
+  }>({
     identifier: "",
     password: "",
   });
@@ -88,17 +92,16 @@ const Login: React.FC = () => {
   const defaultNameByRole = (role: UiRole) => {
     if (role === "owner" || role === "admin") return "مدير الصالون";
     if (role === "reception" || role === "staff") return "موظفة";
+    if (role === "client") return "عميلة";
     return "مستخدم";
   };
 
-  // ✅ حفظ جلسة الإدارة/الموظفات بشكل موحد (Firebase)
-  const storeAdminSession = (profile: UserProfile) => {
+  // ✅ تخزين جلسة Firebase (إدارة أو عميلة) بشكل موحد
+  const storeFirebaseSession = (profile: UserProfile) => {
     const uiRole: UiRole = profile.role;
 
-    // تنظيف أي جلسة "عميلة" قديمة
+    // تنظيف أي جلسة local قديمة
     localStorage.removeItem("currentUser");
-    localStorage.removeItem("userCity");
-    localStorage.removeItem("userBirthdate");
 
     const finalName = (profile.name || "").trim() || defaultNameByRole(uiRole);
 
@@ -119,11 +122,22 @@ const Login: React.FC = () => {
       })
     );
 
+    // ✅ مفتاح موحد تعتمد عليه صفحات الداشبورد/البورتال
+    localStorage.setItem(
+      "auth_user",
+      JSON.stringify({
+        uid: profile.uid,
+        email: profile.email || auth.currentUser?.email || "",
+        role: uiRole,
+        displayName: finalName,
+      })
+    );
+
     window.dispatchEvent(new Event("authChanged"));
   };
 
-  // ✅ حفظ جلسة العميلة (localStorage)
-  const storeClientSession = (user: RegisterFormData) => {
+  // ✅ تسجيل دخول عميلات قديم (Legacy) من localStorage بالجوال فقط
+  const storeClientSessionLegacy = (user: RegisterFormData) => {
     localStorage.removeItem("userUid");
     localStorage.removeItem("user_profile_v1");
     localStorage.removeItem("userEmail");
@@ -137,10 +151,21 @@ const Login: React.FC = () => {
     localStorage.setItem("currentUser", JSON.stringify(user));
     localStorage.setItem("showWelcome", "true");
 
+    localStorage.setItem(
+      "auth_user",
+      JSON.stringify({
+        uid: "client:" + user.phone,
+        email: user.email,
+        role: "client",
+        displayName: user.name,
+      })
+    );
+
     window.dispatchEvent(new Event("authChanged"));
   };
 
   // ✅ تسجيل الدخول
+  // المكان: داخل handleSubmit
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
@@ -150,7 +175,7 @@ const Login: React.FC = () => {
       const identifier = loginData.identifier.trim();
       const password = loginData.password;
 
-      // 1) إذا بريد = Firebase (Owner/Admin/Reception/Staff)
+      // 1) إذا بريد = Firebase (إدارة + عميلات)
       if (isEmail(identifier)) {
         await loginWithEmail(identifier, password);
 
@@ -160,17 +185,14 @@ const Login: React.FC = () => {
           return;
         }
 
-        console.log("AUTH UID:", authUser.uid);
-
-        // ✅ اقرأ/أنشئ البروفايل (هو اللي يحدد role)
+        // ✅ ينشئ/يحمل البروفايل من Firestore (Source of Truth)
         const profileRaw = await createOrLoadUserProfile(authUser);
-        console.log("PROFILE ROLE:", profileRaw.role);
 
-        // ✅ إصلاح الاسم لو جاي فاضي
+        // ✅ إصلاح الاسم لو فاضي
         const fixedName =
           (profileRaw.name || "").trim() || defaultNameByRole(profileRaw.role);
 
-        // (اختياري) نكتب الاسم في Firestore مرة وحدة إذا كان ناقص
+        // ✅ نكتب البيانات الناقصة مرة وحدة (بدون role)
         if (!(profileRaw.name || "").trim()) {
           try {
             await updateUserProfile(profileRaw.uid, { name: fixedName } as any);
@@ -181,29 +203,31 @@ const Login: React.FC = () => {
 
         const profile: UserProfile = { ...profileRaw, name: fixedName };
 
-        // ✅ خزّن الجلسة الموحدة
-        storeAdminSession(profile);
+        // ✅ خزّن جلسة موحدة
+        storeFirebaseSession(profile);
 
-        // ✅ هنا التصحيح الأساسي: استخدم profileRaw (أو profile) وليس متغير غير معرّف
+        // ✅ توجيه حسب الدور
         if (canAccessDashboard(profile.role)) {
           navigate("/dashboard/overview", { replace: true });
         } else {
-          navigate("/", { replace: true });
+          // client / guest
+          navigate("/profile", { replace: true });
         }
 
         return;
       }
 
-      // 2) إذا جوال = عميلات من localStorage (مؤقتًا)
+      // 2) إذا جوال = عميلات Legacy من localStorage
       if (isPhone(identifier)) {
         const savedUsers = JSON.parse(localStorage.getItem("clients") || "[]");
         const user = savedUsers.find(
           (u: RegisterFormData) =>
-            (u.email === identifier || u.phone === identifier) && u.password === password
+            (u.email === identifier || u.phone === identifier) &&
+            u.password === password
         );
 
         if (user) {
-          storeClientSession(user);
+          storeClientSessionLegacy(user);
           navigate("/profile", { replace: true });
           return;
         }
@@ -220,9 +244,9 @@ const Login: React.FC = () => {
     }
   };
 
-
-  // ✅ التسجيل (عميلات localStorage كما هو)
-  const handleRegister = (e: React.FormEvent<HTMLFormElement>) => {
+  // ✅ التسجيل (الآن Firebase + إنشاء profile role=client تلقائيًا)
+  // المكان: داخل handleRegister
+  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -239,28 +263,58 @@ const Login: React.FC = () => {
       return;
     }
 
-    const savedUsers = JSON.parse(localStorage.getItem("clients") || "[]");
-    if (
-      savedUsers.some(
-        (u: RegisterFormData) =>
-          u.email === registerData.email || u.phone === registerData.phone
-      )
-    ) {
-      setErrorMsg("الجوال أو البريد الإلكتروني مسجل مسبقاً.");
-      return;
-    }
-
     setIsLoading(true);
 
-    setTimeout(() => {
-      savedUsers.push(registerData);
-      localStorage.setItem("clients", JSON.stringify(savedUsers));
+    try {
+      // ✅ 1) إنشاء مستخدم في Firebase Auth
+      const cred = await createUserWithEmailAndPassword(
+        auth,
+        registerData.email.trim(),
+        registerData.password
+      );
 
-      storeClientSession(registerData);
+      // ✅ 2) إنشاء/تحميل بروفايل في Firestore
+      // (إذا doc غير موجود: role=client تلقائيًا حسب userProfile.ts)
+      const profile = await createOrLoadUserProfile(cred.user);
 
+      // ✅ 3) حدّث بيانات العميلة (بدون role)
+      try {
+        await updateUserProfile(profile.uid, {
+          name: registerData.name.trim(),
+          phone: registerData.phone.trim(),
+          city: (registerData.city || "").trim(),
+          birthdate: (registerData.birthdate || "").trim(),
+          email: registerData.email.trim(),
+        } as any);
+      } catch (e) {
+        // حتى لو فشل التحديث، البروفايل الأساسي موجود
+        console.warn("updateUserProfile after register failed:", e);
+      }
+
+      // ✅ 4) إعادة تحميل أحدث نسخة من البروفايل (اختياري لكن يعطيك بيانات أحدث)
+      const latest = await createOrLoadUserProfile(cred.user);
+
+      // ✅ 5) خزّن الجلسة
+      storeFirebaseSession(latest);
+
+      // ✅ 6) توجيه العميلة
       navigate("/profile", { replace: true });
+    } catch (err: any) {
+      console.error("❌ SIGNUP FAILED:", err?.code, err?.message, err);
+
+      const code = String(err?.code || "");
+      if (code.includes("auth/operation-not-allowed")) {
+        setErrorMsg("Email/Password غير مفعّل في Firebase. فعّله من Authentication → Sign-in method.");
+      } else if (code.includes("auth/email-already-in-use")) {
+        setErrorMsg("هذا البريد مسجل مسبقًا. جرّب تسجيل الدخول بدل التسجيل.");
+      } else if (code.includes("auth/weak-password")) {
+        setErrorMsg("كلمة المرور ضعيفة. استخدم 6 أحرف على الأقل.");
+      } else {
+        setErrorMsg(err?.message || "فشل إنشاء الحساب");
+      }
+    } finally {
       setIsLoading(false);
-    }, 900);
+    }
   };
 
   return (
@@ -269,9 +323,15 @@ const Login: React.FC = () => {
         <div className="login-card">
           <div className="login-header">
             <div className="login-logo">
-              <img src={logoBelak} alt="Body Salon Logo" className="login-logo-img" />
+              <img
+                src={logoBelak}
+                alt="Body Salon Logo"
+                className="login-logo-img"
+              />
             </div>
-            <h1 className="login-title">{isRegister ? "تسجيل حساب جديد" : "تسجيل الدخول"}</h1>
+            <h1 className="login-title">
+              {isRegister ? "تسجيل حساب جديد" : "تسجيل الدخول"}
+            </h1>
             <p className="login-subtitle">أهلاً بك في صالون ملكات للتجميل</p>
           </div>
 
@@ -313,12 +373,16 @@ const Login: React.FC = () => {
                     className="password-toggle"
                     onClick={() => setShowPassword((prev) => !prev)}
                   >
-                    <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} />
+                    <FontAwesomeIcon
+                      icon={showPassword ? faEyeSlash : faEye}
+                    />
                   </button>
                 </div>
               </div>
 
-              {errorMsg && <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>}
+              {errorMsg && (
+                <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>
+              )}
 
               <button
                 type="submit"
@@ -412,7 +476,9 @@ const Login: React.FC = () => {
                     className="password-toggle"
                     onClick={() => setShowRegisterPassword((prev) => !prev)}
                   >
-                    <FontAwesomeIcon icon={showRegisterPassword ? faEyeSlash : faEye} />
+                    <FontAwesomeIcon
+                      icon={showRegisterPassword ? faEyeSlash : faEye}
+                    />
                   </button>
                 </div>
               </div>
@@ -463,7 +529,9 @@ const Login: React.FC = () => {
                 />
               </div>
 
-              {errorMsg && <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>}
+              {errorMsg && (
+                <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>
+              )}
 
               <button
                 type="submit"

@@ -189,12 +189,12 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 }) => {
   const statusLabel = useMemo(
     () =>
-    ({
-      confirmed: "مؤكد",
-      pending: "في الانتظار",
-      cancelled: "ملغي",
-      completed: "مكتمل",
-    } as Record<BookingStatus, string>),
+      ({
+        confirmed: "مؤكد",
+        pending: "في الانتظار",
+        cancelled: "ملغي",
+        completed: "مكتمل",
+      } as Record<BookingStatus, string>),
     []
   );
 
@@ -450,6 +450,41 @@ const Dashboard: React.FC = () => {
   const totalExpenses = expensesTotalFS;
   const netProfit = totalIncome - totalExpenses;
 
+  // ✅ LOCK background scroll when modal open (Mobile/iOS SAFE)
+  // ✅ المكان: بعد حساب netProfit مباشرة
+  useEffect(() => {
+    if (!selectedBooking) return;
+
+    const body = document.body;
+    const scrollY = window.scrollY;
+
+    const prevOverflow = body.style.overflow;
+    const prevPosition = body.style.position;
+    const prevTop = body.style.top;
+    const prevWidth = body.style.width;
+    const prevPaddingRight = body.style.paddingRight;
+
+    // تعويض اختفاء الـ scrollbar (desktop)
+    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    body.style.overflow = "hidden";
+    body.style.position = "fixed"; // ✅ مهم للجوال/iOS
+    body.style.top = `-${scrollY}px`; // ✅ يثبت الصفحة
+    body.style.width = "100%";
+
+    if (scrollBarWidth > 0) body.style.paddingRight = `${scrollBarWidth}px`;
+
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.position = prevPosition;
+      body.style.top = prevTop;
+      body.style.width = prevWidth;
+      body.style.paddingRight = prevPaddingRight;
+
+      window.scrollTo(0, scrollY); // ✅ يرجعك لنفس مكانك
+    };
+  }, [selectedBooking]);
+
   /** ✅ refresh من Firestore */
   const refreshDashboard = async () => {
     let step = "start";
@@ -579,7 +614,7 @@ const Dashboard: React.FC = () => {
         sections: { ...prev.sections, ...(cached?.sections || {}) },
         policies: { ...prev.policies, ...(cached?.policies || {}) },
       }));
-    } catch { }
+    } catch {}
 
     // 2) realtime
     const unsub = AppSettingsService.subscribe((remote: any) => {
@@ -735,7 +770,9 @@ const Dashboard: React.FC = () => {
       try {
         await updateBookingStatusFS(id, status);
         await refreshDashboard();
-        setSelectedBooking((prev) => (prev && prev.id === id ? { ...prev, status } : prev));
+        setSelectedBooking((prev) =>
+          prev && prev.id === id ? { ...prev, status } : prev
+        );
       } catch (e) {
         console.error(e);
         alert("تعذر تحديث الحالة. تأكد من الصلاحيات/Rules.");
@@ -760,12 +797,82 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="dashboard-skin dashboard-page dashboard-skin-page">
-      {isSidebarOpen && <div className="dash-side-overlay" onClick={() => setIsSidebarOpen(false)} />}
+      {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
+      <style>
+        {`
+          .dash-booking-modal { direction: rtl; }
+
+          .dash-booking-modal .dash-modal-head{
+            display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+          }
+
+          .dash-booking-modal .dash-modal-title{ display:flex; flex-direction:column; gap:2px; }
+          .dash-booking-modal .dash-modal-title h3{ margin:0; font-weight:900; letter-spacing:.2px; }
+          .dash-booking-modal .dash-modal-title small{ opacity:.7; font-weight:700; }
+
+          .dash-booking-modal .dash-details-grid{
+            display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin-top:14px;
+          }
+
+          .dash-booking-modal .dash-detail{
+            background:rgba(255,255,255,0.85);
+            border:1px solid rgba(0,0,0,0.06);
+            border-radius:16px;
+            padding:12px;
+            box-shadow:0 8px 20px rgba(0,0,0,0.04);
+            min-width:0;
+          }
+
+          .dash-booking-modal .dash-detail b{
+            display:block; font-size:12px; opacity:.75; margin-bottom:6px; font-weight:900;
+          }
+
+          .dash-booking-modal .dash-detail .dash-value{
+            font-weight:900; font-size:14px; color:#2f2a2a; word-break:break-word;
+          }
+
+          .dash-booking-modal .dash-detail--wide{ grid-column:span 3; }
+
+          .dash-booking-modal .dash-status-row{
+            display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+          }
+
+          .dash-booking-modal .dash-select{
+            height:44px !important;
+            border-radius:14px !important;
+            font-weight:900 !important;
+            border:1px solid rgba(0,0,0,0.10) !important;
+            background:#fff !important;
+            padding:0 12px !important;
+          }
+
+          .dash-booking-modal .dash-modal-actions{
+            display:flex; gap:10px; justify-content:flex-end; margin-top:14px; flex-wrap:wrap;
+          }
+
+          @media (max-width: 992px){
+            .dash-booking-modal .dash-details-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+            .dash-booking-modal .dash-detail--wide{ grid-column:span 2; }
+          }
+
+          @media (max-width: 600px){
+            .dash-booking-modal .dash-details-grid{ grid-template-columns:1fr; }
+            .dash-booking-modal .dash-detail--wide{ grid-column:span 1; }
+            .dash-booking-modal .dash-modal-actions .exp-btn{ width:100%; justify-content:center; }
+          }
+        `}
+      </style>
+
+      {isSidebarOpen && (
+        <div className="dash-side-overlay" onClick={() => setIsSidebarOpen(false)} />
+      )}
 
       <div className="container-fluid">
         <div className="row">
           {/* Sidebar */}
-          <div className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""}`}>
+          <div
+            className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""}`}
+          >
             <button
               type="button"
               className="dash-mobile-close"
@@ -807,7 +914,11 @@ const Dashboard: React.FC = () => {
 
                 {canSeeEmployeePortal && (
                   <li>
-                    <NavLink to="/dashboard/staff" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink
+                      to="/dashboard/staff"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
                       <FontAwesomeIcon icon={faUserTie} />
                       بوابة الموظفات
                     </NavLink>
@@ -816,7 +927,11 @@ const Dashboard: React.FC = () => {
 
                 {(hasAdminPower || isReception) && canSeeSection("bookings") && (
                   <li>
-                    <NavLink to="/dashboard/bookings" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink
+                      to="/dashboard/bookings"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
                       <FontAwesomeIcon icon={faCalendarAlt} />
                       الحجوزات
                     </NavLink>
@@ -827,7 +942,11 @@ const Dashboard: React.FC = () => {
                   <>
                     {hasAdminPower || (isReception && allowStaffViewClients) ? (
                       <li>
-                        <NavLink to="/dashboard/clients" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                        <NavLink
+                          to="/dashboard/clients"
+                          className="nav-link"
+                          onClick={() => setIsSidebarOpen(false)}
+                        >
                           <FontAwesomeIcon icon={faUsers} />
                           العميلات
                         </NavLink>
@@ -838,7 +957,11 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("employees") && (
                   <li>
-                    <NavLink to="/dashboard/employees" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink
+                      to="/dashboard/employees"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
                       <FontAwesomeIcon icon={faUserTie} />
                       الموظفات
                     </NavLink>
@@ -847,7 +970,11 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("offers") && (
                   <li>
-                    <NavLink to="/dashboard/offers" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink
+                      to="/dashboard/offers"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
                       <FontAwesomeIcon icon={faPercent} />
                       العروض والكوبونات
                     </NavLink>
@@ -856,7 +983,11 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("reports") && (
                   <li>
-                    <NavLink to="/dashboard/reports" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink
+                      to="/dashboard/reports"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
                       <FontAwesomeIcon icon={faChartPie} />
                       التقارير
                     </NavLink>
@@ -865,7 +996,11 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("income") && (
                   <li>
-                    <NavLink to="/dashboard/income" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink
+                      to="/dashboard/income"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
                       <FontAwesomeIcon icon={faWallet} />
                       الإيرادات
                     </NavLink>
@@ -874,11 +1009,17 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("expenses") && (
                   <li>
-                    <NavLink to="/dashboard/expenses" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink
+                      to="/dashboard/expenses"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
                       <FontAwesomeIcon icon={faMoneyBillWave} />
                       <span className="dash-nav-label">
                         المصروفات
-                        {missingExpenseNotesCount > 0 && <span className="dash-badge">{missingExpenseNotesCount}</span>}
+                        {missingExpenseNotesCount > 0 && (
+                          <span className="dash-badge">{missingExpenseNotesCount}</span>
+                        )}
                       </span>
                     </NavLink>
                   </li>
@@ -886,7 +1027,11 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("settings") && (
                   <li>
-                    <NavLink to="/dashboard/settings" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink
+                      to="/dashboard/settings"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
                       <FontAwesomeIcon icon={faCog} />
                       الإعدادات
                     </NavLink>
@@ -914,7 +1059,6 @@ const Dashboard: React.FC = () => {
                   تسجيل الخروج
                 </button>
               </div>
-
             </div>
           </div>
 
@@ -1030,7 +1174,13 @@ const Dashboard: React.FC = () => {
 
                 <Route
                   path="*"
-                  element={isStaff ? <Navigate to="/dashboard/staff" replace /> : <Navigate to="/dashboard/overview" replace />}
+                  element={
+                    isStaff ? (
+                      <Navigate to="/dashboard/staff" replace />
+                    ) : (
+                      <Navigate to="/dashboard/overview" replace />
+                    )
+                  }
                 />
               </Routes>
             </div>
@@ -1038,78 +1188,98 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* ✅ Modal تفاصيل الحجز */}
+      {/* ✅ Modal تفاصيل الحجز (FIXED LAYOUT) */}
       {selectedBooking && (
         <div className="dash-modal-overlay" onClick={() => setSelectedBooking(null)}>
-          <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="dash-modal dash-booking-modal" onClick={(e) => e.stopPropagation()}>
             <div className="dash-modal-head">
-              <h3 style={{ margin: 0 }}>تفاصيل الحجز</h3>
+              <div className="dash-modal-title">
+                <h3>تفاصيل الحجز</h3>
+                <small>عرض تفاصيل الحجز بشكل مرتب وواضح</small>
+              </div>
+
               <button className="exp-btn ghost" type="button" onClick={() => setSelectedBooking(null)}>
                 <FontAwesomeIcon icon={faXmark} /> إغلاق
               </button>
             </div>
 
-            <div className="ov-details-grid" style={{ marginTop: 12 }}>
-              <div className="ov-detail-item">
+            <div className="dash-details-grid">
+              <div className="dash-detail">
                 <b>رقم الحجز</b>
-                <div>{selectedBooking.id}</div>
-              </div>
-              <div className="ov-detail-item">
-                <b>العميلة</b>
-                <div>{selectedBooking.customerName}</div>
-              </div>
-              <div className="ov-detail-item">
-                <b>الخدمة</b>
-                <div>{selectedBooking.serviceName || selectedBooking.serviceId || "-"}</div>
-              </div>
-              <div className="ov-detail-item">
-                <b>الموظفة</b>
-                <div>{selectedBooking.employeeName ?? "-"}</div>
-              </div>
-              <div className="ov-detail-item">
-                <b>التاريخ</b>
-                <div>{selectedBooking.date}</div>
-              </div>
-              <div className="ov-detail-item">
-                <b>الوقت</b>
-                <div>{selectedBooking.time}</div>
-              </div>
-              <div className="ov-detail-item">
-                <b>الإجمالي</b>
-                <div>{selectedBooking.total ? `${selectedBooking.total} ريال` : "-"}</div>
+                <div className="dash-value">{selectedBooking.id}</div>
               </div>
 
-              <div className="ov-detail-item ov-detail-item--wide">
+              <div className="dash-detail">
+                <b>العميلة</b>
+                <div className="dash-value">{selectedBooking.customerName}</div>
+              </div>
+
+              <div className="dash-detail">
+                <b>الخدمة</b>
+                <div className="dash-value">
+                  {selectedBooking.serviceName || selectedBooking.serviceId || "-"}
+                </div>
+              </div>
+
+              <div className="dash-detail">
+                <b>الموظفة</b>
+                <div className="dash-value">{selectedBooking.employeeName ?? "-"}</div>
+              </div>
+
+              <div className="dash-detail">
+                <b>التاريخ</b>
+                <div className="dash-value">{selectedBooking.date}</div>
+              </div>
+
+              <div className="dash-detail">
+                <b>الوقت</b>
+                <div className="dash-value">{selectedBooking.time}</div>
+              </div>
+
+              <div className="dash-detail">
+                <b>الإجمالي</b>
+                <div className="dash-value">
+                  {selectedBooking.total ? `${selectedBooking.total} ريال` : "-"}
+                </div>
+              </div>
+
+              <div className="dash-detail dash-detail--wide">
                 <b>الحالة</b>
 
-                {hasAdminPower ||
+                <div className="dash-status-row">
+                  {hasAdminPower ||
                   (isReception && allowReceptionChangeStatus) ||
                   (isStaff && allowStaffChangeStatus) ? (
-                  <select
-                    className="dash-select"
-                    value={selectedBooking.status}
-                    onChange={(e) => handleChangeStatus(selectedBooking.id, e.target.value as BookingStatus)}
-                  >
-                    <option value="confirmed">مؤكد</option>
-                    <option value="pending">في الانتظار</option>
-                    <option value="completed">مكتمل</option>
-                    <option value="cancelled">ملغي</option>
-                  </select>
-                ) : (
-                  <span className={`status-badge ${selectedBooking.status}`}>{selectedBooking.status}</span>
-                )}
-
-                {!hasAdminPower &&
-                  !(isReception && allowReceptionChangeStatus) &&
-                  !(isStaff && allowStaffChangeStatus) && (
-                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-                      التعديل غير مسموح حسب إعدادات النظام
-                    </div>
+                    <select
+                      className="dash-select"
+                      value={selectedBooking.status}
+                      onChange={(e) =>
+                        handleChangeStatus(selectedBooking.id, e.target.value as BookingStatus)
+                      }
+                    >
+                      <option value="confirmed">مؤكد</option>
+                      <option value="pending">في الانتظار</option>
+                      <option value="completed">مكتمل</option>
+                      <option value="cancelled">ملغي</option>
+                    </select>
+                  ) : (
+                    <span className={`status-badge ${selectedBooking.status}`}>
+                      {selectedBooking.status}
+                    </span>
                   )}
+
+                  {!hasAdminPower &&
+                    !(isReception && allowReceptionChangeStatus) &&
+                    !(isStaff && allowStaffChangeStatus) && (
+                      <span style={{ fontSize: 12, opacity: 0.75 }}>
+                        التعديل غير مسموح حسب إعدادات النظام
+                      </span>
+                    )}
+                </div>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+            <div className="dash-modal-actions">
               <button className="exp-btn ghost" onClick={() => navigate("/dashboard/bookings")} type="button">
                 فتح صفحة الحجوزات
               </button>
