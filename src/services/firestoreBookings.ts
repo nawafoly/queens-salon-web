@@ -309,6 +309,103 @@ export async function listUserBookings(userId: string) {
 }
 
 /* =========================
+   STAFF (Employee) READ ✅ NEW
+========================= */
+
+function sortByCreatedAtDesc(a: BookingDocWithId, b: BookingDocWithId) {
+  return (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.();
+}
+
+function uniqMerge(a: BookingDocWithId[], b: BookingDocWithId[]) {
+  const m = new Map<string, BookingDocWithId>();
+  for (const x of a) m.set(x.id, x);
+  for (const x of b) m.set(x.id, x);
+  return Array.from(m.values()).sort(sortByCreatedAtDesc);
+}
+
+/**
+ * ✅ List bookings for a single employee (Staff)
+ * - Primary: employeeId == uid
+ * - Fallback: employeeName == name (for old data)
+ */
+export async function listEmployeeBookings(
+  employeeId: string,
+  employeeName?: string
+): Promise<BookingDocWithId[]> {
+  const baseCol = collection(db, ...BOOKINGS_COL);
+
+  // 1) by employeeId
+  const q1 = query(baseCol, where("employeeId", "==", employeeId));
+  const s1 = await getDocs(q1);
+  const r1 = s1.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
+
+  // 2) fallback by employeeName (optional)
+  let r2: BookingDocWithId[] = [];
+  const name = String(employeeName || "").trim();
+  if (name) {
+    const q2 = query(baseCol, where("employeeName", "==", name));
+    const s2 = await getDocs(q2);
+    r2 = s2.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
+  }
+
+  return uniqMerge(r1, r2);
+}
+
+/**
+ * ✅ Realtime watcher for staff bookings only
+ * - merges two listeners (employeeId + employeeName fallback)
+ */
+export function watchEmployeeBookings(
+  employeeId: string,
+  employeeName: string | undefined,
+  onData: (rows: BookingDocWithId[]) => void,
+  onError?: (err: unknown) => void
+) {
+  const baseCol = collection(db, ...BOOKINGS_COL);
+
+  let rowsById: BookingDocWithId[] = [];
+  let rowsByName: BookingDocWithId[] = [];
+
+  const emit = () => {
+    onData(uniqMerge(rowsById, rowsByName));
+  };
+
+  // Listener 1: by employeeId
+  const unsub1 = onSnapshot(
+    query(baseCol, where("employeeId", "==", employeeId)),
+    (snap) => {
+      rowsById = snap.docs
+        .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
+        .sort(sortByCreatedAtDesc);
+      emit();
+    },
+    (err) => onError?.(err)
+  );
+
+  // Listener 2: fallback by employeeName (optional)
+  const name = String(employeeName || "").trim();
+  let unsub2: (() => void) | null = null;
+
+  if (name) {
+    unsub2 = onSnapshot(
+      query(baseCol, where("employeeName", "==", name)),
+      (snap) => {
+        rowsByName = snap.docs
+          .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
+          .sort(sortByCreatedAtDesc);
+        emit();
+      },
+      (err) => onError?.(err)
+    );
+  }
+
+  return () => {
+    unsub1?.();
+    unsub2?.();
+  };
+}
+
+/* =========================
    UPDATE
 ========================= */
 

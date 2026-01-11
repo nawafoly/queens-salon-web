@@ -40,7 +40,7 @@ type BookingData = {
   // ✅ القديم (اسم الموظفة)
   employee?: string;
 
-  // ✅ NEW: id الحقيقي للموظفة
+  // ✅ NEW: id الحقيقي للموظفة (UID / docId)
   employeeId?: string;
 
   date?: string;
@@ -86,6 +86,12 @@ function normalizePaymentMethod(x: any): PaymentMethod {
   return "cash";
 }
 
+function toInt(n: any) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.round(v);
+}
+
 export default function Checkout() {
   const navigate = useNavigate();
   const [booking, setBooking] = useState<BookingData | null>(null);
@@ -128,13 +134,38 @@ export default function Checkout() {
     try {
       const raw = localStorage.getItem(BOOKING_KEY);
 
-      if (!raw) {
-        setBooking(null);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setBooking(parsed);
         return;
       }
 
-      const parsed = JSON.parse(raw);
-      setBooking(parsed);
+      // ✅ fallback (إذا صار اختلاف/مسح للكي)
+      const draft = localStorage.getItem("bookingDraft");
+      if (draft) {
+        const parsedDraft = JSON.parse(draft);
+        // نحاول نحول الدرفت لنفس شكل BookingData قدر الإمكان بدون كسر
+        setBooking({
+          name: parsedDraft?.name,
+          phone: parsedDraft?.phone,
+          service: parsedDraft?.service,
+          serviceName: parsedDraft?.serviceName,
+          employee: parsedDraft?.employee,
+          employeeId: parsedDraft?.employeeId,
+          date: parsedDraft?.date,
+          time: parsedDraft?.time,
+          total: parsedDraft?.total ?? parsedDraft?.finalPrice,
+          finalPrice: parsedDraft?.finalPrice ?? parsedDraft?.total,
+          paymentMethod: parsedDraft?.paymentMethod,
+          couponCode: parsedDraft?.couponCode,
+          offerId: parsedDraft?.offerId,
+          offerTitle: parsedDraft?.offerTitle,
+          discountAmount: parsedDraft?.discountAmount,
+        });
+        return;
+      }
+
+      setBooking(null);
     } catch (e) {
       console.error("[Checkout] parse error:", e);
       setBooking(null);
@@ -154,7 +185,7 @@ export default function Checkout() {
     const employee = String(booking.employee || "").trim();
     const employeeId = String(booking.employeeId || "").trim(); // ✅ NEW
 
-    const total = Number((booking.total ?? booking.finalPrice) ?? 0);
+    const total = toInt((booking.total ?? booking.finalPrice) ?? 0);
     const paymentMethod = normalizePaymentMethod(booking.paymentMethod);
 
     const paymentStatus: PaymentStatus = booking.paymentStatus === "paid" ? "paid" : "pending";
@@ -177,7 +208,7 @@ export default function Checkout() {
       couponCode: String(booking.couponCode || "").trim(),
       offerId: booking.offerId || null,
       offerTitle: booking.offerTitle || null,
-      discountAmount: Number(booking.discountAmount || 0),
+      discountAmount: toInt(booking.discountAmount || 0),
     };
   }, [booking]);
 
@@ -206,8 +237,8 @@ export default function Checkout() {
       const normalizedPayment = normalizePaymentMethod(view.paymentMethod);
       const bookingStatus: BookingStatus = "pending";
 
-      // ✅ حماية بسيطة: لازم موظفة
-      if (!view.employee && !view.employeeId) {
+      // ✅ حماية بسيطة: لازم موظفة (ونفضّل UID)
+      if (!view.employeeId) {
         openModal({
           title: "بيانات غير مكتملة",
           message: "ما تم اختيار الموظفة بشكل صحيح. ارجع وعدّل الحجز.",
@@ -219,7 +250,7 @@ export default function Checkout() {
 
       const auth = getAuth();
 
-      // ✅ لو ما فيه مستخدم، سجّل دخول مجهول (Anonymous) عشان request.auth يصير موجود
+      // ✅ لو ما فيه مستخدم، حاول Anonymous
       if (!auth.currentUser) {
         try {
           await signInAnonymously(auth);
@@ -231,7 +262,7 @@ export default function Checkout() {
       const uid = auth.currentUser?.uid ?? null;
 
       const discountNote = view.offerId
-        ? `Offer: ${view.offerTitle || view.couponCode || "-"} | discount=${Number(view.discountAmount || 0)}`
+        ? `Offer: ${view.offerTitle || view.couponCode || "-"} | discount=${toInt(view.discountAmount || 0)}`
         : "";
 
       const employeeNote = view.employeeId ? `employeeId: ${view.employeeId}` : "";
@@ -243,8 +274,10 @@ export default function Checkout() {
 
       const noteFinal = [baseNote, employeeNote, discountNote].filter(Boolean).join(" | ");
 
-      // ✅ key: employeeId أولاً (الأصح)، fallback على الاسم
-      const employeeKey = view.employeeId || view.employee;
+      // ✅✅ أهم إصلاح للـ Rules:
+      // total/finalPrice لازم تكون INT (مو Double)
+      const totalInt = toInt(view.total || 0);
+      const finalInt = toInt(view.total || 0);
 
       const firestoreId = await createBooking({
         userId: uid,
@@ -256,15 +289,14 @@ export default function Checkout() {
 
         serviceName: view.service,
 
-        // ✅ NEW: تمرير الاثنين (عشان السلوّت يكون على ID + العرض على الاسم)
-        employeeId: employeeKey,
-        employeeName: view.employee || view.employeeId || "-",
+        employeeId: view.employeeId, // ✅ UID فقط
+        employeeName: view.employee || "-", // ✅ للعرض
 
         date: view.date,
         time: view.time,
 
-        total: Number(view.total || 0),
-        finalPrice: Number(view.total || 0),
+        total: totalInt,
+        finalPrice: finalInt,
 
         status: bookingStatus,
         note: noteFinal || undefined,
@@ -285,9 +317,11 @@ export default function Checkout() {
         id: firestoreId,
         trackId: firestoreId,
 
-        // ✅ ثبّت الـ employeeId/employee في currentBooking
-        employeeId: view.employeeId || booking?.employeeId || "",
+        employeeId: view.employeeId,
         employee: view.employee || booking?.employee || "",
+
+        total: totalInt,
+        finalPrice: finalInt,
 
         paymentMethod: normalizedPayment,
         paymentStatus: opts?.paymentStatus || "pending",
@@ -311,7 +345,6 @@ export default function Checkout() {
         return;
       }
 
-      // ✅ اعرض الخطأ الحقيقي (كود + رسالة) بدل رسالة عامة
       const code = String(e?.code || "");
       const msg = String(e?.message || "");
 
@@ -321,8 +354,9 @@ export default function Checkout() {
           `خطأ Firestore:\n` +
           `code: ${code || "—"}\n` +
           `message: ${msg || "—"}\n\n` +
-          `إذا كانت المشكلة permission-denied فـ Rules تمنع الكتابة.\n` +
-          `إذا unauthenticated فالمستخدم غير مسجل (Anonymous Auth يحلها).`,
+          `ملاحظة مهمة:\n` +
+          `Rules عندك تشترط total و finalPrice تكون int.\n` +
+          `وأيضًا إذا Anonymous Auth مقفل، لازم تفعيلها من Firebase Auth.\n`,
         variant: "danger",
       });
     } finally {
@@ -412,7 +446,6 @@ export default function Checkout() {
           <span>{view.employee || "—"}</span>
         </div>
 
-        {/* ✅ اختياري: عرض employeeId للتأكد أثناء الاختبار */}
         {!!view.employeeId && (
           <div className="checkout-item" style={{ opacity: 0.8, fontSize: 13 }}>
             <strong>employeeId:</strong>

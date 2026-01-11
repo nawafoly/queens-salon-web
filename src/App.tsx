@@ -32,8 +32,7 @@ import EmployeePortal from "./pages/EmployeePortal";
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
 
-// ✅ NEW: Staff dashboard page
-import DashboardStaff from "./pages/DashboardStaff";
+// ✅ Staff dashboard page
 
 /* ================================
    Types & Helpers
@@ -60,12 +59,7 @@ function normalizeRole(role: any): UiRole {
 }
 
 function isDashboardRole(role: UiRole) {
-  return (
-    role === "owner" ||
-    role === "admin" ||
-    role === "reception" ||
-    role === "staff"
-  );
+  return role === "owner" || role === "admin" || role === "reception" || role === "staff";
 }
 
 function isClientRole(role: UiRole) {
@@ -73,7 +67,6 @@ function isClientRole(role: UiRole) {
 }
 
 function getNameFromStorage(): string {
-  // أولوية الاسم: user_profile_v1 ثم userName
   try {
     const p = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
     const n = p?.name ? String(p.name).trim() : "";
@@ -121,12 +114,10 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    // أول تشغيل
     readWelcomeFromStorage();
     setUserRole(getRoleFromStorage());
     setUserName(getNameFromStorage());
 
-    // بعد تسجيل الدخول / الخروج
     const onAuthChanged = () => {
       readWelcomeFromStorage();
       setUserRole(getRoleFromStorage());
@@ -141,10 +132,6 @@ const App: React.FC = () => {
      Guards
   ================================ */
 
-  // ✅ Dashboard Guard:
-  // - owner/admin/reception/staff => يسمح
-  // - client => يروح /client
-  // - guest => يروح /login
   const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
     const role = getRoleFromStorage();
 
@@ -153,10 +140,6 @@ const App: React.FC = () => {
     return <Navigate to="/login" replace />;
   };
 
-  // ✅ Client Guard:
-  // - client => يسمح
-  // - owner/admin/reception/staff => يروح /dashboard
-  // - guest => يروح /login
   const ClientGuard = ({ children }: { children: React.ReactNode }) => {
     const role = getRoleFromStorage();
 
@@ -173,7 +156,7 @@ const App: React.FC = () => {
 
   return (
     <div className="app">
-      {/* نخفي Navbar داخل الداشبورد */}
+      {/* ✅ Navbar فقط خارج الداشبورد */}
       {!isInDashboard && <Navbar />}
 
       <main className="main-content">
@@ -198,7 +181,7 @@ const App: React.FC = () => {
           <Route path="/track" element={<Track />} />
           <Route path="/track/:trackId" element={<Track />} />
 
-          {/* ✅ Client Dashboard (Protected) - نستخدم Profile كـ ClientDashboard */}
+          {/* Client (Protected) */}
           <Route
             path="/client"
             element={
@@ -208,16 +191,6 @@ const App: React.FC = () => {
             }
           />
 
-          {/* ✅ NEW: Staff Dashboard page (Protected)
-              لازم يكون قبل /dashboard/* */}
-          <Route
-            path="/dashboard/staff"
-            element={
-              <DashboardGuard>
-                <DashboardStaff />
-              </DashboardGuard>
-            }
-          />
 
           {/* Dashboard (Protected) */}
           <Route
@@ -241,11 +214,8 @@ const App: React.FC = () => {
 
           <Route path="/forgot-password" element={<ForgotPassword />} />
 
-          {/* ✅ مهم: أي /settings يروح للداشبورد */}
-          <Route
-            path="/settings"
-            element={<Navigate to="/dashboard/settings" replace />}
-          />
+          {/* ✅ أي /settings يروح للداشبورد */}
+          <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
           {/* Payments */}
           <Route path="/pay" element={<Pay />} />
@@ -256,8 +226,9 @@ const App: React.FC = () => {
         </Routes>
       </main>
 
-      <Footer />
-      <ChatBot />
+      {/* ✅ Footer + ChatBot فقط خارج الداشبورد */}
+      {!isInDashboard && <Footer />}
+      {!isInDashboard && <ChatBot />}
 
       <WelcomeModal
         show={showWelcome}

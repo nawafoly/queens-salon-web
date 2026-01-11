@@ -1,496 +1,401 @@
-// ✅ src/pages/DashboardEmployees.tsx
-import { useEffect, useMemo, useState } from "react";
-import {
-  collection,
-  getDocs,
-  doc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  serverTimestamp,
-} from "firebase/firestore";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-  faPlus,
-  faPen,
-  faTrash,
-  faRotateRight,
-  faToggleOn,
-  faToggleOff,
-  faUserTie,
-} from "@fortawesome/free-solid-svg-icons";
+// src/pages/EmployeePortal.tsx
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { db } from "../services/firebase";
-import "../styles/EmployeePortal.css";
+import { onAuthStateChanged } from "firebase/auth";
+import { addDoc, collection, doc, getDoc, serverTimestamp } from "firebase/firestore";
+
+import { auth, db } from "../services/firebase";
+
+import {
+  watchAllBookings,
+  watchEmployeeBookings,
+  type BookingDocWithId,
+  type BookingStatus,
+} from "../services/firestoreBookings";
+
+import "../styles/DashboardStaff.css";
 import "../styles/DashboardModals.css";
+import "../styles/DashboardBookings.css";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 
-type AuthUser = {
-  uid: string;
-  email: string;
-  role: UiRole;
-  displayName?: string;
-};
-
-type StaffPublicDoc = {
-  name: string;
-  active: boolean;
-  specialties: string[]; // مثال: ["hair","coloring"]
-  bio?: string;          // نبذة تظهر للزبائن
-  avatarUrl?: string;    // صورة (اختياري)
-  createdAt?: any;
-  updatedAt?: any;
-};
-
-type StaffPublicUi = StaffPublicDoc & { id: string };
-
 const SALON_ID = "main";
+const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
+const STAFF_MESSAGES_COL = ["salons", SALON_ID, "staff_messages"] as const;
 
-const SPECIALTY_OPTIONS: { key: string; label: string }[] = [
-  { key: "hair", label: "الشعر" },
-  { key: "coloring", label: "الصبغات" },
-  { key: "makeup", label: "المكياج" },
-  { key: "nails", label: "الأظافر" },
-  { key: "waxing", label: "الشمع" },
-];
+const statusLabel: Record<BookingStatus, string> = {
+  confirmed: "مؤكد",
+  pending: "في الانتظار",
+  cancelled: "ملغي",
+  completed: "مكتمل",
+};
 
-function getAuthUser(): AuthUser | null {
-  try {
-    const raw = localStorage.getItem("auth_user");
-    if (!raw) return null;
-    return JSON.parse(raw) as AuthUser;
-  } catch {
-    return null;
-  }
+function safeISODate(d: string | undefined | null) {
+  if (!d) return "";
+  return d.trim();
 }
 
-function staffPublicCol() {
-  return collection(db, "salons", SALON_ID, "staff_public");
+function stripArabicDiacritics(s: string) {
+  return s
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g, "")
+    .replace(/\u0640/g, "");
 }
 
-function staffPublicDoc(id: string) {
-  return doc(db, "salons", SALON_ID, "staff_public", id);
+function normalizeArabicName(input: string) {
+  const s = String(input || "").trim().toLowerCase();
+  const noDia = stripArabicDiacritics(s);
+
+  const unified = noDia
+    .replace(/[إأآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return unified;
 }
 
-function normalizeSpecialties(v: any): string[] {
-  if (Array.isArray(v)) return v.filter(Boolean);
-  if (typeof v === "string" && v.trim()) return [v.trim()];
-  return [];
+function strictStaffMatch(employeeNameFromBooking: string, myName: string) {
+  const empRaw = String(employeeNameFromBooking || "").trim();
+  const meRaw = String(myName || "").trim();
+
+  if (!empRaw || !meRaw) return false;
+
+  const emp = normalizeArabicName(empRaw);
+  const me = normalizeArabicName(meRaw);
+
+  return !!me && emp === me;
 }
 
-export default function DashboardEmployees() {
-  const authUser = useMemo(() => getAuthUser(), []);
-  const canManage =
-    authUser?.role === "owner" || authUser?.role === "admin" || authUser?.role === "reception";
+export default function EmployeePortal() {
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<StaffPublicUi[]>([]);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [uiRole, setUiRole] = useState<UiRole>("guest");
 
-  // Filters
-  const [qText, setQText] = useState("");
-  const [onlyActive, setOnlyActive] = useState<"all" | "active" | "inactive">("all");
-  const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
+  const [myUid, setMyUid] = useState<string>("");
+  const [myName, setMyName] = useState<string>("");
+  const [myEmail, setMyEmail] = useState<string>("");
 
-  // Modal state
-  const [isOpen, setIsOpen] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
+  const [rows, setRows] = useState<BookingDocWithId[]>([]);
+  const unsubRef = useRef<null | (() => void)>(null);
 
-  // Form
-  const [name, setName] = useState("");
-  const [bio, setBio] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
-  const [active, setActive] = useState(true);
-  const [specialties, setSpecialties] = useState<string[]>([]);
+  // messages
+  const [msg, setMsg] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sentMsg, setSentMsg] = useState("");
 
-  const resetForm = () => {
-    setEditId(null);
-    setName("");
-    setBio("");
-    setAvatarUrl("");
-    setActive(true);
-    setSpecialties([]);
-  };
+  const [openMsg, setOpenMsg] = useState(false);
 
-  const openCreate = () => {
-    resetForm();
-    setIsOpen(true);
-  };
-
-  const openEdit = (x: StaffPublicUi) => {
-    setEditId(x.id);
-    setName(x.name ?? "");
-    setBio(x.bio ?? "");
-    setAvatarUrl(x.avatarUrl ?? "");
-    setActive(!!x.active);
-    setSpecialties(normalizeSpecialties(x.specialties));
-    setIsOpen(true);
-  };
-
-  const closeModal = () => {
-    setIsOpen(false);
-    resetForm();
-  };
-
-  const load = async () => {
-    setLoading(true);
-    setErrorMsg("");
-
+  async function loadMyProfile(uid: string, emailFallback: string, nameFallback: string) {
     try {
-      // ✅ بدون where+orderBy لتفادي مشكلة index
-      const snap = await getDocs(staffPublicCol());
+      const userRef = doc(db, ...USERS_COLLECTION, uid);
+      const snap = await getDoc(userRef);
+      const data = snap.exists() ? (snap.data() as any) : {};
 
-      const rows: StaffPublicUi[] = snap.docs.map((d) => {
-        const data = d.data() as any;
-        return {
-          id: d.id,
-          name: data?.name ?? "",
-          active: !!data?.active,
-          specialties: normalizeSpecialties(data?.specialties),
-          bio: data?.bio ?? "",
-          avatarUrl: data?.avatarUrl ?? "",
-          createdAt: data?.createdAt,
-          updatedAt: data?.updatedAt,
-        };
-      });
+      const roleRaw = String(data?.role || "").toLowerCase().trim();
+      const role: UiRole =
+        roleRaw === "owner"
+          ? "owner"
+          : roleRaw === "admin"
+          ? "admin"
+          : roleRaw === "reception"
+          ? "reception"
+          : roleRaw === "staff"
+          ? "staff"
+          : roleRaw === "client"
+          ? "client"
+          : "guest";
 
-      // ✅ ترتيب محلي بالاسم
-      rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
+      setUiRole(role);
 
-      setList(rows);
+      const dn = String(data?.displayName || nameFallback || "مستخدمة").trim();
+      const em = String(data?.email || emailFallback || "").trim().toLowerCase();
+
+      setMyName(dn);
+      setMyEmail(em);
+
+      return { role, dn, em };
     } catch (e) {
-      console.warn("load staff_public error:", e);
-      setErrorMsg("تعذر تحميل الموظفات");
-      setList([]);
-    } finally {
-      setLoading(false);
+      console.error("loadMyProfile error:", e);
+      setUiRole("guest");
+      setMyName(nameFallback || "مستخدمة");
+      setMyEmail((emailFallback || "").toLowerCase());
+      return {
+        role: "guest" as UiRole,
+        dn: nameFallback || "مستخدمة",
+        em: (emailFallback || "").toLowerCase(),
+      };
     }
-  };
+  }
+
+  // ✅ بوابة الموظف: فقط staff
+  const isAllowed = uiRole === "staff";
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const toggleSpecialty = (key: string) => {
-    setSpecialties((prev) => {
-      if (prev.includes(key)) return prev.filter((x) => x !== key);
-      return [...prev, key];
-    });
-  };
-
-  const save = async () => {
-    if (!canManage) return;
-    const cleanName = name.trim();
-    if (!cleanName) {
-      setErrorMsg("اكتب اسم الموظفة");
-      return;
-    }
-    if (specialties.length === 0) {
-      setErrorMsg("اختَر خدمة واحدة على الأقل");
-      return;
-    }
-
-    setLoading(true);
-    setErrorMsg("");
-
-    const payload: StaffPublicDoc = {
-      name: cleanName,
-      active: !!active,
-      specialties: specialties,
-      bio: bio.trim(),
-      avatarUrl: avatarUrl.trim(),
-      updatedAt: serverTimestamp(),
-    };
-
-    try {
-      if (!editId) {
-        // ✅ إنشاء: نجعل الـ id تلقائي (أو تقدر تسميه بنفسك)
-        const id = cleanName
-          .replace(/\s+/g, "_")
-          .replace(/[^\w\u0600-\u06FF_]/g, "")
-          .slice(0, 40);
-
-        await setDoc(staffPublicDoc(id || crypto.randomUUID()), {
-          ...payload,
-          createdAt: serverTimestamp(),
-        });
-      } else {
-        await updateDoc(staffPublicDoc(editId), payload as any);
+    const unsubAuth = onAuthStateChanged(auth, async (u) => {
+      if (unsubRef.current) {
+        unsubRef.current();
+        unsubRef.current = null;
       }
 
-      closeModal();
-      await load();
-    } catch (e) {
-      console.warn("save staff_public error:", e);
-      setErrorMsg("تعذر حفظ الموظفة");
-    } finally {
-      setLoading(false);
-    }
-  };
+      setRows([]);
+      setLoadError("");
+      setLoading(true);
 
-  const remove = async (id: string) => {
-    if (!canManage) return;
-    const ok = confirm("متأكد حذف الموظفة؟");
-    if (!ok) return;
+      if (!u) {
+        setLoading(false);
+        setLoadError("⚠️ لازم تسجّلين دخول بحساب الموظفة.");
+        setUiRole("guest");
+        return;
+      }
 
-    setLoading(true);
-    setErrorMsg("");
+      setMyUid(u.uid);
+
+      const prof = await loadMyProfile(u.uid, String(u.email || ""), String(u.displayName || ""));
+
+      // ✅ مهم: البوابة تعرض حجوزات الموظفة فقط
+      if (prof.role !== "staff") {
+        setLoading(false);
+        setLoadError("هذه البوابة مخصصة للموظفات فقط.");
+        return;
+      }
+
+      unsubRef.current = watchEmployeeBookings(
+        u.uid,
+        prof.dn,
+        (data) => {
+          setRows(Array.isArray(data) ? data : []);
+          setLoading(false);
+        },
+        (err) => {
+          console.error("watchEmployeeBookings error:", err);
+          setLoading(false);
+          setLoadError("⚠️ تعذر تحميل حجوزاتك (صلاحيات/Rules).");
+        }
+      );
+    });
+
+    return () => {
+      unsubAuth();
+      if (unsubRef.current) {
+        unsubRef.current();
+        unsubRef.current = null;
+      }
+    };
+  }, []);
+
+  const myBookings = useMemo(() => {
+    if (!isAllowed) return [];
+
+    return rows
+      .filter((b) => {
+        const empId = String((b as any)?.employeeId ?? "").trim();
+        const empName = String((b as any)?.employeeName ?? "").trim();
+
+        if (empId && myUid && empId === myUid) return true;
+        return strictStaffMatch(empName, myName);
+      })
+      .sort((a, b) => {
+        const ad = safeISODate((a as any)?.date);
+        const bd = safeISODate((b as any)?.date);
+        if (ad !== bd) return ad.localeCompare(bd);
+        const at = String((a as any)?.time || "");
+        const bt = String((b as any)?.time || "");
+        return at.localeCompare(bt);
+      });
+  }, [rows, myUid, myName, isAllowed]);
+
+  const todayAlert = useMemo(() => {
+    if (!myBookings.length) return "";
+
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const today = `${yyyy}-${mm}-${dd}`;
+
+    const todays = myBookings.filter((b) => String((b as any)?.date || "") === today);
+    if (!todays.length) return "";
+
+    const next = todays[0];
+    const time = String((next as any)?.time || "");
+    const client = String((next as any)?.clientName || "");
+    return `📌 عندك حجز اليوم الساعة ${time}${client ? ` — (${client})` : ""}`;
+  }, [myBookings]);
+
+  async function sendMessage() {
+    const text = msg.trim();
+    if (!text) return;
+    if (!auth.currentUser?.uid) return;
 
     try {
-      await deleteDoc(staffPublicDoc(id));
-      await load();
-    } catch (e) {
-      console.warn("delete staff_public error:", e);
-      setErrorMsg("تعذر حذف الموظفة");
-    } finally {
-      setLoading(false);
-    }
-  };
+      setSending(true);
+      setSentMsg("");
 
-  const filtered = useMemo(() => {
-    let rows = [...list];
-
-    // active filter
-    if (onlyActive === "active") rows = rows.filter((x) => x.active);
-    if (onlyActive === "inactive") rows = rows.filter((x) => !x.active);
-
-    // specialty filter
-    if (specialtyFilter !== "all") {
-      rows = rows.filter((x) => normalizeSpecialties(x.specialties).includes(specialtyFilter));
-    }
-
-    // search
-    const t = qText.trim().toLowerCase();
-    if (t) {
-      rows = rows.filter((x) => {
-        const n = (x.name || "").toLowerCase();
-        const b = (x.bio || "").toLowerCase();
-        return n.includes(t) || b.includes(t);
+      await addDoc(collection(db, ...STAFF_MESSAGES_COL), {
+        staffUid: auth.currentUser.uid,
+        staffName: myName || auth.currentUser.displayName || "موظفة",
+        staffEmail: myEmail || auth.currentUser.email || "",
+        message: text,
+        status: "open",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
+
+      setMsg("");
+      setSentMsg("✅ تم إرسال رسالتك للإدارة");
+
+      setTimeout(() => {
+        setSentMsg("");
+        setOpenMsg(false);
+      }, 1200);
+    } catch (e) {
+      console.error("sendMessage error:", e);
+      setSentMsg("❌ تعذر الإرسال (Rules?)");
+      setTimeout(() => setSentMsg(""), 3000);
+    } finally {
+      setSending(false);
     }
-
-    return rows;
-  }, [list, onlyActive, specialtyFilter, qText]);
-
-  // ✅ حماية بسيطة
-  if (!authUser) {
-    return (
-      <div className="dashboard-page">
-        <div className="container">
-          <div className="dash-card">
-            <h3>غير مصرح</h3>
-            <p>سجّل دخول ثم جرّب.</p>
-          </div>
-        </div>
-      </div>
-    );
   }
 
-  if (!canManage) {
+  if (!isAllowed) {
     return (
-      <div className="dashboard-page">
-        <div className="container">
-          <div className="dash-card">
-            <h3>صلاحيات غير كافية</h3>
-            <p>هذه الصفحة للإدارة فقط.</p>
-          </div>
-        </div>
+      <div className="dashboard-section">
+        <h3>غير مصرح</h3>
+        <p>هذه الصفحة مخصصة للموظفات فقط.</p>
       </div>
     );
   }
 
   return (
-    <div className="dashboard-page">
-      <div className="container">
-        <div className="dash-topbar dash-topbar--sticky">
-          <div className="dash-topbar-title">
-            <h2>
-              <FontAwesomeIcon icon={faUserTie} /> إدارة الموظفات
-            </h2>
-            <p className="dash-sub">
-              المصدر: <b>salons/main/staff_public</b>
-            </p>
-          </div>
-
-          <div className="dash-topbar-actions">
-            <button className="exp-btn" onClick={load} disabled={loading} type="button">
-              <FontAwesomeIcon icon={faRotateRight} /> تحديث
-            </button>
-
-            <button className="exp-btn primary" onClick={openCreate} disabled={loading} type="button">
-              <FontAwesomeIcon icon={faPlus} /> إضافة موظفة
-            </button>
-          </div>
+    <div className="bookings-page staff-page">
+      <div className="bookings-header staff-header">
+        <div className="staff-header__title">
+          <h1>بوابة الموظف</h1>
+          <p>حجوزاتي</p>
         </div>
 
-        {errorMsg && <div className="dash-alert">{errorMsg}</div>}
-
-        {/* Filters */}
-        <div className="dash-card">
-          <div className="dash-row">
-            <input
-              className="dash-input"
-              placeholder="بحث بالاسم أو النبذة..."
-              value={qText}
-              onChange={(e) => setQText(e.target.value)}
-            />
-
-            <select
-              className="dash-select"
-              value={onlyActive}
-              onChange={(e) => setOnlyActive(e.target.value as any)}
-            >
-              <option value="all">كل الحالات</option>
-              <option value="active">نشطة</option>
-              <option value="inactive">غير نشطة</option>
-            </select>
-
-            <select
-              className="dash-select"
-              value={specialtyFilter}
-              onChange={(e) => setSpecialtyFilter(e.target.value)}
-            >
-              <option value="all">كل الخدمات</option>
-              {SPECIALTY_OPTIONS.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="dash-meta">
-            المعروض: <b>{filtered.length}</b> • الإجمالي: <b>{list.length}</b>
-          </div>
+        <div className="staff-header__actions">
+          <button className="exp-btn primary" type="button" onClick={() => setOpenMsg(true)}>
+            💬 التواصل مع الإدارة
+          </button>
         </div>
 
-        {/* List */}
-        <div className="dash-grid">
-          {loading && <div className="dash-card">جاري التحميل…</div>}
-
-          {!loading && filtered.length === 0 && (
-            <div className="dash-card">لا توجد موظفات حسب الفلاتر الحالية.</div>
-          )}
-
-          {!loading &&
-            filtered.map((x) => (
-              <div className="dash-card staff-card" key={x.id}>
-                <div className="staff-top">
-                  <div className="staff-name">
-                    <b>{x.name}</b>
-                    <span className={`staff-pill ${x.active ? "on" : "off"}`}>
-                      <FontAwesomeIcon icon={x.active ? faToggleOn : faToggleOff} />{" "}
-                      {x.active ? "نشطة" : "غير نشطة"}
-                    </span>
-                  </div>
-
-                  <div className="staff-actions">
-                    <button className="exp-btn ghost" onClick={() => openEdit(x)} type="button">
-                      <FontAwesomeIcon icon={faPen} /> تعديل
-                    </button>
-                    <button className="exp-btn danger" onClick={() => remove(x.id)} type="button">
-                      <FontAwesomeIcon icon={faTrash} /> حذف
-                    </button>
-                  </div>
-                </div>
-
-                {x.bio ? <div className="staff-bio">{x.bio}</div> : <div className="staff-bio muted">بدون نبذة</div>}
-
-                <div className="staff-chips">
-                  {normalizeSpecialties(x.specialties).map((s) => {
-                    const label = SPECIALTY_OPTIONS.find((o) => o.key === s)?.label ?? s;
-                    return (
-                      <span className="staff-chip" key={s}>
-                        {label}
-                      </span>
-                    );
-                  })}
-                </div>
-
-                <div className="staff-id">ID: {x.id}</div>
-              </div>
-            ))}
-        </div>
-
-        {/* Modal */}
-        {isOpen && (
-          <div className="modal-overlay" onClick={closeModal}>
-            <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-head">
-                <b>{editId ? "تعديل موظفة" : "إضافة موظفة"}</b>
-                <button className="exp-btn ghost" onClick={closeModal} type="button">
-                  إغلاق
-                </button>
-              </div>
-
-              <div className="modal-body">
-                <div className="dash-row">
-                  <div className="dash-field">
-                    <label>اسم الموظفة</label>
-                    <input className="dash-input" value={name} onChange={(e) => setName(e.target.value)} />
-                  </div>
-
-                  <div className="dash-field">
-                    <label>الحالة</label>
-                    <select className="dash-select" value={active ? "1" : "0"} onChange={(e) => setActive(e.target.value === "1")}>
-                      <option value="1">نشطة</option>
-                      <option value="0">غير نشطة</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="dash-field">
-                  <label>نبذة تظهر للزبائن (About/Booking)</label>
-                  <textarea
-                    className="dash-textarea"
-                    rows={3}
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
-                    placeholder="مثال: خبيرة شعر وصبغات بخبرة 8 سنوات..."
-                  />
-                </div>
-
-                <div className="dash-field">
-                  <label>رابط الصورة (اختياري)</label>
-                  <input
-                    className="dash-input"
-                    value={avatarUrl}
-                    onChange={(e) => setAvatarUrl(e.target.value)}
-                    placeholder="https://..."
-                  />
-                </div>
-
-                <div className="dash-field">
-                  <label>الخدمات (اختيار متعدد)</label>
-                  <div className="staff-picks">
-                    {SPECIALTY_OPTIONS.map((o) => (
-                      <button
-                        key={o.key}
-                        type="button"
-                        className={`pick ${specialties.includes(o.key) ? "on" : ""}`}
-                        onClick={() => toggleSpecialty(o.key)}
-                      >
-                        {o.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-foot">
-                <button className="exp-btn" onClick={closeModal} type="button">
-                  إلغاء
-                </button>
-                <button className="exp-btn primary" onClick={save} disabled={loading} type="button">
-                  حفظ
-                </button>
-              </div>
-            </div>
+        {todayAlert && (
+          <div className="bookings-error" style={{ background: "#111", color: "#fff" }}>
+            {todayAlert}
           </div>
         )}
+        {loadError && <div className="bookings-error">{loadError}</div>}
       </div>
+
+      <div className="bookings-table-card">
+        <div className="bk-table-wrap">
+          <div className="table-responsive">
+            <table className="bookings-table">
+              <thead>
+                <tr>
+                  <th>العميلة</th>
+                  <th>الجوال</th>
+                  <th>الخدمة</th>
+                  <th>التاريخ</th>
+                  <th>الوقت</th>
+                  <th>الحالة</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: 16, textAlign: "center" }}>
+                      جاري التحميل...
+                    </td>
+                  </tr>
+                ) : myBookings.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: 16, textAlign: "center" }}>
+                      لا توجد حجوزات لك حالياً
+                    </td>
+                  </tr>
+                ) : (
+                  myBookings.map((b) => (
+                    <tr key={b.id}>
+                      <td>{String((b as any)?.clientName || "—")}</td>
+                      <td>{String((b as any)?.clientPhone || (b as any)?.phone || "—")}</td>
+                      <td>{String((b as any)?.serviceName || "—")}</td>
+                      <td>{String((b as any)?.date || "—")}</td>
+                      <td>{String((b as any)?.time || "—")}</td>
+                      <td>
+                        <span className={`status-badge ${(b as any)?.status || "pending"}`}>
+                          {statusLabel[((b as any)?.status || "pending") as BookingStatus] || (b as any)?.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {openMsg && (
+        <div className="modal-overlay" onMouseDown={() => setOpenMsg(false)}>
+          <div className="modal-box" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title-wrap">
+                <div className="modal-icon">💬</div>
+                <div style={{ minWidth: 0 }}>
+                  <h3 className="modal-title">التواصل مع الإدارة</h3>
+                  <p className="modal-text" style={{ marginTop: 4, opacity: 0.75 }}>
+                    اكتب رسالتك وسيتم حفظها داخل Firestore
+                  </p>
+                </div>
+              </div>
+
+              <button className="modal-close" type="button" onClick={() => setOpenMsg(false)}>
+                ×
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {sentMsg && (
+                <div
+                  className={`settings-alert ${sentMsg.startsWith("❌") ? "error" : "success"}`}
+                  style={{ marginBottom: 10 }}
+                >
+                  {sentMsg}
+                </div>
+              )}
+
+              <textarea
+                className="form-control"
+                value={msg}
+                onChange={(e) => setMsg(e.target.value)}
+                placeholder="اكتبي رسالتك للإدارة هنا..."
+                disabled={sending}
+                style={{ minHeight: 140, resize: "vertical" }}
+              />
+
+              <div className="settings-footnote" style={{ marginTop: 10 }}>
+                * يتم حفظ الرسالة داخل Firestore في <b>salons/main/staff_messages</b> لتظهر للإدارة لاحقاً.
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn-cancel" type="button" onClick={() => setOpenMsg(false)} disabled={sending}>
+                إغلاق
+              </button>
+
+              <button className="btn-confirm" type="button" onClick={sendMessage} disabled={sending || !msg.trim()}>
+                {sending ? "جاري الإرسال..." : "إرسال"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

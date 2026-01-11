@@ -262,3 +262,9 @@ p {
     color: #5a4a42 !important;
   }
 } 
+
+/* ✅ Dashboard main should fill viewport (prevents footer gaps) */
+.main-content--dashboard {
+  min-height: 100vh;
+  padding: 0 !important;
+}

@@ -189,12 +189,12 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 }) => {
   const statusLabel = useMemo(
     () =>
-      ({
-        confirmed: "مؤكد",
-        pending: "في الانتظار",
-        cancelled: "ملغي",
-        completed: "مكتمل",
-      } as Record<BookingStatus, string>),
+    ({
+      confirmed: "مؤكد",
+      pending: "في الانتظار",
+      cancelled: "ملغي",
+      completed: "مكتمل",
+    } as Record<BookingStatus, string>),
     []
   );
 
@@ -490,6 +490,20 @@ const Dashboard: React.FC = () => {
    * ✅ تعديل مهم: لا نقرأ المصروفات إلا لو AdminPower (Owner/Admin)
    */
   const refreshDashboard = async (roleForRefresh?: UiRole) => {
+    // ✅ NEW: staff ما له أي Refresh عام (Rules تمنعه من قراءة كل الحجوزات)
+    if (roleForRefresh === "staff") {
+      console.log("REFRESH -> skipped for staff ✅");
+      setStats((prev) => ({
+        ...prev,
+        todayBookings: 0,
+        totalRevenue: 0,
+        totalOperations: 0,
+      }));
+      setLatestBookings([]);
+      setExpensesTotalFS(0);
+      return;
+    }
+
     let step = "start";
 
     // ✅ حسم صلاحية المصروفات بناءً على الرول الحقيقي
@@ -638,7 +652,7 @@ const Dashboard: React.FC = () => {
         sections: { ...prev.sections, ...(cached?.sections || {}) },
         policies: { ...prev.policies, ...(cached?.policies || {}) },
       }));
-    } catch {}
+    } catch { }
 
     // 2) realtime
     const unsub = AppSettingsService.subscribe((remote: any) => {
@@ -706,8 +720,12 @@ const Dashboard: React.FC = () => {
           email: profile.email || user.email || "",
         });
 
-        // ✅ مرر الرول للـ refresh عشان نحدد قراءة المصروفات
-        await refreshDashboard(dashRole);
+        // ✅ NEW: staff لا نسوي له refreshDashboard لأنه يقرأ كل الحجوزات
+        if (dashRole !== "staff") {
+          await refreshDashboard(dashRole);
+        } else {
+          console.log("Dashboard: staff logged in -> go EmployeePortal only ✅");
+        }
       } catch (err) {
         console.error("Dashboard auth error:", err);
         navigate("/login");
@@ -1276,8 +1294,8 @@ const Dashboard: React.FC = () => {
 
                 <div className="dash-status-row">
                   {hasAdminPower ||
-                  (isReception && allowReceptionChangeStatus) ||
-                  (isStaff && allowStaffChangeStatus) ? (
+                    (isReception && allowReceptionChangeStatus) ||
+                    (isStaff && allowStaffChangeStatus) ? (
                     <select
                       className="dash-select"
                       value={selectedBooking.status}

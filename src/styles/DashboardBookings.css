@@ -294,3 +294,92 @@
   border-color: #8b5cf6;
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
 }
+
+/* =========================
+   FIX: dropdown behind + responsive filters
+   Append to: src/styles/DashboardBookings.css
+========================= */
+
+/* خلي الهيدر/الفلاتر فوق أي عناصر تحتها */
+.bookings-header,
+.bk-mini {
+  position: relative;
+  z-index: 20;
+  overflow: visible; /* مهم عشان أي قائمة/منيو ما تنقص */
+}
+
+/* خلّي كروت الإحصائيات تحتهم في الـ stacking */
+.bookings-page .stat-card,
+.bookings-table-card {
+  position: relative;
+  z-index: 1;
+}
+
+/* ✅ Responsive layout للفلاتر بدل min-width الثقيلة */
+.bk-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+/* الغِ اعتماد الـ min-width اللي يكسر الشاشات الصغيرة */
+.bk-field,
+.bk-field.w-180,
+.bk-field.w-200 {
+  min-width: 0 !important;
+}
+
+/* البحث يكون مرن داخل الجريد */
+.bk-search {
+  min-width: 0 !important;
+}
+
+/* صف البحث/الأزرار يصير يلف على الشاشات الضيقة */
+.bk-search-row,
+.bk-actions {
+  flex-wrap: wrap;
+}
+
+/* خلي عناصر التحكم تاخذ عرض كامل على الجوال */
+@media (max-width: 768px) {
+  .bk-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .bk-search-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bk-actions {
+    justify-content: stretch;
+  }
+
+  .bk-actions > * {
+    width: 100%;
+  }
+}
+
+/* ✅ لو عندك أي dropdown/custom menu داخل الفلاتر (غير select الطبيعي) */
+.bk-mini .dropdown-menu,
+.bk-mini [role="listbox"],
+.bk-mini .menu,
+.bk-mini .select-menu {
+  position: absolute;
+  z-index: 9999;
+}
+
+/* ✅ Fix: dropdown appears behind stats/cards */
+.bk-mini {
+  position: relative;
+  z-index: 50;        /* خلي الفلاتر فوق كل اللي تحت */
+  overflow: visible;  /* مهم عشان القائمة تطلع بدون قص */
+}
+
+/* خلي القسم اللي تحت (الكروت/النتائج) تحتها بالستاك */
+.bookings-page .stat-card,
+.bookings-table-card {
+  position: relative;
+  z-index: 1;
+}
