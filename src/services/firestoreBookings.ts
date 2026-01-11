@@ -72,7 +72,9 @@ function normalizeBooking(raw: any): BookingDoc {
     clientPhone: String(raw?.clientPhone ?? ""),
 
     serviceName: String(raw?.serviceName ?? ""),
-    employeeId: raw?.employeeId ?? undefined,
+
+    // ✅ خليه null بدل undefined (أوضح + أسهل في التعامل)
+    employeeId: raw?.employeeId ?? null,
     employeeName: String(raw?.employeeName ?? ""),
 
     date: String(raw?.date ?? ""),
@@ -95,9 +97,7 @@ function safeKey(s: string) {
 }
 
 function buildSlotId(date: string, time: string, employeeKey: string) {
-  return `${SALON_ID}__${safeKey(date)}__${safeKey(time)}__${safeKey(
-    employeeKey
-  )}`;
+  return `${SALON_ID}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
 }
 
 function slotTakenError() {
@@ -125,7 +125,10 @@ function getAmount(b: BookingDoc): number {
 ========================= */
 
 export async function createBooking(data: BookingDoc) {
-  const employeeKey = data.employeeId?.trim() || data.employeeName.trim();
+  // ✅ employeeKey: اعتمد ID إن وجد، وإلا الاسم، وتأكد ما يكون فاضي
+  const employeeKeyRaw = (data.employeeId ?? "").trim() || String(data.employeeName || "").trim();
+  const employeeKey = employeeKeyRaw || "unknown_employee";
+
   const slotId = buildSlotId(data.date, data.time, employeeKey);
 
   const bookingRef = doc(collection(db, ...BOOKINGS_COL));
@@ -133,6 +136,8 @@ export async function createBooking(data: BookingDoc) {
 
   const payload = stripUndefined({
     ...data,
+    // ✅ خلها null بدل undefined عشان تكون ثابتة في الداتا
+    employeeId: (data.employeeId ?? null) as any,
     slotId,
     createdAt: serverTimestamp(),
   });
@@ -153,15 +158,14 @@ export async function createBooking(data: BookingDoc) {
           const existingBooking = normalizeBooking(existingBookingSnap.data());
 
           const sameUser =
-            // لو عندنا uid: الأفضل مطابقته
             (data.userId && existingBooking.userId && data.userId === existingBooking.userId) ||
-            // fallback: نفس رقم الجوال
-            (!data.userId && String(existingBooking.clientPhone || "") === String(data.clientPhone || ""));
+            (!data.userId &&
+              String(existingBooking.clientPhone || "") === String(data.clientPhone || ""));
 
           const sameSlot =
             String(existingBooking.date || "") === String(data.date || "") &&
             String(existingBooking.time || "") === String(data.time || "") &&
-            safeKey(existingBooking.employeeId?.trim() || existingBooking.employeeName.trim()) ===
+            safeKey((existingBooking.employeeId ?? "").trim() || existingBooking.employeeName.trim()) ===
               safeKey(employeeKey);
 
           // ✅ إذا نفس العميل ونفس السلوّت: رجّع نفس الحجز (بدون خطأ)
@@ -199,6 +203,7 @@ export async function createBooking(data: BookingDoc) {
     {
       bookingId,
       serviceName: data.serviceName,
+      employeeId: data.employeeId ?? null, // ✅ NEW (مفيد)
       employeeName: data.employeeName,
       date: data.date,
       time: data.time,
@@ -266,10 +271,7 @@ export async function listAllBookings(): Promise<BookingDocWithId[]> {
   const snap = await getDocs(collection(db, ...BOOKINGS_COL));
   return snap.docs
     .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
-    .sort(
-      (a, b) =>
-        (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.()
-    );
+    .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
 }
 
 /**
@@ -287,11 +289,7 @@ export function watchAllBookings(
     (snap) => {
       const rows = snap.docs
         .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
-        .sort(
-          (a, b) =>
-            (b.createdAt as any)?.toMillis?.() -
-            (a.createdAt as any)?.toMillis?.()
-        );
+        .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
 
       onData(rows);
     },
@@ -302,10 +300,7 @@ export function watchAllBookings(
 }
 
 export async function listUserBookings(userId: string) {
-  const q = query(
-    collection(db, ...BOOKINGS_COL),
-    where("userId", "==", userId)
-  );
+  const q = query(collection(db, ...BOOKINGS_COL), where("userId", "==", userId));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({
     id: d.id,
@@ -323,10 +318,7 @@ export async function listUserBookings(userId: string) {
  * - إذا Pending/Cancelled: يحذف دخل الحجز (إن وجد)
  * - FIX: ممنوع tx.get بعد أي write داخل transaction
  */
-export async function updateBookingStatus(
-  bookingId: string,
-  status: BookingStatus
-) {
+export async function updateBookingStatus(bookingId: string, status: BookingStatus) {
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const trackRef = doc(db, ...TRACKS_COL, bookingId);
   const incomeRef = doc(db, ...INCOME_COL, bookingId);
@@ -352,6 +344,7 @@ export async function updateBookingStatus(
       {
         bookingId,
         serviceName: booking.serviceName,
+        employeeId: booking.employeeId ?? null, // ✅ NEW
         employeeName: booking.employeeName,
         date: booking.date,
         time: booking.time,
@@ -393,16 +386,14 @@ export async function updateBookingStatus(
   });
 }
 
-export async function updateBookingDetails(
-  bookingId: string,
-  patch: Partial<BookingDoc>
-) {
+export async function updateBookingDetails(bookingId: string, patch: Partial<BookingDoc>) {
   await updateDoc(doc(db, ...BOOKINGS_COL, bookingId), stripUndefined(patch));
 
   await updateDoc(
     doc(db, ...TRACKS_COL, bookingId),
     stripUndefined({
       serviceName: patch.serviceName,
+      employeeId: patch.employeeId, // ✅ NEW
       employeeName: patch.employeeName,
       date: patch.date,
       time: patch.time,

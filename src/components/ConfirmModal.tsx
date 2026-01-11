@@ -1,6 +1,7 @@
 // src/components/ConfirmModal.tsx
 import React, { useEffect } from "react";
 import { createPortal } from "react-dom";
+import "../styles/ConfirmModal.css";
 
 type Variant = "info" | "danger" | "success";
 
@@ -44,36 +45,44 @@ const ConfirmModal: React.FC<Props> = ({
 
   const boxClass =
     variant === "danger"
-      ? "modal-box is-danger"
+      ? "qm-modal-box is-danger"
       : variant === "success"
-      ? "modal-box is-success"
-      : "modal-box is-info";
+      ? "qm-modal-box is-success"
+      : "qm-modal-box is-info";
+
+  const icon = variant === "danger" ? "!" : variant === "success" ? "✓" : "i";
 
   return createPortal(
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="qm-modal-overlay" onClick={onCancel}>
       <div className={boxClass} onClick={(e) => e.stopPropagation()} dir="rtl">
-        <div className="modal-head">
-          <div className="modal-title-wrap">
-            <div className="modal-icon">{variant === "danger" ? "!" : "i"}</div>
-            <h3 className="modal-title">{title}</h3>
+        <div className="qm-modal-head">
+          <div className="qm-modal-title-wrap">
+            <div className="qm-modal-icon">{icon}</div>
+            <h3 className="qm-modal-title">{title}</h3>
           </div>
 
-          <button className="modal-close" type="button" onClick={onCancel} aria-label="close">
+          <button
+            className="qm-modal-close"
+            type="button"
+            onClick={onCancel}
+            aria-label="close"
+            title="إغلاق"
+          >
             ×
           </button>
         </div>
 
-        <div className="modal-body">
-          <p className="modal-text">{message || ""}</p>
+        <div className="qm-modal-body">
+          <p className="qm-modal-text">{message || ""}</p>
         </div>
 
-        <div className="modal-actions">
-          <button className="btn-confirm" type="button" onClick={onConfirm}>
+        <div className="qm-modal-actions">
+          <button className="qm-btn-confirm" type="button" onClick={onConfirm}>
             {confirmText}
           </button>
 
           {showCancel && (
-            <button className="btn-cancel" type="button" onClick={onCancel}>
+            <button className="qm-btn-cancel" type="button" onClick={onCancel}>
               {cancelText}
             </button>
           )}

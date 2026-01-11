@@ -1,5 +1,5 @@
 // src/components/Navbar.tsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import logoNavbar from "../assets/images/ssunnamed.png";
 import "../styles/navbar.css";
@@ -84,6 +84,7 @@ const Navbar: React.FC = () => {
     setUserRole(role);
   };
 
+  // ✅ Watch firebase auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setAuthUser(user);
@@ -93,6 +94,7 @@ const Navbar: React.FC = () => {
     return () => unsub();
   }, []);
 
+  // ✅ Listen for authChanged + storage changes
   useEffect(() => {
     syncAuthFromStorage();
 
@@ -108,20 +110,31 @@ const Navbar: React.FC = () => {
     };
   }, []);
 
+  // ✅ مهم جدًا: إغلاق أي منيو/دروب داون عند تغيير الصفحة (هذا يحل “يبقى معلق”)
   useEffect(() => {
-    syncAuthFromStorage();
-    if (isInDashboard) setIsMenuOpen(false); // ✅ نقفل منيو النافبار داخل الداشبورد
-  }, [location.pathname, isInDashboard]);
+    setIsDropdownOpen(false);
+    setIsMenuOpen(false);
+  }, [location.pathname]);
 
+  // ✅ غلق منيو النافبار داخل الداشبورد
+  useEffect(() => {
+    if (isInDashboard) setIsMenuOpen(false);
+  }, [isInDashboard]);
+
+  // ✅ shadow عند scroll
   useEffect(() => {
     const handleScroll = () => setHasScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // ✅ click outside dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
         setIsDropdownOpen(false);
       }
     };
@@ -129,6 +142,7 @@ const Navbar: React.FC = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ✅ click outside mobile menu
   useEffect(() => {
     const handleNavMenuClickOutside = (e: MouseEvent) => {
       if (
@@ -141,7 +155,8 @@ const Navbar: React.FC = () => {
       }
     };
     document.addEventListener("mousedown", handleNavMenuClickOutside);
-    return () => document.removeEventListener("mousedown", handleNavMenuClickOutside);
+    return () =>
+      document.removeEventListener("mousedown", handleNavMenuClickOutside);
   }, [isMenuOpen]);
 
   const handleLogout = async () => {
@@ -188,6 +203,75 @@ const Navbar: React.FC = () => {
   const isDashboardUser =
     isLoggedIn && (isOwner || isAdmin || isReception || isStaff);
 
+  // ✅ عناصر القائمة التي ستُعرض (مهم جدًا لمنع dropdown الفاضي)
+  const dropdownItems = useMemo(() => {
+    if (!isLoggedIn) {
+      return (
+        <>
+          <Link to="/login" onClick={() => setIsDropdownOpen(false)}>
+            تسجيل الدخول
+          </Link>
+          <Link to="/terms" onClick={() => setIsDropdownOpen(false)}>
+            الشروط والأحكام
+          </Link>
+          <Link to="/privacy" onClick={() => setIsDropdownOpen(false)}>
+            سياسة الخصوصية
+          </Link>
+          <Link to="/support" onClick={() => setIsDropdownOpen(false)}>
+            الدعم
+          </Link>
+        </>
+      );
+    }
+
+    // ✅ لو داخل Firebase لكن الرول طلعت guest… لا نخليه فاضي
+    if (!isClient && !isDashboardUser) {
+      return (
+        <>
+          <Link to="/profile" onClick={() => setIsDropdownOpen(false)}>
+            بيانات العميل
+          </Link>
+          <button onClick={handleLogout} className="dropdown-logout-btn">
+            تسجيل الخروج
+          </button>
+        </>
+      );
+    }
+
+    if (isClient) {
+      return (
+        <>
+          <Link to="/profile" onClick={() => setIsDropdownOpen(false)}>
+            بيانات العميل
+          </Link>
+          <button onClick={handleLogout} className="dropdown-logout-btn">
+            تسجيل الخروج
+          </button>
+        </>
+      );
+    }
+
+    if (isDashboardUser) {
+      return (
+        <>
+          <Link to="/dashboard" onClick={() => setIsDropdownOpen(false)}>
+            لوحة التحكم
+          </Link>
+          <Link to="/profile" onClick={() => setIsDropdownOpen(false)}>
+            بيانات العميل
+          </Link>
+          <button onClick={handleLogout} className="dropdown-logout-btn">
+            تسجيل الخروج
+          </button>
+        </>
+      );
+    }
+
+    return null;
+  }, [isLoggedIn, isClient, isDashboardUser, handleLogout]);
+
+  const hasDropdownContent = !!dropdownItems;
+
   return (
     <>
       <div className="topbar">
@@ -214,7 +298,7 @@ const Navbar: React.FC = () => {
 
             <nav
               ref={navMenuRef}
-              className={`navbar-nav ${isMenuOpen ? "open" : "closed"}`}
+              className={`navbar-nav ${isMenuOpen ? "open" : ""}`}
             >
               {navLinks.map((link) => (
                 <Link
@@ -237,6 +321,8 @@ const Navbar: React.FC = () => {
             <button
               className="user-profile"
               onClick={() => {
+                // ✅ لا تفتح dropdown إذا ما فيه عناصر
+                if (!hasDropdownContent) return;
                 setIsDropdownOpen((prev) => !prev);
                 setIsMenuOpen(false);
               }}
@@ -244,50 +330,9 @@ const Navbar: React.FC = () => {
               {isLoggedIn ? <>👤 {userName || "الملف الشخصي"}</> : <>تسجيل الدخول</>}
             </button>
 
-            {isDropdownOpen && (
-              <div className="dropdown-menu">
-                {!isLoggedIn && (
-                  <>
-                    <Link to="/login" onClick={() => setIsDropdownOpen(false)}>
-                      تسجيل الدخول
-                    </Link>
-                    <Link to="/terms" onClick={() => setIsDropdownOpen(false)}>
-                      الشروط والأحكام
-                    </Link>
-                    <Link to="/privacy" onClick={() => setIsDropdownOpen(false)}>
-                      سياسة الخصوصية
-                    </Link>
-                    <Link to="/support" onClick={() => setIsDropdownOpen(false)}>
-                      الدعم
-                    </Link>
-                  </>
-                )}
-
-                {isLoggedIn && isClient && (
-                  <>
-                    <Link to="/profile" onClick={() => setIsDropdownOpen(false)}>
-                      بيانات العميل
-                    </Link>
-                    <button onClick={handleLogout} className="dropdown-logout-btn">
-                      تسجيل الخروج
-                    </button>
-                  </>
-                )}
-
-                {isDashboardUser && (
-                  <>
-                    <Link to="/dashboard" onClick={() => setIsDropdownOpen(false)}>
-                      لوحة التحكم
-                    </Link>
-                    <Link to="/profile" onClick={() => setIsDropdownOpen(false)}>
-                      بيانات العميل
-                    </Link>
-                    <button onClick={handleLogout} className="dropdown-logout-btn">
-                      تسجيل الخروج
-                    </button>
-                  </>
-                )}
-              </div>
+            {/* ✅ لا ترسم dropdown إلا إذا: مفتوح + فيه عناصر */}
+            {isDropdownOpen && hasDropdownContent && (
+              <div className="dropdown-menu">{dropdownItems}</div>
             )}
           </div>
         </div>

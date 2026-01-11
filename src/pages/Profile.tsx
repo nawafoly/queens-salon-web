@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/Profile.css";
 
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
 import { auth } from "../services/firebase";
 
 import {
@@ -16,7 +16,6 @@ import {
 // دعم واتساب
 // =======================
 const SUPPORT_PHONE = "966573235247"; // ✅ بدون +
-// نص الرسالة
 const SUPPORT_MSG = "مرحباً، أحتاج مساعدة في حسابي في صالون ملكات.";
 
 function getWhatsAppLink(phoneDigits: string, msg: string) {
@@ -59,7 +58,7 @@ function statusClass(status?: string) {
   if (s === "مؤكد" || s === "confirmed") return "confirmed";
   if (s === "انتظار" || s === "pending") return "pending";
   if (s === "مكتمل" || s === "completed") return "completed";
-  if (s === "ملغي" || s === "cancelled") return "ملغي";
+  if (s === "ملغي" || s === "cancelled") return "cancelled"; // ✅ توحيد اسم الكلاس
   return "";
 }
 
@@ -85,19 +84,16 @@ function normalizeKsaPhone(raw: string) {
   return digits; // fallback
 }
 
-
 const Profile: React.FC = () => {
   const navigate = useNavigate();
 
   const [profileMode, setProfileMode] = useState<ProfileMode>("local");
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [profileDoc, setProfileDoc] = useState<UserProfile | null>(null);
 
-  // ✅ حماية صفحة البروفايل (حسب authToken مثل نظامك الحالي)
-  useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    if (!token) navigate("/login");
-  }, [navigate]);
+  // ✅ مهم: نمنع أي ريداركت قبل ما نخلص فحص Firebase Auth
+  const [authChecked, setAuthChecked] = useState(false);
 
   // ✅ قراءة بروفايل مخزن (أولوية للعرض)
   const cachedProfile = useMemo(() => {
@@ -139,6 +135,8 @@ const Profile: React.FC = () => {
   // =======================
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
+      setFirebaseUser(user || null);
+
       // لا يوجد Firebase user => Local
       if (!user) {
         setProfileMode("local");
@@ -162,6 +160,7 @@ const Profile: React.FC = () => {
           }
         } catch {}
 
+        setAuthChecked(true);
         return;
       }
 
@@ -186,15 +185,31 @@ const Profile: React.FC = () => {
         if (p?.name) localStorage.setItem("userName", String(p.name));
         if (p?.email) localStorage.setItem("userEmail", String(p.email));
         if (p?.phone) localStorage.setItem("userPhone", String(p.phone));
+
         window.dispatchEvent(new Event("authChanged"));
       } catch (e) {
         console.error("Profile load error:", e);
         setProfileMode("local");
+      } finally {
+        setAuthChecked(true);
       }
     });
 
     return () => unsub();
   }, []);
+
+  // ✅ حماية صفحة البروفايل (لا تعتمد على authToken فقط)
+  // الشرط: (Firebase user موجود) OR (authToken موجود)
+  useEffect(() => {
+    if (!authChecked) return;
+
+    const token = localStorage.getItem("authToken");
+    const firebaseOk = !!firebaseUser;
+
+    if (!token && !firebaseOk) {
+      navigate("/login");
+    }
+  }, [authChecked, firebaseUser, navigate]);
 
   // =======================
   // الحجوزات
@@ -205,16 +220,20 @@ const Profile: React.FC = () => {
     const allBookings: BookingData[] = JSON.parse(
       localStorage.getItem("allBookings") || "[]"
     );
-  
+
     const myPhone = normalizeKsaPhone(userData.phone);
-  
+
+    if (!myPhone) {
+      setBookings([]);
+      return;
+    }
+
     setBookings(
       allBookings
         .filter((b) => normalizeKsaPhone(b.phone) === myPhone)
         .reverse()
     );
   }, [userData.phone]);
-  
 
   const nextBooking = useMemo(() => {
     const today = new Date();
@@ -274,7 +293,7 @@ const Profile: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // (اختياري) لو تبي تحد 2MB زي تفضيلك
+    // (اختياري) حد 2MB
     // if (file.size > 2 * 1024 * 1024) { alert("الصورة لازم أقل من 2MB"); return; }
 
     const reader = new FileReader();
@@ -374,6 +393,17 @@ const Profile: React.FC = () => {
     window.dispatchEvent(new Event("authChanged"));
     window.location.href = "/login";
   };
+
+  // ✅ لودر بسيط قبل ما نخلص فحص الدخول
+  if (!authChecked) {
+    return (
+      <div className="profile-page">
+        <div className="container" style={{ maxWidth: 820, textAlign: "center" }}>
+          جاري تحميل الحساب...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="profile-page">

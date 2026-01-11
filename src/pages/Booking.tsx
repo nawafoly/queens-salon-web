@@ -1,5 +1,5 @@
 // src/pages/Booking.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -13,7 +13,6 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { generateSalonTimeSlots } from "../helpers/timeSlots";
 import "../styles/Booking.css";
-import { useRef } from "react";
 
 // ✅ NEW: Firestore slot availability check
 import { doc, getDoc } from "firebase/firestore";
@@ -24,16 +23,16 @@ import { pricingSections } from "./Pricing";
 
 // ✅ Firestore Offers
 import type { Offer as FsOffer } from "../services/firestoreOffers";
-import {
-  findActiveOfferByCode,
-  offerAppliesToService,
-} from "../services/firestoreOffers";
+import { findActiveOfferByCode, offerAppliesToService } from "../services/firestoreOffers";
 
 // ✅ NEW: Staff Public (Firestore)
 import {
   listActiveStaffBySpecialty,
   type StaffPublicWithId,
 } from "../services/firestoreStaffPublic";
+
+// ✅ Custom modal بدل alert
+import ConfirmModal from "../components/ConfirmModal";
 
 /**
  * ✅ Payment methods
@@ -59,7 +58,13 @@ interface BookingFormData {
   name: string;
   phone: string;
   service: string; // ✅ serviceId
+
+  // ✅ نحتفظ بالاسم للتوافق مع صفحات قديمة
   employee: string;
+
+  // ✅ NEW: المرجع الحقيقي للموظفة (Firestore doc id)
+  employeeId?: string;
+
   date: string;
   time: string;
   note?: string;
@@ -72,7 +77,6 @@ interface BookingFormData {
   discountAmount?: number;
   finalPrice?: number;
 
-  // ✅ نضيف نطاق العرض للحجز (مفيد لاحقًا)
   offerAppliesTo?: "all" | "services";
   offerServiceIds?: string[];
 
@@ -125,26 +129,16 @@ const SALON_ID = "main";
 
 // ✅ NEW: نفس منطق slotId الموجود في firestoreBookings.ts
 function safeKey(s: string) {
-  return String(s || "")
-    .trim()
-    .replaceAll("/", "-")
-    .replace(/\s+/g, "_");
+  return String(s || "").trim().replaceAll("/", "-").replace(/\s+/g, "_");
 }
-function buildSlotId(
-  salonId: string,
-  employeeKey: string,
-  date: string,
-  time: string
-) {
-  return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(
-    employeeKey
-  )}`;
+function buildSlotId(salonId: string, employeeKey: string, date: string, time: string) {
+  return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
 }
 
 function calcDiscount(basePrice: number, offer: FsOffer) {
-  const value = Number(offer.value || 0);
+  const value = Number((offer as any).value || 0);
 
-  if (offer.discountType === "percent") {
+  if ((offer as any).discountType === "percent") {
     const percent = Math.min(100, Math.max(0, value));
     const discount = Math.round((basePrice * percent) / 100);
     return {
@@ -161,10 +155,35 @@ function calcDiscount(basePrice: number, offer: FsOffer) {
   };
 }
 
+/**
+ * ✅ أهم إصلاح: صلاحية العرض حسب "تاريخ الحجز" (مو اليوم)
+ */
+function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {
+  if (!bookingDateISO) return { ok: true, reason: "" };
+
+  const s = String(offer?.startDate || "").trim();
+  const e = String(offer?.endDate || "").trim();
+
+  if (s && bookingDateISO < s) {
+    return { ok: false, reason: `العرض يبدأ من ${s}` };
+  }
+  if (e && bookingDateISO > e) {
+    return { ok: false, reason: `العرض انتهى بتاريخ ${e}` };
+  }
+  return { ok: true, reason: "" };
+}
+
+type UiModalState = {
+  open: boolean;
+  title: string;
+  message: string;
+  variant: "info" | "danger" | "success";
+  confirmText?: string;
+};
+
 const Booking: React.FC = () => {
   const navigate = useNavigate();
-
-  const dateInputRef = useRef<HTMLInputElement | null>(null); // ✅ هنا
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
 
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
 
@@ -173,6 +192,7 @@ const Booking: React.FC = () => {
     phone: "",
     service: "",
     employee: "",
+    employeeId: "",
     date: "",
     time: "",
     note: "",
@@ -203,6 +223,20 @@ const Booking: React.FC = () => {
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffError, setStaffError] = useState("");
 
+  // ✅ Modal بدل alert
+  const [uiModal, setUiModal] = useState<UiModalState>({
+    open: false,
+    title: "",
+    message: "",
+    variant: "info",
+    confirmText: "حسنًا",
+  });
+
+  const openModal = (data: Omit<UiModalState, "open">) => {
+    setUiModal({ open: true, ...data });
+  };
+  const closeModal = () => setUiModal((p) => ({ ...p, open: false }));
+
   const servicesFlat: FlatService[] = useMemo(() => {
     const out: FlatService[] = [];
 
@@ -211,12 +245,12 @@ const Booking: React.FC = () => {
         sectionId === "hair" || sectionId === "coloring"
           ? "الشعر"
           : sectionId === "makeup"
-            ? "المكياج"
-            : sectionId === "nails"
-              ? "الأظافر"
-              : sectionId === "waxing"
-                ? "البشرة"
-                : "الشعر";
+          ? "المكياج"
+          : sectionId === "nails"
+          ? "الأظافر"
+          : sectionId === "waxing"
+          ? "البشرة"
+          : "الشعر";
 
       section.services.forEach((cat, catIdx) => {
         cat.items.forEach((it, itemIdx) => {
@@ -262,12 +296,9 @@ const Booking: React.FC = () => {
     return Array.from(map.entries());
   }, [servicesInSection]);
 
-  const getServiceById = (id: string) =>
-    servicesFlat.find((s) => s.id === id) || null;
-
+  const getServiceById = (id: string) => servicesFlat.find((s) => s.id === id) || null;
   const getServiceName = (id: string) => getServiceById(id)?.name || id;
-  const getServiceBasePrice = (id: string) =>
-    getServiceById(id)?.basePrice || 0;
+  const getServiceBasePrice = (id: string) => getServiceById(id)?.basePrice || 0;
 
   const selectedService = useMemo(() => {
     return formData.service ? getServiceById(formData.service) : null;
@@ -305,12 +336,8 @@ const Booking: React.FC = () => {
             setStaffError(
               "Firestore يحتاج Index للاستعلام (array-contains). افتح الكونسول واضغط Create index من رسالة الخطأ."
             );
-          } else if (
-            msg.toLowerCase().includes("missing or insufficient permissions")
-          ) {
-            setStaffError(
-              "صلاحيات قراءة الموظفات غير كافية. لازم نفتح قراءة staff_public للعميلات في Rules."
-            );
+          } else if (msg.toLowerCase().includes("missing or insufficient permissions")) {
+            setStaffError("صلاحيات قراءة الموظفات غير كافية. لازم نفتح قراءة staff_public للعميلات في Rules.");
           } else {
             setStaffError("تعذر تحميل قائمة الموظفات. جرّبي تحديث الصفحة.");
           }
@@ -344,7 +371,8 @@ const Booking: React.FC = () => {
     return list.filter((emp) => {
       const found = all.find(
         (b: any) =>
-          String(b.employee || "").trim() === emp.name &&
+          (String(b.employeeId || "").trim() === emp.id ||
+            String(b.employee || "").trim() === emp.name) &&
           String(b.date || "").trim() === formData.date &&
           String(b.time || "").trim() === formData.time
       );
@@ -352,22 +380,24 @@ const Booking: React.FC = () => {
     });
   }, [staff, formData.date, formData.time]);
 
-  // ✅ لو الموظفة المختارة صارت غير موجودة/غير متاحة → صَفّرها
   useEffect(() => {
-    if (!formData.employee) return;
+    const chosenId = String(formData.employeeId || "").trim();
+    const chosenName = String(formData.employee || "").trim();
 
-    const exists = filteredEmployees.some(
-      (e) => e.name.trim() === formData.employee.trim()
-    );
+    if (!chosenId && !chosenName) return;
+
+    const exists =
+      (chosenId && filteredEmployees.some((e) => e.id === chosenId)) ||
+      (!chosenId && chosenName && filteredEmployees.some((e) => e.name === chosenName));
 
     if (!exists) {
-      setFormData((p) => ({ ...p, employee: "" }));
+      setFormData((p) => ({ ...p, employeeId: "", employee: "" }));
     }
-  }, [filteredEmployees, formData.employee]);
+  }, [filteredEmployees, formData.employeeId, formData.employee]);
 
   // =========================
   // ✅ NEW: فحص السلوّت مبكرًا من Firestore
-  // (أول ما تكتمل employee + date + time)
+  // ✅✅ FIX: اقرأ من نفس المسار الحقيقي: salons/main/booking_slots
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -376,7 +406,7 @@ const Booking: React.FC = () => {
       setSlotBusy(false);
       setSlotMsg("");
 
-      const employeeKey = String(formData.employee || "").trim();
+      const employeeKey = String(formData.employeeId || formData.employee || "").trim();
       const date = String(formData.date || "").trim();
       const time = String(formData.time || "").trim();
 
@@ -386,21 +416,21 @@ const Booking: React.FC = () => {
         setSlotChecking(true);
 
         const slotId = buildSlotId(SALON_ID, employeeKey, date, time);
-        const snap = await getDoc(doc(db, "booking_slots", slotId));
+
+        // ✅✅ هنا التعديل الحقيقي:
+        // بدل doc(db, "booking_slots", slotId)
+        const snap = await getDoc(doc(db, "salons", SALON_ID, "booking_slots", slotId));
 
         if (cancelled) return;
 
         if (snap.exists()) {
           setSlotBusy(true);
-          setSlotMsg(
-            "هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت."
-          );
+          setSlotMsg("هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت.");
         } else {
           setSlotBusy(false);
           setSlotMsg("");
         }
       } catch (e) {
-        // فشل الفحص لا نكسر التجربة، نخليه صامت
         if (!cancelled) {
           setSlotBusy(false);
           setSlotMsg("");
@@ -414,12 +444,10 @@ const Booking: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [formData.employee, formData.date, formData.time]);
+  }, [formData.employeeId, formData.employee, formData.date, formData.time]);
 
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
 
@@ -442,6 +470,7 @@ const Booking: React.FC = () => {
 
       if (name === "service") {
         next.employee = "";
+        next.employeeId = "";
         setCouponCode("");
         setManualOverride(false);
         setOfferMsg("");
@@ -464,6 +493,7 @@ const Booking: React.FC = () => {
       ...prev,
       service: "",
       employee: "",
+      employeeId: "",
     }));
 
     setCouponCode("");
@@ -485,7 +515,7 @@ const Booking: React.FC = () => {
 
     setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
     setOfferMsg("");
-  }, [formData.service, formData.employee, formData.date, manualOverride]);
+  }, [formData.service, formData.employeeId, formData.employee, formData.date, manualOverride]);
 
   const handleApplyCoupon = async () => {
     const basePrice = getServiceBasePrice(formData.service);
@@ -493,6 +523,11 @@ const Booking: React.FC = () => {
 
     if (!serviceId || !basePrice) {
       setOfferMsg("اختاري الخدمة أولاً قبل تطبيق الكود");
+      return;
+    }
+
+    if (!formData.date) {
+      setOfferMsg("اختاري تاريخ الحجز أولاً ثم طبّقي الكود");
       return;
     }
 
@@ -519,6 +554,14 @@ const Booking: React.FC = () => {
         return;
       }
 
+      const dateCheck = isOfferValidForBookingDate(offer as any, formData.date);
+      if (!dateCheck.ok) {
+        setManualOverride(false);
+        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
+        setOfferMsg(dateCheck.reason || "هذا العرض غير متاح لتاريخ الحجز المختار");
+        return;
+      }
+
       const { discountAmount, finalPrice } = calcDiscount(basePrice, offer);
 
       setApplied({
@@ -529,7 +572,7 @@ const Booking: React.FC = () => {
       });
 
       setManualOverride(true);
-      setOfferMsg(`تم تطبيق الخصم: ${offer.title} ✅`);
+      setOfferMsg(`تم تطبيق الخصم: ${(offer as any).title} ✅`);
     } catch (e: any) {
       console.error("❌ apply coupon error:", e?.code, e?.message, e);
       setOfferMsg("صار خطأ في التحقق من الكود");
@@ -548,11 +591,13 @@ const Booking: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // ✅ NEW: إذا الوقت محجوز لا تكمل
     if (slotBusy) {
-      alert(
-        "هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت"
-      );
+      openModal({
+        title: "الوقت غير متاح",
+        message: "هذا الوقت محجوز لهذه الموظفة. اختاري وقتًا آخر أو موظفة أخرى إن وُجدت.",
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
       return;
     }
 
@@ -560,7 +605,22 @@ const Booking: React.FC = () => {
     const isValidSaudiMobile = /^05\d{8}$/.test(phone);
 
     if (!isValidSaudiMobile) {
-      alert("رقم الجوال غير صحيح. لازم يبدأ بـ 05 ويكون 10 أرقام.");
+      openModal({
+        title: "رقم الجوال غير صحيح",
+        message: "لازم يبدأ بـ 05 ويكون 10 أرقام.",
+        variant: "danger",
+        confirmText: "تعديل",
+      });
+      return;
+    }
+
+    if (!String(formData.employeeId || "").trim() || !String(formData.employee || "").trim()) {
+      openModal({
+        title: "اختيار الموظفة",
+        message: "فضلاً اختاري الموظفة من القائمة.",
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
       return;
     }
 
@@ -570,9 +630,7 @@ const Booking: React.FC = () => {
     const basePrice = getServiceBasePrice(formData.service);
     const serviceId = formData.service;
 
-    const normalizedPayment: PaymentMethod = normalizePaymentMethod(
-      formData.paymentMethod
-    );
+    const normalizedPayment: PaymentMethod = normalizePaymentMethod(formData.paymentMethod);
 
     const normalizedCode = couponCode.trim();
     let finalApplied: AppliedOfferResult = applied;
@@ -582,13 +640,35 @@ const Booking: React.FC = () => {
         const offer = await findActiveOfferByCode(SALON_ID, normalizedCode);
         if (!offer) {
           setIsLoading(false);
-          alert("الكود غير صحيح أو غير متاح");
+          openModal({
+            title: "كود الخصم غير صحيح",
+            message: "الكود غير صحيح أو غير متاح حالياً.",
+            variant: "danger",
+            confirmText: "حسنًا",
+          });
           return;
         }
 
         if (!offerAppliesToService(offer, serviceId)) {
           setIsLoading(false);
-          alert("هذا الكود لا ينطبق على هذه الخدمة");
+          openModal({
+            title: "الكود لا ينطبق",
+            message: "هذا الكود لا ينطبق على هذه الخدمة.",
+            variant: "danger",
+            confirmText: "حسنًا",
+          });
+          return;
+        }
+
+        const dateCheck = isOfferValidForBookingDate(offer as any, formData.date);
+        if (!dateCheck.ok) {
+          setIsLoading(false);
+          openModal({
+            title: "العرض غير متاح لهذا التاريخ",
+            message: dateCheck.reason || "هذا العرض غير متاح لتاريخ الحجز المختار.",
+            variant: "danger",
+            confirmText: "حسنًا",
+          });
           return;
         }
 
@@ -603,15 +683,18 @@ const Booking: React.FC = () => {
         setManualOverride(true);
       } catch (err) {
         setIsLoading(false);
-        alert("صار خطأ في التحقق من الكود");
+        openModal({
+          title: "تعذر التحقق من الكود",
+          message: "صار خطأ أثناء التحقق من كود الخصم. جرّبي مرة ثانية.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
         return;
       }
     }
 
     const finalPriceNum =
-      Number(finalApplied.finalPrice || 0) > 0
-        ? finalApplied.finalPrice
-        : basePrice;
+      Number(finalApplied.finalPrice || 0) > 0 ? finalApplied.finalPrice : basePrice;
 
     const bookingId = makeBookingId();
 
@@ -620,16 +703,19 @@ const Booking: React.FC = () => {
       paymentMethod: normalizedPayment,
       phone,
       couponCode: normalizedCode || "",
-      offerId: finalApplied.offer?.id || null,
-      offerTitle: finalApplied.offer?.title || null,
+      offerId: (finalApplied.offer as any)?.id || null,
+      offerTitle: (finalApplied.offer as any)?.title || null,
       discountAmount: finalApplied.discountAmount || 0,
       finalPrice: finalPriceNum,
-      offerAppliesTo: (finalApplied.offer?.appliesTo as any) || "all",
-      offerServiceIds: Array.isArray(finalApplied.offer?.serviceIds)
-        ? (finalApplied.offer!.serviceIds as string[])
+      offerAppliesTo: ((finalApplied.offer as any)?.appliesTo as any) || "all",
+      offerServiceIds: Array.isArray((finalApplied.offer as any)?.serviceIds)
+        ? ((finalApplied.offer as any).serviceIds as string[])
         : [],
       bookingId,
       total: Number(finalPriceNum || 0),
+
+      employeeId: String(formData.employeeId || "").trim(),
+      employee: String(formData.employee || "").trim(),
     };
 
     localStorage.setItem("currentBooking", JSON.stringify(bookingWithOffer));
@@ -651,7 +737,12 @@ const Booking: React.FC = () => {
         parsed.paymentMethod = "cash";
       }
 
-      setFormData(parsed);
+      setFormData((prev) => ({
+        ...prev,
+        ...parsed,
+        employee: String(parsed?.employee || "").trim(),
+        employeeId: String(parsed?.employeeId || "").trim(),
+      }));
 
       if (parsed?.service) {
         const s = getServiceById(parsed.service);
@@ -701,20 +792,27 @@ const Booking: React.FC = () => {
   };
 
   const basePrice = getServiceBasePrice(formData.service);
-  const finalPrice =
-    Number(applied.finalPrice || 0) > 0 ? applied.finalPrice : basePrice;
+  const finalPrice = Number(applied.finalPrice || 0) > 0 ? applied.finalPrice : basePrice;
 
   return (
     <div className="booking-page py-5">
+      <ConfirmModal
+        open={uiModal.open}
+        title={uiModal.title}
+        message={uiModal.message}
+        variant={uiModal.variant}
+        confirmText={uiModal.confirmText || "حسنًا"}
+        onConfirm={closeModal}
+        onCancel={closeModal}
+      />
+
       <div className="container">
         <div className="row justify-content-center">
           <div className="col-lg-8">
             <div className="booking-card">
               <div className="booking-header">
                 <h1 className="booking-title">احجزي موعدك الآن</h1>
-                <p className="booking-subtitle">
-                  اختاري الخدمة والوقت المناسب لك وسنكون بانتظارك
-                </p>
+                <p className="booking-subtitle">اختاري الخدمة والوقت المناسب لك وسنكون بانتظارك</p>
               </div>
 
               <form className="booking-form" onSubmit={handleSubmit}>
@@ -764,7 +862,6 @@ const Booking: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ✅ تعديل تنسيق فقط: bk-field + dash-select */}
                 <div className="mb-4 bk-field">
                   <label className="form-label">القسم</label>
                   <select
@@ -784,7 +881,6 @@ const Booking: React.FC = () => {
                   </select>
                 </div>
 
-                {/* ✅ تعديل تنسيق فقط: bk-field + dash-select */}
                 <div className="mb-4 bk-field">
                   <label htmlFor="service" className="form-label">
                     الخدمة المطلوبة
@@ -825,7 +921,6 @@ const Booking: React.FC = () => {
                 </div>
 
                 <div className="row">
-                  {/* ✅ الموظفة تظهر بعد اختيار القسم */}
                   <div className="col-md-6 mb-4">
                     <label htmlFor="employee" className="form-label">
                       الموظفة
@@ -834,12 +929,22 @@ const Booking: React.FC = () => {
                       <span className="input-group-text">
                         <FontAwesomeIcon icon={faUserTie} />
                       </span>
+
                       <select
                         className="form-select"
                         id="employee"
-                        name="employee"
-                        value={formData.employee}
-                        onChange={handleChange}
+                        name="employeeId"
+                        value={formData.employeeId || ""}
+                        onChange={(e) => {
+                          const employeeId = e.target.value;
+                          const emp = filteredEmployees.find((x) => x.id === employeeId);
+
+                          setFormData((prev) => ({
+                            ...prev,
+                            employeeId,
+                            employee: emp?.name || "",
+                          }));
+                        }}
                         required={!!selectedSectionId}
                         disabled={!selectedSectionId || staffLoading}
                       >
@@ -847,23 +952,19 @@ const Booking: React.FC = () => {
                           {staffLoading
                             ? "جاري تحميل الموظفات..."
                             : !selectedSectionId
-                              ? "اختاري القسم أولاً"
-                              : "اختاري الموظفة"}
+                            ? "اختاري القسم أولاً"
+                            : "اختاري الموظفة"}
                         </option>
 
                         {filteredEmployees.map((emp) => (
-                          <option key={emp.id} value={emp.name}>
+                          <option key={emp.id} value={emp.id}>
                             {emp.name}
                           </option>
                         ))}
                       </select>
                     </div>
 
-                    {staffError && (
-                      <div className="no-employee-warning mt-2">
-                        {staffError}
-                      </div>
-                    )}
+                    {staffError && <div className="no-employee-warning mt-2">{staffError}</div>}
 
                     {!staffError &&
                       selectedSectionId &&
@@ -952,21 +1053,12 @@ const Booking: React.FC = () => {
                     </select>
                   </div>
 
-                  {/* ✅ NEW: رسالة توفر الوقت + تحميل */}
-                  {slotChecking &&
-                    formData.employee &&
-                    formData.date &&
-                    formData.time && (
-                      <div className="mt-2 booking-offer-msg">
-                        جاري التحقق من توفر هذا الوقت...
-                      </div>
-                    )}
-                  {slotMsg && (
-                    <div className="no-employee-warning mt-2">{slotMsg}</div>
+                  {slotChecking && formData.employeeId && formData.date && formData.time && (
+                    <div className="mt-2 booking-offer-msg">جاري التحقق من توفر هذا الوقت...</div>
                   )}
+                  {slotMsg && <div className="no-employee-warning mt-2">{slotMsg}</div>}
                 </div>
 
-                {/* ✅ تعديل تنسيق فقط: bk-field + dash-select */}
                 <div className="mb-4 bk-field">
                   <label className="form-label">طريقة الدفع</label>
                   <select
@@ -983,8 +1075,7 @@ const Booking: React.FC = () => {
 
                   {formData.paymentMethod === "mada_online" && (
                     <div className="mt-2 booking-offer-msg">
-                      * مدى أونلاين حالياً تجربة مبدئية: سيتم حفظ الحجز “بانتظار
-                      الدفع” ثم المتابعة لصفحة Success.
+                      * مدى أونلاين حالياً تجربة مبدئية: سيتم حفظ الحجز “بانتظار الدفع” ثم المتابعة لصفحة Success.
                     </div>
                   )}
                 </div>
@@ -1007,7 +1098,7 @@ const Booking: React.FC = () => {
                 <div className="booking-offer-box mb-4">
                   <label className="form-label">كود خصم (اختياري)</label>
 
-                  <div className="d-flex gap-2">
+                  <div className="bk-coupon-row d-flex gap-2">
                     <input
                       value={couponCode}
                       onChange={(e) => setCouponCode(e.target.value)}
@@ -1015,17 +1106,19 @@ const Booking: React.FC = () => {
                       placeholder="مثال: QUEENS10"
                       disabled={!formData.service}
                     />
+
                     <button
                       type="button"
-                      className="btn"
+                      className="bk-coupon-btn bk-coupon-btn--apply"
                       onClick={handleApplyCoupon}
                       disabled={!formData.service}
                     >
                       تطبيق
                     </button>
+
                     <button
                       type="button"
-                      className="btn btn-outline-secondary"
+                      className="bk-coupon-btn bk-coupon-btn--remove"
                       onClick={handleRemoveCoupon}
                       disabled={!formData.service}
                     >
@@ -1033,9 +1126,7 @@ const Booking: React.FC = () => {
                     </button>
                   </div>
 
-                  {offerMsg && (
-                    <div className="mt-2 booking-offer-msg">{offerMsg}</div>
-                  )}
+                  {offerMsg && <div className="mt-2 booking-offer-msg">{offerMsg}</div>}
 
                   <div className="booking-price-summary mt-3">
                     <div className="d-flex justify-content-between">
@@ -1045,9 +1136,7 @@ const Booking: React.FC = () => {
 
                     <div className="d-flex justify-content-between">
                       <span>الخصم</span>
-                      <strong>
-                        {Number(applied.discountAmount || 0).toFixed(0)} ريال
-                      </strong>
+                      <strong>{Number(applied.discountAmount || 0).toFixed(0)} ريال</strong>
                     </div>
 
                     <div className="d-flex justify-content-between">
@@ -1057,7 +1146,7 @@ const Booking: React.FC = () => {
 
                     {applied.offer && (
                       <div className="mt-2">
-                        العرض المطبق: <b>{applied.offer.title}</b>
+                        العرض المطبق: <b>{(applied.offer as any).title}</b>
                       </div>
                     )}
                   </div>
@@ -1098,16 +1187,13 @@ const Booking: React.FC = () => {
             </div>
             <h2 className="success-title">تم تأكيد حجزك بنجاح!</h2>
             <p className="success-message">
-              شكراً لاختيارك صالون ملكات. تم استلام طلب حجزك وسيتم التواصل معك
-              قريباً لتأكيد الموعد.
+              شكراً لاختيارك صالون ملكات. تم استلام طلب حجزك وسيتم التواصل معك قريباً لتأكيد الموعد.
             </p>
 
             <div className="booking-details">
               <div className="booking-detail-item">
                 <span className="booking-detail-label">الخدمة:</span>
-                <span className="booking-detail-value">
-                  {getServiceName(formData.service)}
-                </span>
+                <span className="booking-detail-value">{getServiceName(formData.service)}</span>
               </div>
 
               <div className="booking-detail-item">
@@ -1117,9 +1203,7 @@ const Booking: React.FC = () => {
 
               <div className="booking-detail-item">
                 <span className="booking-detail-label">التاريخ:</span>
-                <span className="booking-detail-value">
-                  {formatDate(formData.date)}
-                </span>
+                <span className="booking-detail-value">{formatDate(formData.date)}</span>
               </div>
 
               <div className="booking-detail-item">
@@ -1129,33 +1213,25 @@ const Booking: React.FC = () => {
 
               <div className="booking-detail-item">
                 <span className="booking-detail-label">السعر النهائي:</span>
-                <span className="booking-detail-value">
-                  {Number(finalPrice).toFixed(0)} ريال
-                </span>
+                <span className="booking-detail-value">{Number(finalPrice).toFixed(0)} ريال</span>
               </div>
 
               {applied.offer && (
                 <div className="booking-detail-item">
                   <span className="booking-detail-label">العرض:</span>
-                  <span className="booking-detail-value">
-                    {applied.offer.title}
-                  </span>
+                  <span className="booking-detail-value">{(applied.offer as any).title}</span>
                 </div>
               )}
             </div>
 
             <div className="success-actions">
-              <button
-                className="success-primary-btn"
-                onClick={() => navigate("/checkout")}
-              >
+              <button className="success-primary-btn" onClick={() => navigate("/checkout")}>
                 الانتقال للدفع
               </button>
             </div>
 
             <p className="redirect-message">
-              سيتم تحويلك تلقائياً إلى صفحة الدفع خلال{" "}
-              <span className="countdown">{countdown}</span> ثواني
+              سيتم تحويلك تلقائياً إلى صفحة الدفع خلال <span className="countdown">{countdown}</span> ثواني
             </p>
           </div>
         </div>

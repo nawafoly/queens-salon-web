@@ -18,9 +18,10 @@ import {
   faTag,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { getAuth } from "firebase/auth";
-
+import { getAuth, signInAnonymously } from "firebase/auth";
 import "../styles/Checkout.css";
+
+import ConfirmModal from "../components/ConfirmModal";
 
 type PaymentMethod = "cash" | "pos_card" | "mada_online";
 type PaymentStatus = "pending" | "paid";
@@ -36,7 +37,12 @@ type BookingData = {
   service?: string;
   serviceName?: string;
 
+  // ✅ القديم (اسم الموظفة)
   employee?: string;
+
+  // ✅ NEW: id الحقيقي للموظفة
+  employeeId?: string;
+
   date?: string;
   time?: string;
 
@@ -68,17 +74,13 @@ function methodLabel(m: PaymentMethod) {
 function normalizePaymentMethod(x: any): PaymentMethod {
   const s = String(x || "").toLowerCase().trim();
 
-  if (s === "mada_online" || s.includes("اونلاين") || s.includes("online"))
-    return "mada_online";
-  if (s === "pos_card" || s.includes("في الصالون") || s.includes("صالون"))
-    return "pos_card";
+  if (s === "mada_online" || s.includes("اونلاين") || s.includes("online")) return "mada_online";
+  if (s === "pos_card" || s.includes("في الصالون") || s.includes("صالون")) return "pos_card";
   if (s === "cash" || s === "كاش" || s === "نقد") return "cash";
 
   if (s === "pos_mada") return "pos_card";
-  if (s === "card" || s === "شبكة" || s === "مدى" || s === "mada")
-    return "pos_card";
-  if (s === "transfer" || s === "تحويل" || s === "بنكي" || s === "bank")
-    return "cash";
+  if (s === "card" || s === "شبكة" || s === "مدى" || s === "mada") return "pos_card";
+  if (s === "transfer" || s === "تحويل" || s === "بنكي" || s === "bank") return "cash";
   if (s === "other" || s === "اخرى" || s === "أخرى") return "cash";
 
   return "cash";
@@ -88,18 +90,53 @@ export default function Checkout() {
   const navigate = useNavigate();
   const [booking, setBooking] = useState<BookingData | null>(null);
 
-  // ✅ NEW: منع التكرار (double submit)
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ✅ modal بدل alert
+  const [modal, setModal] = useState({
+    open: false,
+    title: "",
+    message: "",
+    variant: "info" as "info" | "danger" | "success",
+    afterClose: null as null | (() => void),
+  });
+
+  const openModal = (x: {
+    title: string;
+    message: string;
+    variant?: "info" | "danger" | "success";
+    afterClose?: null | (() => void);
+  }) => {
+    setModal({
+      open: true,
+      title: x.title,
+      message: x.message,
+      variant: x.variant || "info",
+      afterClose: x.afterClose ?? null,
+    });
+  };
+
+  const closeModal = () => {
+    setModal((p) => {
+      const cb = p.afterClose;
+      setTimeout(() => cb?.(), 0);
+      return { ...p, open: false, afterClose: null };
+    });
+  };
+
   useEffect(() => {
-    const raw = localStorage.getItem(BOOKING_KEY);
-    if (!raw) {
-      setBooking(null);
-      return;
-    }
     try {
-      setBooking(JSON.parse(raw));
-    } catch {
+      const raw = localStorage.getItem(BOOKING_KEY);
+
+      if (!raw) {
+        setBooking(null);
+        return;
+      }
+
+      const parsed = JSON.parse(raw);
+      setBooking(parsed);
+    } catch (e) {
+      console.error("[Checkout] parse error:", e);
       setBooking(null);
     }
   }, []);
@@ -113,13 +150,14 @@ export default function Checkout() {
     const date = String(booking.date || "");
     const time = String(booking.time || "");
     const service = booking.serviceName || booking.service || "";
-    const employee = booking.employee || "";
+
+    const employee = String(booking.employee || "").trim();
+    const employeeId = String(booking.employeeId || "").trim(); // ✅ NEW
 
     const total = Number((booking.total ?? booking.finalPrice) ?? 0);
     const paymentMethod = normalizePaymentMethod(booking.paymentMethod);
 
-    const paymentStatus: PaymentStatus =
-      booking.paymentStatus === "paid" ? "paid" : "pending";
+    const paymentStatus: PaymentStatus = booking.paymentStatus === "paid" ? "paid" : "pending";
 
     return {
       bookingId,
@@ -128,7 +166,10 @@ export default function Checkout() {
       date,
       time,
       service,
+
       employee,
+      employeeId,
+
       total,
       paymentMethod,
       paymentStatus,
@@ -145,13 +186,11 @@ export default function Checkout() {
       <div className="checkout-page">
         <div className="checkout-card">
           <h2>تأكيد الحجز</h2>
-          <p style={{ color: "#777", textAlign: "center", margin: "10px 0 20px" }}>
+          <p style={{ color: "#777", textAlign: "center", margin: "10px 0 14px" }}>
             ما لقينا بيانات حجز للتأكيد. ارجع لصفحة الحجز وسوّي حجز جديد.
           </p>
-          <button
-            className="btn btn-primary confirm-btn"
-            onClick={() => navigate("/booking")}
-          >
+
+          <button className="btn btn-primary confirm-btn" onClick={() => navigate("/booking")}>
             <FontAwesomeIcon icon={faArrowRight} /> رجوع للحجز
           </button>
         </div>
@@ -160,35 +199,53 @@ export default function Checkout() {
   }
 
   const upsertBookingAndGoSuccess = async (opts?: { paymentStatus?: PaymentStatus }) => {
-    // ✅ NEW: قفل التنفيذ إذا شغال
     if (isSubmitting) return;
 
     setIsSubmitting(true);
     try {
       const normalizedPayment = normalizePaymentMethod(view.paymentMethod);
-
-      // ✅ الحالة دائمًا Pending (قيد المراجعة)
       const bookingStatus: BookingStatus = "pending";
 
-      // ✅ uid لو فيه تسجيل دخول
+      // ✅ حماية بسيطة: لازم موظفة
+      if (!view.employee && !view.employeeId) {
+        openModal({
+          title: "بيانات غير مكتملة",
+          message: "ما تم اختيار الموظفة بشكل صحيح. ارجع وعدّل الحجز.",
+          variant: "danger",
+          afterClose: () => navigate("/booking"),
+        });
+        return;
+      }
+
       const auth = getAuth();
+
+      // ✅ لو ما فيه مستخدم، سجّل دخول مجهول (Anonymous) عشان request.auth يصير موجود
+      if (!auth.currentUser) {
+        try {
+          await signInAnonymously(auth);
+        } catch (err) {
+          console.warn("[Checkout] signInAnonymously failed:", err);
+        }
+      }
+
       const uid = auth.currentUser?.uid ?? null;
 
-      const discountNote =
-        view.offerId
-          ? `Offer: ${view.offerTitle || view.couponCode || "-"} | discount=${Number(
-              view.discountAmount || 0
-            )}`
-          : "";
+      const discountNote = view.offerId
+        ? `Offer: ${view.offerTitle || view.couponCode || "-"} | discount=${Number(view.discountAmount || 0)}`
+        : "";
+
+      const employeeNote = view.employeeId ? `employeeId: ${view.employeeId}` : "";
 
       const baseNote =
         normalizedPayment === "mada_online"
           ? `Payment: ${normalizedPayment} / ${opts?.paymentStatus || "pending"}`
           : `Payment: ${normalizedPayment}`;
 
-      const noteFinal = [baseNote, discountNote].filter(Boolean).join(" | ");
+      const noteFinal = [baseNote, employeeNote, discountNote].filter(Boolean).join(" | ");
 
-      // ✅ 1) إنشاء الحجز في Firestore
+      // ✅ key: employeeId أولاً (الأصح)، fallback على الاسم
+      const employeeKey = view.employeeId || view.employee;
+
       const firestoreId = await createBooking({
         userId: uid,
         createdBy: "client",
@@ -198,7 +255,10 @@ export default function Checkout() {
         clientPhone: view.phone,
 
         serviceName: view.service,
-        employeeName: view.employee,
+
+        // ✅ NEW: تمرير الاثنين (عشان السلوّت يكون على ID + العرض على الاسم)
+        employeeId: employeeKey,
+        employeeName: view.employee || view.employeeId || "-",
 
         date: view.date,
         time: view.time,
@@ -208,9 +268,8 @@ export default function Checkout() {
 
         status: bookingStatus,
         note: noteFinal || undefined,
-      });
+      } as any);
 
-      // ✅ 2) زيادة استخدام العرض (إذا موجود)
       try {
         if (view.offerId) {
           await incrementOfferUsage(SALON_ID, view.offerId);
@@ -222,10 +281,13 @@ export default function Checkout() {
       const updatedCurrent: BookingData = {
         ...booking,
 
-        // ✅ أنظف: خلي bookingId = firestoreId
         bookingId: firestoreId,
         id: firestoreId,
         trackId: firestoreId,
+
+        // ✅ ثبّت الـ employeeId/employee في currentBooking
+        employeeId: view.employeeId || booking?.employeeId || "",
+        employee: view.employee || booking?.employee || "",
 
         paymentMethod: normalizedPayment,
         paymentStatus: opts?.paymentStatus || "pending",
@@ -240,14 +302,29 @@ export default function Checkout() {
       console.error(e);
 
       if (e?.code === "SLOT_TAKEN" || String(e?.message || "") === "SLOT_TAKEN") {
-        alert("هذا الوقت محجوز بالفعل لهذه الموظفة. اختاري وقتًا آخر.");
-        navigate("/booking");
+        openModal({
+          title: "الوقت محجوز",
+          message: "هذا الوقت محجوز بالفعل لهذه الموظفة. اختاري وقتًا آخر.",
+          variant: "danger",
+          afterClose: () => navigate("/booking"),
+        });
         return;
       }
 
-      alert(
-        "صار خطأ أثناء حفظ الحجز في النظام. تأكد من Firestore Rules ثم جرّب مرة ثانية."
-      );
+      // ✅ اعرض الخطأ الحقيقي (كود + رسالة) بدل رسالة عامة
+      const code = String(e?.code || "");
+      const msg = String(e?.message || "");
+
+      openModal({
+        title: "تعذر حفظ الحجز",
+        message:
+          `خطأ Firestore:\n` +
+          `code: ${code || "—"}\n` +
+          `message: ${msg || "—"}\n\n` +
+          `إذا كانت المشكلة permission-denied فـ Rules تمنع الكتابة.\n` +
+          `إذا unauthenticated فالمستخدم غير مسجل (Anonymous Auth يحلها).`,
+        variant: "danger",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -261,17 +338,24 @@ export default function Checkout() {
     await upsertBookingAndGoSuccess({ paymentStatus: "pending" });
   };
 
-  // ✅ أوضح: اعتمد على normalize / أو view.paymentMethod لأنه normalized بالفعل
   const isOnline = normalizePaymentMethod(view.paymentMethod) === "mada_online";
 
-  const primaryBtnText = isOnline
-    ? "متابعة: دفع مدى أونلاين (مبدئي)"
-    : "تأكيد الحجز";
+  const primaryBtnText = isOnline ? "متابعة: دفع مدى أونلاين (مبدئي)" : "تأكيد الحجز";
   const primaryBtnIcon = isOnline ? faCreditCard : faCheckCircle;
   const primaryAction = isOnline ? handleMadaOnline : handleSalonPay;
 
   return (
     <div className="checkout-page">
+      <ConfirmModal
+        open={modal.open}
+        title={modal.title}
+        message={modal.message}
+        variant={modal.variant}
+        confirmText="حسنًا"
+        onConfirm={closeModal}
+        onCancel={closeModal}
+      />
+
       <div className="checkout-card">
         <h2>تأكيد الحجز</h2>
 
@@ -289,12 +373,10 @@ export default function Checkout() {
           >
             <FontAwesomeIcon icon={faCircleInfo} style={{ marginTop: 3 }} />
             <div style={{ fontSize: 14, lineHeight: 1.6 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                مدى أونلاين (مبدئيًا)
-              </div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>مدى أونلاين (مبدئيًا)</div>
               <div style={{ color: "#555" }}>
-                حالياً بنسجّل الحجز <b>بانتظار الدفع</b>، وخطوة ربط بوابة الدفع
-                نضيفها لاحقًا عبر مزود دفع + Firebase Functions.
+                حالياً بنسجّل الحجز <b>بانتظار الدفع</b>، وخطوة ربط بوابة الدفع نضيفها لاحقًا عبر مزود دفع + Firebase
+                Functions.
               </div>
             </div>
           </div>
@@ -330,6 +412,14 @@ export default function Checkout() {
           <span>{view.employee || "—"}</span>
         </div>
 
+        {/* ✅ اختياري: عرض employeeId للتأكد أثناء الاختبار */}
+        {!!view.employeeId && (
+          <div className="checkout-item" style={{ opacity: 0.8, fontSize: 13 }}>
+            <strong>employeeId:</strong>
+            <span>{view.employeeId}</span>
+          </div>
+        )}
+
         <div className="checkout-item">
           <strong>طريقة الدفع:</strong>
           <span>{methodLabel(normalizePaymentMethod(view.paymentMethod))}</span>
@@ -356,8 +446,7 @@ export default function Checkout() {
           disabled={isSubmitting}
           style={isSubmitting ? { opacity: 0.75, cursor: "not-allowed" } : undefined}
         >
-          <FontAwesomeIcon icon={primaryBtnIcon} />{" "}
-          {isSubmitting ? "جاري حفظ الحجز..." : primaryBtnText}
+          <FontAwesomeIcon icon={primaryBtnIcon} /> {isSubmitting ? "جاري حفظ الحجز..." : primaryBtnText}
         </button>
 
         <button

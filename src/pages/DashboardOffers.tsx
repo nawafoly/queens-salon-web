@@ -12,13 +12,13 @@ import {
   faImage,
   faMagnifyingGlass,
   faCheck,
+  faRotateLeft,
+  faSkullCrossbones,
+  faFilter,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { pricingSections } from "./Pricing";
 
-// ✅ CSS (قاعدة واحدة)
-// - DashboardSkin.css يكون مستورد مرة واحدة فقط داخل Dashboard.tsx (الـ Layout)
-// - هنا نستورد فقط: مودالات + ستايل الصفحة
 import "../styles/DashboardModals.css";
 import "../styles/DashboardOffers.css";
 
@@ -48,13 +48,15 @@ type OfferForm = {
   serviceIds: string[];
 };
 
+type OfferFilterMode = "active_now" | "scheduled" | "expired" | "deleted";
+
 const MAX_IMAGE_MB = 2;
 const SALON_ID = "main";
 
+// ✅ NEW: QS + 3 digits, no dash (مثال: QS123)
 function generateCode(prefix = "QS") {
-  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
-  const time = Date.now().toString().slice(-4);
-  return `${prefix}-${rand}${time}`;
+  const num = Math.floor(100 + Math.random() * 900); // 3 أرقام
+  return `${prefix}${num}`;
 }
 
 function makeOfferId() {
@@ -95,14 +97,47 @@ type FlatService = {
   basePrice: number;
 };
 
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function isExpiredByToday(o: any) {
+  const end = String(o?.endDate || "").trim();
+  if (!end) return false;
+  return todayISO() > end;
+}
+
+function isScheduledByToday(o: any) {
+  const start = String(o?.startDate || "").trim();
+  if (!start) return false;
+  return todayISO() < start;
+}
+
+function isDeleted(o: any) {
+  return Boolean(o?.deletedAt);
+}
+
+function isActiveNow(o: any) {
+  if (!o?.active) return false;
+  if (isDeleted(o)) return false;
+  if (isScheduledByToday(o)) return false;
+  if (isExpiredByToday(o)) return false;
+  return true;
+}
+
 const DashboardOffers: React.FC = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Offer | null>(null);
 
-  const [query, setQuery] = useState("");
+  const [queryText, setQueryText] = useState("");
   const [serviceSearch, setServiceSearch] = useState("");
   const [pickedImageName, setPickedImageName] = useState("");
+  const [filterMode, setFilterMode] = useState<OfferFilterMode>("active_now");
 
   const [form, setForm] = useState<OfferForm>({
     title: "",
@@ -225,20 +260,63 @@ const DashboardOffers: React.FC = () => {
   }, []);
 
   const filteredOffers = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return offers;
-    return offers.filter((o: any) => {
-      const title = String(o.title || "").toLowerCase();
-      const code = String(o.code || "").toLowerCase();
-      return title.includes(q) || code.includes(q);
+    const q = queryText.trim().toLowerCase();
+
+    let base = [...offers];
+
+    // ✅ فلترة حسب التبويب
+    base = base.filter((o: any) => {
+      if (filterMode === "active_now") return isActiveNow(o);
+      if (filterMode === "scheduled")
+        return !isDeleted(o) && Boolean(o.active) && isScheduledByToday(o);
+      if (filterMode === "expired")
+        return (
+          !isDeleted(o) &&
+          (isExpiredByToday(o) || (!o.active && !isScheduledByToday(o)))
+        );
+      if (filterMode === "deleted") return isDeleted(o);
+      return true;
     });
-  }, [offers, query]);
+
+    // ✅ بحث
+    if (q) {
+      base = base.filter((o: any) => {
+        const title = String(o.title || "").toLowerCase();
+        const code = String(o.code || "").toLowerCase();
+        return title.includes(q) || code.includes(q);
+      });
+    }
+
+    // ✅ ترتيب
+    base.sort(
+      (a: any, b: any) => Number(b.createdAt || 0) - Number(a.createdAt || 0)
+    );
+    return base;
+  }, [offers, queryText, filterMode]);
 
   const stats = useMemo(() => {
-    const total = offers.length;
-    const active = offers.filter((o: any) => Boolean(o.active)).length;
+    const total = offers.filter((o: any) => !isDeleted(o)).length;
+    const activeNowCount = offers.filter((o: any) => isActiveNow(o)).length;
+    const scheduledCount = offers.filter(
+      (o: any) => !isDeleted(o) && Boolean(o.active) && isScheduledByToday(o)
+    ).length;
+    const expiredCount = offers.filter(
+      (o: any) =>
+        !isDeleted(o) &&
+        (isExpiredByToday(o) || (!o.active && !isScheduledByToday(o)))
+    ).length;
+    const deletedCount = offers.filter((o: any) => isDeleted(o)).length;
+
     const used = offers.filter((o: any) => Number(o.usageCount || 0) > 0).length;
-    return { total, active, used };
+
+    return {
+      total,
+      activeNowCount,
+      scheduledCount,
+      expiredCount,
+      deletedCount,
+      used,
+    };
   }, [offers]);
 
   const openAdd = () => {
@@ -246,6 +324,7 @@ const DashboardOffers: React.FC = () => {
     setServiceSearch("");
     setPickedImageName("");
     setDiscountOpen(false);
+
     setForm({
       title: "",
       code: generateCode(),
@@ -258,6 +337,7 @@ const DashboardOffers: React.FC = () => {
       appliesTo: "all",
       serviceIds: [],
     });
+
     setOpen(true);
   };
 
@@ -266,6 +346,7 @@ const DashboardOffers: React.FC = () => {
     setServiceSearch("");
     setPickedImageName((o as any).imageUrl ? "تم اختيار صورة" : "");
     setDiscountOpen(false);
+
     setForm({
       title: (o as any).title || "",
       code: (o as any).code || "",
@@ -280,6 +361,7 @@ const DashboardOffers: React.FC = () => {
         ? (o as any).serviceIds
         : [],
     });
+
     setOpen(true);
   };
 
@@ -293,7 +375,8 @@ const DashboardOffers: React.FC = () => {
   const save = async () => {
     if (!form.title.trim()) return alert("اكتب عنوان العرض");
     if (!form.code.trim()) return alert("اكتب الكود أو اضغط توليد");
-    if (Number(form.value) <= 0) return alert("قيمة الخصم لازم تكون أكبر من صفر");
+    if (Number(form.value) <= 0)
+      return alert("قيمة الخصم لازم تكون أكبر من صفر");
     if (form.discountType === "percent" && Number(form.value) > 100)
       return alert("النسبة المئوية لا تتجاوز 100%");
     if (form.startDate && form.endDate && form.startDate > form.endDate)
@@ -306,7 +389,10 @@ const DashboardOffers: React.FC = () => {
     try {
       const id = (editing as any)?.id || makeOfferId();
 
-      const payload: Offer = {
+      // ✅ لو كنت تعدل عرض محذوف: رجّعه (امسح deletedAt)
+      const deletedAt = (editing as any)?.deletedAt ? null : undefined;
+
+      const payload: any = {
         id,
         title: form.title.trim(),
         code: form.code.trim(),
@@ -322,6 +408,8 @@ const DashboardOffers: React.FC = () => {
 
         usageCount: Number((editing as any)?.usageCount || 0),
         createdAt: (editing as any)?.createdAt,
+
+        ...(deletedAt === null ? { deletedAt: null } : {}),
       };
 
       await upsertOffer(payload, SALON_ID);
@@ -347,16 +435,57 @@ const DashboardOffers: React.FC = () => {
     }
   };
 
-  const remove = async (o: Offer) => {
-    if (Number((o as any).usageCount || 0) > 0) return alert("لا يمكن حذف عرض مستخدم");
-    if (!confirm("حذف العرض؟")) return;
+  // ✅ حذف ناعم (Soft Delete) بدل حذف نهائي
+  const softDelete = async (o: Offer) => {
+    if (Number((o as any).usageCount || 0) > 0)
+      return alert("لا يمكن حذف عرض مستخدم");
+    if (!confirm("حذف العرض (نقل للمحذوفات)؟")) return;
+
+    try {
+      await upsertOffer(
+        {
+          ...(o as any),
+          id: (o as any).id,
+          active: false,
+          deletedAt: Date.now(),
+        } as any,
+        SALON_ID
+      );
+      await refresh();
+    } catch (e: any) {
+      console.error("❌ softDelete error:", e?.code, e?.message, e);
+      alert("تعذر حذف العرض.");
+    }
+  };
+
+  const restore = async (o: Offer) => {
+    if (!confirm("استرجاع العرض من المحذوفات؟")) return;
+
+    try {
+      await upsertOffer(
+        { ...(o as any), id: (o as any).id, deletedAt: null } as any,
+        SALON_ID
+      );
+      await refresh();
+      setFilterMode("active_now");
+    } catch (e: any) {
+      console.error("❌ restore error:", e?.code, e?.message, e);
+      alert("تعذر استرجاع العرض.");
+    }
+  };
+
+  // ✅ حذف نهائي (اختياري فقط من تبويب المحذوفات)
+  const hardDelete = async (o: Offer) => {
+    if (Number((o as any).usageCount || 0) > 0)
+      return alert("لا يمكن حذف عرض مستخدم");
+    if (!confirm("⚠️ حذف نهائي؟ لا يمكن التراجع")) return;
 
     try {
       await removeOffer((o as any).id, SALON_ID);
       await refresh();
     } catch (e: any) {
       console.error("❌ removeOffer error:", e?.code, e?.message, e);
-      alert("تعذر حذف العرض.");
+      alert("تعذر حذف العرض نهائيًا.");
     }
   };
 
@@ -391,22 +520,66 @@ const DashboardOffers: React.FC = () => {
           <h1>
             <FontAwesomeIcon icon={faTag} /> العروض والكوبونات
           </h1>
-          <p className="offers-sub">إدارة العروض + صورة + نطاق (الكل/خدمات محددة)</p>
+          <p className="offers-sub">
+            فلترة: سارية / مجدولة / منتهية / محذوفة + نطاق (الكل/خدمات)
+          </p>
         </div>
       </div>
 
-      {/* Search + Add */}
+      {/* Filters + Add */}
       <div className="offers-card">
         <div className="offers-card-title">
-          <FontAwesomeIcon icon={faMagnifyingGlass} /> بحث (عنوان / كود)
+          <FontAwesomeIcon icon={faFilter} /> فلترة + بحث
         </div>
 
-        <div className="offers-row">
-          <div className="offers-search">
+        <div className="offers-row" style={{ flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className={`dash-pill dash-pill-sm ${
+                filterMode === "active_now" ? "dash-pill-primary" : "dash-pill-outline"
+              }`}
+              onClick={() => setFilterMode("active_now")}
+            >
+              سارية الآن ({stats.activeNowCount})
+            </button>
+
+            <button
+              type="button"
+              className={`dash-pill dash-pill-sm ${
+                filterMode === "scheduled" ? "dash-pill-primary" : "dash-pill-outline"
+              }`}
+              onClick={() => setFilterMode("scheduled")}
+            >
+              مجدولة ({stats.scheduledCount})
+            </button>
+
+            <button
+              type="button"
+              className={`dash-pill dash-pill-sm ${
+                filterMode === "expired" ? "dash-pill-primary" : "dash-pill-outline"
+              }`}
+              onClick={() => setFilterMode("expired")}
+            >
+              منتهية/موقوفة ({stats.expiredCount})
+            </button>
+
+            <button
+              type="button"
+              className={`dash-pill dash-pill-sm ${
+                filterMode === "deleted" ? "dash-pill-danger" : "dash-pill-outline"
+              }`}
+              onClick={() => setFilterMode("deleted")}
+            >
+              محذوفة ({stats.deletedCount})
+            </button>
+          </div>
+
+          <div className="offers-search" style={{ minWidth: 260, flex: 1 }}>
             <FontAwesomeIcon className="offers-search-ic" icon={faMagnifyingGlass} />
             <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={queryText}
+              onChange={(e) => setQueryText(e.target.value)}
               placeholder="بحث بالعنوان أو الكود..."
             />
           </div>
@@ -416,22 +589,8 @@ const DashboardOffers: React.FC = () => {
           </button>
         </div>
 
-        <div className="offers-hint">اكتب عنوان العرض أو كود الخصم</div>
-      </div>
-
-      {/* Stats */}
-      <div className="offers-stats">
-        <div className="of-stat">
-          <h3>{stats.total}</h3>
-          <p>إجمالي العروض</p>
-        </div>
-        <div className="of-stat">
-          <h3>{stats.active}</h3>
-          <p>عروض نشطة</p>
-        </div>
-        <div className="of-stat">
-          <h3>{stats.used}</h3>
-          <p>عروض مستخدمة</p>
+        <div className="offers-hint">
+          إجمالي (بدون المحذوف): {stats.total} — عروض مستخدمة: {stats.used}
         </div>
       </div>
 
@@ -461,58 +620,107 @@ const DashboardOffers: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredOffers.map((o: any) => (
-                  <tr key={o.id} style={{ verticalAlign: "middle" }}>
-                    <td>
-                      {o.imageUrl ? (
-                        <img className="of-img" src={o.imageUrl} alt="offer" />
-                      ) : (
-                        <span style={{ opacity: 0.6 }}>—</span>
-                      )}
-                    </td>
-                    <td>{o.title}</td>
-                    <td>{o.code}</td>
-                    <td>{o.discountType === "percent" ? `${o.value}%` : `${o.value} ريال`}</td>
-                    <td>
-                      {o.startDate || "—"} → {o.endDate || "—"}
-                    </td>
-                    <td>{o.active ? "نشط" : "موقوف"}</td>
-                    <td>{o.usageCount || 0}</td>
-                    <td>{(o.appliesTo || "all") === "services" ? "خدمات محددة" : "الكل"}</td>
+                filteredOffers.map((o: any) => {
+                  const deleted = isDeleted(o);
+                  const scheduled =
+                    isScheduledByToday(o) && !isExpiredByToday(o) && !deleted;
+                  const expired = isExpiredByToday(o) && !deleted;
 
-                    <td>
-                      <div className="of-actions">
-                        <button
-                          className="dash-pill dash-pill-outline dash-pill-sm"
-                          type="button"
-                          onClick={() => openEdit(o)}
-                        >
-                          <FontAwesomeIcon icon={faPen} /> تعديل
-                        </button>
+                  const statusLabel = deleted
+                    ? "محذوف"
+                    : scheduled
+                    ? "مجدول"
+                    : expired
+                    ? "منتهي"
+                    : o.active
+                    ? "نشط"
+                    : "موقوف";
 
-                        <button
-                          className={`dash-pill ${
-                            o.active ? "dash-pill-warning" : "dash-pill-success"
-                          } dash-pill-sm`}
-                          type="button"
-                          onClick={() => toggleActive(o)}
-                          title={o.active ? "إيقاف" : "تفعيل"}
-                        >
-                          <FontAwesomeIcon icon={o.active ? faBan : faCheck} />
-                          {o.active ? " إيقاف" : " تفعيل"}
-                        </button>
+                  return (
+                    <tr key={o.id} style={{ verticalAlign: "middle" }}>
+                      <td>
+                        {o.imageUrl ? (
+                          <img className="of-img" src={o.imageUrl} alt="offer" />
+                        ) : (
+                          <span style={{ opacity: 0.6 }}>—</span>
+                        )}
+                      </td>
+                      <td>{o.title}</td>
+                      <td>{o.code}</td>
+                      <td>
+                        {o.discountType === "percent"
+                          ? `${o.value}%`
+                          : `${o.value} ريال`}
+                      </td>
+                      <td>
+                        {o.startDate || "—"} → {o.endDate || "—"}
+                      </td>
+                      <td>{statusLabel}</td>
+                      <td>{o.usageCount || 0}</td>
+                      <td>
+                        {(o.appliesTo || "all") === "services"
+                          ? "خدمات محددة"
+                          : "الكل"}
+                      </td>
 
-                        <button
-                          className="dash-pill dash-pill-danger dash-pill-sm"
-                          type="button"
-                          onClick={() => remove(o)}
-                        >
-                          <FontAwesomeIcon icon={faTrash} /> حذف
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      <td>
+                        <div className="of-actions" style={{ flexWrap: "wrap" }}>
+                          {!deleted && (
+                            <>
+                              <button
+                                className="dash-pill dash-pill-outline dash-pill-sm"
+                                type="button"
+                                onClick={() => openEdit(o)}
+                              >
+                                <FontAwesomeIcon icon={faPen} /> تعديل
+                              </button>
+
+                              <button
+                                className={`dash-pill ${
+                                  o.active ? "dash-pill-warning" : "dash-pill-success"
+                                } dash-pill-sm`}
+                                type="button"
+                                onClick={() => toggleActive(o)}
+                                title={o.active ? "إيقاف" : "تفعيل"}
+                              >
+                                <FontAwesomeIcon icon={o.active ? faBan : faCheck} />
+                                {o.active ? " إيقاف" : " تفعيل"}
+                              </button>
+
+                              <button
+                                className="dash-pill dash-pill-danger dash-pill-sm"
+                                type="button"
+                                onClick={() => softDelete(o)}
+                              >
+                                <FontAwesomeIcon icon={faTrash} /> حذف
+                              </button>
+                            </>
+                          )}
+
+                          {deleted && (
+                            <>
+                              <button
+                                className="dash-pill dash-pill-success dash-pill-sm"
+                                type="button"
+                                onClick={() => restore(o)}
+                              >
+                                <FontAwesomeIcon icon={faRotateLeft} /> استرجاع
+                              </button>
+
+                              <button
+                                className="dash-pill dash-pill-danger dash-pill-sm"
+                                type="button"
+                                onClick={() => hardDelete(o)}
+                              >
+                                <FontAwesomeIcon icon={faSkullCrossbones} /> حذف نهائي
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -561,7 +769,7 @@ const DashboardOffers: React.FC = () => {
                       <input
                         value={form.code}
                         onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
-                        placeholder="QS-XXXX"
+                        placeholder="QS123"
                       />
                     </div>
 
@@ -618,7 +826,9 @@ const DashboardOffers: React.FC = () => {
                     <input
                       type="number"
                       value={form.value}
-                      onChange={(e) => setForm((p) => ({ ...p, value: Number(e.target.value) }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, value: Number(e.target.value) }))
+                      }
                       placeholder="مثال: 50"
                     />
                   </div>
@@ -628,7 +838,9 @@ const DashboardOffers: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={form.active}
-                        onChange={(e) => setForm((p) => ({ ...p, active: e.target.checked }))}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, active: e.target.checked }))
+                        }
                       />
                       <span>العرض نشط</span>
                     </label>
@@ -641,7 +853,9 @@ const DashboardOffers: React.FC = () => {
                     <input
                       type="date"
                       value={form.startDate}
-                      onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, startDate: e.target.value }))
+                      }
                     />
                   </div>
 
@@ -660,7 +874,9 @@ const DashboardOffers: React.FC = () => {
               <div className="of-section of-scope">
                 <div className="of-scope-top">
                   <div className="of-scope-title">نطاق العرض</div>
-                  <div className="of-scope-hint">اختر “خدمات محددة” إذا تبي العرض على خدمات بعينها.</div>
+                  <div className="of-scope-hint">
+                    اختر “خدمات محددة” إذا تبي العرض على خدمات بعينها.
+                  </div>
                 </div>
 
                 <div className="of-scope-pills">
@@ -669,7 +885,9 @@ const DashboardOffers: React.FC = () => {
                       type="radio"
                       name="offerScope"
                       checked={form.appliesTo === "all"}
-                      onChange={() => setForm((p) => ({ ...p, appliesTo: "all", serviceIds: [] }))}
+                      onChange={() =>
+                        setForm((p) => ({ ...p, appliesTo: "all", serviceIds: [] }))
+                      }
                     />
                     <span>ينطبق على جميع الخدمات</span>
                   </label>
@@ -762,7 +980,9 @@ const DashboardOffers: React.FC = () => {
                     اختيار ملف
                   </label>
 
-                  <div className="of-file-name">{pickedImageName || "لم يتم اختيار أي ملف"}</div>
+                  <div className="of-file-name">
+                    {pickedImageName || "لم يتم اختيار أي ملف"}
+                  </div>
                 </div>
 
                 {form.imageUrl ? (

@@ -206,6 +206,104 @@ function getUiRole(): UiRole {
   return "guest";
 }
 
+/** ✅ Get auth user name/email safely (from localStorage first, fallback to firebase user) */
+function getAuthUserSafe(): { displayName: string; email: string } {
+  // ✅ Try localStorage auth_user first
+  try {
+    const raw = localStorage.getItem("auth_user");
+    if (raw) {
+      const au = JSON.parse(raw);
+      const displayName = String(au?.name || au?.displayName || "").trim();
+      const email = String(au?.email || "").trim();
+      return { displayName, email };
+    }
+  } catch {
+    // ignore
+  }
+
+  // ✅ Fallback to Firebase user
+  const u = auth.currentUser;
+  const displayName = String(u?.displayName || "").trim();
+  const email = String(u?.email || "").trim();
+  return { displayName, email };
+}
+
+/* =========================
+   ✅ Smart name matching (Arabic-friendly)
+========================= */
+
+function stripArabicDiacritics(s: string) {
+  // remove harakat + tatweel
+  return s
+    .replace(
+      /[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g,
+      ""
+    )
+    .replace(/\u0640/g, "");
+}
+
+function normalizeArabicName(input: string) {
+  const s = String(input || "").trim().toLowerCase();
+  const noDia = stripArabicDiacritics(s);
+
+  // unify alef variants + yaa/taa marbuta, remove punctuation
+  const unified = noDia
+    .replace(/[إأآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return unified;
+}
+
+function tokenizeName(s: string) {
+  return normalizeArabicName(s)
+    .split(" ")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+function smartEmployeeMatch(
+  employeeNameFromBooking: string,
+  my: { displayName: string; email: string }
+) {
+  const empRaw = String(employeeNameFromBooking || "").trim();
+  if (!empRaw) return false;
+
+  const myNameRaw = String(my.displayName || "").trim();
+  const myEmail = String(my.email || "").trim().toLowerCase();
+
+  const emp = normalizeArabicName(empRaw);
+  const meN = normalizeArabicName(myNameRaw);
+
+  // 1) exact after normalize
+  if (meN && emp === meN) return true;
+
+  // 2) contains (handles "فرح" vs "فرح محمد")
+  if (meN && (emp.includes(meN) || meN.includes(emp))) return true;
+
+  // 3) token overlap (avoid matching short common tokens)
+  const empTokens = tokenizeName(empRaw);
+  const meTokens = tokenizeName(myNameRaw);
+
+  if (meTokens.length && empTokens.length) {
+    const setEmp = new Set(empTokens);
+    const hasStrongCommon = meTokens.some((t) => t.length >= 3 && setEmp.has(t));
+    if (hasStrongCommon) return true;
+  }
+
+  // 4) fallback: match email local-part if booking stored email-ish text
+  if (myEmail) {
+    const local = myEmail.split("@")[0] || "";
+    const localN = normalizeArabicName(local.replace(/[._-]/g, " "));
+    if (localN && (emp.includes(localN) || localN.includes(emp))) return true;
+  }
+
+  return false;
+}
+
 /* =========================
    UI Booking type + mappers
 ========================= */
@@ -407,6 +505,11 @@ const DashboardBookings = () => {
     uiRole === "admin" ||
     (uiRole === "reception" && allowReceptionChangeStatus);
 
+  // ✅ staff view logic (kept for future use if you enable staff on this page)
+  const isStaffView = uiRole === "staff";
+
+  const me = useMemo(() => getAuthUserSafe(), [uiRole]);
+
   /* =========================
      Data loading
   ========================= */
@@ -425,9 +528,7 @@ const DashboardBookings = () => {
       setLoadError("");
 
       const data = await listAllBookings();
-      const mapped: Booking[] = (Array.isArray(data) ? data : []).map(
-        mapBooking
-      );
+      const mapped: Booking[] = (Array.isArray(data) ? data : []).map(mapBooking);
 
       setBookings(mapped);
       setSelected((prev) => {
@@ -493,9 +594,7 @@ const DashboardBookings = () => {
 
       // ✅ FIX: watchAllBookings expects ONLY 1 argument (onData)
       watchUnsubRef.current = watchAllBookings((data) => {
-        const mapped: Booking[] = (Array.isArray(data) ? data : []).map(
-          mapBooking
-        );
+        const mapped: Booking[] = (Array.isArray(data) ? data : []).map(mapBooking);
 
         setBookings(mapped);
         setSelected((prev) => {
@@ -599,6 +698,11 @@ const DashboardBookings = () => {
         if (emp !== employee) return false;
       }
 
+      // ✅ Smart staff filter (future-ready)
+      if (isStaffView) {
+        if (!smartEmployeeMatch(String(b.employeeName ?? ""), me)) return false;
+      }
+
       if (q) {
         const name = String(b.customerName ?? "").toLowerCase();
         const phone = getBookingPhone(b).toLowerCase();
@@ -607,7 +711,7 @@ const DashboardBookings = () => {
 
       return true;
     });
-  }, [bookings, dateFrom, dateTo, status, employee, query]);
+  }, [bookings, dateFrom, dateTo, status, employee, query, isStaffView, me]);
 
   const stats = useMemo(() => {
     const totalBookings = filtered.length;
@@ -1559,9 +1663,7 @@ const DashboardBookings = () => {
 
             {/* Notes */}
             <div className="bk-note-card">
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>
-                ملاحظة إدارية (داخلية)
-              </div>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>ملاحظة إدارية (داخلية)</div>
 
               <textarea
                 className="form-control"
@@ -1569,9 +1671,7 @@ const DashboardBookings = () => {
                 value={getAdminNote(selected.id)}
                 onChange={(e) => saveAdminNote(selected.id, e.target.value)}
                 disabled={!canEditNotes}
-                placeholder={
-                  canEditNotes ? "اكتب ملاحظة داخلية..." : "لا تملك صلاحية تعديل الملاحظات"
-                }
+                placeholder={canEditNotes ? "اكتب ملاحظة داخلية..." : "لا تملك صلاحية تعديل الملاحظات"}
               />
 
               {editMode && (

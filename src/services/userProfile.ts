@@ -290,3 +290,34 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
 export function canAccessDashboard(role: UiRole): boolean {
   return role === "owner" || role === "admin" || role === "reception" || role === "staff";
 }
+
+// ✅ DEV ONLY: quick whoami to verify Firestore role (Source of Truth)
+export async function debugWhoAmI() {
+  try {
+    const { getAuth } = await import("firebase/auth");
+    const { getDoc } = await import("firebase/firestore");
+
+    const auth = getAuth();
+    const u = auth.currentUser;
+
+    if (!u) {
+      console.log("❌ No auth user (currentUser is null)");
+      return null;
+    }
+
+    const ref = salonUserRef(u.uid);
+    const snap = await getDoc(ref);
+
+    const data = snap.exists() ? (snap.data() as any) : null;
+
+    console.log("✅ AUTH:", { uid: u.uid, email: u.email });
+    console.log("✅ salons/main/users doc exists:", snap.exists());
+    console.log("✅ salons/main/users data:", data);
+    console.log("✅ normalized role:", normalizeRole(data?.role));
+
+    return { uid: u.uid, email: u.email, data, role: normalizeRole(data?.role) };
+  } catch (e) {
+    console.error("❌ debugWhoAmI failed:", e);
+    return null;
+  }
+}

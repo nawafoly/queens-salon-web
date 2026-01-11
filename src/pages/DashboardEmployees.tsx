@@ -12,7 +12,7 @@ import {
 } from "firebase/firestore";
 
 // ✅ use unified instances
-import { db, functions } from "../services/firebase";
+import { db } from "../services/firebase";
 
 import "../styles/DashboardEmployees.css";
 import "../styles/DashboardModals.css";
@@ -23,20 +23,17 @@ import {
   type BookingDocWithId,
 } from "../services/firestoreBookings";
 
-// ✅ Callable Cloud Function (avoid CORS)
-import { httpsCallable } from "firebase/functions";
-
 // ✅ Use shared UiRole definition
 import type { UiRole } from "../services/userProfile";
 
 type StaffRole = "staff" | "reception" | "admin";
-type StaffCreateRole = StaffRole;
 
 type EmployeeDoc = {
   id: string; // uid
   name: string;
   email?: string;
   phone?: string;
+
   role?: StaffRole;
   department?: string;
   isActive?: boolean;
@@ -45,6 +42,7 @@ type EmployeeDoc = {
   bio?: string;
 
   showOnAbout?: boolean;
+  updatedAt?: any;
 };
 
 type BookingRow = {
@@ -117,26 +115,6 @@ function toArabicBookingStatus(s?: string) {
   return BOOKING_STATUS_LABELS[key] ?? key;
 }
 
-/* =========================
-   ✅ Callable Function Setup
-========================= */
-type AdminCreateStaffInput = {
-  email: string;
-  password: string;
-  displayName: string;
-  phone?: string;
-  role: StaffCreateRole;
-  specialties?: string[];
-  bio?: string;
-};
-
-type AdminCreateStaffResult = {
-  uid: string;
-  email: string;
-  role?: string;
-  displayName?: string;
-};
-
 function readAuthRole(): UiRole {
   try {
     const raw = JSON.parse(localStorage.getItem("auth_user") || "{}");
@@ -188,42 +166,9 @@ function toStaffRole(x: any): StaffRole {
 }
 
 function normalizeSpecialties(x: any): string[] {
-  if (Array.isArray(x))
-    return x.map(String).map((s) => s.trim()).filter(Boolean);
+  if (Array.isArray(x)) return x.map(String).map((s) => s.trim()).filter(Boolean);
   if (typeof x === "string") return [x.trim()].filter(Boolean);
   return [];
-}
-
-function isPermissionError(e: any) {
-  const msg = String(e?.message || "").toLowerCase();
-  const code = String(e?.code || "").toLowerCase();
-  return (
-    code.includes("permission-denied") ||
-    msg.includes("missing or insufficient permissions") ||
-    msg.includes("permission")
-  );
-}
-
-function safeEmail(v: string) {
-  return String(v || "").trim().toLowerCase();
-}
-
-function parseSpecialtiesCSV(v: string): string[] {
-  return String(v || "")
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean)
-    .map(normalizeSpecialtyKey)
-    .filter(Boolean);
-}
-
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 const DashboardEmployees = () => {
@@ -238,8 +183,7 @@ const DashboardEmployees = () => {
 
   // filters
   const [qText, setQText] = useState("");
-  const [departmentFilter, setDepartmentFilter] =
-    useState<DepartmentFilter>("all");
+  const [departmentFilter, setDepartmentFilter] = useState<DepartmentFilter>("all");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
@@ -257,29 +201,6 @@ const DashboardEmployees = () => {
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [lastBookings, setLastBookings] = useState<BookingRow[]>([]);
 
-  // create modal
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createSaving, setCreateSaving] = useState(false);
-  const [createMsg, setCreateMsg] = useState("");
-  const [createdInfo, setCreatedInfo] = useState<{
-    uid: string;
-    email: string;
-    role: string;
-    displayName: string;
-    password: string;
-  } | null>(null);
-
-  const [createForm, setCreateForm] = useState({
-    displayName: "",
-    email: "",
-    password: "",
-    phone: "",
-    role: "staff" as StaffCreateRole,
-    department: DEPARTMENTS[0],
-    specialtiesText: "",
-    bio: "",
-  });
-
   const [editForm, setEditForm] = useState({
     name: "",
     phone: "",
@@ -288,24 +209,30 @@ const DashboardEmployees = () => {
     isActive: true,
     specialties: [] as string[],
     bio: "",
+    showOnAbout: true,
   });
 
   // =========================
-  // ✅ Load employees
+  // ✅ Load employees (NOW from employees collection)
   // =========================
   const loadEmployees = useCallback(async () => {
     try {
       setLoading(true);
       setErr("");
 
-      const colRef = collection(db, ...STAFF_PUBLIC_COLLECTION);
+      const colRef = collection(db, ...EMPLOYEES_COLLECTION);
       const snap = await getDocs(query(colRef, orderBy("name", "asc")));
 
       const list: EmployeeDoc[] = snap.docs
         .map((d) => {
           const x: any = d.data();
           const name = String(x?.name || x?.displayName || "").trim();
-          const activeFlag = x?.isActive !== false && x?.active !== false;
+          const role = toStaffRole(x?.role);
+          const isActive = x?.isActive !== false && x?.active !== false;
+
+          // ✅ showOnAbout only meaningful for staff
+          const showOnAbout =
+            role === "staff" ? x?.showOnAbout !== false : false;
 
           return {
             id: d.id,
@@ -313,11 +240,12 @@ const DashboardEmployees = () => {
             email: String(x?.email || "").trim() || undefined,
             phone: String(x?.phone || "").trim() || undefined,
             department: String(x?.department || "").trim() || undefined,
-            role: toStaffRole(x?.role),
-            isActive: activeFlag,
+            role,
+            isActive,
             specialties: normalizeSpecialties(x?.specialties),
             bio: String(x?.bio || "").trim() || "",
-            showOnAbout: x?.showOnAbout === true,
+            showOnAbout,
+            updatedAt: x?.updatedAt,
           };
         })
         .filter((e) => e.name);
@@ -325,7 +253,7 @@ const DashboardEmployees = () => {
       setEmployees(list);
 
       if (list.length === 0) {
-        setErr("لا توجد بيانات في staff_public حالياً. تأكد من Firestore.");
+        setErr("لا توجد بيانات في employees حالياً. تأكد من Firestore.");
       }
     } catch (e: any) {
       console.error("load employees error:", e);
@@ -403,21 +331,21 @@ const DashboardEmployees = () => {
         const active = x?.active !== false;
         const department = String(x?.department || "").trim() || undefined;
 
+        // ✅ About projection rule
+        const showOnAbout = role === "staff";
+
         const baseData = {
           name,
           email,
           role,
           isActive: active,
           department,
+          showOnAbout,
           updatedAt: new Date().toISOString(),
         };
 
-        await setDoc(doc(db, ...EMPLOYEES_COLLECTION, uid), baseData, {
-          merge: true,
-        });
-        await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, uid), baseData, {
-          merge: true,
-        });
+        await setDoc(doc(db, ...EMPLOYEES_COLLECTION, uid), baseData, { merge: true });
+        await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, uid), baseData, { merge: true });
       });
 
       await Promise.all(ops);
@@ -489,12 +417,13 @@ const DashboardEmployees = () => {
       isActive: emp.isActive !== false,
       specialties: emp.specialties || [],
       bio: emp.bio || "",
+      showOnAbout: emp.role === "staff" ? emp.showOnAbout !== false : false,
     });
     setEditOpen(true);
   }, []);
 
   // =========================
-  // ✅ Save Edit
+  // ✅ Save Edit (updates employees + staff_public)
   // =========================
   const handleSaveEdit = useCallback(async () => {
     if (!canManage || !selected) return;
@@ -510,6 +439,9 @@ const DashboardEmployees = () => {
       .filter(Boolean);
 
     const bio = String(editForm.bio || "").trim();
+
+    // ✅ showOnAbout rule: only staff can show
+    const showOnAbout = role === "staff" ? !!editForm.showOnAbout : false;
 
     setEditMsg("");
 
@@ -527,35 +459,15 @@ const DashboardEmployees = () => {
         isActive,
         specialties,
         bio,
+        showOnAbout,
         updatedAt: new Date().toISOString(),
       };
 
-      await setDoc(doc(db, ...EMPLOYEES_COLLECTION, selected.id), payload, {
-        merge: true,
-      });
-
-      await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, selected.id), payload, {
-        merge: true,
-      });
-
-      if (isBootstrap) {
-        await setDoc(
-          doc(db, ...USERS_COLLECTION, selected.id),
-          {
-            displayName: name,
-            role,
-            active: isActive,
-            department,
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-      }
+      await setDoc(doc(db, ...EMPLOYEES_COLLECTION, selected.id), payload, { merge: true });
+      await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, selected.id), payload, { merge: true });
 
       setEmployees((prev) =>
-        prev.map((x) =>
-          x.id === selected.id ? { ...x, ...payload } : x
-        )
+        prev.map((x) => (x.id === selected.id ? { ...x, ...payload } : x))
       );
 
       setEditMsg("✅ تم الحفظ");
@@ -567,7 +479,7 @@ const DashboardEmployees = () => {
       setEditSaving(false);
       setTimeout(() => setEditMsg(""), 2500);
     }
-  }, [canManage, selected, editForm, isBootstrap]);
+  }, [canManage, selected, editForm]);
 
   // =========================
   // ✅ Load last 5 bookings for employee
@@ -615,145 +527,6 @@ const DashboardEmployees = () => {
     }
   }, []);
 
-  // =========================
-  // ✅ Open Create Modal
-  // =========================
-  const openCreate = useCallback(() => {
-    if (!canManage) return;
-    setCreateMsg("");
-    setCreatedInfo(null);
-    setCreateForm({
-      displayName: "",
-      email: "",
-      password: "",
-      phone: "",
-      role: "staff",
-      department: DEPARTMENTS[0],
-      specialtiesText: "",
-      bio: "",
-    });
-    setCreateOpen(true);
-  }, [canManage]);
-
-  // =========================
-  // ✅ Create user (Callable Function)
-  // =========================
-  const handleCreate = useCallback(async () => {
-    if (!canManage) return;
-
-    const displayName = String(createForm.displayName || "").trim();
-    const email = safeEmail(createForm.email);
-    const password = String(createForm.password || "").trim();
-    const phone = String(createForm.phone || "").trim();
-    const role = createForm.role as StaffCreateRole;
-
-    const department = String(createForm.department || "").trim();
-    const specialties = parseSpecialtiesCSV(createForm.specialtiesText);
-    const bio = String(createForm.bio || "").trim();
-
-    setCreateMsg("");
-
-    if (!displayName) return setCreateMsg("❌ الاسم مطلوب");
-    if (!email || !email.includes("@")) return setCreateMsg("❌ الإيميل غير صحيح");
-    if (!password || password.length < 6)
-      return setCreateMsg("❌ كلمة المرور لازم 6 أحرف على الأقل");
-    if (role === "staff" && !department)
-      return setCreateMsg("❌ القسم مطلوب للموظفة");
-
-    try {
-      setCreateSaving(true);
-
-      const fn = httpsCallable<AdminCreateStaffInput, AdminCreateStaffResult>(
-        functions,
-        "adminCreateStaffUser"
-      );
-
-      const payload: AdminCreateStaffInput = {
-        email,
-        password,
-        displayName,
-        phone: phone || undefined,
-        role,
-        specialties: role === "staff" ? specialties : undefined,
-        bio: role === "staff" ? bio : undefined,
-      };
-
-      const callRes = await fn(payload);
-      const res = callRes.data;
-
-      const base = {
-        name: displayName,
-        email,
-        phone: phone || undefined,
-        role,
-        isActive: true,
-        department: department || undefined,
-        updatedAt: new Date().toISOString(),
-      };
-
-      if (role === "staff") {
-        await setDoc(doc(db, ...EMPLOYEES_COLLECTION, res.uid), {
-          ...base,
-          role: "staff",
-          department,
-          specialties,
-          bio,
-        }, { merge: true });
-
-        await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, res.uid), {
-          ...base,
-          role: "staff",
-          department,
-          specialties,
-          bio,
-          showOnAbout: true,
-        }, { merge: true });
-      } else {
-        await setDoc(doc(db, ...EMPLOYEES_COLLECTION, res.uid), {
-          ...base,
-          showOnAbout: false,
-        }, { merge: true });
-
-        await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, res.uid), {
-          ...base,
-          showOnAbout: false,
-        }, { merge: true });
-      }
-
-      setCreatedInfo({
-        uid: res.uid,
-        email: res.email || email,
-        role: String(res.role || role),
-        displayName: res.displayName || displayName,
-        password,
-      });
-
-      setCreateMsg("✅ تم إنشاء المستخدم بنجاح");
-      await loadEmployees();
-      await loadCounts();
-    } catch (e: any) {
-      console.error("create staff error:", e);
-
-      if (isPermissionError(e)) {
-        setCreateMsg("❌ صلاحيات غير كافية (تحقق من الـ Rules / Claims)");
-      } else {
-        const msg = String(e?.message || "");
-        const code = String(e?.code || "").toLowerCase();
-
-        if (msg.toLowerCase().includes("already") || msg.includes("exists")) {
-          setCreateMsg("❌ هذا الإيميل موجود مسبقاً");
-        } else if (code.includes("unavailable") || code.includes("internal")) {
-          setCreateMsg("❌ تعذر إنشاء المستخدم (تحقق من Functions Logs / هل هي onCall؟)");
-        } else {
-          setCreateMsg("❌ تعذر إنشاء المستخدم (تحقق من Functions / Console)");
-        }
-      }
-    } finally {
-      setCreateSaving(false);
-      setTimeout(() => setCreateMsg(""), 3500);
-    }
-  }, [canManage, createForm, loadEmployees, loadCounts]);
-
   return (
     <div className="dashboard-skin">
       <div className="employees-page">
@@ -773,7 +546,7 @@ const DashboardEmployees = () => {
               </h1>
               <p style={{ marginTop: 8, opacity: 0.85 }}>
                 عرض الموظفات من Firestore (Collection:{" "}
-                <b>salons/main/staff_public</b>)
+                <b>salons/main/employees</b>) — (About من <b>staff_public</b>)
               </p>
             </div>
 
@@ -788,26 +561,6 @@ const DashboardEmployees = () => {
               <button className="dash-btn" type="button" onClick={loadEmployees}>
                 تحديث
               </button>
-
-              {canManage ? (
-                <button
-                  className="dash-btn primary"
-                  type="button"
-                  onClick={openCreate}
-                  title="إضافة موظفة/استقبال/مديرة بحساب دخول"
-                >
-                  + إضافة موظفة
-                </button>
-              ) : (
-                <button
-                  className="dash-btn"
-                  type="button"
-                  disabled
-                  title="reception عرض فقط"
-                >
-                  + إضافة موظفة
-                </button>
-              )}
 
               {canManage ? (
                 <button
@@ -923,10 +676,7 @@ const DashboardEmployees = () => {
                       const hasBookings = c > 0;
 
                       return (
-                        <tr
-                          key={e.id}
-                          className={hasBookings ? "emp-row-linked" : ""}
-                        >
+                        <tr key={e.id} className={hasBookings ? "emp-row-linked" : ""}>
                           <td className="emp-name">
                             {e.name}
                             {e.role === "staff" && e.showOnAbout ? (
@@ -943,50 +693,38 @@ const DashboardEmployees = () => {
                               </span>
                             ) : null}
                           </td>
+
                           <td className="emp-center">{e.department || "—"}</td>
                           <td className="emp-center">{roleLabel(e.role)}</td>
+
                           <td className="emp-center" dir="ltr">
                             {e.phone || "—"}
                           </td>
+
                           <td className="emp-center">
-                            <span
-                              className={`emp-pill ${statusPillClass(e.isActive)}`}
-                            >
+                            <span className={`emp-pill ${statusPillClass(e.isActive)}`}>
                               {statusLabel(e.isActive)}
                             </span>
                           </td>
+
                           <td className="emp-center">
-                            <span
-                              className={`emp-chip ${hasBookings ? "" : "warn"}`}
-                            >
+                            <span className={`emp-chip ${hasBookings ? "" : "warn"}`}>
                               {c}
                             </span>
                           </td>
+
                           <td className="emp-center">
                             <div className="emp-actions">
-                              <button
-                                className="dash-btn"
-                                type="button"
-                                onClick={() => openBookings(e)}
-                              >
+                              <button className="dash-btn" type="button" onClick={() => openBookings(e)}>
                                 آخر 5 حجوزات
                               </button>
 
                               {canManage ? (
-                                <button
-                                  className="dash-btn primary"
-                                  type="button"
-                                  onClick={() => openEdit(e)}
-                                >
+                                <button className="dash-btn primary" type="button" onClick={() => openEdit(e)}>
                                   تعديل
                                 </button>
                               ) : (
-                                <button
-                                  className="dash-btn"
-                                  type="button"
-                                  disabled
-                                  title="reception عرض فقط"
-                                >
+                                <button className="dash-btn" type="button" disabled title="reception عرض فقط">
                                   تعديل
                                 </button>
                               )}
@@ -999,330 +737,13 @@ const DashboardEmployees = () => {
                 </table>
 
                 <div className="emp-footnote">
-                  ملاحظة: الاستقبال (reception) عرض فقط. التعديل والمزامنة للـ
-                  Owner/Admin. (تحديث users يتطلب Bootstrap)
+                  ملاحظة: الاستقبال (reception) عرض فقط. التعديل والمزامنة للـ Owner/Admin.
+                  المزامنة من users تتطلب Bootstrap Admin.
                 </div>
               </div>
             )}
           </div>
         </div>
-
-        {/* =========================
-            ✅ Create Modal
-        ========================= */}
-        {createOpen && (
-          <div className="modal-overlay" onClick={() => setCreateOpen(false)}>
-            <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-head">
-                <div className="modal-title-wrap">
-                  <div className="modal-icon">➕</div>
-                  <h3 className="modal-title">إضافة مستخدم للموظفات</h3>
-                </div>
-
-                <button
-                  className="modal-close"
-                  type="button"
-                  onClick={() => setCreateOpen(false)}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="modal-body">
-                <div className="emp-modal-grid">
-                  <div className="emp-two">
-                    <div>
-                      <label className="emp-label">الاسم</label>
-                      <input
-                        className="dashboard-input emp-input"
-                        value={createForm.displayName}
-                        onChange={(e) =>
-                          setCreateForm((p) => ({
-                            ...p,
-                            displayName: e.target.value,
-                          }))
-                        }
-                        disabled={!canManage || createSaving}
-                        placeholder="مثال: خديجة صالحة"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="emp-label">الدور</label>
-                      <select
-                        className="dashboard-input emp-input"
-                        value={createForm.role}
-                        onChange={(e) =>
-                          setCreateForm((p) => ({
-                            ...p,
-                            role: e.target.value as StaffCreateRole,
-                          }))
-                        }
-                        disabled={!canManage || createSaving}
-                      >
-                        <option value="staff">موظفة (تظهر في About)</option>
-                        <option value="reception">
-                          استقبال (لا تظهر في About)
-                        </option>
-                        <option value="admin">مديرة (لا تظهر في About)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="emp-two">
-                    <div>
-                      <label className="emp-label">الإيميل</label>
-                      <input
-                        className="dashboard-input emp-input"
-                        value={createForm.email}
-                        onChange={(e) =>
-                          setCreateForm((p) => ({
-                            ...p,
-                            email: e.target.value,
-                          }))
-                        }
-                        disabled={!canManage || createSaving}
-                        placeholder="example@domain.com"
-                        dir="ltr"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="emp-label">كلمة المرور</label>
-                      <input
-                        className="dashboard-input emp-input"
-                        value={createForm.password}
-                        onChange={(e) =>
-                          setCreateForm((p) => ({
-                            ...p,
-                            password: e.target.value,
-                          }))
-                        }
-                        disabled={!canManage || createSaving}
-                        placeholder="******"
-                        dir="ltr"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="emp-two">
-                    <div>
-                      <label className="emp-label">الجوال</label>
-                      <input
-                        className="dashboard-input emp-input"
-                        value={createForm.phone}
-                        onChange={(e) =>
-                          setCreateForm((p) => ({
-                            ...p,
-                            phone: e.target.value,
-                          }))
-                        }
-                        disabled={!canManage || createSaving}
-                        placeholder="05xxxxxxxx"
-                        dir="ltr"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="emp-label">
-                        القسم{" "}
-                        {createForm.role !== "staff" ? "(اختياري)" : "(مطلوب)"}
-                      </label>
-                      <select
-                        className="dashboard-input emp-input"
-                        value={createForm.department}
-                        onChange={(e) =>
-                          setCreateForm((p) => ({
-                            ...p,
-                            department: e.target.value,
-                          }))
-                        }
-                        disabled={!canManage || createSaving}
-                      >
-                        {DEPARTMENTS.map((d) => (
-                          <option key={d} value={d}>
-                            {d}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {createForm.role === "staff" && (
-                    <>
-                      <div>
-                        <label className="emp-label">
-                          التخصصات (اكتبها مفصولة بفواصل)
-                        </label>
-                        <input
-                          className="dashboard-input emp-input"
-                          value={createForm.specialtiesText}
-                          onChange={(e) =>
-                            setCreateForm((p) => ({
-                              ...p,
-                              specialtiesText: e.target.value,
-                            }))
-                          }
-                          disabled={!canManage || createSaving}
-                          placeholder="hair, nails, makeup (أو: قسم الشعر, الأظافر)"
-                          dir="ltr"
-                        />
-                        <div
-                          style={{
-                            marginTop: 6,
-                            opacity: 0.75,
-                            fontSize: 12,
-                          }}
-                        >
-                          مثال: <b>{toArabicSpecialty("hair")}</b> = hair
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="emp-label">
-                          نبذة عن الموظفة (تظهر في About)
-                        </label>
-                        <textarea
-                          className="dashboard-input emp-input"
-                          value={createForm.bio}
-                          onChange={(e) =>
-                            setCreateForm((p) => ({ ...p, bio: e.target.value }))
-                          }
-                          disabled={!canManage || createSaving}
-                          placeholder="مثال: خبيرة في القص والصبغات والعناية بالشعر…"
-                          style={{ minHeight: 110, resize: "vertical" }}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {createMsg && <div className="emp-modal-hint">{createMsg}</div>}
-
-                  {createdInfo && (
-                    <div
-                      className="emp-modal-hint"
-                      style={{
-                        border: "1px dashed rgba(0,0,0,0.2)",
-                        borderRadius: 12,
-                        padding: 12,
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                        ✅ بيانات الدخول (انسخها وأرسلها للموظفة):
-                      </div>
-
-                      <div dir="ltr">
-                        <b>UID:</b> {createdInfo.uid}
-                      </div>
-                      <div dir="ltr">
-                        <b>Email:</b> {createdInfo.email}
-                      </div>
-                      <div dir="ltr">
-                        <b>Password:</b> {createdInfo.password}
-                      </div>
-                      <div>
-                        <b>Role:</b> {createdInfo.role}
-                      </div>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 10,
-                          flexWrap: "wrap",
-                          marginTop: 10,
-                        }}
-                      >
-                        <button
-                          className="dash-btn"
-                          type="button"
-                          onClick={async () => {
-                            const ok = await copyText(createdInfo.uid);
-                            setCreateMsg(ok ? "✅ تم نسخ UID" : "❌ تعذر النسخ");
-                          }}
-                        >
-                          نسخ UID
-                        </button>
-
-                        <button
-                          className="dash-btn"
-                          type="button"
-                          onClick={async () => {
-                            const ok = await copyText(createdInfo.email);
-                            setCreateMsg(ok ? "✅ تم نسخ Email" : "❌ تعذر النسخ");
-                          }}
-                        >
-                          نسخ Email
-                        </button>
-
-                        <button
-                          className="dash-btn"
-                          type="button"
-                          onClick={async () => {
-                            const ok = await copyText(createdInfo.password);
-                            setCreateMsg(
-                              ok ? "✅ تم نسخ Password" : "❌ تعذر النسخ"
-                            );
-                          }}
-                        >
-                          نسخ Password
-                        </button>
-
-                        <button
-                          className="dash-btn primary"
-                          type="button"
-                          onClick={async () => {
-                            const text =
-                              `Email: ${createdInfo.email}\n` +
-                              `Password: ${createdInfo.password}\n` +
-                              `Role: ${createdInfo.role}\n` +
-                              `UID: ${createdInfo.uid}`;
-                            const ok = await copyText(text);
-                            setCreateMsg(ok ? "✅ تم نسخ الكل" : "❌ تعذر النسخ");
-                          }}
-                        >
-                          نسخ الكل
-                        </button>
-                      </div>
-
-                      <div style={{ marginTop: 8, opacity: 0.85 }}>
-                        * صفحة About: تظهر فقط لو الدور <b>staff</b> (تم ضبطها
-                        تلقائيًا).
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="emp-modal-actions">
-                    <button
-                      className={`dash-btn primary ${
-                        createSaving ? "is-disabled" : ""
-                      }`}
-                      type="button"
-                      onClick={handleCreate}
-                      disabled={!canManage || createSaving}
-                    >
-                      {createSaving ? "جاري الإنشاء…" : "إنشاء المستخدم"}
-                    </button>
-
-                    <button
-                      className="dash-btn"
-                      type="button"
-                      onClick={() => setCreateOpen(false)}
-                    >
-                      إغلاق
-                    </button>
-                  </div>
-
-                  <div className="emp-modal-hint">
-                    * الإنشاء يتم عبر Cloud Function (Callable) بدون CORS.
-                    <br />
-                    * About: فقط <b>staff</b> تظهر، أما <b>reception/admin</b> لا.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* =========================
             ✅ Edit Modal
@@ -1336,11 +757,7 @@ const DashboardEmployees = () => {
                   <h3 className="modal-title">تعديل الموظفة</h3>
                 </div>
 
-                <button
-                  className="modal-close"
-                  type="button"
-                  onClick={() => setEditOpen(false)}
-                >
+                <button className="modal-close" type="button" onClick={() => setEditOpen(false)}>
                   ✕
                 </button>
               </div>
@@ -1352,9 +769,7 @@ const DashboardEmployees = () => {
                     <input
                       className="dashboard-input emp-input"
                       value={editForm.name}
-                      onChange={(e) =>
-                        setEditForm((p) => ({ ...p, name: e.target.value }))
-                      }
+                      onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
                       disabled={!canManage || editSaving}
                     />
                   </div>
@@ -1365,12 +780,7 @@ const DashboardEmployees = () => {
                       <select
                         className="dashboard-input emp-input"
                         value={editForm.department}
-                        onChange={(e) =>
-                          setEditForm((p) => ({
-                            ...p,
-                            department: e.target.value,
-                          }))
-                        }
+                        onChange={(e) => setEditForm((p) => ({ ...p, department: e.target.value }))}
                         disabled={!canManage || editSaving}
                       >
                         {DEPARTMENTS.map((d) => (
@@ -1386,9 +796,7 @@ const DashboardEmployees = () => {
                       <input
                         className="dashboard-input emp-input"
                         value={editForm.phone}
-                        onChange={(e) =>
-                          setEditForm((p) => ({ ...p, phone: e.target.value }))
-                        }
+                        onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))}
                         disabled={!canManage || editSaving}
                         placeholder="05xxxxxxxx"
                       />
@@ -1405,6 +813,8 @@ const DashboardEmployees = () => {
                           setEditForm((p) => ({
                             ...p,
                             role: e.target.value as StaffRole,
+                            // ✅ لو تغير للدور غير staff نخفي About مباشرة
+                            showOnAbout: e.target.value === "staff" ? p.showOnAbout : false,
                           }))
                         }
                         disabled={!canManage || editSaving}
@@ -1420,18 +830,37 @@ const DashboardEmployees = () => {
                       <select
                         className="dashboard-input emp-input"
                         value={editForm.isActive ? "on" : "off"}
-                        onChange={(e) =>
-                          setEditForm((p) => ({
-                            ...p,
-                            isActive: e.target.value === "on",
-                          }))
-                        }
+                        onChange={(e) => setEditForm((p) => ({ ...p, isActive: e.target.value === "on" }))}
                         disabled={!canManage || editSaving}
                       >
                         <option value="on">نشطة</option>
                         <option value="off">موقوفة</option>
                       </select>
                     </div>
+                  </div>
+
+                  {/* ✅ showOnAbout (staff only) */}
+                  <div className="emp-two">
+                    <div>
+                      <label className="emp-label">الظهور في About</label>
+                      <select
+                        className="dashboard-input emp-input"
+                        value={editForm.role === "staff" && editForm.showOnAbout ? "yes" : "no"}
+                        onChange={(e) =>
+                          setEditForm((p) => ({
+                            ...p,
+                            showOnAbout: p.role === "staff" ? e.target.value === "yes" : false,
+                          }))
+                        }
+                        disabled={!canManage || editSaving || editForm.role !== "staff"}
+                        title={editForm.role !== "staff" ? "فقط الموظفة (staff) تظهر في About" : ""}
+                      >
+                        <option value="yes">تظهر ✅</option>
+                        <option value="no">مخفية</option>
+                      </select>
+                    </div>
+
+                    <div />
                   </div>
 
                   <div>
@@ -1455,23 +884,17 @@ const DashboardEmployees = () => {
                     <div style={{ marginTop: 6, opacity: 0.75, fontSize: 12 }}>
                       عرض بالعربي:{" "}
                       <b>
-                        {(editForm.specialties || [])
-                          .map(toArabicSpecialty)
-                          .join("، ") || "—"}
+                        {(editForm.specialties || []).map(toArabicSpecialty).join("، ") || "—"}
                       </b>
                     </div>
                   </div>
 
                   <div>
-                    <label className="emp-label">
-                      نبذة عن الموظفة (تظهر بالـ About)
-                    </label>
+                    <label className="emp-label">نبذة عن الموظفة (تظهر بالـ About إذا كانت staff ومفعلة)</label>
                     <textarea
                       className="dashboard-input emp-input"
                       value={editForm.bio}
-                      onChange={(e) =>
-                        setEditForm((p) => ({ ...p, bio: e.target.value }))
-                      }
+                      onChange={(e) => setEditForm((p) => ({ ...p, bio: e.target.value }))}
                       disabled={!canManage || editSaving}
                       placeholder="مثال: خبيرة في الصبغات والعناية بالشعر…"
                       style={{ minHeight: 110, resize: "vertical" }}
@@ -1482,9 +905,7 @@ const DashboardEmployees = () => {
 
                   <div className="emp-modal-actions">
                     <button
-                      className={`dash-btn primary ${
-                        editSaving ? "is-disabled" : ""
-                      }`}
+                      className={`dash-btn primary ${editSaving ? "is-disabled" : ""}`}
                       type="button"
                       onClick={handleSaveEdit}
                       disabled={!canManage || editSaving}
@@ -1492,24 +913,15 @@ const DashboardEmployees = () => {
                       {editSaving ? "جاري الحفظ…" : "حفظ"}
                     </button>
 
-                    <button
-                      className="dash-btn"
-                      type="button"
-                      onClick={() => setEditOpen(false)}
-                    >
+                    <button className="dash-btn" type="button" onClick={() => setEditOpen(false)}>
                       إغلاق
                     </button>
                   </div>
 
                   <div className="emp-modal-hint">
-                    * يتم حفظ التعديل في <b>salons/main/employees</b> +{" "}
-                    <b>salons/main/staff_public</b>
-                    {isBootstrap && (
-                      <>
-                        {" "}
-                        + مزامنة <b>salons/main/users</b>
-                      </>
-                    )}
+                    * يتم حفظ التعديل في <b>salons/main/employees</b> + <b>salons/main/staff_public</b>
+                    <br />
+                    * About: تظهر فقط لو الدور <b>staff</b> و <b>showOnAbout = true</b>.
                   </div>
                 </div>
               </div>
@@ -1522,10 +934,7 @@ const DashboardEmployees = () => {
         ========================= */}
         {bookingsOpen && selected && (
           <div className="modal-overlay" onClick={() => setBookingsOpen(false)}>
-            <div
-              className="modal-box emp-bookings-modal"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="modal-box emp-bookings-modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal-head">
                 <div className="modal-title-wrap">
                   <div className="modal-icon">📅</div>
@@ -1537,11 +946,7 @@ const DashboardEmployees = () => {
                   </div>
                 </div>
 
-                <button
-                  className="modal-close"
-                  type="button"
-                  onClick={() => setBookingsOpen(false)}
-                >
+                <button className="modal-close" type="button" onClick={() => setBookingsOpen(false)}>
                   ✕
                 </button>
               </div>
@@ -1571,9 +976,7 @@ const DashboardEmployees = () => {
                             <td className="emp-center">{b.time || "—"}</td>
                             <td>{b.serviceName || "—"}</td>
                             <td className="emp-center">
-                              <span className="emp-bk-pill">
-                                {toArabicBookingStatus(b.status)}
-                              </span>
+                              <span className="emp-bk-pill">{toArabicBookingStatus(b.status)}</span>
                             </td>
                           </tr>
                         ))}

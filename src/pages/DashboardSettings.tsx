@@ -6,6 +6,7 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   signOut,
+  updateProfile, // ✅ NEW
 } from "firebase/auth";
 import { initializeApp, getApps } from "firebase/app";
 import {
@@ -78,6 +79,13 @@ type UserRow = {
 const SALON_ID = "main";
 const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
 
+// ✅ NEW: collections for About + Employees
+const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
+const EMPLOYEES_COLLECTION = ["salons", SALON_ID, "employees"] as const;
+
+// ✅ Bootstrap admin (طوق أمان)
+const BOOTSTRAP_ADMIN_EMAIL = "nawafaaa0@gmail.com".toLowerCase();
+
 const DashboardSettings: React.FC = () => {
   const [uiRole, setUiRole] = useState<UiRole>("guest");
   const [authLoading, setAuthLoading] = useState(true);
@@ -135,17 +143,24 @@ const DashboardSettings: React.FC = () => {
           return;
         }
 
+        const emailLower = String(user.email || "").toLowerCase();
+
         const userRef = doc(db, ...USERS_COLLECTION, user.uid);
         const snap = await getDoc(userRef);
 
-        // ✅ لو ما فيه وثيقة، ننشئها بـ role lowercase
+        // ✅ لو ما فيه وثيقة:
+        // - لا نمنح staff تلقائياً (أمان)
+        // - الافتراضي: client
+        // - bootstrap email: owner
         if (!snap.exists()) {
+          const initialRole: UiRole = emailLower === BOOTSTRAP_ADMIN_EMAIL ? "owner" : "client";
+
           await setDoc(
             userRef,
             {
-              role: "staff",
+              role: toFirestoreRole(initialRole),
               displayName: user.displayName || "مستخدم",
-              email: (user.email || "").toLowerCase(),
+              email: emailLower,
               createdAt: serverTimestamp(),
               active: true,
             },
@@ -156,7 +171,10 @@ const DashboardSettings: React.FC = () => {
         const snap2 = await getDoc(userRef);
         const data = snap2.exists() ? (snap2.data() as any) : {};
 
-        const mapped = mapFirestoreRoleToUi(data?.role);
+        // ✅ Bootstrap email: تأكيد الدور (حتى لو كانت قيمة قديمة/غلط)
+        let mapped = mapFirestoreRoleToUi(data?.role);
+        if (emailLower === BOOTSTRAP_ADMIN_EMAIL) mapped = "owner";
+
         setUiRole(mapped);
 
         const displayName = data?.displayName || user.displayName || "مستخدم";
@@ -175,7 +193,7 @@ const DashboardSettings: React.FC = () => {
           "auth_user",
           JSON.stringify({
             uid: user.uid,
-            email: (user.email || "").toLowerCase(),
+            email: emailLower,
             role: mapped,
             displayName,
           })
@@ -300,6 +318,10 @@ const DashboardSettings: React.FC = () => {
 
       // ✅ إنشاء user في Auth (بدون ما يطلعك من حساب الإدارة لأننا نستخدم secondary)
       const cred = await createUserWithEmailAndPassword(secondary, email, password);
+
+      // ✅ NEW: ثبت الاسم داخل Firebase Auth profile
+      await updateProfile(cred.user, { displayName }).catch(() => {});
+
       const uid = cred.user.uid;
 
       // ✅ إنشاء وثيقة salons/main/users/{uid} (role lowercase)
@@ -316,6 +338,44 @@ const DashboardSettings: React.FC = () => {
         },
         { merge: true }
       );
+
+      // ✅ إذا الدور staff → انشرها في About + سجلها كموظفة داخلية
+      if (role === "staff") {
+        await setDoc(
+          doc(db, ...STAFF_PUBLIC_COLLECTION, uid),
+          {
+            uid,
+            name: displayName,
+            role: "staff",
+            active: true,
+            showOnAbout: true,
+            specialties: [],
+            bio: "",
+            avatarUrl: "",
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        await setDoc(
+          doc(db, ...EMPLOYEES_COLLECTION, uid),
+          {
+            uid,
+            name: displayName,
+            email,
+            role: "staff",
+            isActive: true,
+            showOnAbout: true,
+            specialties: [],
+            bio: "",
+            avatarUrl: "",
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
 
       // ✅ اختياري قوي: نفصل جلسة الـ secondary حتى ما تعلق
       await signOut(secondary).catch(() => {});
@@ -336,7 +396,7 @@ const DashboardSettings: React.FC = () => {
     }
   };
 
-  // ✅ NEW: تعديل الدور مباشرة من الجدول
+  // ✅ NEW: تعديل الدور مباشرة من الجدول + تنظيف staff_public تلقائيًا
   const updateUserRole = async (uid: string, newRole: UiRole) => {
     if (!canManageUsers) return;
 
@@ -351,8 +411,59 @@ const DashboardSettings: React.FC = () => {
     }
 
     try {
-      await setDoc(doc(db, ...USERS_COLLECTION, uid), { role: toFirestoreRole(newRole) }, { merge: true });
+      // 1) تحديث دور المستخدم (مصدر الصلاحيات)
+      await setDoc(
+        doc(db, ...USERS_COLLECTION, uid),
+        { role: toFirestoreRole(newRole), updatedAt: serverTimestamp() },
+        { merge: true }
+      );
 
+      // 2) تنظيف ظهور About حسب الدور (بدون حذف)
+      const staffPublicRef = doc(db, ...STAFF_PUBLIC_COLLECTION, uid);
+      const employeeRef = doc(db, ...EMPLOYEES_COLLECTION, uid);
+
+      if (newRole === "staff") {
+        // ✅ فعّل/أنشئ staff_public + employees
+        const row = users.find((x) => x.uid === uid);
+
+        await setDoc(
+          staffPublicRef,
+          {
+            uid,
+            name: row?.displayName || "موظفة",
+            role: "staff",
+            active: true,
+            showOnAbout: true,
+            specialties: [],
+            bio: "",
+            avatarUrl: "",
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        await setDoc(
+          employeeRef,
+          {
+            uid,
+            name: row?.displayName || "موظفة",
+            email: row?.email || "",
+            role: "staff",
+            isActive: true,
+            showOnAbout: true,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } else {
+        // ✅ اخفِها من About (حتى لو كانت موجودة)
+        await setDoc(staffPublicRef, { showOnAbout: false, updatedAt: serverTimestamp() }, { merge: true });
+
+        // (اختياري) لو موجودة في employees: خلّي showOnAbout=false
+        await setDoc(employeeRef, { showOnAbout: false, updatedAt: serverTimestamp() }, { merge: true });
+      }
+
+      // 3) تحديث UI
       setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, role: newRole } : u)));
       setCreateMsg("✅ تم تحديث الدور");
       setTimeout(() => setCreateMsg(""), 1200);
@@ -375,7 +486,11 @@ const DashboardSettings: React.FC = () => {
     }
 
     try {
-      await setDoc(doc(db, ...USERS_COLLECTION, uid), { active }, { merge: true });
+      await setDoc(
+        doc(db, ...USERS_COLLECTION, uid),
+        { active, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
 
       setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, active } : u)));
       setCreateMsg("✅ تم تحديث حالة الحساب");
@@ -383,6 +498,62 @@ const DashboardSettings: React.FC = () => {
     } catch (e) {
       console.error("toggleUserActive error:", e);
       setCreateMsg("❌ تعذر تحديث حالة الحساب (Rules?)");
+      setTimeout(() => setCreateMsg(""), 2500);
+    }
+  };
+
+  // ✅ NEW: تعديل اسم المستخدم (displayName) + مزامنة staff_public/employees إذا كان Staff
+  const updateUserDisplayName = async (uid: string, newName: string) => {
+    if (!canManageUsers) return;
+
+    const name = String(newName || "").trim();
+    if (!name) {
+      setCreateMsg("❌ الاسم لا يمكن أن يكون فارغ");
+      setTimeout(() => setCreateMsg(""), 2000);
+      return;
+    }
+
+    // ✅ حماية اختيارية: لا تعدّل نفسك بالغلط
+    if ((auth as any)?.currentUser?.uid === uid) {
+      setCreateMsg("❌ لا يمكن تعديل اسم حسابك من هنا");
+      setTimeout(() => setCreateMsg(""), 2500);
+      return;
+    }
+
+    try {
+      // 1) تحديث مصدر الحقيقة
+      await setDoc(
+        doc(db, ...USERS_COLLECTION, uid),
+        { displayName: name, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+
+      // 2) إذا كان المستخدم staff: حدث staff_public + employees
+      const row = users.find((x) => x.uid === uid);
+      const roleNow = row?.role;
+
+      if (roleNow === "staff") {
+        await setDoc(
+          doc(db, ...STAFF_PUBLIC_COLLECTION, uid),
+          { name, updatedAt: serverTimestamp() },
+          { merge: true }
+        );
+
+        await setDoc(
+          doc(db, ...EMPLOYEES_COLLECTION, uid),
+          { name, updatedAt: serverTimestamp() },
+          { merge: true }
+        );
+      }
+
+      // 3) تحديث UI
+      setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, displayName: name } : u)));
+
+      setCreateMsg("✅ تم تحديث الاسم");
+      setTimeout(() => setCreateMsg(""), 1200);
+    } catch (e) {
+      console.error("updateUserDisplayName error:", e);
+      setCreateMsg("❌ تعذر تحديث الاسم (Rules?)");
       setTimeout(() => setCreateMsg(""), 2500);
     }
   };
@@ -801,6 +972,8 @@ const DashboardSettings: React.FC = () => {
                             <b>salons/main/users/{`{uid}`}</b>.
                             <br />
                             * لا يتم تسجيل خروجك لأننا نستخدم Secondary Auth.
+                            <br />
+                            * NEW: يتم تثبيت الاسم داخل Firebase Auth profile (displayName).
                           </div>
                         </div>
 
@@ -833,10 +1006,37 @@ const DashboardSettings: React.FC = () => {
                                 <tbody>
                                   {users.map((u) => (
                                     <tr key={u.uid}>
-                                      <td>{u.displayName || "-"}</td>
+                                      <td>
+                                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                          <input
+                                            className="settings-input"
+                                            style={{ minWidth: 180 }}
+                                            value={u.displayName || ""}
+                                            disabled={!canManageUsers || usersLoading}
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              setUsers((prev) =>
+                                                prev.map((x) => (x.uid === u.uid ? { ...x, displayName: v } : x))
+                                              );
+                                            }}
+                                            placeholder="اسم الموظفة"
+                                            title="تعديل الاسم"
+                                          />
+
+                                          <button
+                                            type="button"
+                                            className="exp-btn primary"
+                                            disabled={!canManageUsers || usersLoading}
+                                            onClick={() => updateUserDisplayName(u.uid, u.displayName)}
+                                            title="حفظ الاسم"
+                                          >
+                                            حفظ
+                                          </button>
+                                        </div>
+                                      </td>
+
                                       <td>{u.email || "-"}</td>
 
-                                      {/* ✅ role editor */}
                                       <td>
                                         <select
                                           className="settings-input"
@@ -852,7 +1052,6 @@ const DashboardSettings: React.FC = () => {
                                         </select>
                                       </td>
 
-                                      {/* ✅ active toggle */}
                                       <td>
                                         <button
                                           type="button"
@@ -872,9 +1071,7 @@ const DashboardSettings: React.FC = () => {
                           )}
 
                           <div className="settings-footnote" style={{ marginTop: 10 }}>
-                            * المرحلة الحالية: إنشاء الحسابات + عرضها + تعديل الدور + تفعيل/إيقاف.
-                            <br />
-                            * المرحلة القادمة: إعادة تعيين كلمة المرور (أفضل عبر Cloud Function).
+                            * المرحلة الحالية: إنشاء الحسابات + عرضها + تعديل الاسم + تعديل الدور + تفعيل/إيقاف.
                           </div>
                         </div>
                       </>

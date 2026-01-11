@@ -485,9 +485,16 @@ const Dashboard: React.FC = () => {
     };
   }, [selectedBooking]);
 
-  /** ✅ refresh من Firestore */
-  const refreshDashboard = async () => {
+  /**
+   * ✅ refresh من Firestore
+   * ✅ تعديل مهم: لا نقرأ المصروفات إلا لو AdminPower (Owner/Admin)
+   */
+  const refreshDashboard = async (roleForRefresh?: UiRole) => {
     let step = "start";
+
+    // ✅ حسم صلاحية المصروفات بناءً على الرول الحقيقي
+    const canReadExpensesNow =
+      roleForRefresh === "owner" || roleForRefresh === "admin";
 
     try {
       step = "migrateBookingsIfNeeded";
@@ -535,18 +542,23 @@ const Dashboard: React.FC = () => {
         employeesCount = 0;
       }
 
-      // 4) EXPENSES
-      step = "expenses:listAllExpensesFS";
-      console.log("REFRESH -> listAllExpensesFS()");
-      const expenses = await listAllExpensesFS();
-      console.log("REFRESH -> expenses OK:", expenses.length);
+      // 4) EXPENSES ✅ (AdminPower only)
+      if (canReadExpensesNow) {
+        step = "expenses:listAllExpensesFS";
+        console.log("REFRESH -> listAllExpensesFS()");
+        const expenses = await listAllExpensesFS();
+        console.log("REFRESH -> expenses OK:", expenses.length);
 
-      step = "expenses:sum";
-      const expensesTotal = expenses.reduce(
-        (sum, e) => sum + (Number((e as any).amount) || 0),
-        0
-      );
-      setExpensesTotalFS(expensesTotal);
+        step = "expenses:sum";
+        const expensesTotal = expenses.reduce(
+          (sum, e) => sum + (Number((e as any).amount) || 0),
+          0
+        );
+        setExpensesTotalFS(expensesTotal);
+      } else {
+        // ✅ Reception/Staff: لا نقرأ المصروفات (Rules تمنعها)
+        setExpensesTotalFS(0);
+      }
 
       // 5) SET UI STATE
       step = "ui:setStats/setLatestBookings";
@@ -580,7 +592,19 @@ const Dashboard: React.FC = () => {
   };
 
   // ✅ Badge المصروفات بدون ملاحظات
+  // ✅ تعديل مهم: لا نحاول نقرأها إلا لو AdminPower
   useEffect(() => {
+    // لو لسه ما عندنا userInfo، لا تسوي شي
+    if (!userInfo) return;
+
+    const isAdminPowerNow =
+      userInfo.role === "owner" || userInfo.role === "admin";
+
+    if (!isAdminPowerNow) {
+      setMissingExpenseNotesCount(0);
+      return;
+    }
+
     let alive = true;
 
     const load = async () => {
@@ -599,7 +623,7 @@ const Dashboard: React.FC = () => {
       alive = false;
       window.clearInterval(t);
     };
-  }, []);
+  }, [userInfo?.role]);
 
   /**
    * ✅ ربط Dashboard مع Firestore settings/app (Realtime)
@@ -682,7 +706,8 @@ const Dashboard: React.FC = () => {
           email: profile.email || user.email || "",
         });
 
-        await refreshDashboard();
+        // ✅ مرر الرول للـ refresh عشان نحدد قراءة المصروفات
+        await refreshDashboard(dashRole);
       } catch (err) {
         console.error("Dashboard auth error:", err);
         navigate("/login");
@@ -769,7 +794,10 @@ const Dashboard: React.FC = () => {
     if (hasAdminPower || canReceptionChange || canStaffChange) {
       try {
         await updateBookingStatusFS(id, status);
-        await refreshDashboard();
+
+        // ✅ مرر الرول للـ refresh
+        await refreshDashboard(userInfo?.role);
+
         setSelectedBooking((prev) =>
           prev && prev.id === id ? { ...prev, status } : prev
         );

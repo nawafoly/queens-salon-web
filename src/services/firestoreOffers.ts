@@ -2,7 +2,6 @@
 import { db } from "./firebase";
 import {
   collection,
-  deleteDoc,
   doc,
   getDocs,
   limit,
@@ -23,28 +22,31 @@ export type Offer = {
   id: string;
   title: string;
 
-  /** الكود الأصلي للعرض */
+  /** كود العرض (مولّد تلقائيًا غالبًا) */
   code: string;
 
-  /** ✅ مفتاح بحث (lowercase) لتفادي مشكلة case-sensitive */
+  /** مفتاح بحث (نخليه Uppercase عشان يكون ثابت) */
   codeKey?: string;
 
   discountType: DiscountType;
   value: number;
 
-  startDate?: string;
-  endDate?: string;
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string;   // YYYY-MM-DD
   active: boolean;
 
-  /** ✅ تطبيق العرض على (الكل/خدمات محددة) */
+  /** تطبيق العرض على الكل أو خدمات محددة */
   appliesTo?: OfferAppliesTo;
   serviceIds?: string[];
 
   usageCount?: number;
-  imageUrl?: string; // base64 أو رابط
+  imageUrl?: string;
 
   createdAt?: Timestamp | any;
   updatedAt?: Timestamp | any;
+
+  /** ✅ للتوافق مع كود قديم ممكن يستخدم isActive */
+  isActive?: boolean;
 };
 
 const DEFAULT_SALON_ID = "main";
@@ -53,7 +55,7 @@ function offersCol(salonId = DEFAULT_SALON_ID) {
   return collection(db, "salons", salonId, "offers");
 }
 
-/** ✅ Firestore يرفض undefined */
+/** Firestore يرفض undefined */
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   const out: Record<string, any> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -69,9 +71,23 @@ function endOfDay(d: Date) {
   return x;
 }
 
-/** ✅ يتحقق من صلاحية الفترة (إن وُجدت) */
-function isWithinDates(startDate?: string, endDate?: string) {
+/** ✅ تحقق صلاحية التاريخ الآن (inclusive) */
+export function isOfferActiveNow(offerLike: {
+  startDate?: string;
+  endDate?: string;
+  active?: boolean;
+  isActive?: boolean;
+}) {
   const now = new Date();
+
+  const activeFlag =
+    offerLike?.active === true ||
+    offerLike?.isActive === true;
+
+  if (!activeFlag) return false;
+
+  const startDate = offerLike?.startDate;
+  const endDate = offerLike?.endDate;
 
   if (startDate) {
     const s = new Date(startDate);
@@ -96,28 +112,62 @@ export function offerAppliesToService(offer: Offer, serviceId: string) {
   return list.includes(serviceId);
 }
 
+/** ============================
+ * ✅ توليد كود تلقائي QSXXXX
+ * - بدون شرطة
+ * - حروف/أرقام بدون 0,O,1,I لتجنب اللبس
+ ============================ */
+export function generateOfferCodeQS(len = 4) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // excludes I,O,1,0
+  let out = "QS";
+  for (let i = 0; i < len; i++) {
+    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return out; // e.g. QS7K3M
+}
+
+/** ✅ normalize: نخليه Uppercase ثابت */
+function normalizeCode(codeRaw: any) {
+  return String(codeRaw ?? "").trim().toUpperCase();
+}
+
+/** ✅ قائمة العروض */
 export async function listOffers(salonId = DEFAULT_SALON_ID): Promise<Offer[]> {
   const q = query(offersCol(salonId), orderBy("createdAt", "desc"));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Offer[];
 }
 
+/** ✅ إضافة/تحديث */
 export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
   const ref = doc(db, "salons", salonId, "offers", offer.id);
 
   const payload = stripUndefined({ ...offer });
 
-  const code = String(payload.code ?? "").trim();
-  const codeKey = code.toLowerCase();
+  // ✅ لو الكود فاضي → ولّده تلقائيًا QSXXXX (بدون شرطة)
+  const code = normalizeCode(payload.code) || generateOfferCodeQS(4);
+  const codeKey = code; // ✅ ثابت (Uppercase)
+
+  const active = Boolean(payload.active);
+  const usageCount = Number(payload.usageCount ?? 0);
 
   await setDoc(
     ref,
     {
       ...payload,
+
+      // ✅ حقول موحدة
       code,
-      codeKey, // ✅ مهم للبحث
+      codeKey,
+
+      active,
+      isActive: active, // ✅ للتوافق مع أي كود قديم
+
+      usageCount,
+
       appliesTo: (payload.appliesTo as any) || "all",
       serviceIds: Array.isArray(payload.serviceIds) ? payload.serviceIds : [],
+
       updatedAt: serverTimestamp(),
       createdAt: payload.createdAt ?? serverTimestamp(),
     },
@@ -125,27 +175,44 @@ export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
   );
 }
 
+/**
+ * ✅ حذف عرض
+ * - ممنوع إذا usageCount > 0 (عشان ما نكسر السجل/التقارير)
+ */
 export async function removeOffer(id: string, salonId = DEFAULT_SALON_ID) {
-  await deleteDoc(doc(db, "salons", salonId, "offers", id));
+  const ref = doc(db, "salons", salonId, "offers", id);
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+
+    const data = snap.data() as any;
+    const used = Number(data?.usageCount ?? 0);
+
+    if (used > 0) {
+      // ✅ ممنوع حذف بعد الاستخدام
+      throw new Error("لا يمكن حذف العرض بعد استخدامه. يمكنك إيقافه أو أرشفته.");
+    }
+
+    tx.delete(ref);
+  });
 }
 
 /**
  * ✅ جلب عرض فعّال عن طريق الكود
  * - يبحث عن codeKey + active=true
- * - ويتأكد أن التاريخ داخل startDate/endDate إذا موجودة
+ * - ويتأكد أن التاريخ داخل startDate/endDate
  */
 export async function findActiveOfferByCode(
   salonId: string,
   codeRaw: string
 ): Promise<Offer | null> {
-  const code = String(codeRaw || "").trim();
+  const code = normalizeCode(codeRaw);
   if (!code) return null;
-
-  const codeKey = code.toLowerCase();
 
   const q = query(
     offersCol(salonId),
-    where("codeKey", "==", codeKey),
+    where("codeKey", "==", code),
     where("active", "==", true),
     limit(1)
   );
@@ -156,14 +223,15 @@ export async function findActiveOfferByCode(
   const d0 = snap.docs[0];
   const data = d0.data() as any;
 
-  if (!isWithinDates(data?.startDate, data?.endDate)) return null;
+  // ✅ أهم نقطة: التواريخ الآن تُطبق فعليًا
+  if (!isOfferActiveNow({ ...data, active: true })) return null;
 
   return { id: d0.id, ...data } as Offer;
 }
 
 /**
  * ✅ يزيد usageCount للعرض بعد تطبيقه بنجاح
- * - يستخدم Transaction عشان يكون آمن مع التزامن
+ * - Transaction آمن مع التزامن
  */
 export async function incrementOfferUsage(
   salonId: string,

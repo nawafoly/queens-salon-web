@@ -32,6 +32,9 @@ import EmployeePortal from "./pages/EmployeePortal";
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
 
+// ✅ NEW: Staff dashboard page
+import DashboardStaff from "./pages/DashboardStaff";
+
 /* ================================
    Types & Helpers
 ================================ */
@@ -202,6 +205,17 @@ const App: React.FC = () => {
               <ClientGuard>
                 <Profile />
               </ClientGuard>
+            }
+          />
+
+          {/* ✅ NEW: Staff Dashboard page (Protected)
+              لازم يكون قبل /dashboard/* */}
+          <Route
+            path="/dashboard/staff"
+            element={
+              <DashboardGuard>
+                <DashboardStaff />
+              </DashboardGuard>
             }
           />
 

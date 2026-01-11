@@ -30,7 +30,10 @@ type TeamMember = {
   specialties?: string[];
   bio?: string;
   avatarUrl?: string;
+
+  // ✅ flags
   active?: boolean;
+  showOnAbout?: boolean; // ✅ NEW
 };
 
 const SALON_ID = "main";
@@ -44,8 +47,15 @@ function normalizeSpecialties(v: any): string[] {
 
 function buildPositionFromSpecialties(specialties: string[]) {
   if (!specialties.length) return "أخصائية";
-  // مثال: "أخصائية: hair • nails"
   return `أخصائية: ${specialties.slice(0, 3).join(" • ")}`;
+}
+
+// ✅ يقرأ isActive أو active عشان ما ننكسر مع الداتا القديمة
+function readActiveFlag(x: any) {
+  if (typeof x?.isActive === "boolean") return x.isActive;
+  if (typeof x?.active === "boolean") return x.active;
+  // default true
+  return true;
 }
 
 const About = () => {
@@ -59,8 +69,7 @@ const About = () => {
     {
       icon: faStar,
       title: "خدمة متميزة",
-      description:
-        "نقدم خدمة احترافية ومتميزة تلبي جميع احتياجاتك وتفوق توقعاتك.",
+      description: "نقدم خدمة احترافية ومتميزة تلبي جميع احتياجاتك وتفوق توقعاتك.",
     },
     {
       icon: faAward,
@@ -70,12 +79,11 @@ const About = () => {
     {
       icon: faHandHoldingHeart,
       title: "منتجات طبيعية",
-      description:
-        "نستخدم منتجات طبيعية وآمنة على البشرة والشعر من أفضل الماركات العالمية.",
+      description: "نستخدم منتجات طبيعية وآمنة على البشرة والشعر من أفضل الماركات العالمية.",
     },
   ];
 
-  // ✅ تحميل الفريق من staff_public (يعتمد على active فقط)
+  // ✅ تحميل الفريق من staff_public
   const loadTeam = async () => {
     try {
       setTeamLoading(true);
@@ -89,7 +97,8 @@ const About = () => {
           const x: any = d.data();
 
           const name = String(x?.name || "").trim();
-          const active = x?.active !== false; // ✅ default true
+          const active = readActiveFlag(x); // ✅ fixed
+          const showOnAbout = x?.showOnAbout !== false; // ✅ default true (fallback for old docs)
 
           const specialties = normalizeSpecialties(x?.specialties);
           const bio = String(x?.bio || "").trim();
@@ -107,6 +116,7 @@ const About = () => {
             id: d.id,
             name,
             active,
+            showOnAbout,
             specialties,
             bio,
             avatarUrl,
@@ -115,8 +125,8 @@ const About = () => {
             image: placeholders[idx % placeholders.length], // fallback
           };
         })
-        // ✅ فقط اللي active + عنده اسم
-        .filter((m) => m.name && m.active);
+        // ✅ فقط اللي active + showOnAbout + عنده اسم
+        .filter((m) => m.name && m.active && m.showOnAbout !== false);
 
       // ✅ ترتيب محلي بالاسم
       rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
@@ -213,14 +223,8 @@ const About = () => {
 
                     <div className="team-member-content">
                       <h3 className="team-member-name-enhanced">{member.name}</h3>
-
-                      <p className="team-member-position-enhanced">
-                        {member.position}
-                      </p>
-
-                      <p className="team-member-description-enhanced">
-                        {member.description}
-                      </p>
+                      <p className="team-member-position-enhanced">{member.position}</p>
+                      <p className="team-member-description-enhanced">{member.description}</p>
 
                       {!!member.specialties?.length && (
                         <div className="team-member-chips">
@@ -265,24 +269,19 @@ const About = () => {
                 <h3 className="about-features-title mb-4">ماذا يميزنا؟</h3>
                 <ul className="features-list">
                   <li>
-                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> أحدث
-                    التقنيات في مجال التجميل
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> أحدث التقنيات في مجال التجميل
                   </li>
                   <li>
-                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> منتجات
-                    عالمية ذات جودة عالية
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> منتجات عالمية ذات جودة عالية
                   </li>
                   <li>
-                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> أسعار
-                    مناسبة وعروض دورية
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> أسعار مناسبة وعروض دورية
                   </li>
                   <li>
-                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> خصوصية
-                    تامة وراحة مطلقة
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> خصوصية تامة وراحة مطلقة
                   </li>
                   <li>
-                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> مواعيد
-                    مرنة تناسب جميع العميلات
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> مواعيد مرنة تناسب جميع العميلات
                   </li>
                 </ul>
               </div>
@@ -291,24 +290,19 @@ const About = () => {
                 <h3 className="about-features-title mb-4">قيمنا</h3>
                 <ul className="features-list">
                   <li>
-                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الاحترافية
-                    في تقديم الخدمات
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الاحترافية في تقديم الخدمات
                   </li>
                   <li>
-                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الالتزام
-                    بأعلى معايير النظافة
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الالتزام بأعلى معايير النظافة
                   </li>
                   <li>
-                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الاهتمام
-                    بتفاصيل رغبات العميلات
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الاهتمام بتفاصيل رغبات العميلات
                   </li>
                   <li>
-                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> التطوير
-                    المستمر لمهارات الفريق
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> التطوير المستمر لمهارات الفريق
                   </li>
                   <li>
-                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الصدق
-                    والشفافية في التعامل
+                    <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الصدق والشفافية في التعامل
                   </li>
                 </ul>
               </div>

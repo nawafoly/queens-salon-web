@@ -235,6 +235,7 @@
   background: #fff;
   border-radius: 10px;
   overflow: hidden;
+  min-width: 620px; /* ✅ يساعد على الموبايل مع سكرول أفقي */
 }
 
 .profile-bookings th,
@@ -271,7 +272,7 @@
   background: #b7b2f7;
   color: #594bbb;
 }
-.status-badge.ملغي {
+.status-badge.cancelled {
   background: #ffdde1;
   color: #d05a68;
 }
