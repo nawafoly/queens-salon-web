@@ -1,70 +1,24 @@
-/* =========================
-   Settings Alerts / Messages
-========================= */
-
-.settings-alert {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-
-  padding: 8px 12px;
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.settings-alert.success {
-  background: rgba(34, 197, 94, 0.12);
-  color: #166534;
-  border: 1px solid rgba(34, 197, 94, 0.25);
-}
-
-.settings-alert.error {
-  background: rgba(239, 68, 68, 0.10);
-  color: #991b1b;
-  border: 1px solid rgba(239, 68, 68, 0.22);
-}
-
-.settings-alert.info {
-  background: rgba(139, 92, 246, 0.10);
-  color: #6d28d9;
-  border: 1px solid rgba(139, 92, 246, 0.22);
-}
-
-/* Users Manager inside modal */
-.settings-card + .settings-card {
-  margin-top: 14px;
-}
-
-.ov-table th {
-  font-size: 12px;
-  opacity: 0.75;
-}
-
-.ov-table td {
-  font-size: 13px;
-  font-weight: 700;
-}
-
 /* =========================================
    Dashboard Settings (Queens / Glass) ✅ FINAL
    File: src/styles/DashboardSettings.css
-   هدفه: يكمل شكل الصفحة داخل dashboard-skin
+   الهدف: شكل ثابت + Responsive + بدون تعارض
+   ✅ Scoped داخل .dashboard-skin
 ========================================= */
 
-/* ✅ Wrapper للعرض */
-.dashboard-skin .settings-page{
+.dashboard-skin .settings-page {
   width: 100%;
+  max-width: 100%;
 }
 
-.dashboard-skin .settings-wrap{
+/* ✅ Wrapper */
+.dashboard-skin .settings-wrap {
   width: min(760px, 100%);
-  margin-inline-start: auto;   /* RTL: يمين */
-  margin-inline-end: 0;
+  margin-inline: auto;           /* يشتغل RTL/LTR */
+  padding-inline: 10px;
 }
 
 /* ✅ Header */
-.dashboard-skin .settings-header{
+.dashboard-skin .settings-header {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -73,41 +27,44 @@
   margin-bottom: 14px;
 }
 
-.dashboard-skin .settings-header h1{
+.dashboard-skin .settings-header h1 {
   margin: 0;
   font-size: 42px;
   font-weight: 900;
   color: var(--text);
   letter-spacing: 0.2px;
+  line-height: 1.1;
 }
 
-.dashboard-skin .settings-hint{
+.dashboard-skin .settings-hint {
   margin: 6px 0 0;
   color: var(--muted);
   font-weight: 700;
+  line-height: 1.6;
 }
 
-.dashboard-skin .settings-save{
+.dashboard-skin .settings-save {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
-.dashboard-skin .settings-saved{
+.dashboard-skin .settings-saved {
   display: inline-flex;
   align-items: center;
   padding: 8px 12px;
   border-radius: 14px;
-  background: rgba(255,255,255,0.70);
-  border: 1px solid rgba(124,58,237,0.14);
+  background: rgba(255, 255, 255, 0.70);
+  border: 1px solid rgba(124, 58, 237, 0.14);
   font-weight: 900;
   font-size: 13px;
-  color: rgba(58,47,68,0.88);
+  color: rgba(58, 47, 68, 0.88);
 }
 
 /* ✅ Tabs */
-.dashboard-skin .settings-tabs{
+.dashboard-skin .settings-tabs {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -115,89 +72,104 @@
 }
 
 /* ✅ Card Glass */
-.dashboard-skin .settings-card{
-  background: rgba(255,255,255,0.62);
-  border: 1px solid rgba(255,255,255,0.65);
+.dashboard-skin .settings-card {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.65);
   box-shadow: var(--shadow-soft);
   border-radius: 22px;
   padding: 16px;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  max-width: 100%;
+  overflow: hidden; /* يمنع خروج عناصر على الموبايل */
 }
 
-.dashboard-skin .settings-title{
+/* ✅ Card spacing داخل الصفحة */
+.dashboard-skin .settings-card + .settings-card {
+  margin-top: 14px;
+}
+
+.dashboard-skin .settings-title {
   margin: 0 0 12px;
   font-size: 28px;
   font-weight: 900;
   color: var(--text);
+  line-height: 1.2;
 }
 
 /* ✅ Grid */
-.dashboard-skin .settings-grid{
+.dashboard-skin .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-@media (max-width: 720px){
-  .dashboard-skin .settings-wrap{ width: 100%; }
-  .dashboard-skin .settings-grid{ grid-template-columns: 1fr; }
-  .dashboard-skin .settings-header h1{ font-size: 34px; }
-  .dashboard-skin .settings-title{ font-size: 24px; }
-}
-
 /* ✅ Field */
-.dashboard-skin .settings-field label{
+.dashboard-skin .settings-field label {
   display: block;
   margin-bottom: 6px;
   font-weight: 900;
-  color: rgba(58,47,68,0.86);
+  color: rgba(58, 47, 68, 0.86);
   font-size: 13px;
 }
 
-/* ✅ Input (Glass / Unified) */
-.dashboard-skin .settings-input{
+/* ✅ Input (Unified / Glass) */
+.dashboard-skin .settings-input {
   width: 100%;
+  max-width: 100%;
   min-height: 44px;
   padding: 10px 12px;
 
   border-radius: 14px;
-  border: 1px solid rgba(124,58,237,0.18);
+  border: 1px solid rgba(124, 58, 237, 0.18);
 
-  background: rgba(255,255,255,0.85);
-  color: rgba(58,47,68,0.92);
+  background: rgba(255, 255, 255, 0.85);
+  color: rgba(58, 47, 68, 0.92);
 
   font-family: "Tajawal", sans-serif;
   font-size: 14px;
   font-weight: 800;
 
   outline: none;
-  transition: .15s ease;
+  transition: 0.15s ease;
 }
 
-.dashboard-skin .settings-input:hover{
-  border-color: rgba(124,58,237,0.28);
-  background: rgba(255,255,255,0.92);
+/* ✅ Fix: select / inputs on iOS + long content */
+.dashboard-skin select.settings-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, rgba(58,47,68,0.55) 50%),
+    linear-gradient(135deg, rgba(58,47,68,0.55) 50%, transparent 50%);
+  background-position: calc(16px) calc(50% - 2px), calc(10px) calc(50% - 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-inline-start: 14px;
+  padding-inline-end: 36px; /* مساحة للسهم */
 }
 
-.dashboard-skin .settings-input:focus{
-  border-color: rgba(124,58,237,0.45);
-  box-shadow: 0 0 0 3px rgba(139,92,246,0.14);
+.dashboard-skin .settings-input:hover {
+  border-color: rgba(124, 58, 237, 0.28);
+  background: rgba(255, 255, 255, 0.92);
 }
 
-.dashboard-skin .settings-input:disabled{
+.dashboard-skin .settings-input:focus {
+  border-color: rgba(124, 58, 237, 0.45);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.14);
+}
+
+.dashboard-skin .settings-input:disabled {
   opacity: 0.7;
   cursor: not-allowed;
 }
 
 /* ✅ Lists */
-.dashboard-skin .settings-list{
+.dashboard-skin .settings-list {
   display: grid;
   gap: 10px;
   margin-top: 10px;
 }
 
-.dashboard-skin .settings-row{
+.dashboard-skin .settings-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -206,72 +178,175 @@
   padding: 12px 12px;
   border-radius: 18px;
 
-  background: rgba(255,255,255,0.55);
-  border: 1px solid rgba(124,58,237,0.10);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  max-width: 100%;
 }
 
-.dashboard-skin .settings-row span{
+.dashboard-skin .settings-row span {
   font-weight: 900;
-  color: rgba(58,47,68,0.86);
+  color: rgba(58, 47, 68, 0.86);
   font-size: 14px;
   line-height: 1.6;
+
+  /* ✅ يمنع النص الطويل يكسر التصميم */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* ✅ Checkbox (حل الأحمر + شكل أنيق) */
-.dashboard-skin .settings-check{
+/* ✅ إذا تبغى النص يلف في بعض الصفوف استخدم هذا class في HTML */
+.dashboard-skin .settings-row.is-multiline span {
+  white-space: normal;
+}
+
+/* ✅ Checkbox (شكل أنيق + يمنع الأحمر) */
+.dashboard-skin .settings-check {
   width: 18px;
   height: 18px;
-  accent-color: rgba(124,58,237,0.95);
+  accent-color: rgba(124, 58, 237, 0.95);
   cursor: pointer;
+  flex: 0 0 auto;
 }
 
 /* ✅ Note / Footnote */
-.dashboard-skin .settings-note{
+.dashboard-skin .settings-note {
   margin-top: 10px;
   font-weight: 800;
-  color: rgba(58,47,68,0.78);
-  font-size: 13px;
-}
-
-.dashboard-skin .settings-footnote{
-  margin-top: 12px;
-  color: rgba(58,47,68,0.68);
+  color: rgba(58, 47, 68, 0.78);
   font-size: 13px;
   line-height: 1.8;
 }
 
-/* ✅ Alerts (متوافق مع اللي أرسلته) */
-.settings-alert{
+.dashboard-skin .settings-footnote {
+  margin-top: 12px;
+  color: rgba(58, 47, 68, 0.68);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+/* =========================
+   Settings Alerts / Messages ✅ Scoped
+========================= */
+
+.dashboard-skin .settings-alert {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+
   padding: 8px 12px;
   border-radius: 12px;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 900;
+  line-height: 1.4;
+
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.settings-alert.success{
+
+.dashboard-skin .settings-alert.success {
   background: rgba(34, 197, 94, 0.12);
   color: #166534;
   border: 1px solid rgba(34, 197, 94, 0.25);
 }
-.settings-alert.error{
+
+.dashboard-skin .settings-alert.error {
   background: rgba(239, 68, 68, 0.10);
   color: #991b1b;
   border: 1px solid rgba(239, 68, 68, 0.22);
 }
-.settings-alert.info{
+
+.dashboard-skin .settings-alert.info {
   background: rgba(139, 92, 246, 0.10);
   color: #6d28d9;
   border: 1px solid rgba(139, 92, 246, 0.22);
 }
 
-/* ✅ Table tweaks */
-.dashboard-skin .ov-table th{
+/* =========================
+   Table tweaks ✅ safe on mobile
+========================= */
+
+.dashboard-skin .table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 16px;
+}
+
+.dashboard-skin .ov-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px; /* يسمح بالتمرير بالموبايل بدل ما يكسر */
+}
+
+.dashboard-skin .ov-table th {
   font-size: 12px;
   opacity: 0.75;
+  text-align: start;
+  padding: 10px 12px;
+  white-space: nowrap;
 }
-.dashboard-skin .ov-table td{
+
+.dashboard-skin .ov-table td {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+
+/* ✅ inputs داخل الجدول ما تخرج */
+.dashboard-skin .ov-table .settings-input {
+  min-height: 40px;
+  border-radius: 12px;
+}
+
+/* =========================
+   Responsive ✅
+========================= */
+
+@media (max-width: 720px) {
+  .dashboard-skin .settings-wrap {
+    width: 100%;
+    padding-inline: 8px;
+  }
+
+  .dashboard-skin .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin .settings-header h1 {
+    font-size: 34px;
+  }
+
+  .dashboard-skin .settings-title {
+    font-size: 24px;
+  }
+
+  /* ✅ صفوف الليست تنزل تحت بعض */
+  .dashboard-skin .settings-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .dashboard-skin .settings-row span {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 420px) {
+  .dashboard-skin .settings-header h1 {
+    font-size: 30px;
+  }
+
+  .dashboard-skin .settings-card {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .dashboard-skin .settings-input {
+    min-height: 42px;
+  }
 }

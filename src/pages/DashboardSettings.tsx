@@ -6,7 +6,7 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   signOut,
-  updateProfile, // ✅ NEW
+  updateProfile,
 } from "firebase/auth";
 import { initializeApp, getApps } from "firebase/app";
 import {
@@ -18,24 +18,19 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  addDoc,
 } from "firebase/firestore";
 
 import { auth, db } from "../services/firebase";
 
-// ✅ App settings (Firestore: settings/app + cache localStorage)
 import { AppSettingsService } from "../services/AppSettingsService";
 import type { AppSettings, SectionKey } from "../services/AppSettingsService";
 
 import "../styles/DashboardModals.css";
 import "../styles/DashboardSettings.css";
 
-/** ✅ نفس Roles اللي عندك في Dashboard */
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 
-/**
- * ✅ مهم: نقبل أي قيمة قديمة (ADMIN/Owner/..)
- * ونحوّلها فورًا لصيغة UI role (lowercase)
- */
 function mapFirestoreRoleToUi(roleRaw: string): UiRole {
   const role = String(roleRaw || "").toLowerCase().trim();
   if (role === "owner") return "owner";
@@ -46,7 +41,6 @@ function mapFirestoreRoleToUi(roleRaw: string): UiRole {
   return "guest";
 }
 
-/** ✅ أهم قرار: نخزن role في Firestore lowercase دائمًا */
 function toFirestoreRole(role: UiRole) {
   const r = String(role || "guest").toLowerCase().trim();
   if (r === "owner") return "owner";
@@ -57,7 +51,6 @@ function toFirestoreRole(role: UiRole) {
   return "guest";
 }
 
-/** ✅ Secondary Auth: إنشاء مستخدم بدون ما يطلعك من حساب الإدارة */
 function getSecondaryAuth() {
   const options = (auth as any)?.app?.options;
   if (!options) throw new Error("Missing Firebase app options from auth.app.options");
@@ -79,12 +72,39 @@ type UserRow = {
 const SALON_ID = "main";
 const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
 
-// ✅ NEW: collections for About + Employees
 const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
 const EMPLOYEES_COLLECTION = ["salons", SALON_ID, "employees"] as const;
 
-// ✅ Bootstrap admin (طوق أمان)
+// ✅ الأقسام (شعر/أظافر/مكياج...)
+const SERVICE_SECTIONS_COLLECTION = ["salons", SALON_ID, "service_sections"] as const;
+
+// ✅ الخدمات (استشوار قصير/وسط/طويل...)
+const SERVICES_COLLECTION = ["salons", SALON_ID, "services"] as const;
+
 const BOOTSTRAP_ADMIN_EMAIL = "nawafaaa0@gmail.com".toLowerCase();
+
+/* =========================
+   ✅ Types
+========================= */
+type ServiceSectionRow = {
+  id: string;
+  name: string;
+  active: boolean;
+  order: number;
+  updatedAt?: any;
+  createdAt?: any;
+};
+
+type ServiceRow = {
+  id: string;
+  sectionId: string; // ✅ مهم: ربط الخدمة بالقسم
+  name: string;
+  durationMin: number;
+  price: number;
+  active: boolean;
+  updatedAt?: any;
+  createdAt?: any;
+};
 
 const DashboardSettings: React.FC = () => {
   const [uiRole, setUiRole] = useState<UiRole>("guest");
@@ -100,17 +120,14 @@ const DashboardSettings: React.FC = () => {
 
   const [tab, setTab] = useState<"salon" | "sections" | "policies">("salon");
 
-  // ✅ أولاً: نعرض الكاش مباشرة (سريع)
   const [settings, setSettings] = useState<AppSettings>(() => AppSettingsService.getCached());
   const [savedMsg, setSavedMsg] = useState<string>("");
 
-  // ✅ Modal: Advanced Settings (داخل صفحة الإعدادات)
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  // ✅ أضفنا view جديد اسمه catalog لإدارة (الأقسام + الخدمات)
+  const [advancedView, setAdvancedView] = useState<"main" | "users" | "bookings" | "catalog">("main");
 
-  // ✅ داخل المودال: شاشة رئيسية أو إدارة حسابات
-  const [advancedView, setAdvancedView] = useState<"main" | "users">("main");
-
-  // ====== Users Manager state (داخل Advanced Modal)
+  // ====== Users Manager state
   const [users, setUsers] = useState<UserRow[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
 
@@ -118,7 +135,7 @@ const DashboardSettings: React.FC = () => {
     displayName: "",
     email: "",
     password: "",
-    role: "staff" as UiRole, // staff/reception/admin
+    role: "staff" as UiRole,
   });
 
   const [createLoading, setCreateLoading] = useState(false);
@@ -132,7 +149,236 @@ const DashboardSettings: React.FC = () => {
     return false;
   }, [isOwner, isAdmin, allowAdminManageUsers]);
 
-  // ✅ المصدر الحقيقي للدور: salons/main/users/{uid}.role
+  /* =========================
+     ✅ Catalog manager state (Sections + Services)
+     - أقسام: شعر/أظافر/مكياج...
+     - خدمات تحت القسم: استشوار قصير/وسط/طويل...
+  ========================= */
+  const [catalogMsg, setCatalogMsg] = useState<string>("");
+
+  const [secLoading, setSecLoading] = useState(false);
+  const [sectionsCatalog, setSectionsCatalog] = useState<ServiceSectionRow[]>([]);
+  const [newSectionName, setNewSectionName] = useState("");
+
+  const [srvLoading, setSrvLoading] = useState(false);
+  const [servicesCatalog, setServicesCatalog] = useState<ServiceRow[]>([]);
+  const [selectedSectionIdForServices, setSelectedSectionIdForServices] = useState<string>("");
+  const [newServiceName, setNewServiceName] = useState("");
+
+  const showMsg = (msg: string, ms = 1800) => {
+    setCatalogMsg(msg);
+    if (ms > 0) setTimeout(() => setCatalogMsg(""), ms);
+  };
+
+  const loadCatalog = async () => {
+    setCatalogMsg("");
+    try {
+      setSecLoading(true);
+      setSrvLoading(true);
+
+      // ✅ الأقسام: نجيبها ونرتّبها
+      const qSec = query(collection(db, ...SERVICE_SECTIONS_COLLECTION), orderBy("order", "asc"));
+      const secSnap = await getDocs(qSec);
+
+      const secList: ServiceSectionRow[] = secSnap.docs
+        .map((d) => {
+          const x = d.data() as any;
+          return {
+            id: d.id,
+            name: String(x?.name || ""),
+            active: x?.active !== false,
+            order: Number(x?.order ?? 0),
+            updatedAt: x?.updatedAt,
+            createdAt: x?.createdAt,
+          };
+        })
+        .filter((s) => s.name.trim());
+
+      setSectionsCatalog(secList);
+
+      // ✅ لو ما فيه قسم مختار، خله أول قسم
+      if (!selectedSectionIdForServices) {
+        setSelectedSectionIdForServices(secList[0]?.id || "");
+      }
+
+      // ✅ الخدمات: نجيبها كلها (بدون where) عشان ما نحتاج index
+      const qSrv = query(collection(db, ...SERVICES_COLLECTION), orderBy("name", "asc"));
+      const srvSnap = await getDocs(qSrv);
+
+      const srvList: ServiceRow[] = srvSnap.docs
+        .map((d) => {
+          const x = d.data() as any;
+          return {
+            id: d.id,
+            sectionId: String(x?.sectionId || ""),
+            name: String(x?.name || ""),
+            durationMin: Number(x?.durationMin ?? 60),
+            price: Number(x?.price ?? 0),
+            active: x?.active !== false,
+            updatedAt: x?.updatedAt,
+            createdAt: x?.createdAt,
+          };
+        })
+        .filter((s) => s.name.trim());
+
+      setServicesCatalog(srvList);
+    } catch (e) {
+      console.error("loadCatalog error:", e);
+      setSectionsCatalog([]);
+      setServicesCatalog([]);
+      showMsg("❌ تعذر تحميل الأقسام/الخدمات (تحقق من Rules أو المسار)", 3000);
+    } finally {
+      setSecLoading(false);
+      setSrvLoading(false);
+    }
+  };
+
+  const createSection = async () => {
+    if (!hasAdminPower) return;
+
+    const name = String(newSectionName || "").trim();
+    if (!name) return;
+
+    try {
+      setSecLoading(true);
+
+      const nextOrder =
+        sectionsCatalog.length > 0 ? Math.max(...sectionsCatalog.map((s) => Number(s.order || 0))) + 1 : 1;
+
+      const ref = await addDoc(collection(db, ...SERVICE_SECTIONS_COLLECTION), {
+        name,
+        active: true,
+        order: nextOrder,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      setNewSectionName("");
+      showMsg("✅ تم إنشاء القسم");
+      await loadCatalog();
+
+      // ✅ اختاره مباشرة لسهولة إضافة الخدمات تحته
+      setSelectedSectionIdForServices(ref.id);
+    } catch (e) {
+      console.error("createSection error:", e);
+      showMsg("❌ تعذر إنشاء القسم", 2500);
+    } finally {
+      setSecLoading(false);
+    }
+  };
+
+  const saveSectionRow = async (row: ServiceSectionRow) => {
+    if (!hasAdminPower) return;
+
+    const name = String(row.name || "").trim();
+    if (!name) {
+      showMsg("❌ اسم القسم لا يمكن يكون فارغ", 2000);
+      return;
+    }
+
+    const orderNum = Number.isFinite(Number(row.order)) ? Number(row.order) : 0;
+
+    try {
+      await setDoc(
+        doc(db, ...SERVICE_SECTIONS_COLLECTION, row.id),
+        {
+          name,
+          active: row.active !== false,
+          order: orderNum,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      showMsg("✅ تم حفظ القسم");
+    } catch (e) {
+      console.error("saveSectionRow error:", e);
+      showMsg("❌ تعذر حفظ القسم", 2500);
+    }
+  };
+
+  const createServiceUnderSection = async () => {
+    if (!hasAdminPower) return;
+
+    const sectionId = String(selectedSectionIdForServices || "").trim();
+    const name = String(newServiceName || "").trim();
+
+    if (!sectionId) {
+      showMsg("❌ اختر قسم أولاً قبل إضافة خدمة", 2200);
+      return;
+    }
+    if (!name) return;
+
+    try {
+      setSrvLoading(true);
+
+      await addDoc(collection(db, ...SERVICES_COLLECTION), {
+        sectionId,
+        name,
+        durationMin: 60,
+        price: 0,
+        active: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      setNewServiceName("");
+      showMsg("✅ تم إضافة الخدمة");
+      await loadCatalog();
+    } catch (e) {
+      console.error("createServiceUnderSection error:", e);
+      showMsg("❌ تعذر إضافة الخدمة", 2500);
+    } finally {
+      setSrvLoading(false);
+    }
+  };
+
+  const saveServiceRow = async (row: ServiceRow) => {
+    if (!hasAdminPower) return;
+
+    const name = String(row.name || "").trim();
+    if (!name) {
+      showMsg("❌ اسم الخدمة لا يمكن يكون فارغ", 2000);
+      return;
+    }
+
+    const durationMin = Math.max(5, Number(row.durationMin || 0));
+    const price = Math.max(0, Number(row.price || 0));
+    const sectionId = String(row.sectionId || "").trim();
+
+    if (!sectionId) {
+      showMsg("❌ الخدمة لازم تكون مرتبطة بقسم", 2000);
+      return;
+    }
+
+    try {
+      await setDoc(
+        doc(db, ...SERVICES_COLLECTION, row.id),
+        {
+          sectionId,
+          name,
+          durationMin,
+          price,
+          active: row.active !== false,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      showMsg("✅ تم حفظ الخدمة");
+    } catch (e) {
+      console.error("saveServiceRow error:", e);
+      showMsg("❌ تعذر حفظ الخدمة", 2500);
+    }
+  };
+
+  const servicesInSelectedSection = useMemo(() => {
+    const sid = String(selectedSectionIdForServices || "").trim();
+    if (!sid) return [];
+    return servicesCatalog.filter((s) => String(s.sectionId || "").trim() === sid);
+  }, [servicesCatalog, selectedSectionIdForServices]);
+
+  // ✅ Auth role source of truth: salons/main/users/{uid}.role
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setAuthLoading(true);
@@ -144,14 +390,9 @@ const DashboardSettings: React.FC = () => {
         }
 
         const emailLower = String(user.email || "").toLowerCase();
-
         const userRef = doc(db, ...USERS_COLLECTION, user.uid);
         const snap = await getDoc(userRef);
 
-        // ✅ لو ما فيه وثيقة:
-        // - لا نمنح staff تلقائياً (أمان)
-        // - الافتراضي: client
-        // - bootstrap email: owner
         if (!snap.exists()) {
           const initialRole: UiRole = emailLower === BOOTSTRAP_ADMIN_EMAIL ? "owner" : "client";
 
@@ -171,7 +412,6 @@ const DashboardSettings: React.FC = () => {
         const snap2 = await getDoc(userRef);
         const data = snap2.exists() ? (snap2.data() as any) : {};
 
-        // ✅ Bootstrap email: تأكيد الدور (حتى لو كانت قيمة قديمة/غلط)
         let mapped = mapFirestoreRoleToUi(data?.role);
         if (emailLower === BOOTSTRAP_ADMIN_EMAIL) mapped = "owner";
 
@@ -179,13 +419,11 @@ const DashboardSettings: React.FC = () => {
 
         const displayName = data?.displayName || user.displayName || "مستخدم";
 
-        // ✅ تثبيت role بصيغة lowercase داخل Firestore (مرة واحدة فقط إذا كان مختلف)
         const fixedRole = toFirestoreRole(mapped);
         if (String(data?.role || "").trim() !== fixedRole) {
           await setDoc(userRef, { role: fixedRole }, { merge: true });
         }
 
-        // ✅ تحديث localStorage فقط (بدون authChanged لتجنب loop)
         localStorage.setItem("userRole", mapped);
         localStorage.setItem("userName", displayName);
         localStorage.setItem("authToken", "firebase");
@@ -209,7 +447,7 @@ const DashboardSettings: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // ✅ Firestore Settings (settings/app): fetch + realtime subscribe
+  // ✅ Firestore settings (settings/app)
   useEffect(() => {
     AppSettingsService.fetchRemote()
       .then((remote) => setSettings(remote))
@@ -251,7 +489,6 @@ const DashboardSettings: React.FC = () => {
     }));
   };
 
-  // ✅ نخليها string عشان ما تتعطل لو type ما تحدّث في AppSettingsService
   const togglePolicy = (key: string) => {
     if (!hasAdminPower) return;
     setSettings((prev: any) => ({
@@ -260,7 +497,7 @@ const DashboardSettings: React.FC = () => {
     }));
   };
 
-  // ====== Users Manager (داخل Advanced Modal)
+  // ====== Users manager
   const loadUsers = async () => {
     if (!canManageUsers) return;
 
@@ -305,7 +542,6 @@ const DashboardSettings: React.FC = () => {
       return;
     }
 
-    // ✅ حماية: admin لا ينشئ owner
     if (!isOwner && role === "owner") {
       setCreateMsg("❌ فقط Owner يقدر ينشئ Owner");
       return;
@@ -313,18 +549,13 @@ const DashboardSettings: React.FC = () => {
 
     try {
       setCreateLoading(true);
-
       const secondary = getSecondaryAuth();
 
-      // ✅ إنشاء user في Auth (بدون ما يطلعك من حساب الإدارة لأننا نستخدم secondary)
       const cred = await createUserWithEmailAndPassword(secondary, email, password);
-
-      // ✅ NEW: ثبت الاسم داخل Firebase Auth profile
       await updateProfile(cred.user, { displayName }).catch(() => {});
 
       const uid = cred.user.uid;
 
-      // ✅ إنشاء وثيقة salons/main/users/{uid} (role lowercase)
       await setDoc(
         doc(db, ...USERS_COLLECTION, uid),
         {
@@ -339,7 +570,6 @@ const DashboardSettings: React.FC = () => {
         { merge: true }
       );
 
-      // ✅ إذا الدور staff → انشرها في About + سجلها كموظفة داخلية
       if (role === "staff") {
         await setDoc(
           doc(db, ...STAFF_PUBLIC_COLLECTION, uid),
@@ -377,7 +607,6 @@ const DashboardSettings: React.FC = () => {
         );
       }
 
-      // ✅ اختياري قوي: نفصل جلسة الـ secondary حتى ما تعلق
       await signOut(secondary).catch(() => {});
 
       setCreateMsg("✅ تم إنشاء الحساب بنجاح");
@@ -396,14 +625,10 @@ const DashboardSettings: React.FC = () => {
     }
   };
 
-  // ✅ NEW: تعديل الدور مباشرة من الجدول + تنظيف staff_public تلقائيًا
   const updateUserRole = async (uid: string, newRole: UiRole) => {
     if (!canManageUsers) return;
-
-    // ✅ حماية: admin لا يمنح owner
     if (!isOwner && newRole === "owner") return;
 
-    // ✅ حماية إضافية: لا تغيّر نفسك هنا
     if ((auth as any)?.currentUser?.uid === uid) {
       setCreateMsg("❌ لا يمكن تعديل دور حسابك من هنا");
       setTimeout(() => setCreateMsg(""), 2500);
@@ -411,19 +636,16 @@ const DashboardSettings: React.FC = () => {
     }
 
     try {
-      // 1) تحديث دور المستخدم (مصدر الصلاحيات)
       await setDoc(
         doc(db, ...USERS_COLLECTION, uid),
         { role: toFirestoreRole(newRole), updatedAt: serverTimestamp() },
         { merge: true }
       );
 
-      // 2) تنظيف ظهور About حسب الدور (بدون حذف)
       const staffPublicRef = doc(db, ...STAFF_PUBLIC_COLLECTION, uid);
       const employeeRef = doc(db, ...EMPLOYEES_COLLECTION, uid);
 
       if (newRole === "staff") {
-        // ✅ فعّل/أنشئ staff_public + employees
         const row = users.find((x) => x.uid === uid);
 
         await setDoc(
@@ -456,14 +678,10 @@ const DashboardSettings: React.FC = () => {
           { merge: true }
         );
       } else {
-        // ✅ اخفِها من About (حتى لو كانت موجودة)
         await setDoc(staffPublicRef, { showOnAbout: false, updatedAt: serverTimestamp() }, { merge: true });
-
-        // (اختياري) لو موجودة في employees: خلّي showOnAbout=false
         await setDoc(employeeRef, { showOnAbout: false, updatedAt: serverTimestamp() }, { merge: true });
       }
 
-      // 3) تحديث UI
       setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, role: newRole } : u)));
       setCreateMsg("✅ تم تحديث الدور");
       setTimeout(() => setCreateMsg(""), 1200);
@@ -474,11 +692,9 @@ const DashboardSettings: React.FC = () => {
     }
   };
 
-  // ✅ NEW: تفعيل/إيقاف الحساب
   const toggleUserActive = async (uid: string, active: boolean) => {
     if (!canManageUsers) return;
 
-    // ✅ حماية: لا توقف نفسك بالغلط
     if ((auth as any)?.currentUser?.uid === uid) {
       setCreateMsg("❌ لا يمكن إيقاف حسابك من هنا");
       setTimeout(() => setCreateMsg(""), 2500);
@@ -502,7 +718,6 @@ const DashboardSettings: React.FC = () => {
     }
   };
 
-  // ✅ NEW: تعديل اسم المستخدم (displayName) + مزامنة staff_public/employees إذا كان Staff
   const updateUserDisplayName = async (uid: string, newName: string) => {
     if (!canManageUsers) return;
 
@@ -513,7 +728,6 @@ const DashboardSettings: React.FC = () => {
       return;
     }
 
-    // ✅ حماية اختيارية: لا تعدّل نفسك بالغلط
     if ((auth as any)?.currentUser?.uid === uid) {
       setCreateMsg("❌ لا يمكن تعديل اسم حسابك من هنا");
       setTimeout(() => setCreateMsg(""), 2500);
@@ -521,34 +735,21 @@ const DashboardSettings: React.FC = () => {
     }
 
     try {
-      // 1) تحديث مصدر الحقيقة
       await setDoc(
         doc(db, ...USERS_COLLECTION, uid),
         { displayName: name, updatedAt: serverTimestamp() },
         { merge: true }
       );
 
-      // 2) إذا كان المستخدم staff: حدث staff_public + employees
       const row = users.find((x) => x.uid === uid);
       const roleNow = row?.role;
 
       if (roleNow === "staff") {
-        await setDoc(
-          doc(db, ...STAFF_PUBLIC_COLLECTION, uid),
-          { name, updatedAt: serverTimestamp() },
-          { merge: true }
-        );
-
-        await setDoc(
-          doc(db, ...EMPLOYEES_COLLECTION, uid),
-          { name, updatedAt: serverTimestamp() },
-          { merge: true }
-        );
+        await setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, uid), { name, updatedAt: serverTimestamp() }, { merge: true });
+        await setDoc(doc(db, ...EMPLOYEES_COLLECTION, uid), { name, updatedAt: serverTimestamp() }, { merge: true });
       }
 
-      // 3) تحديث UI
       setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, displayName: name } : u)));
-
       setCreateMsg("✅ تم تحديث الاسم");
       setTimeout(() => setCreateMsg(""), 1200);
     } catch (e) {
@@ -558,7 +759,6 @@ const DashboardSettings: React.FC = () => {
     }
   };
 
-  // ✅ Loading guard
   if (authLoading) {
     return (
       <div className="dashboard-section settings-page">
@@ -595,13 +795,13 @@ const DashboardSettings: React.FC = () => {
           <div className="settings-save">
             {savedMsg && <span className="settings-saved">{savedMsg}</span>}
 
-            {/* ✅ Advanced Modal trigger */}
             <button
               className="exp-btn"
               onClick={() => {
                 setIsAdvancedOpen(true);
                 setAdvancedView("main");
                 setCreateMsg("");
+                setCatalogMsg("");
               }}
               type="button"
               title="إعدادات متقدمة"
@@ -621,34 +821,20 @@ const DashboardSettings: React.FC = () => {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="settings-tabs">
-          <button
-            className={`dash-btn ${tab === "salon" ? "primary" : ""}`}
-            onClick={() => setTab("salon")}
-            type="button"
-          >
+          <button className={`dash-btn ${tab === "salon" ? "primary" : ""}`} onClick={() => setTab("salon")} type="button">
             بيانات الصالون
           </button>
 
-          <button
-            className={`dash-btn ${tab === "sections" ? "primary" : ""}`}
-            onClick={() => setTab("sections")}
-            type="button"
-          >
+          <button className={`dash-btn ${tab === "sections" ? "primary" : ""}`} onClick={() => setTab("sections")} type="button">
             الأقسام
           </button>
 
-          <button
-            className={`dash-btn ${tab === "policies" ? "primary" : ""}`}
-            onClick={() => setTab("policies")}
-            type="button"
-          >
+          <button className={`dash-btn ${tab === "policies" ? "primary" : ""}`} onClick={() => setTab("policies")} type="button">
             صلاحيات النظام
           </button>
         </div>
 
-        {/* Content */}
         {tab === "salon" && (
           <div className="settings-card">
             <h3 className="settings-title">بيانات الصالون</h3>
@@ -790,12 +976,28 @@ const DashboardSettings: React.FC = () => {
               <div className="modal-head">
                 <div className="modal-title-wrap">
                   <div className="modal-icon">⚙️</div>
-                  <h3 className="modal-title">{advancedView === "main" ? "إعدادات متقدمة" : "إدارة الحسابات"}</h3>
+                  <h3 className="modal-title">
+                    {advancedView === "main"
+                      ? "إعدادات متقدمة"
+                      : advancedView === "users"
+                        ? "إدارة الحسابات"
+                        : advancedView === "bookings"
+                          ? "إعدادات الحجوزات"
+                          : "إدارة الأقسام والخدمات"}
+                  </h3>
                 </div>
 
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  {advancedView === "users" && (
-                    <button className="dash-btn" type="button" onClick={() => setAdvancedView("main")}>
+                  {advancedView !== "main" && (
+                    <button
+                      className="dash-btn"
+                      type="button"
+                      onClick={() => {
+                        setAdvancedView("main");
+                        setCreateMsg("");
+                        setCatalogMsg("");
+                      }}
+                    >
                       رجوع
                     </button>
                   )}
@@ -816,35 +1018,29 @@ const DashboardSettings: React.FC = () => {
                 {advancedView === "main" ? (
                   <>
                     <p style={{ margin: 0, opacity: 0.85 }}>
-                      هنا نضيف كل إعدادات النظام بدون ما نرجع نلعب في كود الصفحات.
+                      هنا نضيف إعدادات النظام بدون ما نرجع نلعب في كود الصفحات.
                     </p>
 
                     <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                       <button
+                        className={`exp-btn ${!hasAdminPower ? "is-disabled" : ""}`}
+                        disabled={!hasAdminPower}
+                        type="button"
+                        onClick={() => setAdvancedView("bookings")}
+                      >
+                        إعدادات الحجوزات (الدوام/الإجازات/الإغلاق)
+                      </button>
+
+                      <button
                         className={`exp-btn primary ${!hasAdminPower ? "is-disabled" : ""}`}
                         disabled={!hasAdminPower}
                         type="button"
-                        onClick={() => alert("قريبًا: إدارة الأدوار والصلاحيات")}
+                        onClick={async () => {
+                          setAdvancedView("catalog");
+                          await loadCatalog();
+                        }}
                       >
-                        إدارة الأدوار والصلاحيات
-                      </button>
-
-                      <button
-                        className={`exp-btn ${!hasAdminPower ? "is-disabled" : ""}`}
-                        disabled={!hasAdminPower}
-                        type="button"
-                        onClick={() => alert("قريبًا: إعدادات الحجوزات")}
-                      >
-                        إعدادات الحجوزات
-                      </button>
-
-                      <button
-                        className={`exp-btn ${!hasAdminPower ? "is-disabled" : ""}`}
-                        disabled={!hasAdminPower}
-                        type="button"
-                        onClick={() => alert("قريبًا: إعدادات الداشبورد")}
-                      >
-                        إعدادات واجهة الداشبورد
+                        إدارة الأقسام والخدمات (بالترتيب الصح)
                       </button>
 
                       <button
@@ -872,7 +1068,516 @@ const DashboardSettings: React.FC = () => {
                       </div>
                     )}
                   </>
+                ) : advancedView === "bookings" ? (
+                  <>
+                    {/* ✅ نفس كود الحجوزات عندك بدون تغيير */}
+                    <div className="settings-card" style={{ marginTop: 0 }}>
+                      <h3 className="settings-title">أوقات العمل</h3>
+
+                      <div className="settings-grid">
+                        <div className="settings-field">
+                          <label>تقسيم المواعيد (دقيقة)</label>
+                          <input
+                            className="settings-input"
+                            type="number"
+                            min={5}
+                            step={5}
+                            value={(settings as any)?.booking?.slotStepMin ?? 30}
+                            onChange={(e) =>
+                              hasAdminPower &&
+                              setSettings((prev: any) => ({
+                                ...prev,
+                                booking: { ...(prev.booking || {}), slotStepMin: Number(e.target.value || 30) },
+                              }))
+                            }
+                            disabled={!hasAdminPower}
+                          />
+                        </div>
+
+                        <div className="settings-field">
+                          <label>فاصل بين العملاء (دقيقة)</label>
+                          <input
+                            className="settings-input"
+                            type="number"
+                            min={0}
+                            step={5}
+                            value={(settings as any)?.booking?.bufferMin ?? 0}
+                            onChange={(e) =>
+                              hasAdminPower &&
+                              setSettings((prev: any) => ({
+                                ...prev,
+                                booking: { ...(prev.booking || {}), bufferMin: Number(e.target.value || 0) },
+                              }))
+                            }
+                            disabled={!hasAdminPower}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="settings-list" style={{ marginTop: 12 }}>
+                        {(
+                          [
+                            ["sat", "السبت"],
+                            ["sun", "الأحد"],
+                            ["mon", "الإثنين"],
+                            ["tue", "الثلاثاء"],
+                            ["wed", "الأربعاء"],
+                            ["thu", "الخميس"],
+                            ["fri", "الجمعة"],
+                          ] as const
+                        ).map(([key, label]) => {
+                          const day =
+                            (settings as any)?.booking?.businessHours?.[key] ||
+                            ({
+                              enabled: false,
+                              start: "12:00",
+                              end: "22:00",
+                            } as any);
+
+                          return (
+                            <div key={key} className="settings-row" style={{ alignItems: "flex-start" }}>
+                              <div style={{ display: "grid", gap: 6 }}>
+                                <span style={{ fontWeight: 900 }}>{label}</span>
+
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                  <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 800 }}>
+                                    <input
+                                      className="settings-check"
+                                      type="checkbox"
+                                      checked={!!day.enabled}
+                                      disabled={!hasAdminPower}
+                                      onChange={() =>
+                                        hasAdminPower &&
+                                        setSettings((prev: any) => ({
+                                          ...prev,
+                                          booking: {
+                                            ...(prev.booking || {}),
+                                            businessHours: {
+                                              ...(prev.booking?.businessHours || {}),
+                                              [key]: { ...day, enabled: !day.enabled },
+                                            },
+                                          },
+                                        }))
+                                      }
+                                    />
+                                    مفتوح
+                                  </label>
+
+                                  <input
+                                    className="settings-input"
+                                    style={{ width: 140 }}
+                                    type="time"
+                                    value={day.start}
+                                    disabled={!hasAdminPower || !day.enabled}
+                                    onChange={(e) =>
+                                      hasAdminPower &&
+                                      setSettings((prev: any) => ({
+                                        ...prev,
+                                        booking: {
+                                          ...(prev.booking || {}),
+                                          businessHours: {
+                                            ...(prev.booking?.businessHours || {}),
+                                            [key]: { ...day, start: e.target.value },
+                                          },
+                                        },
+                                      }))
+                                    }
+                                  />
+
+                                  <input
+                                    className="settings-input"
+                                    style={{ width: 140 }}
+                                    type="time"
+                                    value={day.end}
+                                    disabled={!hasAdminPower || !day.enabled}
+                                    onChange={(e) =>
+                                      hasAdminPower &&
+                                      setSettings((prev: any) => ({
+                                        ...prev,
+                                        booking: {
+                                          ...(prev.booking || {}),
+                                          businessHours: {
+                                            ...(prev.booking?.businessHours || {}),
+                                            [key]: { ...day, end: e.target.value },
+                                          },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="settings-footnote">
+                        * هذا يحدد “من كم إلى كم” لكل يوم.
+                        <br />* الإجازات/الإغلاق تحت ممكن يتغلب على الدوام لو فيه تعارض.
+                      </div>
+                    </div>
+
+                    <div className="settings-card">
+                      <h3 className="settings-title">الإجازات / الإغلاق + رسالة للزبائن</h3>
+
+                      <div className="settings-grid">
+                        <div className="settings-field" style={{ gridColumn: "1 / -1" }}>
+                          <label>رسالة عامة عند الإغلاق (اختياري)</label>
+                          <input
+                            className="settings-input"
+                            value={(settings as any)?.booking?.publicClosedMessage || ""}
+                            onChange={(e) =>
+                              hasAdminPower &&
+                              setSettings((prev: any) => ({
+                                ...prev,
+                                booking: { ...(prev.booking || {}), publicClosedMessage: e.target.value },
+                              }))
+                            }
+                            disabled={!hasAdminPower}
+                            placeholder="مثال: الصالون مغلق للصيانة حتى إشعار آخر."
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                        <input
+                          className="settings-input"
+                          style={{ width: 200 }}
+                          type="date"
+                          disabled={!hasAdminPower}
+                          onChange={(e) => {
+                            const date = e.target.value;
+                            if (!date) return;
+                            if (!hasAdminPower) return;
+
+                            setSettings((prev: any) => {
+                              const list = Array.isArray(prev?.booking?.holidays) ? prev.booking.holidays : [];
+                              if (list.some((h: any) => h.date === date)) return prev;
+                              return {
+                                ...prev,
+                                booking: {
+                                  ...(prev.booking || {}),
+                                  holidays: [{ date, reason: "" }, ...list],
+                                },
+                              };
+                            });
+
+                            e.currentTarget.value = "";
+                          }}
+                        />
+                        <span style={{ opacity: 0.75, fontWeight: 800, alignSelf: "center" }}>
+                          اختر تاريخ لإضافته كإجازة
+                        </span>
+                      </div>
+
+                      <div className="settings-list">
+                        {(((settings as any)?.booking?.holidays || []) as any[]).length === 0 ? (
+                          <div className="settings-note">لا توجد إجازات مضافة.</div>
+                        ) : (
+                          ((settings as any)?.booking?.holidays || []).map((h: any, idx: number) => (
+                            <div key={`${h.date}-${idx}`} className="settings-row" style={{ alignItems: "center" }}>
+                              <span style={{ minWidth: 140 }}>{h.date}</span>
+
+                              <input
+                                className="settings-input"
+                                style={{ flex: 1 }}
+                                value={h.reason || ""}
+                                disabled={!hasAdminPower}
+                                placeholder="سبب (صيانة/إجازة...)"
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setSettings((prev: any) => {
+                                    const list = [...(prev?.booking?.holidays || [])];
+                                    list[idx] = { ...list[idx], reason: v };
+                                    return { ...prev, booking: { ...(prev.booking || {}), holidays: list } };
+                                  });
+                                }}
+                              />
+
+                              <button
+                                className="exp-btn"
+                                type="button"
+                                disabled={!hasAdminPower}
+                                onClick={() => {
+                                  setSettings((prev: any) => {
+                                    const list = [...(prev?.booking?.holidays || [])].filter((_: any, i: number) => i !== idx);
+                                    return { ...prev, booking: { ...(prev.booking || {}), holidays: list } };
+                                  });
+                                }}
+                              >
+                                حذف
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="settings-footnote">* الإجازة هنا “إغلاق يوم كامل” على تاريخ محدد.</div>
+                    </div>
+                  </>
+                ) : advancedView === "catalog" ? (
+                  <>
+                    <div className="settings-card" style={{ marginTop: 0 }}>
+                      <h3 className="settings-title">١) الأقسام (شعر / أظافر / مكياج...)</h3>
+
+                      <div className="settings-grid">
+                        <div className="settings-field" style={{ gridColumn: "1 / -1" }}>
+                          <label>إضافة قسم جديد</label>
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            <input
+                              className="settings-input"
+                              style={{ flex: 1, minWidth: 220 }}
+                              value={newSectionName}
+                              onChange={(e) => setNewSectionName(e.target.value)}
+                              placeholder="مثال: شعر"
+                              disabled={!hasAdminPower || secLoading}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") createSection();
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className={`exp-btn primary ${!hasAdminPower || secLoading ? "is-disabled" : ""}`}
+                              disabled={!hasAdminPower || secLoading}
+                              onClick={createSection}
+                            >
+                              إنشاء القسم
+                            </button>
+                          </div>
+                          <div className="settings-footnote">
+                            * الأقسام تُحفظ في: <b>salons/main/service_sections</b>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+                        <button
+                          type="button"
+                          className={`exp-btn ${secLoading || srvLoading ? "is-disabled" : ""}`}
+                          disabled={secLoading || srvLoading}
+                          onClick={loadCatalog}
+                        >
+                          تحديث القائمة
+                        </button>
+
+                        {catalogMsg && (
+                          <span className="settings-alert success" style={{ marginInlineStart: 6 }}>
+                            {catalogMsg}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="settings-list" style={{ marginTop: 10 }}>
+                        {secLoading ? (
+                          <div className="settings-note">تحميل الأقسام…</div>
+                        ) : sectionsCatalog.length === 0 ? (
+                          <div className="settings-note">لا توجد أقسام بعد. أنشئ قسم ثم أضف الخدمات تحته.</div>
+                        ) : (
+                          sectionsCatalog.map((s) => (
+                            <div key={s.id} className="settings-row" style={{ alignItems: "center", gap: 10 }}>
+                              <input
+                                className="settings-input"
+                                style={{ minWidth: 220 }}
+                                value={s.name}
+                                disabled={!hasAdminPower}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: v } : x)));
+                                }}
+                                title="اسم القسم"
+                              />
+
+                              <input
+                                className="settings-input"
+                                style={{ width: 110 }}
+                                type="number"
+                                min={0}
+                                step={1}
+                                disabled={!hasAdminPower}
+                                value={Number(s.order || 0)}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value || 0);
+                                  setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, order: v } : x)));
+                                }}
+                                title="ترتيب القسم"
+                              />
+
+                              <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
+                                <input
+                                  className="settings-check"
+                                  type="checkbox"
+                                  checked={s.active !== false}
+                                  disabled={!hasAdminPower}
+                                  onChange={() => {
+                                    setSectionsCatalog((prev) =>
+                                      prev.map((x) => (x.id === s.id ? { ...x, active: !(x.active !== false) } : x))
+                                    );
+                                  }}
+                                />
+                                مفعل
+                              </label>
+
+                              <button
+                                type="button"
+                                className={`exp-btn primary ${!hasAdminPower ? "is-disabled" : ""}`}
+                                disabled={!hasAdminPower}
+                                onClick={() => saveSectionRow(s)}
+                                title="حفظ القسم"
+                              >
+                                حفظ
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="settings-footnote">
+                        * القاعدة الصح: <b>تنشئ القسم أولاً</b> ثم تضيف الخدمات تحته ✅
+                      </div>
+                    </div>
+
+                    <div className="settings-card">
+                      <h3 className="settings-title">٢) الخدمات (تحت القسم المختار)</h3>
+
+                      <div className="settings-grid">
+                        <div className="settings-field">
+                          <label>اختر القسم</label>
+                          <select
+                            className="settings-input"
+                            value={selectedSectionIdForServices}
+                            disabled={secLoading || sectionsCatalog.length === 0}
+                            onChange={(e) => setSelectedSectionIdForServices(e.target.value)}
+                          >
+                            <option value="">— اختر القسم —</option>
+                            {sectionsCatalog.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="settings-field">
+                          <label>إضافة خدمة جديدة تحت هذا القسم</label>
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            <input
+                              className="settings-input"
+                              style={{ flex: 1, minWidth: 220 }}
+                              value={newServiceName}
+                              onChange={(e) => setNewServiceName(e.target.value)}
+                              placeholder="مثال: استشوار شعر قصير"
+                              disabled={!hasAdminPower || srvLoading}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") createServiceUnderSection();
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className={`exp-btn primary ${!hasAdminPower || srvLoading ? "is-disabled" : ""}`}
+                              disabled={!hasAdminPower || srvLoading}
+                              onClick={createServiceUnderSection}
+                            >
+                              إضافة الخدمة
+                            </button>
+                          </div>
+                          <div className="settings-footnote">
+                            * الخدمات تُحفظ في: <b>salons/main/services</b> مع <b>sectionId</b>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="settings-list" style={{ marginTop: 10 }}>
+                        {srvLoading ? (
+                          <div className="settings-note">تحميل الخدمات…</div>
+                        ) : !selectedSectionIdForServices ? (
+                          <div className="settings-note">اختر قسم أولاً لعرض خدماته.</div>
+                        ) : servicesInSelectedSection.length === 0 ? (
+                          <div className="settings-note">لا توجد خدمات تحت هذا القسم.</div>
+                        ) : (
+                          servicesInSelectedSection.map((s) => (
+                            <div key={s.id} className="settings-row" style={{ alignItems: "center", gap: 10 }}>
+                              <input
+                                className="settings-input"
+                                style={{ minWidth: 240 }}
+                                value={s.name}
+                                disabled={!hasAdminPower}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: v } : x)));
+                                }}
+                                title="اسم الخدمة"
+                              />
+
+                              <input
+                                className="settings-input"
+                                style={{ width: 130 }}
+                                type="number"
+                                min={5}
+                                step={5}
+                                disabled={!hasAdminPower}
+                                value={Number(s.durationMin || 0)}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value || 0);
+                                  setServicesCatalog((prev) =>
+                                    prev.map((x) => (x.id === s.id ? { ...x, durationMin: v } : x))
+                                  );
+                                }}
+                                title="مدة الخدمة بالدقائق"
+                              />
+
+                              <input
+                                className="settings-input"
+                                style={{ width: 130 }}
+                                type="number"
+                                min={0}
+                                step={1}
+                                disabled={!hasAdminPower}
+                                value={Number(s.price || 0)}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value || 0);
+                                  setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, price: v } : x)));
+                                }}
+                                title="سعر الخدمة"
+                              />
+
+                              <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
+                                <input
+                                  className="settings-check"
+                                  type="checkbox"
+                                  checked={s.active !== false}
+                                  disabled={!hasAdminPower}
+                                  onChange={() => {
+                                    setServicesCatalog((prev) =>
+                                      prev.map((x) => (x.id === s.id ? { ...x, active: !(x.active !== false) } : x))
+                                    );
+                                  }}
+                                />
+                                مفعلة
+                              </label>
+
+                              <button
+                                type="button"
+                                className={`exp-btn primary ${!hasAdminPower ? "is-disabled" : ""}`}
+                                disabled={!hasAdminPower}
+                                onClick={() => saveServiceRow(s)}
+                                title="حفظ الخدمة"
+                              >
+                                حفظ
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="settings-footnote">
+                        * الآن ضبط الأسعار/المدد يكون من هنا ✅
+                        <br />
+                        * الخطوة 2 لاحقًا: نخلي صفحة الحجز تسحب الأقسام والخدمات من Firestore بدل Pricing.tsx.
+                      </div>
+                    </div>
+                  </>
                 ) : (
+                  // users view (نفس كودك)
                   <>
                     {!canManageUsers ? (
                       <div className="settings-note">
@@ -933,15 +1638,7 @@ const DashboardSettings: React.FC = () => {
                             </div>
                           </div>
 
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 10,
-                              marginTop: 12,
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                            }}
-                          >
+                          <div style={{ display: "flex", gap: 10, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
                             <button
                               className={`exp-btn primary ${createLoading ? "is-disabled" : ""}`}
                               type="button"
@@ -972,8 +1669,6 @@ const DashboardSettings: React.FC = () => {
                             <b>salons/main/users/{`{uid}`}</b>.
                             <br />
                             * لا يتم تسجيل خروجك لأننا نستخدم Secondary Auth.
-                            <br />
-                            * NEW: يتم تثبيت الاسم داخل Firebase Auth profile (displayName).
                           </div>
                         </div>
 
@@ -1015,9 +1710,7 @@ const DashboardSettings: React.FC = () => {
                                             disabled={!canManageUsers || usersLoading}
                                             onChange={(e) => {
                                               const v = e.target.value;
-                                              setUsers((prev) =>
-                                                prev.map((x) => (x.uid === u.uid ? { ...x, displayName: v } : x))
-                                              );
+                                              setUsers((prev) => prev.map((x) => (x.uid === u.uid ? { ...x, displayName: v } : x)));
                                             }}
                                             placeholder="اسم الموظفة"
                                             title="تعديل الاسم"

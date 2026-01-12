@@ -131,7 +131,7 @@ export default function EmployeePortal() {
   }
 
   // ✅ بوابة الموظف: فقط staff
-  const isAllowed = uiRole === "staff";
+  const isAllowed = ["staff", "reception", "admin", "owner"].includes(uiRole);
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
@@ -156,7 +156,7 @@ export default function EmployeePortal() {
       const prof = await loadMyProfile(u.uid, String(u.email || ""), String(u.displayName || ""));
 
       // ✅ مهم: البوابة تعرض حجوزات الموظفة فقط
-      if (prof.role !== "staff") {
+      if (!["staff","reception","admin","owner"].includes(prof.role)) {
         setLoading(false);
         setLoadError("هذه البوابة مخصصة للموظفات فقط.");
         return;

@@ -1,6 +1,10 @@
 // src/pages/Checkout.tsx
 import { useEffect, useMemo, useState } from "react";
-import { createBooking, type BookingStatus } from "../services/firestoreBookings";
+import {
+  createBooking,
+  type BookingStatus,
+  buildBookingSlotId, // ✅ NEW
+} from "../services/firestoreBookings";
 import { incrementOfferUsage } from "../services/firestoreOffers";
 
 import { useNavigate } from "react-router-dom";
@@ -37,14 +41,14 @@ type BookingData = {
   service?: string;
   serviceName?: string;
 
-  // ✅ القديم (اسم الموظفة)
   employee?: string;
-
-  // ✅ NEW: id الحقيقي للموظفة (UID / docId)
   employeeId?: string;
 
   date?: string;
   time?: string;
+
+  // ✅ slotId might exist in LS but is NOT source of truth
+  slotId?: string;
 
   total?: number;
   finalPrice?: number;
@@ -59,6 +63,8 @@ type BookingData = {
 
   status?: "pending" | "confirmed" | "completed" | "cancelled";
   createdAt?: number;
+
+  durationMin?: number;
 };
 
 const BOOKING_KEY = "currentBooking";
@@ -92,13 +98,25 @@ function toInt(n: any) {
   return Math.round(v);
 }
 
+async function ensureUserUid(): Promise<string | null> {
+  const auth = getAuth();
+  if (auth.currentUser?.uid) return auth.currentUser.uid;
+
+  try {
+    const cred = await signInAnonymously(auth);
+    return cred.user?.uid ?? null;
+  } catch (err) {
+    console.warn("[Checkout] signInAnonymously failed:", err);
+    return null;
+  }
+}
+
 export default function Checkout() {
   const navigate = useNavigate();
   const [booking, setBooking] = useState<BookingData | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ✅ modal بدل alert
   const [modal, setModal] = useState({
     open: false,
     title: "",
@@ -140,11 +158,9 @@ export default function Checkout() {
         return;
       }
 
-      // ✅ fallback (إذا صار اختلاف/مسح للكي)
       const draft = localStorage.getItem("bookingDraft");
       if (draft) {
         const parsedDraft = JSON.parse(draft);
-        // نحاول نحول الدرفت لنفس شكل BookingData قدر الإمكان بدون كسر
         setBooking({
           name: parsedDraft?.name,
           phone: parsedDraft?.phone,
@@ -154,6 +170,9 @@ export default function Checkout() {
           employeeId: parsedDraft?.employeeId,
           date: parsedDraft?.date,
           time: parsedDraft?.time,
+
+          slotId: parsedDraft?.slotId || parsedDraft?.slotKey || parsedDraft?.selectedSlotId,
+
           total: parsedDraft?.total ?? parsedDraft?.finalPrice,
           finalPrice: parsedDraft?.finalPrice ?? parsedDraft?.total,
           paymentMethod: parsedDraft?.paymentMethod,
@@ -161,6 +180,7 @@ export default function Checkout() {
           offerId: parsedDraft?.offerId,
           offerTitle: parsedDraft?.offerTitle,
           discountAmount: parsedDraft?.discountAmount,
+          durationMin: parsedDraft?.durationMin,
         });
         return;
       }
@@ -183,12 +203,17 @@ export default function Checkout() {
     const service = booking.serviceName || booking.service || "";
 
     const employee = String(booking.employee || "").trim();
-    const employeeId = String(booking.employeeId || "").trim(); // ✅ NEW
+    const employeeId = String(booking.employeeId || "").trim();
+
+    // ✅ SlotId is DISPLAY/debug only (source of truth will be created in Firestore)
+    const employeeKey = employeeId || employee || "unknown_employee";
+    const slotIdDisplay = date && time ? buildBookingSlotId(date, time, employeeKey) : "";
 
     const total = toInt((booking.total ?? booking.finalPrice) ?? 0);
     const paymentMethod = normalizePaymentMethod(booking.paymentMethod);
-
     const paymentStatus: PaymentStatus = booking.paymentStatus === "paid" ? "paid" : "pending";
+
+    const durationMin = Number(booking.durationMin || 0) || undefined;
 
     return {
       bookingId,
@@ -201,6 +226,8 @@ export default function Checkout() {
       employee,
       employeeId,
 
+      slotIdDisplay,
+
       total,
       paymentMethod,
       paymentStatus,
@@ -209,6 +236,8 @@ export default function Checkout() {
       offerId: booking.offerId || null,
       offerTitle: booking.offerTitle || null,
       discountAmount: toInt(booking.discountAmount || 0),
+
+      durationMin,
     };
   }, [booking]);
 
@@ -237,7 +266,6 @@ export default function Checkout() {
       const normalizedPayment = normalizePaymentMethod(view.paymentMethod);
       const bookingStatus: BookingStatus = "pending";
 
-      // ✅ حماية بسيطة: لازم موظفة (ونفضّل UID)
       if (!view.employeeId) {
         openModal({
           title: "بيانات غير مكتملة",
@@ -248,18 +276,18 @@ export default function Checkout() {
         return;
       }
 
-      const auth = getAuth();
-
-      // ✅ لو ما فيه مستخدم، حاول Anonymous
-      if (!auth.currentUser) {
-        try {
-          await signInAnonymously(auth);
-        } catch (err) {
-          console.warn("[Checkout] signInAnonymously failed:", err);
-        }
+      // ✅ IMPORTANT: لا نتحقق من slotId هنا — Firestore هو اللي يبنيه ويقفل المواعيد
+      const uid = await ensureUserUid();
+      if (!uid) {
+        openModal({
+          title: "تعذر إكمال الحجز",
+          message:
+            "لم نستطع إنشاء جلسة مستخدم للكتابة في Firestore.\n\n" +
+            "إذا تبي الحجز يمشي للزوار بدون حساب، فعّل Anonymous Auth من Firebase Authentication.",
+          variant: "danger",
+        });
+        return;
       }
-
-      const uid = auth.currentUser?.uid ?? null;
 
       const discountNote = view.offerId
         ? `Offer: ${view.offerTitle || view.couponCode || "-"} | discount=${toInt(view.discountAmount || 0)}`
@@ -274,13 +302,12 @@ export default function Checkout() {
 
       const noteFinal = [baseNote, employeeNote, discountNote].filter(Boolean).join(" | ");
 
-      // ✅✅ أهم إصلاح للـ Rules:
-      // total/finalPrice لازم تكون INT (مو Double)
       const totalInt = toInt(view.total || 0);
       const finalInt = toInt(view.total || 0);
 
       const firestoreId = await createBooking({
         userId: uid,
+
         createdBy: "client",
         channel: "client",
 
@@ -289,8 +316,10 @@ export default function Checkout() {
 
         serviceName: view.service,
 
-        employeeId: view.employeeId, // ✅ UID فقط
-        employeeName: view.employee || "-", // ✅ للعرض
+        durationMin: view.durationMin ?? 60,
+
+        employeeId: view.employeeId,
+        employeeName: view.employee || "-",
 
         date: view.date,
         time: view.time,
@@ -300,7 +329,7 @@ export default function Checkout() {
 
         status: bookingStatus,
         note: noteFinal || undefined,
-      } as any);
+      });
 
       try {
         if (view.offerId) {
@@ -311,7 +340,7 @@ export default function Checkout() {
       }
 
       const updatedCurrent: BookingData = {
-        ...booking,
+        ...(booking || {}),
 
         bookingId: firestoreId,
         id: firestoreId,
@@ -320,12 +349,17 @@ export default function Checkout() {
         employeeId: view.employeeId,
         employee: view.employee || booking?.employee || "",
 
+        // ✅ store display slotId for debugging (optional)
+        slotId: view.slotIdDisplay,
+
         total: totalInt,
         finalPrice: finalInt,
 
         paymentMethod: normalizedPayment,
         paymentStatus: opts?.paymentStatus || "pending",
         status: bookingStatus,
+
+        durationMin: view.durationMin ?? booking?.durationMin ?? 60,
       };
 
       localStorage.setItem(BOOKING_KEY, JSON.stringify(updatedCurrent));
@@ -354,9 +388,9 @@ export default function Checkout() {
           `خطأ Firestore:\n` +
           `code: ${code || "—"}\n` +
           `message: ${msg || "—"}\n\n` +
-          `ملاحظة مهمة:\n` +
-          `Rules عندك تشترط total و finalPrice تكون int.\n` +
-          `وأيضًا إذا Anonymous Auth مقفل، لازم تفعيلها من Firebase Auth.\n`,
+          `نقاط تحقق سريعة:\n` +
+          `- total و finalPrice لازم تكون أرقام (int).\n` +
+          `- إذا تبغى الزوار بدون حساب: فعّل Anonymous Auth.\n`,
         variant: "danger",
       });
     } finally {
@@ -450,6 +484,13 @@ export default function Checkout() {
           <div className="checkout-item" style={{ opacity: 0.8, fontSize: 13 }}>
             <strong>employeeId:</strong>
             <span>{view.employeeId}</span>
+          </div>
+        )}
+
+        {!!view.slotIdDisplay && (
+          <div className="checkout-item" style={{ opacity: 0.8, fontSize: 13 }}>
+            <strong>slotId:</strong>
+            <span>{view.slotIdDisplay}</span>
           </div>
         )}
 

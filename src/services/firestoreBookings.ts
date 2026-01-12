@@ -15,6 +15,12 @@ import {
   runTransaction,
 } from "firebase/firestore";
 
+// ✅ NEW: generate same time slots list used by Booking page
+import { generateSalonTimeSlots } from "../helpers/timeSlots";
+
+// ✅ NEW: read slotStep/buffer from settings/app (source of truth)
+import { AppSettingsService } from "./AppSettingsService";
+
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 export type BookingChannel = "client" | "dashboard";
 
@@ -29,11 +35,25 @@ export type BookingDoc = {
 
   serviceName: string;
 
+  // ✅ service duration in minutes (prevents overlaps)
+  durationMin?: number;
+
   employeeId?: string | null;
   employeeName: string;
 
+  /**
+   * ✅ NEW (Fix Staff Portal):
+   * employeeKey is the stable linking key used to fetch employee bookings safely.
+   * - Prefer UID (employeeId)
+   * - Fallback: safeKey(employeeName)
+   */
+  employeeKey?: string;
+
   date: string;
   time: string;
+
+  // ✅ NEW: stored start-slotId (for debugging & tracking)
+  slotId?: string;
 
   total?: number;
   finalPrice?: number;
@@ -73,12 +93,19 @@ function normalizeBooking(raw: any): BookingDoc {
 
     serviceName: String(raw?.serviceName ?? ""),
 
-    // ✅ خليه null بدل undefined (أوضح + أسهل في التعامل)
+    durationMin: Number(raw?.durationMin ?? 0) || undefined,
+
     employeeId: raw?.employeeId ?? null,
     employeeName: String(raw?.employeeName ?? ""),
 
+    // ✅ NEW
+    employeeKey: raw?.employeeKey ? String(raw.employeeKey) : undefined,
+
     date: String(raw?.date ?? ""),
     time: String(raw?.time ?? ""),
+
+    // ✅ NEW
+    slotId: raw?.slotId ? String(raw.slotId) : undefined,
 
     total: Number(raw?.total ?? 0),
     finalPrice: Number(raw?.finalPrice ?? 0),
@@ -100,6 +127,11 @@ function buildSlotId(date: string, time: string, employeeKey: string) {
   return `${SALON_ID}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
 }
 
+// ✅ Exported helper so Checkout can display the SAME slotId format used by Firestore lock
+export function buildBookingSlotId(date: string, time: string, employeeKey: string) {
+  return buildSlotId(date, time, employeeKey);
+}
+
 function slotTakenError() {
   const e: any = new Error("SLOT_TAKEN");
   e.code = "SLOT_TAKEN";
@@ -109,10 +141,9 @@ function slotTakenError() {
 // ✅ Helper: parse payment method from note like "Payment: cash" / "Payment: card"
 function parsePaymentMethod(note?: string): string {
   const s = String(note || "").toLowerCase();
-  // Very tolerant parsing
   if (s.includes("card") || s.includes("شبكة") || s.includes("مدى")) return "card";
   if (s.includes("cash") || s.includes("كاش") || s.includes("نقد")) return "cash";
-  return "cash"; // default
+  return "cash";
 }
 
 function getAmount(b: BookingDoc): number {
@@ -120,94 +151,170 @@ function getAmount(b: BookingDoc): number {
   return Number.isFinite(v) ? v : 0;
 }
 
+/** ✅ read slot settings safely (fallback to defaults) */
+function getSlotSettings() {
+  const cached = AppSettingsService.getCached();
+  const slotStepMin = Math.max(5, Number((cached as any)?.booking?.slotStepMin ?? 30));
+  const bufferMin = Math.max(0, Number((cached as any)?.booking?.bufferMin ?? 0));
+  return { slotStepMin, bufferMin };
+}
+
+/**
+ * ✅ lock multiple time slots based on duration
+ * - Uses same slots list from generateSalonTimeSlots()
+ * - If time not found, falls back to locking only the chosen time
+ */
+function getTimesToLock(startTime: string, durationMin: number) {
+  const { slotStepMin, bufferMin } = getSlotSettings();
+
+  const slots = generateSalonTimeSlots();
+  const idx = slots.indexOf(startTime);
+
+  if (idx < 0) return [startTime];
+
+  const totalMin = Math.max(0, Number(durationMin || 0)) + Math.max(0, bufferMin);
+  const slotsNeeded = Math.max(1, Math.ceil(totalMin / slotStepMin));
+
+  return slots.slice(idx, idx + slotsNeeded);
+}
+
 /* =========================
    CREATE
 ========================= */
 
 export async function createBooking(data: BookingDoc) {
-  // ✅ employeeKey: اعتمد ID إن وجد، وإلا الاسم، وتأكد ما يكون فاضي
-  const employeeKeyRaw = (data.employeeId ?? "").trim() || String(data.employeeName || "").trim();
-  const employeeKey = employeeKeyRaw || "unknown_employee";
+  // ✅ employeeKey used for locks + staff portal linking:
+  //    Prefer UID, otherwise safeKey(name)
+  const employeeIdTrimmed = String(data.employeeId ?? "").trim();
+  const employeeNameTrimmed = String(data.employeeName || "").trim();
 
-  const slotId = buildSlotId(data.date, data.time, employeeKey);
+  const employeeKeyForLock = employeeIdTrimmed || employeeNameTrimmed || "unknown_employee";
+  const employeeKey = employeeIdTrimmed || safeKey(employeeNameTrimmed || "unknown_employee");
 
+  // ✅ duration (default)
+  const durationMin = Math.max(0, Number(data.durationMin || 0)) || 60;
+
+  // ✅ times to lock (start + next slots)
+  const timesToLock = getTimesToLock(String(data.time || "").trim(), durationMin);
+
+  // ✅ booking ref
   const bookingRef = doc(collection(db, ...BOOKINGS_COL));
-  const slotRef = doc(db, ...SLOTS_COL, slotId);
+
+  // ✅ build slot refs (LOCK DOCS)
+  const slotRefs = timesToLock.map((t) =>
+    doc(db, ...SLOTS_COL, buildSlotId(data.date, t, employeeKeyForLock))
+  );
+
+  // ✅ NEW: store start-slotId inside booking doc for tracking/debugging
+  const startSlotId = buildSlotId(data.date, String(data.time || "").trim(), employeeKeyForLock);
 
   const payload = stripUndefined({
     ...data,
-    // ✅ خلها null بدل undefined عشان تكون ثابتة في الداتا
     employeeId: (data.employeeId ?? null) as any,
-    slotId,
+    durationMin,
+
+    // ✅ NEW (Fix Staff Portal)
+    employeeKey,
+
+    // ✅ NEW
+    slotId: startSlotId,
+
     createdAt: serverTimestamp(),
   });
 
   const bookingId = await runTransaction(db, async (tx) => {
-    const slotSnap = await tx.get(slotRef);
+    const slotSnaps = await Promise.all(slotRefs.map((r) => tx.get(r)));
 
-    // ✅ NEW: لو السلوّت موجود، افحص هل هو لنفس العميل (retry)؟
-    if (slotSnap.exists()) {
-      const slotData: any = slotSnap.data() || {};
-      const existingBookingId = String(slotData.bookingId || "").trim();
+    let existingBookingId: string | null = null;
 
-      if (existingBookingId) {
-        const existingBookingRef = doc(db, ...BOOKINGS_COL, existingBookingId);
-        const existingBookingSnap = await tx.get(existingBookingRef);
+    for (const snap of slotSnaps) {
+      if (!snap.exists()) continue;
 
-        if (existingBookingSnap.exists()) {
-          const existingBooking = normalizeBooking(existingBookingSnap.data());
+      const sd: any = snap.data() || {};
+      const bId = String(sd.bookingId || "").trim();
+      if (!bId) throw slotTakenError();
 
-          const sameUser =
-            (data.userId && existingBooking.userId && data.userId === existingBooking.userId) ||
-            (!data.userId &&
-              String(existingBooking.clientPhone || "") === String(data.clientPhone || ""));
+      if (!existingBookingId) existingBookingId = bId;
+      if (existingBookingId && bId !== existingBookingId) {
+        throw slotTakenError();
+      }
+    }
 
-          const sameSlot =
-            String(existingBooking.date || "") === String(data.date || "") &&
-            String(existingBooking.time || "") === String(data.time || "") &&
-            safeKey((existingBooking.employeeId ?? "").trim() || existingBooking.employeeName.trim()) ===
-              safeKey(employeeKey);
+    if (existingBookingId) {
+      const existingBookingRef = doc(db, ...BOOKINGS_COL, existingBookingId);
+      const existingBookingSnap = await tx.get(existingBookingRef);
 
-          // ✅ إذا نفس العميل ونفس السلوّت: رجّع نفس الحجز (بدون خطأ)
-          if (sameUser && sameSlot) {
-            return existingBookingId;
-          }
+      if (existingBookingSnap.exists()) {
+        const existingBooking = normalizeBooking(existingBookingSnap.data());
+
+        const sameUser =
+          (data.userId && existingBooking.userId && data.userId === existingBooking.userId) ||
+          (!data.userId && String(existingBooking.clientPhone || "") === String(data.clientPhone || ""));
+
+        const sameDate = String(existingBooking.date || "") === String(data.date || "");
+        const sameStart = String(existingBooking.time || "") === String(data.time || "");
+
+        // ✅ prefer employeeKey comparison (UID or safeKey(name))
+        const sameEmp =
+          String(existingBooking.employeeKey || "") === String(employeeKey) ||
+          safeKey((existingBooking.employeeId ?? "").trim() || existingBooking.employeeName.trim()) === safeKey(employeeKeyForLock);
+
+        if (sameUser && sameDate && sameStart && sameEmp) {
+          return existingBookingId;
         }
       }
 
-      // ❌ السلوّت لعميلة ثانية (أو بيانات غير متطابقة)
       throw slotTakenError();
     }
 
-    // ✅ السلوّت فاضي: اقفله + أنشئ الحجز (Atomic)
-    tx.set(slotRef, {
-      bookingId: bookingRef.id,
-      employeeId: data.employeeId ?? null,
-      employeeName: data.employeeName,
-      date: data.date,
-      time: data.time,
-      // ✅ NEW: نخزن معلومات العميل لتسهيل retry لاحقاً
-      userId: data.userId ?? null,
-      clientPhone: data.clientPhone,
-      createdAt: serverTimestamp(),
-    });
+    for (let i = 0; i < slotRefs.length; i++) {
+      const slotRef = slotRefs[i];
+      const t = timesToLock[i];
+
+      tx.set(slotRef, {
+        bookingId: bookingRef.id,
+        employeeId: data.employeeId ?? null,
+        employeeName: data.employeeName,
+
+        // ✅ NEW
+        employeeKey,
+
+        date: data.date,
+        time: t,
+
+        startTime: data.time,
+        durationMin,
+
+        userId: data.userId ?? null,
+        clientPhone: data.clientPhone,
+        createdAt: serverTimestamp(),
+      });
+    }
 
     tx.set(bookingRef, payload);
 
     return bookingRef.id;
   });
 
-  // ✅ tracks: idempotent (merge) سواء كان جديد أو retry
   await setDoc(
     doc(db, ...TRACKS_COL, bookingId),
     {
       bookingId,
       serviceName: data.serviceName,
-      employeeId: data.employeeId ?? null, // ✅ NEW (مفيد)
+      employeeId: data.employeeId ?? null,
       employeeName: data.employeeName,
+
+      // ✅ NEW
+      employeeKey,
+
       date: data.date,
       time: data.time,
+      durationMin: Math.max(0, Number(data.durationMin || 0)) || 60,
       status: data.status,
+
+      // ✅ NEW: keep slotId in track too
+      slotId: startSlotId,
+
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     },
@@ -223,6 +330,7 @@ export async function createDashboardBooking(args: {
   clientName: string;
   clientPhone: string;
   serviceName: string;
+  durationMin?: number;
   employeeName: string;
   employeeId?: string | null;
   date: string;
@@ -240,6 +348,8 @@ export async function createDashboardBooking(args: {
     clientName: args.clientName,
     clientPhone: args.clientPhone,
     serviceName: args.serviceName,
+
+    durationMin: args.durationMin,
 
     employeeId: args.employeeId ?? null,
     employeeName: args.employeeName,
@@ -276,7 +386,6 @@ export async function listAllBookings(): Promise<BookingDocWithId[]> {
 
 /**
  * ✅ Realtime watcher for all bookings
- * يدعم onError اختياريًا (لأن DashboardBookings يستدعيه بوسيطين)
  */
 export function watchAllBookings(
   onData: (rows: BookingDocWithId[]) => void,
@@ -309,7 +418,7 @@ export async function listUserBookings(userId: string) {
 }
 
 /* =========================
-   STAFF (Employee) READ ✅ NEW
+   STAFF (Employee) READ
 ========================= */
 
 function sortByCreatedAtDesc(a: BookingDocWithId, b: BookingDocWithId) {
@@ -323,38 +432,41 @@ function uniqMerge(a: BookingDocWithId[], b: BookingDocWithId[]) {
   return Array.from(m.values()).sort(sortByCreatedAtDesc);
 }
 
-/**
- * ✅ List bookings for a single employee (Staff)
- * - Primary: employeeId == uid
- * - Fallback: employeeName == name (for old data)
- */
 export async function listEmployeeBookings(
   employeeId: string,
   employeeName?: string
 ): Promise<BookingDocWithId[]> {
   const baseCol = collection(db, ...BOOKINGS_COL);
 
-  // 1) by employeeId
+  // ✅ NEW: primary query by employeeKey (UID)
+  const qKey = query(baseCol, where("employeeKey", "==", employeeId));
+  const sKey = await getDocs(qKey);
+  const rKey = sKey.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
+
+  // old way (employeeId)
   const q1 = query(baseCol, where("employeeId", "==", employeeId));
   const s1 = await getDocs(q1);
   const r1 = s1.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
 
-  // 2) fallback by employeeName (optional)
   let r2: BookingDocWithId[] = [];
   const name = String(employeeName || "").trim();
   if (name) {
+    // ✅ NEW: fallback by employeeKey (safeKey(name))
+    const q2k = query(baseCol, where("employeeKey", "==", safeKey(name)));
+    const s2k = await getDocs(q2k);
+    const r2k = s2k.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
+
+    // old fallback by name
     const q2 = query(baseCol, where("employeeName", "==", name));
     const s2 = await getDocs(q2);
-    r2 = s2.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
+    const r2n = s2.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
+
+    r2 = uniqMerge(r2k, r2n);
   }
 
-  return uniqMerge(r1, r2);
+  return uniqMerge(uniqMerge(rKey, r1), r2);
 }
 
-/**
- * ✅ Realtime watcher for staff bookings only
- * - merges two listeners (employeeId + employeeName fallback)
- */
 export function watchEmployeeBookings(
   employeeId: string,
   employeeName: string | undefined,
@@ -363,15 +475,29 @@ export function watchEmployeeBookings(
 ) {
   const baseCol = collection(db, ...BOOKINGS_COL);
 
+  let rowsByKeyUid: BookingDocWithId[] = [];
   let rowsById: BookingDocWithId[] = [];
+  let rowsByKeyName: BookingDocWithId[] = [];
   let rowsByName: BookingDocWithId[] = [];
 
   const emit = () => {
-    onData(uniqMerge(rowsById, rowsByName));
+    onData(uniqMerge(uniqMerge(rowsByKeyUid, rowsById), uniqMerge(rowsByKeyName, rowsByName)));
   };
 
-  // Listener 1: by employeeId
-  const unsub1 = onSnapshot(
+  // ✅ NEW: employeeKey == uid
+  const unsubKeyUid = onSnapshot(
+    query(baseCol, where("employeeKey", "==", employeeId)),
+    (snap) => {
+      rowsByKeyUid = snap.docs
+        .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
+        .sort(sortByCreatedAtDesc);
+      emit();
+    },
+    (err) => onError?.(err)
+  );
+
+  // old: employeeId == uid
+  const unsubId = onSnapshot(
     query(baseCol, where("employeeId", "==", employeeId)),
     (snap) => {
       rowsById = snap.docs
@@ -382,12 +508,27 @@ export function watchEmployeeBookings(
     (err) => onError?.(err)
   );
 
-  // Listener 2: fallback by employeeName (optional)
   const name = String(employeeName || "").trim();
-  let unsub2: (() => void) | null = null;
 
+  // ✅ NEW: employeeKey == safeKey(name)
+  let unsubKeyName: (() => void) | null = null;
   if (name) {
-    unsub2 = onSnapshot(
+    unsubKeyName = onSnapshot(
+      query(baseCol, where("employeeKey", "==", safeKey(name))),
+      (snap) => {
+        rowsByKeyName = snap.docs
+          .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
+          .sort(sortByCreatedAtDesc);
+        emit();
+      },
+      (err) => onError?.(err)
+    );
+  }
+
+  // old: employeeName == name
+  let unsubName: (() => void) | null = null;
+  if (name) {
+    unsubName = onSnapshot(
       query(baseCol, where("employeeName", "==", name)),
       (snap) => {
         rowsByName = snap.docs
@@ -400,8 +541,10 @@ export function watchEmployeeBookings(
   }
 
   return () => {
-    unsub1?.();
-    unsub2?.();
+    unsubKeyUid?.();
+    unsubId?.();
+    unsubKeyName?.();
+    unsubName?.();
   };
 }
 
@@ -409,19 +552,12 @@ export function watchEmployeeBookings(
    UPDATE
 ========================= */
 
-/**
- * ✅ updateBookingStatus (FIXED)
- * - إذا Confirmed/Completed: ينشئ/يحدث دخل تلقائيًا داخل salons/main/income/{bookingId}
- * - إذا Pending/Cancelled: يحذف دخل الحجز (إن وجد)
- * - FIX: ممنوع tx.get بعد أي write داخل transaction
- */
 export async function updateBookingStatus(bookingId: string, status: BookingStatus) {
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const trackRef = doc(db, ...TRACKS_COL, bookingId);
   const incomeRef = doc(db, ...INCOME_COL, bookingId);
 
   await runTransaction(db, async (tx) => {
-    // ✅ READS FIRST
     const snap = await tx.get(bookingRef);
     if (!snap.exists()) {
       throw new Error("BOOKING_NOT_FOUND");
@@ -430,10 +566,8 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     const booking = normalizeBooking(snap.data());
     const amount = getAmount(booking);
 
-    // ✅ اقرأ income قبل أي write (عشان لو بنحذفه)
     const incomeSnap = await tx.get(incomeRef);
 
-    // ✅ WRITES ONLY بعد هذا السطر
     tx.update(bookingRef, { status });
 
     tx.set(
@@ -441,11 +575,20 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
       {
         bookingId,
         serviceName: booking.serviceName,
-        employeeId: booking.employeeId ?? null, // ✅ NEW
+        employeeId: booking.employeeId ?? null,
         employeeName: booking.employeeName,
+
+        // ✅ NEW
+        employeeKey: booking.employeeKey ?? undefined,
+
         date: booking.date,
         time: booking.time,
+        durationMin: booking.durationMin ?? undefined,
         status,
+
+        // keep slotId if exists
+        slotId: booking.slotId ?? undefined,
+
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -463,13 +606,14 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
           bookingId,
           amount,
           date: booking.date,
-          method, // "cash" | "card" (string)
+          method,
           source: "booking",
           clientName: booking.clientName,
           clientPhone: booking.clientPhone,
           serviceName: booking.serviceName,
           employeeName: booking.employeeName,
           status,
+
           updatedAt: serverTimestamp(),
           createdAt: serverTimestamp(),
         },
@@ -490,11 +634,17 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
     doc(db, ...TRACKS_COL, bookingId),
     stripUndefined({
       serviceName: patch.serviceName,
-      employeeId: patch.employeeId, // ✅ NEW
+      employeeId: patch.employeeId,
       employeeName: patch.employeeName,
+
+      // ✅ NEW
+      employeeKey: patch.employeeKey,
+
       date: patch.date,
       time: patch.time,
+      durationMin: patch.durationMin,
       status: patch.status,
+      slotId: patch.slotId,
       updatedAt: serverTimestamp(),
     })
   );

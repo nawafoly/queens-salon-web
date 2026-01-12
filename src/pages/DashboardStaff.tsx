@@ -231,10 +231,14 @@ export default function DashboardStaff() {
     return rows
       .filter((b) => {
         if (isStaffOnly) {
-          const empId = String((b as any)?.employeeId ?? "").trim();
+          const empUid = String((b as any)?.employeeUid ?? "").trim();  // ✅ NEW
+          const empId = String((b as any)?.employeeId ?? "").trim();    // قديم/أحيانًا كان UID
           const empName = String((b as any)?.employeeName ?? "").trim();
 
-          // ✅ الأفضل: employeeId == uid
+          // ✅ الأفضل: employeeUid == uid
+          if (empUid && myUid && empUid === myUid) return true;
+
+          // ✅ دعم قديم لو employeeId كان أصلاً UID في بعض السجلات
           if (empId && myUid && empId === myUid) return true;
 
           // ✅ fallback: strict name match

@@ -12,6 +12,36 @@ export type SectionKey =
   | "income"
   | "expenses";
 
+/* =========================
+   ✅ NEW: Booking / Services settings types
+========================= */
+export type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+
+export type BusinessHoursDay = {
+  enabled: boolean;
+  start: string; // "09:00"
+  end: string; // "22:00"
+};
+
+export type Holiday = {
+  date: string; // "2026-01-12"
+  reason?: string;
+};
+
+export type Closure = {
+  from: string; // ISO date-time
+  to: string; // ISO date-time
+  message?: string;
+};
+
+export type ServiceItem = {
+  id: string;
+  name: string;
+  durationMin: number;
+  price: number;
+  active: boolean;
+};
+
 export type AppSettings = {
   salonName: string;
   phone: string;
@@ -26,11 +56,38 @@ export type AppSettings = {
     allowAdminManageUsers: boolean;
   };
 
+  // ✅ NEW: Booking settings (flexible)
+  booking?: {
+    slotStepMin: number; // default 30
+    bufferMin: number; // default 0
+    businessHours: Record<WeekdayKey, BusinessHoursDay>;
+    holidays: Holiday[];
+    closures: Closure[];
+    publicClosedMessage: string;
+  };
+
+  // ✅ NEW: Services catalog (duration + price)
+  services?: {
+    catalog: ServiceItem[];
+  };
+
   updatedAt?: string;
 };
 
 const LS_KEY = "app_settings_cache_v1";
 const DOC_PATH = { col: "settings", id: "app" };
+
+function defaultBusinessHours(): Record<WeekdayKey, BusinessHoursDay> {
+  return {
+    sat: { enabled: true, start: "12:00", end: "22:00" },
+    sun: { enabled: true, start: "12:00", end: "22:00" },
+    mon: { enabled: true, start: "12:00", end: "22:00" },
+    tue: { enabled: true, start: "12:00", end: "22:00" },
+    wed: { enabled: true, start: "12:00", end: "22:00" },
+    thu: { enabled: true, start: "12:00", end: "22:00" },
+    fri: { enabled: false, start: "12:00", end: "22:00" },
+  };
+}
 
 const defaultSettings: AppSettings = {
   salonName: "Queens Salon",
@@ -55,6 +112,20 @@ const defaultSettings: AppSettings = {
     allowAdminManageUsers: false,
   },
 
+  // ✅ NEW defaults
+  booking: {
+    slotStepMin: 30,
+    bufferMin: 0,
+    businessHours: defaultBusinessHours(),
+    holidays: [],
+    closures: [],
+    publicClosedMessage: "",
+  },
+
+  services: {
+    catalog: [],
+  },
+
   updatedAt: new Date().toISOString(),
 };
 
@@ -62,10 +133,89 @@ function safeBool(v: any, fallback: boolean) {
   return typeof v === "boolean" ? v : fallback;
 }
 
+function safeNumber(v: any, fallback: number) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function safeString(v: any, fallback = "") {
+  return typeof v === "string" ? v : fallback;
+}
+
+function safeDayHours(v: any, fallback: BusinessHoursDay): BusinessHoursDay {
+  const x = v || {};
+  return {
+    enabled: safeBool(x.enabled, fallback.enabled),
+    start: safeString(x.start, fallback.start),
+    end: safeString(x.end, fallback.end),
+  };
+}
+
+function sanitizeHolidays(v: any): Holiday[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((x: any) => {
+      const date = safeString(x?.date, "");
+      if (!date) return null;
+      const reason = typeof x?.reason === "string" ? x.reason : "";
+      return reason ? { date, reason } : { date };
+    })
+    .filter(Boolean) as Holiday[];
+}
+
+function sanitizeClosures(v: any): Closure[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((x: any) => {
+      const from = safeString(x?.from, "");
+      const to = safeString(x?.to, "");
+      if (!from || !to) return null;
+      const message = typeof x?.message === "string" ? x.message : "";
+      return message ? { from, to, message } : { from, to };
+    })
+    .filter(Boolean) as Closure[];
+}
+
+function sanitizeServicesCatalog(v: any): ServiceItem[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((x: any) => {
+      const id = safeString(x?.id, "");
+      const name = safeString(x?.name, "");
+      if (!id || !name) return null;
+
+      const durationMin = Math.max(5, safeNumber(x?.durationMin, 60));
+      const price = Math.max(0, safeNumber(x?.price, 0));
+      const active = safeBool(x?.active, true);
+
+      return { id, name, durationMin, price, active };
+    })
+    .filter(Boolean) as ServiceItem[];
+}
+
 function sanitize(input: any): AppSettings {
   const s = input || {};
   const sectionsRaw = s.sections || {};
   const policiesRaw = s.policies || {};
+
+  // ✅ NEW sanitize booking/services (backward compatible)
+  const bookingRaw = s.booking || {};
+  const servicesRaw = s.services || {};
+
+  const bhFallback = defaultSettings.booking!.businessHours;
+
+  const businessHours: Record<WeekdayKey, BusinessHoursDay> = {
+    sat: safeDayHours(bookingRaw.businessHours?.sat, bhFallback.sat),
+    sun: safeDayHours(bookingRaw.businessHours?.sun, bhFallback.sun),
+    mon: safeDayHours(bookingRaw.businessHours?.mon, bhFallback.mon),
+    tue: safeDayHours(bookingRaw.businessHours?.tue, bhFallback.tue),
+    wed: safeDayHours(bookingRaw.businessHours?.wed, bhFallback.wed),
+    thu: safeDayHours(bookingRaw.businessHours?.thu, bhFallback.thu),
+    fri: safeDayHours(bookingRaw.businessHours?.fri, bhFallback.fri),
+  };
+
+  const slotStepMin = Math.max(5, safeNumber(bookingRaw.slotStepMin, defaultSettings.booking!.slotStepMin));
+  const bufferMin = Math.max(0, safeNumber(bookingRaw.bufferMin, defaultSettings.booking!.bufferMin));
 
   return {
     ...defaultSettings,
@@ -102,6 +252,23 @@ function sanitize(input: any): AppSettings {
         policiesRaw.allowAdminManageUsers,
         defaultSettings.policies.allowAdminManageUsers
       ),
+    },
+
+    // ✅ NEW
+    booking: {
+      slotStepMin,
+      bufferMin,
+      businessHours,
+      holidays: sanitizeHolidays(bookingRaw.holidays),
+      closures: sanitizeClosures(bookingRaw.closures),
+      publicClosedMessage: safeString(
+        bookingRaw.publicClosedMessage,
+        defaultSettings.booking!.publicClosedMessage
+      ),
+    },
+
+    services: {
+      catalog: sanitizeServicesCatalog(servicesRaw.catalog),
     },
 
     updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : defaultSettings.updatedAt,
