@@ -7,7 +7,6 @@ import { addDoc, collection, doc, getDoc, serverTimestamp } from "firebase/fires
 import { auth, db } from "../services/firebase";
 
 import {
-  watchAllBookings,
   watchEmployeeBookings,
   type BookingDocWithId,
   type BookingStatus,

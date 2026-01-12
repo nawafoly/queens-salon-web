@@ -978,14 +978,6 @@ const Booking: React.FC = () => {
     }
   };
 
-  const handleRemoveCoupon = () => {
-    setCouponCode("");
-    setManualOverride(false);
-
-    const basePrice = getServiceBasePrice(formData.service);
-    setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
-    setOfferMsg("");
-  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
