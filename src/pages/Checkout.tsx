@@ -27,6 +27,9 @@ import "../styles/Checkout.css";
 
 import ConfirmModal from "../components/ConfirmModal";
 
+// ✅ NEW: same resolver used in Dashboard (serviceId -> serviceName)
+import { resolveServiceName } from "../services/serviceResolver";
+
 type PaymentMethod = "cash" | "pos_card" | "mada_online";
 type PaymentStatus = "pending" | "paid";
 
@@ -34,6 +37,9 @@ type BookingData = {
   bookingId?: string;
   id?: string;
   trackId?: string;
+
+  // ✅ NEW: Human readable booking number (MK-10234)
+  publicId?: string;
 
   name?: string;
   phone?: string;
@@ -71,6 +77,9 @@ const BOOKING_KEY = "currentBooking";
 const ALL_BOOKINGS_KEY = "allBookings";
 const SALON_ID = "main";
 
+// ✅ NEW: counter key for human booking numbers
+const BOOKING_PUBLIC_COUNTER_KEY = "booking_public_counter_v1";
+
 function methodLabel(m: PaymentMethod) {
   if (m === "mada_online") return "مدى أونلاين";
   if (m === "pos_card") return "شبكة في الصالون";
@@ -80,13 +89,17 @@ function methodLabel(m: PaymentMethod) {
 function normalizePaymentMethod(x: any): PaymentMethod {
   const s = String(x || "").toLowerCase().trim();
 
-  if (s === "mada_online" || s.includes("اونلاين") || s.includes("online")) return "mada_online";
-  if (s === "pos_card" || s.includes("في الصالون") || s.includes("صالون")) return "pos_card";
+  if (s === "mada_online" || s.includes("اونلاين") || s.includes("online"))
+    return "mada_online";
+  if (s === "pos_card" || s.includes("في الصالون") || s.includes("صالون"))
+    return "pos_card";
   if (s === "cash" || s === "كاش" || s === "نقد") return "cash";
 
   if (s === "pos_mada") return "pos_card";
-  if (s === "card" || s === "شبكة" || s === "مدى" || s === "mada") return "pos_card";
-  if (s === "transfer" || s === "تحويل" || s === "بنكي" || s === "bank") return "cash";
+  if (s === "card" || s === "شبكة" || s === "مدى" || s === "mada")
+    return "pos_card";
+  if (s === "transfer" || s === "تحويل" || s === "بنكي" || s === "bank")
+    return "cash";
   if (s === "other" || s === "اخرى" || s === "أخرى") return "cash";
 
   return "cash";
@@ -111,11 +124,33 @@ async function ensureUserUid(): Promise<string | null> {
   }
 }
 
+// ✅ NEW: generate MK-10234 style id (local counter)
+function nextPublicBookingId(prefix = "MK"): string {
+  try {
+    const raw = localStorage.getItem(BOOKING_PUBLIC_COUNTER_KEY);
+    const current = Number(raw || "10233"); // start so first becomes 10234
+    const next = Number.isFinite(current) ? current + 1 : 10234;
+
+    localStorage.setItem(BOOKING_PUBLIC_COUNTER_KEY, String(next));
+
+    // pad to 5 digits (optional) — gives MK-10234 as-is if already 5 digits
+    const n = String(next).padStart(5, "0");
+    return `${prefix}-${n}`;
+  } catch {
+    // fallback random-ish
+    const rnd = Math.floor(10000 + Math.random() * 90000);
+    return `${prefix}-${rnd}`;
+  }
+}
+
 export default function Checkout() {
   const navigate = useNavigate();
   const [booking, setBooking] = useState<BookingData | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ✅ NEW: label to show real service name even if stored value is serviceId
+  const [serviceLabel, setServiceLabel] = useState<string>("");
 
   const [modal, setModal] = useState({
     open: false,
@@ -171,7 +206,10 @@ export default function Checkout() {
           date: parsedDraft?.date,
           time: parsedDraft?.time,
 
-          slotId: parsedDraft?.slotId || parsedDraft?.slotKey || parsedDraft?.selectedSlotId,
+          slotId:
+            parsedDraft?.slotId ||
+            parsedDraft?.slotKey ||
+            parsedDraft?.selectedSlotId,
 
           total: parsedDraft?.total ?? parsedDraft?.finalPrice,
           finalPrice: parsedDraft?.finalPrice ?? parsedDraft?.total,
@@ -192,10 +230,36 @@ export default function Checkout() {
     }
   }, []);
 
+  // ✅ NEW: generate preview booking number early (so it shows on Checkout)
+  useEffect(() => {
+    if (!booking) return;
+
+    // إذا موجود مسبقًا لا تولد مرّة ثانية
+    const existing = String(booking.publicId || "").trim();
+    if (existing) return;
+
+    const generated = nextPublicBookingId("MK");
+
+    const updated: BookingData = {
+      ...booking,
+      publicId: generated,
+    };
+
+    setBooking(updated);
+
+    // خزّن نفس الرقم فورًا عشان يطلع مباشرة
+    try {
+      localStorage.setItem(BOOKING_KEY, JSON.stringify(updated));
+    } catch { }
+  }, [booking]);
+
+
   const view = useMemo(() => {
     if (!booking) return null;
 
     const bookingId = String(booking.bookingId || booking.id || "").trim();
+    const publicId = String(booking.publicId || "").trim();
+
     const name = booking.name || "";
     const phone = booking.phone || "";
     const date = String(booking.date || "");
@@ -211,12 +275,14 @@ export default function Checkout() {
 
     const total = toInt((booking.total ?? booking.finalPrice) ?? 0);
     const paymentMethod = normalizePaymentMethod(booking.paymentMethod);
-    const paymentStatus: PaymentStatus = booking.paymentStatus === "paid" ? "paid" : "pending";
+    const paymentStatus: PaymentStatus =
+      booking.paymentStatus === "paid" ? "paid" : "pending";
 
     const durationMin = Number(booking.durationMin || 0) || undefined;
 
     return {
       bookingId,
+      publicId,
       name,
       phone,
       date,
@@ -241,6 +307,42 @@ export default function Checkout() {
     };
   }, [booking]);
 
+  // ✅ NEW: Convert serviceId -> serviceName (same logic idea as Dashboard)
+  // ✅ المكان: بعد view مباشرة
+  useEffect(() => {
+    let alive = true;
+
+    const load = async () => {
+      const raw = String(view?.service || "").trim();
+      if (!raw) {
+        if (alive) setServiceLabel("");
+        return;
+      }
+
+      // إذا كان النص يبدو كـ ID (طويل + بدون مسافات + حروف/أرقام/underscore/dash)
+      const looksLikeId =
+        raw.length >= 15 && !raw.includes(" ") && /^[A-Za-z0-9_-]+$/.test(raw);
+
+      if (!looksLikeId) {
+        if (alive) setServiceLabel(raw);
+        return;
+      }
+
+      try {
+        const name = await resolveServiceName(raw);
+        if (alive) setServiceLabel(name || raw);
+      } catch {
+        if (alive) setServiceLabel(raw);
+      }
+    };
+
+    load();
+
+    return () => {
+      alive = false;
+    };
+  }, [view?.service]);
+
   if (!view) {
     return (
       <div className="checkout-page">
@@ -250,7 +352,10 @@ export default function Checkout() {
             ما لقينا بيانات حجز للتأكيد. ارجع لصفحة الحجز وسوّي حجز جديد.
           </p>
 
-          <button className="btn btn-primary confirm-btn" onClick={() => navigate("/booking")}>
+          <button
+            className="btn btn-primary confirm-btn"
+            onClick={() => navigate("/booking")}
+          >
             <FontAwesomeIcon icon={faArrowRight} /> رجوع للحجز
           </button>
         </div>
@@ -290,7 +395,9 @@ export default function Checkout() {
       }
 
       const discountNote = view.offerId
-        ? `Offer: ${view.offerTitle || view.couponCode || "-"} | discount=${toInt(view.discountAmount || 0)}`
+        ? `Offer: ${view.offerTitle || view.couponCode || "-"} | discount=${toInt(
+          view.discountAmount || 0
+        )}`
         : "";
 
       const employeeNote = view.employeeId ? `employeeId: ${view.employeeId}` : "";
@@ -339,12 +446,18 @@ export default function Checkout() {
         console.warn("incrementOfferUsage failed:", e);
       }
 
+      // ✅ NEW: build human readable booking number (MK-10234)
+      const publicId = booking?.publicId || view.publicId || nextPublicBookingId("MK");
+
       const updatedCurrent: BookingData = {
         ...(booking || {}),
 
         bookingId: firestoreId,
         id: firestoreId,
         trackId: firestoreId,
+
+        // ✅ NEW
+        publicId,
 
         employeeId: view.employeeId,
         employee: view.employee || booking?.employee || "",
@@ -390,7 +503,7 @@ export default function Checkout() {
           `message: ${msg || "—"}\n\n` +
           `نقاط تحقق سريعة:\n` +
           `- total و finalPrice لازم تكون أرقام (int).\n` +
-          `- إذا تبغى الزوار بدون حساب: فعّل Anonymous Auth.\n`,
+          `- إذا تبي الزوار بدون حساب: فعّل Anonymous Auth.\n`,
         variant: "danger",
       });
     } finally {
@@ -441,14 +554,22 @@ export default function Checkout() {
           >
             <FontAwesomeIcon icon={faCircleInfo} style={{ marginTop: 3 }} />
             <div style={{ fontSize: 14, lineHeight: 1.6 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>مدى أونلاين (مبدئيًا)</div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                مدى أونلاين (مبدئيًا)
+              </div>
               <div style={{ color: "#555" }}>
-                حالياً بنسجّل الحجز <b>بانتظار الدفع</b>، وخطوة ربط بوابة الدفع نضيفها لاحقًا عبر مزود دفع + Firebase
-                Functions.
+                حالياً بنسجّل الحجز <b>بانتظار الدفع</b>، وخطوة ربط بوابة الدفع
+                نضيفها لاحقًا عبر مزود دفع + Firebase Functions.
               </div>
             </div>
           </div>
         )}
+
+        {/* ✅ NEW: Human booking number */}
+        <div className="checkout-item">
+          <strong>رقم الحجز:</strong>
+          <span style={{ fontWeight: 800 }}>{view.publicId || "—"}</span>
+        </div>
 
         <div className="checkout-item">
           <FontAwesomeIcon icon={faUser} />
@@ -472,27 +593,13 @@ export default function Checkout() {
 
         <div className="checkout-item">
           <strong>الخدمة:</strong>
-          <span>{view.service || "—"}</span>
+          <span>{serviceLabel || view.service || "—"}</span>
         </div>
 
         <div className="checkout-item">
           <strong>الموظفة:</strong>
           <span>{view.employee || "—"}</span>
         </div>
-
-        {!!view.employeeId && (
-          <div className="checkout-item" style={{ opacity: 0.8, fontSize: 13 }}>
-            <strong>employeeId:</strong>
-            <span>{view.employeeId}</span>
-          </div>
-        )}
-
-        {!!view.slotIdDisplay && (
-          <div className="checkout-item" style={{ opacity: 0.8, fontSize: 13 }}>
-            <strong>slotId:</strong>
-            <span>{view.slotIdDisplay}</span>
-          </div>
-        )}
 
         <div className="checkout-item">
           <strong>طريقة الدفع:</strong>
@@ -520,7 +627,8 @@ export default function Checkout() {
           disabled={isSubmitting}
           style={isSubmitting ? { opacity: 0.75, cursor: "not-allowed" } : undefined}
         >
-          <FontAwesomeIcon icon={primaryBtnIcon} /> {isSubmitting ? "جاري حفظ الحجز..." : primaryBtnText}
+          <FontAwesomeIcon icon={primaryBtnIcon} />{" "}
+          {isSubmitting ? "جاري حفظ الحجز..." : primaryBtnText}
         </button>
 
         <button

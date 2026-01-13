@@ -13,6 +13,7 @@ import {
   query,
   onSnapshot,
   runTransaction,
+  deleteDoc, // ✅ NEW
 } from "firebase/firestore";
 
 // ✅ NEW: generate same time slots list used by Booking page
@@ -71,7 +72,7 @@ const BOOKINGS_COL = ["salons", SALON_ID, "bookings"] as const;
 const SLOTS_COL = ["salons", SALON_ID, "booking_slots"] as const;
 const TRACKS_COL = ["salons", SALON_ID, "booking_tracks"] as const;
 
-// ✅ NEW: Income collection (linked to booking by same id)
+// ✅ Income collection (linked to booking by same id)
 const INCOME_COL = ["salons", SALON_ID, "income"] as const;
 
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -124,7 +125,9 @@ function safeKey(s: string) {
 }
 
 function buildSlotId(date: string, time: string, employeeKey: string) {
-  return `${SALON_ID}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
+  return `${SALON_ID}__${safeKey(date)}__${safeKey(time)}__${safeKey(
+    employeeKey
+  )}`;
 }
 
 // ✅ Exported helper so Checkout can display the SAME slotId format used by Firestore lock
@@ -154,8 +157,14 @@ function getAmount(b: BookingDoc): number {
 /** ✅ read slot settings safely (fallback to defaults) */
 function getSlotSettings() {
   const cached = AppSettingsService.getCached();
-  const slotStepMin = Math.max(5, Number((cached as any)?.booking?.slotStepMin ?? 30));
-  const bufferMin = Math.max(0, Number((cached as any)?.booking?.bufferMin ?? 0));
+  const slotStepMin = Math.max(
+    5,
+    Number((cached as any)?.booking?.slotStepMin ?? 30)
+  );
+  const bufferMin = Math.max(
+    0,
+    Number((cached as any)?.booking?.bufferMin ?? 0)
+  );
   return { slotStepMin, bufferMin };
 }
 
@@ -172,7 +181,8 @@ function getTimesToLock(startTime: string, durationMin: number) {
 
   if (idx < 0) return [startTime];
 
-  const totalMin = Math.max(0, Number(durationMin || 0)) + Math.max(0, bufferMin);
+  const totalMin =
+    Math.max(0, Number(durationMin || 0)) + Math.max(0, bufferMin);
   const slotsNeeded = Math.max(1, Math.ceil(totalMin / slotStepMin));
 
   return slots.slice(idx, idx + slotsNeeded);
@@ -188,8 +198,10 @@ export async function createBooking(data: BookingDoc) {
   const employeeIdTrimmed = String(data.employeeId ?? "").trim();
   const employeeNameTrimmed = String(data.employeeName || "").trim();
 
-  const employeeKeyForLock = employeeIdTrimmed || employeeNameTrimmed || "unknown_employee";
-  const employeeKey = employeeIdTrimmed || safeKey(employeeNameTrimmed || "unknown_employee");
+  const employeeKeyForLock =
+    employeeIdTrimmed || employeeNameTrimmed || "unknown_employee";
+  const employeeKey =
+    employeeIdTrimmed || safeKey(employeeNameTrimmed || "unknown_employee");
 
   // ✅ duration (default)
   const durationMin = Math.max(0, Number(data.durationMin || 0)) || 60;
@@ -206,7 +218,11 @@ export async function createBooking(data: BookingDoc) {
   );
 
   // ✅ NEW: store start-slotId inside booking doc for tracking/debugging
-  const startSlotId = buildSlotId(data.date, String(data.time || "").trim(), employeeKeyForLock);
+  const startSlotId = buildSlotId(
+    data.date,
+    String(data.time || "").trim(),
+    employeeKeyForLock
+  );
 
   const payload = stripUndefined({
     ...data,
@@ -248,16 +264,25 @@ export async function createBooking(data: BookingDoc) {
         const existingBooking = normalizeBooking(existingBookingSnap.data());
 
         const sameUser =
-          (data.userId && existingBooking.userId && data.userId === existingBooking.userId) ||
-          (!data.userId && String(existingBooking.clientPhone || "") === String(data.clientPhone || ""));
+          (data.userId &&
+            existingBooking.userId &&
+            data.userId === existingBooking.userId) ||
+          (!data.userId &&
+            String(existingBooking.clientPhone || "") ===
+              String(data.clientPhone || ""));
 
-        const sameDate = String(existingBooking.date || "") === String(data.date || "");
-        const sameStart = String(existingBooking.time || "") === String(data.time || "");
+        const sameDate =
+          String(existingBooking.date || "") === String(data.date || "");
+        const sameStart =
+          String(existingBooking.time || "") === String(data.time || "");
 
         // ✅ prefer employeeKey comparison (UID or safeKey(name))
         const sameEmp =
           String(existingBooking.employeeKey || "") === String(employeeKey) ||
-          safeKey((existingBooking.employeeId ?? "").trim() || existingBooking.employeeName.trim()) === safeKey(employeeKeyForLock);
+          safeKey(
+            (existingBooking.employeeId ?? "").trim() ||
+              existingBooking.employeeName.trim()
+          ) === safeKey(employeeKeyForLock);
 
         if (sameUser && sameDate && sameStart && sameEmp) {
           return existingBookingId;
@@ -381,7 +406,10 @@ export async function listAllBookings(): Promise<BookingDocWithId[]> {
   const snap = await getDocs(collection(db, ...BOOKINGS_COL));
   return snap.docs
     .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
-    .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
+    .sort(
+      (a, b) =>
+        (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.()
+    );
 }
 
 /**
@@ -398,7 +426,11 @@ export function watchAllBookings(
     (snap) => {
       const rows = snap.docs
         .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
-        .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
+        .sort(
+          (a, b) =>
+            (b.createdAt as any)?.toMillis?.() -
+            (a.createdAt as any)?.toMillis?.()
+        );
 
       onData(rows);
     },
@@ -481,7 +513,12 @@ export function watchEmployeeBookings(
   let rowsByName: BookingDocWithId[] = [];
 
   const emit = () => {
-    onData(uniqMerge(uniqMerge(rowsByKeyUid, rowsById), uniqMerge(rowsByKeyName, rowsByName)));
+    onData(
+      uniqMerge(
+        uniqMerge(rowsByKeyUid, rowsById),
+        uniqMerge(rowsByKeyName, rowsByName)
+      )
+    );
   };
 
   // ✅ NEW: employeeKey == uid
@@ -552,102 +589,111 @@ export function watchEmployeeBookings(
    UPDATE
 ========================= */
 
+/**
+ * ✅ FIX (حل المشكلتين):
+ * 1) تحديث الحالة لازم ينجح حتى لو income ممنوع بالـ rules
+ * 2) نخلي income "best-effort" خارج الترانزاكشن (ما يكسّر تعديل الحجز)
+ */
 export async function updateBookingStatus(bookingId: string, status: BookingStatus) {
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const trackRef = doc(db, ...TRACKS_COL, bookingId);
   const incomeRef = doc(db, ...INCOME_COL, bookingId);
 
-  await runTransaction(db, async (tx) => {
+  // ✅ 1) Transaction: booking + track فقط
+  const bookingForIncome = await runTransaction(db, async (tx) => {
     const snap = await tx.get(bookingRef);
-    if (!snap.exists()) {
-      throw new Error("BOOKING_NOT_FOUND");
-    }
+    if (!snap.exists()) throw new Error("BOOKING_NOT_FOUND");
 
     const booking = normalizeBooking(snap.data());
-    const amount = getAmount(booking);
-
-    const incomeSnap = await tx.get(incomeRef);
 
     tx.update(bookingRef, { status });
 
     tx.set(
       trackRef,
-      {
+      stripUndefined({
         bookingId,
         serviceName: booking.serviceName,
         employeeId: booking.employeeId ?? null,
         employeeName: booking.employeeName,
-
-        // ✅ NEW
         employeeKey: booking.employeeKey ?? undefined,
-
         date: booking.date,
         time: booking.time,
         durationMin: booking.durationMin ?? undefined,
         status,
-
-        // keep slotId if exists
         slotId: booking.slotId ?? undefined,
-
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     );
+
+    return booking;
+  });
+
+  // ✅ 2) Best-effort: income خارج الترانزاكشن (ما يمنع تعديل الحجز)
+  try {
+    const amount = getAmount(bookingForIncome);
 
     const shouldCreateIncome = status === "confirmed" || status === "completed";
     const shouldDeleteIncome = status === "pending" || status === "cancelled";
 
     if (shouldCreateIncome) {
-      const method = parsePaymentMethod(booking.note);
+      const method = parsePaymentMethod(bookingForIncome.note);
 
-      tx.set(
+      await setDoc(
         incomeRef,
-        {
+        stripUndefined({
           bookingId,
           amount,
-          date: booking.date,
+          date: bookingForIncome.date,
           method,
           source: "booking",
-          clientName: booking.clientName,
-          clientPhone: booking.clientPhone,
-          serviceName: booking.serviceName,
-          employeeName: booking.employeeName,
+          clientName: bookingForIncome.clientName,
+          clientPhone: bookingForIncome.clientPhone,
+          serviceName: bookingForIncome.serviceName,
+          employeeName: bookingForIncome.employeeName,
           status,
-
           updatedAt: serverTimestamp(),
           createdAt: serverTimestamp(),
-        },
+        }) as any,
         { merge: true }
       );
     } else if (shouldDeleteIncome) {
-      if (incomeSnap.exists()) {
-        tx.delete(incomeRef);
+      // delete if exists (ignore if not permitted)
+      try {
+        const s = await getDoc(incomeRef);
+        if (s.exists()) await deleteDoc(incomeRef);
+      } catch {
+        // ignore
       }
     }
-  });
+  } catch {
+    // ✅ مهم: لا نرمي خطأ هنا عشان ما نكسر تعديل الحجز
+  }
 }
 
 export async function updateBookingDetails(bookingId: string, patch: Partial<BookingDoc>) {
   await updateDoc(doc(db, ...BOOKINGS_COL, bookingId), stripUndefined(patch));
 
-  await updateDoc(
-    doc(db, ...TRACKS_COL, bookingId),
-    stripUndefined({
-      serviceName: patch.serviceName,
-      employeeId: patch.employeeId,
-      employeeName: patch.employeeName,
-
-      // ✅ NEW
-      employeeKey: patch.employeeKey,
-
-      date: patch.date,
-      time: patch.time,
-      durationMin: patch.durationMin,
-      status: patch.status,
-      slotId: patch.slotId,
-      updatedAt: serverTimestamp(),
-    })
-  );
+  // ✅ best-effort track update (إذا track ناقص أو rules تمنع، لا نكسر حفظ الحجز)
+  try {
+    await updateDoc(
+      doc(db, ...TRACKS_COL, bookingId),
+      stripUndefined({
+        serviceName: patch.serviceName,
+        employeeId: patch.employeeId,
+        employeeName: patch.employeeName,
+        employeeKey: patch.employeeKey,
+        date: patch.date,
+        time: patch.time,
+        durationMin: patch.durationMin,
+        status: patch.status,
+        slotId: patch.slotId,
+        updatedAt: serverTimestamp(),
+      })
+    );
+  } catch {
+    // ignore
+  }
 }
 
 export async function getTrackById(id: string) {
@@ -655,3 +701,57 @@ export async function getTrackById(id: string) {
   if (!snap.exists()) return null;
   return snap.data();
 }
+
+/* =========================
+   ✅ One-time Migration (Fix Staff visibility)
+   - Fill missing employeeKey for old bookings
+========================= */
+
+export async function backfillEmployeeKeys(opts?: { dryRun?: boolean; limit?: number }) {
+  const dryRun = !!opts?.dryRun;
+  const max = Math.max(1, Number(opts?.limit ?? 1000));
+
+  const baseCol = collection(db, ...BOOKINGS_COL);
+  const snap = await getDocs(baseCol);
+
+  let patched = 0;
+
+  for (const d of snap.docs) {
+    if (patched >= max) break;
+
+    const b = normalizeBooking(d.data());
+
+    // already ok
+    if (b.employeeKey && String(b.employeeKey).trim()) continue;
+
+    const employeeId = String(b.employeeId ?? "").trim();
+    const employeeName = String(b.employeeName ?? "").trim();
+
+    // ✅ preferred: uid, fallback: safeKey(name)
+    const nextKey = employeeId || (employeeName ? safeKey(employeeName) : "");
+    if (!nextKey) continue;
+
+    patched++;
+
+    if (!dryRun) {
+      // update booking
+      await updateDoc(doc(db, ...BOOKINGS_COL, d.id), {
+        employeeKey: nextKey,
+        updatedAt: serverTimestamp(),
+      } as any);
+
+      // optional: update track (ignore if missing/perms)
+      try {
+        await updateDoc(doc(db, ...TRACKS_COL, d.id), {
+          employeeKey: nextKey,
+          updatedAt: serverTimestamp(),
+        } as any);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  return { scanned: snap.size, patched, dryRun };
+}
+

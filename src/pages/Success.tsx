@@ -19,7 +19,6 @@ import {
 import "../styles/Success.css";
 
 // Firestore
-// Firestore
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { getBookingById } from "../services/firestoreBookings";
@@ -66,29 +65,36 @@ async function resolveServiceName(serviceId: string): Promise<string> {
   }
 }
 
+function normStatus(s: string) {
+  return String(s || "").toLowerCase().trim();
+}
+
 function statusLabel(s: string) {
-  const v = String(s || "").toLowerCase().trim();
+  const v = normStatus(s);
   if (v === "confirmed" || s === "مؤكد") return "مؤكد";
-  if (v === "pending" || s === "بانتظار" || s === "بالانتظار")
-    return "بالانتظار";
+  if (v === "pending" || s === "بانتظار" || s === "بالانتظار") return "بالانتظار";
   if (v === "completed" || s === "مكتمل") return "مكتمل";
   if (v === "cancelled" || s === "ملغي") return "ملغي";
   return s || "-";
 }
 
 function statusClass(s: string) {
-  const v = String(s || "").toLowerCase().trim();
+  const v = normStatus(s);
   if (v === "confirmed" || s === "مؤكد") return "confirmed";
-  if (v === "pending" || s === "بانتظار" || s === "بالانتظار")
-    return "pending";
+  if (v === "pending" || s === "بانتظار" || s === "بالانتظار") return "pending";
   if (v === "completed" || s === "مكتمل") return "completed";
   if (v === "cancelled" || s === "ملغي") return "cancelled";
   return "default";
 }
 
-/* =========================
-   Component
-========================= */
+// ✅ رقم حجز مختصر للعرض (مع الاحتفاظ بالـ id الحقيقي للنسخ)
+function shortBookingCode(id: string) {
+  const s = String(id || "").trim();
+  if (!s) return "—";
+  // مثال: #QNS-AB12CD
+  const tail = s.slice(-6).toUpperCase();
+  return `#QNS-${tail}`;
+}
 
 export default function Success() {
   const navigate = useNavigate();
@@ -110,7 +116,8 @@ export default function Success() {
   const bookingId = useMemo(() => {
     try {
       const raw = localStorage.getItem(BOOKING_KEY);
-      return raw ? JSON.parse(raw)?.id : "";
+      const parsed = raw ? JSON.parse(raw) : null;
+      return String(parsed?.id || parsed?.bookingId || "").trim();
     } catch {
       return "";
     }
@@ -182,7 +189,9 @@ export default function Success() {
   if (loading) {
     return (
       <div className="success-page">
-        <p className="success-subtitle">جاري تجهيز تفاصيل الحجز...</p>
+        <div className="success-card">
+          <p className="success-loading">جاري تجهيز تفاصيل الحجز...</p>
+        </div>
       </div>
     );
   }
@@ -190,18 +199,17 @@ export default function Success() {
   if (error) {
     return (
       <div className="success-page">
-        <div className="success-alert">
-          <FontAwesomeIcon icon={faCircleInfo} />
-          <span>{error}</span>
-        </div>
-        <div className="success-actions">
-          <button
-            className="btn btn-primary"
-            onClick={() => navigate("/booking")}
-            type="button"
-          >
-            <FontAwesomeIcon icon={faArrowRight} /> رجوع للحجز
-          </button>
+        <div className="success-card">
+          <div className="success-alert">
+            <FontAwesomeIcon icon={faCircleInfo} />
+            <span>{error}</span>
+          </div>
+
+          <div className="success-actions">
+            <button className="btn btn-primary" onClick={() => navigate("/booking")} type="button">
+              <FontAwesomeIcon icon={faArrowRight} /> رجوع للحجز
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -209,26 +217,42 @@ export default function Success() {
 
   if (!view) return null;
 
-  /* =========================
-     Render
-  ========================= */
+  // ✅ عنوان/وصف ديناميكي حسب الحالة
+  const st = normStatus(view.status);
+  const isConfirmed = st === "confirmed" || view.status === "مؤكد";
+  const heroTitle = isConfirmed ? "تم تأكيد حجزك بنجاح!" : "تم استلام طلب حجزك بنجاح!";
+  const heroDesc = isConfirmed
+    ? "تم تأكيد الموعد. إذا احتجت تعديل، تواصل معنا."
+    : "تم استلام طلب حجزك، وسيتم التواصل معك قريبًا لتأكيد الموعد.";
+
+  const displayCode = shortBookingCode(view.id);
 
   return (
     <div className="success-page">
       <div className="success-card">
-        <div className="success-icon">
-          <FontAwesomeIcon icon={faCheckCircle} />
+        <div className="success-topline" />
+
+        <div className="success-header">
+          <div className="success-icon">
+            <FontAwesomeIcon icon={faCheckCircle} />
+          </div>
+
+          <h1 className="success-title">{heroTitle}</h1>
+          <p className="success-subtitle">{heroDesc}</p>
+
+          <div className="success-badge">
+            <span>رقم الحجز</span>
+            <span className="mono">{displayCode}</span>
+          </div>
+
+          <div className="success-sourcehint">
+            (للنسخ والمراجعة: رقم الحجز الكامل موجود بالأسفل)
+          </div>
         </div>
-
-        <h1 className="success-title">تم تأكيد حجزك بنجاح!</h1>
-
-        <p className="success-subtitle">
-          تم استلام طلب حجزك، وسيتم التواصل معك قريبًا لتأكيد الموعد.
-        </p>
 
         <div className="success-details">
           <div className="detail-row detail-row--id">
-            <span className="detail-label">رقم الحجز</span>
+            <span className="detail-label">رقم الحجز الكامل</span>
             <span className="detail-value mono">{view.id}</span>
           </div>
 
@@ -276,40 +300,24 @@ export default function Success() {
 
           <div className="total-row">
             <FontAwesomeIcon icon={faMoneyBill} />
-            <span>
-              {view.total ? `${view.total.toLocaleString()} ريال` : "—"}
-            </span>
+            <span>{view.total ? `${view.total.toLocaleString()} ريال` : "—"}</span>
           </div>
         </div>
 
-        <button
-          type="button"
-          className="success-copy-btn"
-          onClick={copyBookingId}
-        >
+        <button type="button" className="success-copy-btn" onClick={copyBookingId}>
           <FontAwesomeIcon icon={faCopy} /> نسخ رقم الحجز
         </button>
 
         <div className="success-actions">
-          <button
-            className="success-btn success-home"
-            onClick={() => navigate("/")}
-            type="button"
-          >
+          <button className="success-btn success-home" onClick={() => navigate("/")} type="button">
             الرئيسية
           </button>
-          <button
-            className="success-btn success-booking"
-            onClick={() => navigate("/booking")}
-            type="button"
-          >
+          <button className="success-btn success-booking" onClick={() => navigate("/booking")} type="button">
             حجز جديد
           </button>
         </div>
 
-        {toastMsg && (
-          <div className={`success-toast ${toastType}`}>{toastMsg}</div>
-        )}
+        {toastMsg && <div className={`success-toast ${toastType}`}>{toastMsg}</div>}
       </div>
     </div>
   );

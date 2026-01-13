@@ -22,7 +22,6 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
-import "../styles/EmployeePortal.css";
 import "../styles/DashboardModals.css";
 
 // ✅ Bookings stats (Owner only)

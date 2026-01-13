@@ -27,7 +27,6 @@ import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import Track from "./pages/Track";
-import EmployeePortal from "./pages/EmployeePortal";
 
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
@@ -175,7 +174,6 @@ const App: React.FC = () => {
           <Route path="/contact" element={<Contact />} />
           <Route path="/login" element={<Login />} />
           <Route path="/pricing" element={<Pricing />} />
-          <Route path="/employee" element={<EmployeePortal />} />
 
           {/* Track */}
           <Route path="/track" element={<Track />} />

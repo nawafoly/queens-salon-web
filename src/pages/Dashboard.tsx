@@ -17,7 +17,7 @@ import {
   faWallet,
   faXmark,
   faBars,
-  faHouse, // ✅ NEW
+  faHouse,
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/DashboardSkin.css";
@@ -32,7 +32,8 @@ import DashboardClients from "./DashboardClients";
 import DashboardSettings from "../pages/DashboardSettings";
 import DashboardExpenses from "../pages/DashboardExpenses";
 import DashboardIncome from "../pages/DashboardIncome";
-import EmployeePortal from "./EmployeePortal";
+
+import DashboardStaff from "../pages/DashboardStaff";
 
 import logo1 from "../assets/images/ssunnamed.png";
 
@@ -84,9 +85,9 @@ type AppSettings = {
   sections: Record<SectionKey, boolean>;
   policies: {
     allowStaffChangeStatus: boolean;
-    allowReceptionChangeStatus: boolean; // ✅ NEW
+    allowReceptionChangeStatus: boolean;
     allowStaffViewClients: boolean;
-    allowAdminManageUsers: boolean; // ✅ NEW
+    allowAdminManageUsers: boolean;
   };
 };
 
@@ -109,7 +110,7 @@ const defaultSettings: AppSettings = {
   },
   policies: {
     allowStaffChangeStatus: true,
-    allowReceptionChangeStatus: true, // ✅ default
+    allowReceptionChangeStatus: true,
     allowStaffViewClients: true,
     allowAdminManageUsers: false,
   },
@@ -144,11 +145,8 @@ function readIncomeTotal(): number {
   }
 }
 
-
 /** ✅ تحويل حجز Firestore لشكل Booking اللي تستخدمه الواجهة */
-async function mapFirestoreToUiBooking(
-  b: BookingDocWithId
-): Promise<Booking> {
+async function mapFirestoreToUiBooking(b: BookingDocWithId): Promise<Booking> {
   const serviceId = (b as any)?.serviceId || b.serviceName || "";
 
   return {
@@ -161,11 +159,10 @@ async function mapFirestoreToUiBooking(
     date: b.date || "",
     time: b.time || "",
     status: (b.status || "pending") as BookingStatus,
-    total: Number(b.finalPrice ?? b.total ?? 0),
+    total: Number(b.finalPrice ?? (b as any).total ?? 0),
     createdAt: (b.createdAt as any) || undefined,
     note: (b.note as any) || undefined,
   };
-  
 }
 
 /** ===== Overview ===== */
@@ -424,15 +421,19 @@ interface UserInfo {
   email: string;
 }
 
+// ✅ IMPORTANT: normalize role هنا (حل تعليق staff بسبب Staff/ staff / spaces)
 function mapProfileRoleToDashboardRole(role: ProfileRole): UiRole | null {
-  if (role === "owner" || role === "admin" || role === "reception" || role === "staff") {
-    return role;
+  const r = String(role || "").toLowerCase().trim() as ProfileRole;
+
+  if (r === "owner" || r === "admin" || r === "reception" || r === "staff") {
+    return r;
   }
   return null;
 }
 
 const Dashboard: React.FC = () => {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [dashError, setDashError] = useState<string>(""); // ✅ NEW
 
   // ✅ يبدأ من localStorage fallback
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
@@ -459,7 +460,6 @@ const Dashboard: React.FC = () => {
   const netProfit = totalIncome - totalExpenses;
 
   // ✅ LOCK background scroll when modal open (Mobile/iOS SAFE)
-  // ✅ المكان: بعد حساب netProfit مباشرة
   useEffect(() => {
     if (!selectedBooking) return;
 
@@ -472,12 +472,12 @@ const Dashboard: React.FC = () => {
     const prevWidth = body.style.width;
     const prevPaddingRight = body.style.paddingRight;
 
-    // تعويض اختفاء الـ scrollbar (desktop)
-    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
+    const scrollBarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
 
     body.style.overflow = "hidden";
-    body.style.position = "fixed"; // ✅ مهم للجوال/iOS
-    body.style.top = `-${scrollY}px`; // ✅ يثبت الصفحة
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
     body.style.width = "100%";
 
     if (scrollBarWidth > 0) body.style.paddingRight = `${scrollBarWidth}px`;
@@ -489,7 +489,7 @@ const Dashboard: React.FC = () => {
       body.style.width = prevWidth;
       body.style.paddingRight = prevPaddingRight;
 
-      window.scrollTo(0, scrollY); // ✅ يرجعك لنفس مكانك
+      window.scrollTo(0, scrollY);
     };
   }, [selectedBooking]);
 
@@ -498,7 +498,6 @@ const Dashboard: React.FC = () => {
    * ✅ تعديل مهم: لا نقرأ المصروفات إلا لو AdminPower (Owner/Admin)
    */
   const refreshDashboard = async (roleForRefresh?: UiRole) => {
-    // ✅ NEW: staff ما له أي Refresh عام (Rules تمنعه من قراءة كل الحجوزات)
     if (roleForRefresh === "staff") {
       console.log("REFRESH -> skipped for staff ✅");
       setStats((prev) => ({
@@ -514,7 +513,6 @@ const Dashboard: React.FC = () => {
 
     let step = "start";
 
-    // ✅ حسم صلاحية المصروفات بناءً على الرول الحقيقي
     const canReadExpensesNow =
       roleForRefresh === "owner" || roleForRefresh === "admin";
 
@@ -528,18 +526,14 @@ const Dashboard: React.FC = () => {
 
       console.log("REFRESH -> start");
 
-      // 1) BOOKINGS
       step = "bookings:listAllBookings";
       console.log("REFRESH -> listAllBookings()");
       const docs = await listAllBookings();
       console.log("REFRESH -> bookings OK:", docs.length);
 
       step = "bookings:mapFirestoreToUiBooking";
-      const uiBookings = await Promise.all(
-        docs.map(mapFirestoreToUiBooking)
-      );
-      
-      // 2) TODAY STATS
+      const uiBookings = await Promise.all(docs.map(mapFirestoreToUiBooking));
+
       step = "today:compute";
       const today = new Date();
       const yyyy = today.getFullYear();
@@ -553,7 +547,6 @@ const Dashboard: React.FC = () => {
         0
       );
 
-      // 3) EMPLOYEES COUNT (STATS)
       let employeesCount = 0;
       try {
         step = "stats:DashboardService.getStats";
@@ -566,7 +559,6 @@ const Dashboard: React.FC = () => {
         employeesCount = 0;
       }
 
-      // 4) EXPENSES ✅ (AdminPower only)
       if (canReadExpensesNow) {
         step = "expenses:listAllExpensesFS";
         console.log("REFRESH -> listAllExpensesFS()");
@@ -580,11 +572,9 @@ const Dashboard: React.FC = () => {
         );
         setExpensesTotalFS(expensesTotal);
       } else {
-        // ✅ Reception/Staff: لا نقرأ المصروفات (Rules تمنعها)
         setExpensesTotalFS(0);
       }
 
-      // 5) SET UI STATE
       step = "ui:setStats/setLatestBookings";
       setStats({
         todayBookings: todayList.length,
@@ -602,7 +592,9 @@ const Dashboard: React.FC = () => {
       const code = (e as any)?.code || (e as any)?.name || "-";
       const msg = String((e as any)?.message || "");
 
-      alert(`❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`);
+      alert(
+        `❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`
+      );
 
       setStats((prev) => ({
         ...prev,
@@ -615,10 +607,8 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // ✅ Badge المصروفات بدون ملاحظات
-  // ✅ تعديل مهم: لا نحاول نقرأها إلا لو AdminPower
+  // ✅ Badge المصروفات بدون ملاحظات (AdminPower only)
   useEffect(() => {
-    // لو لسه ما عندنا userInfo، لا تسوي شي
     if (!userInfo) return;
 
     const isAdminPowerNow =
@@ -653,7 +643,6 @@ const Dashboard: React.FC = () => {
    * ✅ ربط Dashboard مع Firestore settings/app (Realtime)
    */
   useEffect(() => {
-    // 1) cache first (fast)
     try {
       const cached = AppSettingsService.getCached() as any;
       setSettings((prev) => ({
@@ -664,7 +653,6 @@ const Dashboard: React.FC = () => {
       }));
     } catch { }
 
-    // 2) realtime
     const unsub = AppSettingsService.subscribe((remote: any) => {
       setSettings((prev) => ({
         ...prev,
@@ -680,49 +668,92 @@ const Dashboard: React.FC = () => {
     return () => unsub?.();
   }, []);
 
+  /**
+   * ✅ FIX تعليق الموظف:
+   * - نحاول نقرأ البروفايل من Firestore
+   * - إذا Rules منعت (Missing permissions) نسوي fallback من localStorage/auth
+   * - staff يروح مباشرة لـ /dashboard/staff
+   */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
+      let step = "auth:start";
       try {
+        setDashError("");
+
+        step = "auth:checkUser";
         if (!user) {
           navigate("/login");
           return;
         }
 
-        const profile: UserProfile = await createOrLoadUserProfile(user);
+        // ✅ نحاول نجيب البروفايل من Firestore
+        step = "profile:createOrLoadUserProfile";
+        let profile: UserProfile | null = null;
 
+        try {
+          profile = await createOrLoadUserProfile(user);
+        } catch (e: any) {
+          const msg = String(e?.message || "");
+          console.warn("createOrLoadUserProfile failed:", msg);
+
+          if (msg.includes("Missing or insufficient permissions")) {
+            profile = null; // ✅ fallback
+          } else {
+            throw e;
+          }
+        }
+
+        // ✅ fallback إذا ما قدرنا نقرأ من Firestore بسبب Rules
+        if (!profile) {
+          step = "profile:fallback";
+
+          const cachedRole = String(localStorage.getItem("userRole") || "")
+            .toLowerCase()
+            .trim();
+
+          const fallbackRole: UiRole =
+            cachedRole === "owner" ||
+              cachedRole === "admin" ||
+              cachedRole === "reception" ||
+              cachedRole === "staff"
+              ? (cachedRole as UiRole)
+              : "staff";
+
+          const fallbackName =
+            localStorage.getItem("userName") ||
+            user.displayName ||
+            user.email ||
+            "موظفة";
+
+          setUserInfo({
+            name: fallbackName,
+            role: fallbackRole,
+            email: user.email || "",
+          });
+
+
+
+          await refreshDashboard(fallbackRole);
+          return;
+        }
+
+        step = `profile:loaded role=${profile?.role || "-"}`;
+
+        step = "profile:canAccessDashboard";
         if (!canAccessDashboard(profile.role)) {
           navigate("/profile");
           return;
         }
 
+        step = "profile:mapRoleToDashboardRole";
         const dashRole = mapProfileRoleToDashboardRole(profile.role);
         if (!dashRole) {
           navigate("/profile");
           return;
         }
 
+        step = "ui:setUserInfo";
         const name = profile.name || user.displayName || "مستخدم";
-
-        localStorage.setItem("authToken", "firebase");
-        localStorage.setItem("userRole", dashRole);
-        localStorage.setItem("userName", name);
-        localStorage.setItem("userUid", profile.uid);
-        if (profile.email) localStorage.setItem("userEmail", profile.email);
-        if (profile.phone) localStorage.setItem("userPhone", profile.phone);
-
-        localStorage.setItem("user_profile_v1", JSON.stringify(profile));
-
-        localStorage.setItem(
-          "auth_user",
-          JSON.stringify({
-            uid: profile.uid,
-            email: profile.email || user.email || "",
-            role: dashRole,
-            displayName: name,
-          })
-        );
-
-        window.dispatchEvent(new Event("authChanged"));
 
         setUserInfo({
           name,
@@ -730,15 +761,13 @@ const Dashboard: React.FC = () => {
           email: profile.email || user.email || "",
         });
 
-        // ✅ NEW: staff لا نسوي له refreshDashboard لأنه يقرأ كل الحجوزات
-        if (dashRole !== "staff") {
-          await refreshDashboard(dashRole);
-        } else {
-          console.log("Dashboard: staff logged in -> go EmployeePortal only ✅");
-        }
-      } catch (err) {
-        console.error("Dashboard auth error:", err);
-        navigate("/login");
+
+
+        await refreshDashboard(dashRole);
+      } catch (err: any) {
+        const msg = String(err?.message || err || "");
+        console.error("Dashboard auth error:", { step, err });
+        setDashError(`❌ Dashboard blocked\nstep: ${step}\nmsg: ${msg}`);
       }
     });
 
@@ -770,7 +799,6 @@ const Dashboard: React.FC = () => {
   const isStaff = userInfo?.role === "staff";
 
   const hasAdminPower = Boolean(isOwner || isAdmin);
-  const canSeeEmployeePortal = Boolean(isStaff || isOwner || isAdmin);
 
   const allowStaffChangeStatus = settings.policies.allowStaffChangeStatus;
   const allowReceptionChangeStatus = settings.policies.allowReceptionChangeStatus;
@@ -822,10 +850,7 @@ const Dashboard: React.FC = () => {
     if (hasAdminPower || canReceptionChange || canStaffChange) {
       try {
         await updateBookingStatusFS(id, status);
-
-        // ✅ مرر الرول للـ refresh
         await refreshDashboard(userInfo?.role);
-
         setSelectedBooking((prev) =>
           prev && prev.id === id ? { ...prev, status } : prev
         );
@@ -841,6 +866,15 @@ const Dashboard: React.FC = () => {
     window.addEventListener("popstate", close);
     return () => window.removeEventListener("popstate", close);
   }, []);
+
+  // ✅ لو صار خطأ واضح بدلاً من التعليق
+  if (dashError) {
+    return (
+      <div className="dashboard-loading" style={{ direction: "ltr", textAlign: "left" }}>
+        <pre style={{ whiteSpace: "pre-wrap", maxWidth: 900 }}>{dashError}</pre>
+      </div>
+    );
+  }
 
   if (!userInfo) {
     return (
@@ -920,14 +954,18 @@ const Dashboard: React.FC = () => {
       </style>
 
       {isSidebarOpen && (
-        <div className="dash-side-overlay" onClick={() => setIsSidebarOpen(false)} />
+        <div
+          className="dash-side-overlay"
+          onClick={() => setIsSidebarOpen(false)}
+        />
       )}
 
       <div className="container-fluid">
         <div className="row">
           {/* Sidebar */}
           <div
-            className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""}`}
+            className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""
+              }`}
           >
             <button
               type="button"
@@ -955,6 +993,19 @@ const Dashboard: React.FC = () => {
 
             <nav className="sidebar-nav">
               <ul>
+                {(isStaff || hasAdminPower || isReception) && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/staff"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faUserTie} />
+                      بوابة الموظفات
+                    </NavLink>
+                  </li>
+                )}
+
                 {!isStaff && canSeeSection("overview") && (
                   <li>
                     <NavLink
@@ -964,19 +1015,6 @@ const Dashboard: React.FC = () => {
                     >
                       <FontAwesomeIcon icon={faChartLine} />
                       نظرة عامة
-                    </NavLink>
-                  </li>
-                )}
-
-                {canSeeEmployeePortal && (
-                  <li>
-                    <NavLink
-                      to="/dashboard/staff"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faUserTie} />
-                      بوابة الموظفات
                     </NavLink>
                   </li>
                 )}
@@ -994,22 +1032,19 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {(hasAdminPower || isReception) && canSeeSection("clients") && (
-                  <>
-                    {hasAdminPower || (isReception && allowStaffViewClients) ? (
-                      <li>
-                        <NavLink
-                          to="/dashboard/clients"
-                          className="nav-link"
-                          onClick={() => setIsSidebarOpen(false)}
-                        >
-                          <FontAwesomeIcon icon={faUsers} />
-                          العميلات
-                        </NavLink>
-                      </li>
-                    ) : null}
-                  </>
-                )}
+                {(hasAdminPower || (isReception && allowStaffViewClients)) &&
+                  canSeeSection("clients") && (
+                    <li>
+                      <NavLink
+                        to="/dashboard/clients"
+                        className="nav-link"
+                        onClick={() => setIsSidebarOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faUsers} />
+                        العميلات
+                      </NavLink>
+                    </li>
+                  )}
 
                 {hasAdminPower && canSeeSection("employees") && (
                   <li>
@@ -1096,25 +1131,22 @@ const Dashboard: React.FC = () => {
               </ul>
             </nav>
 
-            {/* ✅ Footer: زر الرئيسية + الخروج */}
             <div className="sidebar-footer">
-              <div className="sidebar-footer">
-                <button
-                  className="exp-btn home"
-                  type="button"
-                  onClick={() => navigate("/")}
-                  title="الصفحة الرئيسية"
-                  aria-label="الصفحة الرئيسية"
-                >
-                  <FontAwesomeIcon icon={faHouse} />
-                  الصفحة الرئيسية
-                </button>
+              <button
+                className="exp-btn home"
+                type="button"
+                onClick={() => navigate("/")}
+                title="الصفحة الرئيسية"
+                aria-label="الصفحة الرئيسية"
+              >
+                <FontAwesomeIcon icon={faHouse} />
+                الصفحة الرئيسية
+              </button>
 
-                <button className="exp-btn logout" onClick={handleLogout} type="button">
-                  <FontAwesomeIcon icon={faSignOutAlt} />
-                  تسجيل الخروج
-                </button>
-              </div>
+              <button className="exp-btn logout" onClick={handleLogout} type="button">
+                <FontAwesomeIcon icon={faSignOutAlt} />
+                تسجيل الخروج
+              </button>
             </div>
           </div>
 
@@ -1138,7 +1170,6 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* ✅ FIX: right section واحد فقط (بدون تكرار) */}
               <div className="dash-topbar-right">
                 <div className="dash-topbar-user">
                   <span className="dash-topbar-name">{userInfo.name}</span>
@@ -1171,6 +1202,17 @@ const Dashboard: React.FC = () => {
                   }
                 />
 
+                <Route
+                  path="staff"
+                  element={
+                    isStaff || hasAdminPower || isReception ? (
+                      <DashboardStaff />
+                    ) : (
+                      <Navigate to="/dashboard/overview" replace />
+                    )
+                  }
+                />
+
                 {!isStaff && canSeeSection("overview") && (
                   <Route
                     path="overview"
@@ -1191,18 +1233,14 @@ const Dashboard: React.FC = () => {
                   />
                 )}
 
-                <Route
-                  path="staff"
-                  element={canSeeEmployeePortal ? <EmployeePortal /> : <Navigate to="/dashboard" replace />}
-                />
-
                 {(hasAdminPower || isReception) && canSeeSection("bookings") && (
                   <Route path="bookings" element={<DashboardBookings />} />
                 )}
 
-                {(hasAdminPower || (isReception && allowStaffViewClients)) && canSeeSection("clients") && (
-                  <Route path="clients" element={<DashboardClients />} />
-                )}
+                {(hasAdminPower || (isReception && allowStaffViewClients)) &&
+                  canSeeSection("clients") && (
+                    <Route path="clients" element={<DashboardClients />} />
+                  )}
 
                 {hasAdminPower && canSeeSection("employees") && (
                   <Route path="employees" element={<DashboardEmployees />} />
@@ -1244,17 +1282,27 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* ✅ Modal تفاصيل الحجز (FIXED LAYOUT) */}
+      {/* ✅ Modal تفاصيل الحجز */}
       {selectedBooking && (
-        <div className="dash-modal-overlay" onClick={() => setSelectedBooking(null)}>
-          <div className="dash-modal dash-booking-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="dash-modal-overlay"
+          onClick={() => setSelectedBooking(null)}
+        >
+          <div
+            className="dash-modal dash-booking-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="dash-modal-head">
               <div className="dash-modal-title">
                 <h3>تفاصيل الحجز</h3>
                 <small>عرض تفاصيل الحجز بشكل مرتب وواضح</small>
               </div>
 
-              <button className="exp-btn ghost" type="button" onClick={() => setSelectedBooking(null)}>
+              <button
+                className="exp-btn ghost"
+                type="button"
+                onClick={() => setSelectedBooking(null)}
+              >
                 <FontAwesomeIcon icon={faXmark} /> إغلاق
               </button>
             </div>
@@ -1310,7 +1358,10 @@ const Dashboard: React.FC = () => {
                       className="dash-select"
                       value={selectedBooking.status}
                       onChange={(e) =>
-                        handleChangeStatus(selectedBooking.id, e.target.value as BookingStatus)
+                        handleChangeStatus(
+                          selectedBooking.id,
+                          e.target.value as BookingStatus
+                        )
                       }
                     >
                       <option value="confirmed">مؤكد</option>
@@ -1336,10 +1387,18 @@ const Dashboard: React.FC = () => {
             </div>
 
             <div className="dash-modal-actions">
-              <button className="exp-btn ghost" onClick={() => navigate("/dashboard/bookings")} type="button">
+              <button
+                className="exp-btn ghost"
+                onClick={() => navigate("/dashboard/bookings")}
+                type="button"
+              >
                 فتح صفحة الحجوزات
               </button>
-              <button className="exp-btn primary" onClick={() => setSelectedBooking(null)} type="button">
+              <button
+                className="exp-btn primary"
+                onClick={() => setSelectedBooking(null)}
+                type="button"
+              >
                 تم
               </button>
             </div>

@@ -1,361 +1,345 @@
-// src/pages/DashboardStaff.tsx
+// ✅ src/pages/DashboardStaff.tsx
 import { useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   doc,
   getDoc,
   onSnapshot,
-  orderBy,
   query,
-  updateDoc,
   where,
-  type Timestamp,
+  Timestamp,
 } from "firebase/firestore";
 
 import { auth, db } from "../services/firebase";
 import "../styles/DashboardStaff.css";
 
-type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
-type BookingStatus = "pending" | "confirmed" | "cancelled";
+type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled" | "new";
 
 type BookingDoc = {
-  createdAt?: Timestamp;
-  createdBy?: string;
-  channel?: string;
-
   clientName?: string;
   clientPhone?: string;
 
-  date?: string; // YYYY-MM-DD
-  time?: string; // HH:mm
   serviceName?: string;
+  serviceId?: string;
 
-  // ✅ legacy/old
-  employeeId?: string | null; // قديمًا: كان UID، الآن في Booking صار staff_public id
-  employeeName?: string; // fallback
+  employeeName?: string;
+  employeeId?: string;   // ✅ uid غالبًا
+  employeeUid?: string;  // ✅ إذا موجود في بعض الحجوزات
 
-  // ✅ NEW: UID الحقيقي للموظفة (الربط الصحيح للموظفات)
-  employeeUid?: string | null;
+  employeeKey?: string; // موجود بالكود عندك لكن Rules ما تعتمد عليه للقراءة
+
+  date?: string;
+  time?: string;
 
   status?: BookingStatus;
-  total?: number;
-  finalPrice?: number;
-  note?: string;
 
-  slotId?: string;
-  userId?: string;
+  createdAt?: Timestamp | any;
 };
 
-type BookingRow = BookingDoc & { id: string };
+type BookingWithId = BookingDoc & { id: string };
 
 const SALON_ID = "main";
+type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 
-function normalizeArabicName(input: string) {
-  return (input || "")
+function normalizeArabic(s: any) {
+  return String(s || "")
     .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[ـ]/g, "")
-    .replace(/[أإآ]/g, "ا")
-    .replace(/[ة]/g, "ه")
-    .replace(/[ى]/g, "ي");
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
-function canViewAll(role: UiRole) {
-  return role === "owner" || role === "admin" || role === "reception";
-}
-
-function canEditStatus(role: UiRole) {
-  return role === "owner" || role === "admin" || role === "reception";
+function allowStaffPortal(role: UiRole | "") {
+  return role === "staff" || role === "owner" || role === "admin" || role === "reception";
 }
 
 export default function DashboardStaff() {
-  const [fbUser, setFbUser] = useState<User | null>(null);
+  const [myUid, setMyUid] = useState<string>("");
+  const [myEmail, setMyEmail] = useState<string>("");
+  const [myName, setMyName] = useState<string>("");
 
-  const [role, setRole] = useState<UiRole>("guest");
-  const [displayName, setDisplayName] = useState<string>("");
+  const [myRole, setMyRole] = useState<UiRole | "">("");
+  const [roleLoading, setRoleLoading] = useState(true);
 
+  const [myBookingsRaw, setMyBookingsRaw] = useState<BookingWithId[]>([]);
   const [loading, setLoading] = useState(true);
-  const [bookings, setBookings] = useState<BookingRow[]>([]);
-  const [error, setError] = useState<string>("");
+  const [errMsg, setErrMsg] = useState<string>("");
 
-  // Filters
-  const [qText, setQText] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | BookingStatus>("");
-  const [dateFilter, setDateFilter] = useState<string>("");
-
-  // 1) Auth + Profile role
+  // ✅ 1) Auth + role من Firestore (source of truth)
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      setFbUser(u || null);
-      setError("");
+      setErrMsg("");
+      setMyBookingsRaw([]);
+      setLoading(true);
+      setRoleLoading(true);
 
       if (!u) {
-        setRole("guest");
-        setDisplayName("");
+        setMyUid("");
+        setMyEmail("");
+        setMyName("");
+        setMyRole("");
         setLoading(false);
-        setBookings([]);
+        setRoleLoading(false);
+        setErrMsg("⚠️ لم يتم تسجيل الدخول. الرجاء تسجيل الدخول بحساب موظفة.");
         return;
       }
 
-      setLoading(true);
+      setMyUid(u.uid);
+      setMyEmail(u.email || "");
+      setMyName(u.displayName || "");
+
       try {
         const userRef = doc(db, "salons", SALON_ID, "users", u.uid);
         const snap = await getDoc(userRef);
 
         if (!snap.exists()) {
-          setRole("guest");
-          setDisplayName(u.displayName || u.email || "موظفة");
-        } else {
-          const data: any = snap.data();
-          setRole((data?.role || "guest") as UiRole);
-          setDisplayName(
-            (data?.displayName ||
-              data?.name ||
-              u.displayName ||
-              u.email ||
-              "موظفة") as string
+          setMyRole("");
+          setRoleLoading(false);
+          setLoading(false);
+          setErrMsg(
+            "⚠️ لا يوجد ملف مستخدم لك داخل salons/main/users/{uid}. " +
+            "لازم إنشاء حساب الموظفة داخل النظام."
           );
+          return;
         }
+
+        const data = snap.data() as any;
+        const r = String(data?.role || "").toLowerCase().trim() as UiRole;
+
+        setMyRole(r);
+        setRoleLoading(false);
+
+        if (!allowStaffPortal(r)) {
+          setLoading(false);
+          setErrMsg(`⛔ لا تملك صلاحية فتح بوابة الموظفة. role الحالي: ${r || "غير محدد"}`);
+          return;
+        }
+
+        setLoading(true);
       } catch (e: any) {
-        setError(e?.message || "فشل تحميل بيانات المستخدم");
-        setRole("guest");
-        setDisplayName(u.displayName || u.email || "موظفة");
-      } finally {
+        console.error("DashboardStaff role load error:", e);
+        setMyRole("");
+        setRoleLoading(false);
         setLoading(false);
+        setErrMsg(
+          "❌ خطأ أثناء تحميل صلاحيات الحساب (role).\n" + String(e?.message || e)
+        );
       }
     });
 
     return () => unsub();
   }, []);
 
-  // 2) Bookings realtime
+  // ✅ 2) Realtime: نقرأ حجوزات الموظفة فقط (حل التعليق مع Rules)
   useEffect(() => {
-    if (!fbUser) return;
+    if (!myUid) return;
+    if (roleLoading) return;
+    if (!allowStaffPortal(myRole)) return;
 
-    setError("");
+    setLoading(true);
+    setErrMsg("");
+    setMyBookingsRaw([]);
 
-    const col = collection(db, "salons", SALON_ID, "bookings");
+    const colRef = collection(db, "salons", SALON_ID, "bookings");
 
-    // ✅ للـ staff: نقرأ حسب employeeUid (الربط الصحيح)
-    // ✅ للإدارة: نقرأ الكل
-    const qy = canViewAll(role)
-      ? query(col, orderBy("createdAt", "desc"))
-      : query(
-          col,
-          where("employeeUid", "==", fbUser.uid),
-          orderBy("createdAt", "desc")
-        );
+    // ✅ Query 1: employeeUid == myUid (لو موجود)
+    const qByEmployeeUid = query(colRef, where("employeeUid", "==", myUid));
 
-    const unsub = onSnapshot(
-      qy,
+    // ✅ Query 2: employeeId == myUid (الأكثر شيوعًا عندك)
+    const qByEmployeeId = query(colRef, where("employeeId", "==", myUid));
+
+    let rowsUid: BookingWithId[] = [];
+    let rowsId: BookingWithId[] = [];
+
+    const mergeEmit = () => {
+      const m = new Map<string, BookingWithId>();
+      for (const x of rowsUid) m.set(x.id, x);
+      for (const x of rowsId) m.set(x.id, x);
+
+      const merged = Array.from(m.values());
+
+      // ✅ ترتيب محلي (بدون orderBy لتجنب index)
+      merged.sort((a, b) => {
+        const ta = (a.createdAt?.toMillis?.() ?? 0) as number;
+        const tb = (b.createdAt?.toMillis?.() ?? 0) as number;
+        return tb - ta;
+      });
+
+      setMyBookingsRaw(merged);
+      setLoading(false);
+    };
+
+    const onErr = (e: any) => {
+      console.error("DashboardStaff snapshot error:", e);
+      const msg = String(e?.message || e);
+
+      setErrMsg(
+        msg.includes("Missing or insufficient permissions")
+          ? "⚠️ تعذر تحميل حجوزاتك بسبب الصلاحيات (Rules). " +
+          "تحقق أن الحجز يحتوي employeeId أو employeeUid يساوي uid الموظفة."
+          : "❌ خطأ أثناء تحميل الحجوزات:\n" + msg
+      );
+
+      setMyBookingsRaw([]);
+      setLoading(false);
+    };
+
+    const unsub1 = onSnapshot(
+      qByEmployeeUid,
       (snap) => {
-        const rows = snap.docs.map((d) => ({
+        rowsUid = snap.docs.map((d) => ({
           id: d.id,
           ...(d.data() as BookingDoc),
         }));
-        setBookings(rows);
+        mergeEmit();
       },
-      (err) => setError(err?.message || "فشل تحميل الحجوزات")
+      onErr
     );
 
-    return () => unsub();
-  }, [fbUser?.uid, role]);
+    const unsub2 = onSnapshot(
+      qByEmployeeId,
+      (snap) => {
+        rowsId = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as BookingDoc),
+        }));
+        mergeEmit();
+      },
+      onErr
+    );
 
-  const filtered = useMemo(() => {
-    let list = [...bookings];
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, [myUid, myRole, roleLoading]);
 
-    // ✅ fallback مؤقت للحجوزات القديمة:
-    // - لو الاستعلام جاب حجوزات (employeeUid)
-    // - نضيف فلترة محلية بالاسم لو فيه حجوزات قديمة ما معها employeeUid لكن فيها employeeName مطابق
-    //
-    // ملاحظة: الفلترة هنا لا “تضيف” حجوزات غير موجودة في الاستعلام.
-    // لذلك لو عندك حجوزات قديمة بلا employeeUid، لازم يتم ترحيلها/تحديثها أو توفر Query ثاني.
-    //
-    // لكن هذا fallback مفيد إذا كنت تعرض "الكل" (للإدارة) أو لو لاحقًا عدلت لإحضار الكل ثم فلترة محلية.
-    if (fbUser && !canViewAll(role)) {
-      const myName = normalizeArabicName(displayName);
+  // ✅ 3) فلترة إضافية (احتياط) — بنفس منطقك السابق
+  const myBookings = useMemo(() => {
+    if (!myUid) return [];
 
-      // ✅ إذا فيه عناصر employeeUid مش موجودة (حالات قديمة) ننقيها لو تطابق الاسم
-      list = list.filter((b) => {
-        // الربط الصحيح
-        const eu = String(b.employeeUid || "").trim();
-        if (eu && eu === fbUser.uid) return true;
+    const uid = myUid;
 
-        // توافق قديم: بعض البيانات ممكن كانت employeeId = uid
-        const eid = String(b.employeeId || "").trim();
-        if (eid && eid === fbUser.uid) return true;
+    const filtered = myBookingsRaw.filter((b) => {
+      if (b.employeeUid && b.employeeUid === uid) return true;
+      if (b.employeeId && b.employeeId === uid) return true;
 
-        // fallback بالاسم
-        const empName = normalizeArabicName(b.employeeName || "");
-        return !!empName && !!myName && empName === myName;
-      });
-    }
+      // fallback بالاسم (عرض فقط — لكن لن يحل Rules لو كانت الحجوزات بدون uid)
+      const bName = normalizeArabic(b.employeeName);
+      const myN = normalizeArabic(myName);
+      if (myN && bName && bName === myN) return true;
 
-    const t = qText.trim().toLowerCase();
-    if (t) {
-      list = list.filter((b) => {
-        const hay = [
-          b.clientName,
-          b.clientPhone,
-          b.employeeName,
-          b.serviceName,
-          b.date,
-          b.time,
-          b.status,
-          b.note,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return hay.includes(t);
-      });
-    }
+      return false;
+    });
 
-    if (statusFilter)
-      list = list.filter((b) => (b.status || "pending") === statusFilter);
-    if (dateFilter) list = list.filter((b) => (b.date || "") === dateFilter);
-
-    return list;
-  }, [bookings, fbUser, role, displayName, qText, statusFilter, dateFilter]);
-
-  async function setBookingStatus(id: string, next: BookingStatus) {
-    if (!canEditStatus(role)) return;
-    try {
-      const ref = doc(db, "salons", SALON_ID, "bookings", id);
-      await updateDoc(ref, { status: next });
-    } catch (e: any) {
-      setError(e?.message || "فشل تحديث حالة الحجز");
-    }
-  }
+    return filtered;
+  }, [myBookingsRaw, myUid, myName]);
 
   return (
-    <div className="dashstaff-page">
-      <div className="dashstaff-header">
-        <div>
-          <h2 className="dashstaff-title">
-            {canViewAll(role)
-              ? "بوابة الموظفات — كل الحجوزات"
-              : "بوابة الموظفة — حجوزاتي"}
-          </h2>
-          <div className="dashstaff-sub">
-            {fbUser ? (
-              <>
-                <span className="pill">{displayName || "—"}</span>
-                <span className="pill soft">{role}</span>
-              </>
-            ) : (
-              <span className="pill soft">غير مسجل</span>
-            )}
-          </div>
-        </div>
-
-        <div className="dashstaff-count">
-          <span>العدد</span>
-          <strong>{filtered.length}</strong>
-        </div>
+    <div className="dashstaff-page" style={{ padding: 16, direction: "rtl" }}>
+      <div style={{ marginBottom: 12 }}>
+        <h2 style={{ margin: 0, fontWeight: 900 }}>بوابة الموظفة</h2>
+        <p style={{ margin: "6px 0 0", opacity: 0.75, fontWeight: 800 }}>
+          {myEmail ? `تسجيل الدخول: ${myEmail}` : "جاري التحقق من الحساب..."}
+          {myRole ? ` • role: ${myRole}` : ""}
+        </p>
       </div>
 
-      {!fbUser && (
-        <div className="dashstaff-box warn">
-          لازم تسجّل دخول كموظفة عشان تشوف حجوزاتك.
+      {(roleLoading || loading) && !errMsg && (
+        <div style={{ padding: 14, border: "1px solid rgba(0,0,0,.08)", borderRadius: 12 }}>
+          جاري تحميل حجوزاتك...
         </div>
       )}
 
-      {loading && fbUser && <div className="dashstaff-muted">جاري التحميل…</div>}
+      {!roleLoading && errMsg && (
+        <div
+          style={{
+            padding: 14,
+            border: "1px solid rgba(255,0,0,.25)",
+            borderRadius: 12,
+            background: "rgba(255,0,0,.04)",
+            color: "#b00020",
+            fontWeight: 800,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {errMsg}
+        </div>
+      )}
 
-      {error && <div className="dashstaff-box error">{error}</div>}
-
-      {fbUser && !loading && (
-        <>
-          <div className="dashstaff-filters">
-            <input
-              className="dashstaff-input"
-              value={qText}
-              onChange={(e) => setQText(e.target.value)}
-              placeholder="بحث (اسم العميل/الجوال/الخدمة/ملاحظة...)"
-            />
-
-            <select
-              className="dashstaff-input"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-            >
-              <option value="">كل الحالات</option>
-              <option value="pending">انتظار</option>
-              <option value="confirmed">مؤكد</option>
-              <option value="cancelled">ملغي</option>
-            </select>
-
-            <input
-              className="dashstaff-input"
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-            />
+      {!roleLoading && !loading && !errMsg && (
+        <div
+          style={{
+            marginTop: 12,
+            border: "1px solid rgba(0,0,0,.08)",
+            borderRadius: 14,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: 12,
+              background: "rgba(0,0,0,.03)",
+              fontWeight: 900,
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <span>حجوزاتي</span>
+            <span style={{ opacity: 0.75 }}>الإجمالي: {myBookings.length}</span>
           </div>
 
-          <div className="dashstaff-list">
-            {filtered.map((b) => {
-              const st = (b.status || "pending") as BookingStatus;
-              const price = b.total ?? b.finalPrice ?? 0;
-
-              return (
-                <div key={b.id} className="dashstaff-card">
-                  <div className="dashstaff-row top">
-                    <strong className="dashstaff-service">
-                      {b.serviceName || "خدمة"}
-                    </strong>
-                    <span className="dashstaff-meta">
-                      {b.date || "—"} • {b.time || "—"}
-                    </span>
-                    <span className={`dashstaff-status ${st}`}>{st}</span>
-                  </div>
-
-                  <div className="dashstaff-row">
-                    <div>
-                      العميلة: <strong>{b.clientName || "—"}</strong>
-                    </div>
-                    <div>
-                      الجوال: <strong>{b.clientPhone || "—"}</strong>
-                    </div>
-                    <div>
-                      العاملة: <strong>{b.employeeName || "—"}</strong>
-                    </div>
-                    <div>
-                      الإجمالي: <strong>{price}</strong>
-                    </div>
-                  </div>
-
-                  {b.note ? (
-                    <div className="dashstaff-note">ملاحظة: {b.note}</div>
-                  ) : null}
-
-                  {canEditStatus(role) && (
-                    <div className="dashstaff-actions">
-                      <button onClick={() => setBookingStatus(b.id, "confirmed")}>
-                        تأكيد
-                      </button>
-                      <button onClick={() => setBookingStatus(b.id, "cancelled")}>
-                        إلغاء
-                      </button>
-                      <button onClick={() => setBookingStatus(b.id, "pending")}>
-                        انتظار
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {filtered.length === 0 && (
-              <div className="dashstaff-box empty">
-                ما فيه حجوزات مطابقة للفلاتر الحالية.
+          {myBookings.length === 0 ? (
+            <div style={{ padding: 14, opacity: 0.75, fontWeight: 800 }}>
+              لا توجد حجوزات مرتبطة بك الآن.
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
+                (إذا عندك حجوزات قديمة بدون employeeId/employeeUid، لازم “ترحيل مرة واحدة” لتعبئتها)
               </div>
-            )}
-          </div>
-        </>
+            </div>
+          ) : (
+            <div style={{ padding: 12, display: "grid", gap: 10 }}>
+              {myBookings.map((b) => (
+                <div
+                  key={b.id}
+                  style={{
+                    padding: 12,
+                    border: "1px solid rgba(0,0,0,.08)",
+                    borderRadius: 14,
+                    background: "rgba(255,255,255,.96)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ fontWeight: 900 }}>
+                      {b.clientName || "—"}{" "}
+                      <span style={{ opacity: 0.65, fontWeight: 800 }}>
+                        {b.clientPhone ? `• ${b.clientPhone}` : ""}
+                      </span>
+                    </div>
+                    <div style={{ fontWeight: 900, opacity: 0.8 }}>
+                      {b.status || "pending"}
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 8, opacity: 0.85, fontWeight: 800 }}>
+                    الخدمة: {b.serviceName || b.serviceId || "—"}
+                  </div>
+
+                  <div style={{ marginTop: 6, opacity: 0.85, fontWeight: 800 }}>
+                    الموعد: {b.date || "—"} • {b.time || "—"}
+                  </div>
+
+                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.6, fontWeight: 800 }}>
+                    Booking ID: {b.id}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
 }
+

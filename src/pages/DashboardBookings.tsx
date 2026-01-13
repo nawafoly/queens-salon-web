@@ -587,22 +587,34 @@ const DashboardBookings = () => {
         const fresh = withNames.find((x) => x.id === prev.id);
         return fresh ?? prev;
       });
-    } catch (e: any) {
-      console.error("Failed to load bookings from Firestore:", e);
+} catch (e: any) {
+  console.error("Failed to load bookings from Firestore:", e);
 
-      const msg = String(e?.message || "");
-      if (msg.toLowerCase().includes("missing or insufficient permissions")) {
-        setLoadError(
-          "⚠️ لا توجد صلاحيات كافية لعرض الحجوزات. تأكد من Firestore Rules أو تسجيل دخول الإدارة."
-        );
-      } else {
-        setLoadError("⚠️ تعذر تحميل الحجوزات. جرّب تحديث الصفحة.");
-      }
+  const code = String(e?.code || e?.name || "").toLowerCase();
+  const msg = String(e?.message || "");
 
-      setBookings([]);
-    } finally {
-      setLoading(false);
-    }
+  // ✅ DEBUG: show exact error to know if rules/path issue
+  alert(`❌ Firestore Load Error\ncode: ${code || "-"}\nmsg: ${msg || "-"}`);
+
+  const m = msg.toLowerCase();
+
+  if (m.includes("missing or insufficient permissions") || code.includes("permission-denied")) {
+    setLoadError(
+      "⚠️ لا توجد صلاحيات كافية لعرض الحجوزات (permission-denied). تأكد من Firestore Rules وأن الحساب مسجّل دخول بالرول الصحيح."
+    );
+  } else if (code.includes("unavailable") || m.includes("failed to get document") || m.includes("network")) {
+    setLoadError("⚠️ تعذر الاتصال بـ Firestore (Network/Unavailable). جرّب تحديث الصفحة أو تأكد من الإنترنت.");
+  } else if (code.includes("not-found") || m.includes("not found")) {
+    setLoadError("⚠️ المسار غير موجود أو Collection غلط. تأكد أن listAllBookings() يقرأ من نفس مسار الحجوزات الصحيح.");
+  } else {
+    setLoadError(`⚠️ تعذر تحميل الحجوزات.\n${msg ? `تفاصيل: ${msg}` : ""}`);
+  }
+
+  setBookings([]);
+} finally {
+  setLoading(false);
+}
+
   };
 
   /* =========================
