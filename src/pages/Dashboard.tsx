@@ -63,6 +63,8 @@ import {
 // ✅ NEW: App Settings from Firestore (settings/app)
 import { AppSettingsService } from "../services/AppSettingsService";
 
+import { resolveServiceName } from "../services/serviceResolver";
+
 /** ===== Settings (LocalStorage fallback) ===== */
 type SectionKey =
   | "overview"
@@ -142,14 +144,19 @@ function readIncomeTotal(): number {
   }
 }
 
+
 /** ✅ تحويل حجز Firestore لشكل Booking اللي تستخدمه الواجهة */
-function mapFirestoreToUiBooking(b: BookingDocWithId): Booking {
+async function mapFirestoreToUiBooking(
+  b: BookingDocWithId
+): Promise<Booking> {
+  const serviceId = (b as any)?.serviceId || b.serviceName || "";
+
   return {
     id: b.id,
     customerName: b.clientName || "-",
-    customerPhone: b.clientPhone || "",
-    serviceName: b.serviceName || "",
-    serviceId: (b as any)?.serviceId || "",
+    phone: b.clientPhone || "",
+    serviceId,
+    serviceName: await resolveServiceName(serviceId),
     employeeName: b.employeeName || "",
     date: b.date || "",
     time: b.time || "",
@@ -157,7 +164,8 @@ function mapFirestoreToUiBooking(b: BookingDocWithId): Booking {
     total: Number(b.finalPrice ?? b.total ?? 0),
     createdAt: (b.createdAt as any) || undefined,
     note: (b.note as any) || undefined,
-  } as Booking;
+  };
+  
 }
 
 /** ===== Overview ===== */
@@ -527,8 +535,10 @@ const Dashboard: React.FC = () => {
       console.log("REFRESH -> bookings OK:", docs.length);
 
       step = "bookings:mapFirestoreToUiBooking";
-      const uiBookings = docs.map(mapFirestoreToUiBooking);
-
+      const uiBookings = await Promise.all(
+        docs.map(mapFirestoreToUiBooking)
+      );
+      
       // 2) TODAY STATS
       step = "today:compute";
       const today = new Date();

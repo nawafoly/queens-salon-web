@@ -27,6 +27,9 @@ import {
 
 import type { UiRole } from "../services/userProfile";
 
+// ✅ NEW: resolve service name (make it readable)
+import { resolveServiceName } from "../services/serviceResolver";
+
 // ✅ Styles
 import "../styles/DashboardModals.css";
 import "../styles/DashboardBookings.css";
@@ -346,14 +349,18 @@ function getBookingTotal(b: Booking): number {
 }
 
 function mapBooking(b: any): Booking {
+  const serviceId = String(b?.serviceId ?? b?.service ?? b?.serviceKey ?? "").trim();
+  const rawServiceName = String(b?.serviceName ?? "").trim();
+
   return {
     id: String(b.id ?? ""),
 
     customerName: b.clientName ?? b.customerName ?? b.name ?? b.customer ?? "",
     phone: b.clientPhone ?? b.phone ?? b.mobile ?? "",
 
-    serviceName: b.serviceName ?? b.service ?? "",
-    serviceId: b.serviceId ?? "",
+    serviceId,
+    // ✅ نخليها مؤقتًا raw (بنحوّلها لاسم مفهوم لاحقًا)
+    serviceName: rawServiceName || serviceId || "",
 
     employeeName: b.employeeName ?? b.employee ?? "",
 
@@ -365,6 +372,47 @@ function mapBooking(b: any): Booking {
     total: Number(b.total ?? 0) || 0,
     finalPrice: Number(b.finalPrice ?? 0) || 0,
   };
+}
+
+/* =========================
+   ✅ Resolve Services (Readable Names) + cache
+========================= */
+
+const serviceNameCache = new Map<string, string>();
+
+async function safeResolveServiceName(key: string): Promise<string> {
+  const k = String(key || "").trim();
+  if (!k) return "";
+
+  if (serviceNameCache.has(k)) return serviceNameCache.get(k)!;
+
+  try {
+    const name = await resolveServiceName(k);
+    const finalName = String(name || k).trim() || k;
+    serviceNameCache.set(k, finalName);
+    return finalName;
+  } catch {
+    serviceNameCache.set(k, k);
+    return k;
+  }
+}
+
+async function enrichBookingsServiceNames(list: Booking[]): Promise<Booking[]> {
+  // resolve using serviceId first, fallback to current serviceName
+  const out = await Promise.all(
+    list.map(async (b) => {
+      const key = String(b.serviceId || b.serviceName || "").trim();
+      if (!key) return b;
+
+      const resolved = await safeResolveServiceName(key);
+
+      return {
+        ...b,
+        serviceName: resolved || b.serviceName,
+      };
+    })
+  );
+  return out;
 }
 
 /* =========================
@@ -530,10 +578,13 @@ const DashboardBookings = () => {
       const data = await listAllBookings();
       const mapped: Booking[] = (Array.isArray(data) ? data : []).map(mapBooking);
 
-      setBookings(mapped);
+      // ✅ make service names readable
+      const withNames = await enrichBookingsServiceNames(mapped);
+
+      setBookings(withNames);
       setSelected((prev) => {
         if (!prev?.id) return prev;
-        const fresh = mapped.find((x) => x.id === prev.id);
+        const fresh = withNames.find((x) => x.id === prev.id);
         return fresh ?? prev;
       });
     } catch (e: any) {
@@ -593,17 +644,22 @@ const DashboardBookings = () => {
       setLoadError("");
 
       // ✅ FIX: watchAllBookings expects ONLY 1 argument (onData)
-      watchUnsubRef.current = watchAllBookings((data) => {
-        const mapped: Booking[] = (Array.isArray(data) ? data : []).map(mapBooking);
+      watchUnsubRef.current = watchAllBookings(async (data) => {
+        try {
+          const mapped: Booking[] = (Array.isArray(data) ? data : []).map(mapBooking);
 
-        setBookings(mapped);
-        setSelected((prev) => {
-          if (!prev?.id) return prev;
-          const fresh = mapped.find((x) => x.id === prev.id);
-          return fresh ?? prev;
-        });
+          // ✅ make service names readable
+          const withNames = await enrichBookingsServiceNames(mapped);
 
-        setLoading(false);
+          setBookings(withNames);
+          setSelected((prev) => {
+            if (!prev?.id) return prev;
+            const fresh = withNames.find((x) => x.id === prev.id);
+            return fresh ?? prev;
+          });
+        } finally {
+          setLoading(false);
+        }
       });
     });
 
@@ -1400,7 +1456,7 @@ const DashboardBookings = () => {
               className="form-control"
               value={form.serviceName}
               onChange={(e) => setField("serviceName", e.target.value)}
-              placeholder="مثال: شعر"
+              placeholder="مثال: قص الشعر"
               disabled={creating}
             />
           </div>
