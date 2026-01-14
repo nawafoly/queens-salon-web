@@ -24,10 +24,9 @@ type BookingDoc = {
   serviceId?: string;
 
   employeeName?: string;
-  employeeId?: string;   // ✅ uid غالبًا
-  employeeUid?: string;  // ✅ إذا موجود في بعض الحجوزات
-
-  employeeKey?: string; // موجود بالكود عندك لكن Rules ما تعتمد عليه للقراءة
+  employeeId?: string; // ✅ صار staff_public id غالبًا
+  employeeUid?: string; // ✅ إذا موجود في بعض الحجوزات
+  employeeKey?: string; // ✅ أفضل ربط (uid)
 
   date?: string;
   time?: string;
@@ -50,7 +49,12 @@ function normalizeArabic(s: any) {
 }
 
 function allowStaffPortal(role: UiRole | "") {
-  return role === "staff" || role === "owner" || role === "admin" || role === "reception";
+  return (
+    role === "staff" ||
+    role === "owner" ||
+    role === "admin" ||
+    role === "reception"
+  );
 }
 
 export default function DashboardStaff() {
@@ -98,7 +102,7 @@ export default function DashboardStaff() {
           setLoading(false);
           setErrMsg(
             "⚠️ لا يوجد ملف مستخدم لك داخل salons/main/users/{uid}. " +
-            "لازم إنشاء حساب الموظفة داخل النظام."
+              "لازم إنشاء حساب الموظفة داخل النظام."
           );
           return;
         }
@@ -111,7 +115,9 @@ export default function DashboardStaff() {
 
         if (!allowStaffPortal(r)) {
           setLoading(false);
-          setErrMsg(`⛔ لا تملك صلاحية فتح بوابة الموظفة. role الحالي: ${r || "غير محدد"}`);
+          setErrMsg(
+            `⛔ لا تملك صلاحية فتح بوابة الموظفة. role الحالي: ${r || "غير محدد"}`
+          );
           return;
         }
 
@@ -122,7 +128,8 @@ export default function DashboardStaff() {
         setRoleLoading(false);
         setLoading(false);
         setErrMsg(
-          "❌ خطأ أثناء تحميل صلاحيات الحساب (role).\n" + String(e?.message || e)
+          "❌ خطأ أثناء تحميل صلاحيات الحساب (role).\n" +
+            String(e?.message || e)
         );
       }
     });
@@ -130,7 +137,7 @@ export default function DashboardStaff() {
     return () => unsub();
   }, []);
 
-  // ✅ 2) Realtime: نقرأ حجوزات الموظفة فقط (حل التعليق مع Rules)
+  // ✅ 2) Realtime: نقرأ حجوزات الموظفة فقط (متوافق مع employeeKey الجديد)
   useEffect(() => {
     if (!myUid) return;
     if (roleLoading) return;
@@ -145,16 +152,21 @@ export default function DashboardStaff() {
     // ✅ Query 1: employeeUid == myUid (لو موجود)
     const qByEmployeeUid = query(colRef, where("employeeUid", "==", myUid));
 
-    // ✅ Query 2: employeeId == myUid (الأكثر شيوعًا عندك)
+    // ✅ Query 2: employeeId == myUid (Legacy فقط — إذا كان employeeId سابقًا uid)
     const qByEmployeeId = query(colRef, where("employeeId", "==", myUid));
+
+    // ✅ Query 3: employeeKey == myUid (✅ هذا الأساسي عندك الآن)
+    const qByEmployeeKey = query(colRef, where("employeeKey", "==", myUid));
 
     let rowsUid: BookingWithId[] = [];
     let rowsId: BookingWithId[] = [];
+    let rowsKey: BookingWithId[] = [];
 
     const mergeEmit = () => {
       const m = new Map<string, BookingWithId>();
       for (const x of rowsUid) m.set(x.id, x);
       for (const x of rowsId) m.set(x.id, x);
+      for (const x of rowsKey) m.set(x.id, x);
 
       const merged = Array.from(m.values());
 
@@ -175,8 +187,9 @@ export default function DashboardStaff() {
 
       setErrMsg(
         msg.includes("Missing or insufficient permissions")
-          ? "⚠️ تعذر تحميل حجوزاتك بسبب الصلاحيات (Rules). " +
-          "تحقق أن الحجز يحتوي employeeId أو employeeUid يساوي uid الموظفة."
+          ? "⚠️ تعذر تحميل حجوزاتك بسبب الصلاحيات (Rules).\n" +
+              "✅ تأكد أن الحجز يحتوي employeeKey == uid الموظفة (أو employeeUid == uid).\n" +
+              "⚙️ وإذا كانت حجوزات قديمة: شغّل backfillEmployeeKeys."
           : "❌ خطأ أثناء تحميل الحجوزات:\n" + msg
       );
 
@@ -208,13 +221,26 @@ export default function DashboardStaff() {
       onErr
     );
 
+    const unsub3 = onSnapshot(
+      qByEmployeeKey,
+      (snap) => {
+        rowsKey = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as BookingDoc),
+        }));
+        mergeEmit();
+      },
+      onErr
+    );
+
     return () => {
       unsub1();
       unsub2();
+      unsub3();
     };
   }, [myUid, myRole, roleLoading]);
 
-  // ✅ 3) فلترة إضافية (احتياط) — بنفس منطقك السابق
+  // ✅ 3) فلترة إضافية (احتياط)
   const myBookings = useMemo(() => {
     if (!myUid) return [];
 
@@ -222,9 +248,12 @@ export default function DashboardStaff() {
 
     const filtered = myBookingsRaw.filter((b) => {
       if (b.employeeUid && b.employeeUid === uid) return true;
+      if (b.employeeKey && b.employeeKey === uid) return true;
+
+      // legacy فقط
       if (b.employeeId && b.employeeId === uid) return true;
 
-      // fallback بالاسم (عرض فقط — لكن لن يحل Rules لو كانت الحجوزات بدون uid)
+      // fallback بالاسم (عرض فقط — لا يحل Rules)
       const bName = normalizeArabic(b.employeeName);
       const myN = normalizeArabic(myName);
       if (myN && bName && bName === myN) return true;
@@ -246,7 +275,13 @@ export default function DashboardStaff() {
       </div>
 
       {(roleLoading || loading) && !errMsg && (
-        <div style={{ padding: 14, border: "1px solid rgba(0,0,0,.08)", borderRadius: 12 }}>
+        <div
+          style={{
+            padding: 14,
+            border: "1px solid rgba(0,0,0,.08)",
+            borderRadius: 12,
+          }}
+        >
           جاري تحميل حجوزاتك...
         </div>
       )}
@@ -295,7 +330,8 @@ export default function DashboardStaff() {
             <div style={{ padding: 14, opacity: 0.75, fontWeight: 800 }}>
               لا توجد حجوزات مرتبطة بك الآن.
               <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
-                (إذا عندك حجوزات قديمة بدون employeeId/employeeUid، لازم “ترحيل مرة واحدة” لتعبئتها)
+                (إذا عندك حجوزات قديمة بدون employeeKey/employeeUid، لازم “ترحيل مرة واحدة”
+                لتعبئتها)
               </div>
             </div>
           ) : (
@@ -310,7 +346,14 @@ export default function DashboardStaff() {
                     background: "rgba(255,255,255,.96)",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <div style={{ fontWeight: 900 }}>
                       {b.clientName || "—"}{" "}
                       <span style={{ opacity: 0.65, fontWeight: 800 }}>
@@ -330,7 +373,14 @@ export default function DashboardStaff() {
                     الموعد: {b.date || "—"} • {b.time || "—"}
                   </div>
 
-                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.6, fontWeight: 800 }}>
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 12,
+                      opacity: 0.6,
+                      fontWeight: 800,
+                    }}
+                  >
                     Booking ID: {b.id}
                   </div>
                 </div>
@@ -342,4 +392,3 @@ export default function DashboardStaff() {
     </div>
   );
 }
-

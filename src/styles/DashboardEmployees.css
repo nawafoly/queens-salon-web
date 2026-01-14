@@ -1,335 +1,474 @@
 /* =========================
-   Dashboard Employees ✅ Scoped + Self-contained
+   Dashboard Employees ✅ Standalone 100%
    File: src/styles/DashboardEmployees.css
-   يعتمد فقط على:
-   - DashboardSkin.css (للكروت/الأزرار العامة)
-   - DashboardModals.css (للمودال)
-   ========================= */
 
-/* ✅ Scope root */
-.dashboard-skin .employees-page {
+   ✅ لا يعتمد على DashboardSkin.css ولا DashboardModals.css
+   ✅ كل شيء (Page + Topbar + Inputs + Buttons + Cards + Modal) هنا
+   ✅ Scoped على: .dashboard-page.employees-page
+========================= */
+
+.dashboard-page.employees-page {
   direction: rtl;
   font-family: "Tajawal", sans-serif;
   width: 100%;
-  max-width: 100%;
-  min-width: 0;
+  min-height: 100vh;
+  background: radial-gradient(1200px 700px at 70% 20%, rgba(124, 58, 237, 0.12), transparent 60%),
+    radial-gradient(900px 600px at 20% 70%, rgba(168, 85, 247, 0.10), transparent 55%),
+    rgba(245, 243, 255, 0.55);
+  padding-bottom: 36px;
 }
 
-/* ✅ تأكيد أن المحتوى ما يصير نحيف بسبب flex/container خارجي */
-.dashboard-skin .employees-page * {
+.dashboard-page.employees-page * {
   box-sizing: border-box;
 }
 
-/* ✅ Card wrapper (لو dashboard-card من برا مضبوط، نخليه - بس نضمن full width) */
-.dashboard-skin .employees-page .dashboard-card {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
+/* Container */
+.dashboard-page.employees-page .container {
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto;
 }
 
 /* =========================
-   ✅ Filters
+   ✅ Reusable UI: Card / Alert / Meta
 ========================= */
 
-.dashboard-skin .employees-page .emp-filters {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: 1.3fr 1fr 0.8fr 0.8fr;
-  gap: 12px;
-  align-items: stretch;
-  width: 100%;
-  min-width: 0;
+.dashboard-page.employees-page .dash-card {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.06);
+  padding: 14px;
 }
 
-/* كل input/select داخل الفلاتر */
-.dashboard-skin .employees-page .emp-input {
-  width: 100%;
-  min-width: 0;
-}
-
-/* نعطي input/select ستايل ثابت داخل الصفحة (بدون الاعتماد على برا إلا الضرورة) */
-.dashboard-skin .employees-page .dashboard-input.emp-input {
-  border-radius: 14px;
-  padding: 10px 12px;
-  line-height: 1.2;
-}
-
-/* =========================
-   ✅ Table (Responsive)
-========================= */
-
-.dashboard-skin .employees-page .table-responsive {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+.dashboard-page.employees-page .dash-alert {
+  margin-top: 12px;
+  padding: 12px 14px;
   border-radius: 16px;
-}
-
-/* الجدول */
-.dashboard-skin .employees-page .ov-table {
-  width: 100%;
-  min-width: 980px; /* يحافظ على الأعمدة */
-  border-collapse: collapse;
-  overflow: hidden;
-  border-radius: 16px;
-}
-
-/* رأس الجدول */
-.dashboard-skin .employees-page .ov-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(6px);
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  color: #991b1b;
   font-weight: 900;
+}
+
+.dashboard-page.employees-page .dash-meta {
+  margin-top: 10px;
   font-size: 13px;
-  padding: 12px 12px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-/* خلايا الجدول */
-.dashboard-skin .employees-page .ov-table td {
-  padding: 12px 12px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  font-size: 13px;
-  vertical-align: middle;
-}
-
-/* آخر صف بدون خط */
-.dashboard-skin .employees-page .ov-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-/* ✅ تمييز صف الموظفة إذا عليها حجوزات */
-.dashboard-skin .employees-page .emp-row-linked {
-  background: rgba(124, 58, 237, 0.05);
-}
-
-/* محاذاة أعمدة معينة */
-.dashboard-skin .employees-page .emp-center {
-  text-align: center;
-  white-space: nowrap;
-}
-
-.dashboard-skin .employees-page .emp-name {
-  font-weight: 900;
-  overflow-wrap: anywhere;
+  opacity: 0.8;
+  line-height: 1.8;
 }
 
 /* =========================
-   ✅ Actions inside table
+   ✅ Topbar (Sticky)
 ========================= */
 
-.dashboard-skin .employees-page .emp-actions {
+.dashboard-page.employees-page .dash-topbar {
+  margin-top: 16px;
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
   flex-wrap: wrap;
-  justify-content: center;
+
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 22px;
+  padding: 14px 14px;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(10px);
+}
+
+.dashboard-page.employees-page .dash-topbar--sticky {
+  position: sticky;
+  top: 14px;
+  z-index: 20;
+}
+
+.dashboard-page.employees-page .dash-topbar-title h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashboard-page.employees-page .dash-sub {
+  margin: 6px 0 0;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.dashboard-page.employees-page .dash-topbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
   align-items: center;
 }
 
-/* نخلي الأزرار داخل الجدول ثابتة الحجم وما تكسر */
-.dashboard-skin .employees-page .emp-actions .dash-btn {
-  padding: 8px 10px;
-  border-radius: 12px;
-  line-height: 1.1;
-  white-space: nowrap;
-}
-
 /* =========================
-   ✅ Pills / Chips
+   ✅ Buttons
 ========================= */
 
-/* Badge للحالة */
-.dashboard-skin .employees-page .emp-pill {
+.dashboard-page.employees-page .exp-btn {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  font-weight: 1000;
+  font-size: 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
+  gap: 10px;
+  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+  user-select: none;
+}
+
+.dashboard-page.employees-page .exp-btn:hover {
+  transform: translateY(-1px);
+}
+
+.dashboard-page.employees-page .exp-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.dashboard-page.employees-page .exp-btn.primary {
+  background: rgba(124, 58, 237, 0.12);
+  border-color: rgba(124, 58, 237, 0.22);
+  color: #4c1d95;
+}
+
+.dashboard-page.employees-page .exp-btn.danger {
+  background: rgba(239, 68, 68, 0.10);
+  border-color: rgba(239, 68, 68, 0.18);
+  color: #991b1b;
+}
+
+.dashboard-page.employees-page .exp-btn.ghost {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* =========================
+   ✅ Inputs / Select / Textarea
+========================= */
+
+.dashboard-page.employees-page .dash-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.dashboard-page.employees-page .dash-input,
+.dashboard-page.employees-page .dash-select,
+.dashboard-page.employees-page .dash-textarea {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: rgba(255, 255, 255, 0.96);
+  outline: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dashboard-page.employees-page .dash-select {
+  cursor: pointer;
+}
+
+.dashboard-page.employees-page .dash-textarea {
+  height: auto;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 100px;
+  line-height: 1.9;
+}
+
+.dashboard-page.employees-page .dash-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 1000;
+  opacity: 0.85;
+  margin-bottom: 6px;
+}
+
+/* =========================
+   ✅ Filters Grid (3 columns)
+========================= */
+
+.dashboard-page.employees-page .emp-filters {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 12px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.dashboard-page.employees-page .emp-input {
+  width: 100%;
+}
+
+/* =========================
+   ✅ Cards Grid
+========================= */
+
+.dashboard-page.employees-page .dash-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 14px;
+  width: 100%;
+  margin-top: 12px;
+}
+
+/* each staff card */
+.dashboard-page.employees-page .dash-card.staff-card {
+  grid-column: span 6;
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Header in card */
+.dashboard-page.employees-page .staff-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dashboard-page.employees-page .staff-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.dashboard-page.employees-page .staff-name b {
+  font-weight: 1000;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-page.employees-page .staff-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Status pill */
+.dashboard-page.employees-page .staff-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 10px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 1000;
   border: 1px solid rgba(0, 0, 0, 0.08);
   line-height: 1;
   white-space: nowrap;
+  background: rgba(0, 0, 0, 0.04);
 }
 
-.dashboard-skin .employees-page .emp-pill.ok {
+.dashboard-page.employees-page .staff-pill.on {
   background: rgba(34, 197, 94, 0.12);
   color: #166534;
   border-color: rgba(34, 197, 94, 0.22);
 }
 
-.dashboard-skin .employees-page .emp-pill.off {
+.dashboard-page.employees-page .staff-pill.off {
   background: rgba(239, 68, 68, 0.10);
   color: #991b1b;
   border-color: rgba(239, 68, 68, 0.18);
 }
 
-/* رقم الحجوزات */
-.dashboard-skin .employees-page .emp-chip {
+/* Bio clamp */
+.dashboard-page.employees-page .staff-bio {
+  font-size: 13px;
+  line-height: 1.85;
+  opacity: 0.92;
+
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dashboard-page.employees-page .staff-bio.muted {
+  opacity: 0.65;
+}
+
+/* Chips */
+.dashboard-page.employees-page .staff-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.dashboard-page.employees-page .staff-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 34px;
-  height: 26px;
-  padding: 0 10px;
+  padding: 7px 10px;
   border-radius: 999px;
-  font-weight: 900;
   font-size: 12px;
+  font-weight: 1000;
   background: rgba(124, 58, 237, 0.10);
   color: #5b21b6;
   border: 1px solid rgba(124, 58, 237, 0.18);
+  white-space: nowrap;
 }
 
-.dashboard-skin .employees-page .emp-chip.warn {
-  background: rgba(245, 158, 11, 0.12);
-  color: #92400e;
-  border-color: rgba(245, 158, 11, 0.22);
+/* Owner stats box */
+.dashboard-page.employees-page .emp-stats {
+  border-radius: 16px;
+  padding: 10px 10px;
+  border: 1px solid rgba(124, 58, 237, 0.10);
+  background: rgba(255, 255, 255, 0.70);
 }
 
-/* Footer note */
-.dashboard-skin .employees-page .emp-footnote {
-  font-size: 12px;
-  opacity: 0.75;
-  margin-top: 10px;
-  line-height: 1.7;
-}
-
-/* =========================
-   ✅ Modals (Employees)
-   نعتمد DashboardModals.css للـ overlay/box
-   ونضبط تخطيط الفورم هنا فقط
-========================= */
-
-.dashboard-skin .employees-page .emp-modal-grid {
-  display: grid;
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.dashboard-skin .employees-page .emp-label {
-  display: block;
-  font-size: 12px;
-  margin-bottom: 6px;
-  opacity: 0.85;
-  font-weight: 900;
-}
-
-.dashboard-skin .employees-page .emp-two {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.dashboard-skin .employees-page .emp-modal-actions {
+.dashboard-page.employees-page .emp-stats-row {
   display: flex;
-  gap: 10px;
-  margin-top: 16px;
-  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
-.dashboard-skin .employees-page .emp-modal-hint {
+.dashboard-page.employees-page .emp-stats-hint {
   font-size: 12px;
-  opacity: 0.78;
-  margin-top: 10px;
-  line-height: 1.7;
+  opacity: 0.7;
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+/* Footer (ID) */
+.dashboard-page.employees-page .staff-id {
+  margin-top: auto;
+  font-size: 12px;
+  opacity: 0.7;
+  direction: ltr;
+  text-align: left;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.10);
 }
 
 /* =========================
-   ✅ Bookings Modal (Last 5)
+   ✅ Modal (Standalone)
 ========================= */
 
-.dashboard-skin .employees-page .emp-bookings-modal {
-  width: min(860px, 96vw);
+.dashboard-page.employees-page .modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
 }
 
-.dashboard-skin .employees-page .emp-bookings-sub {
-  font-size: 12px;
-  opacity: 0.75;
-  margin-top: 6px;
-}
-
-.dashboard-skin .employees-page .emp-bookings-wrap {
-  margin-top: 12px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Table inside bookings modal */
-.dashboard-skin .employees-page .emp-bookings-table {
-  width: 100%;
-  min-width: 720px;
-  border-collapse: collapse;
+.dashboard-page.employees-page .modal-box {
+  width: min(720px, 96vw);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.25);
   overflow: hidden;
-  border-radius: 14px;
-  border: 1px solid rgba(124, 58, 237, 0.12);
-  background: rgba(255, 255, 255, 0.88);
 }
 
-.dashboard-skin .employees-page .emp-bookings-table th,
-.dashboard-skin .employees-page .emp-bookings-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid rgba(124, 58, 237, 0.10);
-  font-size: 13px;
-}
-
-.dashboard-skin .employees-page .emp-bookings-table th {
-  font-weight: 900;
+.dashboard-page.employees-page .modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   background: rgba(124, 58, 237, 0.06);
 }
 
-.dashboard-skin .employees-page .emp-bookings-table tr:last-child td {
-  border-bottom: none;
+.dashboard-page.employees-page .modal-head b {
+  font-weight: 1000;
+  font-size: 14px;
 }
 
-.dashboard-skin .employees-page .emp-bk-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  background: rgba(140, 110, 209, 0.10);
-  color: #4a236a;
+.dashboard-page.employees-page .modal-body {
+  padding: 14px 14px 10px;
+}
+
+.dashboard-page.employees-page .modal-foot {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Picks inside modal */
+.dashboard-page.employees-page .staff-picks {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.dashboard-page.employees-page .staff-picks .pick {
   border: 1px solid rgba(124, 58, 237, 0.18);
-  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  padding: 9px 12px;
+  font-weight: 1000;
+  font-size: 12px;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.dashboard-page.employees-page .staff-picks .pick:hover {
+  transform: translateY(-1px);
+}
+
+.dashboard-page.employees-page .staff-picks .pick.on {
+  background: rgba(124, 58, 237, 0.12);
+  color: #4c1d95;
+  border-color: rgba(124, 58, 237, 0.28);
 }
 
 /* =========================
    ✅ Responsive
 ========================= */
 
+@media (max-width: 1100px) {
+  .dashboard-page.employees-page .dash-card.staff-card {
+    grid-column: span 12;
+  }
+}
+
 @media (max-width: 980px) {
-  .dashboard-skin .employees-page .emp-filters {
+  .dashboard-page.employees-page .emp-filters {
     grid-template-columns: 1fr 1fr;
   }
 }
 
 @media (max-width: 640px) {
-  .dashboard-skin .employees-page .emp-filters {
+  .dashboard-page.employees-page .emp-filters {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-skin .employees-page .ov-table {
-    min-width: 920px;
-  }
-
-  .dashboard-skin .employees-page .emp-two {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 520px) {
-  .dashboard-skin .employees-page .emp-pill,
-  .dashboard-skin .employees-page .emp-bk-pill {
-    padding: 5px 8px;
-    font-size: 11px;
-  }
-
-  .dashboard-skin .employees-page .emp-actions .dash-btn {
-    padding: 8px 10px;
+  .dashboard-page.employees-page .dash-topbar {
+    border-radius: 18px;
   }
 }

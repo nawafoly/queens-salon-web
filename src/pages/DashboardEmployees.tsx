@@ -9,6 +9,7 @@ import {
   deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
+
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPlus,
@@ -22,7 +23,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
-import "../styles/DashboardModals.css";
+import "../styles/DashboardEmployees.css";
+
 
 // ✅ Bookings stats (Owner only)
 import {
@@ -129,14 +131,15 @@ export default function DashboardEmployees() {
 
   // ✅ Owner-only booking stats per staff_public doc
   const [statsLoading, setStatsLoading] = useState(false);
-  const [bookingStats, setBookingStats] = useState<Record<string, StaffBookingStats>>(
-    {}
-  );
+  const [bookingStats, setBookingStats] = useState<
+    Record<string, StaffBookingStats>
+  >({});
 
   // Filters
   const [qText, setQText] = useState("");
-  const [onlyActive, setOnlyActive] =
-    useState<"all" | "active" | "inactive">("all");
+  const [onlyActive, setOnlyActive] = useState<"all" | "active" | "inactive">(
+    "all"
+  );
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
 
   // Modal
@@ -258,7 +261,7 @@ export default function DashboardEmployees() {
           const eid = String((b as any).employeeId || "").trim();
           const ename = String((b as any).employeeName || "").trim();
 
-          // 1) match by employeeId (if staff_public.id is linked to uid in future)
+          // 1) match by employeeId
           let staffId: string | null = null;
           if (eid && staffById.has(eid)) staffId = eid;
 
@@ -396,7 +399,7 @@ export default function DashboardEmployees() {
   ========================= */
   if (!authUser) {
     return (
-      <div className="dashboard-page">
+      <div className="dashboard-page employees-page">
         <div className="container">
           <div className="dash-card">
             <h3>غير مصرح</h3>
@@ -409,7 +412,7 @@ export default function DashboardEmployees() {
 
   if (!canManage) {
     return (
-      <div className="dashboard-page">
+      <div className="dashboard-page employees-page">
         <div className="container">
           <div className="dash-card">
             <h3>صلاحيات غير كافية</h3>
@@ -424,7 +427,7 @@ export default function DashboardEmployees() {
      Render
   ========================= */
   return (
-    <div className="dashboard-page">
+    <div className="dashboard-page employees-page">
       <div className="container">
         <div className="dash-topbar dash-topbar--sticky">
           <div className="dash-topbar-title">
@@ -437,7 +440,12 @@ export default function DashboardEmployees() {
           </div>
 
           <div className="dash-topbar-actions">
-            <button className="exp-btn" onClick={load} disabled={loading} type="button">
+            <button
+              className="exp-btn"
+              onClick={load}
+              disabled={loading}
+              type="button"
+            >
               <FontAwesomeIcon icon={faRotateRight} /> تحديث
             </button>
 
@@ -456,16 +464,16 @@ export default function DashboardEmployees() {
 
         {/* Filters */}
         <div className="dash-card">
-          <div className="dash-row">
+          <div className="dash-row emp-filters">
             <input
-              className="dash-input"
+              className="dash-input emp-input"
               placeholder="بحث بالاسم أو النبذة..."
               value={qText}
               onChange={(e) => setQText(e.target.value)}
             />
 
             <select
-              className="dash-select"
+              className="dash-select emp-input"
               value={onlyActive}
               onChange={(e) => setOnlyActive(e.target.value as any)}
             >
@@ -475,7 +483,7 @@ export default function DashboardEmployees() {
             </select>
 
             <select
-              className="dash-select"
+              className="dash-select emp-input"
               value={specialtyFilter}
               onChange={(e) => setSpecialtyFilter(e.target.value)}
             >
@@ -493,8 +501,7 @@ export default function DashboardEmployees() {
             {authUser.role === "owner" && (
               <>
                 {" "}
-                • إحصائيات الحجوزات:{" "}
-                <b>{statsLoading ? "..." : "جاهزة"}</b>
+                • إحصائيات الحجوزات: <b>{statsLoading ? "..." : "جاهزة"}</b>
               </>
             )}
           </div>
@@ -521,10 +528,18 @@ export default function DashboardEmployees() {
                   </div>
 
                   <div className="staff-actions">
-                    <button className="exp-btn ghost" onClick={() => openEdit(x)} type="button">
+                    <button
+                      className="exp-btn ghost"
+                      onClick={() => openEdit(x)}
+                      type="button"
+                    >
                       <FontAwesomeIcon icon={faPen} /> تعديل
                     </button>
-                    <button className="exp-btn danger" onClick={() => remove(x.id)} type="button">
+                    <button
+                      className="exp-btn danger"
+                      onClick={() => remove(x.id)}
+                      type="button"
+                    >
                       <FontAwesomeIcon icon={faTrash} /> حذف
                     </button>
                   </div>
@@ -560,47 +575,59 @@ export default function DashboardEmployees() {
                   })}
                 </div>
 
-                {/* ✅ Owner-only booking stats */}
+                {/* ✅ Owner-only booking stats (Styled + compact) */}
                 {authUser?.role === "owner" && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div className="emp-stats">
+                    <div className="emp-stats-row">
                       <span className="staff-pill" style={{ background: "rgba(0,0,0,0.04)" }}>
-                        الحجوزات:{" "}
+                        الحجوزات:
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.total ?? 0)}
                         </b>
                       </span>
 
-                      <span className="staff-pill" style={{ background: "rgba(16, 185, 129, 0.10)" }}>
-                        مؤكد:{" "}
+                      <span
+                        className="staff-pill"
+                        style={{ background: "rgba(16, 185, 129, 0.10)" }}
+                      >
+                        مؤكد:
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.confirmed ?? 0)}
                         </b>
                       </span>
 
-                      <span className="staff-pill" style={{ background: "rgba(245, 158, 11, 0.12)" }}>
-                        انتظار:{" "}
+                      <span
+                        className="staff-pill"
+                        style={{ background: "rgba(245, 158, 11, 0.12)" }}
+                      >
+                        انتظار:
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.pending ?? 0)}
                         </b>
                       </span>
 
-                      <span className="staff-pill" style={{ background: "rgba(99, 102, 241, 0.10)" }}>
-                        مكتمل:{" "}
+                      <span
+                        className="staff-pill"
+                        style={{ background: "rgba(99, 102, 241, 0.10)" }}
+                      >
+                        مكتمل:
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.completed ?? 0)}
                         </b>
                       </span>
 
-                      <span className="staff-pill" style={{ background: "rgba(239, 68, 68, 0.10)" }}>
-                        ملغي:{" "}
+                      <span
+                        className="staff-pill"
+                        style={{ background: "rgba(239, 68, 68, 0.10)" }}
+                      >
+                        ملغي:
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.cancelled ?? 0)}
                         </b>
                       </span>
                     </div>
 
-                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
+                    <div className="emp-stats-hint">
                       * تُحسب الإحصائيات عبر (employeeId) إن تطابق، وإلا مطابقة الاسم بعد التطبيع.
                     </div>
                   </div>
@@ -690,7 +717,12 @@ export default function DashboardEmployees() {
                 <button className="exp-btn" onClick={closeModal} type="button">
                   إلغاء
                 </button>
-                <button className="exp-btn primary" onClick={save} disabled={loading} type="button">
+                <button
+                  className="exp-btn primary"
+                  onClick={save}
+                  disabled={loading}
+                  type="button"
+                >
                   حفظ
                 </button>
               </div>
