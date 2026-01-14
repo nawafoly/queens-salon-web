@@ -472,3 +472,58 @@
     border-radius: 18px;
   }
 }
+
+@media (max-width: 640px) {
+  /* ✅ Better mobile spacing */
+  .dashboard-page.employees-page .container {
+    width: calc(100% - 20px);
+  }
+
+  /* ✅ Topbar mobile layout */
+  .dashboard-page.employees-page .dash-topbar {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .dashboard-page.employees-page .dash-topbar--sticky {
+    top: 8px;
+  }
+
+  .dashboard-page.employees-page .dash-topbar-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  /* ✅ Buttons fill nicely */
+  .dashboard-page.employees-page .dash-topbar-actions .exp-btn {
+    flex: 1 1 160px;
+    justify-content: center;
+  }
+
+  /* ✅ Avoid iOS zoom on focus (better readability) */
+  .dashboard-page.employees-page .dash-input,
+  .dashboard-page.employees-page .dash-select,
+  .dashboard-page.employees-page .dash-textarea {
+    font-size: 16px;
+  }
+
+  /* ✅ Modal scroll safe */
+  .dashboard-page.employees-page .modal-box {
+    max-height: 88vh;
+    overflow: hidden;
+  }
+
+  .dashboard-page.employees-page .modal-body {
+    max-height: calc(88vh - 120px);
+    overflow: auto;
+  }
+
+  .dashboard-page.employees-page .modal-foot {
+    flex-wrap: wrap;
+  }
+
+  .dashboard-page.employees-page .modal-foot .exp-btn {
+    flex: 1 1 160px;
+  }
+}
+
