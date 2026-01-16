@@ -67,6 +67,8 @@ const ResetPassword: React.FC = () => {
         run();
     }, []);
 
+    
+
 
     // ✅ تعيين كلمة مرور جديدة
     const handleConfirm = async (e: React.FormEvent) => {
@@ -132,6 +134,7 @@ const ResetPassword: React.FC = () => {
                 ) : (
                     <form onSubmit={handleConfirm} className="fp-form">
                         <label className="fp-label">كلمة المرور الجديدة</label>
+
                         <div className="fp-pass">
                             <input
                                 type={showPass ? "text" : "password"}
@@ -142,16 +145,20 @@ const ResetPassword: React.FC = () => {
                                 dir="ltr"
                                 autoComplete="new-password"
                             />
+
                             <button
                                 type="button"
-                                className="fp-eye"
+                                className="fp-eyeIcon"
                                 onClick={() => setShowPass((s) => !s)}
+                                aria-label={showPass ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                                title={showPass ? "إخفاء" : "إظهار"}
                             >
-                                {showPass ? "إخفاء" : "إظهار"}
+                                {showPass ? "🙈" : "👁️"}
                             </button>
                         </div>
 
                         <label className="fp-label">تأكيد كلمة المرور</label>
+
                         <div className="fp-pass">
                             <input
                                 type={showPass2 ? "text" : "password"}
@@ -162,14 +169,18 @@ const ResetPassword: React.FC = () => {
                                 dir="ltr"
                                 autoComplete="new-password"
                             />
+
                             <button
                                 type="button"
-                                className="fp-eye"
+                                className="fp-eyeIcon"
                                 onClick={() => setShowPass2((s) => !s)}
+                                aria-label={showPass2 ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                                title={showPass2 ? "إخفاء" : "إظهار"}
                             >
-                                {showPass2 ? "إخفاء" : "إظهار"}
+                                {showPass2 ? "🙈" : "👁️"}
                             </button>
                         </div>
+
 
                         <button className="fp-btn" type="submit" disabled={loading}>
                             {loading ? "جارٍ الحفظ..." : "تأكيد تغيير كلمة المرور"}
