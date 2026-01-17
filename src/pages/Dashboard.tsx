@@ -194,12 +194,12 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 }) => {
   const statusLabel = useMemo(
     () =>
-    ({
-      confirmed: "مؤكد",
-      pending: "في الانتظار",
-      cancelled: "ملغي",
-      completed: "مكتمل",
-    } as Record<BookingStatus, string>),
+      ({
+        confirmed: "مؤكد",
+        pending: "في الانتظار",
+        cancelled: "ملغي",
+        completed: "مكتمل",
+      } as Record<BookingStatus, string>),
     []
   );
 
@@ -651,7 +651,7 @@ const Dashboard: React.FC = () => {
         sections: { ...prev.sections, ...(cached?.sections || {}) },
         policies: { ...prev.policies, ...(cached?.policies || {}) },
       }));
-    } catch { }
+    } catch {}
 
     const unsub = AppSettingsService.subscribe((remote: any) => {
       setSettings((prev) => ({
@@ -713,9 +713,9 @@ const Dashboard: React.FC = () => {
 
           const fallbackRole: UiRole =
             cachedRole === "owner" ||
-              cachedRole === "admin" ||
-              cachedRole === "reception" ||
-              cachedRole === "staff"
+            cachedRole === "admin" ||
+            cachedRole === "reception" ||
+            cachedRole === "staff"
               ? (cachedRole as UiRole)
               : "staff";
 
@@ -730,8 +730,6 @@ const Dashboard: React.FC = () => {
             role: fallbackRole,
             email: user.email || "",
           });
-
-
 
           await refreshDashboard(fallbackRole);
           return;
@@ -760,8 +758,6 @@ const Dashboard: React.FC = () => {
           role: dashRole,
           email: profile.email || user.email || "",
         });
-
-
 
         await refreshDashboard(dashRole);
       } catch (err: any) {
@@ -870,7 +866,10 @@ const Dashboard: React.FC = () => {
   // ✅ لو صار خطأ واضح بدلاً من التعليق
   if (dashError) {
     return (
-      <div className="dashboard-loading" style={{ direction: "ltr", textAlign: "left" }}>
+      <div
+        className="dashboard-loading"
+        style={{ direction: "ltr", textAlign: "left" }}
+      >
         <pre style={{ whiteSpace: "pre-wrap", maxWidth: 900 }}>{dashError}</pre>
       </div>
     );
@@ -964,8 +963,9 @@ const Dashboard: React.FC = () => {
         <div className="row">
           {/* Sidebar */}
           <div
-            className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""
-              }`}
+            className={`col-md-3 col-lg-2 dashboard-sidebar ${
+              isSidebarOpen ? "is-open" : ""
+            }`}
           >
             <button
               type="button"
@@ -978,7 +978,11 @@ const Dashboard: React.FC = () => {
             </button>
 
             <div className="sidebar-header">
-              <img src={logo1} alt="Queens Salon Logo" className="sidebar-logo" />
+              <img
+                src={logo1}
+                alt="Queens Salon Logo"
+                className="sidebar-logo"
+              />
             </div>
 
             <div className="user-info">
@@ -1109,7 +1113,9 @@ const Dashboard: React.FC = () => {
                       <span className="dash-nav-label">
                         المصروفات
                         {missingExpenseNotesCount > 0 && (
-                          <span className="dash-badge">{missingExpenseNotesCount}</span>
+                          <span className="dash-badge">
+                            {missingExpenseNotesCount}
+                          </span>
                         )}
                       </span>
                     </NavLink>
@@ -1143,7 +1149,11 @@ const Dashboard: React.FC = () => {
                 الصفحة الرئيسية
               </button>
 
-              <button className="exp-btn logout" onClick={handleLogout} type="button">
+              <button
+                className="exp-btn logout"
+                onClick={handleLogout}
+                type="button"
+              >
                 <FontAwesomeIcon icon={faSignOutAlt} />
                 تسجيل الخروج
               </button>
@@ -1173,7 +1183,9 @@ const Dashboard: React.FC = () => {
               <div className="dash-topbar-right">
                 <div className="dash-topbar-user">
                   <span className="dash-topbar-name">{userInfo.name}</span>
-                  <span className="dash-topbar-role">{getRoleTitle(userInfo.role)}</span>
+                  <span className="dash-topbar-role">
+                    {getRoleTitle(userInfo.role)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1321,13 +1333,17 @@ const Dashboard: React.FC = () => {
               <div className="dash-detail">
                 <b>الخدمة</b>
                 <div className="dash-value">
-                  {selectedBooking.serviceName || selectedBooking.serviceId || "-"}
+                  {selectedBooking.serviceName ||
+                    selectedBooking.serviceId ||
+                    "-"}
                 </div>
               </div>
 
               <div className="dash-detail">
                 <b>الموظفة</b>
-                <div className="dash-value">{selectedBooking.employeeName ?? "-"}</div>
+                <div className="dash-value">
+                  {selectedBooking.employeeName ?? "-"}
+                </div>
               </div>
 
               <div className="dash-detail">
@@ -1343,7 +1359,9 @@ const Dashboard: React.FC = () => {
               <div className="dash-detail">
                 <b>الإجمالي</b>
                 <div className="dash-value">
-                  {selectedBooking.total ? `${selectedBooking.total} ريال` : "-"}
+                  {selectedBooking.total
+                    ? `${selectedBooking.total} ريال`
+                    : "-"}
                 </div>
               </div>
 
@@ -1352,8 +1370,8 @@ const Dashboard: React.FC = () => {
 
                 <div className="dash-status-row">
                   {hasAdminPower ||
-                    (isReception && allowReceptionChangeStatus) ||
-                    (isStaff && allowStaffChangeStatus) ? (
+                  (isReception && allowReceptionChangeStatus) ||
+                  (isStaff && allowStaffChangeStatus) ? (
                     <select
                       className="dash-select"
                       value={selectedBooking.status}

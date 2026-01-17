@@ -6,9 +6,21 @@ export type StaffPublicDoc = {
   name: string;
   specialties: string[]; // قد تكون: ["شعر"] أو ["قسم الشعر"] أو ["الشعر"]
   active: boolean;
+
+  // ✅ NEW: uid الحقيقي لحساب الموظفة (Firestore users uid)
+  // (موجود عندك في المستند حسب الصورة)
+  uid?: string;
+
+  // ✅ NEW: لدعم أسماء قديمة/مستقبلية (اختياري)
+  linkedUid?: string;
 };
 
-export type StaffPublicWithId = StaffPublicDoc & { id: string };
+export type StaffPublicWithId = StaffPublicDoc & {
+  id: string;
+  // ✅ تأكيد وجودهم في النوع (اختياري)
+  uid?: string;
+  linkedUid?: string;
+};
 
 /** ✅ تطبيع عربي بسيط لتفادي اختلافات: (قسم/الـ/تشكيل/مسافات/ألف/ياء/ة) */
 function normalizeArabic(input: any) {
@@ -46,14 +58,23 @@ export async function listActiveStaffBySpecialty(args: {
   const q = query(colRef, where("active", "==", true));
   const snaps = await getDocs(q);
 
-  const all = snaps.docs.map((d) => {
+  const all: StaffPublicWithId[] = snaps.docs.map((d) => {
     const data = d.data() as any;
+
+    // ✅ NEW: نقرأ uid بأي اسم محتمل
+    const uid = String(data?.uid || "").trim();
+    const linkedUid = String(data?.linkedUid || data?.uid || "").trim();
+
     return {
       id: d.id,
       name: String(data?.name ?? "").trim(),
       specialties: Array.isArray(data?.specialties) ? data.specialties : [],
       active: Boolean(data?.active),
-    } as StaffPublicWithId;
+
+      // ✅ NEW
+      uid: uid || undefined,
+      linkedUid: linkedUid || undefined,
+    };
   });
 
   // ✅ فلترة مرنة بالتطبيع

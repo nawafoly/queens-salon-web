@@ -2,15 +2,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { onAuthStateChanged } from "firebase/auth";
-import { addDoc, collection, doc, getDoc, serverTimestamp } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  serverTimestamp,
+} from "firebase/firestore";
 
 import { auth, db } from "../services/firebase";
 
-import {
-  watchEmployeeBookings,
-  type BookingDocWithId,
-  type BookingStatus,
-} from "../services/firestoreBookings";
+import type { BookingDocWithId, BookingStatus } from "../services/firestoreBookings";
 
 import "../styles/DashboardStaff.css";
 import "../styles/DashboardModals.css";
@@ -32,39 +35,6 @@ const statusLabel: Record<BookingStatus, string> = {
 function safeISODate(d: string | undefined | null) {
   if (!d) return "";
   return d.trim();
-}
-
-function stripArabicDiacritics(s: string) {
-  return s
-    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g, "")
-    .replace(/\u0640/g, "");
-}
-
-function normalizeArabicName(input: string) {
-  const s = String(input || "").trim().toLowerCase();
-  const noDia = stripArabicDiacritics(s);
-
-  const unified = noDia
-    .replace(/[إأآٱ]/g, "ا")
-    .replace(/ى/g, "ي")
-    .replace(/ة/g, "ه")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return unified;
-}
-
-function strictStaffMatch(employeeNameFromBooking: string, myName: string) {
-  const empRaw = String(employeeNameFromBooking || "").trim();
-  const meRaw = String(myName || "").trim();
-
-  if (!empRaw || !meRaw) return false;
-
-  const emp = normalizeArabicName(empRaw);
-  const me = normalizeArabicName(meRaw);
-
-  return !!me && emp === me;
 }
 
 export default function EmployeePortal() {
@@ -129,7 +99,7 @@ export default function EmployeePortal() {
     }
   }
 
-  // ✅ بوابة الموظف: فقط staff
+  // ✅ بوابة الموظف: فقط staff/إدارة
   const isAllowed = ["staff", "reception", "admin", "owner"].includes(uiRole);
 
   useEffect(() => {
@@ -154,24 +124,40 @@ export default function EmployeePortal() {
 
       const prof = await loadMyProfile(u.uid, String(u.email || ""), String(u.displayName || ""));
 
-      // ✅ مهم: البوابة تعرض حجوزات الموظفة فقط
-      if (!["staff","reception","admin","owner"].includes(prof.role)) {
+      if (!["staff", "reception", "admin", "owner"].includes(prof.role)) {
         setLoading(false);
         setLoadError("هذه البوابة مخصصة للموظفات فقط.");
         return;
       }
 
-      unsubRef.current = watchEmployeeBookings(
-        u.uid,
-        prof.dn,
-        (data) => {
-          setRows(Array.isArray(data) ? data : []);
+      // ✅✅ (تخفيف) نراقب كل حجوزات الصالون مباشرة (بدون where)
+      const colRef = collection(db, "salons", SALON_ID, "bookings");
+
+      unsubRef.current = onSnapshot(
+        colRef,
+        (snap) => {
+          const data = snap.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as any),
+          })) as BookingDocWithId[];
+
+          // ترتيب (تاريخ ثم وقت)
+          data.sort((a, b) => {
+            const ad = safeISODate((a as any)?.date);
+            const bd = safeISODate((b as any)?.date);
+            if (ad !== bd) return ad.localeCompare(bd);
+            const at = String((a as any)?.time || "");
+            const bt = String((b as any)?.time || "");
+            return at.localeCompare(bt);
+          });
+
+          setRows(data);
           setLoading(false);
         },
         (err) => {
-          console.error("watchEmployeeBookings error:", err);
+          console.error("EmployeePortal snapshot error:", err);
           setLoading(false);
-          setLoadError("⚠️ تعذر تحميل حجوزاتك (صلاحيات/Rules).");
+          setLoadError("⚠️ تعذر تحميل الحجوزات (صلاحيات/Rules).");
         }
       );
     });
@@ -185,26 +171,11 @@ export default function EmployeePortal() {
     };
   }, []);
 
+  // ✅ (تخفيف) اعرض كل الحجوزات مؤقتًا
   const myBookings = useMemo(() => {
     if (!isAllowed) return [];
-
-    return rows
-      .filter((b) => {
-        const empId = String((b as any)?.employeeId ?? "").trim();
-        const empName = String((b as any)?.employeeName ?? "").trim();
-
-        if (empId && myUid && empId === myUid) return true;
-        return strictStaffMatch(empName, myName);
-      })
-      .sort((a, b) => {
-        const ad = safeISODate((a as any)?.date);
-        const bd = safeISODate((b as any)?.date);
-        if (ad !== bd) return ad.localeCompare(bd);
-        const at = String((a as any)?.time || "");
-        const bt = String((b as any)?.time || "");
-        return at.localeCompare(bt);
-      });
-  }, [rows, myUid, myName, isAllowed]);
+    return rows;
+  }, [rows, isAllowed]);
 
   const todayAlert = useMemo(() => {
     if (!myBookings.length) return "";
@@ -273,7 +244,7 @@ export default function EmployeePortal() {
       <div className="bookings-header staff-header">
         <div className="staff-header__title">
           <h1>بوابة الموظف</h1>
-          <p>حجوزاتي</p>
+          <p>الحجوزات</p>
         </div>
 
         <div className="staff-header__actions">
@@ -315,12 +286,12 @@ export default function EmployeePortal() {
                 ) : myBookings.length === 0 ? (
                   <tr>
                     <td colSpan={6} style={{ padding: 16, textAlign: "center" }}>
-                      لا توجد حجوزات لك حالياً
+                      لا توجد حجوزات حالياً
                     </td>
                   </tr>
                 ) : (
                   myBookings.map((b) => (
-                    <tr key={b.id}>
+                    <tr key={(b as any).id}>
                       <td>{String((b as any)?.clientName || "—")}</td>
                       <td>{String((b as any)?.clientPhone || (b as any)?.phone || "—")}</td>
                       <td>{String((b as any)?.serviceName || "—")}</td>
@@ -328,7 +299,8 @@ export default function EmployeePortal() {
                       <td>{String((b as any)?.time || "—")}</td>
                       <td>
                         <span className={`status-badge ${(b as any)?.status || "pending"}`}>
-                          {statusLabel[((b as any)?.status || "pending") as BookingStatus] || (b as any)?.status}
+                          {statusLabel[((b as any)?.status || "pending") as BookingStatus] ||
+                            (b as any)?.status}
                         </span>
                       </td>
                     </tr>

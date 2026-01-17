@@ -1,13 +1,23 @@
 /* =========================
-   Dashboard Modals (Unified / FINAL CLEAN)
+   Dashboard Modals (Unified / FINAL CLEAN) ✅ Mobile-Perfect
    File: src/styles/DashboardModals.css
 
    ✅ Single source of truth
-   ✅ Scroll strategy (NO double scroll):
-      - overlay scrolls (page-safe)
-      - modal body scrolls internally (best UX)
-   ✅ Works on mobile (safe-area)
+   ✅ NO double scroll:
+      - overlay scrolls when needed
+      - modal body scrolls internally
+   ✅ Safe-area + iOS Safari friendly (100svh/100dvh)
 ========================= */
+
+/* ---------- Tokens (safe defaults) ---------- */
+:root {
+  --modal-pad: clamp(12px, 2.2vw, 22px);
+  --modal-radius: clamp(16px, 2.2vw, 22px);
+  --modal-gap: clamp(10px, 2vw, 14px);
+  --modal-head-pad: clamp(12px, 2vw, 16px);
+  --modal-body-pad: clamp(12px, 2vw, 16px);
+  --modal-foot-pad: clamp(12px, 2vw, 16px);
+}
 
 /* Overlay */
 .modal-overlay,
@@ -17,14 +27,17 @@
   z-index: 10000;
 
   background: rgba(10, 10, 12, 0.55);
+  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
 
-  overflow-y: auto;
+  /* ✅ Prevent horizontal breaking on mobile */
   overflow-x: hidden;
+  overflow-y: auto;
 
-  padding: 22px;
-  padding-bottom: calc(22px + env(safe-area-inset-bottom));
-  padding-top: calc(22px + env(safe-area-inset-top));
+  /* ✅ iOS safe-area */
+  padding: var(--modal-pad);
+  padding-top: calc(var(--modal-pad) + env(safe-area-inset-top));
+  padding-bottom: calc(var(--modal-pad) + env(safe-area-inset-bottom));
 
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -34,30 +47,45 @@
   align-items: center;
   justify-content: center;
 
+  /* ✅ Stabilize height on mobile (Safari address bar issue) */
+  min-height: 100svh;
+  min-height: 100dvh;
+
   animation: modalFade 0.18s ease-out;
 }
 
-/* ✅ Mobile: align to top to avoid "center jump" */
+/* ✅ Mobile: align to top to avoid "center jump" when keyboard opens */
 @media (max-width: 700px) {
   .modal-overlay,
   .dash-modal-overlay {
     align-items: flex-start;
-    padding: 14px;
-    padding-bottom: calc(14px + env(safe-area-inset-bottom));
-    padding-top: calc(14px + env(safe-area-inset-top));
+  }
+}
+
+/* Fallback if backdrop-filter is not supported */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .modal-overlay,
+  .dash-modal-overlay {
+    background: rgba(10, 10, 12, 0.68);
   }
 }
 
 /* Modal Box */
 .modal-box,
 .dash-modal {
-  width: min(980px, 96vw);
-  max-height: calc(100dvh - 44px);
+  /* ✅ Width that never breaks */
+  width: min(980px, calc(100vw - (var(--modal-pad) * 2)));
+  max-width: 980px;
+
+  /* ✅ Mobile-safe height calculation */
+  max-height: calc(100svh - (var(--modal-pad) * 2) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: calc(100dvh - (var(--modal-pad) * 2) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
 
   background: rgba(255, 255, 255, 0.92);
-  border-radius: 22px;
+  border-radius: var(--modal-radius);
   border: 1px solid rgba(124, 58, 237, 0.14);
   box-shadow: 0 26px 70px rgba(0, 0, 0, 0.22);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 
   display: flex;
@@ -68,12 +96,16 @@
   animation: modalUp 0.22s ease-out forwards;
 
   text-align: right;
+
+  /* ✅ Prevent any child from forcing overflow */
+  min-width: 0;
 }
 
 /* Fullscreen helper */
 .modal-box.is-fullscreen,
 .dash-modal--fullscreen {
-  width: min(1100px, 96vw);
+  width: min(1100px, calc(100vw - (var(--modal-pad) * 2)));
+  max-width: 1100px;
 }
 
 /* Header */
@@ -81,9 +113,11 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--modal-gap);
 
-  padding: 16px 16px 12px 16px;
+  padding: var(--modal-head-pad);
+  padding-bottom: calc(var(--modal-head-pad) - 4px);
+
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 
   position: sticky;
@@ -91,7 +125,11 @@
   z-index: 2;
 
   background: rgba(255, 255, 255, 0.94);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
+
+  /* ✅ Prevent header wrapping causing layout shifts */
+  min-width: 0;
 }
 
 .modal-title-wrap {
@@ -111,17 +149,20 @@
 
   background: rgba(124, 58, 237, 0.12);
   color: #5b21b6;
+
+  flex: 0 0 auto;
 }
 
 .modal-title {
   margin: 0;
-  font-size: 16px;
+  font-size: clamp(14px, 2.2vw, 16px);
   font-weight: 900;
   color: #111;
 
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .modal-close {
@@ -134,6 +175,8 @@
   font-size: 18px;
   line-height: 1;
   transition: 0.2s ease;
+
+  flex: 0 0 auto;
 }
 
 .modal-close:hover {
@@ -141,23 +184,34 @@
   transform: translateY(-1px);
 }
 
+.modal-close:active {
+  transform: translateY(0);
+}
+
 /* Body */
 .modal-body {
-  padding: 14px 16px 16px 16px;
+  padding: var(--modal-body-pad);
 
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 
   flex: 1;
+
+  /* ✅ Prevent horizontal scroll from long text/inputs */
+  min-width: 0;
 }
 
 .modal-text {
   margin: 0;
-  font-size: 14px;
+  font-size: clamp(13px, 2.1vw, 14px);
   line-height: 1.85;
   color: #444;
   white-space: pre-line;
+
+  /* ✅ Break long words/urls */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Typography inside modal */
@@ -167,7 +221,7 @@
 .dash-modal label,
 .modal-box p,
 .dash-modal p {
-  font-size: 15px;
+  font-size: clamp(14px, 2.2vw, 15px);
   line-height: 1.7;
 }
 
@@ -177,11 +231,15 @@
   min-height: 44px;
   font-size: 15px;
   border-radius: 14px;
+
+  /* ✅ Prevent iOS zoom/jump */
+  -webkit-text-size-adjust: 100%;
 }
 
 .modal-box textarea.form-control,
 .dash-modal textarea.form-control {
   min-height: 140px;
+  resize: vertical;
 }
 
 /* Footer / Actions */
@@ -189,15 +247,20 @@
   display: flex;
   gap: 10px;
   justify-content: flex-start;
+  flex-wrap: wrap;
 
-  padding: 12px 16px 16px 16px;
+  padding: var(--modal-foot-pad);
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   background: rgba(255, 255, 255, 0.70);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 
   position: sticky;
   bottom: 0;
   z-index: 2;
+
+  /* ✅ Prevent footer from shrinking weirdly */
+  min-width: 0;
 }
 
 .modal-actions button {
@@ -209,6 +272,15 @@
   cursor: pointer;
   transition: 0.2s ease;
   font-weight: 900;
+
+  /* ✅ Better tap targets */
+  min-height: 42px;
+}
+
+@media (max-width: 520px) {
+  .modal-actions button {
+    flex: 1 1 auto;
+  }
 }
 
 /* Primary */
@@ -223,6 +295,10 @@
   transform: translateY(-1px);
 }
 
+.modal-actions .btn-confirm:active {
+  transform: translateY(0);
+}
+
 /* Ghost */
 .modal-actions .btn-cancel {
   background: rgba(0, 0, 0, 0.06);
@@ -234,33 +310,28 @@
   transform: translateY(-1px);
 }
 
+.modal-actions .btn-cancel:active {
+  transform: translateY(0);
+}
+
 /* Animations */
 @keyframes modalFade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes modalUp {
-  to {
-    transform: translateY(0) scale(1);
-  }
+  to { transform: translateY(0) scale(1); }
 }
 
-/* Responsive */
-@media (max-width: 700px) {
+/* ✅ Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay,
+  .dash-modal-overlay,
   .modal-box,
   .dash-modal {
-    width: 96vw;
-    border-radius: 18px;
-    max-height: calc(100dvh - 28px);
-  }
-
-  .modal-title {
-    font-size: 15px;
+    animation: none !important;
+    transform: none !important;
   }
 }
 
@@ -295,19 +366,15 @@
   transition: 0.2s ease;
   cursor: pointer;
 
-  background-image: linear-gradient(
-      45deg,
-      transparent 50%,
-      rgba(124, 58, 237, 0.9) 50%
-    ),
-    linear-gradient(
-      135deg,
-      rgba(124, 58, 237, 0.9) 50%,
-      transparent 50%
-    );
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(124, 58, 237, 0.9) 50%),
+    linear-gradient(135deg, rgba(124, 58, 237, 0.9) 50%, transparent 50%);
   background-position: calc(100% - 18px) 16px, calc(100% - 12px) 16px;
   background-size: 6px 6px, 6px 6px;
   background-repeat: no-repeat;
+
+  /* ✅ Prevent overflow on small screens */
+  max-width: 100%;
 }
 
 .modal-box .dash-select:focus,
@@ -329,4 +396,11 @@
   font-size: 13px;
   padding: 0 12px;
   border-radius: 11px;
+}
+
+@media (max-width: 420px) {
+  .modal-box .dash-select,
+  .dash-modal .dash-select {
+    min-width: 0;
+  }
 }

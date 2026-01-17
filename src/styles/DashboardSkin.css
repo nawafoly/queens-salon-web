@@ -24,7 +24,6 @@
   --bs-body-bg: transparent;
 
   --bs-light: rgba(255, 255, 255, 0.55);
-
 }
 
 /* 🚫 منع Bootstrap من تلوين nav-link داخل الداشبورد */
@@ -68,32 +67,55 @@
   /* ✅ لا نحط overflow هنا عشان sticky يشتغل */
 }
 
-/* ✅ مهم: أي overflow على الأب يكسر sticky */
-.dashboard-skin,
-.dashboard-skin .container-fluid,
-.dashboard-skin .row,
-.dashboard-skin .dashboard-main,
-.dashboard-skin .dashboard-inner {
-  overflow: visible !important;
-}
-
 /* =========================
    ✅ Base Page
 ========================= */
 .dashboard-skin.dashboard-page {
   min-height: 100vh;
   background:
-    radial-gradient(1200px 600px at 20% 10%, rgba(255, 255, 255, 0.60), transparent 60%),
-    radial-gradient(900px 520px at 70% 30%, rgba(255, 255, 255, 0.45), transparent 55%),
-    linear-gradient(135deg, var(--dash-bg-1) 0%, var(--dash-bg-2) 55%, var(--dash-bg-3) 100%);
+    radial-gradient(
+      1200px 600px at 20% 10%,
+      rgba(255, 255, 255, 0.60),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 520px at 70% 30%,
+      rgba(255, 255, 255, 0.45),
+      transparent 55%
+    ),
+    linear-gradient(
+      135deg,
+      var(--dash-bg-1) 0%,
+      var(--dash-bg-2) 55%,
+      var(--dash-bg-3) 100%
+    );
   font-family: "Tajawal", sans-serif;
   color: var(--text);
-  overflow-x: hidden;
+
+  /* ✅ امنع أي خروج أفقي */
+  overflow-x: clip;
   padding: 18px 0;
+}
+
+/* fallback للمتصفحات اللي ما تدعم clip */
+@supports not (overflow: clip) {
+  .dashboard-skin.dashboard-page {
+    overflow-x: hidden;
+  }
 }
 
 .dashboard-skin * {
   box-sizing: border-box;
+  min-width: 0; /* ✅ مهم جدًا لمنع flex/grid من كسر العرض */
+}
+
+/* ✅ وسائط لا تكسر العرض */
+.dashboard-skin img,
+.dashboard-skin svg,
+.dashboard-skin video,
+.dashboard-skin canvas {
+  max-width: 100%;
+  height: auto;
 }
 
 /* =========================
@@ -126,9 +148,17 @@
 ========================= */
 .dashboard-skin .dashboard-main {
   padding: 18px 18px 30px;
-  overflow-x: hidden;
+
+  /* ✅ امنع أي overflow أفقي داخل المحتوى */
+  overflow-x: clip;
   min-width: 0;
   max-width: 100%;
+}
+
+@supports not (overflow: clip) {
+  .dashboard-skin .dashboard-main {
+    overflow-x: hidden;
+  }
 }
 
 .dashboard-skin .dashboard-inner {
@@ -136,9 +166,30 @@
   margin: 0 auto;
   max-width: 1180px;
   min-width: 0;
-  overflow-x: hidden;
+
+  /* ✅ امنع خروج أي عنصر */
+  overflow-x: clip;
   padding-top: 12px;
   padding-inline: 14px;
+}
+
+@supports not (overflow: clip) {
+  .dashboard-skin .dashboard-inner {
+    overflow-x: hidden;
+  }
+}
+
+/* ✅ Bootstrap row أحيانًا يسوي overflow بسبب margins السالبة */
+.dashboard-skin .row {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.dashboard-skin .row > [class^="col-"],
+.dashboard-skin .row > [class*=" col-"] {
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  min-width: 0;
 }
 
 /* =========================
@@ -157,6 +208,8 @@
 
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+
+  position: relative; /* مهم لزر القائمة بالموبايل */
 }
 
 .dashboard-skin .dash-topbar--sticky {
@@ -221,8 +274,21 @@
 }
 
 @media (max-width: 767px) {
+  .dashboard-skin .dash-topbar {
+    padding-right: 60px; /* مساحة للزر */
+  }
+
   .dashboard-skin .dash-topbar-toggle {
     display: inline-flex;
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    z-index: 2;
+  }
+
+  .dashboard-skin .dash-topbar-left {
+    width: 100%;
+    gap: 10px;
   }
 }
 
@@ -342,7 +408,11 @@
 }
 
 .dashboard-skin .sidebar-nav .nav-link.active {
-  background: linear-gradient(135deg, rgba(245, 231, 255, 0.78), rgba(255, 255, 255, 0.62)) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(245, 231, 255, 0.78),
+    rgba(255, 255, 255, 0.62)
+  ) !important;
   border-color: rgba(190, 150, 255, 0.35) !important;
   box-shadow: 0 16px 28px rgba(105, 60, 160, 0.08);
   color: rgba(58, 47, 68, 0.95) !important;
@@ -407,7 +477,16 @@
     transform: translateX(110%);
     transition: transform .18s ease;
     border-radius: var(--radius-xl);
+
     overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* old Edge */
+  }
+
+  .dashboard-skin .dashboard-sidebar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
 
   .dashboard-skin .dashboard-sidebar.is-open {
@@ -464,26 +543,26 @@
 }
 
 .dashboard-skin .status-badge.confirmed {
-  background: #E8F8EE;
-  color: #147A3D;
+  background: #e8f8ee;
+  color: #147a3d;
   border-color: rgba(20, 122, 61, 0.18);
 }
 
 .dashboard-skin .status-badge.pending {
-  background: #FFF2DD;
-  color: #A45400;
+  background: #fff2dd;
+  color: #a45400;
   border-color: rgba(164, 84, 0, 0.18);
 }
 
 .dashboard-skin .status-badge.cancelled {
-  background: #FFE6E6;
-  color: #B42318;
+  background: #ffe6e6;
+  color: #b42318;
   border-color: rgba(180, 35, 24, 0.18);
 }
 
 .dashboard-skin .status-badge.completed {
-  background: #EDEBFF;
-  color: #4C1D95;
+  background: #edebff;
+  color: #4c1d95;
   border-color: rgba(76, 29, 149, 0.18);
 }
 
@@ -623,11 +702,6 @@
   width: 100%;
   min-height: 44px;
 
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-
   padding: 10px 12px;
   border-radius: 14px;
 
@@ -671,15 +745,7 @@
   box-shadow: none !important;
 }
 
-/* سهم بسيط (✅ بدون مسافة داخل pseudo-element) */
-.dashboard-skin .dash-select::after {
-  content: "▾";
-  font-size: 14px;
-  opacity: 0.75;
-  line-height: 1;
-}
-
-/* arrow helper (اختياري) */
+/* arrow helper (✅ الصحيح بدل ::after على select) */
 .dashboard-skin .bk-field {
   position: relative;
 }
@@ -692,10 +758,10 @@
   content: "";
   position: absolute;
   right: 14px;
-  top: 38px;
+  top: 50%;
   width: 8px;
   height: 8px;
-  transform: rotate(45deg);
+  transform: translateY(-45%) rotate(45deg);
   border-right: 2px solid rgba(124, 58, 237, 0.85);
   border-bottom: 2px solid rgba(124, 58, 237, 0.85);
   pointer-events: none;
@@ -746,6 +812,7 @@
   left: 0;
 
   width: 100%;
+  max-width: 100%; /* ✅ لا تكسر العرض */
   max-height: 280px;
   overflow: auto;
 
@@ -849,81 +916,6 @@
 /* ✅ القائمة تنفتح تحت الزر وبنفس العرض */
 .clients-page .cl-form .cl-sort-wrap .dash-dd-menu {
   width: 100%;
-}
-
-/* =========================
-   ✅ REMOVE "Abu Al-Ghabash" Scrollbars (FINAL)
-========================= */
-
-/* 1) امنع أي overflow أفقي يطلع شريط تحت */
-.dashboard-skin.dashboard-page,
-.dashboard-skin.dashboard-page .container-fluid,
-.dashboard-skin.dashboard-page .row,
-.dashboard-skin.dashboard-page .dashboard-main,
-.dashboard-skin.dashboard-page .dashboard-inner {
-  overflow-x: hidden !important;
-}
-
-/* 2) Sidebar drawer (على الموبايل) خليها تسكرول بس بدون شريط */
-@media (max-width: 991px) {
-  .dashboard-skin .dashboard-sidebar {
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-
-    scrollbar-width: none !important;     /* Firefox */
-    -ms-overflow-style: none !important;  /* old Edge */
-  }
-
-  .dashboard-skin .dashboard-sidebar::-webkit-scrollbar {
-    width: 0 !important;
-    height: 0 !important;
-  }
-}
-
-/* 3) اي شيء داخلي يسوي scroll (dropdown/menu/select) نخفي الشريط */
-.dashboard-skin .dash-dd-menu,
-.dashboard-skin select,
-.dashboard-skin .dashboard-inner,
-.dashboard-skin .dashboard-main {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-
-.dashboard-skin .dash-dd-menu::-webkit-scrollbar,
-.dashboard-skin select::-webkit-scrollbar,
-.dashboard-skin .dashboard-inner::-webkit-scrollbar,
-.dashboard-skin .dashboard-main::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-}
-
-/* =========================
-   ✅ Topbar: اجعل زر القائمة ثابت يمين (Mobile)
-========================= */
-.dashboard-skin .dash-topbar {
-  position: relative; /* مهم عشان absolute يشتغل داخلها */
-}
-
-@media (max-width: 767px) {
-  /* مساحة لزر القائمة يمين */
-  .dashboard-skin .dash-topbar {
-    padding-right: 60px;
-  }
-
-  /* زر القائمة يصير فوق يمين */
-  .dashboard-skin .dash-topbar-toggle {
-    display: inline-flex;
-    position: absolute;
-    right: 12px;
-    top: 12px;
-    z-index: 2;
-  }
-
-  /* خفف الزحمة داخل اليسار */
-  .dashboard-skin .dash-topbar-left {
-    width: 100%;
-    gap: 10px;
-  }
 }
 
 /* =========================
