@@ -1,7 +1,15 @@
 // ✅ src/pages/DashboardStaff.tsx
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, doc, getDoc, onSnapshot, Timestamp } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  where,
+  Timestamp,
+} from "firebase/firestore";
 
 import { auth, db } from "../services/firebase";
 import "../styles/DashboardStaff.css";
@@ -16,9 +24,10 @@ type BookingDoc = {
   serviceId?: string;
 
   employeeName?: string;
-  employeeId?: string;
-  employeeUid?: string;
-  employeeKey?: string;
+  employeeId?: string;   // ✅ uid غالبًا
+  employeeUid?: string;  // ✅ إذا موجود في بعض الحجوزات
+
+  employeeKey?: string; // موجود بالكود عندك لكن Rules ما تعتمد عليه للقراءة
 
   date?: string;
   time?: string;
@@ -32,6 +41,13 @@ type BookingWithId = BookingDoc & { id: string };
 
 const SALON_ID = "main";
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
+
+function normalizeArabic(s: any) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
 
 function allowStaffPortal(role: UiRole | "") {
   return role === "staff" || role === "owner" || role === "admin" || role === "reception";
@@ -82,7 +98,7 @@ export default function DashboardStaff() {
           setLoading(false);
           setErrMsg(
             "⚠️ لا يوجد ملف مستخدم لك داخل salons/main/users/{uid}. " +
-              "لازم إنشاء حساب الموظفة داخل النظام."
+            "لازم إنشاء حساب الموظفة داخل النظام."
           );
           return;
         }
@@ -105,14 +121,16 @@ export default function DashboardStaff() {
         setMyRole("");
         setRoleLoading(false);
         setLoading(false);
-        setErrMsg("❌ خطأ أثناء تحميل صلاحيات الحساب (role).\n" + String(e?.message || e));
+        setErrMsg(
+          "❌ خطأ أثناء تحميل صلاحيات الحساب (role).\n" + String(e?.message || e)
+        );
       }
     });
 
     return () => unsub();
   }, []);
 
-  // ✅ 2) Realtime: (تخفيف) نقرأ كل حجوزات الصالون بدل where عشان القديمة تظهر
+  // ✅ 2) Realtime: نقرأ حجوزات الموظفة فقط (حل التعليق مع Rules)
   useEffect(() => {
     if (!myUid) return;
     if (roleLoading) return;
@@ -124,47 +142,98 @@ export default function DashboardStaff() {
 
     const colRef = collection(db, "salons", SALON_ID, "bookings");
 
-    const unsub = onSnapshot(
-      colRef,
+    // ✅ Query 1: employeeUid == myUid (لو موجود)
+    const qByEmployeeUid = query(colRef, where("employeeUid", "==", myUid));
+
+    // ✅ Query 2: employeeId == myUid (الأكثر شيوعًا عندك)
+    const qByEmployeeId = query(colRef, where("employeeId", "==", myUid));
+
+    let rowsUid: BookingWithId[] = [];
+    let rowsId: BookingWithId[] = [];
+
+    const mergeEmit = () => {
+      const m = new Map<string, BookingWithId>();
+      for (const x of rowsUid) m.set(x.id, x);
+      for (const x of rowsId) m.set(x.id, x);
+
+      const merged = Array.from(m.values());
+
+      // ✅ ترتيب محلي (بدون orderBy لتجنب index)
+      merged.sort((a, b) => {
+        const ta = (a.createdAt?.toMillis?.() ?? 0) as number;
+        const tb = (b.createdAt?.toMillis?.() ?? 0) as number;
+        return tb - ta;
+      });
+
+      setMyBookingsRaw(merged);
+      setLoading(false);
+    };
+
+    const onErr = (e: any) => {
+      console.error("DashboardStaff snapshot error:", e);
+      const msg = String(e?.message || e);
+
+      setErrMsg(
+        msg.includes("Missing or insufficient permissions")
+          ? "⚠️ تعذر تحميل حجوزاتك بسبب الصلاحيات (Rules). " +
+          "تحقق أن الحجز يحتوي employeeId أو employeeUid يساوي uid الموظفة."
+          : "❌ خطأ أثناء تحميل الحجوزات:\n" + msg
+      );
+
+      setMyBookingsRaw([]);
+      setLoading(false);
+    };
+
+    const unsub1 = onSnapshot(
+      qByEmployeeUid,
       (snap) => {
-        const rows = snap.docs.map((d) => ({
+        rowsUid = snap.docs.map((d) => ({
           id: d.id,
           ...(d.data() as BookingDoc),
         }));
-
-        // ✅ ترتيب محلي (بدون orderBy لتجنب index)
-        rows.sort((a, b) => {
-          const ta = (a.createdAt?.toMillis?.() ?? 0) as number;
-          const tb = (b.createdAt?.toMillis?.() ?? 0) as number;
-          return tb - ta;
-        });
-
-        setMyBookingsRaw(rows);
-        setLoading(false);
+        mergeEmit();
       },
-      (e: any) => {
-        console.error("DashboardStaff snapshot error:", e);
-        const msg = String(e?.message || e);
-
-        setErrMsg(
-          msg.includes("Missing or insufficient permissions")
-            ? "⚠️ تعذر تحميل الحجوزات بسبب الصلاحيات (Rules).\n" +
-                "✅ تم تخفيف القراءة للموظفات، تأكد أنك نشرت الـ Rules وسويت Logout/Login."
-            : "❌ خطأ أثناء تحميل الحجوزات:\n" + msg
-        );
-
-        setMyBookingsRaw([]);
-        setLoading(false);
-      }
+      onErr
     );
 
-    return () => unsub();
+    const unsub2 = onSnapshot(
+      qByEmployeeId,
+      (snap) => {
+        rowsId = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as BookingDoc),
+        }));
+        mergeEmit();
+      },
+      onErr
+    );
+
+    return () => {
+      unsub1();
+      unsub2();
+    };
   }, [myUid, myRole, roleLoading]);
 
-  // ✅ 3) (تخفيف) نعرض كل الحجوزات مؤقتًا — بدون فلترة
+  // ✅ 3) فلترة إضافية (احتياط) — بنفس منطقك السابق
   const myBookings = useMemo(() => {
-    return myBookingsRaw;
-  }, [myBookingsRaw]);
+    if (!myUid) return [];
+
+    const uid = myUid;
+
+    const filtered = myBookingsRaw.filter((b) => {
+      if (b.employeeUid && b.employeeUid === uid) return true;
+      if (b.employeeId && b.employeeId === uid) return true;
+
+      // fallback بالاسم (عرض فقط — لكن لن يحل Rules لو كانت الحجوزات بدون uid)
+      const bName = normalizeArabic(b.employeeName);
+      const myN = normalizeArabic(myName);
+      if (myN && bName && bName === myN) return true;
+
+      return false;
+    });
+
+    return filtered;
+  }, [myBookingsRaw, myUid, myName]);
 
   return (
     <div className="dashstaff-page" style={{ padding: 16, direction: "rtl" }}>
@@ -177,14 +246,8 @@ export default function DashboardStaff() {
       </div>
 
       {(roleLoading || loading) && !errMsg && (
-        <div
-          style={{
-            padding: 14,
-            border: "1px solid rgba(0,0,0,.08)",
-            borderRadius: 12,
-          }}
-        >
-          جاري تحميل الحجوزات...
+        <div style={{ padding: 14, border: "1px solid rgba(0,0,0,.08)", borderRadius: 12 }}>
+          جاري تحميل حجوزاتك...
         </div>
       )}
 
@@ -224,13 +287,16 @@ export default function DashboardStaff() {
               flexWrap: "wrap",
             }}
           >
-            <span>الحجوزات</span>
+            <span>حجوزاتي</span>
             <span style={{ opacity: 0.75 }}>الإجمالي: {myBookings.length}</span>
           </div>
 
           {myBookings.length === 0 ? (
             <div style={{ padding: 14, opacity: 0.75, fontWeight: 800 }}>
-              لا توجد حجوزات حالياً.
+              لا توجد حجوزات مرتبطة بك الآن.
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
+                (إذا عندك حجوزات قديمة بدون employeeId/employeeUid، لازم “ترحيل مرة واحدة” لتعبئتها)
+              </div>
             </div>
           ) : (
             <div style={{ padding: 12, display: "grid", gap: 10 }}>
@@ -244,14 +310,7 @@ export default function DashboardStaff() {
                     background: "rgba(255,255,255,.96)",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                     <div style={{ fontWeight: 900 }}>
                       {b.clientName || "—"}{" "}
                       <span style={{ opacity: 0.65, fontWeight: 800 }}>
@@ -265,10 +324,6 @@ export default function DashboardStaff() {
 
                   <div style={{ marginTop: 8, opacity: 0.85, fontWeight: 800 }}>
                     الخدمة: {b.serviceName || b.serviceId || "—"}
-                  </div>
-
-                  <div style={{ marginTop: 6, opacity: 0.85, fontWeight: 800 }}>
-                    الموظفة: {b.employeeName || b.employeeUid || b.employeeKey || b.employeeId || "—"}
                   </div>
 
                   <div style={{ marginTop: 6, opacity: 0.85, fontWeight: 800 }}>
@@ -287,3 +342,4 @@ export default function DashboardStaff() {
     </div>
   );
 }
+

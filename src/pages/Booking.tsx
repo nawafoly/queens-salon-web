@@ -1197,8 +1197,8 @@ const Booking: React.FC = () => {
                   {catalogLoading
                     ? "جاري تحميل الخدمات..."
                     : catalogMode === "firestore"
-                      ? "الخدمات: من قاعدة البيانات ✅"
-                      : "الخدمات: مؤقتًا من التسعير (Pricing) ⏳"}
+                    ? "الخدمات: من قاعدة البيانات ✅"
+                    : "الخدمات: مؤقتًا من التسعير (Pricing) ⏳"}
                   {catalogError ? ` — ${catalogError}` : ""}
                 </div>
               </div>
@@ -1221,7 +1221,7 @@ const Booking: React.FC = () => {
                         id="name"
                         name="name"
                         value={formData.name}
-                        onChange={() => { }}
+                        onChange={() => {}}
                         onInput={(e: any) => {
                           const v = String(e?.target?.value ?? "");
                           setFormData((p) => ({ ...p, name: v }));
@@ -1306,8 +1306,8 @@ const Booking: React.FC = () => {
                       {!selectedSectionId
                         ? "اختاري القسم أولاً"
                         : categoryOptions.length === 0
-                          ? "لا توجد تصنيفات"
-                          : "كل التصنيفات"}
+                        ? "لا توجد تصنيفات"
+                        : "كل التصنيفات"}
                     </option>
 
                     {categoryOptions.map((c) => (
@@ -1385,31 +1385,17 @@ const Booking: React.FC = () => {
                         value={formData.employeeId || ""}
                         onChange={(e) => {
                           const selectedPublicId = e.target.value;
+
+                          // ✅ نجيب full من staff عشان linkedUid
                           const full = staff.find((x) => x.id === selectedPublicId);
-                        
-                          const employeeUidResolved = String(
-                            (full as any)?.linkedUid || (full as any)?.uid || ""
-                          ).trim();
-                        
-                          console.log("[EMP PICK]", {
-                            selectedPublicId,
-                            full,
-                            full_keys: full ? Object.keys(full as any) : [],
-                            linkedUid: (full as any)?.linkedUid,
-                            uid: (full as any)?.uid,
-                            employeeUidResolved,
-                            name: (full as any)?.name,
-                            id: (full as any)?.id,
-                          });
-                        
+
                           setFormData((prev) => ({
                             ...prev,
-                            employeeId: selectedPublicId || "",
-                            employeeUid: employeeUidResolved || "",
+                            employeeId: selectedPublicId || "", // staff_public id
+                            employeeUid: String((full as any)?.linkedUid || "").trim(), // ✅ NEW UID الحقيقي
                             employee: String(full?.name || "").trim(),
                           }));
                         }}
-                        
                         required={!!selectedSectionId}
                         disabled={!selectedSectionId || staffLoading}
                       >
@@ -1417,8 +1403,8 @@ const Booking: React.FC = () => {
                           {staffLoading
                             ? "جاري تحميل الموظفات..."
                             : !selectedSectionId
-                              ? "اختاري القسم أولاً"
-                              : "اختاري الموظفة"}
+                            ? "اختاري القسم أولاً"
+                            : "اختاري الموظفة"}
                         </option>
 
                         {filteredEmployees.map((emp) => (

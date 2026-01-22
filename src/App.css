@@ -1,90 +1,175 @@
-/* 
-* Custom CSS for Body Beauty Salon
-* React Application
-*/
+/* ===========================
+   Global Styles - Queens Salon
+   ملف واحد فقط (بدون تكرار)
+   =========================== */
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
-  font-family: 'Inter', 'Tajawal', Arial, sans-serif;
-  background-color: #fdf9f6;
-  /* لون الخلفية العام */
-  min-height: 100vh;
-}
+/* خطوط */
+@import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap");
 
-#root {
-  margin: 0;
-  padding: 0;
-}
-
+/* ===========================
+   Root Variables (مرة وحدة فقط)
+   =========================== */
 :root {
-  /* أساسي */
-  --primary-color: #e8b4a2;
-  /* وردي ترابي */
-  --secondary-color: #dba58e;
-  /* وردي أغمق شوي */
-  --accent-color: #f5cdbb;
-  /* لون فاتح للتمييز */
+  color-scheme: light;
 
-  /* خلفيات */
+  /* 🎨 الألوان الأساسية */
+  --primary-color: #e8b4a2;
+  --secondary-color: #dba58e;
+  --accent-color: #f5cdbb;
+
+  /* 🧱 الخلفيات */
   --background-color: #fdf9f6;
 
-  /* نصوص */
+  /* 📝 النصوص */
   --text-color: #5a4a42;
+  --text-strong: #7c3e24;
+
+  /* ألوان عامة */
   --white: #ffffff;
   --black: #000000;
+
+  /* 🔵 ألوان إضافية */
+  --info-color: #559bd9;
+  --info-color-soft: rgb(28, 79, 124);
+
+  /* ===========================
+     BS System Variables (مُدمجة هنا بدل :root ثاني)
+     =========================== */
+  --bs-primary-color: #e8b4a2;
+  --bs-secondary-color: #dba58e;
+  --bs-text-color: #5a4a42;
+  --bs-hover-color: #c8947a;
+
+  --bs-primary-50: #faf7f5;
+  --bs-primary-100: #f5ede8;
+  --bs-primary-200: #eed9d0;
+  --bs-primary-300: #e8b4a2;
+  --bs-primary-400: #e09b85;
+  --bs-primary-500: #d49a84;
+  --bs-primary-600: #c8947a;
+  --bs-primary-700: #b8846a;
+  --bs-primary-800: #a8745a;
+  --bs-primary-900: #98644a;
+
+  --bs-secondary-50: #f9f6f4;
+  --bs-secondary-100: #f3ece8;
+  --bs-secondary-200: #e9d7d0;
+  --bs-secondary-300: #dba58e;
+  --bs-secondary-400: #d19578;
+  --bs-secondary-500: #c8947a;
+  --bs-secondary-600: #b8846a;
+  --bs-secondary-700: #a8745a;
+  --bs-secondary-800: #98644a;
+  --bs-secondary-900: #88543a;
+
+  --bs-text-50: #f7f5f4;
+  --bs-text-100: #ede8e6;
+  --bs-text-200: #ddd4d0;
+  --bs-text-300: #c4b5af;
+  --bs-text-400: #a8958d;
+  --bs-text-500: #8a7a73;
+  --bs-text-600: #6b5b54;
+  --bs-text-700: #5a4a42;
+  --bs-text-800: #4a3a32;
+  --bs-text-900: #3a2a22;
+
+  --bs-bg-light: #faf9f8;
+  --bs-bg-white: #ffffff;
+
+  --bs-border-color: #e8ddd8;
+  --bs-border-light: #f0e8e3;
+  --bs-border-dark: #d0c0b8;
+
+  --bs-shadow-soft: 0 2px 15px -3px rgba(232, 180, 162, 0.1),
+    0 10px 20px -2px rgba(232, 180, 162, 0.05);
+  --bs-shadow-medium: 0 4px 25px -5px rgba(232, 180, 162, 0.15),
+    0 10px 10px -5px rgba(232, 180, 162, 0.08);
+  --bs-shadow-strong: 0 10px 40px -10px rgba(232, 180, 162, 0.2),
+    0 2px 10px -2px rgba(232, 180, 162, 0.1);
+
+  --bs-success-color: #22c55e;
+  --bs-warning-color: #f59e0b;
+  --bs-error-color: #ef4444;
+  --bs-info-color: var(--bs-primary-color);
 }
 
-/* ✅ هذا القوس كان ناقص */
+/* ===========================
+   Reset + Mobile Stability (مهم جدًا)
+   =========================== */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
 
-/* === Global Styles === */
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  direction: rtl;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+}
+
 body {
   font-family: "Tajawal", sans-serif !important;
   color: var(--text-color) !important;
-  background-color: var(--background-color);
+  background-color: var(--background-color) !important;
+  line-height: 1.6;
   direction: rtl;
   text-align: right;
+  min-height: 100vh;
 }
 
+/* مهم: لو عندك gradient خله هنا فقط */
+body {
+  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%) !important;
+}
+
+/* Root wrappers */
+#root, .app, .main-content {
+  width: 100%;
+  max-width: 100%;
+}
 
 .app {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
 }
-
 .main-content {
   flex: 1;
 }
 
+/* Media responsive everywhere */
+img, video, canvas, svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Links */
 a {
   color: var(--primary-color);
   text-decoration: none;
   transition: color 0.3s ease;
 }
-
 a:hover {
   color: var(--secondary-color);
 }
 
-/* === Typography === */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
+/* Typography */
+h1,h2,h3,h4,h5,h6 {
   font-family: "Tajawal", sans-serif;
   font-weight: 500;
   color: var(--text-color);
 }
-
-p {
-  line-height: 1.8;
-}
+p { line-height: 1.8; }
 
 .section-title {
   font-size: 2rem;
@@ -93,15 +178,8 @@ p {
   margin-bottom: 2rem;
 }
 
-/* === Buttons (Custom) === */
-.btn {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-/* Outline-style button */
+/* Buttons */
+.btn { padding: 0.75rem 1.5rem; border: none; font-weight: 500; transition: all 0.3s ease; }
 .btn-outline {
   background-color: transparent;
   color: var(--primary-color);
@@ -109,13 +187,12 @@ p {
   font-weight: 600;
   transition: all 0.3s ease;
 }
-
 .btn-outline:hover {
   background-color: var(--primary-color);
   color: var(--white);
 }
 
-/* === Forms === */
+/* Forms */
 .form-control {
   padding: 0.75rem 1rem;
   border: none;
@@ -123,147 +200,53 @@ p {
   background-color: var(--background-color);
   color: var(--text-color);
 }
-
 .form-control:focus {
   box-shadow: 0 0 0 0.25rem rgba(232, 180, 162, 0.25);
   border-color: var(--primary-color);
 }
-
 .form-control::placeholder {
   color: var(--text-color);
   opacity: 0.7;
 }
 
-/* === Animations === */
-.fade-in {
-  opacity: 0;
-  transform: translateY(20px);
-  animation: fadeIn 1s ease-out forwards;
-}
-
-.contact-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #ccc;
-}
-
-.contact-list li svg {
-  color: var(--primary-color);
-}
-
-.social-links {
-  margin-top: 1rem;
-  display: flex;
-  gap: 0.75rem;
-}
-
-.social-links a {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  background: #222;
-  border-radius: 50%;
-  color: #ccc;
-  font-size: 1.1rem;
-  transition: background 0.2s, color 0.2s;
-}
-
-.social-links a:hover {
-  background: var(--primary-color);
-  color: #111;
-}
-
-.back-to-top {
-  color: #777;
-  font-size: 1.2rem;
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.back-to-top:hover {
-  color: var(--primary-color);
-}
-
-.fa-check-circle,
-.fa-circle-check {
+/* Icons */
+.fa-check-circle, .fa-circle-check {
   color: var(--black) !important;
-  /* أو أي لون تريده */
   font-size: 1.1em;
-  /* حجم مناسب حسب التصميم */
   vertical-align: middle;
 }
 
-
-
-
-
-
-/* الصور */
+/* Images styling (اختياري) */
 .hero-image img,
 .offers-image img {
   background: none !important;
   border-radius: 22px !important;
   box-shadow: 0 8px 32px rgba(180, 139, 123, 0.09) !important;
   opacity: 0.7;
-
 }
 
-
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* === Responsive === */
+/* Responsive */
 @media (max-width: 991.98px) {
-  .section-title {
-    font-size: 1.8rem;
-  }
+  .section-title { font-size: 1.8rem; }
 }
-
 @media (max-width: 767.98px) {
-  .section-title {
-    font-size: 1.5rem;
-  }
-
-  .btn {
-    padding: 0.6rem 1.2rem;
-  }
+  .section-title { font-size: 1.5rem; }
+  .btn { padding: 0.6rem 1.2rem; }
 }
-
 @media (max-width: 575.98px) {
-  body {
-    font-size: 0.9rem;
-  }
+  body { font-size: 0.95rem; }
 }
 
-/* ✅ Force Light Theme (Mobile Dark Mode Fix) */
-:root {
-  color-scheme: light;
-}
-
+/* Dark mode safety */
 @media (prefers-color-scheme: dark) {
-
-  html,
-  body {
-    background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%) !important;
-    background-color: #fdf9f6 !important;
-    color: #5a4a42 !important;
+  html, body {
+    color-scheme: light;
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
   }
-} 
+}
 
-/* ✅ Dashboard main should fill viewport (prevents footer gaps) */
+/* Dashboard (اختياري) */
 .main-content--dashboard {
   min-height: 100vh;
   padding: 0 !important;

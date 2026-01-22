@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import ava from "../assets/images/ava.webp";
 import emma from "../assets/images/emma.webp";
 import sophie from "../assets/images/sophie.webp";
-import unnamed from "../assets/images/unnamed.webp";
+import unnamed from "../assets/images/unnamed.png";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {

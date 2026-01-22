@@ -1,235 +1,144 @@
 /* src/styles/ConfirmModal.css */
-
 .qm-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 5000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
-  background: rgba(20, 15, 12, 0.35);
-  backdrop-filter: blur(6px);
-
-  /* ✅ منع أي overflow أفقي بسبب عناصر خارجية */
-  overflow-x: hidden;
-}
-
-/* ✅ صندوق المودال */
-.qm-modal-box {
-  width: min(520px, 96vw);
-  max-height: min(78vh, 720px); /* ✅ مهم: ما يطلع برا الشاشة */
-  background: #fff;
-  border-radius: 20px;
-  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.18);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  overflow: hidden;
-  transform: translateY(6px);
-  animation: qmPop 180ms ease-out forwards;
-  font-family: "Tajawal", sans-serif;
-
-  /* ✅ RTL + حماية من كسر العرض */
-  direction: rtl;
-  text-align: right;
-  min-width: 0;
-  overflow-x: clip;
-}
-
-/* fallback للمتصفحات اللي ما تدعم clip */
-@supports not (overflow: clip) {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(20, 15, 12, 0.35);
+    backdrop-filter: blur(6px);
+  }
+  
   .qm-modal-box {
-    overflow-x: hidden;
+    width: min(520px, 96vw);
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 26px 80px rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+    transform: translateY(6px);
+    animation: qmPop 180ms ease-out forwards;
+    font-family: "Tajawal", sans-serif;
   }
-}
-
-.qm-modal-box * {
-  box-sizing: border-box;
-  min-width: 0; /* ✅ مهم لعناصر flex */
-}
-
-@keyframes qmPop {
-  from {
-    opacity: 0;
-    transform: translateY(14px) scale(0.985);
+  
+  @keyframes qmPop {
+    from {
+      opacity: 0;
+      transform: translateY(14px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+  
+  .qm-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 14px 10px;
+    background: linear-gradient(135deg, rgba(232, 180, 162, 0.18), rgba(236, 233, 250, 0.55));
   }
-}
-
-/* ✅ Header */
-.qm-modal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 14px 10px;
-  background: linear-gradient(
-    135deg,
-    rgba(232, 180, 162, 0.18),
-    rgba(236, 233, 250, 0.55)
-  );
-}
-
-/* ✅ عنوان + أيقونة */
-.qm-modal-title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.qm-modal-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  font-weight: 900;
-  user-select: none;
-  background: rgba(232, 180, 162, 0.25);
-  color: #7a4a3e;
-  border: 1px solid rgba(232, 180, 162, 0.35);
-  flex: 0 0 auto;
-}
-
-.qm-modal-title {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 900;
-  color: #3f2e28;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ✅ زر الإغلاق */
-.qm-modal-close {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  background: rgba(255, 255, 255, 0.75);
-  cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  transition: transform 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
-}
-
-.qm-modal-close:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.08);
-}
-
-.qm-modal-close:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
-}
-
-/* ✅ Body (يسكرول عند الحاجة) */
-.qm-modal-body {
-  padding: 14px 16px 6px;
-
-  /* ✅ إذا زاد المحتوى: سكرول عمودي داخلي */
-  overflow: auto;
-  max-height: calc(min(78vh, 720px) - 120px);
-
-  /* ✅ لا سكرول أفقي */
-  overflow-x: clip;
-}
-
-@supports not (overflow: clip) {
+  
+  .qm-modal-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .qm-modal-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    font-weight: 900;
+    user-select: none;
+    background: rgba(232, 180, 162, 0.25);
+    color: #7a4a3e;
+    border: 1px solid rgba(232, 180, 162, 0.35);
+  }
+  
+  .qm-modal-title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 900;
+    color: #3f2e28;
+  }
+  
+  .qm-modal-close {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgba(255, 255, 255, 0.75);
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+  }
+  
   .qm-modal-body {
-    overflow-x: hidden;
+    padding: 14px 16px 6px;
   }
-}
-
-.qm-modal-text {
-  margin: 0;
-  color: rgba(63, 46, 40, 0.85);
-  line-height: 1.75;
-  font-weight: 600;
-  font-size: 0.98rem;
-
-  /* ✅ منع كسر العرض بسبب كلمات طويلة */
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-/* ✅ Actions */
-.qm-modal-actions {
-  padding: 12px 16px 16px;
-  display: flex;
-  gap: 10px;
-  justify-content: flex-start;
-  flex-wrap: wrap; /* ✅ على الجوال: ما يطلع برا */
-}
-
-/* ✅ Buttons */
-.qm-btn-confirm,
-.qm-btn-cancel {
-  border: none;
-  border-radius: 14px;
-  padding: 10px 14px;
-  font-weight: 900;
-  cursor: pointer;
-  transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease,
-    opacity 0.14s ease;
-  min-width: 140px; /* ✅ توازن */
-}
-
-.qm-btn-confirm {
-  background: var(--primary-color, #caa6dd); /* ✅ fallback */
-  color: #fff;
-  box-shadow: 0 10px 24px rgba(232, 180, 162, 0.22);
-}
-.qm-btn-confirm:hover {
-  background: var(--secondary-color, #e8bda2); /* ✅ fallback */
-  transform: translateY(-1px);
-}
-
-.qm-btn-cancel {
-  background: rgba(255, 255, 255, 0.85);
-  color: #3f2e28;
-  border: 1px solid rgba(63, 46, 40, 0.18);
-}
-.qm-btn-cancel:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.08);
-}
-
-.qm-btn-confirm:focus-visible,
-.qm-btn-cancel:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
-}
-
-/* ✅ Mobile: خلي الأزرار بعرض كامل */
-@media (max-width: 480px) {
+  
+  .qm-modal-text {
+    margin: 0;
+    color: rgba(63, 46, 40, 0.85);
+    line-height: 1.75;
+    font-weight: 600;
+    font-size: 0.98rem;
+  }
+  
   .qm-modal-actions {
-    gap: 8px;
+    padding: 12px 16px 16px;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-start;
   }
-
+  
   .qm-btn-confirm,
   .qm-btn-cancel {
-    width: 100%;
-    min-width: 0;
+    border: none;
+    border-radius: 14px;
+    padding: 10px 14px;
+    font-weight: 900;
+    cursor: pointer;
+    transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease,
+      opacity 0.14s ease;
   }
-}
-
-/* Variants */
-.qm-modal-box.is-danger .qm-modal-icon {
-  background: rgba(211, 47, 47, 0.12);
-  color: #d32f2f;
-  border-color: rgba(211, 47, 47, 0.22);
-}
-
-.qm-modal-box.is-success .qm-modal-icon {
-  background: rgba(46, 125, 50, 0.12);
-  color: #2e7d32;
-  border-color: rgba(46, 125, 50, 0.22);
-}
+  
+  .qm-btn-confirm {
+    background: var(--primary-color);
+    color: #fff;
+    box-shadow: 0 10px 24px rgba(232, 180, 162, 0.22);
+  }
+  .qm-btn-confirm:hover {
+    background: var(--secondary-color);
+    transform: translateY(-1px);
+  }
+  
+  .qm-btn-cancel {
+    background: rgba(255, 255, 255, 0.85);
+    color: #3f2e28;
+    border: 1px solid rgba(63, 46, 40, 0.18);
+  }
+  .qm-btn-cancel:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 22px rgba(0, 0, 0, 0.08);
+  }
+  
+  /* Variants */
+  .qm-modal-box.is-danger .qm-modal-icon {
+    background: rgba(211, 47, 47, 0.12);
+    color: #d32f2f;
+    border-color: rgba(211, 47, 47, 0.22);
+  }
+  
+  .qm-modal-box.is-success .qm-modal-icon {
+    background: rgba(46, 125, 50, 0.12);
+    color: #2e7d32;
+    border-color: rgba(46, 125, 50, 0.22);
+  }
+  

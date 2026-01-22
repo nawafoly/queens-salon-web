@@ -1,172 +1,496 @@
-.hero-section {
-  /* التدرج: أبيض من فوق → لون الخلفية تحت */
-  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
-  padding: 3rem 0 2rem 0;
-  direction: rtl;
-}
+/* ========================================
+   Hero V2 Styles - صالون ملكات
+   (Compatible with Hero.tsx: .heroV2 / heroV2__*)
+   ======================================== */
 
-
-.hero-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 2rem;
-}
-
-.hero-content {
-  width: 100%;
-  text-align: center;
-}
-
-.hero-title {
-  font-size: 2.6rem;
-  font-weight: 700;
-  color: #59443c;
-  margin-bottom: 1.2rem;
-  line-height: 1.2;
-}
-
-.hero-text {
-  font-size: 1.22rem;
-  color: #59443c;
-  margin-bottom: 2.5rem;
-  line-height: 1.9;
-}
-
-.hero-buttons {
-  display: flex;
-  gap: 1.2rem;
-  justify-content: center;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.hero-booking-btn {
-
-  background-color: var(--primary-color) !important;
-  color: #ffffff !important ;
-  padding: 0.7rem 2.1rem;
-  font-weight: 700;
-  font-size: 1.1rem;
-  border-radius: 50px;
-
-  transition:
-    background-color 0.2s ease,
-    color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
-}
-
-.hero-booking-btn:hover {
-  background-color: var(--secondary-color) !important;
-  color: #ffffff !important ;
-}
-
-
-.hero-explore-btn {
-  background: hsl(0, 0%, 95% , 0.5) !important; /* أخف */
-  border: 2px solid hsl(11, 73%, 81%, 0.6);
-  color: var(--text-strong) !important;
-  padding: 0.7rem 2rem;
-  border-radius: 50px;
-  font-weight: 600;
-  font-size: 1.1rem;
-
-  backdrop-filter: blur(6px);            /* نعومة زجاجية */
-  -webkit-backdrop-filter: blur(6px);    /* دعم iOS */
-
-  transition:
-    background 0.3s ease,
-    color 0.3s ease,
-    box-shadow 0.3s ease;
-}
-
-.hero-explore-btn:hover {
-  background: rgba(232, 180, 162, 0.45) !important; /* خفيف جدًا */
-  color: #5A4A42 !important;
-  box-shadow: 0 6px 18px rgba(232, 180, 162, 0.25);
-}
-
-
-
-.hero-image {
-  margin-top: 1.5rem;
-}
-
-/* صورة البطلة */
-.hero-image img {
-  max-width: 220px;
-  width: 100%;
-  border-radius: 22px;
-  display: block;
-  margin: 0 auto;
-  box-shadow: 0 8px 40px rgba(190, 120, 92, 0.07);
-}
-
-/* ---------- RESPONSIVE ---------- */
-@media (max-width: 991px) {
-  .hero-container {
-    flex-direction: column-reverse;
-    text-align: center;
-    gap: 2.2rem;
-    padding: 0 1.2rem;
+   :root {
+    --hero-primary: #e8b4a2;
+    --hero-secondary: #dba58e;
+    --hero-accent: #f5cdbb;
+    --hero-text: #5a4a42;
+    --hero-bg: #fdf9f6;
+    --hero-shadow: rgba(232, 180, 162, 0.18);
+  
+    /* ✅ تعويض ارتفاع topbar + navbar */
+    --header-offset: 120px; /* عدّلها إذا تبغى */
   }
-
-  .hero-content {
-    text-align: center;
-  }
-
-  .hero-buttons {
-    flex-direction: column;
-    gap: 1rem;
+  
+  /* ====== Root Section ====== */
+  .heroV2 {
+    position: relative;
+    width: 100%;
+  
+    
+    /* ✅ أفضل للجوال من 100vh */
+    min-height: 100svh;
+    min-height: 100vh;
+  
+    /* background من inline style في Hero.tsx */
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-color: var(--hero-bg);
+  
+    /* ✅ لا تستخدم fixed هنا لأنه يسبب قص مع sticky */
+    background-attachment: scroll;
+  
+    overflow: hidden;
+    direction: rtl;
+  
+    /* ✅ سحب/مسافات متجاوبة (جوال/كمبيوتر) */
+    padding-top: clamp(92px, var(--header-offset), 140px);
+    padding-inline: 20px;
+    padding-bottom: clamp(48px, 6vh, 80px);
+  
+    display: flex;
     align-items: center;
+    justify-content: center;
   }
-
-  .hero-title {
-    font-size: 2.1rem;
+  
+  /* ====== Overlay طبقة توازن النص ====== */
+  .heroV2__overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  
+    background: linear-gradient(
+      90deg,
+      rgba(253, 249, 246, 0.94) 0%,
+      rgba(253, 249, 246, 0.88) 42%,
+      rgba(253, 249, 246, 0.35) 72%,
+      rgba(253, 249, 246, 0) 100%
+    );
   }
-
-  .hero-text {
+  
+  /* ====== إضاءة ديناميكية خفيفة ====== */
+  .heroV2::after {
+    content: "";
+    position: absolute;
+    inset: -40%;
+    z-index: 0;
+    pointer-events: none;
+  
+    background: radial-gradient(circle, rgba(232, 180, 162, 0.12) 0%, transparent 70%);
+    animation: light-pulse 4s ease-in-out infinite;
+  }
+  
+  /* ====== Container ====== */
+  .heroV2__container {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  
+  /* ====== Content ====== */
+  .heroV2__content {
+    position: relative;
+    max-width: 620px;
+    text-align: right;
+  }
+  
+  /* Stagger fade-in (مربوط ب is-visible) */
+  .heroV2__content > * {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  
+  .heroV2__content.is-visible > * {
+    animation: stagger-fade-in 0.65s ease-out forwards;
+  }
+  
+  .heroV2__content.is-visible > *:nth-child(1) { animation-delay: 0.12s; }
+  .heroV2__content.is-visible > *:nth-child(2) { animation-delay: 0.24s; }
+  .heroV2__content.is-visible > *:nth-child(3) { animation-delay: 0.36s; }
+  .heroV2__content.is-visible > *:nth-child(4) { animation-delay: 0.48s; }
+  .heroV2__content.is-visible > *:nth-child(5) { animation-delay: 0.60s; }
+  
+  /* ====== Eyebrow ====== */
+  .heroV2__eyebrow {
+    margin: 0 0 12px;
+    font-weight: 800;
+    color: rgba(90, 74, 66, 0.78);
+    letter-spacing: 0.4px;
+    font-size: 0.95rem;
+  }
+  
+  /* ====== Title ====== */
+  .heroV2__title {
+    position: relative; /* ✅ مهم للـ shimmer */
+    display: inline-block;
+  
+    font-size: clamp(2.05rem, 4.6vw, 3.2rem); /* ✅ جوال/كمبيوتر */
+    font-weight: 800;
+    color: #ffffff; /* ✅ ثابت (نفس الكمبيوتر) */
+    line-height: 1.25;
+  
+    text-shadow:
+      0 2px 10px rgba(0,0,0,0.35),
+      0 6px 24px rgba(0,0,0,0.25);
+  }
+  
+  /* shimmer */
+  .heroV2__title::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+    animation: shimmer 3s infinite;
+    pointer-events: none;
+    mix-blend-mode: soft-light;
+  }
+  
+  .heroV2__brand {
+    background: linear-gradient(
+      135deg,
+      var(--hero-primary) 0%,
+      var(--hero-secondary) 50%,
+      var(--hero-primary) 100%
+    );
+    background-size: 200% 200%;
+    animation: gradient-shift 3s ease infinite;
+  
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  
+    color: #e8b4a2;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  
+  /* ====== Description ====== */
+  .heroV2__desc {
+    margin: 0 0 28px;
     font-size: 1.08rem;
+    line-height: 1.9;
+    color: #5a4a42c7;
+    max-width: 520px;
   }
-
-  .hero-image img {
-    max-width: 220px;
-    margin-bottom: 1.3rem;
+  
+  /* ====== Actions ====== */
+  .heroV2__actions {
+    display: flex;
+    gap: 14px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    margin-top: 10px;
   }
-}
-
-@media (max-width: 575px) {
-  .hero-section {
-    padding: 1.4rem 0 1.2rem 0;
-  }
-
-  .hero-container {
-    gap: 1.1rem;
-    padding: 0 0.4rem;
-  }
-
-  .hero-title {
-    font-size: 1.3rem;
-    margin-bottom: 0.6rem;
-  }
-
-  .hero-text {
-    font-size: 0.93rem;
-    margin-bottom: 1.1rem;
-  }
-
-  .hero-image img {
-    max-width: 150px;
-  }
-
-  .hero-booking-btn,
-  .hero-explore-btn {
+  
+  /* Buttons base */
+  .heroV2__btn {
+    position: relative;
+    overflow: hidden;
+  
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  
+    min-height: 46px;
+    padding: 12px 28px;
+  
+    border-radius: 14px;
+    font-family: "Tajawal", sans-serif;
+    font-weight: 900;
     font-size: 1rem;
-    padding: 0.55rem 1.4rem;
+  
+    text-decoration: none;
+    cursor: pointer;
+  
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease,
+      color 0.25s ease, border-color 0.25s ease;
+    will-change: transform, box-shadow;
   }
-}
+  
+  /* border sweep */
+  .heroV2__btn::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.2);
+    transition: left 0.35s ease;
+    pointer-events: none;
+    border-radius: 14px;
+  }
+  
+  .heroV2__btn:hover::before {
+    left: 100%;
+  }
+  
+  /* ripple */
+  .heroV2__btn::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.75) 0%, transparent 70%);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  
+  .heroV2__btn:active::after {
+    animation: ripple 0.6s ease-out;
+  }
+  
+  .heroV2__btn:focus-visible {
+    outline: 2px solid var(--hero-primary);
+    outline-offset: 2px;
+  }
+  
+  /* Primary */
+  .heroV2__btn--primary {
+    color: #fff;
+    background: linear-gradient(135deg, var(--hero-primary) 0%, var(--hero-secondary) 100%);
+    box-shadow: 0 10px 28px var(--hero-shadow);
+  }
+  
+  .heroV2__btn--primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 34px var(--hero-shadow);
+  }
+  
+  .heroV2__btn--primary:active {
+    transform: translateY(-1px);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.18);
+  }
+  
+  /* Ghost */
+  .heroV2__btn--ghost {
+    background: rgba(255, 255, 255, 0.55);
+    border: 2px solid rgba(232, 180, 162, 0.7);
+    color: #7a4a37;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.06);
+  }
+  
+  .heroV2__btn--ghost:hover {
+    background: rgba(232, 180, 162, 0.22);
+    transform: translateY(-3px);
+  }
+  
+  /* ====== Scroll indicator (نفس كلاس اللي عندك) ====== */
+  .hero-scroll-indicator {
+    position: absolute;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+  
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  
+    animation: bounce 2s ease-in-out infinite;
+  }
+  
+  .scroll-text {
+    font-size: 0.85rem;
+    color: var(--hero-text);
+    opacity: 0.6;
+    font-weight: 700;
+  }
+  
+  .scroll-arrow {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .scroll-arrow span {
+    display: block;
+    width: 2px;
+    height: 8px;
+    background: var(--hero-primary);
+    border-radius: 2px;
+    animation: slide 1.5s ease-in-out infinite;
+  }
+  
+  .scroll-arrow span:nth-child(2) { animation-delay: 0.2s; }
+  .scroll-arrow span:nth-child(3) { animation-delay: 0.4s; }
+  
+  /* ====== Animations ====== */
+  @keyframes stagger-fade-in {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  
+  @keyframes gradient-shift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  
+  @keyframes ripple {
+    0% { width: 0; height: 0; opacity: 1; }
+    100% { width: 320px; height: 320px; opacity: 0; }
+  }
+  
+  @keyframes bounce {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(10px); }
+  }
+  
+  @keyframes slide {
+    0% { opacity: 0; transform: translateY(-10px); }
+    50% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(10px); }
+  }
+  
+  @keyframes light-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.55; }
+    50% { transform: scale(1.12); opacity: 1; }
+  }
+  
+  /* ====== Responsive ====== */
+  @media (max-width: 1024px) {
+    .heroV2 {
+      
+      min-height: 90svh;
+      padding-top: clamp(92px, var(--header-offset), 130px);
+      padding-inline: 18px;
+      padding-bottom: clamp(44px, 5vh, 70px);
+    }
+  
+    .heroV2__content {
+      max-width: 560px;
+    }
+  
+    .heroV2__desc {
+      font-size: 1rem;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .heroV2__overlay {
+      background: linear-gradient(
+        90deg,
+        rgba(253, 249, 246, 0.62) 0%,
+        rgba(253, 249, 246, 0.45) 48%,
+        rgba(253, 249, 246, 0.12) 80%,
+        rgba(253, 249, 246, 0.00) 100%
+      );
+    }
+  }
+  
+  
+  
+  
+    /* ✅ خلي الجوال نفس الكمبيوتر (يمين/RTL) */
+    .heroV2__actions {
+      justify-content: flex-end;
+    }
+  
+    .heroV2__content {
+      text-align: right;
+      margin: 0;
+    }
+  
+    .heroV2__desc {
+      margin-left: 0;
+      margin-right: 0;
+    }
+  
+    @media (min-width: 1025px) and (max-width: 1440px) {
+      .heroV2 {
+        min-height: 100vh;
+    
+        padding-top: var(--header-offset);
+        padding-inline: 20px;
+        padding-bottom: 70px;
+      }
+    }
+
+    @media (min-width: 1441px) {
+      .heroV2 {
+        min-height: 100vh;
+    
+        padding-top: var(--header-offset);
+        padding-inline: 24px;
+        padding-bottom: 80px;
+      }
+    }
+    
+    @media (min-width: 577px) and (max-width: 1024px) {
+      .heroV2 {
+        min-height: 92vh;
+    
+        padding-top: clamp(100px, var(--header-offset), 130px);
+        padding-inline: 18px;
+        padding-bottom: 40px;
+      }
+    }
+    
+  
+    .heroV2__actions {
+      flex-direction: column;
+      width: 100%;
+      align-items: stretch;
+    }
+  
+    .heroV2__btn {
+      width: 100%;
+    }
+  
+    .hero-scroll-indicator {
+      bottom: 16px;
+    }
+  
+  
+  @media (prefers-reduced-motion: reduce) {
+    .heroV2::after,
+    .hero-scroll-indicator,
+    .scroll-arrow span,
+    .heroV2__title::after,
+    .heroV2__brand,
+    .heroV2__btn::after {
+      animation: none !important;
+    }
+  
+    .heroV2__btn {
+      transition: none !important;
+    }
+  }
+  
+  @media (prefers-color-scheme: dark) {
+    .heroV2__overlay {
+      background: linear-gradient(
+        90deg,
+        rgba(20, 18, 16, 0.86) 0%,
+        rgba(20, 18, 16, 0.70) 44%,
+        rgba(20, 18, 16, 0.25) 72%,
+        rgba(20, 18, 16, 0) 100%
+      );
+    }
+  
+    .heroV2__eyebrow,
+    .heroV2__desc,
+    .scroll-text {
+      color: #ffffffe0;
+    }
+  
+    .heroV2__title {
+      color: #f4e7df;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+  
+    .heroV2__btn--ghost {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(232, 180, 162, 0.6);
+      color: rgba(232, 180, 162, 0.95);
+    }
+  }
+  

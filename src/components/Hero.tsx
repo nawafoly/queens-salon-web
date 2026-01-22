@@ -1,47 +1,53 @@
-import ssunnamed from "../assets/images/ssunnamed.png";
-import { Link } from "react-router-dom";
+// src/components/Hero.tsx
+import { useEffect, useState } from "react";
+
+import heroBg from "../assets/images/malikat_header_v2.png";
 import "../styles/Hero.css";
 
-const Hero = () => {
-  return (
-    <section className="hero-section">
-      <div className="hero-container">
-        <div className="hero-content">
-          
-          {/* Logo / Image */}
-          <div className="hero-image">
-            <img
-              src={ssunnamed}
-              alt="صالون ملكات"
-              className="logo-belak-img"
-            />
-          </div>
+export default function Hero() {
+  const [isVisible, setIsVisible] = useState(false);
 
-          {/* Text Content */}
-          <h1 className="hero-title">
-            مرحباً بكم في صالون ملكات
+  useEffect(() => {
+    setIsVisible(true);
+  }, []);
+
+  return (
+    <section
+      className="heroV2"
+      style={{ backgroundImage: `url(${heroBg})` }}
+      aria-label="هيدر صالون ملكات"
+    >
+      <div className="heroV2__overlay" aria-hidden="true" />
+
+      <div className="heroV2__container">
+        <div className={`heroV2__content ${isVisible ? "is-visible" : ""}`}>
+          <h1 className="heroV2__title">
+            مرحباً بكم
+            <br />
+            في صالون <span className="heroV2__brand">ملكات</span>
           </h1>
 
-          <p className="hero-text">
-            نقدم لكِ أفضل خدمات التجميل والعناية بالبشرة والشعر في مكان واحد.
-            فريقنا من الخبراء يضمن لكِ تجربة فريدة وراقية.
+          <p className="heroV2__desc">
+            تجربة عناية فاخرة للشعر والبشرة والجسم، بخبرة فريق محترف ولمسة راقية
+            تليق بكِ.
           </p>
 
-          {/* Actions */}
-          <div className="hero-buttons">
-            <Link to="/booking" className="hero-booking-btn">
-              احجزي الآن
-            </Link>
 
-            <Link to="/services" className="hero-explore-btn">
-              استكشفي خدماتنا
-            </Link>
-          </div>
+          {/* شريط التمرير (للإشارة إلى المحتوى أسفل) */}
 
         </div>
+        
+      </div>
+      <div>
+      <div className="hero-scroll-indicator">
+            <span className="scroll-text">اسحبي للأسفل</span>
+            <div className="scroll-arrow">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
       </div>
     </section>
   );
-};
-
-export default Hero;
+}

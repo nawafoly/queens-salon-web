@@ -350,4 +350,13 @@ body {
   padding-top: 0 !important;
 }
 
-/* (باقي الكود الطويل حق نظام bs عندك كمله زي ما هو بدون تغيير) */
+/* ✅ FIX: امنع أي سكرول داخلي يخلي الناف يبان ثابت */
+html, body {
+  height: auto !important;
+  overflow-y: auto !important;
+}
+
+#root, .app, .main-content {
+  height: auto !important;
+  overflow: visible !important;
+}

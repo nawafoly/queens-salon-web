@@ -9,7 +9,6 @@ import {
   deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
-
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPlus,
@@ -23,7 +22,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
-import "../styles/DashboardEmployees.css";
+import "../styles/DashboardModals.css";
 
 // ✅ Bookings stats (Owner only)
 import {
@@ -50,10 +49,6 @@ type StaffPublicDoc = {
   specialties: string[];
   bio?: string;
   avatarUrl?: string;
-
-  // ✅ NEW: link staff_public -> real Firebase Auth uid (for Staff Portal + strict rules)
-  linkedUid?: string;
-
   createdAt?: any;
   updatedAt?: any;
 };
@@ -140,7 +135,8 @@ export default function DashboardEmployees() {
 
   // Filters
   const [qText, setQText] = useState("");
-  const [onlyActive, setOnlyActive] = useState<"all" | "active" | "inactive">("all");
+  const [onlyActive, setOnlyActive] =
+    useState<"all" | "active" | "inactive">("all");
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
 
   // Modal
@@ -154,9 +150,6 @@ export default function DashboardEmployees() {
   const [active, setActive] = useState(true);
   const [specialties, setSpecialties] = useState<string[]>([]);
 
-  // ✅ NEW
-  const [linkedUid, setLinkedUid] = useState("");
-
   const resetForm = () => {
     setEditId(null);
     setName("");
@@ -164,7 +157,6 @@ export default function DashboardEmployees() {
     setAvatarUrl("");
     setActive(true);
     setSpecialties([]);
-    setLinkedUid(""); // ✅ NEW
   };
 
   const openCreate = () => {
@@ -179,10 +171,6 @@ export default function DashboardEmployees() {
     setAvatarUrl(x.avatarUrl ?? "");
     setActive(!!x.active);
     setSpecialties(normalizeSpecialties(x.specialties));
-
-    // ✅ NEW
-    setLinkedUid(String((x as any)?.linkedUid ?? "").trim());
-
     setIsOpen(true);
   };
 
@@ -209,10 +197,6 @@ export default function DashboardEmployees() {
           specialties: normalizeSpecialties(data?.specialties),
           bio: data?.bio ?? "",
           avatarUrl: data?.avatarUrl ?? "",
-
-          // ✅ NEW
-          linkedUid: String(data?.linkedUid ?? "").trim(),
-
           createdAt: data?.createdAt,
           updatedAt: data?.updatedAt,
         };
@@ -234,7 +218,7 @@ export default function DashboardEmployees() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Owner-only: compute booking counts per staff_public doc
+  // ✅ Owner-only: compute booking counts per staff (by id OR strict name match)
   useEffect(() => {
     let alive = true;
 
@@ -274,7 +258,7 @@ export default function DashboardEmployees() {
           const eid = String((b as any).employeeId || "").trim();
           const ename = String((b as any).employeeName || "").trim();
 
-          // 1) match by employeeId (staff_public.id)
+          // 1) match by employeeId (if staff_public.id is linked to uid in future)
           let staffId: string | null = null;
           if (eid && staffById.has(eid)) staffId = eid;
 
@@ -337,10 +321,6 @@ export default function DashboardEmployees() {
       specialties,
       bio: bio.trim(),
       avatarUrl: avatarUrl.trim(),
-
-      // ✅ NEW
-      linkedUid: linkedUid.trim() || undefined,
-
       updatedAt: serverTimestamp(),
     };
 
@@ -416,7 +396,7 @@ export default function DashboardEmployees() {
   ========================= */
   if (!authUser) {
     return (
-      <div className="dashboard-page employees-page">
+      <div className="dashboard-page">
         <div className="container">
           <div className="dash-card">
             <h3>غير مصرح</h3>
@@ -429,7 +409,7 @@ export default function DashboardEmployees() {
 
   if (!canManage) {
     return (
-      <div className="dashboard-page employees-page">
+      <div className="dashboard-page">
         <div className="container">
           <div className="dash-card">
             <h3>صلاحيات غير كافية</h3>
@@ -444,7 +424,7 @@ export default function DashboardEmployees() {
      Render
   ========================= */
   return (
-    <div className="dashboard-page employees-page">
+    <div className="dashboard-page">
       <div className="container">
         <div className="dash-topbar dash-topbar--sticky">
           <div className="dash-topbar-title">
@@ -476,16 +456,16 @@ export default function DashboardEmployees() {
 
         {/* Filters */}
         <div className="dash-card">
-          <div className="dash-row emp-filters">
+          <div className="dash-row">
             <input
-              className="dash-input emp-input"
+              className="dash-input"
               placeholder="بحث بالاسم أو النبذة..."
               value={qText}
               onChange={(e) => setQText(e.target.value)}
             />
 
             <select
-              className="dash-select emp-input"
+              className="dash-select"
               value={onlyActive}
               onChange={(e) => setOnlyActive(e.target.value as any)}
             >
@@ -495,7 +475,7 @@ export default function DashboardEmployees() {
             </select>
 
             <select
-              className="dash-select emp-input"
+              className="dash-select"
               value={specialtyFilter}
               onChange={(e) => setSpecialtyFilter(e.target.value)}
             >
@@ -513,7 +493,8 @@ export default function DashboardEmployees() {
             {authUser.role === "owner" && (
               <>
                 {" "}
-                • إحصائيات الحجوزات: <b>{statsLoading ? "..." : "جاهزة"}</b>
+                • إحصائيات الحجوزات:{" "}
+                <b>{statsLoading ? "..." : "جاهزة"}</b>
               </>
             )}
           </div>
@@ -540,18 +521,10 @@ export default function DashboardEmployees() {
                   </div>
 
                   <div className="staff-actions">
-                    <button
-                      className="exp-btn ghost"
-                      onClick={() => openEdit(x)}
-                      type="button"
-                    >
+                    <button className="exp-btn ghost" onClick={() => openEdit(x)} type="button">
                       <FontAwesomeIcon icon={faPen} /> تعديل
                     </button>
-                    <button
-                      className="exp-btn danger"
-                      onClick={() => remove(x.id)}
-                      type="button"
-                    >
+                    <button className="exp-btn danger" onClick={() => remove(x.id)} type="button">
                       <FontAwesomeIcon icon={faTrash} /> حذف
                     </button>
                   </div>
@@ -570,7 +543,11 @@ export default function DashboardEmployees() {
                   </div>
                 ) : null}
 
-                {x.bio ? <div className="staff-bio">{x.bio}</div> : <div className="staff-bio muted">بدون نبذة</div>}
+                {x.bio ? (
+                  <div className="staff-bio">{x.bio}</div>
+                ) : (
+                  <div className="staff-bio muted">بدون نبذة</div>
+                )}
 
                 <div className="staff-chips">
                   {normalizeSpecialties(x.specialties).map((s) => {
@@ -583,62 +560,47 @@ export default function DashboardEmployees() {
                   })}
                 </div>
 
-                {/* ✅ NEW: show link status */}
-                <div className="emp-stats" style={{ marginTop: 10 }}>
-                  <div className="emp-stats-row">
-                    <span className="staff-pill" style={{ background: "rgba(0,0,0,0.04)" }}>
-                      UID مربوط:
-                      <b style={{ marginInlineStart: 6 }} dir="ltr">
-                        {String((x as any)?.linkedUid || "").trim() ? "نعم" : "لا"}
-                      </b>
-                    </span>
-                  </div>
-                  <div className="emp-stats-hint">
-                    * ربط UID ضروري لظهور حجوزات الموظفة في لوحة الموظفة (Staff Portal).
-                  </div>
-                </div>
-
                 {/* ✅ Owner-only booking stats */}
                 {authUser?.role === "owner" && (
-                  <div className="emp-stats">
-                    <div className="emp-stats-row">
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <span className="staff-pill" style={{ background: "rgba(0,0,0,0.04)" }}>
-                        الحجوزات:
+                        الحجوزات:{" "}
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.total ?? 0)}
                         </b>
                       </span>
 
                       <span className="staff-pill" style={{ background: "rgba(16, 185, 129, 0.10)" }}>
-                        مؤكد:
+                        مؤكد:{" "}
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.confirmed ?? 0)}
                         </b>
                       </span>
 
                       <span className="staff-pill" style={{ background: "rgba(245, 158, 11, 0.12)" }}>
-                        انتظار:
+                        انتظار:{" "}
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.pending ?? 0)}
                         </b>
                       </span>
 
                       <span className="staff-pill" style={{ background: "rgba(99, 102, 241, 0.10)" }}>
-                        مكتمل:
+                        مكتمل:{" "}
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.completed ?? 0)}
                         </b>
                       </span>
 
                       <span className="staff-pill" style={{ background: "rgba(239, 68, 68, 0.10)" }}>
-                        ملغي:
+                        ملغي:{" "}
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.cancelled ?? 0)}
                         </b>
                       </span>
                     </div>
 
-                    <div className="emp-stats-hint">
+                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
                       * تُحسب الإحصائيات عبر (employeeId) إن تطابق، وإلا مطابقة الاسم بعد التطبيع.
                     </div>
                   </div>
@@ -705,21 +667,6 @@ export default function DashboardEmployees() {
                     placeholder="https://..."
                     dir="ltr"
                   />
-                </div>
-
-                {/* ✅ NEW: linkedUid field */}
-                <div className="dash-field">
-                  <label>UID حساب الموظفة (للربط مع لوحة الموظفة)</label>
-                  <input
-                    className="dash-input"
-                    value={linkedUid}
-                    onChange={(e) => setLinkedUid(e.target.value)}
-                    placeholder="مثال: vzshxghsaHb5GI7cWgDTfZ5b6g13"
-                    dir="ltr"
-                  />
-                  <div style={{ marginTop: 6, color: "#666", fontSize: 12 }}>
-                    هذا لازم يكون UID الحقيقي من Firebase Auth، وليس ID الخاص بـ staff_public.
-                  </div>
                 </div>
 
                 <div className="dash-field">

@@ -398,6 +398,7 @@ async function safeResolveServiceName(key: string): Promise<string> {
 }
 
 async function enrichBookingsServiceNames(list: Booking[]): Promise<Booking[]> {
+  // resolve using serviceId first, fallback to current serviceName
   const out = await Promise.all(
     list.map(async (b) => {
       const key = String(b.serviceId || b.serviceName || "").trim();
@@ -460,9 +461,6 @@ const DashboardBookings = () => {
   // ✅ role + settings
   const [uiRole, setUiRole] = useState<UiRole>(() => getUiRole());
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
-
-  // ✅ responsive (NO internal table scroll)
-  const [isMobile, setIsMobile] = useState(false);
 
   // ✅ data
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -561,28 +559,6 @@ const DashboardBookings = () => {
   const me = useMemo(() => getAuthUserSafe(), [uiRole]);
 
   /* =========================
-     Responsive watcher
-  ========================= */
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 860px)");
-    const apply = () => setIsMobile(!!mq.matches);
-    apply();
-
-    // modern browsers
-    if (typeof mq.addEventListener === "function") {
-      mq.addEventListener("change", apply);
-      return () => mq.removeEventListener("change", apply);
-    }
-
-    // fallback
-    // @ts-ignore
-    mq.addListener(apply);
-    // @ts-ignore
-    return () => mq.removeListener(apply);
-  }, []);
-
-  /* =========================
      Data loading
   ========================= */
 
@@ -611,40 +587,34 @@ const DashboardBookings = () => {
         const fresh = withNames.find((x) => x.id === prev.id);
         return fresh ?? prev;
       });
-    } catch (e: any) {
-      console.error("Failed to load bookings from Firestore:", e);
+} catch (e: any) {
+  console.error("Failed to load bookings from Firestore:", e);
 
-      const code = String(e?.code || e?.name || "").toLowerCase();
-      const msg = String(e?.message || "");
-      const m = msg.toLowerCase();
+  const code = String(e?.code || e?.name || "").toLowerCase();
+  const msg = String(e?.message || "");
 
-      if (
-        m.includes("missing or insufficient permissions") ||
-        code.includes("permission-denied")
-      ) {
-        setLoadError(
-          "⚠️ لا توجد صلاحيات كافية لعرض الحجوزات (permission-denied). تأكد من Firestore Rules وأن الحساب مسجّل دخول بالرول الصحيح."
-        );
-      } else if (
-        code.includes("unavailable") ||
-        m.includes("failed to get document") ||
-        m.includes("network")
-      ) {
-        setLoadError(
-          "⚠️ تعذر الاتصال بـ Firestore (Network/Unavailable). جرّب تحديث الصفحة أو تأكد من الإنترنت."
-        );
-      } else if (code.includes("not-found") || m.includes("not found")) {
-        setLoadError(
-          "⚠️ المسار غير موجود أو Collection غلط. تأكد أن listAllBookings() يقرأ من نفس مسار الحجوزات الصحيح."
-        );
-      } else {
-        setLoadError(`⚠️ تعذر تحميل الحجوزات.${msg ? ` تفاصيل: ${msg}` : ""}`);
-      }
+  // ✅ DEBUG: show exact error to know if rules/path issue
+  alert(`❌ Firestore Load Error\ncode: ${code || "-"}\nmsg: ${msg || "-"}`);
 
-      setBookings([]);
-    } finally {
-      setLoading(false);
-    }
+  const m = msg.toLowerCase();
+
+  if (m.includes("missing or insufficient permissions") || code.includes("permission-denied")) {
+    setLoadError(
+      "⚠️ لا توجد صلاحيات كافية لعرض الحجوزات (permission-denied). تأكد من Firestore Rules وأن الحساب مسجّل دخول بالرول الصحيح."
+    );
+  } else if (code.includes("unavailable") || m.includes("failed to get document") || m.includes("network")) {
+    setLoadError("⚠️ تعذر الاتصال بـ Firestore (Network/Unavailable). جرّب تحديث الصفحة أو تأكد من الإنترنت.");
+  } else if (code.includes("not-found") || m.includes("not found")) {
+    setLoadError("⚠️ المسار غير موجود أو Collection غلط. تأكد أن listAllBookings() يقرأ من نفس مسار الحجوزات الصحيح.");
+  } else {
+    setLoadError(`⚠️ تعذر تحميل الحجوزات.\n${msg ? `تفاصيل: ${msg}` : ""}`);
+  }
+
+  setBookings([]);
+} finally {
+  setLoading(false);
+}
+
   };
 
   /* =========================
@@ -1281,212 +1251,123 @@ const DashboardBookings = () => {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="مثال: نورة أو 05xxxxxxx"
               />
+
+              <button className="reports-btn" type="button" onClick={refresh}>
+                <FontAwesomeIcon icon={faRotate} /> تحديث
+              </button>
             </div>
           </div>
 
           {/* Actions */}
           <div className="bk-actions">
-            <button className="reports-btn" type="button" onClick={refresh} disabled={loading}>
-              <FontAwesomeIcon icon={faRotate} /> تحديث
-            </button>
-
             <button className="reports-btn" type="button" onClick={setToday}>
-            <FontAwesomeIcon icon={faCircleInfo} /> اليوم
+              اليوم
             </button>
 
-            <button
-              className="reports-btn outline"
-              type="button"
-              onClick={resetFilters}
-              disabled={loading}
-            >
-              <FontAwesomeIcon icon={faXmark} /> تصفير
-            </button>
-
-            <button
-              className="reports-btn primary"
-              type="button"
-              onClick={openCreate}
-              disabled={loading}
-            >
-              + إنشاء حجز
+            <button className="reports-btn" type="button" onClick={resetFilters}>
+              تصفير
             </button>
 
             <button
               className="reports-btn"
               type="button"
-              onClick={exportCSV}
-              disabled={loading || !canExportCSV}
-              title={!canExportCSV ? "التصدير متاح للمالك/المدير فقط" : "تصدير CSV"}
+              onClick={openCreate}
+              disabled={!canEditStatus}
+              title={!canEditStatus ? "لا تملك صلاحية الإنشاء" : "إنشاء حجز"}
             >
-              <FontAwesomeIcon icon={faFileCsv} /> تصدير
+              + إنشاء حجز
             </button>
-          </div>
-        </div>
 
-        {/* Stats */}
-        <div className="bk-stats">
-          <div className="bk-stat">
-            <div className="bk-stat-title">عدد الحجوزات</div>
-            <div className="bk-stat-val">{stats.totalBookings}</div>
-          </div>
-
-          <div className="bk-stat">
-            <div className="bk-stat-title">الإجمالي</div>
-            <div className="bk-stat-val">
-              {stats.totalRevenue.toLocaleString("ar-SA")}
-            </div>
-          </div>
-
-          <div className="bk-stat">
-            <div className="bk-stat-title">مؤكد</div>
-            <div className="bk-stat-val">{stats.dist.confirmed}</div>
-          </div>
-
-          <div className="bk-stat">
-            <div className="bk-stat-title">انتظار</div>
-            <div className="bk-stat-val">{stats.dist.pending}</div>
-          </div>
-
-          <div className="bk-stat">
-            <div className="bk-stat-title">ملغي</div>
-            <div className="bk-stat-val">{stats.dist.cancelled}</div>
-          </div>
-
-          <div className="bk-stat">
-            <div className="bk-stat-title">مكتمل</div>
-            <div className="bk-stat-val">{stats.dist.completed}</div>
+            {canExportCSV && (
+              <button
+                className="reports-btn"
+                type="button"
+                onClick={exportCSV}
+                disabled={loading}
+                title="تصدير CSV"
+              >
+                <FontAwesomeIcon icon={faFileCsv} /> CSV
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="bk-content">
-        {loading ? (
-          <div className="bk-loading">جارٍ التحميل...</div>
-        ) : filtered.length === 0 ? (
-          <div className="bk-empty">لا توجد حجوزات مطابقة للفلترة الحالية.</div>
-        ) : (
-          <>
-            {/* ✅ Mobile cards (NO table internal scroll) */}
-            {isMobile ? (
-              <div className="bk-cards">
-                {filtered.map((b) => (
-                  <div key={b.id} className="bk-card">
-                    <div className="bk-card-top">
-                      <div className="bk-card-title">
-                        <span className="bk-card-name">
-                          {b.customerName || "—"}
-                        </span>
-                        <StatusDot status={b.status} />
-                      </div>
+      {/* Stats */}
+      <div className="bookings-header" style={{ marginTop: 0 }}>
+        <div className="clients-stats" style={{ margin: 0 }}>
+          <div className="stat-card stat-3">
+            <div className="stat-info">
+              <h3 className="value">{stats.totalBookings}</h3>
+              <p>عدد الحجوزات (بعد الفلترة)</p>
+            </div>
+          </div>
 
-                      <button
-                        type="button"
-                        className="bk-card-open"
-                        onClick={() => openDetails(b)}
-                        title="عرض التفاصيل"
-                      >
-                        <FontAwesomeIcon icon={faCircleInfo} />
-                      </button>
-                    </div>
+          <div className="stat-card stat-3">
+            <div className="stat-info">
+              <h3 className="value">{stats.totalRevenue.toLocaleString()}</h3>
+              <p>إجمالي الإيراد</p>
+            </div>
+          </div>
 
-                    <div className="bk-card-grid">
-                      <div className="bk-card-item">
-                        <span className="k">الجوال</span>
-                        <span className="v">{getBookingPhone(b) || "—"}</span>
-                      </div>
+          <div className="stat-card stat-6">
+            <div className="stat-info">
+              <h3 className="value1">
+                مؤكد: {stats.dist.confirmed} — انتظار: {stats.dist.pending} — ملغي:{" "}
+                {stats.dist.cancelled} — مكتمل: {stats.dist.completed}
+              </h3>
+              <p>توزيع الحالات</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
-                      <div className="bk-card-item">
-                        <span className="k">الخدمة</span>
-                        <span className="v">{b.serviceName || "—"}</span>
-                      </div>
+      {/* Table */}
+      <div className="bookings-table-card">
+        <div className="bk-table-wrap">
+          <div className="table-responsive">
+            <table className="bookings-table">
+              <thead>
+                <tr>
+                  <th>العميلة</th>
+                  <th>الجوال</th>
+                  <th>الخدمة</th>
+                  <th>الموظفة</th>
+                  <th>التاريخ</th>
+                  <th>الوقت</th>
+                  <th>الحالة</th>
+                  <th>الإجمالي</th>
+                  <th>إجراء</th>
+                </tr>
+              </thead>
 
-                      <div className="bk-card-item">
-                        <span className="k">الموظفة</span>
-                        <span className="v">{b.employeeName || "—"}</span>
-                      </div>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={9} style={{ padding: 16, textAlign: "center" }}>
+                      جاري التحميل...
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={{ padding: 16, textAlign: "center" }}>
+                      لا توجد نتائج
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((b) => (
+                    <tr key={b.id}>
+                      <td>{b.customerName || "—"}</td>
+                      <td>{getBookingPhone(b) || "—"}</td>
+                      <td>{b.serviceName || b.serviceId || "—"}</td>
+                      <td>{b.employeeName || "—"}</td>
+                      <td>{b.date || "—"}</td>
+                      <td>{b.time || "—"}</td>
 
-                      <div className="bk-card-item">
-                        <span className="k">التاريخ</span>
-                        <span className="v">{b.date || "—"}</span>
-                      </div>
-
-                      <div className="bk-card-item">
-                        <span className="k">الوقت</span>
-                        <span className="v">{b.time || "—"}</span>
-                      </div>
-
-                      <div className="bk-card-item">
-                        <span className="k">الإجمالي</span>
-                        <span className="v">
-                          {getBookingTotal(b)
-                            ? getBookingTotal(b).toLocaleString("ar-SA")
-                            : "—"}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* status quick change (only if allowed) */}
-                    {canEditStatus && (
-                      <div className="bk-card-actions">
-                        {(
-                          ["confirmed", "pending", "cancelled", "completed"] as BookingStatus[]
-                        ).map((s) => (
-                          <button
-                            key={s}
-                            type="button"
-                            className={`bk-chip ${b.status === s ? "is-active" : ""}`}
-                            onClick={() => changeStatus(b.id, s)}
-                          >
-                            {statusLabel[s]}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* notes preview */}
-                    {canEditNotes && (
-                      <div className="bk-card-note">
-                        <span className="k">ملاحظة</span>
-                        <span className="v">
-                          {getAdminNote(b.id)?.trim() ? getAdminNote(b.id) : "—"}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              /* ✅ Desktop table (page scroll only) */
-              <div className="bk-table">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>العميلة</th>
-                      <th>الجوال</th>
-                      <th>الخدمة</th>
-                      <th>الموظفة</th>
-                      <th>التاريخ</th>
-                      <th>الوقت</th>
-                      <th>الحالة</th>
-                      <th>الإجمالي</th>
-                      <th>إجراءات</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {filtered.map((b) => (
-                      <tr key={b.id}>
-                        <td>{b.customerName || "—"}</td>
-                        <td>{getBookingPhone(b) || "—"}</td>
-                        <td>{b.serviceName || "—"}</td>
-                        <td>{b.employeeName || "—"}</td>
-                        <td>{b.date || "—"}</td>
-                        <td>{b.time || "—"}</td>
-
-                        <td>
-                          {/* inline status dropdown (custom) */}
+                      <td>
+                        {!canEditStatus ? (
+                          <StatusDot status={b.status} />
+                        ) : (
                           <div
                             className="dash-dd-wrap"
                             ref={(el) => {
@@ -1495,16 +1376,16 @@ const DashboardBookings = () => {
                           >
                             <button
                               type="button"
-                              className={`bk-status-btn ${!canEditStatus ? "is-readonly" : ""}`}
-                              onClick={() => {
-                                if (!canEditStatus) return;
-                                setRowStatusOpenId((prev) => (prev === b.id ? null : b.id));
-                              }}
+                              className="dash-select dash-select--sm"
+                              onClick={() =>
+                                setRowStatusOpenId((prev) => (prev === b.id ? null : b.id))
+                              }
+                              aria-expanded={rowStatusOpenId === b.id}
                             >
-                              <StatusDot status={b.status} />
+                              {statusLabel[b.status] ?? b.status}
                             </button>
 
-                            {rowStatusOpenId === b.id && canEditStatus && (
+                            {rowStatusOpenId === b.id && (
                               <div className="dash-dd-menu" role="listbox">
                                 {(
                                   ["confirmed", "pending", "cancelled", "completed"] as BookingStatus[]
@@ -1517,6 +1398,8 @@ const DashboardBookings = () => {
                                       setRowStatusOpenId(null);
                                       changeStatus(b.id, s);
                                     }}
+                                    role="option"
+                                    aria-selected={b.status === s}
                                   >
                                     {statusLabel[s]}
                                   </button>
@@ -1524,345 +1407,359 @@ const DashboardBookings = () => {
                               </div>
                             )}
                           </div>
-                        </td>
+                        )}
+                      </td>
 
-                        <td>
-                          {getBookingTotal(b)
-                            ? getBookingTotal(b).toLocaleString("ar-SA")
-                            : "—"}
-                        </td>
+                      <td>
+                        {getBookingTotal(b) ? getBookingTotal(b).toLocaleString() : "—"}
+                      </td>
 
-                        <td>
-                          <div className="bk-row-actions">
-                            <button
-                              type="button"
-                              className="bk-icon-btn"
-                              onClick={() => openDetails(b)}
-                              title="عرض التفاصيل"
-                            >
-                              <FontAwesomeIcon icon={faCircleInfo} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
+                      <td>
+                        <div className="bk-actions-cell">
+                          <button
+                            className="reports-btn"
+                            type="button"
+                            onClick={() => openDetails(b)}
+                            title="تفاصيل"
+                          >
+                            <FontAwesomeIcon icon={faCircleInfo} /> تفاصيل
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
-      {/* =========================
-          Create Booking Modal
-      ========================= */}
-      <Modal open={createOpen} title="إنشاء حجز جديد" onClose={closeCreate}>
-        <div className="bk-modal-grid">
-          {createError && <div className="bk-modal-error">{createError}</div>}
+      {/* Create Booking Modal */}
+      <Modal open={createOpen} title="إنشاء حجز (Dashboard)" onClose={closeCreate}>
+        <div style={{ display: "grid", gap: 10 }}>
+          {createError && <div className="bookings-error">{createError}</div>}
 
-          <div className="bk-field">
+          <div style={{ display: "grid", gap: 8 }}>
             <label>اسم العميلة</label>
             <input
               className="form-control"
               value={form.clientName}
               onChange={(e) => setField("clientName", e.target.value)}
               placeholder="مثال: نورة"
+              disabled={creating}
             />
           </div>
 
-          <div className="bk-field">
-            <label>رقم الجوال</label>
+          <div style={{ display: "grid", gap: 8 }}>
+            <label>جوال العميلة</label>
             <input
               className="form-control"
               value={form.clientPhone}
               onChange={(e) => setField("clientPhone", e.target.value)}
               placeholder="05xxxxxxxx"
+              disabled={creating}
             />
           </div>
 
-          <div className="bk-field">
+          <div style={{ display: "grid", gap: 8 }}>
             <label>الخدمة</label>
             <input
               className="form-control"
               value={form.serviceName}
               onChange={(e) => setField("serviceName", e.target.value)}
-              placeholder="اسم الخدمة"
+              placeholder="مثال: قص الشعر"
+              disabled={creating}
             />
           </div>
 
-          <div className="bk-field">
+          <div style={{ display: "grid", gap: 8 }}>
             <label>الموظفة</label>
             <input
               className="form-control"
               value={form.employeeName}
               onChange={(e) => setField("employeeName", e.target.value)}
-              placeholder="اسم الموظفة"
+              placeholder="مثال: خديجة"
+              disabled={creating}
             />
           </div>
 
-          <div className="bk-field">
-            <label>التاريخ</label>
-            <input
-              className="form-control"
-              type="date"
-              value={form.date}
-              onChange={(e) => setField("date", e.target.value)}
-            />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ display: "grid", gap: 8 }}>
+              <label>التاريخ</label>
+              <input
+                className="form-control"
+                type="date"
+                value={form.date}
+                onChange={(e) => setField("date", e.target.value)}
+                disabled={creating}
+              />
+            </div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              <label>الوقت</label>
+              <input
+                className="form-control"
+                value={form.time}
+                onChange={(e) => setField("time", e.target.value)}
+                placeholder="مثال: 18:00"
+                disabled={creating}
+              />
+            </div>
           </div>
 
-          <div className="bk-field">
-            <label>الوقت</label>
-            <input
-              className="form-control"
-              value={form.time}
-              onChange={(e) => setField("time", e.target.value)}
-              placeholder="مثال: 18:30"
-            />
-          </div>
-
-          <div className="bk-field">
-            <label>الإجمالي</label>
+          <div style={{ display: "grid", gap: 8 }}>
+            <label>الإجمالي (اختياري)</label>
             <input
               className="form-control"
               value={form.total}
               onChange={(e) => setField("total", e.target.value)}
-              placeholder="0"
+              placeholder="مثال: 200"
+              disabled={creating}
             />
           </div>
 
-          <div className="bk-field">
+          <div style={{ display: "grid", gap: 8 }}>
             <label>ملاحظة (اختياري)</label>
             <textarea
               className="form-control"
               value={form.note}
               onChange={(e) => setField("note", e.target.value)}
-              placeholder="ملاحظة داخلية..."
-              rows={3}
+              placeholder="مثال: حجز VIP"
+              disabled={creating}
+              style={{ minHeight: 90, resize: "vertical" }}
             />
           </div>
 
-          <div className="bk-modal-actions">
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <button
+              className="reports-btn"
               type="button"
-              className="reports-btn outline"
               onClick={closeCreate}
               disabled={creating}
             >
               إلغاء
             </button>
-
             <button
+              className="reports-btn"
               type="button"
-              className="reports-btn primary"
               onClick={handleCreateBooking}
               disabled={creating}
             >
-              {creating ? "جاري الإنشاء..." : "إنشاء"}
+              {creating ? "جارٍ الإنشاء..." : "إنشاء"}
             </button>
           </div>
         </div>
       </Modal>
 
-      {/* =========================
-          Details + Edit Modal
-      ========================= */}
+      {/* Details / Edit Modal */}
       <Modal
         open={!!selected}
-        title={editMode ? "تعديل الحجز" : "تفاصيل الحجز"}
+        title={selected ? `تفاصيل الحجز — ${selected.customerName || "—"}` : "تفاصيل"}
         onClose={closeDetails}
       >
-        {selected && (
-          <div className="bk-details">
-            {editError && <div className="bk-modal-error">{editError}</div>}
+        {!selected ? null : (
+          <div>
+            {/* Top actions */}
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                marginBottom: 12,
+              }}
+            >
+              <button
+                className="reports-btn"
+                type="button"
+                onClick={() => setEditMode((s) => !s)}
+                disabled={!canEditStatus || savingEdit}
+                title={!canEditStatus ? "لا تملك صلاحية التعديل" : "تعديل"}
+              >
+                {editMode ? "إلغاء التعديل" : "تعديل الحجز"}
+              </button>
 
-            <div className="bk-details-grid">
-              <div className="bk-field">
-                <label>اسم العميلة</label>
-                <input
-                  className="form-control"
-                  value={editForm.customerName}
-                  onChange={(e) => setEditField("customerName", e.target.value)}
-                  disabled={!editMode}
-                />
-              </div>
+              {/* Modal status */}
+              <div className="dash-dd-wrap" ref={modalStatusWrapRef}>
+                <button
+                  type="button"
+                  className="dash-select dash-select--sm"
+                  onClick={() => canEditStatus && setModalStatusOpen((s) => !s)}
+                  aria-expanded={modalStatusOpen}
+                  disabled={!canEditStatus}
+                  title={!canEditStatus ? "لا تملك صلاحية تغيير الحالة" : "تغيير الحالة"}
+                >
+                  {statusLabel[selected.status] ?? selected.status}
+                </button>
 
-              <div className="bk-field">
-                <label>رقم الجوال</label>
-                <input
-                  className="form-control"
-                  value={editForm.phone}
-                  onChange={(e) => setEditField("phone", e.target.value)}
-                  disabled={!editMode}
-                />
-              </div>
-
-              <div className="bk-field">
-                <label>الخدمة</label>
-                <input
-                  className="form-control"
-                  value={editForm.serviceName}
-                  onChange={(e) => setEditField("serviceName", e.target.value)}
-                  disabled={!editMode}
-                />
-              </div>
-
-              <div className="bk-field">
-                <label>الموظفة</label>
-                <input
-                  className="form-control"
-                  value={editForm.employeeName}
-                  onChange={(e) => setEditField("employeeName", e.target.value)}
-                  disabled={!editMode}
-                />
-              </div>
-
-              <div className="bk-field">
-                <label>التاريخ</label>
-                <input
-                  className="form-control"
-                  type="date"
-                  value={editForm.date}
-                  onChange={(e) => setEditField("date", e.target.value)}
-                  disabled={!editMode}
-                />
-              </div>
-
-              <div className="bk-field">
-                <label>الوقت</label>
-                <input
-                  className="form-control"
-                  value={editForm.time}
-                  onChange={(e) => setEditField("time", e.target.value)}
-                  disabled={!editMode}
-                />
-              </div>
-
-              <div className="bk-field">
-                <label>الإجمالي</label>
-                <input
-                  className="form-control"
-                  value={editForm.total}
-                  onChange={(e) => setEditField("total", e.target.value)}
-                  disabled={!editMode}
-                />
-              </div>
-
-              <div className="bk-field">
-                <label>الحالة</label>
-
-                <div className="dash-dd-wrap" ref={modalStatusWrapRef}>
-                  <button
-                    type="button"
-                    className={`bk-select ${!canEditStatus ? "is-readonly" : ""}`}
-                    onClick={() => {
-                      if (!canEditStatus) return;
-                      setModalStatusOpen((s) => !s);
-                    }}
-                  >
-                    {statusLabel[selected.status] ?? selected.status}
-                  </button>
-
-                  {modalStatusOpen && canEditStatus && (
-                    <div className="dash-dd-menu" role="listbox">
-                      {(
-                        ["confirmed", "pending", "cancelled", "completed"] as BookingStatus[]
-                      ).map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          className={`dash-dd-item ${
-                            selected.status === s ? "is-active" : ""
-                          }`}
-                          onClick={() => {
-                            setModalStatusOpen(false);
-                            changeStatus(selected.id, s);
-                          }}
-                        >
-                          {statusLabel[s]}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div className="bk-field bk-field-full">
-                <label>ملاحظة إدارية</label>
-                <textarea
-                  className="form-control"
-                  rows={3}
-                  value={getAdminNote(selected.id)}
-                  onChange={(e) => saveAdminNote(selected.id, e.target.value)}
-                  disabled={!canEditNotes}
-                  placeholder={
-                    canEditNotes ? "اكتب ملاحظة داخلية..." : "غير مسموح"
-                  }
-                />
+                {canEditStatus && modalStatusOpen && (
+                  <div className="dash-dd-menu" role="listbox">
+                    {(
+                      ["confirmed", "pending", "cancelled", "completed"] as BookingStatus[]
+                    ).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`dash-dd-item ${selected.status === s ? "is-active" : ""}`}
+                        onClick={() => {
+                          setModalStatusOpen(false);
+                          changeStatus(selected.id, s);
+                        }}
+                        role="option"
+                        aria-selected={selected.status === s}
+                      >
+                        {statusLabel[s]}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Footer actions */}
-            <div className="bk-modal-actions">
-              {!editMode ? (
-                <>
-                  <button
-                    type="button"
-                    className="reports-btn outline"
-                    onClick={closeDetails}
-                    disabled={savingEdit}
-                  >
-                    إغلاق
-                  </button>
+            {editError && <div className="bookings-error">{editError}</div>}
 
-                  {canEditStatus && (
-                    <button
-                      type="button"
-                      className="reports-btn primary"
-                      onClick={() => setEditMode(true)}
-                      disabled={savingEdit}
-                    >
-                      تعديل
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="reports-btn outline"
-                    onClick={() => {
-                      if (savingEdit) return;
-                      // reset form to current selected
-                      setEditForm({
-                        customerName: String(selected.customerName ?? ""),
-                        phone: String(getBookingPhone(selected) ?? ""),
-                        serviceName: String(
-                          selected.serviceName ?? selected.serviceId ?? ""
-                        ),
-                        employeeName: String(selected.employeeName ?? ""),
-                        date: String(selected.date ?? ""),
-                        time: String(selected.time ?? ""),
-                        total: String(getBookingTotal(selected) || ""),
-                      });
-                      setEditMode(false);
-                      setEditError("");
-                    }}
+            {/* Details grid */}
+            <div className="bk-details-grid">
+              <div className="bk-item">
+                <strong>العميلة</strong>
+                {!editMode ? (
+                  <span>{selected.customerName || "—"}</span>
+                ) : (
+                  <input
+                    className="form-control"
+                    value={editForm.customerName}
+                    onChange={(e) => setEditField("customerName", e.target.value)}
                     disabled={savingEdit}
-                  >
-                    إلغاء
-                  </button>
+                  />
+                )}
+              </div>
 
+              <div className="bk-item">
+                <strong>الجوال</strong>
+                {!editMode ? (
+                  <span>{getBookingPhone(selected) || "—"}</span>
+                ) : (
+                  <input
+                    className="form-control"
+                    value={editForm.phone}
+                    onChange={(e) => setEditField("phone", e.target.value)}
+                    disabled={savingEdit}
+                  />
+                )}
+              </div>
+
+              <div className="bk-item">
+                <strong>الخدمة</strong>
+                {!editMode ? (
+                  <span>{selected.serviceName || selected.serviceId || "—"}</span>
+                ) : (
+                  <input
+                    className="form-control"
+                    value={editForm.serviceName}
+                    onChange={(e) => setEditField("serviceName", e.target.value)}
+                    disabled={savingEdit}
+                  />
+                )}
+              </div>
+
+              <div className="bk-item">
+                <strong>الموظفة</strong>
+                {!editMode ? (
+                  <span>{selected.employeeName || "—"}</span>
+                ) : (
+                  <input
+                    className="form-control"
+                    value={editForm.employeeName}
+                    onChange={(e) => setEditField("employeeName", e.target.value)}
+                    disabled={savingEdit}
+                  />
+                )}
+              </div>
+
+              <div className="bk-item">
+                <strong>التاريخ</strong>
+                {!editMode ? (
+                  <span>{selected.date || "—"}</span>
+                ) : (
+                  <input
+                    className="form-control"
+                    type="date"
+                    value={editForm.date}
+                    onChange={(e) => setEditField("date", e.target.value)}
+                    disabled={savingEdit}
+                  />
+                )}
+              </div>
+
+              <div className="bk-item">
+                <strong>الوقت</strong>
+                {!editMode ? (
+                  <span>{selected.time || "—"}</span>
+                ) : (
+                  <input
+                    className="form-control"
+                    value={editForm.time}
+                    onChange={(e) => setEditField("time", e.target.value)}
+                    disabled={savingEdit}
+                  />
+                )}
+              </div>
+
+              <div className="bk-item">
+                <strong>الإجمالي</strong>
+                {!editMode ? (
+                  <span>
+                    {getBookingTotal(selected)
+                      ? `${getBookingTotal(selected).toLocaleString()} ريال`
+                      : "—"}
+                  </span>
+                ) : (
+                  <input
+                    className="form-control"
+                    value={editForm.total}
+                    onChange={(e) => setEditField("total", e.target.value)}
+                    disabled={savingEdit}
+                  />
+                )}
+              </div>
+
+              <div className="bk-item">
+                <strong>الحالة</strong>
+                <StatusDot status={selected.status} />
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="bk-note-card">
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>ملاحظة إدارية (داخلية)</div>
+
+              <textarea
+                className="form-control"
+                style={{ minHeight: 90, resize: "vertical" }}
+                value={getAdminNote(selected.id)}
+                onChange={(e) => saveAdminNote(selected.id, e.target.value)}
+                disabled={!canEditNotes}
+                placeholder={canEditNotes ? "اكتب ملاحظة داخلية..." : "لا تملك صلاحية تعديل الملاحظات"}
+              />
+
+              {editMode && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 10,
+                    marginTop: 10,
+                  }}
+                >
                   <button
+                    className="reports-btn"
                     type="button"
-                    className="reports-btn primary"
                     onClick={saveBookingEdits}
                     disabled={savingEdit}
                   >
-                    {savingEdit ? "جاري الحفظ..." : "حفظ"}
+                    {savingEdit ? "جارٍ الحفظ..." : "حفظ التعديل"}
                   </button>
-                </>
+                </div>
               )}
             </div>
           </div>

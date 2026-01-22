@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import logoNavbar from "../assets/images/ssunnamed.png";
 import "../styles/navbar.css";
+import UserIcon from "./icons/UserIcon";
 
 // ✅ Firebase logout + Auth watcher
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
@@ -10,14 +11,7 @@ import { auth } from "../services/firebase";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 
-const KNOWN_ROLES: UiRole[] = [
-  "owner",
-  "admin",
-  "reception",
-  "staff",
-  "client",
-  "guest",
-];
+const KNOWN_ROLES: UiRole[] = ["owner", "admin", "reception", "staff", "client", "guest"];
 
 function normalizeRole(role: any): UiRole {
   const r = String(role || "").toLowerCase().trim();
@@ -36,9 +30,7 @@ const Navbar: React.FC = () => {
   const [userName, setUserName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<UiRole>("guest");
 
-  // ✅ Firebase auth
   const [authUser, setAuthUser] = useState<User | null>(null);
-
   const [hasScrolled, setHasScrolled] = useState(false);
 
   const location = useLocation();
@@ -47,7 +39,6 @@ const Navbar: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navMenuRef = useRef<HTMLElement>(null);
 
-  // ✅ هل نحن داخل الداشبورد؟
   const isInDashboard = location.pathname.startsWith("/dashboard");
 
   const syncAuthFromStorage = () => {
@@ -60,9 +51,7 @@ const Navbar: React.FC = () => {
 
     const name =
       (profile?.name ? String(profile.name).trim() : "") ||
-      (localStorage.getItem("userName")
-        ? String(localStorage.getItem("userName")).trim()
-        : "") ||
+      (localStorage.getItem("userName") ? String(localStorage.getItem("userName")).trim() : "") ||
       (() => {
         try {
           const cu = JSON.parse(localStorage.getItem("currentUser") || "null");
@@ -78,13 +67,10 @@ const Navbar: React.FC = () => {
       localStorage.getItem("userRole") ||
       "guest";
 
-    const role = normalizeRole(rawRole);
-
     setUserName(name);
-    setUserRole(role);
+    setUserRole(normalizeRole(rawRole));
   };
 
-  // ✅ Watch firebase auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setAuthUser(user);
@@ -94,7 +80,6 @@ const Navbar: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // ✅ Listen for authChanged + storage changes
   useEffect(() => {
     syncAuthFromStorage();
 
@@ -110,31 +95,24 @@ const Navbar: React.FC = () => {
     };
   }, []);
 
-  // ✅ مهم جدًا: إغلاق أي منيو/دروب داون عند تغيير الصفحة (هذا يحل “يبقى معلق”)
   useEffect(() => {
     setIsDropdownOpen(false);
     setIsMenuOpen(false);
   }, [location.pathname]);
 
-  // ✅ غلق منيو النافبار داخل الداشبورد
   useEffect(() => {
     if (isInDashboard) setIsMenuOpen(false);
   }, [isInDashboard]);
 
-  // ✅ shadow عند scroll
   useEffect(() => {
     const handleScroll = () => setHasScrolled(window.scrollY > 10);
-    window.addEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // ✅ click outside dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsDropdownOpen(false);
       }
     };
@@ -142,7 +120,6 @@ const Navbar: React.FC = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ click outside mobile menu
   useEffect(() => {
     const handleNavMenuClickOutside = (e: MouseEvent) => {
       if (
@@ -155,8 +132,7 @@ const Navbar: React.FC = () => {
       }
     };
     document.addEventListener("mousedown", handleNavMenuClickOutside);
-    return () =>
-      document.removeEventListener("mousedown", handleNavMenuClickOutside);
+    return () => document.removeEventListener("mousedown", handleNavMenuClickOutside);
   }, [isMenuOpen]);
 
   const handleLogout = async () => {
@@ -200,10 +176,8 @@ const Navbar: React.FC = () => {
   const isOwner = userRole === "owner";
   const isReception = userRole === "reception";
 
-  const isDashboardUser =
-    isLoggedIn && (isOwner || isAdmin || isReception || isStaff);
+  const isDashboardUser = isLoggedIn && (isOwner || isAdmin || isReception || isStaff);
 
-  // ✅ عناصر القائمة التي ستُعرض (مهم جدًا لمنع dropdown الفاضي)
   const dropdownItems = useMemo(() => {
     if (!isLoggedIn) {
       return (
@@ -224,7 +198,6 @@ const Navbar: React.FC = () => {
       );
     }
 
-    // ✅ لو داخل Firebase لكن الرول طلعت guest… لا نخليه فاضي
     if (!isClient && !isDashboardUser) {
       return (
         <>
@@ -268,7 +241,7 @@ const Navbar: React.FC = () => {
     }
 
     return null;
-  }, [isLoggedIn, isClient, isDashboardUser, handleLogout]);
+  }, [isLoggedIn, isClient, isDashboardUser]);
 
   const hasDropdownContent = !!dropdownItems;
 
@@ -282,8 +255,8 @@ const Navbar: React.FC = () => {
 
       <header className={`navbar ${hasScrolled ? "scrolled" : ""}`}>
         <div className="container">
+          {/* ✅ جوال: 3 عناصر (☰ | لوقو | مستخدم) بس عن طريق CSS */}
           <div className="nav-main-group">
-            {/* ✅ زر ☰ يظهر فقط خارج الداشبورد */}
             {!isInDashboard && (
               <button
                 className={`navbar-toggler ${isMenuOpen ? "open" : ""}`}
@@ -296,10 +269,7 @@ const Navbar: React.FC = () => {
               </button>
             )}
 
-            <nav
-              ref={navMenuRef}
-              className={`navbar-nav ${isMenuOpen ? "open" : ""}`}
-            >
+            <nav ref={navMenuRef} className={`navbar-nav ${isMenuOpen ? "open" : ""}`}>
               {navLinks.map((link) => (
                 <Link
                   key={link.path}
@@ -321,16 +291,17 @@ const Navbar: React.FC = () => {
             <button
               className="user-profile"
               onClick={() => {
-                // ✅ لا تفتح dropdown إذا ما فيه عناصر
                 if (!hasDropdownContent) return;
                 setIsDropdownOpen((prev) => !prev);
                 setIsMenuOpen(false);
               }}
             >
-              {isLoggedIn ? <>👤 {userName || "الملف الشخصي"}</> : <>تسجيل الدخول</>}
+              <UserIcon />
+              <span className="user-profile__text">
+                {isLoggedIn ? (userName || "الملف الشخصي") : "تسجيل الدخول"}
+              </span>
             </button>
 
-            {/* ✅ لا ترسم dropdown إلا إذا: مفتوح + فيه عناصر */}
             {isDropdownOpen && hasDropdownContent && (
               <div className="dropdown-menu">{dropdownItems}</div>
             )}

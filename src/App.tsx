@@ -26,11 +26,12 @@ import Pricing from "./pages/Pricing";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword"; // ✅ (1) أضف هذا
 import Track from "./pages/Track";
 
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
+
+// ✅ Staff dashboard page
 
 /* ================================
    Types & Helpers
@@ -57,12 +58,7 @@ function normalizeRole(role: any): UiRole {
 }
 
 function isDashboardRole(role: UiRole) {
-  return (
-    role === "owner" ||
-    role === "admin" ||
-    role === "reception" ||
-    role === "staff"
-  );
+  return role === "owner" || role === "admin" || role === "reception" || role === "staff";
 }
 
 function isClientRole(role: UiRole) {
@@ -159,6 +155,7 @@ const App: React.FC = () => {
 
   return (
     <div className="app">
+      {/* ✅ Navbar فقط خارج الداشبورد */}
       {!isInDashboard && <Navbar />}
 
       <main className="main-content">
@@ -192,6 +189,7 @@ const App: React.FC = () => {
             }
           />
 
+
           {/* Dashboard (Protected) */}
           <Route
             path="/dashboard/*"
@@ -212,15 +210,10 @@ const App: React.FC = () => {
             }
           />
 
-          {/* ✅ Forgot/Reset Password */}
           <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} /> {/* ✅ (2) أضف هذا */}
 
           {/* ✅ أي /settings يروح للداشبورد */}
-          <Route
-            path="/settings"
-            element={<Navigate to="/dashboard/settings" replace />}
-          />
+          <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
           {/* Payments */}
           <Route path="/pay" element={<Pay />} />
@@ -231,6 +224,7 @@ const App: React.FC = () => {
         </Routes>
       </main>
 
+      {/* ✅ Footer + ChatBot فقط خارج الداشبورد */}
       {!isInDashboard && <Footer />}
       {!isInDashboard && <ChatBot />}
 

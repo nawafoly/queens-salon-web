@@ -48,16 +48,12 @@ type BookingData = {
   serviceName?: string;
 
   employee?: string;
-
-  // employeeId = staff_public id
   employeeId?: string;
-
-  // ✅ NEW: real staff uid (for Staff Portal)
-  employeeUid?: string;
 
   date?: string;
   time?: string;
 
+  // ✅ slotId might exist in LS but is NOT source of truth
   slotId?: string;
 
   total?: number;
@@ -137,9 +133,11 @@ function nextPublicBookingId(prefix = "MK"): string {
 
     localStorage.setItem(BOOKING_PUBLIC_COUNTER_KEY, String(next));
 
+    // pad to 5 digits (optional) — gives MK-10234 as-is if already 5 digits
     const n = String(next).padStart(5, "0");
     return `${prefix}-${n}`;
   } catch {
+    // fallback random-ish
     const rnd = Math.floor(10000 + Math.random() * 90000);
     return `${prefix}-${rnd}`;
   }
@@ -148,8 +146,10 @@ function nextPublicBookingId(prefix = "MK"): string {
 export default function Checkout() {
   const navigate = useNavigate();
   const [booking, setBooking] = useState<BookingData | null>(null);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ✅ NEW: label to show real service name even if stored value is serviceId
   const [serviceLabel, setServiceLabel] = useState<string>("");
 
   const [modal, setModal] = useState({
@@ -203,7 +203,6 @@ export default function Checkout() {
           serviceName: parsedDraft?.serviceName,
           employee: parsedDraft?.employee,
           employeeId: parsedDraft?.employeeId,
-          employeeUid: parsedDraft?.employeeUid, // ✅ NEW
           date: parsedDraft?.date,
           time: parsedDraft?.time,
 
@@ -231,9 +230,11 @@ export default function Checkout() {
     }
   }, []);
 
+  // ✅ NEW: generate preview booking number early (so it shows on Checkout)
   useEffect(() => {
     if (!booking) return;
 
+    // إذا موجود مسبقًا لا تولد مرّة ثانية
     const existing = String(booking.publicId || "").trim();
     if (existing) return;
 
@@ -246,10 +247,12 @@ export default function Checkout() {
 
     setBooking(updated);
 
+    // خزّن نفس الرقم فورًا عشان يطلع مباشرة
     try {
       localStorage.setItem(BOOKING_KEY, JSON.stringify(updated));
-    } catch {}
+    } catch { }
   }, [booking]);
+
 
   const view = useMemo(() => {
     if (!booking) return null;
@@ -264,10 +267,9 @@ export default function Checkout() {
     const service = booking.serviceName || booking.service || "";
 
     const employee = String(booking.employee || "").trim();
-    const employeeId = String(booking.employeeId || "").trim(); // staff_public id
-    const employeeUid = String(booking.employeeUid || "").trim(); // ✅ NEW real uid
+    const employeeId = String(booking.employeeId || "").trim();
 
-    // ✅ SlotId DISPLAY/debug only (locks will be built in Firestore)
+    // ✅ SlotId is DISPLAY/debug only (source of truth will be created in Firestore)
     const employeeKey = employeeId || employee || "unknown_employee";
     const slotIdDisplay = date && time ? buildBookingSlotId(date, time, employeeKey) : "";
 
@@ -289,7 +291,6 @@ export default function Checkout() {
 
       employee,
       employeeId,
-      employeeUid, // ✅ NEW
 
       slotIdDisplay,
 
@@ -306,6 +307,8 @@ export default function Checkout() {
     };
   }, [booking]);
 
+  // ✅ NEW: Convert serviceId -> serviceName (same logic idea as Dashboard)
+  // ✅ المكان: بعد view مباشرة
   useEffect(() => {
     let alive = true;
 
@@ -316,6 +319,7 @@ export default function Checkout() {
         return;
       }
 
+      // إذا كان النص يبدو كـ ID (طويل + بدون مسافات + حروف/أرقام/underscore/dash)
       const looksLikeId =
         raw.length >= 15 && !raw.includes(" ") && /^[A-Za-z0-9_-]+$/.test(raw);
 
@@ -377,6 +381,7 @@ export default function Checkout() {
         return;
       }
 
+      // ✅ IMPORTANT: لا نتحقق من slotId هنا — Firestore هو اللي يبنيه ويقفل المواعيد
       const uid = await ensureUserUid();
       if (!uid) {
         openModal({
@@ -391,16 +396,11 @@ export default function Checkout() {
 
       const discountNote = view.offerId
         ? `Offer: ${view.offerTitle || view.couponCode || "-"} | discount=${toInt(
-            view.discountAmount || 0
-          )}`
+          view.discountAmount || 0
+        )}`
         : "";
 
-      const employeeNote = [
-        view.employeeId ? `employeeId: ${view.employeeId}` : "",
-        view.employeeUid ? `employeeUid: ${view.employeeUid}` : "", // ✅ NEW
-      ]
-        .filter(Boolean)
-        .join(" | ");
+      const employeeNote = view.employeeId ? `employeeId: ${view.employeeId}` : "";
 
       const baseNote =
         normalizedPayment === "mada_online"
@@ -425,12 +425,7 @@ export default function Checkout() {
 
         durationMin: view.durationMin ?? 60,
 
-        // ✅ keep locks stable with staff_public id
         employeeId: view.employeeId,
-
-        // ✅ NEW: real uid for staff portal
-        employeeUid: view.employeeUid || null,
-
         employeeName: view.employee || "-",
 
         date: view.date,
@@ -451,6 +446,7 @@ export default function Checkout() {
         console.warn("incrementOfferUsage failed:", e);
       }
 
+      // ✅ NEW: build human readable booking number (MK-10234)
       const publicId = booking?.publicId || view.publicId || nextPublicBookingId("MK");
 
       const updatedCurrent: BookingData = {
@@ -460,12 +456,13 @@ export default function Checkout() {
         id: firestoreId,
         trackId: firestoreId,
 
+        // ✅ NEW
         publicId,
 
         employeeId: view.employeeId,
-        employeeUid: view.employeeUid, // ✅ NEW
         employee: view.employee || booking?.employee || "",
 
+        // ✅ store display slotId for debugging (optional)
         slotId: view.slotIdDisplay,
 
         total: totalInt,
@@ -568,6 +565,7 @@ export default function Checkout() {
           </div>
         )}
 
+        {/* ✅ NEW: Human booking number */}
         <div className="checkout-item">
           <strong>رقم الحجز:</strong>
           <span style={{ fontWeight: 800 }}>{view.publicId || "—"}</span>

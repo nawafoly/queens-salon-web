@@ -39,17 +39,13 @@ export type BookingDoc = {
   // ✅ service duration in minutes (prevents overlaps)
   durationMin?: number;
 
-  /**
-   * employeeId = staff_public id (used for Booking UI + slot locks)
-   * employeeUid = real Firebase Auth uid (used for Staff Portal linking)
-   */
   employeeId?: string | null;
-  employeeUid?: string | null; // ✅ NEW
   employeeName: string;
 
   /**
-   * ✅ employeeKey is the stable linking key used to fetch employee bookings safely.
-   * - Prefer UID (employeeUid)
+   * ✅ NEW (Fix Staff Portal):
+   * employeeKey is the stable linking key used to fetch employee bookings safely.
+   * - Prefer UID (employeeId)
    * - Fallback: safeKey(employeeName)
    */
   employeeKey?: string;
@@ -57,7 +53,7 @@ export type BookingDoc = {
   date: string;
   time: string;
 
-  // ✅ stored start-slotId (for debugging & tracking)
+  // ✅ NEW: stored start-slotId (for debugging & tracking)
   slotId?: string;
 
   total?: number;
@@ -101,14 +97,15 @@ function normalizeBooking(raw: any): BookingDoc {
     durationMin: Number(raw?.durationMin ?? 0) || undefined,
 
     employeeId: raw?.employeeId ?? null,
-    employeeUid: raw?.employeeUid ?? null, // ✅ NEW
     employeeName: String(raw?.employeeName ?? ""),
 
+    // ✅ NEW
     employeeKey: raw?.employeeKey ? String(raw.employeeKey) : undefined,
 
     date: String(raw?.date ?? ""),
     time: String(raw?.time ?? ""),
 
+    // ✅ NEW
     slotId: raw?.slotId ? String(raw.slotId) : undefined,
 
     total: Number(raw?.total ?? 0),
@@ -196,19 +193,15 @@ function getTimesToLock(startTime: string, durationMin: number) {
 ========================= */
 
 export async function createBooking(data: BookingDoc) {
-  // ✅ For locks: use staff_public id (employeeId) if available, otherwise name
-  const employeeIdTrimmed = String(data.employeeId ?? "").trim(); // staff_public id
+  // ✅ employeeKey used for locks + staff portal linking:
+  //    Prefer UID, otherwise safeKey(name)
+  const employeeIdTrimmed = String(data.employeeId ?? "").trim();
   const employeeNameTrimmed = String(data.employeeName || "").trim();
-
-  // ✅ For staff portal: use real uid if available, otherwise safeKey(name)
-  const employeeUidTrimmed = String(data.employeeUid ?? "").trim(); // ✅ NEW
 
   const employeeKeyForLock =
     employeeIdTrimmed || employeeNameTrimmed || "unknown_employee";
-
-  // ✅ employeeKey = UID (best), fallback = safeKey(name)
   const employeeKey =
-    employeeUidTrimmed || safeKey(employeeNameTrimmed || "unknown_employee");
+    employeeIdTrimmed || safeKey(employeeNameTrimmed || "unknown_employee");
 
   // ✅ duration (default)
   const durationMin = Math.max(0, Number(data.durationMin || 0)) || 60;
@@ -224,7 +217,7 @@ export async function createBooking(data: BookingDoc) {
     doc(db, ...SLOTS_COL, buildSlotId(data.date, t, employeeKeyForLock))
   );
 
-  // ✅ store start-slotId inside booking doc for tracking/debugging
+  // ✅ NEW: store start-slotId inside booking doc for tracking/debugging
   const startSlotId = buildSlotId(
     data.date,
     String(data.time || "").trim(),
@@ -234,12 +227,12 @@ export async function createBooking(data: BookingDoc) {
   const payload = stripUndefined({
     ...data,
     employeeId: (data.employeeId ?? null) as any,
-    employeeUid: (data.employeeUid ?? null) as any, // ✅ NEW
     durationMin,
 
-    // ✅ Fix Staff Portal
+    // ✅ NEW (Fix Staff Portal)
     employeeKey,
 
+    // ✅ NEW
     slotId: startSlotId,
 
     createdAt: serverTimestamp(),
@@ -283,7 +276,7 @@ export async function createBooking(data: BookingDoc) {
         const sameStart =
           String(existingBooking.time || "") === String(data.time || "");
 
-        // ✅ compare by employeeKey (UID) OR same lock key
+        // ✅ prefer employeeKey comparison (UID or safeKey(name))
         const sameEmp =
           String(existingBooking.employeeKey || "") === String(employeeKey) ||
           safeKey(
@@ -305,11 +298,10 @@ export async function createBooking(data: BookingDoc) {
 
       tx.set(slotRef, {
         bookingId: bookingRef.id,
-
-        employeeId: data.employeeId ?? null,      // staff_public id
-        employeeUid: data.employeeUid ?? null,    // ✅ NEW real uid
+        employeeId: data.employeeId ?? null,
         employeeName: data.employeeName,
 
+        // ✅ NEW
         employeeKey,
 
         date: data.date,
@@ -334,11 +326,10 @@ export async function createBooking(data: BookingDoc) {
     {
       bookingId,
       serviceName: data.serviceName,
-
       employeeId: data.employeeId ?? null,
-      employeeUid: data.employeeUid ?? null, // ✅ NEW
       employeeName: data.employeeName,
 
+      // ✅ NEW
       employeeKey,
 
       date: data.date,
@@ -346,6 +337,7 @@ export async function createBooking(data: BookingDoc) {
       durationMin: Math.max(0, Number(data.durationMin || 0)) || 60,
       status: data.status,
 
+      // ✅ NEW: keep slotId in track too
       slotId: startSlotId,
 
       createdAt: serverTimestamp(),
@@ -365,8 +357,7 @@ export async function createDashboardBooking(args: {
   serviceName: string;
   durationMin?: number;
   employeeName: string;
-  employeeId?: string | null;   // staff_public id
-  employeeUid?: string | null;  // ✅ NEW real uid
+  employeeId?: string | null;
   date: string;
   time: string;
   total?: number;
@@ -386,7 +377,6 @@ export async function createDashboardBooking(args: {
     durationMin: args.durationMin,
 
     employeeId: args.employeeId ?? null,
-    employeeUid: args.employeeUid ?? null, // ✅ NEW
     employeeName: args.employeeName,
 
     date: args.date,
@@ -480,7 +470,7 @@ export async function listEmployeeBookings(
 ): Promise<BookingDocWithId[]> {
   const baseCol = collection(db, ...BOOKINGS_COL);
 
-  // ✅ primary query by employeeKey (UID)
+  // ✅ NEW: primary query by employeeKey (UID)
   const qKey = query(baseCol, where("employeeKey", "==", employeeId));
   const sKey = await getDocs(qKey);
   const rKey = sKey.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
@@ -493,7 +483,7 @@ export async function listEmployeeBookings(
   let r2: BookingDocWithId[] = [];
   const name = String(employeeName || "").trim();
   if (name) {
-    // ✅ fallback by employeeKey (safeKey(name))
+    // ✅ NEW: fallback by employeeKey (safeKey(name))
     const q2k = query(baseCol, where("employeeKey", "==", safeKey(name)));
     const s2k = await getDocs(q2k);
     const r2k = s2k.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
@@ -531,7 +521,7 @@ export function watchEmployeeBookings(
     );
   };
 
-  // ✅ employeeKey == uid
+  // ✅ NEW: employeeKey == uid
   const unsubKeyUid = onSnapshot(
     query(baseCol, where("employeeKey", "==", employeeId)),
     (snap) => {
@@ -557,7 +547,7 @@ export function watchEmployeeBookings(
 
   const name = String(employeeName || "").trim();
 
-  // ✅ employeeKey == safeKey(name)
+  // ✅ NEW: employeeKey == safeKey(name)
   let unsubKeyName: (() => void) | null = null;
   if (name) {
     unsubKeyName = onSnapshot(
@@ -599,11 +589,17 @@ export function watchEmployeeBookings(
    UPDATE
 ========================= */
 
+/**
+ * ✅ FIX (حل المشكلتين):
+ * 1) تحديث الحالة لازم ينجح حتى لو income ممنوع بالـ rules
+ * 2) نخلي income "best-effort" خارج الترانزاكشن (ما يكسّر تعديل الحجز)
+ */
 export async function updateBookingStatus(bookingId: string, status: BookingStatus) {
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const trackRef = doc(db, ...TRACKS_COL, bookingId);
   const incomeRef = doc(db, ...INCOME_COL, bookingId);
 
+  // ✅ 1) Transaction: booking + track فقط
   const bookingForIncome = await runTransaction(db, async (tx) => {
     const snap = await tx.get(bookingRef);
     if (!snap.exists()) throw new Error("BOOKING_NOT_FOUND");
@@ -618,7 +614,6 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         bookingId,
         serviceName: booking.serviceName,
         employeeId: booking.employeeId ?? null,
-        employeeUid: booking.employeeUid ?? null, // ✅ NEW
         employeeName: booking.employeeName,
         employeeKey: booking.employeeKey ?? undefined,
         date: booking.date,
@@ -634,6 +629,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     return booking;
   });
 
+  // ✅ 2) Best-effort: income خارج الترانزاكشن (ما يمنع تعديل الحجز)
   try {
     const amount = getAmount(bookingForIncome);
 
@@ -662,6 +658,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         { merge: true }
       );
     } else if (shouldDeleteIncome) {
+      // delete if exists (ignore if not permitted)
       try {
         const s = await getDoc(incomeRef);
         if (s.exists()) await deleteDoc(incomeRef);
@@ -670,20 +667,20 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
       }
     }
   } catch {
-    // ignore
+    // ✅ مهم: لا نرمي خطأ هنا عشان ما نكسر تعديل الحجز
   }
 }
 
 export async function updateBookingDetails(bookingId: string, patch: Partial<BookingDoc>) {
   await updateDoc(doc(db, ...BOOKINGS_COL, bookingId), stripUndefined(patch));
 
+  // ✅ best-effort track update (إذا track ناقص أو rules تمنع، لا نكسر حفظ الحجز)
   try {
     await updateDoc(
       doc(db, ...TRACKS_COL, bookingId),
       stripUndefined({
         serviceName: patch.serviceName,
         employeeId: patch.employeeId,
-        employeeUid: patch.employeeUid, // ✅ NEW
         employeeName: patch.employeeName,
         employeeKey: patch.employeeKey,
         date: patch.date,
@@ -707,6 +704,7 @@ export async function getTrackById(id: string) {
 
 /* =========================
    ✅ One-time Migration (Fix Staff visibility)
+   - Fill missing employeeKey for old bookings
 ========================= */
 
 export async function backfillEmployeeKeys(opts?: { dryRun?: boolean; limit?: number }) {
@@ -723,23 +721,26 @@ export async function backfillEmployeeKeys(opts?: { dryRun?: boolean; limit?: nu
 
     const b = normalizeBooking(d.data());
 
+    // already ok
     if (b.employeeKey && String(b.employeeKey).trim()) continue;
 
-    // ✅ preferred: employeeUid if exists, fallback: safeKey(name)
-    const employeeUid = String(b.employeeUid ?? "").trim();
+    const employeeId = String(b.employeeId ?? "").trim();
     const employeeName = String(b.employeeName ?? "").trim();
 
-    const nextKey = employeeUid || (employeeName ? safeKey(employeeName) : "");
+    // ✅ preferred: uid, fallback: safeKey(name)
+    const nextKey = employeeId || (employeeName ? safeKey(employeeName) : "");
     if (!nextKey) continue;
 
     patched++;
 
     if (!dryRun) {
+      // update booking
       await updateDoc(doc(db, ...BOOKINGS_COL, d.id), {
         employeeKey: nextKey,
         updatedAt: serverTimestamp(),
       } as any);
 
+      // optional: update track (ignore if missing/perms)
       try {
         await updateDoc(doc(db, ...TRACKS_COL, d.id), {
           employeeKey: nextKey,
@@ -753,3 +754,4 @@ export async function backfillEmployeeKeys(opts?: { dryRun?: boolean; limit?: nu
 
   return { scanned: snap.size, patched, dryRun };
 }
+
