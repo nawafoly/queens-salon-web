@@ -1,7 +1,7 @@
 import hair from "../assets/images/hair.webp";
 import skin from "../assets/images/skin.webp";
 
-import nails from "../assets/images/nails.webp";
+import nails from "../assets/images/nailsP.jpg";
 import emma from "../assets/images/emma.webp";
 import sophie from "../assets/images/sophie.webp";
 import ava from "../assets/images/ava.webp";
