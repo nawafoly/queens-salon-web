@@ -1,0 +1,62 @@
+/* خلفية نظيفة */
+.lb-root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fdf9f6;
+}
+
+/* المحتوى */
+.lb-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+
+/* الشعار */
+.lb-logo {
+  width: 160px;
+  max-width: 70vw;
+  object-fit: contain;
+  animation: lbFade 1.4s ease-in-out infinite alternate;
+}
+
+/* النص */
+.lb-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #6f5a50;
+  letter-spacing: 0.3px;
+}
+
+/* وضع صغير */
+.lb-root.is-small {
+  min-height: 200px;
+}
+
+.lb-root.is-small .lb-logo {
+  width: 110px;
+}
+
+.lb-root.is-small .lb-text {
+  font-size: 13px;
+}
+
+/* حركة هادئة */
+@keyframes lbFade {
+  from {
+    opacity: 0.65;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* احترام تقليل الحركة */
+@media (prefers-reduced-motion: reduce) {
+  .lb-logo {
+    animation: none;
+  }
+}

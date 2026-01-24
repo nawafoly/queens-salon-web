@@ -412,7 +412,7 @@ export default function Checkout() {
       const totalInt = toInt(view.total || 0);
       const finalInt = toInt(view.total || 0);
 
-      const firestoreId = await createBooking({
+      const { id: firestoreId, publicId: fsPublicId } = await createBooking({
         userId: uid,
 
         createdBy: "client",
@@ -447,7 +447,7 @@ export default function Checkout() {
       }
 
       // ✅ NEW: build human readable booking number (MK-10234)
-      const publicId = booking?.publicId || view.publicId || nextPublicBookingId("MK");
+      const publicId = fsPublicId || booking?.publicId || view.publicId || nextPublicBookingId("MK");
 
       const updatedCurrent: BookingData = {
         ...(booking || {}),

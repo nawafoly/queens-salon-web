@@ -2,31 +2,52 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../styles/Track.css";
-import { getTrackById } from "../services/firestoreBookings";
+import { getTrackByPublicId } from "../services/firestoreBookings";
 
 type TrackData = {
+  id?: string; // bookingId الحقيقي (داخلي)
+  publicId?: string; // MK-xxxxx
   status?: "pending" | "confirmed" | "cancelled" | "completed" | string;
+
   serviceName?: string;
   employeeName?: string;
   date?: string;
   time?: string;
+
   updatedAt?: any;
 };
 
 function statusLabel(s?: string) {
-  if (s === "pending") return "قيد المراجعة";
-  if (s === "confirmed") return "مؤكد";
-  if (s === "cancelled") return "ملغي";
-  if (s === "completed") return "مكتمل";
+  const v = String(s || "").toLowerCase().trim();
+  if (v === "pending") return "قيد المراجعة";
+  if (v === "confirmed") return "مؤكد";
+  if (v === "cancelled") return "ملغي";
+  if (v === "completed") return "مكتمل";
   return s || "غير معروف";
 }
 
 function statusClass(s?: string) {
-  if (s === "confirmed") return "is-confirmed";
-  if (s === "pending") return "is-pending";
-  if (s === "cancelled") return "is-cancelled";
-  if (s === "completed") return "is-completed";
+  const v = String(s || "").toLowerCase().trim();
+  if (v === "confirmed") return "is-confirmed";
+  if (v === "pending") return "is-pending";
+  if (v === "cancelled") return "is-cancelled";
+  if (v === "completed") return "is-completed";
   return "is-unknown";
+}
+
+/** ✅ توحيد أي إدخال إلى صيغة MK-12345
+ * يقبل:
+ * 10007
+ * MK10007
+ * mk-10007
+ * "  mk 10007  "
+ */
+function normalizeMk(raw: string) {
+  const s = String(raw || "").trim().toUpperCase();
+  const m = s.match(/\d+/);
+  const digits = m?.[0] ?? "";
+  if (!digits) return "";
+  return `MK-${digits}`;
 }
 
 const Track: React.FC = () => {
@@ -39,10 +60,35 @@ const Track: React.FC = () => {
   const [data, setData] = useState<TrackData | null>(null);
   const [error, setError] = useState("");
 
-  const effectiveId = useMemo(() => (trackId || "").trim(), [trackId]);
+  // ✅ نطبّع البارامتر إلى MK-xxxxx
+  const normalizedParam = useMemo(() => normalizeMk(trackId || ""), [trackId]);
 
+  // ✅ لو الرابط مو MK-xxxxx نخليه يتعدل تلقائيًا (بدون ما يزيد history)
   useEffect(() => {
-    if (!effectiveId) return;
+    if (!trackId) return;
+
+    const raw = String(trackId).trim();
+    const norm = normalizeMk(raw);
+
+    // لو ما قدرنا نستخرج رقم، ما نسوي redirect
+    if (!norm) return;
+
+    // لو كان الرابط أصلا هو نفس المطلوب، خلاص
+    if (raw.toUpperCase() === norm) return;
+
+    navigate(`/track/${encodeURIComponent(norm)}`, { replace: true });
+  }, [trackId, navigate]);
+
+  // ✅ نخلي الـ input يعكس آخر بارامتر (مفيد لو دخل من رابط قديم/رقم فقط)
+  useEffect(() => {
+    if (!trackId) return;
+    const norm = normalizeMk(trackId);
+    setInputId(norm || trackId);
+  }, [trackId]);
+
+  // ✅ جلب البيانات يعتمد فقط على normalizedParam
+  useEffect(() => {
+    if (!normalizedParam) return;
 
     let alive = true;
     setLoading(true);
@@ -52,18 +98,23 @@ const Track: React.FC = () => {
 
     (async () => {
       try {
-        const res = await getTrackById(effectiveId);
+        const res: any = await getTrackByPublicId(normalizedParam);
         if (!alive) return;
 
         if (!res) {
           setNotFound(true);
         } else {
           setData({
+            id: res.id,
+            publicId: res.publicId,
             status: res.status,
-            serviceName: res.serviceName,
-            employeeName: res.employeeName,
-            date: res.date,
-            time: res.time,
+            serviceName:
+              res.serviceSnapshot?.serviceNameAtBooking ||
+              res.serviceName ||
+              "-",
+            employeeName: res.employeeName || "-",
+            date: res.date || "-",
+            time: res.time || "-",
             updatedAt: res.updatedAt,
           });
         }
@@ -78,13 +129,15 @@ const Track: React.FC = () => {
     return () => {
       alive = false;
     };
-  }, [effectiveId]);
+  }, [normalizedParam]);
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const v = inputId.trim();
-    if (!v) return;
-    navigate(`/track/${encodeURIComponent(v)}`);
+
+    const norm = normalizeMk(inputId);
+    if (!norm) return;
+
+    navigate(`/track/${encodeURIComponent(norm)}`);
   };
 
   const showContact =
@@ -100,7 +153,7 @@ const Track: React.FC = () => {
           <div className="track-badge">📌</div>
           <h2 className="track-title">تتبع الحجز</h2>
           <p className="track-subtitle">
-            أدخل رقم الحجز لمشاهدة حالة الحجز
+            أدخل رقم الحجز (MK-xxxxx) أو اكتب الرقم فقط وسنحوّله تلقائيًا
           </p>
         </div>
 
@@ -112,15 +165,11 @@ const Track: React.FC = () => {
                 className="track-input"
                 value={inputId}
                 onChange={(e) => setInputId(e.target.value)}
-                placeholder="مثال: RQH9CkGj2X0WwWsuAp7O"
+                placeholder="مثال: MK-10007 أو 10007"
                 autoComplete="off"
                 dir="ltr"
               />
-              <button
-                className="track-btn"
-                type="submit"
-                disabled={loading}
-              >
+              <button className="track-btn" type="submit" disabled={loading}>
                 {loading ? "..." : "تتبع"}
               </button>
             </form>
@@ -133,9 +182,7 @@ const Track: React.FC = () => {
               </div>
             )}
 
-            {!loading && error && (
-              <div className="track-error">⚠️ {error}</div>
-            )}
+            {!loading && error && <div className="track-error">⚠️ {error}</div>}
 
             {!loading && notFound && (
               <div className="track-notfound">
@@ -144,13 +191,9 @@ const Track: React.FC = () => {
             )}
 
             {showContact && (
-              <a
-                href="/contact"
-                className="track-btn-ghost"
-              >
+              <a href="/contact" className="track-btn-ghost">
                 تواصل معنا للاستفسار
               </a>
-
             )}
           </div>
 
@@ -183,13 +226,13 @@ const Track: React.FC = () => {
                 </div>
 
                 <div className="track-hint">
-                  ℹ️ في حال تأخر تأكيد الحجز أو وجود أي استفسار،
-                  يسعدنا تواصلك معنا مباشرة.
+                  ℹ️ في حال تأخر تأكيد الحجز أو وجود أي استفسار، يسعدنا تواصلك
+                  معنا مباشرة.
                 </div>
               </div>
             ) : (
               <div className="track-state">
-                أدخل رقم التتبع وستظهر تفاصيل الحجز هنا.
+                أدخل رقم الحجز (MK) وستظهر تفاصيل الحجز هنا.
               </div>
             )}
           </div>

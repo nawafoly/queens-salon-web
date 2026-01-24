@@ -13,17 +13,26 @@ import {
   query,
   onSnapshot,
   runTransaction,
-  deleteDoc, // ✅ NEW
+  deleteDoc,
+  limit,
 } from "firebase/firestore";
 
-// ✅ NEW: generate same time slots list used by Booking page
+// ✅ generate same time slots list used by Booking page
 import { generateSalonTimeSlots } from "../helpers/timeSlots";
 
-// ✅ NEW: read slotStep/buffer from settings/app (source of truth)
+// ✅ read slotStep/buffer from settings/app (source of truth)
 import { AppSettingsService } from "./AppSettingsService";
 
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 export type BookingChannel = "client" | "dashboard";
+
+// ✅ NEW: Snapshot ثابت للعرض وعدم تأثر الحجوزات بتغيير الأسعار لاحقًا
+export type ServiceSnapshot = {
+  serviceNameAtBooking: string;
+  priceAtBooking: number;
+  durationAtBooking: number;
+  sectionIdAtBooking?: string;
+};
 
 export type BookingDoc = {
   userId?: string | null;
@@ -34,26 +43,45 @@ export type BookingDoc = {
   clientName: string;
   clientPhone: string;
 
+  /**
+   * ✅ legacy (نتركه للتوافق)
+   * قد يكون اسم أو serviceId في الداتا القديمة
+   */
   serviceName: string;
+
+  /**
+   * ✅ NEW (ID-first)
+   */
+  serviceId?: string;
+  serviceSnapshot?: ServiceSnapshot;
+
+  /**
+   * ✅ NEW: رقم حجز بشري MK-xxxxx (سيرفر)
+   */
+  publicId?: string;
 
   // ✅ service duration in minutes (prevents overlaps)
   durationMin?: number;
 
-  employeeId?: string | null;
-  employeeName: string;
-
   /**
-   * ✅ NEW (Fix Staff Portal):
-   * employeeKey is the stable linking key used to fetch employee bookings safely.
-   * - Prefer UID (employeeId)
-   * - Fallback: safeKey(employeeName)
+   * ✅ employee linking
+   * employeeId = staff_public doc id (من Booking page)
+   * employeeUid = linkedUid الحقيقي (اختياري)
+   * employeeKey = المفتاح المستخدم لعرض حجوزات الموظفة في Staff portal
+   *   - Prefer employeeUid
+   *   - Fallback employeeId (staff_public id)
+   *   - Fallback safeKey(employeeName)
    */
+  employeeId?: string | null;
+  employeeUid?: string | null;
+
+  employeeName: string;
   employeeKey?: string;
 
   date: string;
   time: string;
 
-  // ✅ NEW: stored start-slotId (for debugging & tracking)
+  // ✅ stored start-slotId (for debugging & tracking)
   slotId?: string;
 
   total?: number;
@@ -72,8 +100,12 @@ const BOOKINGS_COL = ["salons", SALON_ID, "bookings"] as const;
 const SLOTS_COL = ["salons", SALON_ID, "booking_slots"] as const;
 const TRACKS_COL = ["salons", SALON_ID, "booking_tracks"] as const;
 
-// ✅ Income collection (linked to booking by same id)
+// ✅ Income collection
 const INCOME_COL = ["salons", SALON_ID, "income"] as const;
+
+// ✅ Counter doc for server-generated publicId
+const COUNTERS_COL = ["salons", SALON_ID, "counters"] as const;
+const BOOKINGS_COUNTER_DOC = "bookings";
 
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   const cleaned: Record<string, any> = {};
@@ -92,20 +124,34 @@ function normalizeBooking(raw: any): BookingDoc {
     clientName: String(raw?.clientName ?? ""),
     clientPhone: String(raw?.clientPhone ?? ""),
 
+    // legacy
     serviceName: String(raw?.serviceName ?? ""),
+
+    // ✅ NEW
+    serviceId: raw?.serviceId ? String(raw.serviceId) : undefined,
+    publicId: raw?.publicId ? String(raw.publicId) : undefined,
+    serviceSnapshot: raw?.serviceSnapshot
+      ? {
+          serviceNameAtBooking: String(raw.serviceSnapshot.serviceNameAtBooking ?? ""),
+          priceAtBooking: Number(raw.serviceSnapshot.priceAtBooking ?? 0),
+          durationAtBooking: Number(raw.serviceSnapshot.durationAtBooking ?? 0),
+          sectionIdAtBooking: raw.serviceSnapshot.sectionIdAtBooking
+            ? String(raw.serviceSnapshot.sectionIdAtBooking)
+            : undefined,
+        }
+      : undefined,
 
     durationMin: Number(raw?.durationMin ?? 0) || undefined,
 
     employeeId: raw?.employeeId ?? null,
+    employeeUid: raw?.employeeUid ?? null,
     employeeName: String(raw?.employeeName ?? ""),
 
-    // ✅ NEW
     employeeKey: raw?.employeeKey ? String(raw.employeeKey) : undefined,
 
     date: String(raw?.date ?? ""),
     time: String(raw?.time ?? ""),
 
-    // ✅ NEW
     slotId: raw?.slotId ? String(raw.slotId) : undefined,
 
     total: Number(raw?.total ?? 0),
@@ -125,12 +171,10 @@ function safeKey(s: string) {
 }
 
 function buildSlotId(date: string, time: string, employeeKey: string) {
-  return `${SALON_ID}__${safeKey(date)}__${safeKey(time)}__${safeKey(
-    employeeKey
-  )}`;
+  return `${SALON_ID}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
 }
 
-// ✅ Exported helper so Checkout can display the SAME slotId format used by Firestore lock
+// ✅ Exported helper so Checkout/Booking can display the SAME slotId format used by Firestore lock
 export function buildBookingSlotId(date: string, time: string, employeeKey: string) {
   return buildSlotId(date, time, employeeKey);
 }
@@ -141,7 +185,7 @@ function slotTakenError() {
   return e;
 }
 
-// ✅ Helper: parse payment method from note like "Payment: cash" / "Payment: card"
+// ✅ Helper: parse payment method from note
 function parsePaymentMethod(note?: string): string {
   const s = String(note || "").toLowerCase();
   if (s.includes("card") || s.includes("شبكة") || s.includes("مدى")) return "card";
@@ -157,14 +201,8 @@ function getAmount(b: BookingDoc): number {
 /** ✅ read slot settings safely (fallback to defaults) */
 function getSlotSettings() {
   const cached = AppSettingsService.getCached();
-  const slotStepMin = Math.max(
-    5,
-    Number((cached as any)?.booking?.slotStepMin ?? 30)
-  );
-  const bufferMin = Math.max(
-    0,
-    Number((cached as any)?.booking?.bufferMin ?? 0)
-  );
+  const slotStepMin = Math.max(5, Number((cached as any)?.booking?.slotStepMin ?? 30));
+  const bufferMin = Math.max(0, Number((cached as any)?.booking?.bufferMin ?? 0));
   return { slotStepMin, bufferMin };
 }
 
@@ -181,8 +219,7 @@ function getTimesToLock(startTime: string, durationMin: number) {
 
   if (idx < 0) return [startTime];
 
-  const totalMin =
-    Math.max(0, Number(durationMin || 0)) + Math.max(0, bufferMin);
+  const totalMin = Math.max(0, Number(durationMin || 0)) + Math.max(0, bufferMin);
   const slotsNeeded = Math.max(1, Math.ceil(totalMin / slotStepMin));
 
   return slots.slice(idx, idx + slotsNeeded);
@@ -192,16 +229,17 @@ function getTimesToLock(startTime: string, durationMin: number) {
    CREATE
 ========================= */
 
-export async function createBooking(data: BookingDoc) {
-  // ✅ employeeKey used for locks + staff portal linking:
-  //    Prefer UID, otherwise safeKey(name)
+export async function createBooking(data: BookingDoc): Promise<{ id: string; publicId: string }> {
+  // ✅ lock key = staff_public doc id (لأن Booking.tsx يفحص السلوّت بهذا المفتاح)
   const employeeIdTrimmed = String(data.employeeId ?? "").trim();
   const employeeNameTrimmed = String(data.employeeName || "").trim();
 
-  const employeeKeyForLock =
-    employeeIdTrimmed || employeeNameTrimmed || "unknown_employee";
+  const employeeKeyForLock = employeeIdTrimmed || employeeNameTrimmed || "unknown_employee";
+
+  // ✅ employeeKey للـ staff portal = linkedUid (إن وجد) وإلا staff_public id وإلا safeKey(name)
+  const employeeUidTrimmed = String(data.employeeUid ?? "").trim();
   const employeeKey =
-    employeeIdTrimmed || safeKey(employeeNameTrimmed || "unknown_employee");
+    employeeUidTrimmed || employeeIdTrimmed || safeKey(employeeNameTrimmed || "unknown_employee");
 
   // ✅ duration (default)
   const durationMin = Math.max(0, Number(data.durationMin || 0)) || 60;
@@ -217,28 +255,47 @@ export async function createBooking(data: BookingDoc) {
     doc(db, ...SLOTS_COL, buildSlotId(data.date, t, employeeKeyForLock))
   );
 
-  // ✅ NEW: store start-slotId inside booking doc for tracking/debugging
-  const startSlotId = buildSlotId(
-    data.date,
-    String(data.time || "").trim(),
-    employeeKeyForLock
-  );
+  // ✅ store start-slotId inside booking doc for tracking/debugging
+  const startSlotId = buildSlotId(data.date, String(data.time || "").trim(), employeeKeyForLock);
 
-  const payload = stripUndefined({
+  // ✅ snapshot: لو ما انرسل، نبني واحد minimal من الموجود
+  const snapFromInput = data.serviceSnapshot;
+  const fallbackName =
+    String(snapFromInput?.serviceNameAtBooking || "").trim() ||
+    String(data.serviceName || "").trim();
+
+  const fallbackPrice = Number(snapFromInput?.priceAtBooking ?? data.finalPrice ?? data.total ?? 0);
+  const fallbackDur = Number(snapFromInput?.durationAtBooking ?? durationMin);
+
+  const serviceSnapshot: ServiceSnapshot = {
+    serviceNameAtBooking: fallbackName || "—",
+    priceAtBooking: Number.isFinite(fallbackPrice) ? fallbackPrice : 0,
+    durationAtBooking: Number.isFinite(fallbackDur) ? fallbackDur : durationMin,
+    sectionIdAtBooking: snapFromInput?.sectionIdAtBooking,
+  };
+
+  const payloadBase = stripUndefined({
     ...data,
     employeeId: (data.employeeId ?? null) as any,
+    employeeUid: (data.employeeUid ?? null) as any,
     durationMin,
 
-    // ✅ NEW (Fix Staff Portal)
     employeeKey,
+    slotId: startSlotId,
 
     // ✅ NEW
-    slotId: startSlotId,
+    serviceId: data.serviceId ?? undefined,
+    serviceSnapshot,
 
     createdAt: serverTimestamp(),
   });
 
-  const bookingId = await runTransaction(db, async (tx) => {
+  // ✅✅✅ FIX: reads before writes inside transaction
+  const { bookingId, publicId } = await runTransaction(db, async (tx) => {
+    // ---------- READS FIRST ----------
+    const counterRef = doc(db, ...COUNTERS_COL, BOOKINGS_COUNTER_DOC);
+    const counterSnap = await tx.get(counterRef);
+
     const slotSnaps = await Promise.all(slotRefs.map((r) => tx.get(r)));
 
     let existingBookingId: string | null = null;
@@ -251,9 +308,7 @@ export async function createBooking(data: BookingDoc) {
       if (!bId) throw slotTakenError();
 
       if (!existingBookingId) existingBookingId = bId;
-      if (existingBookingId && bId !== existingBookingId) {
-        throw slotTakenError();
-      }
+      if (existingBookingId && bId !== existingBookingId) throw slotTakenError();
     }
 
     if (existingBookingId) {
@@ -264,34 +319,49 @@ export async function createBooking(data: BookingDoc) {
         const existingBooking = normalizeBooking(existingBookingSnap.data());
 
         const sameUser =
-          (data.userId &&
-            existingBooking.userId &&
-            data.userId === existingBooking.userId) ||
+          (data.userId && existingBooking.userId && data.userId === existingBooking.userId) ||
           (!data.userId &&
-            String(existingBooking.clientPhone || "") ===
-              String(data.clientPhone || ""));
+            String(existingBooking.clientPhone || "") === String(data.clientPhone || ""));
 
-        const sameDate =
-          String(existingBooking.date || "") === String(data.date || "");
-        const sameStart =
-          String(existingBooking.time || "") === String(data.time || "");
+        const sameDate = String(existingBooking.date || "") === String(data.date || "");
+        const sameStart = String(existingBooking.time || "") === String(data.time || "");
 
-        // ✅ prefer employeeKey comparison (UID or safeKey(name))
+        // ✅ prefer employeeKey comparison
         const sameEmp =
           String(existingBooking.employeeKey || "") === String(employeeKey) ||
           safeKey(
-            (existingBooking.employeeId ?? "").trim() ||
-              existingBooking.employeeName.trim()
+            String(existingBooking.employeeId ?? "").trim() || existingBooking.employeeName.trim()
           ) === safeKey(employeeKeyForLock);
 
         if (sameUser && sameDate && sameStart && sameEmp) {
-          return existingBookingId;
+          const existingPublic = String(existingBooking.publicId || "").trim();
+          return { bookingId: existingBookingId, publicId: existingPublic || "MK-00000" };
         }
       }
 
       throw slotTakenError();
     }
 
+    // ---------- WRITES AFTER READS ----------
+    let next = 10000;
+    if (counterSnap.exists()) {
+      const d: any = counterSnap.data() || {};
+      const cur = typeof d.next === "number" ? d.next : 10000;
+      next = cur + 1;
+      tx.update(counterRef, { next });
+    } else {
+      next = 10001;
+      tx.set(counterRef, { next }, { merge: true } as any);
+    }
+
+    const publicId = `MK-${String(next).padStart(5, "0")}`;
+
+    const payload = stripUndefined({
+      ...payloadBase,
+      publicId,
+    });
+
+    // ✅ lock slots
     for (let i = 0; i < slotRefs.length; i++) {
       const slotRef = slotRefs[i];
       const t = timesToLock[i];
@@ -299,10 +369,10 @@ export async function createBooking(data: BookingDoc) {
       tx.set(slotRef, {
         bookingId: bookingRef.id,
         employeeId: data.employeeId ?? null,
+        employeeUid: data.employeeUid ?? null,
         employeeName: data.employeeName,
 
-        // ✅ NEW
-        employeeKey,
+        employeeKey, // for staff portal
 
         date: data.date,
         time: t,
@@ -316,37 +386,50 @@ export async function createBooking(data: BookingDoc) {
       });
     }
 
+    // ✅ write booking
     tx.set(bookingRef, payload);
 
-    return bookingRef.id;
+    return { bookingId: bookingRef.id, publicId };
   });
 
-  await setDoc(
-    doc(db, ...TRACKS_COL, bookingId),
-    {
-      bookingId,
-      serviceName: data.serviceName,
-      employeeId: data.employeeId ?? null,
-      employeeName: data.employeeName,
+  // ✅ track doc (best effort merge) — لا نخلي track يكسر الحجز
+  try {
+    await setDoc(
+      doc(db, ...TRACKS_COL, bookingId),
+      stripUndefined({
+        bookingId,
+        publicId,
 
-      // ✅ NEW
-      employeeKey,
+        // ✅ مهم مع rules حقك
+        userId: data.userId ?? null,
 
-      date: data.date,
-      time: data.time,
-      durationMin: Math.max(0, Number(data.durationMin || 0)) || 60,
-      status: data.status,
+        // legacy + new
+        serviceName: data.serviceName,
+        serviceId: data.serviceId ?? undefined,
+        serviceSnapshot,
 
-      // ✅ NEW: keep slotId in track too
-      slotId: startSlotId,
+        employeeId: data.employeeId ?? null,
+        employeeUid: data.employeeUid ?? null,
+        employeeName: data.employeeName,
+        employeeKey,
 
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+        date: data.date,
+        time: data.time,
+        durationMin,
 
-  return bookingId;
+        status: data.status,
+        slotId: startSlotId,
+
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }) as any,
+      { merge: true }
+    );
+  } catch (e) {
+    console.warn("[createBooking] track write failed (ignored):", e);
+  }
+
+  return { id: bookingId, publicId };
 }
 
 /** ✅ إنشاء حجز من لوحة التحكم */
@@ -354,14 +437,26 @@ export async function createDashboardBooking(args: {
   createdBy: string;
   clientName: string;
   clientPhone: string;
+
+  // legacy
   serviceName: string;
+
+  // ✅ new (optional)
+  serviceId?: string;
+  serviceSnapshot?: ServiceSnapshot;
+
   durationMin?: number;
+
   employeeName: string;
   employeeId?: string | null;
+  employeeUid?: string | null;
+
   date: string;
   time: string;
+
   total?: number;
   finalPrice?: number;
+
   status?: BookingStatus;
   note?: string;
 }) {
@@ -372,11 +467,17 @@ export async function createDashboardBooking(args: {
 
     clientName: args.clientName,
     clientPhone: args.clientPhone,
+
     serviceName: args.serviceName,
+
+    // ✅ new
+    serviceId: args.serviceId,
+    serviceSnapshot: args.serviceSnapshot,
 
     durationMin: args.durationMin,
 
     employeeId: args.employeeId ?? null,
+    employeeUid: args.employeeUid ?? null,
     employeeName: args.employeeName,
 
     date: args.date,
@@ -406,10 +507,7 @@ export async function listAllBookings(): Promise<BookingDocWithId[]> {
   const snap = await getDocs(collection(db, ...BOOKINGS_COL));
   return snap.docs
     .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
-    .sort(
-      (a, b) =>
-        (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.()
-    );
+    .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
 }
 
 /**
@@ -426,27 +524,18 @@ export function watchAllBookings(
     (snap) => {
       const rows = snap.docs
         .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
-        .sort(
-          (a, b) =>
-            (b.createdAt as any)?.toMillis?.() -
-            (a.createdAt as any)?.toMillis?.()
-        );
+        .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
 
       onData(rows);
     },
-    (err) => {
-      if (onError) onError(err);
-    }
+    (err) => onError?.(err)
   );
 }
 
 export async function listUserBookings(userId: string) {
   const q = query(collection(db, ...BOOKINGS_COL), where("userId", "==", userId));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({
-    id: d.id,
-    ...normalizeBooking(d.data()),
-  }));
+  return snap.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
 }
 
 /* =========================
@@ -465,30 +554,28 @@ function uniqMerge(a: BookingDocWithId[], b: BookingDocWithId[]) {
 }
 
 export async function listEmployeeBookings(
-  employeeId: string,
+  employeeIdOrUid: string,
   employeeName?: string
 ): Promise<BookingDocWithId[]> {
   const baseCol = collection(db, ...BOOKINGS_COL);
 
-  // ✅ NEW: primary query by employeeKey (UID)
-  const qKey = query(baseCol, where("employeeKey", "==", employeeId));
+  // primary by employeeKey (uid or safeKey or staff_public id)
+  const qKey = query(baseCol, where("employeeKey", "==", employeeIdOrUid));
   const sKey = await getDocs(qKey);
   const rKey = sKey.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
 
   // old way (employeeId)
-  const q1 = query(baseCol, where("employeeId", "==", employeeId));
+  const q1 = query(baseCol, where("employeeId", "==", employeeIdOrUid));
   const s1 = await getDocs(q1);
   const r1 = s1.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
 
   let r2: BookingDocWithId[] = [];
   const name = String(employeeName || "").trim();
   if (name) {
-    // ✅ NEW: fallback by employeeKey (safeKey(name))
     const q2k = query(baseCol, where("employeeKey", "==", safeKey(name)));
     const s2k = await getDocs(q2k);
     const r2k = s2k.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
 
-    // old fallback by name
     const q2 = query(baseCol, where("employeeName", "==", name));
     const s2 = await getDocs(q2);
     const r2n = s2.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
@@ -500,7 +587,7 @@ export async function listEmployeeBookings(
 }
 
 export function watchEmployeeBookings(
-  employeeId: string,
+  employeeIdOrUid: string,
   employeeName: string | undefined,
   onData: (rows: BookingDocWithId[]) => void,
   onError?: (err: unknown) => void
@@ -513,17 +600,12 @@ export function watchEmployeeBookings(
   let rowsByName: BookingDocWithId[] = [];
 
   const emit = () => {
-    onData(
-      uniqMerge(
-        uniqMerge(rowsByKeyUid, rowsById),
-        uniqMerge(rowsByKeyName, rowsByName)
-      )
-    );
+    onData(uniqMerge(uniqMerge(rowsByKeyUid, rowsById), uniqMerge(rowsByKeyName, rowsByName)));
   };
 
-  // ✅ NEW: employeeKey == uid
+  // employeeKey == uid/stable key
   const unsubKeyUid = onSnapshot(
-    query(baseCol, where("employeeKey", "==", employeeId)),
+    query(baseCol, where("employeeKey", "==", employeeIdOrUid)),
     (snap) => {
       rowsByKeyUid = snap.docs
         .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
@@ -533,9 +615,9 @@ export function watchEmployeeBookings(
     (err) => onError?.(err)
   );
 
-  // old: employeeId == uid
+  // old: employeeId == uid/staff_public id
   const unsubId = onSnapshot(
-    query(baseCol, where("employeeId", "==", employeeId)),
+    query(baseCol, where("employeeId", "==", employeeIdOrUid)),
     (snap) => {
       rowsById = snap.docs
         .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
@@ -547,7 +629,6 @@ export function watchEmployeeBookings(
 
   const name = String(employeeName || "").trim();
 
-  // ✅ NEW: employeeKey == safeKey(name)
   let unsubKeyName: (() => void) | null = null;
   if (name) {
     unsubKeyName = onSnapshot(
@@ -562,7 +643,6 @@ export function watchEmployeeBookings(
     );
   }
 
-  // old: employeeName == name
   let unsubName: (() => void) | null = null;
   if (name) {
     unsubName = onSnapshot(
@@ -590,7 +670,7 @@ export function watchEmployeeBookings(
 ========================= */
 
 /**
- * ✅ FIX (حل المشكلتين):
+ * ✅ FIX:
  * 1) تحديث الحالة لازم ينجح حتى لو income ممنوع بالـ rules
  * 2) نخلي income "best-effort" خارج الترانزاكشن (ما يكسّر تعديل الحجز)
  */
@@ -606,23 +686,43 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
 
     const booking = normalizeBooking(snap.data());
 
-    tx.update(bookingRef, { status });
+    // booking
+    tx.update(
+      bookingRef,
+      stripUndefined({
+        status,
+        updatedAt: serverTimestamp(),
+      }) as any
+    );
 
+    // track
     tx.set(
       trackRef,
       stripUndefined({
         bookingId,
+
+        // ✅ keep these for dashboards
+        publicId: booking.publicId ?? undefined,
+
+        // legacy + new
         serviceName: booking.serviceName,
+        serviceId: booking.serviceId ?? undefined,
+        serviceSnapshot: booking.serviceSnapshot ?? undefined,
+
         employeeId: booking.employeeId ?? null,
+        employeeUid: booking.employeeUid ?? null,
         employeeName: booking.employeeName,
         employeeKey: booking.employeeKey ?? undefined,
+
         date: booking.date,
         time: booking.time,
         durationMin: booking.durationMin ?? undefined,
+
         status,
         slotId: booking.slotId ?? undefined,
+
         updatedAt: serverTimestamp(),
-      }),
+      }) as any,
       { merge: true }
     );
 
@@ -649,7 +749,11 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
           source: "booking",
           clientName: bookingForIncome.clientName,
           clientPhone: bookingForIncome.clientPhone,
-          serviceName: bookingForIncome.serviceName,
+
+          // ✅ prefer snapshot name when available
+          serviceName:
+            bookingForIncome.serviceSnapshot?.serviceNameAtBooking || bookingForIncome.serviceName,
+
           employeeName: bookingForIncome.employeeName,
           status,
           updatedAt: serverTimestamp(),
@@ -658,7 +762,6 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         { merge: true }
       );
     } else if (shouldDeleteIncome) {
-      // delete if exists (ignore if not permitted)
       try {
         const s = await getDoc(incomeRef);
         if (s.exists()) await deleteDoc(incomeRef);
@@ -672,29 +775,49 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
 }
 
 export async function updateBookingDetails(bookingId: string, patch: Partial<BookingDoc>) {
-  await updateDoc(doc(db, ...BOOKINGS_COL, bookingId), stripUndefined(patch));
+  // ✅ تحديث booking
+  await updateDoc(
+    doc(db, ...BOOKINGS_COL, bookingId),
+    stripUndefined({
+      ...patch,
+      updatedAt: serverTimestamp(),
+    }) as any
+  );
 
   // ✅ best-effort track update (إذا track ناقص أو rules تمنع، لا نكسر حفظ الحجز)
   try {
     await updateDoc(
       doc(db, ...TRACKS_COL, bookingId),
       stripUndefined({
+        publicId: patch.publicId,
+
         serviceName: patch.serviceName,
+        serviceId: patch.serviceId,
+        serviceSnapshot: patch.serviceSnapshot,
+
         employeeId: patch.employeeId,
+        employeeUid: patch.employeeUid,
         employeeName: patch.employeeName,
         employeeKey: patch.employeeKey,
+
         date: patch.date,
         time: patch.time,
         durationMin: patch.durationMin,
+
         status: patch.status,
         slotId: patch.slotId,
+
         updatedAt: serverTimestamp(),
-      })
+      }) as any
     );
   } catch {
     // ignore
   }
 }
+
+/* =========================
+   TRACK READ
+========================= */
 
 export async function getTrackById(id: string) {
   const snap = await getDoc(doc(db, ...TRACKS_COL, id));
@@ -702,11 +825,26 @@ export async function getTrackById(id: string) {
   return snap.data();
 }
 
+// ✅ Track by publicId (MK-xxxxx)
+export async function getTrackByPublicId(publicId: string) {
+  const code = String(publicId || "").trim();
+  if (!code) return null;
+
+  const q1 = query(collection(db, ...TRACKS_COL), where("publicId", "==", code), limit(1));
+  const snap = await getDocs(q1);
+  if (snap.empty) return null;
+
+  const d = snap.docs[0];
+  return { id: d.id, ...(d.data() as any) };
+}
+
 /* =========================
-   ✅ One-time Migration (Fix Staff visibility)
-   - Fill missing employeeKey for old bookings
+   ✅ One-time Migration Helpers
 ========================= */
 
+/**
+ * ✅ Fill missing employeeKey for old bookings
+ */
 export async function backfillEmployeeKeys(opts?: { dryRun?: boolean; limit?: number }) {
   const dryRun = !!opts?.dryRun;
   const max = Math.max(1, Number(opts?.limit ?? 1000));
@@ -721,26 +859,24 @@ export async function backfillEmployeeKeys(opts?: { dryRun?: boolean; limit?: nu
 
     const b = normalizeBooking(d.data());
 
-    // already ok
     if (b.employeeKey && String(b.employeeKey).trim()) continue;
 
+    const employeeUid = String(b.employeeUid ?? "").trim();
     const employeeId = String(b.employeeId ?? "").trim();
     const employeeName = String(b.employeeName ?? "").trim();
 
-    // ✅ preferred: uid, fallback: safeKey(name)
-    const nextKey = employeeId || (employeeName ? safeKey(employeeName) : "");
+    const nextKey = employeeUid || employeeId || (employeeName ? safeKey(employeeName) : "");
+
     if (!nextKey) continue;
 
     patched++;
 
     if (!dryRun) {
-      // update booking
       await updateDoc(doc(db, ...BOOKINGS_COL, d.id), {
         employeeKey: nextKey,
         updatedAt: serverTimestamp(),
       } as any);
 
-      // optional: update track (ignore if missing/perms)
       try {
         await updateDoc(doc(db, ...TRACKS_COL, d.id), {
           employeeKey: nextKey,
@@ -755,3 +891,72 @@ export async function backfillEmployeeKeys(opts?: { dryRun?: boolean; limit?: nu
   return { scanned: snap.size, patched, dryRun };
 }
 
+/**
+ * ✅ Backfill serviceId + snapshot for old bookings
+ */
+export async function backfillServiceFields(opts?: { dryRun?: boolean; limit?: number }) {
+  const dryRun = !!opts?.dryRun;
+  const max = Math.max(1, Number(opts?.limit ?? 1000));
+
+  const baseCol = collection(db, ...BOOKINGS_COL);
+  const snap = await getDocs(baseCol);
+
+  let patched = 0;
+
+  for (const d of snap.docs) {
+    if (patched >= max) break;
+
+    const b = normalizeBooking(d.data());
+
+    const hasServiceId = !!String(b.serviceId || "").trim();
+    const hasSnap = !!b.serviceSnapshot?.serviceNameAtBooking;
+
+    if (hasServiceId && hasSnap) continue;
+
+    const legacy = String(b.serviceName || "").trim();
+
+    const looksLikeId =
+      legacy.length >= 15 && !legacy.includes(" ") && /^[A-Za-z0-9_-]+$/.test(legacy);
+
+    const nextServiceId = hasServiceId ? b.serviceId : looksLikeId ? legacy : undefined;
+
+    const snapName = String(b.serviceSnapshot?.serviceNameAtBooking || "").trim() || legacy || "—";
+    const snapPrice = Number(b.serviceSnapshot?.priceAtBooking ?? b.finalPrice ?? b.total ?? 0);
+    const snapDur = Number(b.serviceSnapshot?.durationAtBooking ?? b.durationMin ?? 60);
+
+    const nextSnap: ServiceSnapshot = {
+      serviceNameAtBooking: snapName,
+      priceAtBooking: Number.isFinite(snapPrice) ? snapPrice : 0,
+      durationAtBooking: Number.isFinite(snapDur) ? snapDur : 60,
+      sectionIdAtBooking: b.serviceSnapshot?.sectionIdAtBooking,
+    };
+
+    patched++;
+
+    if (!dryRun) {
+      await updateDoc(
+        doc(db, ...BOOKINGS_COL, d.id),
+        stripUndefined({
+          serviceId: nextServiceId,
+          serviceSnapshot: nextSnap,
+          updatedAt: serverTimestamp(),
+        }) as any
+      );
+
+      try {
+        await updateDoc(
+          doc(db, ...TRACKS_COL, d.id),
+          stripUndefined({
+            serviceId: nextServiceId,
+            serviceSnapshot: nextSnap,
+            updatedAt: serverTimestamp(),
+          }) as any
+        );
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  return { scanned: snap.size, patched, dryRun };
+}

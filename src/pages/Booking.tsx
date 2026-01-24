@@ -7,7 +7,6 @@ import {
   faClock,
   faUser,
   faPhone,
-  faCheck,
   faSpinner,
   faUserTie,
 } from "@fortawesome/free-solid-svg-icons";
@@ -15,9 +14,12 @@ import {
 import { generateSalonTimeSlots } from "../helpers/timeSlots";
 import "../styles/Booking.css";
 
-// ✅ NEW: Firestore slot availability check
-import { doc, getDoc } from "firebase/firestore";
+// ✅ Firestore slot availability check
+import { doc, getDoc, getDocs, collection, query, where } from "firebase/firestore";
 import { db } from "../services/firebase";
+
+// ✅ Firebase Auth (Anonymous)
+import { getAuth, signInAnonymously } from "firebase/auth";
 
 // ✅ fallback Pricing (مؤقت فقط إذا Firestore فاضي)
 import { pricingSections } from "./Pricing";
@@ -45,42 +47,27 @@ import {
   type ServiceDoc,
 } from "../services/firestoreCatalog";
 
+// ✅ Create booking (Firestore)
+import { createBooking } from "../services/firestoreBookings";
+
 // ✅ Custom modal بدل alert
 import ConfirmModal from "../components/ConfirmModal";
 
-/**
- * ✅ Payment methods
- */
-type PaymentMethod = "cash" | "pos_card" | "mada_online";
-
-/** ✅ تطبيع القيم القديمة حتى لا ينكسر شيء */
-function normalizePaymentMethod(v: any): PaymentMethod {
-  const raw = String(v || "").toLowerCase();
-  if (raw === "cash" || raw === "pos_card" || raw === "mada_online") {
-    return raw as PaymentMethod;
-  }
-  if (raw === "card") return "pos_card";
-  if (raw === "transfer") return "cash";
-  if (raw === "other") return "cash";
-  return "cash";
-}
+/* =========================
+   Types
+========================= */
 
 interface BookingFormData {
   name: string;
   phone: string;
   service: string; // ✅ serviceId
-  // ✅ نحتفظ بالاسم للتوافق مع صفحات قديمة
-  employee: string;
-  // ✅ المرجع الثابت للموظفة (Firestore staff_public doc id)
-  employeeId?: string;
-
-  // ✅ NEW: UID الحقيقي للموظفة (لربط حجوزاتها في DashboardStaff)
-  employeeUid?: string;
-
+  employee: string; // name (display)
+  employeeId?: string; // staff_public doc id
+  employeeUid?: string; // linkedUid الحقيقي (لـ Staff portal)
   date: string;
   time: string;
   note?: string;
-  paymentMethod: PaymentMethod;
+
   couponCode?: string;
   offerId?: string | null;
   offerTitle?: string | null;
@@ -88,7 +75,7 @@ interface BookingFormData {
   finalPrice?: number;
   offerAppliesTo?: "all" | "services";
   offerServiceIds?: string[];
-  bookingId?: string;
+
   total?: number;
 
   // ✅ مدة الخدمة بالدقائق (لتفادي تداخل الحجوزات)
@@ -130,51 +117,18 @@ type FlatService = {
   priceText: string;
   basePrice: number;
 
-  // ✅ NEW: مدة من Firestore إذا كانت موجودة
+  // ✅ مدة من Firestore إذا كانت موجودة
   durationMin?: number;
 
-  // ✅ NEW: معرفة مصدر الخدمة (Firestore/Pricing)
+  // ✅ معرفة مصدر الخدمة
   source: "firestore" | "pricing";
 };
 
 type CategoryOption = { id: string; name: string };
 
 const timeSlots = generateSalonTimeSlots();
-
-const getAllBookings = () => {
-  const data = localStorage.getItem("allBookings");
-  return data ? JSON.parse(data) : [];
-};
-
-const makeBookingId = () => `B-${Date.now()}`;
-
 const SALON_ID = "main";
 
-function normalizeArabicKey(s: string) {
-  return String(s || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[إأآ]/g, "ا")
-    .replace(/ة/g, "ه")
-    .replace(/ى/g, "ي")
-    .replace(/ـ/g, ""); // tatweel
-}
-
-async function tryLoadStaffBySpecialty(salonId: string, candidates: string[]) {
-  for (const raw of candidates) {
-    const specialty = String(raw || "").trim();
-    if (!specialty) continue;
-    const res = await listActiveStaffBySpecialty({
-      salonId,
-      specialty,
-    });
-    if (Array.isArray(res) && res.length > 0) return res;
-  }
-  return [];
-}
-
-// ✅ fallback durations للـ Pricing فقط (مؤقت)
-const SERVICE_DURATIONS_MIN: Record<string, number> = {};
 const DEFAULT_SERVICE_DURATION_MIN = 60;
 
 // ✅ نفس منطق slotId الموجود في firestoreBookings.ts
@@ -186,7 +140,7 @@ function buildSlotId(salonId: string, employeeKey: string, date: string, time: s
   return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
 }
 
-// ✅ حساب عدد السلوّتات التي يجب فحصها/قفلها حسب مدة الخدمة
+// ✅ (مؤقت) نفس حساب BookingSlots بالصفحة (مبني على generateSalonTimeSlots)
 const SLOT_STEP_MIN = 30;
 const BUFFER_MIN = 0;
 
@@ -229,13 +183,42 @@ function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {
   const s = String(offer?.startDate || "").trim();
   const e = String(offer?.endDate || "").trim();
 
-  if (s && bookingDateISO < s) {
-    return { ok: false, reason: `العرض يبدأ من ${s}` };
-  }
-  if (e && bookingDateISO > e) {
-    return { ok: false, reason: `العرض انتهى بتاريخ ${e}` };
-  }
+  if (s && bookingDateISO < s) return { ok: false, reason: `العرض يبدأ من ${s}` };
+  if (e && bookingDateISO > e) return { ok: false, reason: `العرض انتهى بتاريخ ${e}` };
   return { ok: true, reason: "" };
+}
+
+function normalizeArabicKey(s: string) {
+  return String(s || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[إأآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/ـ/g, "");
+}
+
+async function tryLoadStaffBySpecialty(salonId: string, candidates: string[]) {
+  for (const raw of candidates) {
+    const specialty = String(raw || "").trim();
+    if (!specialty) continue;
+    const res = await listActiveStaffBySpecialty({ salonId, specialty });
+    if (Array.isArray(res) && res.length > 0) return res;
+  }
+  return [];
+}
+
+async function ensureUserUid(): Promise<string | null> {
+  const auth = getAuth();
+  if (auth.currentUser?.uid) return auth.currentUser.uid;
+
+  try {
+    const cred = await signInAnonymously(auth);
+    return cred.user?.uid ?? null;
+  } catch (err) {
+    console.warn("[Booking] signInAnonymously failed:", err);
+    return null;
+  }
 }
 
 type UiModalState = {
@@ -251,7 +234,7 @@ const Booking: React.FC = () => {
   const dateInputRef = useRef<HTMLInputElement | null>(null);
 
   // =========================
-  // ✅ NEW: مصدر الكاتالوج (Firestore أو Pricing fallback)
+  // Catalog mode
   // =========================
   const [catalogMode, setCatalogMode] = useState<"firestore" | "pricing">("pricing");
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -262,9 +245,6 @@ const Booking: React.FC = () => {
   const [fsServices, setFsServices] = useState<ServiceDoc[]>([]);
 
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
-
-  // ✅ مهم: في Firestore نخزن categoryId
-  // أما في Pricing نخزن category name (عادي لأنه fallback)
   const [selectedCategory, setSelectedCategory] = useState<string>("");
 
   const [formData, setFormData] = useState<BookingFormData>({
@@ -273,19 +253,14 @@ const Booking: React.FC = () => {
     service: "",
     employee: "",
     employeeId: "",
-    employeeUid: "", // ✅ NEW
+    employeeUid: "",
     date: "",
     time: "",
     note: "",
-    paymentMethod: "cash",
     durationMin: DEFAULT_SERVICE_DURATION_MIN,
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
-
-  const [showSuccess, setShowSuccess] = useState<boolean>(false);
-  const [countdown, setCountdown] = useState<number>(5);
-  const [shouldRedirect, setShouldRedirect] = useState(false);
 
   const [couponCode, setCouponCode] = useState("");
   const [applied, setApplied] = useState<AppliedOfferResult>({
@@ -300,6 +275,12 @@ const Booking: React.FC = () => {
   const [slotBusy, setSlotBusy] = useState(false);
   const [slotChecking, setSlotChecking] = useState(false);
   const [slotMsg, setSlotMsg] = useState("");
+
+  // ✅ تعطيل الأوقات غير المناسبة (حسب حجوزات الموظفة + مدة الخدمة)
+  const [busyTimes, setBusyTimes] = useState<Set<string>>(new Set());
+  const [disabledStartTimes, setDisabledStartTimes] = useState<Set<string>>(new Set());
+  const [busyLoading, setBusyLoading] = useState(false);
+  const [busyHint, setBusyHint] = useState("");
 
   // ✅ الموظفات من Firestore حسب القسم
   const [staff, setStaff] = useState<StaffPublicWithId[]>([]);
@@ -322,8 +303,7 @@ const Booking: React.FC = () => {
   const closeModal = () => setUiModal((p) => ({ ...p, open: false }));
 
   // =========================
-  // ✅ NEW: تحميل الأقسام أول مرة من Firestore
-  // - إذا فاضي => fallback Pricing
+  // Load sections
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -340,7 +320,6 @@ const Booking: React.FC = () => {
           setCatalogMode("firestore");
           setFsSections(secs);
         } else {
-          // ✅ Firestore فاضي => fallback
           setCatalogMode("pricing");
           setFsSections([]);
         }
@@ -368,8 +347,7 @@ const Booking: React.FC = () => {
   }, []);
 
   // =========================
-  // ✅ NEW: عند تغيير القسم (في وضع Firestore)
-  // - نحمل التصنيفات والخدمات للقسم
+  // Load cats + services for section (Firestore)
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -402,8 +380,6 @@ const Booking: React.FC = () => {
           setFsServices([]);
 
           setCatalogError("تعذر تحميل الخدمات من Firestore. سيتم استخدام Pricing مؤقتًا.");
-
-          // ✅ fallback عند أي مشكلة
           setCatalogMode("pricing");
         }
       } finally {
@@ -418,7 +394,7 @@ const Booking: React.FC = () => {
   }, [catalogMode, selectedSectionId]);
 
   // =========================
-  // ✅ فلترة خدمات Firestore حسب categoryId (مو الاسم)
+  // Filter FS services by categoryId
   // =========================
   const fsServicesFiltered = useMemo(() => {
     if (catalogMode !== "firestore") return [];
@@ -427,7 +403,6 @@ const Booking: React.FC = () => {
     const sid = String(selectedSectionId || "").trim();
     const cid = String(selectedCategory || "").trim();
 
-    // هنا categoryId في Firestore
     return fsServices.filter((s: any) => {
       if (String(s.sectionId || "").trim() !== sid) return false;
       if (!cid) return true;
@@ -436,10 +411,9 @@ const Booking: React.FC = () => {
   }, [catalogMode, fsServices, selectedSectionId, selectedCategory]);
 
   // =========================
-  // ✅ مصدر واحد للخدمات: Firestore (إن وجد) وإلا Pricing
+  // One source services list (Firestore else Pricing)
   // =========================
   const servicesFlat: FlatService[] = useMemo(() => {
-    // ✅ Firestore mode
     if (catalogMode === "firestore" && fsSections.length > 0) {
       const secMap = new Map<string, string>();
       fsSections.forEach((s: any) =>
@@ -452,12 +426,10 @@ const Booking: React.FC = () => {
       );
 
       const list = (selectedSectionId ? fsServicesFiltered : []).map((x: any) => {
-        const sectionTitle =
-          secMap.get(String(x.sectionId)) || String(x.sectionId || "");
+        const sectionTitle = secMap.get(String(x.sectionId)) || String(x.sectionId || "");
         const catName = x.categoryId ? catMap.get(String(x.categoryId)) || "عام" : "عام";
         const name = String(x.الاسم ?? x.name ?? "").trim();
         const priceNum = Number(x.السعر ?? x.price ?? 0);
-
         const durationMin = Number(x.المدة ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN);
 
         return {
@@ -477,7 +449,6 @@ const Booking: React.FC = () => {
       return list;
     }
 
-    // ✅ Pricing fallback
     const out: FlatService[] = [];
 
     Object.entries(pricingSections).forEach(([sectionId, section]) => {
@@ -495,7 +466,7 @@ const Booking: React.FC = () => {
             name: `${cat.category} - ${it.name}`,
             priceText: it.price,
             basePrice,
-            durationMin: SERVICE_DURATIONS_MIN[String(id)] ?? DEFAULT_SERVICE_DURATION_MIN,
+            durationMin: DEFAULT_SERVICE_DURATION_MIN,
             source: "pricing",
           });
         });
@@ -505,9 +476,7 @@ const Booking: React.FC = () => {
     return out;
   }, [catalogMode, fsSections, fsCategories, fsServicesFiltered, selectedSectionId]);
 
-  // ✅ الأقسام للواجهة
   const sectionOptions = useMemo(() => {
-    // Firestore
     if (catalogMode === "firestore" && fsSections.length > 0) {
       return fsSections.map((s: any) => ({
         id: String(s.id),
@@ -515,18 +484,15 @@ const Booking: React.FC = () => {
       }));
     }
 
-    // Pricing
     return Object.entries(pricingSections).map(([id, sec]) => ({
       id,
       title: sec.title,
     }));
   }, [catalogMode, fsSections]);
 
-  // ✅ التصنيفات (اختياري) — الآن نرجع {id,name}
   const categoryOptions: CategoryOption[] = useMemo(() => {
     if (!selectedSectionId) return [];
 
-    // Firestore
     if (catalogMode === "firestore" && fsSections.length > 0) {
       const sid = String(selectedSectionId).trim();
 
@@ -538,12 +504,10 @@ const Booking: React.FC = () => {
         }))
         .filter((x) => x.id && x.name);
 
-      // unique by id
       const seen = new Set<string>();
       return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
     }
 
-    // Pricing (نعطي id = الاسم)
     const cats = servicesFlat
       .filter((s) => s.sectionId === selectedSectionId)
       .map((s) => ({ id: s.category, name: s.category }))
@@ -559,14 +523,12 @@ const Booking: React.FC = () => {
     const all = servicesFlat.filter((s) => s.sectionId === selectedSectionId);
     if (!selectedCategory) return all;
 
-    // ✅ Firestore: selectedCategory = categoryId
     if (catalogMode === "firestore") {
       return all.filter(
         (s) => String(s.categoryId || "").trim() === String(selectedCategory).trim()
       );
     }
 
-    // ✅ Pricing: selectedCategory = category name
     return all.filter((s) => s.category === selectedCategory);
   }, [servicesFlat, selectedSectionId, selectedCategory, catalogMode]);
 
@@ -584,13 +546,9 @@ const Booking: React.FC = () => {
   const getServiceName = (id: string) => getServiceById(id)?.name || id;
   const getServiceBasePrice = (id: string) => getServiceById(id)?.basePrice || 0;
 
-  const selectedService = useMemo(() => {
-    return formData.service ? getServiceById(formData.service) : null;
-  }, [formData.service, servicesFlat]);
 
   // =========================
-  // ✅ تحميل الموظفات عند اختيار القسم
-  // ✅ FIX: جرّب أكثر من قيمة (اسم القسم + id + تطبيع)
+  // Load staff when section selected
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -606,19 +564,17 @@ const Booking: React.FC = () => {
       const sectionTitle =
         sectionOptions.find((s) => s.id === selectedSectionId)?.title?.trim() || "";
 
-      // ✅ candidates متعددة عشان Firestore لازم تطابق حرفيًا
       const candidates = [
-        sectionTitle, // الاسم العربي
-        normalizeArabicKey(sectionTitle), // عربي مطبع
-        selectedSectionId, // لو specialties مخزنة كـ id
-        normalizeArabicKey(selectedSectionId), // احتياط
+        sectionTitle,
+        normalizeArabicKey(sectionTitle),
+        selectedSectionId,
+        normalizeArabicKey(selectedSectionId),
       ].filter(Boolean);
 
       try {
         setStaffLoading(true);
         setStaffError("");
 
-        // ✅ بدل استعلام واحد — نجرب كل candidate ونوقف أول ما نلقى موظفات
         const res = await tryLoadStaffBySpecialty(SALON_ID, candidates);
         if (cancelled) return;
 
@@ -663,50 +619,84 @@ const Booking: React.FC = () => {
   }, [selectedSectionId, sectionOptions]);
 
   // =========================
-  // ✅ فلترة الموظفات حسب الوقت (LocalStorage فقط)
+  // Preload busy slots for employee+date (Firestore)
   // =========================
-  const filteredEmployees = useMemo(() => {
-    const list = staff
-      .filter((s) => (s?.name || "").trim())
-      .map((s) => ({
-        id: s.id, // ✅ staff_public doc id
-        name: s.name.trim(),
-        uid: String((s as any).linkedUid || "").trim(), // ✅ UID الحقيقي
-      }));
-
-    if (!formData.date || !formData.time) return list;
-
-    const all = getAllBookings();
-
-    return list.filter((emp) => {
-      const found = all.find(
-        (b: any) =>
-          (String(b.employeeId || "").trim() === emp.id ||
-            String(b.employee || "").trim() === emp.name) &&
-          String(b.date || "").trim() === formData.date &&
-          String(b.time || "").trim() === formData.time
-      );
-
-      return !found;
-    });
-  }, [staff, formData.date, formData.time]);
-
   useEffect(() => {
-    const chosenId = String(formData.employeeId || "").trim();
-    const chosenName = String(formData.employee || "").trim();
-    if (!chosenId && !chosenName) return;
+    let cancelled = false;
 
-    const exists =
-      (chosenId && filteredEmployees.some((e) => e.id === chosenId)) ||
-      (!chosenId && chosenName && filteredEmployees.some((e) => e.name === chosenName));
+    async function loadBusy() {
+      setBusyHint("");
+      setBusyTimes(new Set());
+      setDisabledStartTimes(new Set());
 
-    if (!exists) {
-      setFormData((p) => ({ ...p, employeeId: "", employeeUid: "", employee: "" }));
+      const employeeId = String(formData.employeeId || "").trim();
+      const date = String(formData.date || "").trim();
+
+      // لازم موظفة + تاريخ عشان نعطل الأوقات
+      if (!employeeId || !date) return;
+
+      try {
+        setBusyLoading(true);
+
+        // ✅ نجيب كل الأقفال للموظفة في نفس اليوم
+        const colRef = collection(db, "salons", SALON_ID, "booking_slots");
+        const q1 = query(colRef, where("employeeId", "==", employeeId), where("date", "==", date));
+        const snap = await getDocs(q1);
+
+        if (cancelled) return;
+
+        const taken = new Set<string>();
+        snap.docs.forEach((d) => {
+          const t = String((d.data() as any)?.time || "").trim();
+          if (t) taken.add(t);
+        });
+
+        setBusyTimes(taken);
+
+        // ✅ نحسب أي وقت بداية يتداخل مع أوقات محجوزة (بناءً على مدة الخدمة)
+        const durationMin = Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+        const allSlots = generateSalonTimeSlots();
+
+        const disabled = new Set<string>();
+        for (const start of allSlots) {
+          const needed = getTimesToLock(start, durationMin);
+          const bad = needed.some((t) => taken.has(t));
+          if (bad) disabled.add(start);
+        }
+
+        setDisabledStartTimes(disabled);
+
+        // ✅ لو الوقت المختار صار Disabled، نفرغه تلقائيًا
+        const currentTime = String(formData.time || "").trim();
+        if (currentTime && disabled.has(currentTime)) {
+          setFormData((p) => ({ ...p, time: "" }));
+          setSlotBusy(true);
+          setSlotMsg("اخترنا لك حماية تلقائية: هذا الوقت ما يكفي لمدة الخدمة. اختاري وقتًا آخر.");
+        } else {
+          setSlotBusy(false);
+          setSlotMsg("");
+        }
+      } catch (e: any) {
+        // إذا احتاج Index أو فشل الاستعلام، ما نكسر الصفحة
+        const msg = String(e?.message || "");
+        if (msg.toLowerCase().includes("requires an index")) {
+          setBusyHint("Firestore يحتاج Index (employeeId + date). افتح Console واضغط Create index.");
+        }
+        setBusyTimes(new Set());
+        setDisabledStartTimes(new Set());
+      } finally {
+        if (!cancelled) setBusyLoading(false);
+      }
     }
-  }, [filteredEmployees, formData.employeeId, formData.employee]);
+
+    loadBusy();
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.employeeId, formData.date, formData.durationMin]);
 
   // =========================
-  // ✅ فحص السلوّت مبكرًا من Firestore
+  // Slot availability check (Firestore)
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -715,7 +705,6 @@ const Booking: React.FC = () => {
       setSlotBusy(false);
       setSlotMsg("");
 
-      // ✅ مهم: نستخدم employeeId (staff_public id) لقفل السلوّت
       const employeeKey = String(formData.employeeId || formData.employee || "").trim();
       const date = String(formData.date || "").trim();
       const time = String(formData.time || "").trim();
@@ -740,17 +729,15 @@ const Booking: React.FC = () => {
         const anyTaken = snaps.some((s) => s.exists());
         if (anyTaken) {
           setSlotBusy(true);
-          setSlotMsg(
-            "هذا الوقت غير متاح لأن مدة الخدمة تتداخل مع حجز آخر. اختاري وقتًا آخر."
-          );
+          setSlotMsg("هذا الوقت غير متاح. يرجى اختيار وقت آخر.");
         } else {
           setSlotBusy(false);
           setSlotMsg("");
         }
-      } catch (e) {
+      } catch {
         if (!cancelled) {
           setSlotBusy(false);
-          setSlotMsg("");
+          setSlotMsg("هذا الوقت غير متاح. يرجى اختيار وقت آخر.");
         }
       } finally {
         if (!cancelled) setSlotChecking(false);
@@ -761,14 +748,40 @@ const Booking: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    formData.employeeId,
-    formData.employee,
-    formData.date,
-    formData.time,
-    formData.durationMin,
-  ]);
+  }, [formData.employeeId, formData.employee, formData.date, formData.time, formData.durationMin]);
 
+  // =========================
+  // Employee dropdown list
+  // =========================
+  const filteredEmployees = useMemo(() => {
+    const list = staff
+      .filter((s) => (s?.name || "").trim())
+      .map((s) => ({
+        id: s.id,
+        name: s.name.trim(),
+        uid: String((s as any).linkedUid || "").trim(),
+      }));
+
+    return list;
+  }, [staff]);
+
+  useEffect(() => {
+    const chosenId = String(formData.employeeId || "").trim();
+    const chosenName = String(formData.employee || "").trim();
+    if (!chosenId && !chosenName) return;
+
+    const exists =
+      (chosenId && filteredEmployees.some((e) => e.id === chosenId)) ||
+      (!chosenId && chosenName && filteredEmployees.some((e) => e.name === chosenName));
+
+    if (!exists) {
+      setFormData((p) => ({ ...p, employeeId: "", employeeUid: "", employee: "" }));
+    }
+  }, [filteredEmployees, formData.employeeId, formData.employee]);
+
+  // =========================
+  // Change handlers
+  // =========================
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
@@ -780,23 +793,14 @@ const Booking: React.FC = () => {
       return;
     }
 
-    if (name === "paymentMethod") {
-      setFormData((prev) => ({
-        ...prev,
-        paymentMethod: normalizePaymentMethod(value),
-      }));
-      return;
-    }
-
     setFormData((prev) => {
       const next = { ...prev, [name]: value } as BookingFormData;
 
       if (name === "service") {
         next.employee = "";
         next.employeeId = "";
-        next.employeeUid = ""; // ✅ NEW
+        next.employeeUid = "";
 
-        // ✅ مدة الخدمة من Firestore إن وجدت وإلا default
         const s = getServiceById(String(value));
         next.durationMin = Number(s?.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
@@ -818,7 +822,6 @@ const Booking: React.FC = () => {
     const sectionId = e.target.value;
     setSelectedSectionId(sectionId);
 
-    // ✅ عند تغيير القسم: نرجع التصنيف فاضي
     setSelectedCategory("");
 
     setFormData((prev) => ({
@@ -826,7 +829,7 @@ const Booking: React.FC = () => {
       service: "",
       employee: "",
       employeeId: "",
-      employeeUid: "", // ✅ NEW
+      employeeUid: "",
       durationMin: DEFAULT_SERVICE_DURATION_MIN,
     }));
 
@@ -845,7 +848,7 @@ const Booking: React.FC = () => {
       service: "",
       employee: "",
       employeeId: "",
-      employeeUid: "", // ✅ NEW
+      employeeUid: "",
       durationMin: DEFAULT_SERVICE_DURATION_MIN,
     }));
 
@@ -931,14 +934,16 @@ const Booking: React.FC = () => {
     }
   };
 
+  // =========================
+  // Submit (Create Firestore booking مباشرة + Go Success)
+  // =========================
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (slotBusy) {
       openModal({
         title: "الوقت غير متاح",
-        message:
-          "هذا الوقت غير متاح لأن مدة الخدمة تتداخل مع حجز آخر. اختاري وقتًا آخر.",
+        message: "هذا الوقت غير متاح لأن مدة الخدمة تتداخل مع حجز آخر. اختاري وقتًا آخر.",
         variant: "danger",
         confirmText: "حسنًا",
       });
@@ -958,10 +963,7 @@ const Booking: React.FC = () => {
       return;
     }
 
-    if (
-      !String(formData.employeeId || "").trim() ||
-      !String(formData.employee || "").trim()
-    ) {
+    if (!String(formData.employeeId || "").trim() || !String(formData.employee || "").trim()) {
       openModal({
         title: "اختيار الموظفة",
         message: "فضلاً اختاري الموظفة من القائمة.",
@@ -971,23 +973,30 @@ const Booking: React.FC = () => {
       return;
     }
 
+    if (!String(formData.service || "").trim()) {
+      openModal({
+        title: "اختيار الخدمة",
+        message: "فضلاً اختاري الخدمة من القائمة.",
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
+
     setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 900));
 
-    const basePrice = getServiceBasePrice(formData.service);
-    const serviceId = formData.service;
+    try {
+      // ✅ تحقق من الكوبون مرة أخيرة إذا مكتوب
+      const basePrice = getServiceBasePrice(formData.service);
+      const serviceId = formData.service;
 
-    const normalizedPayment: PaymentMethod = normalizePaymentMethod(formData.paymentMethod);
-    const normalizedCode = couponCode.trim();
+      const normalizedCode = couponCode.trim();
+      let finalApplied: AppliedOfferResult = applied;
 
-    let finalApplied: AppliedOfferResult = applied;
-
-    if (normalizedCode) {
-      try {
+      if (normalizedCode) {
         const offer = await findActiveOfferByCode(SALON_ID, normalizedCode);
 
         if (!offer) {
-          setIsLoading(false);
           openModal({
             title: "كود الخصم غير صحيح",
             message: "الكود غير صحيح أو غير متاح حالياً.",
@@ -998,7 +1007,6 @@ const Booking: React.FC = () => {
         }
 
         if (!offerAppliesToService(offer, serviceId)) {
-          setIsLoading(false);
           openModal({
             title: "الكود لا ينطبق",
             message: "هذا الكود لا ينطبق على هذه الخدمة.",
@@ -1010,7 +1018,6 @@ const Booking: React.FC = () => {
 
         const dateCheck = isOfferValidForBookingDate(offer as any, formData.date);
         if (!dateCheck.ok) {
-          setIsLoading(false);
           openModal({
             title: "العرض غير متاح لهذا التاريخ",
             message: dateCheck.reason || "هذا العرض غير متاح لتاريخ الحجز المختار.",
@@ -1021,90 +1028,160 @@ const Booking: React.FC = () => {
         }
 
         const { discountAmount, finalPrice } = calcDiscount(basePrice, offer);
-
-        finalApplied = {
-          offer,
-          discountAmount,
-          finalPrice,
-          reason: "تم تطبيق الخصم ✅",
-        };
-
+        finalApplied = { offer, discountAmount, finalPrice, reason: "تم تطبيق الخصم ✅" };
         setApplied(finalApplied);
         setManualOverride(true);
-      } catch (err) {
-        setIsLoading(false);
+      }
+
+      const finalPriceNum =
+        Number(finalApplied.finalPrice || 0) > 0 ? finalApplied.finalPrice : basePrice;
+
+      const durationMin = Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+
+      // ✅ لازم UID للكتابة (Anonymous)
+      const uid = await ensureUserUid();
+      if (!uid) {
         openModal({
-          title: "تعذر التحقق من الكود",
-          message: "صار خطأ أثناء التحقق من كود الخصم. جرّبي مرة ثانية.",
+          title: "تعذر إكمال الحجز",
+          message:
+            "لم نستطع إنشاء جلسة مستخدم للكتابة في Firestore.\n\n" +
+            "فعّل Anonymous Auth من Firebase Authentication.",
           variant: "danger",
           confirmText: "حسنًا",
         });
         return;
       }
+
+      // ✅ note: نجمع ملاحظة العميل + معلومات العرض
+      const userNote = String(formData.note || "").trim();
+      const offerNote = finalApplied.offer
+        ? `Offer: ${(finalApplied.offer as any)?.title || normalizedCode || "-"} | discount=${Number(
+          finalApplied.discountAmount || 0
+        ).toFixed(0)}`
+        : "";
+
+      const noteFinal = [userNote, offerNote].filter(Boolean).join(" | ") || undefined;
+
+      // ✅ service snapshot ثابت
+      const serviceNameAtBooking = getServiceName(formData.service);
+      const sectionIdAtBooking = String(selectedSectionId || "").trim() || undefined;
+
+      // ✅ Create Firestore booking (direct)
+      const res = await createBooking({
+        userId: uid,
+        createdBy: "client",
+        channel: "client",
+
+        clientName: String(formData.name || "").trim(),
+        clientPhone: phone,
+
+        // legacy + new
+        serviceName: formData.service, // legacy: نخليه نفس serviceId (عشان Success عندك يستعمله)
+        serviceId: formData.service,
+        serviceSnapshot: {
+          serviceNameAtBooking,
+          priceAtBooking: Number(finalPriceNum || 0),
+          durationAtBooking: durationMin,
+          sectionIdAtBooking,
+        },
+
+        employeeId: String(formData.employeeId || "").trim(),
+        employeeUid: String(formData.employeeUid || "").trim() || null,
+        employeeName: String(formData.employee || "").trim() || "-",
+
+        date: String(formData.date || "").trim(),
+        time: String(formData.time || "").trim(),
+
+        total: Number(finalPriceNum || 0),
+        finalPrice: Number(finalPriceNum || 0),
+
+        status: "pending",
+        note: noteFinal,
+
+        durationMin,
+      } as any);
+
+      // ✅ Save current booking for Success page
+      const currentBooking = {
+        bookingId: res.id,
+        id: res.id,
+        trackId: res.id,
+        publicId: res.publicId,
+
+        name: String(formData.name || "").trim(),
+        phone,
+        service: formData.service,
+        serviceName: formData.service, // legacy for old screens
+        employee: String(formData.employee || "").trim(),
+        employeeId: String(formData.employeeId || "").trim(),
+        employeeUid: String(formData.employeeUid || "").trim(),
+
+        date: String(formData.date || "").trim(),
+        time: String(formData.time || "").trim(),
+
+        total: Number(finalPriceNum || 0),
+        finalPrice: Number(finalPriceNum || 0),
+
+        couponCode: normalizedCode || "",
+        offerId: (finalApplied.offer as any)?.id || null,
+        offerTitle: (finalApplied.offer as any)?.title || null,
+        discountAmount: Number(finalApplied.discountAmount || 0),
+
+        durationMin,
+        status: "pending",
+        createdAt: Date.now(),
+      };
+
+      localStorage.setItem("currentBooking", JSON.stringify(currentBooking));
+      localStorage.removeItem("allBookings");
+      localStorage.removeItem("bookingDraft");
+
+      navigate("/success");
+    } catch (e: any) {
+      console.error(e);
+
+      if (e?.code === "SLOT_TAKEN" || String(e?.message || "") === "SLOT_TAKEN") {
+        openModal({
+          title: "الوقت محجوز",
+          message: "هذا الوقت محجوز بالفعل لهذه الموظفة. اختاري وقتًا آخر.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
+      openModal({
+        title: "تعذر حفظ الحجز",
+        message:
+          `صار خطأ أثناء حفظ الحجز.\n\n` +
+          `code: ${String(e?.code || "—")}\n` +
+          `message: ${String(e?.message || "—")}`,
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    const finalPriceNum =
-      Number(finalApplied.finalPrice || 0) > 0 ? finalApplied.finalPrice : basePrice;
-
-    const bookingId = makeBookingId();
-
-    const bookingWithOffer: BookingFormData = {
-      ...formData,
-      paymentMethod: normalizedPayment,
-      phone,
-      couponCode: normalizedCode || "",
-      offerId: (finalApplied.offer as any)?.id || null,
-      offerTitle: (finalApplied.offer as any)?.title || null,
-      discountAmount: finalApplied.discountAmount || 0,
-      finalPrice: finalPriceNum,
-      offerAppliesTo: ((finalApplied.offer as any)?.appliesTo as any) || "all",
-      offerServiceIds: Array.isArray((finalApplied.offer as any)?.serviceIds)
-        ? ((finalApplied.offer as any).serviceIds as string[])
-        : [],
-      bookingId,
-      total: Number(finalPriceNum || 0),
-
-      // ✅ ثابت للسلوّت
-      employeeId: String(formData.employeeId || "").trim(), // staff_public id
-      employee: String(formData.employee || "").trim(), // اسم للعرض
-
-      // ✅ NEW: للربط الحقيقي (DashboardStaff)
-      employeeUid: String(formData.employeeUid || "").trim(),
-
-      durationMin: Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-    };
-
-    localStorage.setItem("currentBooking", JSON.stringify(bookingWithOffer));
-
-    setIsLoading(false);
-
-    setShowSuccess(true);
-    setCountdown(5);
-    setShouldRedirect(false);
   };
 
-  // ✅ استرجاع draft
+  // =========================
+  // Restore draft (optional)
+  // =========================
   useEffect(() => {
     const draft = localStorage.getItem("bookingDraft");
-    if (draft) {
+    if (!draft) return;
+
+    try {
       const parsed = JSON.parse(draft);
 
-      if (parsed?.paymentMethod) {
-        parsed.paymentMethod = normalizePaymentMethod(parsed.paymentMethod);
-      } else {
-        parsed.paymentMethod = "cash";
-      }
-
-      if (!parsed?.durationMin) {
-        parsed.durationMin = DEFAULT_SERVICE_DURATION_MIN;
-      }
+      if (!parsed?.durationMin) parsed.durationMin = DEFAULT_SERVICE_DURATION_MIN;
 
       setFormData((prev) => ({
         ...prev,
         ...parsed,
         employee: String(parsed?.employee || "").trim(),
         employeeId: String(parsed?.employeeId || "").trim(),
-        employeeUid: String(parsed?.employeeUid || "").trim(), // ✅ NEW
+        employeeUid: String(parsed?.employeeUid || "").trim(),
         durationMin: Number(parsed?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
       }));
 
@@ -1112,8 +1189,6 @@ const Booking: React.FC = () => {
         const s = getServiceById(parsed.service);
         if (s?.sectionId) setSelectedSectionId(s.sectionId);
 
-        // ✅ Firestore: نخزن categoryId
-        // ✅ Pricing: نخزن category name
         if (catalogMode === "firestore") {
           if (s?.categoryId) setSelectedCategory(String(s.categoryId));
           else setSelectedCategory("");
@@ -1121,51 +1196,9 @@ const Booking: React.FC = () => {
           if (s?.category) setSelectedCategory(String(s.category));
         }
       }
-    }
-
+    } catch { }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined;
-
-    if (showSuccess) {
-      timer = setInterval(() => {
-        setCountdown((prev) => {
-          const next = prev - 1;
-          if (next <= 0) return 0;
-          return next;
-        });
-      }, 1000);
-    }
-
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [showSuccess]);
-
-  useEffect(() => {
-    if (!showSuccess) return;
-    if (countdown === 0) setShouldRedirect(true);
-  }, [showSuccess, countdown]);
-
-  useEffect(() => {
-    if (!shouldRedirect) return;
-    navigate("/checkout");
-  }, [shouldRedirect, navigate]);
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "";
-
-    const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    };
-
-    return date.toLocaleDateString("ar-SA", options);
-  };
 
   const basePrice = getServiceBasePrice(formData.service);
   const finalPrice = Number(applied.finalPrice || 0) > 0 ? applied.finalPrice : basePrice;
@@ -1188,17 +1221,14 @@ const Booking: React.FC = () => {
             <div className="booking-card">
               <div className="booking-header">
                 <h1 className="booking-title">احجزي موعدك الآن</h1>
-                <p className="booking-subtitle">
-                  اختاري الخدمة والوقت المناسب لك وسنكون بانتظارك
-                </p>
+                <p className="booking-subtitle">اختاري الخدمة والوقت المناسب لك وسنكون بانتظارك</p>
 
-                {/* ✅ اختياري: توضيح وضع الكاتالوج */}
                 <div className="mt-2 booking-offer-msg">
                   {catalogLoading
                     ? "جاري تحميل الخدمات..."
                     : catalogMode === "firestore"
-                    ? "الخدمات: من قاعدة البيانات ✅"
-                    : "الخدمات: مؤقتًا من التسعير (Pricing) ⏳"}
+                      ? "الخدمات: من قاعدة البيانات ✅"
+                      : "الخدمات: مؤقتًا من التسعير (Pricing) ⏳"}
                   {catalogError ? ` — ${catalogError}` : ""}
                 </div>
               </div>
@@ -1221,7 +1251,7 @@ const Booking: React.FC = () => {
                         id="name"
                         name="name"
                         value={formData.name}
-                        onChange={() => {}}
+                        onChange={() => { }}
                         onInput={(e: any) => {
                           const v = String(e?.target?.value ?? "");
                           setFormData((p) => ({ ...p, name: v }));
@@ -1250,14 +1280,8 @@ const Booking: React.FC = () => {
                         name="phone"
                         value={formData.phone}
                         onChange={(e) => {
-                          const digitsOnly = e.target.value
-                            .replace(/\D/g, "")
-                            .slice(0, 10);
-
-                          setFormData((prev) => ({
-                            ...prev,
-                            phone: digitsOnly,
-                          }));
+                          const digitsOnly = e.target.value.replace(/\D/g, "").slice(0, 10);
+                          setFormData((prev) => ({ ...prev, phone: digitsOnly }));
                         }}
                         placeholder="05xxxxxxxx"
                         required
@@ -1290,26 +1314,15 @@ const Booking: React.FC = () => {
                 </div>
 
                 <div className="mb-4 bk-field">
-                  <label className="form-label">التصنيف (اختياري)</label>
+                  <label className="form-label">التصنيف</label>
 
                   <select
                     className="form-select dash-select"
                     value={selectedCategory}
                     onChange={handleCategoryChange}
-                    disabled={
-                      !selectedSectionId ||
-                      catalogLoading ||
-                      categoryOptions.length === 0
-                    }
+                    disabled={!selectedSectionId || catalogLoading}
                   >
-                    <option value="">
-                      {!selectedSectionId
-                        ? "اختاري القسم أولاً"
-                        : categoryOptions.length === 0
-                        ? "لا توجد تصنيفات"
-                        : "كل التصنيفات"}
-                    </option>
-
+                    <option value="">الكل</option>
                     {categoryOptions.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -1319,59 +1332,35 @@ const Booking: React.FC = () => {
                 </div>
 
                 <div className="mb-4 bk-field">
-                  <label htmlFor="service" className="form-label">
-                    الخدمة المطلوبة
-                  </label>
+                  <label className="form-label">الخدمة</label>
 
                   <select
                     className="form-select dash-select"
-                    id="service"
                     name="service"
                     value={formData.service}
                     onChange={handleChange}
                     required
-                    disabled={!selectedSectionId || catalogLoading}
+                    disabled={!selectedSectionId}
                   >
                     <option value="" disabled>
-                      {selectedSectionId ? "اختاري الخدمة" : "اختاري القسم أولاً"}
+                      اختاري الخدمة
                     </option>
 
-                    {servicesGrouped.map(([catName, list]) => (
-                      <optgroup key={catName} label={catName}>
-                        {list.map((s) => (
+                    {servicesGrouped.map(([cat, items]) => (
+                      <optgroup key={cat} label={cat}>
+                        {items.map((s) => (
                           <option key={s.id} value={s.id}>
-                            {s.name} — {s.basePrice} ريال
+                            {s.name} — {s.priceText}
                           </option>
                         ))}
                       </optgroup>
                     ))}
                   </select>
-
-                  {selectedService && (
-                    <div className="mt-2 booking-price-box">
-                      <div className="d-flex justify-content-between">
-                        <span>السعر</span>
-                        <strong>{selectedService.basePrice} ريال</strong>
-                      </div>
-
-                      <div className="d-flex justify-content-between mt-1">
-                        <span>المدة</span>
-                        <strong>
-                          {Number(
-                            selectedService.durationMin || DEFAULT_SERVICE_DURATION_MIN
-                          )}{" "}
-                          دقيقة
-                        </strong>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="row">
                   <div className="col-md-6 mb-4">
-                    <label htmlFor="employee" className="form-label">
-                      الموظفة
-                    </label>
+                    <label className="form-label">الموظفة</label>
 
                     <div className="input-group">
                       <span className="input-group-text">
@@ -1380,82 +1369,43 @@ const Booking: React.FC = () => {
 
                       <select
                         className="form-select"
-                        id="employee"
-                        name="employeeId"
-                        value={formData.employeeId || ""}
+                        value={formData.employeeId}
+                        disabled={!formData.service || staffLoading}
                         onChange={(e) => {
-                          const selectedPublicId = e.target.value;
+                          const id = e.target.value;
+                          const emp = filteredEmployees.find((x) => x.id === id);
 
-                          // ✅ نجيب full من staff عشان linkedUid
-                          const full = staff.find((x) => x.id === selectedPublicId);
-
-                          setFormData((prev) => ({
-                            ...prev,
-                            employeeId: selectedPublicId || "", // staff_public id
-                            employeeUid: String((full as any)?.linkedUid || "").trim(), // ✅ NEW UID الحقيقي
-                            employee: String(full?.name || "").trim(),
+                          setFormData((p) => ({
+                            ...p,
+                            employeeId: id,
+                            employeeUid: emp?.uid || "",
+                            employee: emp?.name || "",
                           }));
                         }}
-                        required={!!selectedSectionId}
-                        disabled={!selectedSectionId || staffLoading}
+                        required
                       >
-                        <option value="">
-                          {staffLoading
-                            ? "جاري تحميل الموظفات..."
-                            : !selectedSectionId
-                            ? "اختاري القسم أولاً"
-                            : "اختاري الموظفة"}
-                        </option>
-
-                        {filteredEmployees.map((emp) => (
-                          <option key={emp.id} value={emp.id}>
-                            {emp.name}
+                        <option value="">اختاري الموظفة</option>
+                        {filteredEmployees.map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {e.name}
                           </option>
                         ))}
                       </select>
                     </div>
 
-                    {staffError && (
-                      <div className="no-employee-warning mt-2">{staffError}</div>
+                    {staffLoading && (
+                      <div className="small text-muted mt-1">
+                        <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الموظفات…
+                      </div>
                     )}
 
-                    {!staffError &&
-                      selectedSectionId &&
-                      formData.date &&
-                      formData.time &&
-                      !staffLoading &&
-                      filteredEmployees.length === 0 && (
-                        <div className="no-employee-warning mt-2">
-                          عذرًا، لا تتوفر موظفات في الوقت الذي اخترتيه. <br />
-                          هذا الوقت محجوز حاليًا. نرجو اختيار وقت أو يوم آخر.
-                        </div>
-                      )}
+                    {staffError && <div className="text-danger small mt-1">{staffError}</div>}
                   </div>
 
                   <div className="col-md-6 mb-4">
-                    <label htmlFor="date" className="form-label">
-                      التاريخ
-                    </label>
+                    <label className="form-label">التاريخ</label>
 
-                    <div
-                      className="input-group booking-date-group"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        dateInputRef.current?.focus();
-                        dateInputRef.current?.showPicker?.();
-                      }}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          dateInputRef.current?.focus();
-                          dateInputRef.current?.showPicker?.();
-                        }
-                      }}
-                      aria-label="اختيار التاريخ"
-                      title="اختيار التاريخ"
-                    >
+                    <div className="input-group">
                       <span className="input-group-text">
                         <FontAwesomeIcon icon={faCalendarAlt} />
                       </span>
@@ -1464,24 +1414,17 @@ const Booking: React.FC = () => {
                         ref={dateInputRef}
                         type="date"
                         className="form-control"
-                        id="date"
                         name="date"
                         value={formData.date}
                         onChange={handleChange}
-                        min={new Date().toISOString().split("T")[0]}
                         required
-                        onFocus={() => {
-                          dateInputRef.current?.showPicker?.();
-                        }}
                       />
                     </div>
                   </div>
                 </div>
 
                 <div className="mb-4">
-                  <label htmlFor="time" className="form-label">
-                    الوقت
-                  </label>
+                  <label className="form-label">الوقت</label>
 
                   <div className="input-group">
                     <span className="input-group-text">
@@ -1490,7 +1433,6 @@ const Booking: React.FC = () => {
 
                     <select
                       className="form-select"
-                      id="time"
                       name="time"
                       value={formData.time}
                       onChange={handleChange}
@@ -1500,217 +1442,108 @@ const Booking: React.FC = () => {
                         اختاري الوقت
                       </option>
 
-                      {timeSlots.map((time, index) => (
-                        <option key={index} value={time}>
-                          {time}
-                        </option>
-                      ))}
+                      {timeSlots.map((t) => {
+                        const isDisabled = disabledStartTimes.has(t);
+
+                        return (
+                          <option key={t} value={t} disabled={isDisabled}>
+                            {t} {isDisabled ? "— غير متاح" : ""}
+                          </option>
+                        );
+                      })}
                     </select>
+
                   </div>
 
-                  {slotChecking && formData.employeeId && formData.date && formData.time && (
-                    <div className="mt-2 booking-offer-msg">
-                      جاري التحقق من توفر هذا الوقت...
+                  {busyLoading ? (
+                    <div className="bk-hint">جاري فحص الأوقات المتاحة…</div>
+                  ) : busyHint ? (
+                    <div className="bk-hint text-danger">{busyHint}</div>
+                  ) : busyTimes.size > 0 ? (
+                    <div className="bk-hint">
+                      الأوقات المحجوزة في هذا اليوم: {busyTimes.size}
+                    </div>
+                  ) : null}
+
+
+
+                  {slotChecking && (
+                    <div className="small text-muted mt-1">
+                      <FontAwesomeIcon icon={faSpinner} spin /> فحص توفر الوقت…
                     </div>
                   )}
 
-                  {slotMsg && <div className="no-employee-warning mt-2">{slotMsg}</div>}
-                </div>
-
-                <div className="mb-4 bk-field">
-                  <label className="form-label">طريقة الدفع</label>
-
-                  <select
-                    className="form-select dash-select"
-                    name="paymentMethod"
-                    value={formData.paymentMethod}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option value="mada_online">مدى أونلاين (تجريبي)</option>
-                    <option value="pos_card">شبكة في الصالون</option>
-                    <option value="cash">كاش</option>
-                  </select>
-
-                  {formData.paymentMethod === "mada_online" && (
-                    <div className="mt-2 booking-offer-msg">
-                      * مدى أونلاين حالياً تجربة مبدئية: سيتم حفظ الحجز “بانتظار الدفع”
-                      ثم المتابعة لصفحة Success.
-                    </div>
-                  )}
+                  {slotMsg && <div className="text-danger small mt-1">{slotMsg}</div>}
                 </div>
 
                 <div className="mb-4">
-                  <label htmlFor="note" className="form-label">
-                    ملاحظات إضافية (اختياري)
-                  </label>
-
+                  <label className="form-label">ملاحظات (اختياري)</label>
                   <textarea
                     className="form-control"
-                    id="note"
+                    rows={3}
                     name="note"
                     value={formData.note}
                     onChange={handleChange}
-                    rows={3}
-                    placeholder="أي تفاصيل إضافية تودين إضافتها"
+                    placeholder="أي ملاحظة تحبين إضافتها"
                   />
                 </div>
 
-                <div className="booking-offer-box mb-4">
-                  <label className="form-label">كود خصم (اختياري)</label>
+                <div className="mb-4">
+                  <label className="form-label">كود الخصم</label>
 
-                  <div className="bk-coupon-row d-flex gap-2">
+                  <div className="input-group">
                     <input
+                      type="text"
+                      className="form-control"
                       value={couponCode}
                       onChange={(e) => setCouponCode(e.target.value)}
-                      className="form-control"
-                      placeholder="مثال: QUEENS10"
-                      disabled={!formData.service}
+                      placeholder="اكتبي كود الخصم"
                     />
-
                     <button
                       type="button"
-                      className="bk-coupon-btn bk-coupon-btn--apply"
+                      className="btn btn-outline-primary"
                       onClick={handleApplyCoupon}
-                      disabled={!formData.service}
                     >
                       تطبيق
                     </button>
-
-                    <button
-                      type="button"
-                      className="bk-coupon-btn bk-coupon-btn--remove"
-                      onClick={() => {
-                        setCouponCode("");
-                        setManualOverride(false);
-                        const bp = getServiceBasePrice(formData.service);
-                        setApplied({ offer: null, discountAmount: 0, finalPrice: bp });
-                        setOfferMsg("");
-                      }}
-                      disabled={!formData.service}
-                    >
-                      إزالة
-                    </button>
                   </div>
 
-                  {offerMsg && <div className="mt-2 booking-offer-msg">{offerMsg}</div>}
+                  {offerMsg && <div className="small mt-1">{offerMsg}</div>}
+                </div>
 
-                  <div className="booking-price-summary mt-3">
-                    <div className="d-flex justify-content-between">
-                      <span>السعر قبل الخصم</span>
-                      <strong>{basePrice} ريال</strong>
+                <div className="booking-summary mb-4">
+                  <div>
+                    السعر:
+                    <strong className="ms-2">{basePrice} ريال</strong>
+                  </div>
+
+                  {applied.discountAmount > 0 && (
+                    <div>
+                      الخصم:
+                      <strong className="ms-2 text-success">
+                        −{applied.discountAmount} ريال
+                      </strong>
                     </div>
+                  )}
 
-                    <div className="d-flex justify-content-between">
-                      <span>الخصم</span>
-                      <strong>{Number(applied.discountAmount || 0).toFixed(0)} ريال</strong>
-                    </div>
-
-                    <div className="d-flex justify-content-between">
-                      <span>السعر النهائي</span>
-                      <strong>{Number(finalPrice).toFixed(0)} ريال</strong>
-                    </div>
-
-                    {applied.offer && (
-                      <div className="mt-2">
-                        العرض المطبق: <b>{(applied.offer as any).title}</b>
-                      </div>
-                    )}
+                  <div className="fs-5 mt-2">
+                    الإجمالي:
+                    <strong className="ms-2">{finalPrice} ريال</strong>
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  className="btn btn-primary rounded-pill w-100"
-                  disabled={isLoading || slotChecking || slotBusy}
+                  className="btn btn-primary w-100"
+                  disabled={isLoading || slotBusy}
                 >
-                  {slotChecking ? (
-                    <>
-                      <FontAwesomeIcon icon={faSpinner} spin className="me-2" />
-                      جاري التحقق من الوقت...
-                    </>
-                  ) : isLoading ? (
-                    <>
-                      <FontAwesomeIcon icon={faSpinner} spin className="me-2" />
-                      جاري الحجز...
-                    </>
-                  ) : slotBusy ? (
-                    "الوقت غير متاح"
-                  ) : (
-                    "تأكيد الحجز"
-                  )}
+                  {isLoading ? "جاري تأكيد الحجز…" : "تأكيد الحجز"}
                 </button>
               </form>
             </div>
           </div>
         </div>
       </div>
-
-      {showSuccess && (
-        <div className="booking-success-modal">
-          <div className="booking-success-content">
-            <div className="success-icon">
-              <FontAwesomeIcon icon={faCheck} />
-            </div>
-
-            <h2 className="success-title">تم تأكيد حجزك بنجاح!</h2>
-
-            <p className="success-message">
-              شكراً لاختيارك صالون ملكات. تم استلام طلب حجزك وسيتم التواصل معك قريباً
-              لتأكيد الموعد.
-            </p>
-
-            <div className="booking-details">
-              <div className="booking-detail-item">
-                <span className="booking-detail-label">الخدمة:</span>
-                <span className="booking-detail-value">{getServiceName(formData.service)}</span>
-              </div>
-
-              <div className="booking-detail-item">
-                <span className="booking-detail-label">الموظفة:</span>
-                <span className="booking-detail-value">{formData.employee}</span>
-              </div>
-
-              <div className="booking-detail-item">
-                <span className="booking-detail-label">التاريخ:</span>
-                <span className="booking-detail-value">{formatDate(formData.date)}</span>
-              </div>
-
-              <div className="booking-detail-item">
-                <span className="booking-detail-label">الوقت:</span>
-                <span className="booking-detail-value">{formData.time}</span>
-              </div>
-
-              <div className="booking-detail-item">
-                <span className="booking-detail-label">السعر النهائي:</span>
-                <span className="booking-detail-value">
-                  {Number(finalPrice).toFixed(0)} ريال
-                </span>
-              </div>
-
-              {applied.offer && (
-                <div className="booking-detail-item">
-                  <span className="booking-detail-label">العرض:</span>
-                  <span className="booking-detail-value">
-                    {(applied.offer as any).title}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="success-actions">
-              <button className="success-primary-btn" onClick={() => navigate("/checkout")}>
-                الانتقال للدفع
-              </button>
-            </div>
-
-            <p className="redirect-message">
-              سيتم تحويلك تلقائياً إلى صفحة الدفع خلال{" "}
-              <span className="countdown">{countdown}</span> ثواني
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

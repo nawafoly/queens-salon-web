@@ -128,9 +128,14 @@ body {
 }
 
 /* مهم: لو عندك gradient خله هنا فقط */
+/* ✅ خلفية كريمية مع تدرّج خفيف جدًا (بدون بنفسجي صارخ) */
 body {
-  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%) !important;
+  background:
+    radial-gradient(900px 520px at 15% 20%, rgba(88, 68, 60, 0.06), transparent 60%),
+    radial-gradient(800px 450px at 85% 25%, rgba(190, 182, 176, 0.10), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, var(--background-color) 100%) !important;
 }
+
 
 /* Root wrappers */
 #root, .app, .main-content {

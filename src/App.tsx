@@ -16,7 +16,6 @@ import Home from "./pages/Home";
 import Services from "./pages/Services";
 import About from "./pages/About";
 import Booking from "./pages/Booking";
-import Checkout from "./pages/Checkout";
 import Success from "./pages/Success";
 import Offers from "./pages/Offers";
 import Reviews from "./pages/Reviews";
@@ -31,12 +30,20 @@ import Track from "./pages/Track";
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
 
-// ✅ Staff dashboard page
+// ✅ NEW: صفحة انتظار التفعيل
+import DashboardPending from "./pages/DashboardPending";
 
 /* ================================
    Types & Helpers
 ================================ */
-type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
+type UiRole =
+  | "owner"
+  | "admin"
+  | "reception"
+  | "staff"
+  | "client"
+  | "pending" // ✅ NEW
+  | "guest";
 
 const KNOWN_ROLES: UiRole[] = [
   "owner",
@@ -44,6 +51,7 @@ const KNOWN_ROLES: UiRole[] = [
   "reception",
   "staff",
   "client",
+  "pending",
   "guest",
 ];
 
@@ -63,6 +71,10 @@ function isDashboardRole(role: UiRole) {
 
 function isClientRole(role: UiRole) {
   return role === "client";
+}
+
+function isPendingRole(role: UiRole) {
+  return role === "pending";
 }
 
 function getNameFromStorage(): string {
@@ -134,6 +146,9 @@ const App: React.FC = () => {
   const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
     const role = getRoleFromStorage();
 
+    // ✅ لو Pending → صفحة انتظار
+    if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
+
     if (isDashboardRole(role)) return <>{children}</>;
     if (isClientRole(role)) return <Navigate to="/client" replace />;
     return <Navigate to="/login" replace />;
@@ -143,6 +158,7 @@ const App: React.FC = () => {
     const role = getRoleFromStorage();
 
     if (isClientRole(role)) return <>{children}</>;
+    if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
     if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
     return <Navigate to="/login" replace />;
   };
@@ -155,7 +171,6 @@ const App: React.FC = () => {
 
   return (
     <div className="app">
-      {/* ✅ Navbar فقط خارج الداشبورد */}
       {!isInDashboard && <Navbar />}
 
       <main className="main-content">
@@ -167,7 +182,9 @@ const App: React.FC = () => {
           <Route path="/services" element={<Services />} />
           <Route path="/about" element={<About />} />
           <Route path="/booking" element={<Booking />} />
-          <Route path="/checkout" element={<Checkout />} />
+
+          <Route path="/checkout" element={<Navigate to="/success" replace />} />
+
           <Route path="/success" element={<Success />} />
           <Route path="/offers" element={<Offers />} />
           <Route path="/reviews" element={<Reviews />} />
@@ -179,6 +196,9 @@ const App: React.FC = () => {
           <Route path="/track" element={<Track />} />
           <Route path="/track/:trackId" element={<Track />} />
 
+          {/* ✅ NEW: Pending */}
+          <Route path="/dashboard-pending" element={<DashboardPending />} />
+
           {/* Client (Protected) */}
           <Route
             path="/client"
@@ -188,7 +208,6 @@ const App: React.FC = () => {
               </ClientGuard>
             }
           />
-
 
           {/* Dashboard (Protected) */}
           <Route
@@ -212,7 +231,6 @@ const App: React.FC = () => {
 
           <Route path="/forgot-password" element={<ForgotPassword />} />
 
-          {/* ✅ أي /settings يروح للداشبورد */}
           <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
           {/* Payments */}
@@ -224,7 +242,6 @@ const App: React.FC = () => {
         </Routes>
       </main>
 
-      {/* ✅ Footer + ChatBot فقط خارج الداشبورد */}
       {!isInDashboard && <Footer />}
       {!isInDashboard && <ChatBot />}
 

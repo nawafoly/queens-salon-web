@@ -10,7 +10,7 @@ import {
   faTiktok,
 } from "@fortawesome/free-brands-svg-icons";
 
-import logo from "../assets/images/logo-whait.png";
+import logo from "../assets/images/ssunnamed.png";
 import "../styles/Footer.css";
 
 const Footer: React.FC = () => {

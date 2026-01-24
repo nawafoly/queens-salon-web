@@ -350,3 +350,175 @@
     min-height: 42px;
   }
 }
+
+/* =========================================
+   ✅ Users & Roles Section (داخل Settings)
+   يستخدم نفس Glass Theme
+========================================= */
+
+.dashboard-skin .ur-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-skin .ur-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.dashboard-skin .ur-title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dashboard-skin .ur-title h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 950;
+  color: var(--text);
+}
+
+.dashboard-skin .ur-title p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.dashboard-skin .ur-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ✅ Pills */
+.dashboard-skin .ur-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 950;
+  border: 1px solid rgba(124, 58, 237, 0.16);
+  background: rgba(255, 255, 255, 0.60);
+  color: rgba(58, 47, 68, 0.92);
+  white-space: nowrap;
+}
+
+.dashboard-skin .ur-pill.pending {
+  border-color: rgba(245, 158, 11, 0.25);
+  background: rgba(245, 158, 11, 0.10);
+  color: #92400e;
+}
+
+.dashboard-skin .ur-pill.active {
+  border-color: rgba(34, 197, 94, 0.25);
+  background: rgba(34, 197, 94, 0.10);
+  color: #166534;
+}
+
+.dashboard-skin .ur-pill.disabled {
+  border-color: rgba(239, 68, 68, 0.22);
+  background: rgba(239, 68, 68, 0.08);
+  color: #991b1b;
+}
+
+/* ✅ Row card list */
+.dashboard-skin .ur-list {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-skin .ur-row {
+  display: grid;
+  grid-template-columns: 1.3fr 0.9fr 0.7fr 1fr;
+  gap: 10px;
+  align-items: center;
+
+  padding: 12px 12px;
+  border-radius: 18px;
+
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(124, 58, 237, 0.10);
+
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.dashboard-skin .ur-cell {
+  min-width: 0;
+}
+
+.dashboard-skin .ur-name {
+  font-weight: 950;
+  color: rgba(58, 47, 68, 0.92);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-skin .ur-email {
+  font-weight: 800;
+  color: rgba(58, 47, 68, 0.72);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-skin .ur-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-skin .ur-role select.settings-input {
+  min-height: 40px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.dashboard-skin .ur-rowActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ✅ Button small helpers (لو dash-btn موجود من DashboardSkin ممتاز) */
+.dashboard-skin .ur-btn {
+  border-radius: 12px;
+  padding: 9px 10px;
+  font-weight: 950;
+  font-size: 13px;
+}
+
+/* ✅ Responsive */
+@media (max-width: 860px) {
+  .dashboard-skin .ur-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .dashboard-skin .ur-rowActions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  .dashboard-skin .ur-row {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-skin .ur-name,
+  .dashboard-skin .ur-email {
+    white-space: normal;
+  }
+}

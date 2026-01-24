@@ -16,13 +16,26 @@ import {
 import "../styles/Login.css";
 
 // ✅ Firebase Auth
-import { auth } from "../services/firebase";
+import { auth, db } from "../services/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
+
+// ✅ Firestore helpers (للـ staff_public)
+import {
+  collection,
+  doc,
+  getDocs,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+  serverTimestamp,
+  limit,
+} from "firebase/firestore";
 
 // ✅ Firebase login (يدخل كل اللي عنده ايميل: إدارة + عميلات)
 import { loginWithEmail } from "../services/authService";
 
-// ✅ User profile/roles (Firestore SoT)
+// ✅ User profile/roles (Firestore SoT) - للعميلات
 import {
   createOrLoadUserProfile,
   updateUserProfile,
@@ -40,6 +53,111 @@ interface RegisterFormData {
   confirmPassword: string;
   city?: string;
   birthdate?: string;
+}
+
+const SALON_ID = "main";
+const STAFF_PUBLIC_COL = ["salons", SALON_ID, "staff_public"] as const;
+
+type StaffPublicRole = "owner" | "admin" | "reception" | "staff" | "pending";
+
+/* =========================
+   Helpers (Admin domain)
+========================= */
+function cleanEmail(v: string) {
+  return String(v || "").trim().toLowerCase();
+}
+
+function isMalikatAdminEmail(email: string) {
+  const e = cleanEmail(email);
+  return e.endsWith("@malikat.com");
+}
+
+function normalizeStaffRole(raw: any): StaffPublicRole {
+  const r = String(raw || "").toLowerCase().trim();
+  if (r === "owner") return "owner";
+  if (r === "admin" || r === "administrator") return "admin";
+  if (r === "reception" || r === "receptionist" || r === "frontdesk" || r === "desk")
+    return "reception";
+  if (r === "staff") return "staff";
+  return "pending";
+}
+
+/**
+ * ✅ ضمان وجود StaffPublic للإيميل الإداري
+ * - يبحث عن email داخل staff_public
+ * - لو ما لقى: ينشئ doc جديد باسم uid كـ pending
+ * - يضمن linkedUid
+ * - يرجع role النهائي (pending إذا active=false)
+ */
+async function ensureStaffPublicForAdmin(params: {
+  uid: string;
+  email: string;
+  displayName?: string;
+}) {
+  const email = cleanEmail(params.email);
+  const uid = params.uid;
+
+  // 1) ابحث عن نفس الإيميل
+  const colRef = collection(db, ...STAFF_PUBLIC_COL);
+  const qy = query(colRef, where("email", "==", email), limit(1));
+  const snap = await getDocs(qy);
+
+  if (!snap.empty) {
+    const d = snap.docs[0];
+    const data: any = d.data();
+
+    // ✅ اربط linkedUid لو ناقص/مختلف
+    const linkedUid = String(data?.linkedUid || "").trim();
+    if (!linkedUid || linkedUid !== uid) {
+      try {
+        await updateDoc(doc(db, ...STAFF_PUBLIC_COL, d.id), {
+          linkedUid: uid,
+          updatedAt: serverTimestamp(),
+        });
+      } catch {
+        // ignore
+      }
+    }
+
+    const active = data?.active !== false; // الافتراضي true لو ما موجود
+    const role = active ? normalizeStaffRole(data?.role) : "pending";
+
+    return {
+      staffDocId: d.id,
+      role,
+      active,
+      name: String(data?.name || data?.displayName || params.displayName || "").trim(),
+      email,
+      phone: String(data?.phone || "").trim(),
+    };
+  }
+
+  // 2) ما لقينا: ننشئ pending تلقائيًا (docId = uid عشان ما يتكرر)
+  const newRef = doc(db, ...STAFF_PUBLIC_COL, uid);
+
+  const payload = {
+    email,
+    linkedUid: uid,
+    role: "pending",
+    active: false,
+    showOnAbout: false,
+    showOnBooking: false,
+    name: String(params.displayName || "").trim(),
+    phone: "",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  await setDoc(newRef, payload, { merge: true });
+
+  return {
+    staffDocId: uid,
+    role: "pending" as const,
+    active: false,
+    name: String(params.displayName || "").trim(),
+    email,
+    phone: "",
+  };
 }
 
 const Login: React.FC = () => {
@@ -89,35 +207,37 @@ const Login: React.FC = () => {
   };
 
   // ✅ اسم افتراضي حسب الدور
-  const defaultNameByRole = (role: UiRole) => {
+  const defaultNameByRole = (role: string) => {
     if (role === "owner" || role === "admin") return "مدير الصالون";
     if (role === "reception" || role === "staff") return "موظفة";
     if (role === "client") return "عميلة";
+    if (role === "pending") return "حساب إداري (بانتظار التفعيل)";
     return "مستخدم";
   };
 
   // ✅ تخزين جلسة Firebase (إدارة أو عميلة) بشكل موحد
-  const storeFirebaseSession = (profile: UserProfile) => {
-    const uiRole: UiRole = profile.role;
+  const storeFirebaseSession = (profile: UserProfile | (Omit<UserProfile, "role"> & { role: any })) => {
+    const uiRole = String(profile.role || "") as UiRole;
+  
 
     // تنظيف أي جلسة local قديمة
     localStorage.removeItem("currentUser");
 
-    const finalName = (profile.name || "").trim() || defaultNameByRole(uiRole);
+    const finalName = (profile.name || "").trim() || defaultNameByRole(String(uiRole));
 
     localStorage.setItem("authToken", "firebase");
     localStorage.setItem("userUid", profile.uid);
-    localStorage.setItem("userRole", uiRole);
+    localStorage.setItem("userRole", String(uiRole));
     localStorage.setItem("userName", finalName);
     localStorage.setItem("showWelcome", "true");
 
-    if (profile.email) localStorage.setItem("userEmail", profile.email);
-    if (profile.phone) localStorage.setItem("userPhone", profile.phone);
+    if ((profile as any).email) localStorage.setItem("userEmail", (profile as any).email);
+    if ((profile as any).phone) localStorage.setItem("userPhone", (profile as any).phone);
 
     localStorage.setItem(
       "user_profile_v1",
       JSON.stringify({
-        ...profile,
+        ...(profile as any),
         name: finalName,
       })
     );
@@ -127,8 +247,8 @@ const Login: React.FC = () => {
       "auth_user",
       JSON.stringify({
         uid: profile.uid,
-        email: profile.email || auth.currentUser?.email || "",
-        role: uiRole,
+        email: (profile as any).email || auth.currentUser?.email || "",
+        role: String(uiRole),
         displayName: finalName,
       })
     );
@@ -165,7 +285,6 @@ const Login: React.FC = () => {
   };
 
   // ✅ تسجيل الدخول
-  // المكان: داخل handleSubmit
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
@@ -185,14 +304,44 @@ const Login: React.FC = () => {
           return;
         }
 
-        // ✅ ينشئ/يحمل البروفايل من Firestore (Source of Truth)
+        const email = cleanEmail(authUser.email || identifier);
+
+        // ✅ A) إذا إداري @malikat.com → مصدرنا staff_public
+        if (isMalikatAdminEmail(email)) {
+          const sp = await ensureStaffPublicForAdmin({
+            uid: authUser.uid,
+            email,
+            displayName: authUser.displayName || "",
+          });
+
+          const role = sp.active ? sp.role : "pending";
+
+          const profileForSession: any = {
+            uid: authUser.uid,
+            role, // owner/admin/reception/staff/pending
+            name: sp.name || defaultNameByRole(role),
+            email: sp.email,
+            phone: sp.phone,
+            staffDocId: sp.staffDocId, // مفيد لو احتجناه لاحقًا
+          };
+
+          storeFirebaseSession(profileForSession);
+
+          // ✅ توجيه
+          if (role === "pending") {
+            navigate("/dashboard-pending", { replace: true });
+          } else {
+            navigate("/dashboard/overview", { replace: true });
+          }
+          return;
+        }
+
+        // ✅ B) غير الإداري: عميلة (source of truth userProfile)
         const profileRaw = await createOrLoadUserProfile(authUser);
 
-        // ✅ إصلاح الاسم لو فاضي
         const fixedName =
           (profileRaw.name || "").trim() || defaultNameByRole(profileRaw.role);
 
-        // ✅ نكتب البيانات الناقصة مرة وحدة (بدون role)
         if (!(profileRaw.name || "").trim()) {
           try {
             await updateUserProfile(profileRaw.uid, { name: fixedName } as any);
@@ -203,14 +352,12 @@ const Login: React.FC = () => {
 
         const profile: UserProfile = { ...profileRaw, name: fixedName };
 
-        // ✅ خزّن جلسة موحدة
         storeFirebaseSession(profile);
 
-        // ✅ توجيه حسب الدور
+        // توجيه حسب الدور
         if (canAccessDashboard(profile.role)) {
           navigate("/dashboard/overview", { replace: true });
         } else {
-          // client / guest
           navigate("/profile", { replace: true });
         }
 
@@ -244,8 +391,7 @@ const Login: React.FC = () => {
     }
   };
 
-  // ✅ التسجيل (الآن Firebase + إنشاء profile role=client تلقائيًا)
-  // المكان: داخل handleRegister
+  // ✅ التسجيل (Firebase + إنشاء profile role=client تلقائيًا)
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -273,8 +419,7 @@ const Login: React.FC = () => {
         registerData.password
       );
 
-      // ✅ 2) إنشاء/تحميل بروفايل في Firestore
-      // (إذا doc غير موجود: role=client تلقائيًا حسب userProfile.ts)
+      // ✅ 2) إنشاء/تحميل بروفايل في Firestore (client)
       const profile = await createOrLoadUserProfile(cred.user);
 
       // ✅ 3) حدّث بيانات العميلة (بدون role)
@@ -287,11 +432,10 @@ const Login: React.FC = () => {
           email: registerData.email.trim(),
         } as any);
       } catch (e) {
-        // حتى لو فشل التحديث، البروفايل الأساسي موجود
         console.warn("updateUserProfile after register failed:", e);
       }
 
-      // ✅ 4) إعادة تحميل أحدث نسخة من البروفايل (اختياري لكن يعطيك بيانات أحدث)
+      // ✅ 4) أحدث نسخة
       const latest = await createOrLoadUserProfile(cred.user);
 
       // ✅ 5) خزّن الجلسة
@@ -304,7 +448,9 @@ const Login: React.FC = () => {
 
       const code = String(err?.code || "");
       if (code.includes("auth/operation-not-allowed")) {
-        setErrorMsg("Email/Password غير مفعّل في Firebase. فعّله من Authentication → Sign-in method.");
+        setErrorMsg(
+          "Email/Password غير مفعّل في Firebase. فعّله من Authentication → Sign-in method."
+        );
       } else if (code.includes("auth/email-already-in-use")) {
         setErrorMsg("هذا البريد مسجل مسبقًا. جرّب تسجيل الدخول بدل التسجيل.");
       } else if (code.includes("auth/weak-password")) {
@@ -323,11 +469,7 @@ const Login: React.FC = () => {
         <div className="login-card">
           <div className="login-header">
             <div className="login-logo">
-              <img
-                src={logoBelak}
-                alt="Body Salon Logo"
-                className="login-logo-img"
-              />
+              <img src={logoBelak} alt="Body Salon Logo" className="login-logo-img" />
             </div>
             <h1 className="login-title">
               {isRegister ? "تسجيل حساب جديد" : "تسجيل الدخول"}
@@ -373,16 +515,12 @@ const Login: React.FC = () => {
                     className="password-toggle"
                     onClick={() => setShowPassword((prev) => !prev)}
                   >
-                    <FontAwesomeIcon
-                      icon={showPassword ? faEyeSlash : faEye}
-                    />
+                    <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} />
                   </button>
                 </div>
               </div>
 
-              {errorMsg && (
-                <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>
-              )}
+              {errorMsg && <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>}
 
               <button
                 type="submit"
@@ -476,9 +614,7 @@ const Login: React.FC = () => {
                     className="password-toggle"
                     onClick={() => setShowRegisterPassword((prev) => !prev)}
                   >
-                    <FontAwesomeIcon
-                      icon={showRegisterPassword ? faEyeSlash : faEye}
-                    />
+                    <FontAwesomeIcon icon={showRegisterPassword ? faEyeSlash : faEye} />
                   </button>
                 </div>
               </div>
@@ -529,9 +665,7 @@ const Login: React.FC = () => {
                 />
               </div>
 
-              {errorMsg && (
-                <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>
-              )}
+              {errorMsg && <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>}
 
               <button
                 type="submit"

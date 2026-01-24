@@ -23,6 +23,7 @@ import {
 import "../styles/DashboardSkin.css";
 import "../styles/DashboardModals.css";
 import "../styles/DashboardOverview.css";
+import LoadingBrand from "../components/LoadingBrand";
 
 import DashboardBookings from "../pages/DashboardBookings";
 import DashboardEmployees from "../pages/DashboardEmployees";
@@ -877,14 +878,9 @@ const Dashboard: React.FC = () => {
   }
 
   if (!userInfo) {
-    return (
-      <div className="dashboard-loading">
-        <div className="loading-spinner"></div>
-        <p>جاري التحميل...</p>
-      </div>
-    );
+    return <LoadingBrand text="جاري تحميل لوحة التحكم..." />;
   }
-
+  
   return (
     <div className="dashboard-skin dashboard-page dashboard-skin-page">
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
