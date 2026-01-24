@@ -19,18 +19,8 @@ import "../styles/Login.css";
 import { auth, db } from "../services/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 
-// ✅ Firestore helpers (للـ staff_public)
-import {
-  collection,
-  doc,
-  getDocs,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-  serverTimestamp,
-  limit,
-} from "firebase/firestore";
+// ✅ Firestore
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 // ✅ Firebase login (يدخل كل اللي عنده ايميل: إدارة + عميلات)
 import { loginWithEmail } from "../services/authService";
@@ -56,9 +46,10 @@ interface RegisterFormData {
 }
 
 const SALON_ID = "main";
+const USERS_COL = ["salons", SALON_ID, "users"] as const;
 const STAFF_PUBLIC_COL = ["salons", SALON_ID, "staff_public"] as const;
 
-type StaffPublicRole = "owner" | "admin" | "reception" | "staff" | "pending";
+type AdminRole = "owner" | "admin" | "reception" | "staff" | "pending";
 
 /* =========================
    Helpers (Admin domain)
@@ -72,7 +63,7 @@ function isMalikatAdminEmail(email: string) {
   return e.endsWith("@malikat.com");
 }
 
-function normalizeStaffRole(raw: any): StaffPublicRole {
+function normalizeAdminRole(raw: any): AdminRole {
   const r = String(raw || "").toLowerCase().trim();
   if (r === "owner") return "owner";
   if (r === "admin" || r === "administrator") return "admin";
@@ -83,80 +74,109 @@ function normalizeStaffRole(raw: any): StaffPublicRole {
 }
 
 /**
- * ✅ ضمان وجود StaffPublic للإيميل الإداري
- * - يبحث عن email داخل staff_public
- * - لو ما لقى: ينشئ doc جديد باسم uid كـ pending
- * - يضمن linkedUid
- * - يرجع role النهائي (pending إذا active=false)
+ * ✅ الإداريين: الـ SoT = salons/main/users/{uid}
+ * - لو موجود: نقرأ role + active
+ * - لو غير موجود: ننشئه pending + active=false
+ * - ونضمن staff_public موجود كـ ملف موظفة (لكن بدون ما نعطي صلاحيات)
  */
-async function ensureStaffPublicForAdmin(params: {
+async function ensureAdminSessionFromUsers(params: {
   uid: string;
   email: string;
   displayName?: string;
 }) {
-  const email = cleanEmail(params.email);
   const uid = params.uid;
+  const email = cleanEmail(params.email);
+  const displayName = String(params.displayName || "").trim();
 
-  // 1) ابحث عن نفس الإيميل
-  const colRef = collection(db, ...STAFF_PUBLIC_COL);
-  const qy = query(colRef, where("email", "==", email), limit(1));
-  const snap = await getDocs(qy);
+  // 1) اقرأ users/{uid}
+  const userRef = doc(db, ...USERS_COL, uid);
+  const userSnap = await getDoc(userRef);
 
-  if (!snap.empty) {
-    const d = snap.docs[0];
-    const data: any = d.data();
+  if (userSnap.exists()) {
+    const data: any = userSnap.data();
 
-    // ✅ اربط linkedUid لو ناقص/مختلف
-    const linkedUid = String(data?.linkedUid || "").trim();
-    if (!linkedUid || linkedUid !== uid) {
-      try {
-        await updateDoc(doc(db, ...STAFF_PUBLIC_COL, d.id), {
+    const active = data?.active !== false; // الافتراضي true
+    const role = active ? normalizeAdminRole(data?.role) : "pending";
+
+    // ✅ ضمان وجود staff_public doc (اختياري لكنه مفيد للربط)
+    const spRef = doc(db, ...STAFF_PUBLIC_COL, uid);
+    const spSnap = await getDoc(spRef);
+    if (!spSnap.exists()) {
+      await setDoc(
+        spRef,
+        {
+          uid,
           linkedUid: uid,
+          email,
+          name: String(data?.displayName || data?.name || displayName || "").trim(),
+          role: role === "pending" ? "pending" : role,
+          active: role === "pending" ? false : true,
+          showOnAbout: false,
+          showOnBooking: false,
+          specialties: [],
+          bio: "",
+          avatarUrl: "",
+          phone: String(data?.phone || "").trim(),
+          createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-        });
-      } catch {
-        // ignore
-      }
+        },
+        { merge: true }
+      );
     }
 
-    const active = data?.active !== false; // الافتراضي true لو ما موجود
-    const role = active ? normalizeStaffRole(data?.role) : "pending";
-
     return {
-      staffDocId: d.id,
       role,
       active,
-      name: String(data?.name || data?.displayName || params.displayName || "").trim(),
-      email,
+      name: String(data?.displayName || data?.name || displayName || "").trim(),
+      email: String(data?.email || email || "").trim(),
       phone: String(data?.phone || "").trim(),
+      staffDocId: uid,
     };
   }
 
-  // 2) ما لقينا: ننشئ pending تلقائيًا (docId = uid عشان ما يتكرر)
-  const newRef = doc(db, ...STAFF_PUBLIC_COL, uid);
-
-  const payload = {
+  // 2) غير موجود: ننشئ pending في users + staff_public
+  const pendingUserPayload = {
     email,
-    linkedUid: uid,
+    displayName: displayName || "حساب إداري (بانتظار التفعيل)",
     role: "pending",
     active: false,
-    showOnAbout: false,
-    showOnBooking: false,
-    name: String(params.displayName || "").trim(),
-    phone: "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    createdByUid: uid, // نفسه (لأنه سجل دخول بنفسه)
+    createdByEmail: email,
   };
 
-  await setDoc(newRef, payload, { merge: true });
+  await setDoc(userRef, pendingUserPayload, { merge: true });
+
+  const spRef = doc(db, ...STAFF_PUBLIC_COL, uid);
+  await setDoc(
+    spRef,
+    {
+      uid,
+      linkedUid: uid,
+      email,
+      name: displayName || "حساب إداري (بانتظار التفعيل)",
+      role: "pending",
+      active: false,
+      showOnAbout: false,
+      showOnBooking: false,
+      specialties: [],
+      bio: "",
+      avatarUrl: "",
+      phone: "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 
   return {
-    staffDocId: uid,
     role: "pending" as const,
     active: false,
-    name: String(params.displayName || "").trim(),
+    name: displayName || "حساب إداري (بانتظار التفعيل)",
     email,
     phone: "",
+    staffDocId: uid,
   };
 }
 
@@ -218,7 +238,6 @@ const Login: React.FC = () => {
   // ✅ تخزين جلسة Firebase (إدارة أو عميلة) بشكل موحد
   const storeFirebaseSession = (profile: UserProfile | (Omit<UserProfile, "role"> & { role: any })) => {
     const uiRole = String(profile.role || "") as UiRole;
-  
 
     // تنظيف أي جلسة local قديمة
     localStorage.removeItem("currentUser");
@@ -226,7 +245,7 @@ const Login: React.FC = () => {
     const finalName = (profile.name || "").trim() || defaultNameByRole(String(uiRole));
 
     localStorage.setItem("authToken", "firebase");
-    localStorage.setItem("userUid", profile.uid);
+    localStorage.setItem("userUid", (profile as any).uid);
     localStorage.setItem("userRole", String(uiRole));
     localStorage.setItem("userName", finalName);
     localStorage.setItem("showWelcome", "true");
@@ -246,7 +265,7 @@ const Login: React.FC = () => {
     localStorage.setItem(
       "auth_user",
       JSON.stringify({
-        uid: profile.uid,
+        uid: (profile as any).uid,
         email: (profile as any).email || auth.currentUser?.email || "",
         role: String(uiRole),
         displayName: finalName,
@@ -306,15 +325,15 @@ const Login: React.FC = () => {
 
         const email = cleanEmail(authUser.email || identifier);
 
-        // ✅ A) إذا إداري @malikat.com → مصدرنا staff_public
+        // ✅ A) إذا إداري @malikat.com → SoT = users/{uid}
         if (isMalikatAdminEmail(email)) {
-          const sp = await ensureStaffPublicForAdmin({
+          const sp = await ensureAdminSessionFromUsers({
             uid: authUser.uid,
             email,
             displayName: authUser.displayName || "",
           });
 
-          const role = sp.active ? sp.role : "pending";
+          const role: AdminRole = sp.active ? (sp.role as any) : "pending";
 
           const profileForSession: any = {
             uid: authUser.uid,
@@ -322,7 +341,7 @@ const Login: React.FC = () => {
             name: sp.name || defaultNameByRole(role),
             email: sp.email,
             phone: sp.phone,
-            staffDocId: sp.staffDocId, // مفيد لو احتجناه لاحقًا
+            staffDocId: sp.staffDocId,
           };
 
           storeFirebaseSession(profileForSession);

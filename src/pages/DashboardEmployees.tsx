@@ -23,6 +23,7 @@ import {
 
 import { db } from "../services/firebase";
 import "../styles/DashboardModals.css";
+import "../styles/EmployeePortal.css";
 
 // ✅ Bookings stats (Owner only)
 import {
