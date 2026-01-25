@@ -4,61 +4,96 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 
 export type StaffPublicDoc = {
   name: string;
-  specialties: string[]; // قد تكون: ["شعر"] أو ["قسم الشعر"] أو ["الشعر"]
+  specialties: string[]; // ✅ مفاتيح واضحة (مثل hair / skin / nails ... لازم تطابق IDs الأقسام)
   active: boolean;
+  linkedUid?: string;
 };
 
 export type StaffPublicWithId = StaffPublicDoc & { id: string };
 
-/** ✅ تطبيع عربي بسيط لتفادي اختلافات: (قسم/الـ/تشكيل/مسافات/ألف/ياء/ة) */
-function normalizeArabic(input: any) {
-  return String(input ?? "")
-    .trim()
-    .toLowerCase()
-    // إزالة التشكيل
-    .replace(/[\u064B-\u065F\u0670]/g, "")
-    // توحيد الألف
-    .replace(/[أإآ]/g, "ا")
-    // توحيد الياء
-    .replace(/ى/g, "ي")
-    // توحيد التاء المربوطة
-    .replace(/ة/g, "ه")
-    // حذف "قسم" لو موجودة بالبداية
-    .replace(/^قسم\s+/g, "")
-    // حذف "ال" بالبداية (اختياري)
-    .replace(/^ال+/g, "")
-    // توحيد المسافات
-    .replace(/\s+/g, " ");
+function norm(v: any) {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+function normalizeArray(v: any): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
+  if (typeof v === "string" && v.trim()) return [v.trim()];
+  return [];
+}
+
+export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWithId[]> {
+  const sid = String(salonId || "").trim();
+  if (!sid) return [];
+
+  try {
+    const colRef = collection(db, "salons", sid, "staff_public");
+    const q1 = query(colRef, where("active", "==", true));
+    const snaps = await getDocs(q1);
+
+    const all = snaps.docs.map((d) => {
+      const data = d.data() as any;
+      return {
+        id: d.id,
+        name: String(data?.name ?? "").trim(),
+        specialties: normalizeArray(data?.specialties),
+        active: Boolean(data?.active),
+        linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
+      } as StaffPublicWithId;
+    });
+
+    console.log("[staff_public] listActiveStaffAll active =", all.length);
+    return all;
+  } catch (e: any) {
+    console.error("[staff_public] listActiveStaffAll ERROR:", e?.code, e?.message, e);
+    return [];
+  }
 }
 
 export async function listActiveStaffBySpecialty(args: {
-  salonId: string; // مثال: "main"
-  specialty: string; // ✅ مثال: "شعر" أو "قسم الشعر"
+  salonId: string;
+  specialty: string; // ✅ لازم يطابق بالضبط (مثل hair / skin / nails)
 }): Promise<StaffPublicWithId[]> {
-  const colRef = collection(db, `salons/${args.salonId}/staff_public`);
+  const salonId = String(args?.salonId || "").trim();
+  const wantedRaw = String(args?.specialty || "").trim();
+  if (!salonId || !wantedRaw) return [];
 
-  const wantedRaw = String(args.specialty || "").trim();
-  if (!wantedRaw) return [];
+  const wanted = norm(wantedRaw);
 
-  const wanted = normalizeArabic(wantedRaw);
+  try {
+    // ✅ نجيب النشطات فقط (بدون array-contains عشان ما نحتاج index)
+    const colRef = collection(db, "salons", salonId, "staff_public");
+    const q1 = query(colRef, where("active", "==", true));
+    const snaps = await getDocs(q1);
 
-  // ✅ نجلب كل الموظفات النشطات (بدون array-contains)
-  const q = query(colRef, where("active", "==", true));
-  const snaps = await getDocs(q);
+    const all = snaps.docs.map((d) => {
+      const data = d.data() as any;
+      return {
+        id: d.id,
+        name: String(data?.name ?? "").trim(),
+        specialties: normalizeArray(data?.specialties),
+        active: Boolean(data?.active),
+        linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
+      } as StaffPublicWithId;
+    });
 
-  const all = snaps.docs.map((d) => {
-    const data = d.data() as any;
-    return {
-      id: d.id,
-      name: String(data?.name ?? "").trim(),
-      specialties: Array.isArray(data?.specialties) ? data.specialties : [],
-      active: Boolean(data?.active),
-    } as StaffPublicWithId;
-  });
+    // ✅ فلترة محلية حسب specialties
+    const filtered = all.filter((staff) => {
+      const specs = normalizeArray(staff.specialties);
+      return specs.some((sp) => norm(sp) === wanted);
+    });
 
-  // ✅ فلترة مرنة بالتطبيع
-  return all.filter((staff) => {
-    const specs = Array.isArray(staff.specialties) ? staff.specialties : [];
-    return specs.some((sp) => normalizeArabic(sp) === wanted);
-  });
+    console.log(
+      "[staff_public] wanted =",
+      wantedRaw,
+      "active =",
+      all.length,
+      "matched =",
+      filtered.length
+    );
+
+    return filtered;
+  } catch (e: any) {
+    console.error("[staff_public] listActiveStaffBySpecialty ERROR:", e?.code, e?.message, e);
+    return [];
+  }
 }

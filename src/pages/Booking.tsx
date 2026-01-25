@@ -26,10 +26,7 @@ import { pricingSections } from "./Pricing";
 
 // ✅ Firestore Offers
 import type { Offer as FsOffer } from "../services/firestoreOffers";
-import {
-  findActiveOfferByCode,
-  offerAppliesToService,
-} from "../services/firestoreOffers";
+import { findActiveOfferByCode, offerAppliesToService } from "../services/firestoreOffers";
 
 // ✅ Staff Public (Firestore)
 import {
@@ -41,7 +38,6 @@ import {
 import {
   listActiveSections,
   listActiveCategoriesBySection,
-  listActiveServices,
   type SectionDoc,
   type CategoryDoc,
   type ServiceDoc,
@@ -188,26 +184,6 @@ function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {
   return { ok: true, reason: "" };
 }
 
-function normalizeArabicKey(s: string) {
-  return String(s || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[إأآ]/g, "ا")
-    .replace(/ة/g, "ه")
-    .replace(/ى/g, "ي")
-    .replace(/ـ/g, "");
-}
-
-async function tryLoadStaffBySpecialty(salonId: string, candidates: string[]) {
-  for (const raw of candidates) {
-    const specialty = String(raw || "").trim();
-    if (!specialty) continue;
-    const res = await listActiveStaffBySpecialty({ salonId, specialty });
-    if (Array.isArray(res) && res.length > 0) return res;
-  }
-  return [];
-}
-
 async function ensureUserUid(): Promise<string | null> {
   const auth = getAuth();
   if (auth.currentUser?.uid) return auth.currentUser.uid;
@@ -282,7 +258,7 @@ const Booking: React.FC = () => {
   const [busyLoading, setBusyLoading] = useState(false);
   const [busyHint, setBusyHint] = useState("");
 
-  // ✅ الموظفات من Firestore حسب القسم
+  // ✅ الموظفات من Firestore حسب الخدمة (ID)
   const [staff, setStaff] = useState<StaffPublicWithId[]>([]);
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffError, setStaffError] = useState("");
@@ -347,51 +323,89 @@ const Booking: React.FC = () => {
   }, []);
 
   // =========================
-  // Load cats + services for section (Firestore)
-  // =========================
-  useEffect(() => {
-    let cancelled = false;
+// Load cats + services for section (Firestore)
+// Supports BOTH schemas:
+// A) categories + services.categoryId
+// B) old: services.sectionId (no categories)
+// =========================
+useEffect(() => {
+  let cancelled = false;
 
-    async function loadCatalogForSection() {
-      if (catalogMode !== "firestore") return;
+  async function loadCatalogForSection() {
+    if (catalogMode !== "firestore") return;
 
-      if (!selectedSectionId) {
-        setFsCategories([]);
-        setFsServices([]);
-        return;
-      }
+    if (!selectedSectionId) {
+      setFsCategories([]);
+      setFsServices([]);
+      return;
+    }
 
-      try {
-        setCatalogLoading(true);
-        setCatalogError("");
+    try {
+      setCatalogLoading(true);
+      setCatalogError("");
 
-        const [cats, servs] = await Promise.all([
-          listActiveCategoriesBySection(selectedSectionId, SALON_ID),
-          listActiveServices({ sectionId: selectedSectionId }, SALON_ID),
-        ]);
+      // 1) حاول نجيب التصنيفات (schema الجديد)
+      const cats = await listActiveCategoriesBySection(selectedSectionId, SALON_ID);
+      if (cancelled) return;
+
+      const safeCats = cats || [];
+      setFsCategories(safeCats);
+
+      const catIds = safeCats
+        .map((c: any) => String(c.id || "").trim())
+        .filter(Boolean);
+
+      // 2) لو ما فيه تصنيفات: رجّع للنظام القديم وجيب الخدمات بالـ sectionId
+      if (catIds.length === 0) {
+        const colRef = collection(db, "salons", SALON_ID, "services");
+        const snap = await getDocs(query(colRef, where("sectionId", "==", selectedSectionId)));
 
         if (cancelled) return;
 
-        setFsCategories(cats || []);
-        setFsServices(servs || []);
-      } catch (e: any) {
-        if (!cancelled) {
-          setFsCategories([]);
-          setFsServices([]);
+        const merged = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        const activeOnly = merged.filter((x) => x?.active !== false);
 
-          setCatalogError("تعذر تحميل الخدمات من Firestore. سيتم استخدام Pricing مؤقتًا.");
-          setCatalogMode("pricing");
-        }
-      } finally {
-        if (!cancelled) setCatalogLoading(false);
+        setFsServices(activeOnly);
+        return;
       }
-    }
 
-    loadCatalogForSection();
-    return () => {
-      cancelled = true;
-    };
-  }, [catalogMode, selectedSectionId]);
+      // 3) schema الجديد: services مرتبطة بـ categoryId (in chunks of 10)
+      const chunks: string[][] = [];
+      for (let i = 0; i < catIds.length; i += 10) chunks.push(catIds.slice(i, i + 10));
+
+      const colRef = collection(db, "salons", SALON_ID, "services");
+      const snaps = await Promise.all(
+        chunks.map((arr) => getDocs(query(colRef, where("categoryId", "in", arr))))
+      );
+
+      if (cancelled) return;
+
+      const merged: any[] = [];
+      snaps.forEach((sn) => {
+        sn.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
+      });
+
+      const activeOnly = merged.filter((x) => x?.active !== false);
+      setFsServices(activeOnly);
+    } catch (e: any) {
+      if (!cancelled) {
+        setFsCategories([]);
+        setFsServices([]);
+
+        setCatalogError("تعذر تحميل الخدمات من Firestore. سيتم استخدام Pricing مؤقتًا.");
+        setCatalogMode("pricing");
+      }
+    } finally {
+      if (!cancelled) setCatalogLoading(false);
+    }
+  }
+
+  loadCatalogForSection();
+  return () => {
+    cancelled = true;
+  };
+}, [catalogMode, selectedSectionId]);
+
 
   // =========================
   // Filter FS services by categoryId
@@ -399,16 +413,38 @@ const Booking: React.FC = () => {
   const fsServicesFiltered = useMemo(() => {
     if (catalogMode !== "firestore") return [];
     if (!selectedSectionId) return [];
-
+  
     const sid = String(selectedSectionId || "").trim();
     const cid = String(selectedCategory || "").trim();
-
+  
+    // لو ما فيه categories: فلترة بسيطة بالـ sectionId
+    if (!fsCategories.length) {
+      const base = fsServices.filter((s: any) => String(s.sectionId || "").trim() === sid);
+      if (!cid) return base;
+  
+      // هنا selectedCategory بنعامله كـ "اسم تصنيف" من داخل الخدمة
+      return base.filter((s: any) => {
+        const catName = String(s.category ?? s.categoryName ?? s.التصنيف ?? "").trim();
+        return catName === cid;
+      });
+    }
+  
+    // لو فيه categories: فلترة بالـ categoryId
+    const catIdsInSection = new Set(
+      fsCategories
+        .filter((c: any) => String(c.sectionId || "").trim() === sid)
+        .map((c: any) => String(c.id || "").trim())
+        .filter(Boolean)
+    );
+  
     return fsServices.filter((s: any) => {
-      if (String(s.sectionId || "").trim() !== sid) return false;
+      const catId = String(s.categoryId || "").trim();
+      if (!catIdsInSection.has(catId)) return false;
       if (!cid) return true;
-      return String(s.categoryId || "").trim() === cid;
+      return catId === cid;
     });
-  }, [catalogMode, fsServices, selectedSectionId, selectedCategory]);
+  }, [catalogMode, fsServices, fsCategories, selectedSectionId, selectedCategory]);
+  
 
   // =========================
   // One source services list (Firestore else Pricing)
@@ -425,18 +461,26 @@ const Booking: React.FC = () => {
         catMap.set(String(c.id), String((c as any).الاسم ?? (c as any).name ?? ""))
       );
 
+      const catById = new Map<string, any>();
+      fsCategories.forEach((c: any) => catById.set(String(c.id), c));
+
       const list = (selectedSectionId ? fsServicesFiltered : []).map((x: any) => {
-        const sectionTitle = secMap.get(String(x.sectionId)) || String(x.sectionId || "");
-        const catName = x.categoryId ? catMap.get(String(x.categoryId)) || "عام" : "عام";
+        const catId = String(x.categoryId || "").trim();
+        const catDoc = catById.get(catId);
+
+        const sectionId = String(catDoc?.sectionId || "").trim();
+        const sectionTitle = secMap.get(sectionId) || sectionId || "—";
+
+        const catName = catId ? catMap.get(catId) || "عام" : "عام";
         const name = String(x.الاسم ?? x.name ?? "").trim();
         const priceNum = Number(x.السعر ?? x.price ?? 0);
         const durationMin = Number(x.المدة ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN);
 
         return {
           id: String(x.id),
-          sectionId: String(x.sectionId),
+          sectionId, // ✅ now from category.sectionId
           sectionTitle,
-          categoryId: x.categoryId ? String(x.categoryId) : "",
+          categoryId: catId,
           category: String(catName || "عام"),
           name,
           priceText: `${priceNum} ريال`,
@@ -492,30 +536,47 @@ const Booking: React.FC = () => {
 
   const categoryOptions: CategoryOption[] = useMemo(() => {
     if (!selectedSectionId) return [];
-
+  
     if (catalogMode === "firestore" && fsSections.length > 0) {
+      // لو فيه categories (schema جديد)
+      if (fsCategories.length) {
+        const sid = String(selectedSectionId).trim();
+  
+        const cats = fsCategories
+          .filter((c: any) => String(c.sectionId || "").trim() === sid)
+          .map((c: any) => ({
+            id: String(c.id),
+            name: String(c.الاسم ?? c.name ?? "").trim(),
+          }))
+          .filter((x) => x.id && x.name);
+  
+        const seen = new Set<string>();
+        return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
+      }
+  
+      // لو ما فيه categories (schema قديم): استخرج تصنيفات من الخدمات
       const sid = String(selectedSectionId).trim();
-
-      const cats = fsCategories
-        .filter((c: any) => String(c.sectionId || "").trim() === sid)
-        .map((c: any) => ({
-          id: String(c.id),
-          name: String(c.الاسم ?? c.name ?? "").trim(),
-        }))
-        .filter((x) => x.id && x.name);
-
+      const base = fsServices
+        .filter((s: any) => String(s.sectionId || "").trim() === sid)
+        .map((s: any) => String(s.category ?? s.categoryName ?? s.التصنيف ?? "عام").trim())
+        .filter(Boolean);
+  
       const seen = new Set<string>();
-      return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
+      return base
+        .filter((n) => (seen.has(n) ? false : (seen.add(n), true)))
+        .map((n) => ({ id: n, name: n }));
     }
-
+  
+    // Pricing mode
     const cats = servicesFlat
       .filter((s) => s.sectionId === selectedSectionId)
       .map((s) => ({ id: s.category, name: s.category }))
       .filter((x) => x.id && x.name);
-
+  
     const seen = new Set<string>();
     return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
-  }, [catalogMode, fsSections.length, fsCategories, servicesFlat, selectedSectionId]);
+  }, [catalogMode, fsSections.length, fsCategories, fsServices, servicesFlat, selectedSectionId]);
+  
 
   const servicesInSection = useMemo(() => {
     if (!selectedSectionId) return [];
@@ -546,45 +607,50 @@ const Booking: React.FC = () => {
   const getServiceName = (id: string) => getServiceById(id)?.name || id;
   const getServiceBasePrice = (id: string) => getServiceById(id)?.basePrice || 0;
 
-
   // =========================
-  // Load staff when section selected
+  // ✅ Load staff when service selected (ID-based)
   // =========================
   useEffect(() => {
     let cancelled = false;
 
     async function loadStaff() {
-      if (!selectedSectionId) {
+      const serviceId = String(formData.service || "").trim();
+
+      // لازم خدمة قبل ما نجيب موظفات
+      if (!serviceId) {
         setStaff([]);
         setStaffError("");
         setStaffLoading(false);
         return;
       }
 
-      const sectionTitle =
-        sectionOptions.find((s) => s.id === selectedSectionId)?.title?.trim() || "";
-
-      const candidates = [
-        sectionTitle,
-        normalizeArabicKey(sectionTitle),
-        selectedSectionId,
-        normalizeArabicKey(selectedSectionId),
-      ].filter(Boolean);
-
       try {
         setStaffLoading(true);
         setStaffError("");
 
-        const res = await tryLoadStaffBySpecialty(SALON_ID, candidates);
+        // ✅ فلترة الموظفات حسب "القسم" (staff_public.specialties مبنية على section keys مثل hair-care)
+        const wantedKey = String(selectedSectionId || "").trim();
+
+        // لازم قسم قبل ما نجيب موظفات
+        if (!wantedKey) {
+          setStaff([]);
+          setStaffError("");
+          setStaffLoading(false);
+          return;
+        }
+
+        const res = await listActiveStaffBySpecialty({
+          salonId: SALON_ID,
+          specialty: wantedKey,
+        });
+
         if (cancelled) return;
 
-        setStaff(res);
+        setStaff(res || []);
 
-        if (!res.length) {
+        if (!res?.length) {
           setStaffError(
-            `ما لقينا موظفات لهذا القسم. تأكد إن staff_public.specialties تحتوي أحد القيم التالية "بالضبط": ${candidates.join(
-              " / "
-            )}`
+            `ما لقينا موظفات لهذه الخدمة/القسم. تأكد إن staff_public.specialties تحتوي هذا المفتاح بالضبط: ${wantedKey}`
           );
         }
       } catch (e: any) {
@@ -594,13 +660,9 @@ const Booking: React.FC = () => {
           const msg = String(e?.message || "");
 
           if (msg.toLowerCase().includes("requires an index")) {
-            setStaffError(
-              "Firestore يحتاج Index للاستعلام. افتح رسالة الخطأ في الكونسول واضغط Create index."
-            );
+            setStaffError("Firestore يحتاج Index للاستعلام. افتح رسالة الخطأ في الكونسول واضغط Create index.");
           } else if (msg.toLowerCase().includes("missing or insufficient permissions")) {
-            setStaffError(
-              "صلاحيات قراءة الموظفات غير كافية. لازم نفتح قراءة staff_public للعميلات في Rules."
-            );
+            setStaffError("صلاحيات قراءة الموظفات غير كافية. لازم نفتح قراءة staff_public للعميلات في Rules.");
           } else {
             setStaffError("تعذر تحميل قائمة الموظفات. جرّبي تحديث الصفحة.");
           }
@@ -616,7 +678,7 @@ const Booking: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedSectionId, sectionOptions]);
+  }, [formData.service, selectedSectionId, catalogMode]);
 
   // =========================
   // Preload busy slots for employee+date (Firestore)
@@ -1056,8 +1118,8 @@ const Booking: React.FC = () => {
       const userNote = String(formData.note || "").trim();
       const offerNote = finalApplied.offer
         ? `Offer: ${(finalApplied.offer as any)?.title || normalizedCode || "-"} | discount=${Number(
-          finalApplied.discountAmount || 0
-        ).toFixed(0)}`
+            finalApplied.discountAmount || 0
+          ).toFixed(0)}`
         : "";
 
       const noteFinal = [userNote, offerNote].filter(Boolean).join(" | ") || undefined;
@@ -1106,7 +1168,7 @@ const Booking: React.FC = () => {
         bookingId: res.id,
         id: res.id,
         trackId: res.id,
-        publicId: res.publicId,
+        publicId: (res as any).publicId,
 
         name: String(formData.name || "").trim(),
         phone,
@@ -1196,7 +1258,7 @@ const Booking: React.FC = () => {
           if (s?.category) setSelectedCategory(String(s.category));
         }
       }
-    } catch { }
+    } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1227,8 +1289,8 @@ const Booking: React.FC = () => {
                   {catalogLoading
                     ? "جاري تحميل الخدمات..."
                     : catalogMode === "firestore"
-                      ? "الخدمات: من قاعدة البيانات ✅"
-                      : "الخدمات: مؤقتًا من التسعير (Pricing) ⏳"}
+                    ? "الخدمات: من قاعدة البيانات ✅"
+                    : "الخدمات: مؤقتًا من التسعير (Pricing) ⏳"}
                   {catalogError ? ` — ${catalogError}` : ""}
                 </div>
               </div>
@@ -1251,7 +1313,7 @@ const Booking: React.FC = () => {
                         id="name"
                         name="name"
                         value={formData.name}
-                        onChange={() => { }}
+                        onChange={() => {}}
                         onInput={(e: any) => {
                           const v = String(e?.target?.value ?? "");
                           setFormData((p) => ({ ...p, name: v }));
@@ -1452,7 +1514,6 @@ const Booking: React.FC = () => {
                         );
                       })}
                     </select>
-
                   </div>
 
                   {busyLoading ? (
@@ -1460,12 +1521,8 @@ const Booking: React.FC = () => {
                   ) : busyHint ? (
                     <div className="bk-hint text-danger">{busyHint}</div>
                   ) : busyTimes.size > 0 ? (
-                    <div className="bk-hint">
-                      الأوقات المحجوزة في هذا اليوم: {busyTimes.size}
-                    </div>
+                    <div className="bk-hint">الأوقات المحجوزة في هذا اليوم: {busyTimes.size}</div>
                   ) : null}
-
-
 
                   {slotChecking && (
                     <div className="small text-muted mt-1">
@@ -1499,11 +1556,7 @@ const Booking: React.FC = () => {
                       onChange={(e) => setCouponCode(e.target.value)}
                       placeholder="اكتبي كود الخصم"
                     />
-                    <button
-                      type="button"
-                      className="btn btn-outline-primary"
-                      onClick={handleApplyCoupon}
-                    >
+                    <button type="button" className="btn btn-outline-primary" onClick={handleApplyCoupon}>
                       تطبيق
                     </button>
                   </div>
@@ -1520,9 +1573,7 @@ const Booking: React.FC = () => {
                   {applied.discountAmount > 0 && (
                     <div>
                       الخصم:
-                      <strong className="ms-2 text-success">
-                        −{applied.discountAmount} ريال
-                      </strong>
+                      <strong className="ms-2 text-success">−{applied.discountAmount} ريال</strong>
                     </div>
                   )}
 
@@ -1532,11 +1583,7 @@ const Booking: React.FC = () => {
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  className="btn btn-primary w-100"
-                  disabled={isLoading || slotBusy}
-                >
+                <button type="submit" className="btn btn-primary w-100" disabled={isLoading || slotBusy}>
                   {isLoading ? "جاري تأكيد الحجز…" : "تأكيد الحجز"}
                 </button>
               </form>

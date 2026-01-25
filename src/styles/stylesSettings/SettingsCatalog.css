@@ -1,0 +1,80 @@
+/* ✅ src/styles/stylesSettings/SettingsCatalog.css */
+
+.scatalog .settings-wrap {
+    max-width: 1100px;
+  }
+  
+  .scatalog__header h1 {
+    margin-bottom: 6px;
+  }
+  
+  .scatalog__actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  
+  .scatalog__msg {
+    border-radius: 12px;
+  }
+  
+  .scatalog__card {
+    border-radius: 18px;
+  }
+  
+  .scatalog__row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  
+  .scatalog__row .settings-input {
+    flex: 1;
+    min-width: 220px;
+  }
+  
+  .scatalog__listRow {
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .scatalog__num {
+    width: 110px;
+  }
+  
+  .scatalog__numWide {
+    width: 130px;
+  }
+  
+  .scatalog__select {
+    width: 220px;
+    min-width: 180px;
+  }
+  
+  .scatalog__check {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  
+  /* موبايل */
+  @media (max-width: 820px) {
+    .scatalog .settings-wrap {
+      padding: 14px;
+    }
+  
+    .scatalog__num,
+    .scatalog__numWide,
+    .scatalog__select {
+      width: 100%;
+      min-width: 0;
+    }
+  
+    .scatalog__row .settings-input {
+      min-width: 0;
+    }
+  }
+  

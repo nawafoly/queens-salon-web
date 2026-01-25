@@ -39,6 +39,20 @@ type TeamMember = {
 const SALON_ID = "main";
 const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
 
+// ✅ ترجمة مفاتيح التخصصات لأسماء عربية (بدل ما يطلع skin-care للعميلات)
+const SPECIALTY_LABELS: Record<string, string> = {
+  "hair-care": "العناية بالشعر",
+  "skin-care": "العناية بالبشرة",
+  "nail-care": "العناية بالأظافر",
+  makeup: "المكياج",
+  massage: "المساج",
+  "special-packages": "باقات خاصة",
+};
+
+function labelSpecialty(key: string) {
+  return SPECIALTY_LABELS[key] || key;
+}
+
 function normalizeSpecialties(v: any): string[] {
   if (Array.isArray(v)) return v.map(String).map((s) => s.trim()).filter(Boolean);
   if (typeof v === "string" && v.trim()) return [v.trim()];
@@ -47,7 +61,8 @@ function normalizeSpecialties(v: any): string[] {
 
 function buildPositionFromSpecialties(specialties: string[]) {
   if (!specialties.length) return "أخصائية";
-  return `أخصائية: ${specialties.slice(0, 3).join(" • ")}`;
+  const nice = specialties.slice(0, 3).map(labelSpecialty);
+  return `أخصائية: ${nice.join(" • ")}`;
 }
 
 // ✅ يقرأ isActive أو active عشان ما ننكسر مع الداتا القديمة
@@ -230,9 +245,10 @@ const About = () => {
                         <div className="team-member-chips">
                           {member.specialties.slice(0, 6).map((sp, i) => (
                             <span key={`${member.id}-sp-${i}`} className="team-chip">
-                              {sp}
+                              {labelSpecialty(sp)}
                             </span>
                           ))}
+
                         </div>
                       )}
 

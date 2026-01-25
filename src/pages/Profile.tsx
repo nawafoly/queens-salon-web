@@ -3,7 +3,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/Profile.css";
 
-import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  signOut,
+  type User as FirebaseUser,
+} from "firebase/auth";
 import { auth } from "../services/firebase";
 
 import {
@@ -58,30 +62,25 @@ function statusClass(status?: string) {
   if (s === "مؤكد" || s === "confirmed") return "confirmed";
   if (s === "انتظار" || s === "pending") return "pending";
   if (s === "مكتمل" || s === "completed") return "completed";
-  if (s === "ملغي" || s === "cancelled") return "cancelled"; // ✅ توحيد اسم الكلاس
+  if (s === "ملغي" || s === "cancelled") return "cancelled";
   return "";
 }
 
 function normalizeKsaPhone(raw: string) {
-  const digits = String(raw || "").replace(/\D/g, ""); // شيل أي شيء غير أرقام
+  const digits = String(raw || "").replace(/\D/g, "");
   if (!digits) return "";
 
-  // لو يبدأ بـ 9665xxxxxxx => حوله إلى 05xxxxxxxx
-  if (digits.startsWith("9665") && digits.length === 12) {
-    return "0" + digits.slice(3);
-  }
+  if (digits.startsWith("9665") && digits.length === 12) return "0" + digits.slice(3);
+  if (digits.startsWith("5") && digits.length === 9) return "0" + digits;
+  if (digits.startsWith("05") && digits.length === 10) return digits;
 
-  // لو يبدأ بـ 5xxxxxxxx => حوله إلى 05xxxxxxxx
-  if (digits.startsWith("5") && digits.length === 9) {
-    return "0" + digits;
-  }
+  return digits;
+}
 
-  // لو يبدأ بـ 05xxxxxxxx (تمام)
-  if (digits.startsWith("05") && digits.length === 10) {
-    return digits;
-  }
-
-  return digits; // fallback
+function clearClientCacheOnly() {
+  localStorage.removeItem("user_profile_v1");
+  localStorage.removeItem("userAvatar");
+  // لا تمسح userName/userEmail/userPhone لأنها بيانات جلسة عامة تظهر بالهيدر
 }
 
 const Profile: React.FC = () => {
@@ -145,9 +144,7 @@ const Profile: React.FC = () => {
 
         // لو فيه cache نعرضه
         try {
-          const cached = JSON.parse(
-            localStorage.getItem("user_profile_v1") || "null"
-          );
+          const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
           if (cached) {
             setUserData((prev) => ({
               ...prev,
@@ -168,7 +165,17 @@ const Profile: React.FC = () => {
         setProfileMode("firebase");
         setFirebaseUid(user.uid);
 
+        // ✅ حمّل بروفايل من userProfile (SoT للعميلات)
         const p = await createOrLoadUserProfile(user);
+
+        // ✅ حماية: لو طلع الدور مو client → اطلع برا (لا تعرض بروفايل عميلة)
+        const pr = String((p as any)?.role || "").toLowerCase().trim();
+        if (pr && pr !== "client") {
+          clearClientCacheOnly();
+          navigate("/dashboard-pending", { replace: true });
+          setAuthChecked(true);
+          return;
+        }
 
         setProfileDoc(p);
         setUserData((prev) => ({
@@ -189,14 +196,17 @@ const Profile: React.FC = () => {
         window.dispatchEvent(new Event("authChanged"));
       } catch (e) {
         console.error("Profile load error:", e);
-        setProfileMode("local");
+
+        // لو فشل تحميل بروفايل عميلة: نظف كاش العميلة وطلّعه
+        clearClientCacheOnly();
+        navigate("/dashboard-pending", { replace: true });
       } finally {
         setAuthChecked(true);
       }
     });
 
     return () => unsub();
-  }, []);
+  }, [navigate]);
 
   // ✅ حماية صفحة البروفايل (لا تعتمد على authToken فقط)
   // الشرط: (Firebase user موجود) OR (authToken موجود)
@@ -206,8 +216,18 @@ const Profile: React.FC = () => {
     const token = localStorage.getItem("authToken");
     const firebaseOk = !!firebaseUser;
 
+    // ✅ لو عنده دور إداري محفوظ باللوكال، امنعه
+    const localRole = String(localStorage.getItem("userRole") || "")
+      .toLowerCase()
+      .trim();
+
+    if (localRole && localRole !== "client") {
+      navigate("/dashboard-pending", { replace: true });
+      return;
+    }
+
     if (!token && !firebaseOk) {
-      navigate("/login");
+      navigate("/login", { replace: true });
     }
   }, [authChecked, firebaseUser, navigate]);
 
@@ -217,10 +237,7 @@ const Profile: React.FC = () => {
   const [bookings, setBookings] = useState<BookingData[]>([]);
 
   useEffect(() => {
-    const allBookings: BookingData[] = JSON.parse(
-      localStorage.getItem("allBookings") || "[]"
-    );
-
+    const allBookings: BookingData[] = JSON.parse(localStorage.getItem("allBookings") || "[]");
     const myPhone = normalizeKsaPhone(userData.phone);
 
     if (!myPhone) {
@@ -229,9 +246,7 @@ const Profile: React.FC = () => {
     }
 
     setBookings(
-      allBookings
-        .filter((b) => normalizeKsaPhone(b.phone) === myPhone)
-        .reverse()
+      allBookings.filter((b) => normalizeKsaPhone(b.phone) === myPhone).reverse()
     );
   }, [userData.phone]);
 
@@ -273,7 +288,6 @@ const Profile: React.FC = () => {
       await navigator.clipboard.writeText(String(membershipId));
       alert("تم نسخ رقم العضوية ✅");
     } catch {
-      // fallback
       const ta = document.createElement("textarea");
       ta.value = String(membershipId);
       document.body.appendChild(ta);
@@ -292,9 +306,6 @@ const Profile: React.FC = () => {
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // (اختياري) حد 2MB
-    // if (file.size > 2 * 1024 * 1024) { alert("الصورة لازم أقل من 2MB"); return; }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -353,10 +364,7 @@ const Profile: React.FC = () => {
         u.phone === userData.phone ? { ...u, ...editData } : u
       );
       localStorage.setItem("clients", JSON.stringify(clients));
-      localStorage.setItem(
-        "currentUser",
-        JSON.stringify({ ...(currentUser || {}), ...editData })
-      );
+      localStorage.setItem("currentUser", JSON.stringify({ ...(currentUser || {}), ...editData }));
       localStorage.setItem("userName", editData.name);
       localStorage.setItem("userEmail", editData.email);
       localStorage.setItem("userPhone", editData.phone);
@@ -419,11 +427,7 @@ const Profile: React.FC = () => {
         <div className="profile-card">
           {/* Avatar */}
           <div className="profile-avatar">
-            {userData.avatar ? (
-              <img src={userData.avatar} alt="avatar" />
-            ) : (
-              <span>👩‍🦰</span>
-            )}
+            {userData.avatar ? <img src={userData.avatar} alt="avatar" /> : <span>👩‍🦰</span>}
 
             <button
               type="button"
@@ -451,10 +455,7 @@ const Profile: React.FC = () => {
 
           {/* Membership */}
           <div className="profile-progress">
-            <div
-              className="profile-progress-bar"
-              style={{ width: `${progress}%` }}
-            />
+            <div className="profile-progress-bar" style={{ width: `${progress}%` }} />
             <div className="profile-points-label">نسبة العضوية: {progress}%</div>
           </div>
 
@@ -542,14 +543,8 @@ const Profile: React.FC = () => {
 
         {/* ===== Edit Modal ===== */}
         {showEditModal && (
-          <div
-            className="profile-modal-overlay"
-            onClick={() => setShowEditModal(false)}
-          >
-            <div
-              className="profile-modal-dialog"
-              onClick={(e) => e.stopPropagation()}
-            >
+          <div className="profile-modal-overlay" onClick={() => setShowEditModal(false)}>
+            <div className="profile-modal-dialog" onClick={(e) => e.stopPropagation()}>
               <h5 style={{ marginBottom: 12 }}>تعديل بيانات العميلة</h5>
 
               <div className="mb-2">
@@ -557,9 +552,7 @@ const Profile: React.FC = () => {
                 <input
                   className="form-control"
                   value={editData.name}
-                  onChange={(e) =>
-                    setEditData({ ...editData, name: e.target.value })
-                  }
+                  onChange={(e) => setEditData({ ...editData, name: e.target.value })}
                 />
               </div>
 
@@ -568,9 +561,7 @@ const Profile: React.FC = () => {
                 <input
                   className="form-control"
                   value={editData.phone}
-                  onChange={(e) =>
-                    setEditData({ ...editData, phone: e.target.value })
-                  }
+                  onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
                 />
               </div>
 
@@ -579,9 +570,7 @@ const Profile: React.FC = () => {
                 <input
                   className="form-control"
                   value={editData.email}
-                  onChange={(e) =>
-                    setEditData({ ...editData, email: e.target.value })
-                  }
+                  onChange={(e) => setEditData({ ...editData, email: e.target.value })}
                 />
               </div>
 
@@ -590,9 +579,7 @@ const Profile: React.FC = () => {
                 <input
                   className="form-control"
                   value={editData.city}
-                  onChange={(e) =>
-                    setEditData({ ...editData, city: e.target.value })
-                  }
+                  onChange={(e) => setEditData({ ...editData, city: e.target.value })}
                 />
               </div>
 
@@ -602,9 +589,7 @@ const Profile: React.FC = () => {
                   type="date"
                   className="form-control"
                   value={editData.birthdate}
-                  onChange={(e) =>
-                    setEditData({ ...editData, birthdate: e.target.value })
-                  }
+                  onChange={(e) => setEditData({ ...editData, birthdate: e.target.value })}
                 />
               </div>
 
@@ -612,10 +597,7 @@ const Profile: React.FC = () => {
                 <button className="btn btn-success btn-sm" onClick={handleSaveEdit}>
                   حفظ
                 </button>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setShowEditModal(false)}
-                >
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowEditModal(false)}>
                   إلغاء
                 </button>
               </div>

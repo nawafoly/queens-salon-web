@@ -66,7 +66,9 @@ function normalizeRole(role: any): UiRole {
 }
 
 function isDashboardRole(role: UiRole) {
-  return role === "owner" || role === "admin" || role === "reception" || role === "staff";
+  return (
+    role === "owner" || role === "admin" || role === "reception" || role === "staff"
+  );
 }
 
 function isClientRole(role: UiRole) {
@@ -108,7 +110,11 @@ const App: React.FC = () => {
   const [userRole, setUserRole] = useState<UiRole>("guest");
 
   const location = useLocation();
-  const isInDashboard = location.pathname.startsWith("/dashboard");
+
+  // ✅ FIX: اعتبر pending صفحة من صفحات الداشبورد (عشان ما يظهر Navbar/Footer/ChatBot)
+  const isInDashboard =
+    location.pathname.startsWith("/dashboard") ||
+    location.pathname.startsWith("/dashboard-pending");
 
   const readWelcomeFromStorage = () => {
     const flag = localStorage.getItem("showWelcome");

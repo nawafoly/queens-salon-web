@@ -20,6 +20,7 @@ import {
   faUserTie,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
+import { listActiveSections } from "../services/firestoreCatalog";
 
 import { db } from "../services/firebase";
 import "../styles/DashboardModals.css";
@@ -61,14 +62,6 @@ type StaffPublicUi = StaffPublicDoc & { id: string };
 ========================= */
 const SALON_ID = "main";
 
-const SPECIALTY_OPTIONS: { key: string; label: string }[] = [
-  { key: "hair", label: "الشعر" },
-  { key: "coloring", label: "الصبغات" },
-  { key: "makeup", label: "المكياج" },
-  { key: "nails", label: "الأظافر" },
-  { key: "waxing", label: "الشمع" },
-];
-
 /* =========================
    Helpers
 ========================= */
@@ -96,7 +89,13 @@ function normalizeSpecialties(v: any): string[] {
   return [];
 }
 
-// ✅ Normalize Arabic names for strict matching (fallback)
+function safeKey(s: string) {
+  return String(s || "")
+    .trim()
+    .replaceAll("/", "-")
+    .replace(/\s+/g, "_");
+}
+
 function normalizeArabicName(s: string) {
   return String(s || "")
     .trim()
@@ -128,28 +127,25 @@ export default function DashboardEmployees() {
   const [list, setList] = useState<StaffPublicUi[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ Owner-only booking stats per staff_public doc
   const [statsLoading, setStatsLoading] = useState(false);
-  const [bookingStats, setBookingStats] = useState<Record<string, StaffBookingStats>>(
-    {}
-  );
+  const [bookingStats, setBookingStats] =
+    useState<Record<string, StaffBookingStats>>({});
 
-  // Filters
   const [qText, setQText] = useState("");
   const [onlyActive, setOnlyActive] =
     useState<"all" | "active" | "inactive">("all");
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
 
-  // Modal
   const [isOpen, setIsOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
 
-  // Form
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [active, setActive] = useState(true);
   const [specialties, setSpecialties] = useState<string[]>([]);
+  const [sectionOptions, setSectionOptions] =
+    useState<{ key: string; label: string }[]>([]);
 
   const resetForm = () => {
     setEditId(null);
@@ -180,16 +176,12 @@ export default function DashboardEmployees() {
     resetForm();
   };
 
-  /* =========================
-     CRUD
-  ========================= */
   const load = async () => {
     setLoading(true);
     setErrorMsg("");
-
     try {
       const snap = await getDocs(staffPublicCol());
-      const rows: StaffPublicUi[] = snap.docs.map((d) => {
+      const rows = snap.docs.map((d) => {
         const data = d.data() as any;
         return {
           id: d.id,
@@ -202,11 +194,9 @@ export default function DashboardEmployees() {
           updatedAt: data?.updatedAt,
         };
       });
-
       rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
       setList(rows);
-    } catch (e) {
-      console.warn("load staff_public error:", e);
+    } catch {
       setErrorMsg("تعذر تحميل الموظفات");
       setList([]);
     } finally {
@@ -216,10 +206,24 @@ export default function DashboardEmployees() {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Owner-only: compute booking counts per staff (by id OR strict name match)
+  useEffect(() => {
+    let alive = true;
+    listActiveSections(SALON_ID).then((secs) => {
+      if (!alive) return;
+      setSectionOptions(
+        (secs || []).map((s: any) => ({
+          key: String(s.id),
+          label: String(s.الاسم ?? s.name ?? s.id),
+        }))
+      );
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  // ✅ Owner-only: compute booking counts per staff_public doc
   useEffect(() => {
     let alive = true;
 
@@ -238,35 +242,55 @@ export default function DashboardEmployees() {
       setStatsLoading(true);
 
       try {
-        const staffById = new Set(list.map((s) => s.id));
-
-        const staffIdByName = new Map<string, string>();
-        for (const s of list) {
-          const k = normalizeArabicName(s.name);
-          if (k) staffIdByName.set(k, s.id);
-        }
-
-        const rows: BookingDocWithId[] = await listAllBookings();
-
         const initStats = (): StaffBookingStats => ({
           total: 0,
           byStatus: { pending: 0, confirmed: 0, completed: 0, cancelled: 0 },
         });
 
+        // ✅ staff lookup
+        const staffById = new Set(list.map((s) => s.id));
+        const staffByKey = new Map<string, string>(); // employeeKey candidates -> staffId
+        const staffByName = new Map<string, string>(); // normalized arabic name -> staffId
+
+        for (const s of list) {
+          const sid = String(s.id || "").trim();
+          if (sid) staffByKey.set(sid, sid); // employeeId might be staff_public id
+
+          const nKey = normalizeArabicName(s.name);
+          if (nKey) staffByName.set(nKey, sid);
+
+          // name safeKey fallback (old bookings might use safeKey(name) as employeeKey)
+          const nk2 = safeKey(String(s.name || "").trim());
+          if (nk2) staffByKey.set(nk2, sid);
+        }
+
+        const rows: BookingDocWithId[] = await listAllBookings();
+
+        // ✅ DEBUG (عشان ما تقول “ما يطلع شي”)
+        console.log("[EmployeesStats] bookings=", rows.length, "staff=", list.length);
+
         const m: Record<string, StaffBookingStats> = {};
 
         for (const b of rows) {
           const eid = String((b as any).employeeId || "").trim();
+          const euid = String((b as any).employeeUid || "").trim();
+          const ekey = String((b as any).employeeKey || "").trim();
           const ename = String((b as any).employeeName || "").trim();
 
-          // 1) match by employeeId (if staff_public.id is linked to uid in future)
+          // ✅ 1) match by employeeKey (الأقوى في نظامنا)
           let staffId: string | null = null;
-          if (eid && staffById.has(eid)) staffId = eid;
+          if (ekey && staffByKey.has(ekey)) staffId = staffByKey.get(ekey) || null;
 
-          // 2) fallback strict name match after normalization
+          // ✅ 2) match by employeeUid (إذا صار فيه حجوزات تخزن uid في key أو id)
+          if (!staffId && euid && staffByKey.has(euid)) staffId = staffByKey.get(euid) || null;
+
+          // ✅ 3) match by employeeId (إذا يساوي staff_public.id)
+          if (!staffId && eid && staffById.has(eid)) staffId = eid;
+
+          // ✅ 4) fallback strict name match after normalization
           if (!staffId && ename) {
             const k = normalizeArabicName(ename);
-            staffId = staffIdByName.get(k) || null;
+            staffId = staffByName.get(k) || null;
           }
 
           if (!staffId) continue;
@@ -481,7 +505,7 @@ export default function DashboardEmployees() {
               onChange={(e) => setSpecialtyFilter(e.target.value)}
             >
               <option value="all">كل الخدمات</option>
-              {SPECIALTY_OPTIONS.map((o) => (
+              {sectionOptions.map((o) => (
                 <option key={o.key} value={o.key}>
                   {o.label}
                 </option>
@@ -494,8 +518,7 @@ export default function DashboardEmployees() {
             {authUser.role === "owner" && (
               <>
                 {" "}
-                • إحصائيات الحجوزات:{" "}
-                <b>{statsLoading ? "..." : "جاهزة"}</b>
+                • إحصائيات الحجوزات: <b>{statsLoading ? "..." : "جاهزة"}</b>
               </>
             )}
           </div>
@@ -552,7 +575,7 @@ export default function DashboardEmployees() {
 
                 <div className="staff-chips">
                   {normalizeSpecialties(x.specialties).map((s) => {
-                    const label = SPECIALTY_OPTIONS.find((o) => o.key === s)?.label ?? s;
+                    const label = sectionOptions.find((o) => o.key === s)?.label ?? s;
                     return (
                       <span className="staff-chip" key={s}>
                         {label}
@@ -602,7 +625,7 @@ export default function DashboardEmployees() {
                     </div>
 
                     <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
-                      * تُحسب الإحصائيات عبر (employeeId) إن تطابق، وإلا مطابقة الاسم بعد التطبيع.
+                      * تُحسب الإحصائيات عبر employeeKey/employeeUid ثم employeeId، وإلا مطابقة الاسم كت fallback.
                     </div>
                   </div>
                 )}
@@ -673,7 +696,7 @@ export default function DashboardEmployees() {
                 <div className="dash-field">
                   <label>الخدمات (اختيار متعدد)</label>
                   <div className="staff-picks">
-                    {SPECIALTY_OPTIONS.map((o) => (
+                    {sectionOptions.map((o) => (
                       <button
                         key={o.key}
                         type="button"

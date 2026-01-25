@@ -67,7 +67,12 @@ function normalizeAdminRole(raw: any): AdminRole {
   const r = String(raw || "").toLowerCase().trim();
   if (r === "owner") return "owner";
   if (r === "admin" || r === "administrator") return "admin";
-  if (r === "reception" || r === "receptionist" || r === "frontdesk" || r === "desk")
+  if (
+    r === "reception" ||
+    r === "receptionist" ||
+    r === "frontdesk" ||
+    r === "desk"
+  )
     return "reception";
   if (r === "staff") return "staff";
   return "pending";
@@ -108,7 +113,9 @@ async function ensureAdminSessionFromUsers(params: {
           uid,
           linkedUid: uid,
           email,
-          name: String(data?.displayName || data?.name || displayName || "").trim(),
+          name: String(
+            data?.displayName || data?.name || displayName || ""
+          ).trim(),
           role: role === "pending" ? "pending" : role,
           active: role === "pending" ? false : true,
           showOnAbout: false,
@@ -236,41 +243,59 @@ const Login: React.FC = () => {
   };
 
   // ✅ تخزين جلسة Firebase (إدارة أو عميلة) بشكل موحد
-  const storeFirebaseSession = (profile: UserProfile | (Omit<UserProfile, "role"> & { role: any })) => {
-    const uiRole = String(profile.role || "") as UiRole;
+  const storeFirebaseSession = (
+    profile: UserProfile | (Omit<UserProfile, "role"> & { role: any })
+  ) => {
+    const uiRole = String((profile as any).role || "")
+      .toLowerCase()
+      .trim() as UiRole;
 
     // تنظيف أي جلسة local قديمة
     localStorage.removeItem("currentUser");
 
-    const finalName = (profile.name || "").trim() || defaultNameByRole(String(uiRole));
+    // ✅ دايم نخزن الأساسيات (جلسة)
+    const finalName =
+      String((profile as any).name || "").trim() ||
+      defaultNameByRole(String(uiRole));
 
     localStorage.setItem("authToken", "firebase");
-    localStorage.setItem("userUid", (profile as any).uid);
+    localStorage.setItem("userUid", String((profile as any).uid || ""));
     localStorage.setItem("userRole", String(uiRole));
     localStorage.setItem("userName", finalName);
     localStorage.setItem("showWelcome", "true");
 
-    if ((profile as any).email) localStorage.setItem("userEmail", (profile as any).email);
-    if ((profile as any).phone) localStorage.setItem("userPhone", (profile as any).phone);
+    if ((profile as any).email)
+      localStorage.setItem("userEmail", String((profile as any).email));
+    if ((profile as any).phone)
+      localStorage.setItem("userPhone", String((profile as any).phone));
 
-    localStorage.setItem(
-      "user_profile_v1",
-      JSON.stringify({
-        ...(profile as any),
-        name: finalName,
-      })
-    );
-
-    // ✅ مفتاح موحد تعتمد عليه صفحات الداشبورد/البورتال
+    // ✅ auth_user للجميع (لأن الداشبورد يحتاجه)
     localStorage.setItem(
       "auth_user",
       JSON.stringify({
-        uid: (profile as any).uid,
-        email: (profile as any).email || auth.currentUser?.email || "",
+        uid: String((profile as any).uid || ""),
+        email: String(
+          (profile as any).email || auth.currentUser?.email || ""
+        ),
         role: String(uiRole),
         displayName: finalName,
       })
     );
+
+    // ✅ أهم نقطة: بروفايل العميلة (user_profile_v1) للـ client فقط
+    if (uiRole === "client") {
+      localStorage.setItem(
+        "user_profile_v1",
+        JSON.stringify({
+          ...(profile as any),
+          name: finalName,
+        })
+      );
+    } else {
+      // ❌ ممنوع أي كاش عميلة للحسابات الإدارية
+      localStorage.removeItem("user_profile_v1");
+      localStorage.removeItem("userAvatar");
+    }
 
     window.dispatchEvent(new Event("authChanged"));
   };
@@ -302,7 +327,6 @@ const Login: React.FC = () => {
 
     window.dispatchEvent(new Event("authChanged"));
   };
-
   // ✅ تسجيل الدخول
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -438,10 +462,38 @@ const Login: React.FC = () => {
         registerData.password
       );
 
-      // ✅ 2) إنشاء/تحميل بروفايل في Firestore (client)
+      // ✅ 2) لو الإيميل إداري @malikat.com → أنشئه Pending من users + staff_public (مو عميلة)
+      const email = cleanEmail(registerData.email);
+
+      if (isMalikatAdminEmail(email)) {
+        const sp = await ensureAdminSessionFromUsers({
+          uid: cred.user.uid,
+          email,
+          displayName: registerData.name.trim() || "",
+        });
+
+        const role: AdminRole = sp.active ? (sp.role as any) : "pending";
+
+        const profileForSession: any = {
+          uid: cred.user.uid,
+          role, // pending غالبًا
+          name: sp.name || registerData.name.trim() || defaultNameByRole(role),
+          email: sp.email || email,
+          phone: sp.phone || registerData.phone.trim() || "",
+          staffDocId: sp.staffDocId,
+        };
+
+        storeFirebaseSession(profileForSession);
+
+        // ✅ توجيه الإداريات
+        navigate("/dashboard-pending", { replace: true });
+        return;
+      }
+
+      // ✅ 3) عميلة (غير إداري): إنشاء/تحميل بروفايل في Firestore (client)
       const profile = await createOrLoadUserProfile(cred.user);
 
-      // ✅ 3) حدّث بيانات العميلة (بدون role)
+      // ✅ 4) حدّث بيانات العميلة (بدون role)
       try {
         await updateUserProfile(profile.uid, {
           name: registerData.name.trim(),
@@ -454,13 +506,13 @@ const Login: React.FC = () => {
         console.warn("updateUserProfile after register failed:", e);
       }
 
-      // ✅ 4) أحدث نسخة
+      // ✅ 5) أحدث نسخة
       const latest = await createOrLoadUserProfile(cred.user);
 
-      // ✅ 5) خزّن الجلسة
+      // ✅ 6) خزّن الجلسة
       storeFirebaseSession(latest);
 
-      // ✅ 6) توجيه العميلة
+      // ✅ 7) توجيه العميلة
       navigate("/profile", { replace: true });
     } catch (err: any) {
       console.error("❌ SIGNUP FAILED:", err?.code, err?.message, err);
