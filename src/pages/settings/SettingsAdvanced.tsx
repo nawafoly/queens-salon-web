@@ -1,5 +1,4 @@
 // ✅ src/pages/settings/SettingsAdvanced.tsx
-import React from "react";
 import { useNavigate } from "react-router-dom";
 
 type UiRole =
