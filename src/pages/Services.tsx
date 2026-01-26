@@ -1,10 +1,14 @@
-import hair from "../assets/images/hair.webp";
-import skin from "../assets/images/skin.webp";
+// src/pages/Services.tsx
+import { useEffect, useMemo, useState } from "react";
 
-import nails from "../assets/images/nailsP.jpg";
-import emma from "../assets/images/emma.webp";
-import sophie from "../assets/images/sophie.webp";
-import ava from "../assets/images/ava.webp";
+// ✅ صور منتجات (لا تغيّر منطق الصور)
+import hair from "../assets/images/hair.png";
+import skin from "../assets/images/skin.png";
+import nails from "../assets/images/nails.png";
+import makeupImg from "../assets/images/makeup.png";
+import massageImg from "../assets/images/massage.png";
+import packagesImg from "../assets/images/packages.png";
+
 import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -13,106 +17,183 @@ import {
   faPaintBrush,
   faHandSparkles,
   faMagic,
+  faStar,
 } from "@fortawesome/free-solid-svg-icons";
+
 import "../styles/Services.css";
 
-const Services = () => {
-  const serviceCategories = [
-    {
-      id: "hair-care",
-      title: "العناية بالشعر",
-      icon: faCut,
-      image: hair,
-      description:
-        "خدمات متكاملة للعناية بالشعر تشمل القص، الصبغ، التصفيف، والعلاجات المتخصصة.",
-      services: [
-        { name: "قص الشعر", price: 75 },
-        { name: "صبغ الشعر", price: 150 },
-        { name: "تصفيف الشعر", price: 100 },
-        { name: "علاجات الشعر", price: 200 },
-        { name: "فرد الشعر", price: 300 },
-        { name: "تجعيد الشعر", price: 250 },
-      ],
-    },
-    {
-      id: "skin-care",
-      title: "العناية بالبشرة",
-      icon: faSpa,
-      image: skin,
-      description:
-        "جلسات تنظيف وتقشير وترطيب للبشرة مع علاجات متخصصة للمشاكل المختلفة.",
-      services: [
-        { name: "تنظيف البشرة العميق", price: 120 },
-        { name: "تقشير البشرة", price: 150 },
-        { name: "ترطيب البشرة", price: 100 },
-        { name: "علاج حب الشباب", price: 180 },
-        { name: "ماسكات للبشرة", price: 90 },
-        { name: "علاج تصبغات البشرة", price: 200 },
-      ],
-    },
-    {
-      id: "nail-care",
-      title: "العناية بالأظافر",
-      icon: faHandSparkles,
-      image: nails,
-      description: "خدمات المانيكير والباديكير مع تقنيات متطورة وألوان عصرية.",
-      services: [
-        { name: "مانيكير", price: 50 },
-        { name: "باديكير", price: 60 },
-        { name: "مانيكير وباديكير", price: 90 },
-        { name: "طلاء الأظافر الدائم", price: 120 },
-        { name: "أظافر اصطناعية", price: 150 },
-        { name: "رسومات على الأظافر", price: 30 },
-      ],
-    },
-    {
-      id: "makeup",
-      title: "المكياج",
-      icon: faPaintBrush,
-      image: emma,
-      description:
-        "مكياج احترافي للمناسبات الخاصة والأعراس مع خيارات متنوعة تناسب جميع الأذواق.",
-      services: [
-        { name: "مكياج يومي", price: 150 },
-        { name: "مكياج سهرة", price: 200 },
-        { name: "مكياج عروس", price: 500 },
-        { name: "رسم حواجب", price: 70 },
-        { name: "تركيب رموش", price: 80 },
-        { name: "دروس مكياج شخصية", price: 300 },
-      ],
-    },
-    {
-      id: "massage",
-      title: "المساج",
-      icon: faHandSparkles,
-      image: sophie,
-      description:
-        "جلسات مساج متنوعة للاسترخاء وتخفيف التوتر وتنشيط الدورة الدموية.",
-      services: [
-        { name: "مساج استرخائي", price: 180 },
-        { name: "مساج علاجي", price: 200 },
-        { name: "مساج الظهر والرقبة", price: 120 },
-        { name: "مساج الوجه", price: 100 },
-        { name: "مساج بالزيوت العطرية", price: 220 },
-        { name: "مساج الأحجار الساخنة", price: 250 },
-      ],
-    },
-    {
-      id: "special-packages",
-      title: "باقات خاصة",
-      icon: faMagic,
-      image: ava,
-      description: "باقات متكاملة تجمع بين خدمات متنوعة بأسعار مميزة.",
-      services: [
-        { name: "باقة العروس الكاملة", price: 1000 },
-        { name: "باقة التجديد الشاملة", price: 500 },
-        { name: "باقة الاسترخاء", price: 350 },
-        { name: "باقة العناية بالبشرة", price: 300 },
-        { name: "باقة العناية بالشعر", price: 350 },
-        { name: "باقة المناسبات الخاصة", price: 450 },
-      ],
-    },
-  ];
+// ✅ Firestore
+import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
+import { db } from "../services/firebase";
+
+const SALON_ID = "main";
+
+type UiServiceItem = { name: string; price: number };
+
+type UiServiceCategory = {
+  id: string;
+  title: string;
+  icon: any;
+  image: string;
+  description: string;
+  services: UiServiceItem[];
+};
+
+type SectionRow = {
+  id: string;
+  name: string;
+  active?: boolean;
+  order?: number;
+};
+
+type ServiceRow = {
+  id: string;
+  name: string;
+  sectionId: string;
+  price: number;
+  active?: boolean;
+};
+
+export default function Services() {
+  const [loading, setLoading] = useState(true);
+  const [sections, setSections] = useState<SectionRow[]>([]);
+  const [services, setServices] = useState<ServiceRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // ✅ ثوابت العرض (صور/وصف/أيقونة) حسب sectionId
+  // مهم: sectionId هنا = doc.id داخل salons/main/service_sections
+  const uiBySectionId = useMemo(() => {
+    return {
+      "hair-care": {
+        image: hair,
+        icon: faCut,
+        description:
+          "خدمات متكاملة للعناية بالشعر تشمل القص، الصبغ، التصفيف، والعلاجات المتخصصة.",
+      },
+      "skin-care": {
+        image: skin,
+        icon: faSpa,
+        description:
+          "جلسات تنظيف وتقشير وترطيب للبشرة مع علاجات متخصصة للمشاكل المختلفة.",
+      },
+      "nail-care": {
+        image: nails,
+        icon: faHandSparkles,
+        description: "خدمات المانيكير والباديكير مع تقنيات متطورة وألوان عصرية.",
+      },
+      makeup: {
+        image: makeupImg,
+        icon: faPaintBrush,
+        description:
+          "مكياج احترافي للمناسبات الخاصة والأعراس مع خيارات متنوعة تناسب جميع الأذواق.",
+      },
+      massage: {
+        image: massageImg,
+        icon: faStar,
+        description:
+          "جلسات مساج متنوعة للاسترخاء وتخفيف التوتر وتنشيط الدورة الدموية.",
+      },
+      "special-packages": {
+        image: packagesImg,
+        icon: faMagic,
+        description: "باقات متكاملة تجمع بين خدمات متنوعة بأسعار مميزة.",
+      },
+    } as Record<
+      string,
+      { image: string; icon: any; description: string }
+    >;
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // ✅ 1) جلب الأقسام
+        const sectionsRef = collection(db, "salons", SALON_ID, "service_sections");
+        const sectionsQ = query(sectionsRef, orderBy("order", "asc"));
+        const sectionsSnap = await getDocs(sectionsQ);
+
+        const sectionsRows: SectionRow[] = sectionsSnap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            name: String(data?.name || ""),
+            active: Boolean(data?.active ?? true),
+            order: Number(data?.order ?? 0),
+          };
+        });
+
+        // ✅ 2) جلب الخدمات (active فقط)
+        const servicesRef = collection(db, "salons", SALON_ID, "services");
+        const servicesQ = query(servicesRef, where("active", "==", true));
+        const servicesSnap = await getDocs(servicesQ);
+
+        const servicesRows: ServiceRow[] = servicesSnap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            name: String(data?.name || ""),
+            sectionId: String(data?.sectionId || ""),
+            price: Number(data?.price ?? 0),
+            active: Boolean(data?.active ?? true),
+          };
+        });
+
+        if (!mounted) return;
+        setSections(sectionsRows.filter((s) => s.active !== false));
+        setServices(servicesRows);
+      } catch (e: any) {
+        if (!mounted) return;
+        console.error("Services load error:", e);
+        setError(e?.message || "صار خطأ أثناء تحميل الخدمات");
+      } finally {
+        if (!mounted) return;
+        setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // ✅ بناء العرض النهائي: كل section + خدماته
+  const serviceCategories: UiServiceCategory[] = useMemo(() => {
+    const bySection = new Map<string, UiServiceItem[]>();
+    services.forEach((s) => {
+      if (!s.sectionId) return;
+      const list = bySection.get(s.sectionId) || [];
+      list.push({ name: s.name, price: s.price });
+      bySection.set(s.sectionId, list);
+    });
+
+    return sections
+      .map((sec) => {
+        const ui = uiBySectionId[sec.id];
+        const icon = ui?.icon || faStar;
+        const image = ui?.image || packagesImg;
+        const description = ui?.description || "خدمات متنوعة ومميزة داخل هذا القسم.";
+
+        const items = (bySection.get(sec.id) || [])
+          .filter((it) => it.name)
+          .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+
+        return {
+          id: sec.id,
+          title: sec.name || sec.id,
+          icon,
+          image,
+          description,
+          services: items,
+        };
+      })
+      .filter((c) => c.services.length > 0); // نخفي الأقسام الفاضية
+  }, [sections, services, uiBySectionId]);
 
   return (
     <div className="services-page py-5">
@@ -122,59 +203,72 @@ const Services = () => {
           نقدم لكِ مجموعة متكاملة من خدمات التجميل والعناية بالجمال
         </p>
 
-        {serviceCategories.map((category, idx) => (
-          <div
-            className={`service-category mb-5 ${idx % 2 === 1 ? "reverse" : ""
-              }`}
-            key={category.id}
-            id={category.id}
-          >
-            <div className="row align-items-center">
-              <div className="col-lg-6 mb-4 mb-lg-0">
-                <div className="service-category-image">
-                  <img
-                    src={category.image}
-                    alt={category.title}
-                    className="img-fluid rounded"
-                  />
+        {loading ? (
+          <div className="services-state">
+            جاري تحميل الخدمات…
+          </div>
+        ) : error ? (
+          <div className="services-state is-error">
+            {error}
+          </div>
+        ) : serviceCategories.length === 0 ? (
+          <div className="services-state">
+            ما فيه خدمات ظاهرة حالياً (تأكدي إن الخدمات active ومربوطة بـ sectionId صحيح).
+          </div>
+        ) : (
+          serviceCategories.map((category, idx) => (
+            <div
+              className={`service-category mb-5 ${idx % 2 === 1 ? "reverse" : ""}`}
+              key={category.id}
+              id={category.id}
+            >
+              <div className="row align-items-center">
+                <div className="col-lg-6 mb-4 mb-lg-0">
+                  <div className="service-category-image product-bg">
+                    <img
+                      src={category.image}
+                      alt={category.title}
+                      className="img-fluid rounded product-img"
+                      loading="lazy"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="col-lg-6">
-                <div className="service-category-content">
-                  <div className="service-category-icon">
-                    <FontAwesomeIcon icon={category.icon} />
+                <div className="col-lg-6">
+                  <div className="service-category-content">
+                    <div className="service-category-icon">
+                      <FontAwesomeIcon icon={category.icon} />
+                    </div>
+
+                    <h2 className="service-category-title">{category.title}</h2>
+                    <p className="service-category-description">
+                      {category.description}
+                    </p>
+
+                    <div className="service-list">
+                      {category.services.map((service, index) => (
+                        <div className="service-item" key={index}>
+                          <span className="service-name">{service.name}</span>
+                          <span className="service-price">
+                            {service.price} ريال
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <Link
+                      to="/booking"
+                      className="services-primary-btn rounded-pill mt-4"
+                    >
+                      احجزي الآن
+                    </Link>
                   </div>
-                  <h2 className="service-category-title">{category.title}</h2>
-                  <p className="service-category-description">
-                    {category.description}
-                  </p>
-
-                  <div className="service-list">
-                    {category.services.map((service, index) => (
-                      <div className="service-item" key={index}>
-                        <span className="service-name">{service.name}</span>
-                        <span className="service-price">
-                          {service.price} ريال
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <Link
-                    to="/booking"
-                    className="services-primary-btn rounded-pill mt-4"
-                  >
-                    احجزي الآن
-                  </Link>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
-};
-
-export default Services;
+}

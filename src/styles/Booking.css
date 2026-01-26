@@ -386,12 +386,7 @@ textarea.form-control {
 /* إخفاء أيقونة التقويم الافتراضية (Chrome / Edge / Safari) */
 .booking-page input[type="date"]::-webkit-calendar-picker-indicator {
   opacity: 0;
-}
-
-/* إخفاء أيقونة التقويم في Firefox */
-.booking-page input[type="date"] {
-  appearance: none;
-  -moz-appearance: textfield;
+  cursor: pointer;
 }
 
 .booking-page .booking-date-group {
@@ -569,3 +564,4 @@ textarea.form-control {
   transform: none;
   box-shadow: none;
 }
+

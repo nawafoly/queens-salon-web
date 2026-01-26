@@ -3,8 +3,8 @@
 // src/pages/Offers.tsx
 import { useEffect, useMemo, useState } from "react";
 import emma from "../assets/images/emma.webp";
-import hair from "../assets/images/hair.webp";
-import skin from "../assets/images/skin.webp";
+import hair from "../assets/images/hair1.webp";
+import skin from "../assets/images/skin1.webp";
 import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {

@@ -1,4 +1,3 @@
-// src/components/Hero.tsx
 import { useEffect, useState } from "react";
 
 import heroBg from "../assets/images/malikat_header_v2.png";
@@ -31,22 +30,16 @@ export default function Hero() {
             تجربة عناية فاخرة للشعر والبشرة والجسم، بخبرة فريق محترف ولمسة راقية
             تليق بكِ.
           </p>
-
-
-          {/* شريط التمرير (للإشارة إلى المحتوى أسفل) */}
-
         </div>
-        
       </div>
-      <div>
+
       <div className="hero-scroll-indicator">
-            <span className="scroll-text">اسحبي للأسفل</span>
-            <div className="scroll-arrow">
-              <span />
-              <span />
-              <span />
-            </div>
-          </div>
+        <span className="scroll-text">اسحبي للأسفل</span>
+        <div className="scroll-arrow">
+          <span />
+          <span />
+          <span />
+        </div>
       </div>
     </section>
   );

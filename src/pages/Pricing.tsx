@@ -1,3 +1,4 @@
+// src/pages/Pricing.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -8,9 +9,21 @@ import {
   faStar,
   faClock,
   faXmark,
+  faMagic,
+  faSpa,
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/Pricing.css";
+
+// ✅ Firestore
+import {
+  collection,
+  getDocs,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
+import { db } from "../services/firebase";
 
 interface PriceItem {
   name: string;
@@ -30,7 +43,7 @@ interface PricingSection {
   services: ServiceCategory[];
 }
 
-/** ✅ مهم جدًا: لازم تكون export عشان Booking يقدر يستوردها */
+/** ✅ مهم: نخليها موجودة عشان أي صفحة ثانية تستوردها ما تنكسر */
 export const pricingSections: Record<string, PricingSection> = {
   hair: {
     title: "قسم الشعر",
@@ -79,31 +92,6 @@ export const pricingSections: Record<string, PricingSection> = {
           { name: "سحب لون مع صبغة شعر قصير", price: "550 ريال" },
           { name: "سحب لون مع صبغة شعر متوسط", price: "650 ريال" },
           { name: "سحب لون مع صبغة شعر طويل", price: "850 ريال" },
-        ],
-      },
-      {
-        category: "خدمة الكافيار",
-        items: [
-          { name: "شعر قصير", price: "300 ريال" },
-          { name: "شعر وسط", price: "400 ريال" },
-          { name: "شعر طويل", price: "400 ريال" },
-        ],
-      },
-      {
-        category: "خدمة البروتين",
-        items: [
-          { name: "شعر قصير", price: "450 ريال" },
-          { name: "شعر وسط", price: "600 ريال" },
-          { name: "شعر طويل", price: "700-800 ريال" },
-          { name: "شعر طويل جداً", price: "1000-1200 ريال" },
-        ],
-      },
-      {
-        category: "الفلر",
-        items: [
-          { name: "جلسة فلر شعر قصير", price: "150 ريال" },
-          { name: "جلسة فلر شعر متوسط", price: "200 ريال" },
-          { name: "جلسة فلر شعر طويل", price: "250 ريال" },
         ],
       },
     ],
@@ -169,7 +157,6 @@ export const pricingSections: Record<string, PricingSection> = {
 
 // ===== Helpers =====
 function extractMinPrice(priceText: string): number | null {
-  // يدعم: "50 ريال" أو "160-180 ريال"
   const cleaned = priceText.replace(/[^\d\-]/g, "");
   if (!cleaned) return null;
   const parts = cleaned.split("-").filter(Boolean).map((n) => Number(n));
@@ -194,11 +181,154 @@ function minPriceInSection(section: PricingSection): number | null {
   return Math.min(...prices);
 }
 
+/** ===== Firestore Types (خفيفة) ===== */
+type FsSection = {
+  name?: string;
+  active?: boolean;
+  order?: number;
+};
+
+type FsService = {
+  name?: string;
+  active?: boolean;
+  sectionId?: string;
+  price?: number;
+  // اختياري:
+  categoryName?: string; // لو موجود عندك
+  note?: string;
+};
+
+const SALON_ID = "main";
+
+function iconAndColorForSection(sectionIdOrName: string) {
+  const key = String(sectionIdOrName || "").toLowerCase();
+
+  // ✅ غطينا أشهر المسميات الممكنة سواء بالـ id أو بالـ name
+  if (key.includes("hair") || key.includes("شعر")) return { icon: faCut, color: "primary" };
+  if (key.includes("color") || key.includes("صبغ") || key.includes("صبغات")) return { icon: faPalette, color: "secondary" };
+  if (key.includes("make") || key.includes("مكياج")) return { icon: faEye, color: "accent" };
+  if (key.includes("nail") || key.includes("اظافر") || key.includes("أظافر") || key.includes("مانيكير") || key.includes("بديكير")) {
+    return { icon: faHandSparkles, color: "info" };
+  }
+  if (key.includes("wax") || key.includes("شمع") || key.includes("إزالة")) return { icon: faStar, color: "warning" };
+  if (key.includes("skin") || key.includes("بشر") || key.includes("بشرة")) return { icon: faSpa, color: "secondary" };
+  if (key.includes("massage") || key.includes("مساج")) return { icon: faHandSparkles, color: "primary" };
+  if (key.includes("pack") || key.includes("باقات")) return { icon: faMagic, color: "accent" };
+
+  return { icon: faStar, color: "primary" };
+}
+
 const Pricing: React.FC = () => {
   const [openSectionId, setOpenSectionId] = useState<string | null>(null);
 
+  // ✅ الجديد: داتا Firestore (لو انقرأت)
+  const [fsSections, setFsSections] = useState<Record<string, PricingSection> | null>(null);
+  const [loadingFs, setLoadingFs] = useState(false);
+
+  // ===== Fetch from Firestore =====
+  useEffect(() => {
+    let mounted = true;
+
+    const run = async () => {
+      try {
+        setLoadingFs(true);
+
+        const sectionsRef = collection(db, "salons", SALON_ID, "service_sections");
+        const servicesRef = collection(db, "salons", SALON_ID, "services");
+
+        // Sections (رتّب لو عندك order)
+        const sectionsSnap = await getDocs(query(sectionsRef, orderBy("order", "asc")));
+        const sections: Array<{ id: string; data: FsSection }> = sectionsSnap.docs.map((d) => ({
+          id: d.id,
+          data: d.data() as FsSection,
+        }));
+
+        // Services (جيب النشط فقط إن تبي)
+        const servicesSnap = await getDocs(query(servicesRef, where("active", "==", true)));
+        const services: Array<{ id: string; data: FsService }> = servicesSnap.docs.map((d) => ({
+          id: d.id,
+          data: d.data() as FsService,
+        }));
+
+        // لو ما فيه أقسام أو خدمات… خله null عشان نستخدم fallback
+        if (!sections.length || !services.length) {
+          if (mounted) setFsSections(null);
+          return;
+        }
+
+        // Group services by sectionId
+        const bySection: Record<string, Array<FsService>> = {};
+        services.forEach((s) => {
+          const secId = String(s.data.sectionId || "").trim();
+          if (!secId) return;
+          if (!bySection[secId]) bySection[secId] = [];
+          bySection[secId].push(s.data);
+        });
+
+        // Build PricingSections object
+        const built: Record<string, PricingSection> = {};
+
+        sections.forEach((sec) => {
+          const secId = sec.id;
+          const secName = String(sec.data.name || secId);
+
+          const iconMeta = iconAndColorForSection(`${secId} ${secName}`);
+
+          const list = (bySection[secId] || [])
+            .filter((x) => x && x.name && typeof x.price === "number")
+            .sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+
+          if (!list.length) return;
+
+          // ✅ لو عندك categoryName نخليها تصنيف… لو ما عندك نخليها "الخدمات"
+          const groupedByCat: Record<string, PriceItem[]> = {};
+
+          list.forEach((srv) => {
+            const cat = String(srv.categoryName || "الخدمات");
+            if (!groupedByCat[cat]) groupedByCat[cat] = [];
+            groupedByCat[cat].push({
+              name: String(srv.name),
+              price: `${Number(srv.price)} ريال`,
+              note: srv.note ? String(srv.note) : undefined,
+            });
+          });
+
+          const servicesCats: ServiceCategory[] = Object.entries(groupedByCat).map(([catName, items]) => ({
+            category: catName,
+            items,
+          }));
+
+          built[secId] = {
+            title: secName,
+            icon: iconMeta.icon,
+            color: iconMeta.color,
+            services: servicesCats,
+          };
+        });
+
+        if (mounted) {
+          // إذا طلع built فاضي، نخليه null للـ fallback
+          setFsSections(Object.keys(built).length ? built : null);
+        }
+      } catch (e) {
+        console.error("Pricing Firestore load error:", e);
+        if (mounted) setFsSections(null);
+      } finally {
+        if (mounted) setLoadingFs(false);
+      }
+    };
+
+    run();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // ✅ المصدر النهائي للعرض
+  const sourceSections = fsSections ?? pricingSections;
+
   const sectionCards = useMemo(() => {
-    return Object.entries(pricingSections).map(([id, sec]) => ({
+    return Object.entries(sourceSections).map(([id, sec]) => ({
       id,
       title: sec.title,
       icon: sec.icon,
@@ -207,7 +337,7 @@ const Pricing: React.FC = () => {
       minPrice: minPriceInSection(sec),
       section: sec,
     }));
-  }, []);
+  }, [sourceSections]);
 
   const active = useMemo(() => {
     if (!openSectionId) return null;
@@ -227,15 +357,22 @@ const Pricing: React.FC = () => {
   return (
     <div className="pricing-page">
       <div className="container">
-        {/* Header */}
         <div className="pricing-header text-center">
           <h1 className="pricing-title">قائمة الأسعار</h1>
           <p className="pricing-subtitle">
             اختاري القسم واطلعي على التفاصيل بدون زحمة جداول طويلة
           </p>
+
+          {/* ✅ توضيح بسيط (اختياري) */}
+          <p className="pricing-subtitle" style={{ marginTop: 8, fontSize: 14, opacity: 0.75 }}>
+            {loadingFs
+              ? "جاري تحميل الأسعار من النظام..."
+              : fsSections
+              ? "✅ الأسعار متزامنة من Firestore"
+              : "ℹ️ عرض احتياطي (Fallback) حتى تكتمل بيانات Firestore"}
+          </p>
         </div>
 
-        {/* Cards */}
         <div className="pricing-cards">
           {sectionCards.map((s) => (
             <button
@@ -248,6 +385,7 @@ const Pricing: React.FC = () => {
                 <div className={`card-icon card-icon-${s.color}`}>
                   <FontAwesomeIcon icon={s.icon} />
                 </div>
+
                 <div className="card-titleWrap">
                   <div className="card-title">{s.title}</div>
                   <div className="card-meta">
@@ -268,7 +406,6 @@ const Pricing: React.FC = () => {
           ))}
         </div>
 
-        {/* Footer Note */}
         <div className="pricing-footer">
           <div className="note-item">
             <FontAwesomeIcon icon={faClock} />
@@ -281,7 +418,6 @@ const Pricing: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal / Bottom Sheet */}
       {active && (
         <div
           className="pricing-modal-overlay"
@@ -328,9 +464,7 @@ const Pricing: React.FC = () => {
                       <div key={i} className="modal-row">
                         <div className="modal-name">
                           <div className="name-main">{it.name}</div>
-                          {it.note ? (
-                            <div className="name-note">{it.note}</div>
-                          ) : null}
+                          {it.note ? <div className="name-note">{it.note}</div> : null}
                         </div>
                         <div className="modal-price">{it.price}</div>
                       </div>

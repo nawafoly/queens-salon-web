@@ -8,7 +8,6 @@ import {
   collection,
   orderBy,
   query,
-  addDoc,
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
@@ -17,7 +16,7 @@ import { db } from "../../services/firebase";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/DashboardSettings.css";
-import "../../styles/stylesSettings/SettingsCatalog.css"; // ✅ NEW CSS
+import "../../styles/stylesSettings/SettingsCatalog.css";
 
 const SALON_ID = "main";
 
@@ -25,6 +24,30 @@ const SERVICE_SECTIONS_COLLECTION = ["salons", SALON_ID, "service_sections"] as 
 const SERVICE_CATEGORIES_COLLECTION = ["salons", SALON_ID, "service_categories"] as const;
 const SERVICES_COLLECTION = ["salons", SALON_ID, "services"] as const;
 
+/* =========================
+   Helpers (IDs ثابتة)
+========================= */
+function buildId(raw: string) {
+  const s = String(raw || "").trim().toLowerCase();
+
+  // يدعم العربي + الأرقام + _ -
+  const cleaned = s
+    .replace(/\s+/g, "_")
+    .replace(/[^\p{L}\p{N}_-]/gu, ""); // ✅ Unicode letters/numbers
+
+  return cleaned.replace(/^_+|_+$/g, ""); // يشيل _ من البداية/النهاية
+}
+
+
+function clampInt(v: any, def = 0) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return def;
+  return Math.trunc(n);
+}
+
+/* =========================
+   Types
+========================= */
 type ServiceSectionRow = {
   id: string;
   name: string;
@@ -46,7 +69,8 @@ type ServiceCategoryRow = {
 
 type ServiceRow = {
   id: string;
-  categoryId: string; // ✅ فقط
+  categoryId: string;
+  sectionId: string; // ✅ محفوظ تلقائيًا (من التصنيف)
   name: string;
   durationMin: number;
   price: number;
@@ -59,24 +83,22 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const navigate = useNavigate();
   const { hasAdminPower } = props;
 
-  const [catalogMsg, setCatalogMsg] = useState<string>("");
+  const [catalogMsg, setCatalogMsg] = useState("");
 
-  // 1) Sections
   const [secLoading, setSecLoading] = useState(false);
-  const [sectionsCatalog, setSectionsCatalog] = useState<ServiceSectionRow[]>([]);
-  const [newSectionName, setNewSectionName] = useState("");
-
-  // 2) Categories
   const [catLoading, setCatLoading] = useState(false);
-  const [categoriesCatalog, setCategoriesCatalog] = useState<ServiceCategoryRow[]>([]);
-  const [selectedSectionIdForCats, setSelectedSectionIdForCats] = useState<string>("");
-  const [newCategoryName, setNewCategoryName] = useState("");
-
-  // 3) Services
   const [srvLoading, setSrvLoading] = useState(false);
+
+  const [sectionsCatalog, setSectionsCatalog] = useState<ServiceSectionRow[]>([]);
+  const [categoriesCatalog, setCategoriesCatalog] = useState<ServiceCategoryRow[]>([]);
   const [servicesCatalog, setServicesCatalog] = useState<ServiceRow[]>([]);
-  const [selectedCategoryIdForServices, setSelectedCategoryIdForServices] = useState<string>("");
+
+  const [newSectionName, setNewSectionName] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [newServiceName, setNewServiceName] = useState("");
+
+  const [selectedSectionIdForCats, setSelectedSectionIdForCats] = useState<string>("");
+  const [selectedCategoryIdForServices, setSelectedCategoryIdForServices] = useState<string>("");
 
   const showCatalogMsg = (msg: string, ms = 1800) => {
     setCatalogMsg(msg);
@@ -101,7 +123,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             id: d.id,
             name: String(x?.name || ""),
             active: x?.active !== false,
-            order: Number(x?.order ?? 0),
+            order: clampInt(x?.order ?? 0, 0),
             updatedAt: x?.updatedAt,
             createdAt: x?.createdAt,
           };
@@ -122,7 +144,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             sectionId: String(x?.sectionId || ""),
             name: String(x?.name || ""),
             active: x?.active !== false,
-            order: Number(x?.order ?? 0),
+            order: clampInt(x?.order ?? 0, 0),
             updatedAt: x?.updatedAt,
             createdAt: x?.createdAt,
           };
@@ -141,9 +163,10 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           return {
             id: d.id,
             categoryId: String(x?.categoryId || ""),
+            sectionId: String(x?.sectionId || ""),
             name: String(x?.name || ""),
-            durationMin: Number(x?.durationMin ?? 60),
-            price: Number(x?.price ?? 0),
+            durationMin: clampInt(x?.durationMin ?? 60, 60),
+            price: Math.max(0, Number(x?.price ?? 0) || 0),
             active: x?.active !== false,
             updatedAt: x?.updatedAt,
             createdAt: x?.createdAt,
@@ -195,6 +218,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     const name = String(newSectionName || "").trim();
     if (!name) return;
 
+    const id = buildId(name); // ✅ ID ثابت من الاسم
+
     try {
       setSecLoading(true);
 
@@ -203,7 +228,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           ? Math.max(...sectionsCatalog.map((s) => Number(s.order || 0))) + 1
           : 1;
 
-      const ref = await addDoc(collection(db, ...SERVICE_SECTIONS_COLLECTION), {
+      await setDoc(doc(db, ...SERVICE_SECTIONS_COLLECTION, id), {
         name,
         active: true,
         order: nextOrder,
@@ -212,10 +237,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       });
 
       setNewSectionName("");
-      showCatalogMsg("✅ تم إنشاء القسم");
+      showCatalogMsg(`✅ تم إنشاء القسم (id: ${id})`);
       await loadCatalog();
-
-      setSelectedSectionIdForCats(ref.id);
+      setSelectedSectionIdForCats(id);
     } catch (e) {
       console.error("createSection error:", e);
       showCatalogMsg("❌ تعذر إنشاء القسم", 2500);
@@ -274,13 +298,16 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     if (!sectionId) return showCatalogMsg("❌ اختر قسم أولاً قبل إضافة تصنيف", 2200);
     if (!name) return;
 
+    // ✅ ID ثابت: sectionId + name
+    const id = buildId(`${sectionId}_${name}`);
+
     try {
       setCatLoading(true);
 
       const list = categoriesCatalog.filter((c) => String(c.sectionId || "").trim() === sectionId);
       const nextOrder = list.length > 0 ? Math.max(...list.map((c) => Number(c.order || 0))) + 1 : 1;
 
-      const ref = await addDoc(collection(db, ...SERVICE_CATEGORIES_COLLECTION), {
+      await setDoc(doc(db, ...SERVICE_CATEGORIES_COLLECTION, id), {
         sectionId,
         name,
         active: true,
@@ -290,10 +317,10 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       });
 
       setNewCategoryName("");
-      showCatalogMsg("✅ تم إنشاء التصنيف");
+      showCatalogMsg(`✅ تم إنشاء التصنيف (id: ${id})`);
       await loadCatalog();
 
-      setSelectedCategoryIdForServices(ref.id);
+      setSelectedCategoryIdForServices(id);
     } catch (e) {
       console.error("createCategoryUnderSection error:", e);
       showCatalogMsg("❌ تعذر إنشاء التصنيف", 2500);
@@ -349,11 +376,20 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     if (!categoryId) return showCatalogMsg("❌ اختر تصنيف أولاً قبل إضافة خدمة", 2200);
     if (!name) return;
 
+    // ✅ derive sectionId from category
+    const cat = categoriesCatalog.find((c) => String(c.id) === categoryId);
+    const sectionId = String(cat?.sectionId || "").trim();
+    if (!sectionId) return showCatalogMsg("❌ التصنيف المختار غير مربوط بقسم", 2200);
+
+    // ✅ ID ثابت: categoryId + name
+    const id = buildId(`${categoryId}_${name}`);
+
     try {
       setSrvLoading(true);
 
-      await addDoc(collection(db, ...SERVICES_COLLECTION), {
+      await setDoc(doc(db, ...SERVICES_COLLECTION, id), {
         categoryId,
+        sectionId,
         name,
         durationMin: 60,
         price: 0,
@@ -363,7 +399,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       });
 
       setNewServiceName("");
-      showCatalogMsg("✅ تم إضافة الخدمة");
+      showCatalogMsg(`✅ تم إضافة الخدمة (id: ${id})`);
       await loadCatalog();
     } catch (e) {
       console.error("createServiceUnderCategory error:", e);
@@ -385,11 +421,17 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
     if (!categoryId) return showCatalogMsg("❌ الخدمة لازم تكون مرتبطة بتصنيف", 2000);
 
+    // ✅ derive sectionId from chosen category (always)
+    const cat = categoriesCatalog.find((c) => String(c.id) === categoryId);
+    const sectionId = String(cat?.sectionId || "").trim();
+    if (!sectionId) return showCatalogMsg("❌ التصنيف المختار غير مربوط بقسم", 2000);
+
     try {
       await setDoc(
         doc(db, ...SERVICES_COLLECTION, row.id),
         {
           categoryId,
+          sectionId,
           name,
           durationMin,
           price,
@@ -422,7 +464,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         <div className="settings-header scatalog__header">
           <div>
             <h1>إدارة الكتالوج</h1>
-            <p className="settings-hint">المنطق: قسم → تصنيف → خدمة ✅</p>
+            <p className="settings-hint">المنطق: قسم → تصنيف → خدمة ✅ (IDs ثابتة)</p>
           </div>
 
           <div className="settings-save scatalog__actions">
@@ -453,7 +495,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
           <div className="settings-grid">
             <div className="settings-field" style={{ gridColumn: "1 / -1" }}>
-              <label>إضافة قسم جديد</label>
+              <label>إضافة قسم جديد (ID ثابت)</label>
               <div className="scatalog__row">
                 <input
                   className="settings-input"
@@ -474,6 +516,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               </div>
               <div className="settings-footnote">
                 * الأقسام: <b>salons/main/service_sections</b>
+                <br />
+                * ID = slug من الاسم (ثابت)
               </div>
             </div>
           </div>
@@ -486,12 +530,16 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             ) : (
               sectionsCatalog.map((s) => (
                 <div key={s.id} className="settings-row scatalog__listRow">
+                  <input className="settings-input" value={s.id} readOnly title="ID ثابت" />
+
                   <input
                     className="settings-input"
                     value={s.name}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: v } : x)));
+                      setSectionsCatalog((prev) =>
+                        prev.map((x) => (x.id === s.id ? { ...x, name: v } : x))
+                      );
                     }}
                     title="اسم القسم"
                   />
@@ -504,7 +552,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     value={Number(s.order || 0)}
                     onChange={(e) => {
                       const v = Number(e.target.value || 0);
-                      setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, order: v } : x)));
+                      setSectionsCatalog((prev) =>
+                        prev.map((x) => (x.id === s.id ? { ...x, order: v } : x))
+                      );
                     }}
                     title="ترتيب القسم"
                   />
@@ -516,7 +566,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       checked={s.active !== false}
                       onChange={() => {
                         setSectionsCatalog((prev) =>
-                          prev.map((x) => (x.id === s.id ? { ...x, active: !(x.active !== false) } : x))
+                          prev.map((x) =>
+                            x.id === s.id ? { ...x, active: !(x.active !== false) } : x
+                          )
                         );
                       }}
                     />
@@ -552,20 +604,20 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 <option value="">— اختر القسم —</option>
                 {sectionsCatalog.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {s.name} ({s.id})
                   </option>
                 ))}
               </select>
             </div>
 
             <div className="settings-field">
-              <label>إضافة تصنيف جديد تحت هذا القسم</label>
+              <label>إضافة تصنيف جديد تحت هذا القسم (ID ثابت)</label>
               <div className="scatalog__row">
                 <input
                   className="settings-input"
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="مثال: استشوار (شعر)"
+                  placeholder="مثال: قص / استشوار"
                   disabled={catLoading}
                   onKeyDown={(e) => e.key === "Enter" && createCategoryUnderSection()}
                 />
@@ -580,6 +632,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               </div>
               <div className="settings-footnote">
                 * التصنيفات: <b>salons/main/service_categories</b> وفيها <b>sectionId</b>
+                <br />
+                * ID = sectionId + slug(name)
               </div>
             </div>
           </div>
@@ -594,12 +648,16 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             ) : (
               categoriesInSelectedSection.map((c) => (
                 <div key={c.id} className="settings-row scatalog__listRow">
+                  <input className="settings-input" value={c.id} readOnly title="ID ثابت" />
+
                   <input
                     className="settings-input"
                     value={c.name}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setCategoriesCatalog((prev) => prev.map((x) => (x.id === c.id ? { ...x, name: v } : x)));
+                      setCategoriesCatalog((prev) =>
+                        prev.map((x) => (x.id === c.id ? { ...x, name: v } : x))
+                      );
                     }}
                     title="اسم التصنيف"
                   />
@@ -612,7 +670,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     value={Number(c.order || 0)}
                     onChange={(e) => {
                       const v = Number(e.target.value || 0);
-                      setCategoriesCatalog((prev) => prev.map((x) => (x.id === c.id ? { ...x, order: v } : x)));
+                      setCategoriesCatalog((prev) =>
+                        prev.map((x) => (x.id === c.id ? { ...x, order: v } : x))
+                      );
                     }}
                     title="ترتيب التصنيف"
                   />
@@ -624,7 +684,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       checked={c.active !== false}
                       onChange={() => {
                         setCategoriesCatalog((prev) =>
-                          prev.map((x) => (x.id === c.id ? { ...x, active: !(x.active !== false) } : x))
+                          prev.map((x) =>
+                            x.id === c.id ? { ...x, active: !(x.active !== false) } : x
+                          )
                         );
                       }}
                     />
@@ -660,20 +722,20 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 <option value="">— اختر التصنيف —</option>
                 {categoriesInSelectedSection.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.name} ({c.id})
                   </option>
                 ))}
               </select>
             </div>
 
             <div className="settings-field">
-              <label>إضافة خدمة جديدة تحت هذا التصنيف</label>
+              <label>إضافة خدمة جديدة تحت هذا التصنيف (ID ثابت)</label>
               <div className="scatalog__row">
                 <input
                   className="settings-input"
                   value={newServiceName}
                   onChange={(e) => setNewServiceName(e.target.value)}
-                  placeholder="مثال: استشوار شعر قصير"
+                  placeholder="مثال: قص شعر قصير"
                   disabled={srvLoading}
                   onKeyDown={(e) => e.key === "Enter" && createServiceUnderCategory()}
                 />
@@ -687,7 +749,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 </button>
               </div>
               <div className="settings-footnote">
-                * الخدمات: <b>salons/main/services</b> وفيها <b>categoryId</b>
+                * الخدمات: <b>salons/main/services</b> وفيها <b>categoryId</b> و <b>sectionId</b> ✅
+                <br />
+                * ID = categoryId + slug(name)
               </div>
             </div>
           </div>
@@ -702,12 +766,16 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             ) : (
               servicesInSelectedCategory.map((s) => (
                 <div key={s.id} className="settings-row scatalog__listRow">
+                  <input className="settings-input" value={s.id} readOnly title="ID ثابت" />
+
                   <input
                     className="settings-input"
                     value={s.name}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: v } : x)));
+                      setServicesCatalog((prev) =>
+                        prev.map((x) => (x.id === s.id ? { ...x, name: v } : x))
+                      );
                     }}
                     title="اسم الخدمة"
                   />
@@ -720,7 +788,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     value={Number(s.durationMin || 0)}
                     onChange={(e) => {
                       const v = Math.max(5, Number(e.target.value || 0));
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, durationMin: v } : x)));
+                      setServicesCatalog((prev) =>
+                        prev.map((x) => (x.id === s.id ? { ...x, durationMin: v } : x))
+                      );
                     }}
                     title="المدة (دقيقة)"
                   />
@@ -733,7 +803,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     value={Number(s.price || 0)}
                     onChange={(e) => {
                       const v = Math.max(0, Number(e.target.value || 0));
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, price: v } : x)));
+                      setServicesCatalog((prev) =>
+                        prev.map((x) => (x.id === s.id ? { ...x, price: v } : x))
+                      );
                     }}
                     title="السعر"
                   />
@@ -744,7 +816,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     value={s.categoryId}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, categoryId: v } : x)));
+                      setServicesCatalog((prev) =>
+                        prev.map((x) => (x.id === s.id ? { ...x, categoryId: v } : x))
+                      );
                     }}
                     title="التصنيف"
                   >
@@ -763,7 +837,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       checked={s.active !== false}
                       onChange={() => {
                         setServicesCatalog((prev) =>
-                          prev.map((x) => (x.id === s.id ? { ...x, active: !(x.active !== false) } : x))
+                          prev.map((x) =>
+                            x.id === s.id ? { ...x, active: !(x.active !== false) } : x
+                          )
                         );
                       }}
                     />
@@ -781,7 +857,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           <div className="settings-footnote">
             * الآن صار عندنا 3 مراحل: <b>قسم → تصنيف → خدمة</b>.
             <br />
-            * الخطوة الجاية بالحجز: نعتمد على <b>serviceId</b> ثابت (وبعدين Variants).
+            * الخدمات تُحفظ بـ <b>categoryId</b> و <b>sectionId</b> تلقائيًا (من التصنيف) ✅
+            <br />
+            * ID ثابت لكل شيء (ما عاد فيه addDoc) ✅
           </div>
         </div>
       </div>

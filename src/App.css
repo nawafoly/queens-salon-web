@@ -3,7 +3,7 @@
    ملف واحد فقط (بدون تكرار)
    =========================== */
 
-/* خطوط */
+/* خطوط (مرة وحدة فقط) */
 @import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap");
 
@@ -11,82 +11,67 @@
    Root Variables (مرة وحدة فقط)
    =========================== */
 :root {
+  /* 🔒 إجبار الموقع على Light Mode (مهم للجوال) */
   color-scheme: light;
 
-  /* 🎨 الألوان الأساسية */
-  --primary-color: #e8b4a2;
-  --secondary-color: #dba58e;
-  --accent-color: #f5cdbb;
+  /* ✅ Queens Approved Palette */
+  --qs-black: #0D0D0D;
+  --qs-gray-900: #515659;
+  --qs-gray-700: #6E7372;
+  --qs-gray-500: #888C8C;
+  --qs-wine: #40010D;
+  --qs-offwhite: #F5F5F4;
 
-  /* 🧱 الخلفيات */
-  --background-color: #fdf9f6;
+  /* ✅ Semantic tokens (بنستخدمها في الصفحات) */
+  --qs-bg: var(--qs-black);
+  --qs-surface: rgba(255, 255, 255, 0.06);
+  --qs-border: rgba(255, 255, 255, 0.12);
 
-  /* 📝 النصوص */
-  --text-color: #5a4a42;
-  --text-strong: #7c3e24;
+  --qs-text: rgb(0, 0, 0);
+  --qs-text-muted: var(--qs-gray-500);
 
-  /* ألوان عامة */
+  --qs-accent: var(--qs-wine);
+  --qs-accent-hover: #520114;
+
+  /* ===========================
+     🔁 Compatibility (عشان ما نخرب القديم الآن)
+     خلك تستخدم القديم لو باقي صفحات تعتمد عليه
+     =========================== */
+  --primary-color: var(--qs-wine);
+  --secondary-color: var(--qs-gray-700);
+  --accent-color: var(--qs-gray-500);
+
+  --background-color: var(--qs-black);
+
+  --text-color: var(--qs-offwhite);
+  --text-strong: var(--qs-offwhite);
+
   --white: #ffffff;
   --black: #000000;
 
-  /* 🔵 ألوان إضافية */
+  /* Optional info */
   --info-color: #559bd9;
   --info-color-soft: rgb(28, 79, 124);
 
   /* ===========================
-     BS System Variables (مُدمجة هنا بدل :root ثاني)
+     BS System Variables (نخليها تشير للجديد)
      =========================== */
-  --bs-primary-color: #e8b4a2;
-  --bs-secondary-color: #dba58e;
-  --bs-text-color: #5a4a42;
-  --bs-hover-color: #c8947a;
+  --bs-primary-color: var(--qs-wine);
+  --bs-secondary-color: var(--qs-gray-700);
+  --bs-text-color: var(--qs-offwhite);
+  --bs-hover-color: var(--qs-accent-hover);
 
-  --bs-primary-50: #faf7f5;
-  --bs-primary-100: #f5ede8;
-  --bs-primary-200: #eed9d0;
-  --bs-primary-300: #e8b4a2;
-  --bs-primary-400: #e09b85;
-  --bs-primary-500: #d49a84;
-  --bs-primary-600: #c8947a;
-  --bs-primary-700: #b8846a;
-  --bs-primary-800: #a8745a;
-  --bs-primary-900: #98644a;
+  --bs-bg-light: var(--qs-black);
+  --bs-bg-white: rgba(255, 255, 255, 0.06);
 
-  --bs-secondary-50: #f9f6f4;
-  --bs-secondary-100: #f3ece8;
-  --bs-secondary-200: #e9d7d0;
-  --bs-secondary-300: #dba58e;
-  --bs-secondary-400: #d19578;
-  --bs-secondary-500: #c8947a;
-  --bs-secondary-600: #b8846a;
-  --bs-secondary-700: #a8745a;
-  --bs-secondary-800: #98644a;
-  --bs-secondary-900: #88543a;
+  --bs-border-color: rgba(255, 255, 255, 0.12);
+  --bs-border-light: rgba(255, 255, 255, 0.08);
+  --bs-border-dark: rgba(255, 255, 255, 0.18);
 
-  --bs-text-50: #f7f5f4;
-  --bs-text-100: #ede8e6;
-  --bs-text-200: #ddd4d0;
-  --bs-text-300: #c4b5af;
-  --bs-text-400: #a8958d;
-  --bs-text-500: #8a7a73;
-  --bs-text-600: #6b5b54;
-  --bs-text-700: #5a4a42;
-  --bs-text-800: #4a3a32;
-  --bs-text-900: #3a2a22;
-
-  --bs-bg-light: #faf9f8;
-  --bs-bg-white: #ffffff;
-
-  --bs-border-color: #e8ddd8;
-  --bs-border-light: #f0e8e3;
-  --bs-border-dark: #d0c0b8;
-
-  --bs-shadow-soft: 0 2px 15px -3px rgba(232, 180, 162, 0.1),
-    0 10px 20px -2px rgba(232, 180, 162, 0.05);
-  --bs-shadow-medium: 0 4px 25px -5px rgba(232, 180, 162, 0.15),
-    0 10px 10px -5px rgba(232, 180, 162, 0.08);
-  --bs-shadow-strong: 0 10px 40px -10px rgba(232, 180, 162, 0.2),
-    0 2px 10px -2px rgba(232, 180, 162, 0.1);
+  /* ظلال مناسبة للثيم الداكن */
+  --bs-shadow-soft: 0 2px 18px rgba(0,0,0,0.25);
+  --bs-shadow-medium: 0 10px 30px rgba(0,0,0,0.35);
+  --bs-shadow-strong: 0 18px 55px rgba(0,0,0,0.45);
 
   --bs-success-color: #22c55e;
   --bs-warning-color: #f59e0b;
@@ -95,11 +80,9 @@
 }
 
 /* ===========================
-   Reset + Mobile Stability (مهم جدًا)
+   Reset + Mobile Stability
    =========================== */
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+*, *::before, *::after { box-sizing: border-box; }
 
 html {
   font-size: 16px;
@@ -117,142 +100,100 @@ html, body {
   padding: 0;
 }
 
+/* ✅ Body (مرة وحدة فقط) */
 body {
   font-family: "Tajawal", sans-serif !important;
-  color: var(--text-color) !important;
-  background-color: var(--background-color) !important;
+  color: var(--qs-text) !important;
+  background-color: var(--qs-bg) !important;
   line-height: 1.6;
   direction: rtl;
   text-align: right;
   min-height: 100vh;
-}
 
-/* مهم: لو عندك gradient خله هنا فقط */
-/* ✅ خلفية كريمية مع تدرّج خفيف جدًا (بدون بنفسجي صارخ) */
-body {
+  /* خلفية داكنة أنيقة (بدون صراخ) */
   background:
-    radial-gradient(900px 520px at 15% 20%, rgba(88, 68, 60, 0.06), transparent 60%),
-    radial-gradient(800px 450px at 85% 25%, rgba(190, 182, 176, 0.10), transparent 55%),
-    linear-gradient(180deg, #ffffff 0%, var(--background-color) 100%) !important;
+    radial-gradient(900px 520px at 15% 20%, rgba(255, 255, 255, 0.06), transparent 60%),
+    radial-gradient(800px 450px at 85% 25%, rgba(64, 1, 13, 0.10), transparent 55%),
+    linear-gradient(180deg, var(--qs-black) 0%, #090909 100%) !important;
 }
-
 
 /* Root wrappers */
-#root, .app, .main-content {
-  width: 100%;
-  max-width: 100%;
-}
-
-.app {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-.main-content {
-  flex: 1;
-}
+#root, .app, .main-content { width: 100%; max-width: 100%; }
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+.main-content { flex: 1; }
 
 /* Media responsive everywhere */
-img, video, canvas, svg {
-  max-width: 100%;
-  height: auto;
-}
+img, video, canvas, svg { max-width: 100%; height: auto; }
 
 /* Links */
-a {
-  color: var(--primary-color);
-  text-decoration: none;
-  transition: color 0.3s ease;
-}
-a:hover {
-  color: var(--secondary-color);
-}
+a { color: var(--qs-accent); text-decoration: none; transition: color 0.3s ease; }
+a:hover { color: var(--qs-accent-hover); }
 
 /* Typography */
 h1,h2,h3,h4,h5,h6 {
   font-family: "Tajawal", sans-serif;
-  font-weight: 500;
-  color: var(--text-color);
+  font-weight: 600;
+  color: var(--qs-text);
 }
-p { line-height: 1.8; }
+p { line-height: 1.8; color: var(--qs-text); }
 
 .section-title {
   font-size: 2rem;
-  font-weight: 500;
-  color: var(--text-color);
+  font-weight: 700;
+  color: var(--qs-text);
   margin-bottom: 2rem;
 }
 
 /* Buttons */
-.btn { padding: 0.75rem 1.5rem; border: none; font-weight: 500; transition: all 0.3s ease; }
+.btn { padding: 0.75rem 1.5rem; border: none; font-weight: 600; transition: all 0.25s ease; }
 .btn-outline {
   background-color: transparent;
-  color: var(--primary-color);
-  border: 2px solid var(--primary-color);
-  font-weight: 600;
-  transition: all 0.3s ease;
+  color: var(--qs-text);
+  border: 1px solid var(--qs-border);
 }
 .btn-outline:hover {
-  background-color: var(--primary-color);
-  color: var(--white);
+  background-color: var(--qs-accent);
+  border-color: rgba(255,255,255,0.10);
+  color: var(--qs-offwhite);
 }
 
 /* Forms */
 .form-control {
   padding: 0.75rem 1rem;
-  border: none;
-  border-radius: 10px;
-  background-color: var(--background-color);
-  color: var(--text-color);
+  border: 1px solid var(--qs-border);
+  border-radius: 12px;
+  background-color: rgba(255,255,255,0.05);
+  color: var(--qs-text);
 }
 .form-control:focus {
-  box-shadow: 0 0 0 0.25rem rgba(232, 180, 162, 0.25);
-  border-color: var(--primary-color);
+  outline: none;
+  box-shadow: 0 0 0 0.25rem rgba(64, 1, 13, 0.25);
+  border-color: rgba(64, 1, 13, 0.7);
 }
-.form-control::placeholder {
-  color: var(--text-color);
-  opacity: 0.7;
-}
+.form-control::placeholder { color: var(--qs-text-muted); opacity: 0.9; }
 
 /* Icons */
 .fa-check-circle, .fa-circle-check {
-  color: var(--black) !important;
+  color: var(--qs-text) !important;
   font-size: 1.1em;
   vertical-align: middle;
 }
 
-/* Images styling (اختياري) */
-.hero-image img,
-.offers-image img {
-  background: none !important;
-  border-radius: 22px !important;
-  box-shadow: 0 8px 32px rgba(180, 139, 123, 0.09) !important;
-  opacity: 0.7;
-}
-
 /* Responsive */
-@media (max-width: 991.98px) {
-  .section-title { font-size: 1.8rem; }
-}
-@media (max-width: 767.98px) {
-  .section-title { font-size: 1.5rem; }
-  .btn { padding: 0.6rem 1.2rem; }
-}
-@media (max-width: 575.98px) {
-  body { font-size: 0.95rem; }
-}
+@media (max-width: 991.98px) { .section-title { font-size: 1.8rem; } }
+@media (max-width: 767.98px) { .section-title { font-size: 1.5rem; } .btn { padding: 0.6rem 1.2rem; } }
+@media (max-width: 575.98px) { body { font-size: 0.95rem; } }
 
-/* Dark mode safety */
+/* Dark mode safety (نثبت لايت مود) */
 @media (prefers-color-scheme: dark) {
   html, body {
     color-scheme: light;
-    background-color: var(--background-color) !important;
-    color: var(--text-color) !important;
+    background-color: var(--qs-bg) !important;
+    color: var(--qs-text) !important;
   }
 }
 
 /* Dashboard (اختياري) */
-.main-content--dashboard {
-  min-height: 100vh;
-  padding: 0 !important;
-}
+.main-content--dashboard { min-height: 100vh; padding: 0 !important; }
+
+

@@ -1,139 +1,146 @@
+/* src/styles/HomeServices.css */
+
 /* =========================
-   HomeServices (Unified)
+   HomeServices (Queens Dark Luxury)
 ========================= */
 
 .home-services-section {
-    background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
-    padding: 3.6rem 0;
-    direction: rtl;
-    position: relative;
-    overflow: hidden;
-  }
-  
-  /* عنوان القسم */
-  .home-services-title {
-    text-align: center;
-    font-size: 2rem;
-    font-weight: 800;
-    color: var(--text-color);
-    margin-bottom: 0.6rem;
-  }
-  
-  .home-services-subtitle {
-    text-align: center;
-    font-size: 1rem;
-    color: #777;
-    margin-bottom: 2.2rem;
-    line-height: 1.7;
-  }
-  
-  /* Grid */
+  /* ثيم الصالون المعتمد */
+  background:
+    radial-gradient(900px 520px at 15% 20%, rgba(64, 1, 13, 0.22), transparent 60%),
+    radial-gradient(800px 450px at 85% 25%, rgba(136, 140, 140, 0.12), transparent 55%),
+    linear-gradient(180deg, #0d0d0d 0%, #0a0a0a 100%);
+  padding: clamp(44px, 6vw, 78px) 0;
+  direction: rtl;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Head */
+.home-services-head {
+  text-align: center;
+  margin-bottom: 34px;
+}
+
+.home-services-title {
+  font-size: clamp(1.35rem, 3.2vw, 2rem);
+  font-weight: 900;
+  color: #f5f5f4; /* Off-white */
+  margin: 0 0 10px;
+  letter-spacing: 0.2px;
+}
+
+.home-services-subtitle {
+  font-size: 1rem;
+  color: rgba(245, 245, 244, 0.70);
+  margin: 0 auto;
+  max-width: 620px;
+  line-height: 1.8;
+}
+
+/* Grid */
+.home-services-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/* Card (Glass) */
+.home-service-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 22px;
+  box-shadow: 0 16px 55px rgba(0, 0, 0, 0.45);
+  padding: 18px 18px 16px;
+  text-align: right;
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.home-service-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* Top row */
+.home-service-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.home-service-name {
+  font-size: 1.12rem;
+  font-weight: 900;
+  color: #f5f5f4;
+  margin: 0;
+}
+
+.home-service-price {
+  font-size: 0.9rem;
+  font-weight: 900;
+  color: rgba(245, 245, 244, 0.78);
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+}
+
+/* Desc */
+.home-service-desc {
+  font-size: 0.98rem;
+  color: rgba(245, 245, 244, 0.70);
+  line-height: 1.85;
+  margin: 0 0 14px 0;
+}
+
+/* Button */
+.home-service-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+
+  background: linear-gradient(135deg, #40010d 0%, #2a0008 100%);
+  color: #f5f5f4 !important;
+
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 16px;
+
+  padding: 12px 16px;
+  font-weight: 900;
+  font-size: 1rem;
+  text-decoration: none;
+
+  transition: transform 0.2s ease, filter 0.2s ease, border-color 0.2s ease;
+}
+
+.home-service-btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* Responsive */
+@media (max-width: 991px) {
   .home-services-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.6rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  
-  /* Card */
+}
+
+@media (max-width: 575px) {
+  .home-services-grid {
+    grid-template-columns: 1fr;
+  }
+
   .home-service-card {
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 22px;
-    box-shadow: 0 14px 42px rgba(0, 0, 0, 0.06);
-    padding: 1.9rem 1.7rem;
-    text-align: center;
-    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    border-radius: 18px;
+    padding: 16px 14px 14px;
   }
-  
-  .home-service-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 18px 55px rgba(0, 0, 0, 0.09);
-    border-color: rgba(0, 0, 0, 0.09);
-  }
-  
-  /* Card title */
-  .home-service-name {
-    font-size: 1.25rem;
-    font-weight: 900;
-    color: var(--text-color);
-    margin-bottom: 0.6rem;
-  }
-  
-  /* Card desc */
-  .home-service-desc {
-    font-size: 1rem;
-    color: #6f6f6f;
-    line-height: 1.85;
-    margin: 0 0 1rem 0;
-  }
-  
-  /* Price */
-  .home-service-price {
-    font-size: 0.98rem;
-    font-weight: 800;
-    color: #5b5b5b;
-    margin-bottom: 1.2rem;
-  }
-  
-  /* Button (متناسق مع Hero) */
-  .home-service-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: min(320px, 100%);
-    background: var(--primary-color);
-    color: #fff !important;
-    border: none;
-    border-radius: 999px;
-    padding: 0.65rem 1.6rem;
-    font-weight: 800;
-    font-size: 1rem;
-    text-decoration: none;
-    transition: background 0.2s ease, transform 0.2s ease;
-  }
-  
-  .home-service-btn:hover {
-    background: var(--secondary-color);
-    transform: translateY(-2px);
-  }
-  
-  /* Responsive */
-  @media (max-width: 991px) {
-    .home-services-section {
-      padding: 3rem 0;
-    }
-  
-    .home-services-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: 1.2rem;
-    }
-  
-    .home-services-title {
-      font-size: 1.7rem;
-    }
-  
-    .home-service-card {
-      padding: 1.6rem 1.3rem;
-    }
-  }
-  
-  @media (max-width: 575px) {
-    .home-services-section {
-      padding: 2.1rem 0;
-    }
-  
-    .home-services-grid {
-      grid-template-columns: 1fr;
-      gap: 1rem;
-    }
-  
-    .home-services-title {
-      font-size: 1.35rem;
-    }
-  
-    .home-services-subtitle {
-      font-size: 0.95rem;
-      margin-bottom: 1.4rem;
-    }
-  }
-  
+}

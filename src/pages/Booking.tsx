@@ -1,9 +1,8 @@
-
-
 // src/pages/Booking.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+
 import {
   faCalendarAlt,
   faClock,
@@ -17,7 +16,7 @@ import { generateSalonTimeSlots } from "../helpers/timeSlots";
 import "../styles/Booking.css";
 
 // ✅ Firestore slot availability check
-import { doc, getDoc, getDocs, collection, query, where } from "firebase/firestore";
+import { doc, getDoc, getDocs, collection, query, where, orderBy } from "firebase/firestore";
 import { db } from "../services/firebase";
 
 // ✅ Firebase Auth (Anonymous)
@@ -39,7 +38,6 @@ import {
 // ✅ Catalog from Firestore (Sections/Categories/Services)
 import {
   listActiveSections,
-  listActiveCategoriesBySection,
   type SectionDoc,
   type CategoryDoc,
   type ServiceDoc,
@@ -325,89 +323,136 @@ const Booking: React.FC = () => {
   }, []);
 
   // =========================
-// Load cats + services for section (Firestore)
-// Supports BOTH schemas:
-// A) categories + services.categoryId
-// B) old: services.sectionId (no categories)
-// =========================
-useEffect(() => {
-  let cancelled = false;
+  // Load cats + services for section (Firestore)
+  // Supports BOTH schemas:
+  // A) categories + services.categoryId
+  // B) old: services.sectionId (no categories)
+  // =========================
+  useEffect(() => {
+    let cancelled = false;
 
-  async function loadCatalogForSection() {
-    if (catalogMode !== "firestore") return;
+    async function loadCatalogForSection() {
+      console.log("[Booking] loadCatalogForSection START", { catalogMode, selectedSectionId });
 
-    if (!selectedSectionId) {
-      setFsCategories([]);
-      setFsServices([]);
-      return;
-    }
+      if (catalogMode !== "firestore") return;
 
-    try {
-      setCatalogLoading(true);
-      setCatalogError("");
-
-      // 1) حاول نجيب التصنيفات (schema الجديد)
-      const cats = await listActiveCategoriesBySection(selectedSectionId, SALON_ID);
-      if (cancelled) return;
-
-      const safeCats = cats || [];
-      setFsCategories(safeCats);
-
-      const catIds = safeCats
-        .map((c: any) => String(c.id || "").trim())
-        .filter(Boolean);
-
-      // 2) لو ما فيه تصنيفات: رجّع للنظام القديم وجيب الخدمات بالـ sectionId
-      if (catIds.length === 0) {
-        const colRef = collection(db, "salons", SALON_ID, "services");
-        const snap = await getDocs(query(colRef, where("sectionId", "==", selectedSectionId)));
-
-        if (cancelled) return;
-
-        const merged = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        const activeOnly = merged.filter((x) => x?.active !== false);
-
-        setFsServices(activeOnly);
+      if (!selectedSectionId) {
+        setFsCategories([]);
+        setFsServices([]);
         return;
       }
 
-      // 3) schema الجديد: services مرتبطة بـ categoryId (in chunks of 10)
-      const chunks: string[][] = [];
-      for (let i = 0; i < catIds.length; i += 10) chunks.push(catIds.slice(i, i + 10));
+      try {
+        setCatalogLoading(true);
+        setCatalogError("");
 
-      const colRef = collection(db, "salons", SALON_ID, "services");
-      const snaps = await Promise.all(
-        chunks.map((arr) => getDocs(query(colRef, where("categoryId", "in", arr))))
-      );
+        // ✅ 1) التصنيفات: حاول بـ orderBy وإذا فشل رجّع بدون orderBy (يحميك من عدم وجود order/index)
+        const catsCol = collection(db, "salons", SALON_ID, "service_categories");
 
-      if (cancelled) return;
+        let catsSnap;
+        try {
+          catsSnap = await getDocs(
+            query(
+              catsCol,
+              where("sectionId", "==", selectedSectionId),
+              orderBy("order", "asc")
+            )
+          );
+        } catch {
+          catsSnap = await getDocs(query(catsCol, where("sectionId", "==", selectedSectionId)));
+        }
 
-      const merged: any[] = [];
-      snaps.forEach((sn) => {
-        sn.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
-      });
+        if (cancelled) return;
 
-      const activeOnly = merged.filter((x) => x?.active !== false);
-      setFsServices(activeOnly);
-    } catch (e: any) {
-      if (!cancelled) {
-        setFsCategories([]);
-        setFsServices([]);
+        const safeCats: any[] = catsSnap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          .filter((c) => String(c?.الاسم ?? c?.name ?? "").trim())
+          .filter((c) => c?.active !== false);
 
-        setCatalogError("تعذر تحميل الخدمات من Firestore. سيتم استخدام Pricing مؤقتًا.");
-        setCatalogMode("pricing");
+        console.log("[Booking] catsSnap size =", catsSnap.size, safeCats);
+
+        setFsCategories(safeCats as any);
+
+        // ✅ catIds: ادعم id / key / categoryId (لو خدماتك تستخدم key بدل docId)
+        const catIds = safeCats
+          .map((c: any) => String(c.categoryId ?? c.key ?? c.id ?? "").trim())
+          .filter(Boolean);
+
+        // ✅ 2) لو ما فيه تصنيفات: رجّع للنظام القديم وجيب الخدمات بالـ sectionId
+        if (catIds.length === 0) {
+          console.log("[Booking] NO categories -> old schema path. sectionId =", selectedSectionId);
+
+          const colRef = collection(db, "salons", SALON_ID, "services");
+          const snap = await getDocs(query(colRef, where("sectionId", "==", selectedSectionId)));
+
+          if (cancelled) return;
+
+          const merged = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+          const activeOnly = merged.filter((x) => x?.active !== false);
+
+          setFsServices(activeOnly);
+          console.log("[Booking] old schema services loaded =", activeOnly.length, activeOnly);
+
+          return;
+        }
+
+        // ✅ 3) schema الجديد: services مرتبطة بـ categoryId (in chunks of 10)
+        // ✅ + نجيب خدمات legacy: sectionId == selectedSectionId
+        const chunks: string[][] = [];
+        for (let i = 0; i < catIds.length; i += 10) chunks.push(catIds.slice(i, i + 10));
+
+        const colRef = collection(db, "salons", SALON_ID, "services");
+
+        // A) خدمات النظام الجديد: categoryId in [...]
+        const snaps = await Promise.all(
+          chunks.map((arr) => getDocs(query(colRef, where("categoryId", "in", arr))))
+        );
+
+        // B) خدمات النظام القديم: sectionId == selectedSectionId (حتى لو categoryId فاضي)
+        const secSnap = await getDocs(query(colRef, where("sectionId", "==", selectedSectionId)));
+
+        if (cancelled) return;
+
+        const merged: any[] = [];
+
+        snaps.forEach((sn) => {
+          sn.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
+        });
+
+        secSnap.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
+
+        // إزالة التكرار حسب id
+        const uniq = new Map<string, any>();
+        merged.forEach((x) => uniq.set(String(x.id), x));
+
+        const activeOnly = Array.from(uniq.values()).filter((x) => x?.active !== false);
+
+        setFsServices(activeOnly);
+        console.log("[Booking] fsServices loaded =", activeOnly.length, activeOnly);
+      } catch (e: any) {
+        if (!cancelled) {
+          setFsCategories([]);
+          setFsServices([]);
+
+          const msg = String(e?.message || "");
+          if (msg.toLowerCase().includes("requires an index")) {
+            setCatalogError("Firestore يحتاج Index (sectionId + order). افتح الكونسول واضغط Create index.");
+          } else {
+            setCatalogError("تعذر تحميل الخدمات من Firestore. سيتم استخدام Pricing مؤقتًا.");
+          }
+
+          setCatalogMode("pricing");
+        }
+      } finally {
+        if (!cancelled) setCatalogLoading(false);
       }
-    } finally {
-      if (!cancelled) setCatalogLoading(false);
     }
-  }
 
-  loadCatalogForSection();
-  return () => {
-    cancelled = true;
-  };
-}, [catalogMode, selectedSectionId]);
-
+    loadCatalogForSection();
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogMode, selectedSectionId]);
 
   // =========================
   // Filter FS services by categoryId
@@ -415,22 +460,22 @@ useEffect(() => {
   const fsServicesFiltered = useMemo(() => {
     if (catalogMode !== "firestore") return [];
     if (!selectedSectionId) return [];
-  
+
     const sid = String(selectedSectionId || "").trim();
     const cid = String(selectedCategory || "").trim();
-  
+
     // لو ما فيه categories: فلترة بسيطة بالـ sectionId
     if (!fsCategories.length) {
       const base = fsServices.filter((s: any) => String(s.sectionId || "").trim() === sid);
       if (!cid) return base;
-  
+
       // هنا selectedCategory بنعامله كـ "اسم تصنيف" من داخل الخدمة
       return base.filter((s: any) => {
         const catName = String(s.category ?? s.categoryName ?? s.التصنيف ?? "").trim();
         return catName === cid;
       });
     }
-  
+
     // لو فيه categories: فلترة بالـ categoryId
     const catIdsInSection = new Set(
       fsCategories
@@ -438,7 +483,7 @@ useEffect(() => {
         .map((c: any) => String(c.id || "").trim())
         .filter(Boolean)
     );
-  
+
     return fsServices.filter((s: any) => {
       const catId = String(s.categoryId || "").trim();
       if (!catIdsInSection.has(catId)) return false;
@@ -446,7 +491,6 @@ useEffect(() => {
       return catId === cid;
     });
   }, [catalogMode, fsServices, fsCategories, selectedSectionId, selectedCategory]);
-  
 
   // =========================
   // One source services list (Firestore else Pricing)
@@ -466,7 +510,34 @@ useEffect(() => {
       const catById = new Map<string, any>();
       fsCategories.forEach((c: any) => catById.set(String(c.id), c));
 
+      const hasCats = fsCategories.length > 0;
+
       const list = (selectedSectionId ? fsServicesFiltered : []).map((x: any) => {
+        // ✅ لو ما عندنا Categories (schema قديم): اعتمد sectionId داخل الخدمة نفسها
+        if (!hasCats) {
+          const sectionId = String(x.sectionId || selectedSectionId || "").trim();
+          const sectionTitle = secMap.get(sectionId) || sectionId || "—";
+
+          const catName = String(x.category ?? x.categoryName ?? x.التصنيف ?? "عام").trim() || "عام";
+          const name = String(x.الاسم ?? x.name ?? "").trim();
+          const priceNum = Number(x.السعر ?? x.price ?? 0);
+          const durationMin = Number(x.المدة ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN);
+
+          return {
+            id: String(x.id),
+            sectionId,
+            sectionTitle,
+            categoryId: "",
+            category: catName,
+            name,
+            priceText: `${priceNum} ريال`,
+            basePrice: priceNum,
+            durationMin,
+            source: "firestore" as const,
+          };
+        }
+
+        // ✅ schema الجديد: service.categoryId -> category.sectionId
         const catId = String(x.categoryId || "").trim();
         const catDoc = catById.get(catId);
 
@@ -480,7 +551,7 @@ useEffect(() => {
 
         return {
           id: String(x.id),
-          sectionId, // ✅ now from category.sectionId
+          sectionId,
           sectionTitle,
           categoryId: catId,
           category: String(catName || "عام"),
@@ -492,6 +563,7 @@ useEffect(() => {
         };
       });
 
+      console.log("[Booking] servicesFlat(list) =", list.length, list);
       return list;
     }
 
@@ -538,12 +610,12 @@ useEffect(() => {
 
   const categoryOptions: CategoryOption[] = useMemo(() => {
     if (!selectedSectionId) return [];
-  
+
     if (catalogMode === "firestore" && fsSections.length > 0) {
       // لو فيه categories (schema جديد)
       if (fsCategories.length) {
         const sid = String(selectedSectionId).trim();
-  
+
         const cats = fsCategories
           .filter((c: any) => String(c.sectionId || "").trim() === sid)
           .map((c: any) => ({
@@ -551,49 +623,57 @@ useEffect(() => {
             name: String(c.الاسم ?? c.name ?? "").trim(),
           }))
           .filter((x) => x.id && x.name);
-  
+
         const seen = new Set<string>();
         return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
       }
-  
+
       // لو ما فيه categories (schema قديم): استخرج تصنيفات من الخدمات
       const sid = String(selectedSectionId).trim();
       const base = fsServices
         .filter((s: any) => String(s.sectionId || "").trim() === sid)
         .map((s: any) => String(s.category ?? s.categoryName ?? s.التصنيف ?? "عام").trim())
         .filter(Boolean);
-  
+
       const seen = new Set<string>();
       return base
         .filter((n) => (seen.has(n) ? false : (seen.add(n), true)))
         .map((n) => ({ id: n, name: n }));
     }
-  
+
     // Pricing mode
     const cats = servicesFlat
       .filter((s) => s.sectionId === selectedSectionId)
       .map((s) => ({ id: s.category, name: s.category }))
       .filter((x) => x.id && x.name);
-  
+
     const seen = new Set<string>();
     return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
   }, [catalogMode, fsSections.length, fsCategories, fsServices, servicesFlat, selectedSectionId]);
-  
 
+  // ✅✅✅ التعديل الوحيد هنا ✅✅✅
   const servicesInSection = useMemo(() => {
     if (!selectedSectionId) return [];
 
-    const all = servicesFlat.filter((s) => s.sectionId === selectedSectionId);
-    if (!selectedCategory) return all;
+    const sid = String(selectedSectionId || "").trim();
+    const sel = String(selectedCategory || "").trim();
+
+    const all = servicesFlat.filter((s) => String(s.sectionId || "").trim() === sid);
+
+    if (!sel) return all;
 
     if (catalogMode === "firestore") {
-      return all.filter(
-        (s) => String(s.categoryId || "").trim() === String(selectedCategory).trim()
-      );
+      const hasCats = fsCategories.length > 0;
+
+      if (hasCats) {
+        return all.filter((s) => String(s.categoryId || "").trim() === sel);
+      }
+
+      return all.filter((s) => String(s.category || "").trim() === sel);
     }
 
-    return all.filter((s) => s.category === selectedCategory);
-  }, [servicesFlat, selectedSectionId, selectedCategory, catalogMode]);
+    return all.filter((s) => String(s.category || "").trim() === sel);
+  }, [servicesFlat, selectedSectionId, selectedCategory, catalogMode, fsCategories.length]);
 
   const servicesGrouped = useMemo(() => {
     const map = new Map<string, FlatService[]>();
@@ -610,7 +690,7 @@ useEffect(() => {
   const getServiceBasePrice = (id: string) => getServiceById(id)?.basePrice || 0;
 
   // =========================
-  // ✅ Load staff when service selected (ID-based)
+  // ✅ Load staff when service selected (SERVICE-ID based)
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -618,7 +698,6 @@ useEffect(() => {
     async function loadStaff() {
       const serviceId = String(formData.service || "").trim();
 
-      // لازم خدمة قبل ما نجيب موظفات
       if (!serviceId) {
         setStaff([]);
         setStaffError("");
@@ -630,20 +709,10 @@ useEffect(() => {
         setStaffLoading(true);
         setStaffError("");
 
-        // ✅ فلترة الموظفات حسب "القسم" (staff_public.specialties مبنية على section keys مثل hair-care)
-        const wantedKey = String(selectedSectionId || "").trim();
-
-        // لازم قسم قبل ما نجيب موظفات
-        if (!wantedKey) {
-          setStaff([]);
-          setStaffError("");
-          setStaffLoading(false);
-          return;
-        }
-
+        // ✅ الربط الصحيح: بالـ serviceId الثابت
         const res = await listActiveStaffBySpecialty({
           salonId: SALON_ID,
-          specialty: wantedKey,
+          specialty: serviceId,
         });
 
         if (cancelled) return;
@@ -652,7 +721,7 @@ useEffect(() => {
 
         if (!res?.length) {
           setStaffError(
-            `ما لقينا موظفات لهذه الخدمة/القسم. تأكد إن staff_public.specialties تحتوي هذا المفتاح بالضبط: ${wantedKey}`
+            `ما فيه موظفات مربوطة بهذه الخدمة. تأكد أن staff_public.specialties تحتوي serviceId التالي:\n${serviceId}`
           );
         }
       } catch (e: any) {
@@ -662,11 +731,11 @@ useEffect(() => {
           const msg = String(e?.message || "");
 
           if (msg.toLowerCase().includes("requires an index")) {
-            setStaffError("Firestore يحتاج Index للاستعلام. افتح رسالة الخطأ في الكونسول واضغط Create index.");
+            setStaffError("Firestore يحتاج Index للاستعلام. افتح Console واضغط Create index.");
           } else if (msg.toLowerCase().includes("missing or insufficient permissions")) {
-            setStaffError("صلاحيات قراءة الموظفات غير كافية. لازم نفتح قراءة staff_public للعميلات في Rules.");
+            setStaffError("صلاحيات قراءة الموظفات غير كافية (staff_public).");
           } else {
-            setStaffError("تعذر تحميل قائمة الموظفات. جرّبي تحديث الصفحة.");
+            setStaffError("تعذر تحميل قائمة الموظفات.");
           }
 
           setStaff([]);
@@ -680,7 +749,8 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [formData.service, selectedSectionId, catalogMode]);
+  }, [formData.service]);
+
 
   // =========================
   // Preload busy slots for employee+date (Firestore)
@@ -696,13 +766,11 @@ useEffect(() => {
       const employeeId = String(formData.employeeId || "").trim();
       const date = String(formData.date || "").trim();
 
-      // لازم موظفة + تاريخ عشان نعطل الأوقات
       if (!employeeId || !date) return;
 
       try {
         setBusyLoading(true);
 
-        // ✅ نجيب كل الأقفال للموظفة في نفس اليوم
         const colRef = collection(db, "salons", SALON_ID, "booking_slots");
         const q1 = query(colRef, where("employeeId", "==", employeeId), where("date", "==", date));
         const snap = await getDocs(q1);
@@ -717,7 +785,6 @@ useEffect(() => {
 
         setBusyTimes(taken);
 
-        // ✅ نحسب أي وقت بداية يتداخل مع أوقات محجوزة (بناءً على مدة الخدمة)
         const durationMin = Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN);
         const allSlots = generateSalonTimeSlots();
 
@@ -730,7 +797,6 @@ useEffect(() => {
 
         setDisabledStartTimes(disabled);
 
-        // ✅ لو الوقت المختار صار Disabled، نفرغه تلقائيًا
         const currentTime = String(formData.time || "").trim();
         if (currentTime && disabled.has(currentTime)) {
           setFormData((p) => ({ ...p, time: "" }));
@@ -741,7 +807,6 @@ useEffect(() => {
           setSlotMsg("");
         }
       } catch (e: any) {
-        // إذا احتاج Index أو فشل الاستعلام، ما نكسر الصفحة
         const msg = String(e?.message || "");
         if (msg.toLowerCase().includes("requires an index")) {
           setBusyHint("Firestore يحتاج Index (employeeId + date). افتح Console واضغط Create index.");
@@ -1050,7 +1115,6 @@ useEffect(() => {
     setIsLoading(true);
 
     try {
-      // ✅ تحقق من الكوبون مرة أخيرة إذا مكتوب
       const basePrice = getServiceBasePrice(formData.service);
       const serviceId = formData.service;
 
@@ -1097,12 +1161,10 @@ useEffect(() => {
         setManualOverride(true);
       }
 
-      const finalPriceNum =
-        Number(finalApplied.finalPrice || 0) > 0 ? finalApplied.finalPrice : basePrice;
+      const finalPriceNum = Number(finalApplied.finalPrice || 0) > 0 ? finalApplied.finalPrice : basePrice;
 
       const durationMin = Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
-      // ✅ لازم UID للكتابة (Anonymous)
       const uid = await ensureUserUid();
       if (!uid) {
         openModal({
@@ -1116,21 +1178,18 @@ useEffect(() => {
         return;
       }
 
-      // ✅ note: نجمع ملاحظة العميل + معلومات العرض
       const userNote = String(formData.note || "").trim();
       const offerNote = finalApplied.offer
         ? `Offer: ${(finalApplied.offer as any)?.title || normalizedCode || "-"} | discount=${Number(
-            finalApplied.discountAmount || 0
-          ).toFixed(0)}`
+          finalApplied.discountAmount || 0
+        ).toFixed(0)}`
         : "";
 
       const noteFinal = [userNote, offerNote].filter(Boolean).join(" | ") || undefined;
 
-      // ✅ service snapshot ثابت
       const serviceNameAtBooking = getServiceName(formData.service);
       const sectionIdAtBooking = String(selectedSectionId || "").trim() || undefined;
 
-      // ✅ Create Firestore booking (direct)
       const res = await createBooking({
         userId: uid,
         createdBy: "client",
@@ -1139,8 +1198,7 @@ useEffect(() => {
         clientName: String(formData.name || "").trim(),
         clientPhone: phone,
 
-        // legacy + new
-        serviceName: formData.service, // legacy: نخليه نفس serviceId (عشان Success عندك يستعمله)
+        serviceName: formData.service,
         serviceId: formData.service,
         serviceSnapshot: {
           serviceNameAtBooking,
@@ -1165,7 +1223,6 @@ useEffect(() => {
         durationMin,
       } as any);
 
-      // ✅ Save current booking for Success page
       const currentBooking = {
         bookingId: res.id,
         id: res.id,
@@ -1175,7 +1232,7 @@ useEffect(() => {
         name: String(formData.name || "").trim(),
         phone,
         service: formData.service,
-        serviceName: formData.service, // legacy for old screens
+        serviceName: formData.service,
         employee: String(formData.employee || "").trim(),
         employeeId: String(formData.employeeId || "").trim(),
         employeeUid: String(formData.employeeUid || "").trim(),
@@ -1260,7 +1317,7 @@ useEffect(() => {
           if (s?.category) setSelectedCategory(String(s.category));
         }
       }
-    } catch {}
+    } catch { }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1291,8 +1348,8 @@ useEffect(() => {
                   {catalogLoading
                     ? "جاري تحميل الخدمات..."
                     : catalogMode === "firestore"
-                    ? "الخدمات: من قاعدة البيانات ✅"
-                    : "الخدمات: مؤقتًا من التسعير (Pricing) ⏳"}
+                      ? "الخدمات: من قاعدة البيانات ✅"
+                      : "الخدمات: مؤقتًا من التسعير (Pricing) ⏳"}
                   {catalogError ? ` — ${catalogError}` : ""}
                 </div>
               </div>
@@ -1315,7 +1372,7 @@ useEffect(() => {
                         id="name"
                         name="name"
                         value={formData.name}
-                        onChange={() => {}}
+                        onChange={() => { }}
                         onInput={(e: any) => {
                           const v = String(e?.target?.value ?? "");
                           setFormData((p) => ({ ...p, name: v }));
@@ -1469,7 +1526,15 @@ useEffect(() => {
                   <div className="col-md-6 mb-4">
                     <label className="form-label">التاريخ</label>
 
-                    <div className="input-group">
+                    <div
+                      className="input-group booking-date-group"
+                      onClick={() => {
+                        const el = dateInputRef.current as any;
+                        if (!el) return;
+                        el.focus();
+                        if (typeof el.showPicker === "function") el.showPicker(); // Chrome/Edge
+                      }}
+                    >
                       <span className="input-group-text">
                         <FontAwesomeIcon icon={faCalendarAlt} />
                       </span>
@@ -1484,6 +1549,7 @@ useEffect(() => {
                         required
                       />
                     </div>
+
                   </div>
                 </div>
 
@@ -1550,7 +1616,7 @@ useEffect(() => {
                 <div className="mb-4">
                   <label className="form-label">كود الخصم</label>
 
-                  <div className="input-group">
+                  <div className="input-group bk-coupon-actions">
                     <input
                       type="text"
                       className="form-control"
@@ -1558,10 +1624,15 @@ useEffect(() => {
                       onChange={(e) => setCouponCode(e.target.value)}
                       placeholder="اكتبي كود الخصم"
                     />
-                    <button type="button" className="btn btn-outline-primary" onClick={handleApplyCoupon}>
+                    <button
+                      type="button"
+                      className="bk-coupon-btn bk-coupon-btn--apply"
+                      onClick={handleApplyCoupon}
+                    >
                       تطبيق
                     </button>
                   </div>
+
 
                   {offerMsg && <div className="small mt-1">{offerMsg}</div>}
                 </div>
@@ -1598,4 +1669,3 @@ useEffect(() => {
 };
 
 export default Booking;
-

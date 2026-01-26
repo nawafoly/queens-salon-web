@@ -1,5 +1,3 @@
-
-
 // src/pages/DashboardEmployees.tsx
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -10,6 +8,8 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
+  query,
+  orderBy,
 } from "firebase/firestore";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -22,7 +22,6 @@ import {
   faUserTie,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
-import { listActiveSections } from "../services/firestoreCatalog";
 
 import { db } from "../services/firebase";
 import "../styles/DashboardModals.css";
@@ -50,7 +49,7 @@ type AuthUser = {
 type StaffPublicDoc = {
   name: string;
   active: boolean;
-  specialties: string[];
+  specialties: string[]; // ✅ NOW: serviceIds
   bio?: string;
   avatarUrl?: string;
   createdAt?: any;
@@ -58,6 +57,14 @@ type StaffPublicDoc = {
 };
 
 type StaffPublicUi = StaffPublicDoc & { id: string };
+
+type ServiceOption = {
+  id: string; // serviceId
+  label: string; // service name
+  sectionId?: string;
+  categoryId?: string;
+  active?: boolean;
+};
 
 /* =========================
    Const
@@ -83,6 +90,10 @@ function staffPublicCol() {
 
 function staffPublicDoc(id: string) {
   return doc(db, "salons", SALON_ID, "staff_public", id);
+}
+
+function servicesCol() {
+  return collection(db, "salons", SALON_ID, "services");
 }
 
 function normalizeSpecialties(v: any): string[] {
@@ -136,6 +147,8 @@ export default function DashboardEmployees() {
   const [qText, setQText] = useState("");
   const [onlyActive, setOnlyActive] =
     useState<"all" | "active" | "inactive">("all");
+
+  // ✅ NOW: filter by serviceId
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
 
   const [isOpen, setIsOpen] = useState(false);
@@ -145,9 +158,12 @@ export default function DashboardEmployees() {
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [active, setActive] = useState(true);
+
+  // ✅ NOW: store serviceIds
   const [specialties, setSpecialties] = useState<string[]>([]);
-  const [sectionOptions, setSectionOptions] =
-    useState<{ key: string; label: string }[]>([]);
+
+  // ✅ services options (instead of sections)
+  const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
 
   const resetForm = () => {
     setEditId(null);
@@ -206,31 +222,48 @@ export default function DashboardEmployees() {
     }
   };
 
+  // ✅ Load services (catalog options for specialties)
+  const loadServiceOptions = async () => {
+    try {
+      // ملاحظة: نخليها orderBy فقط بدون where عشان ما نعلق على index
+      const qSrv = query(servicesCol(), orderBy("name", "asc"));
+      const snap = await getDocs(qSrv);
+
+      const opts: ServiceOption[] = snap.docs
+        .map((d) => {
+          const x = d.data() as any;
+          return {
+            id: d.id,
+            label: String(x?.name || d.id),
+            sectionId: String(x?.sectionId || ""),
+            categoryId: String(x?.categoryId || ""),
+            active: x?.active !== false,
+          };
+        })
+        .filter((s) => s.label.trim())
+        // ✅ نعرض فقط الخدمات المفعلة
+        .filter((s) => s.active !== false);
+
+      setServiceOptions(opts);
+    } catch (e) {
+      console.warn("loadServiceOptions error:", e);
+      setServiceOptions([]);
+    }
+  };
+
   useEffect(() => {
     load();
   }, []);
 
   useEffect(() => {
-    let alive = true;
-    listActiveSections(SALON_ID).then((secs) => {
-      if (!alive) return;
-      setSectionOptions(
-        (secs || []).map((s: any) => ({
-          key: String(s.id),
-          label: String(s.الاسم ?? s.name ?? s.id),
-        }))
-      );
-    });
-    return () => {
-      alive = false;
-    };
+    loadServiceOptions();
   }, []);
+
   // ✅ Owner-only: compute booking counts per staff_public doc
   useEffect(() => {
     let alive = true;
 
     const compute = async () => {
-      // ✅ حسب الاتفاق: الإحصائيات للـ Owner فقط
       if (authUser?.role !== "owner") {
         setBookingStats({});
         return;
@@ -249,26 +282,22 @@ export default function DashboardEmployees() {
           byStatus: { pending: 0, confirmed: 0, completed: 0, cancelled: 0 },
         });
 
-        // ✅ staff lookup
         const staffById = new Set(list.map((s) => s.id));
-        const staffByKey = new Map<string, string>(); // employeeKey candidates -> staffId
-        const staffByName = new Map<string, string>(); // normalized arabic name -> staffId
+        const staffByKey = new Map<string, string>();
+        const staffByName = new Map<string, string>();
 
         for (const s of list) {
           const sid = String(s.id || "").trim();
-          if (sid) staffByKey.set(sid, sid); // employeeId might be staff_public id
+          if (sid) staffByKey.set(sid, sid);
 
           const nKey = normalizeArabicName(s.name);
           if (nKey) staffByName.set(nKey, sid);
 
-          // name safeKey fallback (old bookings might use safeKey(name) as employeeKey)
           const nk2 = safeKey(String(s.name || "").trim());
           if (nk2) staffByKey.set(nk2, sid);
         }
 
         const rows: BookingDocWithId[] = await listAllBookings();
-
-        // ✅ DEBUG (عشان ما تقول “ما يطلع شي”)
         console.log("[EmployeesStats] bookings=", rows.length, "staff=", list.length);
 
         const m: Record<string, StaffBookingStats> = {};
@@ -279,17 +308,12 @@ export default function DashboardEmployees() {
           const ekey = String((b as any).employeeKey || "").trim();
           const ename = String((b as any).employeeName || "").trim();
 
-          // ✅ 1) match by employeeKey (الأقوى في نظامنا)
           let staffId: string | null = null;
+
           if (ekey && staffByKey.has(ekey)) staffId = staffByKey.get(ekey) || null;
-
-          // ✅ 2) match by employeeUid (إذا صار فيه حجوزات تخزن uid في key أو id)
           if (!staffId && euid && staffByKey.has(euid)) staffId = staffByKey.get(euid) || null;
-
-          // ✅ 3) match by employeeId (إذا يساوي staff_public.id)
           if (!staffId && eid && staffById.has(eid)) staffId = eid;
 
-          // ✅ 4) fallback strict name match after normalization
           if (!staffId && ename) {
             const k = normalizeArabicName(ename);
             staffId = staffByName.get(k) || null;
@@ -320,9 +344,11 @@ export default function DashboardEmployees() {
     };
   }, [authUser?.role, list]);
 
-  const toggleSpecialty = (key: string) => {
+  const toggleSpecialty = (serviceId: string) => {
     setSpecialties((prev) =>
-      prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
+      prev.includes(serviceId)
+        ? prev.filter((x) => x !== serviceId)
+        : [...prev, serviceId]
     );
   };
 
@@ -345,7 +371,7 @@ export default function DashboardEmployees() {
     const payload: StaffPublicDoc = {
       name: cleanName,
       active: !!active,
-      specialties,
+      specialties, // ✅ serviceIds
       bio: bio.trim(),
       avatarUrl: avatarUrl.trim(),
       updatedAt: serverTimestamp(),
@@ -464,7 +490,15 @@ export default function DashboardEmployees() {
           </div>
 
           <div className="dash-topbar-actions">
-            <button className="exp-btn" onClick={load} disabled={loading} type="button">
+            <button
+              className="exp-btn"
+              onClick={async () => {
+                await loadServiceOptions();
+                await load();
+              }}
+              disabled={loading}
+              type="button"
+            >
               <FontAwesomeIcon icon={faRotateRight} /> تحديث
             </button>
 
@@ -507,8 +541,8 @@ export default function DashboardEmployees() {
               onChange={(e) => setSpecialtyFilter(e.target.value)}
             >
               <option value="all">كل الخدمات</option>
-              {sectionOptions.map((o) => (
-                <option key={o.key} value={o.key}>
+              {serviceOptions.map((o) => (
+                <option key={o.id} value={o.id}>
                   {o.label}
                 </option>
               ))}
@@ -524,6 +558,12 @@ export default function DashboardEmployees() {
               </>
             )}
           </div>
+
+          {serviceOptions.length === 0 && (
+            <div className="dash-meta" style={{ marginTop: 8, opacity: 0.8 }}>
+              * ملاحظة: لا توجد خدمات مفعلة في الكتالوج. ادخل الإعدادات → إدارة الكتالوج وأضف خدمات.
+            </div>
+          )}
         </div>
 
         {/* List */}
@@ -576,10 +616,10 @@ export default function DashboardEmployees() {
                 )}
 
                 <div className="staff-chips">
-                  {normalizeSpecialties(x.specialties).map((s) => {
-                    const label = sectionOptions.find((o) => o.key === s)?.label ?? s;
+                  {normalizeSpecialties(x.specialties).map((sid) => {
+                    const label = serviceOptions.find((o) => o.id === sid)?.label ?? sid;
                     return (
-                      <span className="staff-chip" key={s}>
+                      <span className="staff-chip" key={sid}>
                         {label}
                       </span>
                     );
@@ -696,18 +736,24 @@ export default function DashboardEmployees() {
                 </div>
 
                 <div className="dash-field">
-                  <label>الخدمات (اختيار متعدد)</label>
+                  <label>الخدمات (اختيار متعدد) ✅</label>
                   <div className="staff-picks">
-                    {sectionOptions.map((o) => (
+                    {serviceOptions.map((o) => (
                       <button
-                        key={o.key}
+                        key={o.id}
                         type="button"
-                        className={`pick ${specialties.includes(o.key) ? "on" : ""}`}
-                        onClick={() => toggleSpecialty(o.key)}
+                        className={`pick ${specialties.includes(o.id) ? "on" : ""}`}
+                        onClick={() => toggleSpecialty(o.id)}
+                        title={o.id}
                       >
                         {o.label}
                       </button>
                     ))}
+                    {serviceOptions.length === 0 && (
+                      <div style={{ padding: 10, opacity: 0.8 }}>
+                        لا توجد خدمات مفعلة. أضف خدمات من الإعدادات → إدارة الكتالوج.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -727,4 +773,3 @@ export default function DashboardEmployees() {
     </div>
   );
 }
-

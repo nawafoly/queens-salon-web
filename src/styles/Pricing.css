@@ -1,3 +1,5 @@
+/* src/styles/Pricing.css */
+
 .pricing-page {
   background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
   padding: 2.2rem 0 2.5rem;
@@ -66,14 +68,46 @@
   font-size: 1.1rem;
 }
 
-/* نفس class المستخدمة في TSX */
-.card-icon-primary,
-.card-icon-secondary,
-.card-icon-accent,
-.card-icon-info,
-.card-icon-warning {
+/* ✅ يشتغل مع TSX: className={`card-icon card-icon-${s.color}`} */
+.card-icon.card-icon-primary,
+.card-icon.card-icon-secondary,
+.card-icon.card-icon-accent,
+.card-icon.card-icon-info,
+.card-icon.card-icon-warning,
+.modal-icon.card-icon-primary,
+.modal-icon.card-icon-secondary,
+.modal-icon.card-icon-accent,
+.modal-icon.card-icon-info,
+.modal-icon.card-icon-warning {
   background: linear-gradient(135deg, #fef6f2, #fdeae3 100%);
   color: var(--primary-color);
+}
+
+/* (اختياري) لو تبغى كل لون يطلع بدرجة مختلفة خفيفة */
+/* primary */
+.card-icon.card-icon-primary,
+.modal-icon.card-icon-primary {
+  background: linear-gradient(135deg, #fef6f2, #fdeae3 100%);
+}
+/* secondary */
+.card-icon.card-icon-secondary,
+.modal-icon.card-icon-secondary {
+  background: linear-gradient(135deg, #f2fbff, #e7f3ff 100%);
+}
+/* accent */
+.card-icon.card-icon-accent,
+.modal-icon.card-icon-accent {
+  background: linear-gradient(135deg, #fff3fb, #ffe4f4 100%);
+}
+/* info */
+.card-icon.card-icon-info,
+.modal-icon.card-icon-info {
+  background: linear-gradient(135deg, #f3fff9, #e6fff2 100%);
+}
+/* warning */
+.card-icon.card-icon-warning,
+.modal-icon.card-icon-warning {
+  background: linear-gradient(135deg, #fff9ef, #ffeccd 100%);
 }
 
 .card-titleWrap {
@@ -150,19 +184,18 @@
   position: fixed;
   inset: 0;
   background: rgba(30, 18, 14, 0.28);
-  z-index: 999999;              /* 🔥 أعلى من النافبار */
+  z-index: 999999; /* 🔥 أعلى من النافبار */
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 18px;
-
-  isolation: isolate;           /* 🔥 يمنع تداخل stacking */
+  isolation: isolate; /* 🔥 يمنع تداخل stacking */
 }
 
 /* Modal Container */
 .pricing-modal {
   position: relative;
-  z-index: 1000000;             /* 🔥 فوق الـ overlay نفسه */
+  z-index: 1000000; /* 🔥 فوق الـ overlay نفسه */
   width: min(860px, 96vw);
   max-height: min(84vh, 720px);
   background: #fff;
@@ -172,7 +205,6 @@
   display: flex;
   flex-direction: column;
 }
-
 
 /* Header */
 .modal-header {

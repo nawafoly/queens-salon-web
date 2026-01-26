@@ -1,0 +1,61 @@
+/* ===========================
+   Home Page Layout
+   =========================== */
+
+   .home-page {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  
+    color: var(--qs-text);
+  }
+  
+  .home-page section,
+  .home-page > * {
+    width: 100%;
+  }
+  
+  .home-page .section-title {
+    color: var(--qs-text);
+  }
+  
+  .home-page .features-section,
+  .home-page .services-section,
+  .home-page .pricing-section,
+  .home-page .testimonials-section {
+    padding: clamp(40px, 6vw, 72px) 0;
+        background: var(--qs-offwhite);
+
+  }
+  
+  .home-page .card,
+  .home-page .feature-card,
+  .home-page .service-card,
+  .home-page .testimonial-card,
+  .home-page .price-card {
+    background: var(--qs-surface);
+    border: 1px solid var(--qs-border);
+    color: var(--qs-text);
+    box-shadow: var(--bs-shadow-soft);
+  }
+  
+  .home-page a {
+    color: var(--qs-offwhite);
+  }
+  .home-page a:hover {
+    color: var(--qs-gray-500);
+  }
+  
+  @media (max-width: 767.98px) {
+    .home-page .features-section,
+    .home-page .services-section,
+    .home-page .pricing-section,
+    .home-page .testimonials-section {
+      padding: 40px 0;
+    }
+  }
+  

@@ -1,5 +1,3 @@
-
-
 // src/components/Navbar.tsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -7,20 +5,16 @@ import logoNavbar from "../assets/images/ssunnamed.png";
 import "../styles/navbar.css";
 import UserIcon from "./icons/UserIcon";
 
-// ✅ Firebase logout + Auth watcher
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { auth } from "../services/firebase";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
-
 const KNOWN_ROLES: UiRole[] = ["owner", "admin", "reception", "staff", "client", "guest"];
 
 function normalizeRole(role: any): UiRole {
   const r = String(role || "").toLowerCase().trim();
   if (r === "administrator") return "admin";
-  if (r === "receptionist") return "reception";
-  if (r === "frontdesk") return "reception";
-  if (r === "desk") return "reception";
+  if (r === "receptionist" || r === "frontdesk" || r === "desk") return "reception";
   if (KNOWN_ROLES.includes(r as UiRole)) return r as UiRole;
   return "guest";
 }
@@ -33,7 +27,10 @@ const Navbar: React.FC = () => {
   const [userRole, setUserRole] = useState<UiRole>("guest");
 
   const [authUser, setAuthUser] = useState<User | null>(null);
+
+  // ✅ scroll states
   const [hasScrolled, setHasScrolled] = useState(false);
+  const [isHidden, setIsHidden] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -84,13 +81,10 @@ const Navbar: React.FC = () => {
 
   useEffect(() => {
     syncAuthFromStorage();
-
     const onAuthChanged = () => syncAuthFromStorage();
     window.addEventListener("authChanged", onAuthChanged);
-
     const onStorage = () => syncAuthFromStorage();
     window.addEventListener("storage", onStorage);
-
     return () => {
       window.removeEventListener("authChanged", onAuthChanged);
       window.removeEventListener("storage", onStorage);
@@ -106,10 +100,40 @@ const Navbar: React.FC = () => {
     if (isInDashboard) setIsMenuOpen(false);
   }, [isInDashboard]);
 
+  // ✅ hide on scroll down, show on scroll up
   useEffect(() => {
-    const handleScroll = () => setHasScrolled(window.scrollY > 10);
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+    let lastY = window.scrollY;
+    let ticking = false;
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+
+      requestAnimationFrame(() => {
+        const y = window.scrollY;
+
+        setHasScrolled(y > 10);
+
+        const goingDown = y > lastY + 6;
+        const goingUp = y < lastY - 6;
+
+        if (y < 30) {
+          setIsHidden(false);
+        } else if (goingDown) {
+          setIsHidden(true);
+          setIsMenuOpen(false);
+          setIsDropdownOpen(false);
+        } else if (goingUp) {
+          setIsHidden(false);
+        }
+
+        lastY = y;
+        ticking = false;
+      });
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   useEffect(() => {
@@ -248,71 +272,59 @@ const Navbar: React.FC = () => {
   const hasDropdownContent = !!dropdownItems;
 
   return (
-    <>
-      <div className="topbar">
-        <div className="topbar-content">
-          <span className="lang">🌐 العربية</span>
+    <header className={`navbar ${hasScrolled ? "scrolled" : ""} ${isHidden ? "is-hidden" : ""}`}>
+      <div className="container">
+        <div className="nav-main-group">
+          {!isInDashboard && (
+            <button
+              className={`navbar-toggler ${isMenuOpen ? "open" : ""}`}
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              aria-label="Toggle navigation"
+            >
+              <span className="bar"></span>
+              <span className="bar"></span>
+              <span className="bar"></span>
+            </button>
+          )}
+
+          <nav ref={navMenuRef} className={`navbar-nav ${isMenuOpen ? "open" : ""}`}>
+            {navLinks.map((link) => (
+              <Link
+                key={link.path}
+                to={link.path}
+                onClick={() => setIsMenuOpen(false)}
+                className={location.pathname === link.path ? "active" : ""}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+
+        <Link to="/" className="logo-link" onClick={() => setIsMenuOpen(false)}>
+          <img src={logoNavbar} alt="Body Salon Logo" className="logo" />
+        </Link>
+
+        <div className="profile-container" ref={dropdownRef}>
+          <button
+            className="user-profile"
+            onClick={() => {
+              if (!hasDropdownContent) return;
+              setIsDropdownOpen((prev) => !prev);
+              setIsMenuOpen(false);
+            }}
+          >
+            <UserIcon />
+            <span className="user-profile__text">
+              {isLoggedIn ? (userName || "الملف الشخصي") : "تسجيل الدخول"}
+            </span>
+          </button>
+
+          {isDropdownOpen && hasDropdownContent && <div className="dropdown-menu">{dropdownItems}</div>}
         </div>
       </div>
-
-      <header className={`navbar ${hasScrolled ? "scrolled" : ""}`}>
-        <div className="container">
-          {/* ✅ جوال: 3 عناصر (☰ | لوقو | مستخدم) بس عن طريق CSS */}
-          <div className="nav-main-group">
-            {!isInDashboard && (
-              <button
-                className={`navbar-toggler ${isMenuOpen ? "open" : ""}`}
-                onClick={() => setIsMenuOpen((prev) => !prev)}
-                aria-label="Toggle navigation"
-              >
-                <span className="bar"></span>
-                <span className="bar"></span>
-                <span className="bar"></span>
-              </button>
-            )}
-
-            <nav ref={navMenuRef} className={`navbar-nav ${isMenuOpen ? "open" : ""}`}>
-              {navLinks.map((link) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  onClick={() => setIsMenuOpen(false)}
-                  className={location.pathname === link.path ? "active" : ""}
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
-
-          <Link to="/" className="logo-link" onClick={() => setIsMenuOpen(false)}>
-            <img src={logoNavbar} alt="Body Salon Logo" className="logo" />
-          </Link>
-
-          <div className="profile-container" ref={dropdownRef}>
-            <button
-              className="user-profile"
-              onClick={() => {
-                if (!hasDropdownContent) return;
-                setIsDropdownOpen((prev) => !prev);
-                setIsMenuOpen(false);
-              }}
-            >
-              <UserIcon />
-              <span className="user-profile__text">
-                {isLoggedIn ? (userName || "الملف الشخصي") : "تسجيل الدخول"}
-              </span>
-            </button>
-
-            {isDropdownOpen && hasDropdownContent && (
-              <div className="dropdown-menu">{dropdownItems}</div>
-            )}
-          </div>
-        </div>
-      </header>
-    </>
+    </header>
   );
 };
 
 export default Navbar;
-
