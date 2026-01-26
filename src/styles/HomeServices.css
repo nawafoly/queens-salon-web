@@ -1,116 +1,149 @@
 /* src/styles/HomeServices.css */
 
 /* =========================
-   HomeServices (Queens Dark Luxury)
+   HomeServices (Luxury Light + Pattern)
 ========================= */
 
-.home-services-section {
-  /* ثيم الصالون المعتمد */
-  background:
-    radial-gradient(900px 520px at 15% 20%, rgba(64, 1, 13, 0.22), transparent 60%),
-    radial-gradient(800px 450px at 85% 25%, rgba(136, 140, 140, 0.12), transparent 55%),
-    linear-gradient(180deg, #0d0d0d 0%, #0a0a0a 100%);
-  padding: clamp(44px, 6vw, 78px) 0;
+.home-services-section{
   direction: rtl;
   position: relative;
   overflow: hidden;
+
+  /* ✅ فخم وفاتح */
+  background:
+    radial-gradient(900px 520px at 15% 20%, rgba(64, 1, 13, 0.06), transparent 60%),
+    radial-gradient(800px 450px at 85% 25%, rgba(136, 140, 140, 0.10), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #f5f5f4 100%);
+
+  padding: clamp(44px, 6vw, 78px) 0;
 }
 
-/* Head */
-.home-services-head {
+/* ✅ نقش فخم خفيف جداً (يبان مع الإضاءة فقط) */
+.home-services-section::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+
+  background-image:
+    radial-gradient(rgba(13,13,13,0.035) 1px, transparent 1px),
+    radial-gradient(rgba(64,1,13,0.035) 1px, transparent 1px);
+
+  background-size: 22px 22px, 34px 34px;
+  background-position: 0 0, 10px 10px;
+
+  opacity: 0.45;
+}
+
+/* نخلي محتوى السكشن فوق النقش */
+.home-services-section > *{
+  position: relative;
+  z-index: 1;
+}
+
+/* عنوان القسم */
+.home-services-title{
   text-align: center;
-  margin-bottom: 34px;
-}
-
-.home-services-title {
-  font-size: clamp(1.35rem, 3.2vw, 2rem);
+  font-size: clamp(1.45rem, 3.2vw, 2.1rem);
   font-weight: 900;
-  color: #f5f5f4; /* Off-white */
+  color: #0d0d0d;
   margin: 0 0 10px;
-  letter-spacing: 0.2px;
 }
 
-.home-services-subtitle {
+.home-services-subtitle{
+  text-align: center;
   font-size: 1rem;
-  color: rgba(245, 245, 244, 0.70);
-  margin: 0 auto;
-  max-width: 620px;
-  line-height: 1.8;
+  color: rgba(13, 13, 13, 0.65);
+  margin: 0 auto 34px;
+  max-width: 680px;
+  line-height: 1.85;
 }
 
 /* Grid */
-.home-services-grid {
+.home-services-grid{
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
-/* Card (Glass) */
-.home-service-card {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+/* Card */
+.home-service-card{
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(13, 13, 13, 0.06);
   border-radius: 22px;
-  box-shadow: 0 16px 55px rgba(0, 0, 0, 0.45);
-  padding: 18px 18px 16px;
+  box-shadow: 0 12px 40px rgba(13, 13, 13, 0.10);
+  padding: 20px 18px 16px;
   text-align: right;
-  backdrop-filter: blur(14px) saturate(120%);
-  -webkit-backdrop-filter: blur(14px) saturate(120%);
+
   transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.home-service-card:hover {
+/* ✅ لمعة فخمة خفيفة */
+.home-service-card::after{
+  content:"";
+  position:absolute;
+  inset:-40%;
+  background: radial-gradient(circle, rgba(64,1,13,0.10) 0%, transparent 55%);
+  opacity: 0;
+  transition: opacity .25s ease;
+  pointer-events:none;
+}
+
+.home-service-card:hover{
   transform: translateY(-6px);
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55);
-  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 18px 55px rgba(13, 13, 13, 0.14);
+  border-color: rgba(13, 13, 13, 0.10);
 }
+.home-service-card:hover::after{ opacity: 1; }
 
-/* Top row */
-.home-service-top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.home-service-name {
-  font-size: 1.12rem;
+/* Title */
+.home-service-name{
+  font-size: 1.2rem;
   font-weight: 900;
-  color: #f5f5f4;
-  margin: 0;
-}
-
-.home-service-price {
-  font-size: 0.9rem;
-  font-weight: 900;
-  color: rgba(245, 245, 244, 0.78);
-  padding: 8px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(255, 255, 255, 0.05);
-  white-space: nowrap;
+  color: #0d0d0d;
+  margin: 0 0 10px;
 }
 
 /* Desc */
-.home-service-desc {
+.home-service-desc{
   font-size: 0.98rem;
-  color: rgba(245, 245, 244, 0.70);
+  color: rgba(13, 13, 13, 0.62);
   line-height: 1.85;
   margin: 0 0 14px 0;
 }
 
+/* Price pill */
+.home-service-price{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 0.92rem;
+  font-weight: 900;
+  color: rgba(13, 13, 13, 0.75);
+
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: rgba(13, 13, 13, 0.04);
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  margin-bottom: 14px;
+}
+
 /* Button */
-.home-service-btn {
+.home-service-btn{
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 44px;
+  min-height: 48px;
 
-  background: linear-gradient(135deg, #40010d 0%, #2a0008 100%);
-  color: #f5f5f4 !important;
+  background: linear-gradient(135deg, #40010D 0%, #2a0008 100%);
+  color: #F5F5F4 !important;
 
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(64, 1, 13, 0.20);
   border-radius: 16px;
 
   padding: 12px 16px;
@@ -118,29 +151,26 @@
   font-size: 1rem;
   text-decoration: none;
 
-  transition: transform 0.2s ease, filter 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 12px 26px rgba(64, 1, 13, 0.18);
 }
 
-.home-service-btn:hover {
+.home-service-btn:hover{
   transform: translateY(-2px);
   filter: brightness(1.06);
-  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 16px 34px rgba(64, 1, 13, 0.22);
 }
 
 /* Responsive */
-@media (max-width: 991px) {
-  .home-services-grid {
+@media (max-width: 991px){
+  .home-services-grid{
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 }
 
-@media (max-width: 575px) {
-  .home-services-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .home-service-card {
-    border-radius: 18px;
-    padding: 16px 14px 14px;
-  }
+@media (max-width: 575px){
+  .home-services-grid{ grid-template-columns: 1fr; }
+  .home-service-card{ border-radius: 18px; padding: 18px 14px 14px; }
+  .home-service-btn{ border-radius: 14px; }
 }
