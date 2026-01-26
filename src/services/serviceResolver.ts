@@ -1,3 +1,5 @@
+
+
 // src/services/serviceResolver.ts
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase";
@@ -24,3 +26,4 @@ export async function resolveServiceName(serviceId?: string) {
         return "—";
     }
 }
+

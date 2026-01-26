@@ -1,3 +1,5 @@
+
+
 // src/pages/Offers.tsx
 import { useEffect, useMemo, useState } from "react";
 import emma from "../assets/images/emma.webp";
@@ -565,3 +567,4 @@ const Offers = () => {
 };
 
 export default Offers;
+

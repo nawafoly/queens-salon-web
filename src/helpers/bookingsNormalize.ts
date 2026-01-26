@@ -1,3 +1,5 @@
+
+
 // src/helpers/bookingsNormalize.ts
 
 export type NormalizedBooking = any;
@@ -33,3 +35,4 @@ export const normalizeBookings = (arr: any[]): NormalizedBooking[] => {
   if (!Array.isArray(arr)) return [];
   return arr.map(normalizeBooking);
 };
+

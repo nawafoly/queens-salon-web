@@ -1,3 +1,5 @@
+
+
 // src/services/userProfile.ts
 import type { User } from "firebase/auth";
 import {
@@ -447,3 +449,4 @@ export async function debugWhoAmI() {
     return null;
   }
 }
+

@@ -1,3 +1,5 @@
+
+
 // src/pages/About.tsx
 import { useEffect, useMemo, useState } from "react";
 
@@ -331,3 +333,4 @@ const About = () => {
 };
 
 export default About;
+

@@ -1,3 +1,5 @@
+
+
 // ✅ src/services/firestoreIncome.ts
 import { db } from "./firebase";
 import {
@@ -126,3 +128,4 @@ export async function removeIncomeFS(id: string, salonId?: string) {
   const ref = doc(db, "salons", sid, "income", id);
   await deleteDoc(ref);
 }
+

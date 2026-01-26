@@ -1,3 +1,5 @@
+
+
 // src/services/firestoreBookings.ts
 import { db } from "./firebase";
 import {
@@ -960,3 +962,4 @@ export async function backfillServiceFields(opts?: { dryRun?: boolean; limit?: n
 
   return { scanned: snap.size, patched, dryRun };
 }
+

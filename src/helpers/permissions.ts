@@ -1,3 +1,5 @@
+
+
 // src/helpers/permissions.ts
 
 export type UserRole =
@@ -104,3 +106,4 @@ export function can(permission: Permission, role?: UserRole): boolean {
   const r = role ?? getUserRole();
   return ROLE_PERMISSIONS[r]?.includes(permission) ?? false;
 }
+

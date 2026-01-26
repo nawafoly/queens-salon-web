@@ -1,6 +1,9 @@
+
+
 // src/services/AppSettingsService.ts
 import { db } from "./firebase";
 import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
+import { STRICT_FIREBASE } from "../config/strictFirebase";
 
 export type SectionKey =
   | "overview"
@@ -276,12 +279,15 @@ function sanitize(input: any): AppSettings {
 }
 
 function cacheWrite(settings: AppSettings) {
+  if (STRICT_FIREBASE) return;
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(settings));
   } catch {}
 }
 
+
 function cacheRead(): AppSettings | null {
+  if (STRICT_FIREBASE) return null;
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
@@ -290,6 +296,7 @@ function cacheRead(): AppSettings | null {
     return null;
   }
 }
+
 
 /** ✅ إنشاء settings/app مرة واحدة لو غير موجود */
 async function ensureRemoteExists() {
@@ -313,6 +320,9 @@ export const AppSettingsService = {
   },
 
   getCached(): AppSettings {
+    if (STRICT_FIREBASE) {
+      return defaultSettings; // مؤقت فقط للـ first render
+    }
     return cacheRead() || defaultSettings;
   },
 
@@ -321,12 +331,15 @@ export const AppSettingsService = {
 
     const snap = await getDoc(ref);
     if (!snap.exists()) {
-      // ✅ بدل ما نرجّع ديفولت فقط: ننشئ الوثيقة في Firestore
+      if (STRICT_FIREBASE) {
+        throw new Error("🔥 settings/app does not exist in Firestore");
+      }
+    
       await ensureRemoteExists();
       cacheWrite(defaultSettings);
       return defaultSettings;
     }
-
+    
     const remote = sanitize(snap.data());
     cacheWrite(remote);
     return remote;
@@ -356,11 +369,15 @@ export const AppSettingsService = {
         cb(remote);
       },
       (err) => {
-        console.error("AppSettingsService subscribe error:", err);
-        // fallback على الكاش عشان ما تفضى الصفحة
+        console.error("🔥 AppSettingsService subscribe error:", err);
+      
+        if (STRICT_FIREBASE) {
+          throw err; // خل الصفحة تفشل بوضوح
+        }
+      
         const cached = cacheRead() || defaultSettings;
         cb(cached);
-      }
+      }      
     );
 
     return unsub;
@@ -379,3 +396,4 @@ export const AppSettingsService = {
     return payload;
   },
 };
+
