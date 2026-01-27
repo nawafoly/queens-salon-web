@@ -255,7 +255,7 @@ export default function Success() {
 
   const st = normStatus(view.status);
   const isConfirmed = st === "confirmed" || view.status === "مؤكد";
-  const heroTitle = isConfirmed ? "تم تأكيد حجزك بنجاح! 🎉" : "تم استلام طلب حجزك بنجاح! ✨";
+  const heroTitle = isConfirmed ? "تم تأكيد حجزك بنجاح! 🎉" : "تم استلام طلب حجزك بنجاح";
   const heroDesc = isConfirmed
     ? "تم تأكيد الموعد. إذا احتجتِ تعديل، تواصلي معنا عبر الواتساب."
     : "تم استلام طلب حجزك، وسيتم التواصل معك قريبًا لتأكيد الموعد.";
@@ -281,7 +281,7 @@ export default function Success() {
             <span className="mono">{displayPublicId}</span>
           </div>
 
-          <p className="success-sourcehint">احتفظي بالرقم للتتبع أو انسخيه بضغطة واحدة</p>
+          <p className="text-black">احتفظي بالرقم للتتبع أو انسخيه بضغطة واحدة</p>
         </div>
 
         <div className="success-details">

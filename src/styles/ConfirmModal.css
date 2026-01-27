@@ -1,144 +1,197 @@
 /* src/styles/ConfirmModal.css */
+/* ✅ Queens Salon official palette:
+   #0D0D0D, #515659, #6E7372, #888C8C, #40010D, #F5F5F4
+*/
+
 .qm-modal-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 5000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 18px;
-    background: rgba(20, 15, 12, 0.35);
-    backdrop-filter: blur(6px);
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+
+  background: rgba(13, 13, 13, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.qm-modal-box {
+  width: min(520px, 96vw);
+  background: #fff;
+  border-radius: 22px;
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  overflow: hidden;
+
+  transform: translateY(6px);
+  animation: qmPop 180ms ease-out forwards;
+  font-family: "Tajawal", sans-serif;
+}
+
+@keyframes qmPop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
   }
-  
-  .qm-modal-box {
-    width: min(520px, 96vw);
-    background: #fff;
-    border-radius: 20px;
-    box-shadow: 0 26px 80px rgba(0, 0, 0, 0.18);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    overflow: hidden;
-    transform: translateY(6px);
-    animation: qmPop 180ms ease-out forwards;
-    font-family: "Tajawal", sans-serif;
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
-  
-  @keyframes qmPop {
-    from {
-      opacity: 0;
-      transform: translateY(14px) scale(0.985);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-  
-  .qm-modal-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 14px 10px;
-    background: linear-gradient(135deg, rgba(232, 180, 162, 0.18), rgba(236, 233, 250, 0.55));
-  }
-  
-  .qm-modal-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  
-  .qm-modal-icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 12px;
-    display: grid;
-    place-items: center;
-    font-weight: 900;
-    user-select: none;
-    background: rgba(232, 180, 162, 0.25);
-    color: #7a4a3e;
-    border: 1px solid rgba(232, 180, 162, 0.35);
-  }
-  
-  .qm-modal-title {
-    margin: 0;
-    font-size: 1.05rem;
-    font-weight: 900;
-    color: #3f2e28;
-  }
-  
-  .qm-modal-close {
-    width: 36px;
-    height: 36px;
-    border-radius: 12px;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    background: rgba(255, 255, 255, 0.75);
-    cursor: pointer;
-    font-size: 20px;
-    line-height: 1;
-  }
-  
-  .qm-modal-body {
-    padding: 14px 16px 6px;
-  }
-  
-  .qm-modal-text {
-    margin: 0;
-    color: rgba(63, 46, 40, 0.85);
-    line-height: 1.75;
-    font-weight: 600;
-    font-size: 0.98rem;
-  }
-  
+}
+
+.qm-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 10px;
+
+  background:
+    radial-gradient(520px 220px at 15% 10%, rgba(64, 1, 13, 0.14), transparent 60%),
+    radial-gradient(420px 200px at 85% 20%, rgba(136, 140, 140, 0.16), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #f5f5f4 100%);
+  border-bottom: 1px solid rgba(13, 13, 13, 0.06);
+}
+
+.qm-modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.qm-modal-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+
+  font-weight: 900;
+  user-select: none;
+
+  background: rgba(64, 1, 13, 0.10);
+  color: #40010D;
+  border: 1px solid rgba(64, 1, 13, 0.16);
+}
+
+.qm-modal-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: #0D0D0D;
+}
+
+.qm-modal-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+
+  border: 1px solid rgba(13, 13, 13, 0.10);
+  background: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+
+  font-size: 20px;
+  line-height: 1;
+  color: #0D0D0D;
+
+  transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+}
+
+.qm-modal-close:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.10);
+  background: #fff;
+}
+
+.qm-modal-body {
+  padding: 14px 16px 6px;
+}
+
+.qm-modal-text {
+  margin: 0;
+  color: rgba(13, 13, 13, 0.80);
+  line-height: 1.75;
+  font-weight: 600;
+  font-size: 0.98rem;
+}
+
+.qm-modal-actions {
+  padding: 12px 16px 16px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.qm-btn-confirm,
+.qm-btn-cancel {
+  border: none;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease,
+    opacity 0.14s ease;
+}
+
+/* ✅ Confirm = Burgundy */
+.qm-btn-confirm {
+  background: #40010D;
+  color: #F5F5F4;
+  box-shadow: 0 10px 24px rgba(64, 1, 13, 0.20);
+}
+.qm-btn-confirm:hover {
+  background: #2e0009;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(64, 1, 13, 0.26);
+}
+
+/* ✅ Cancel = clean neutral */
+.qm-btn-cancel {
+  background: rgba(245, 245, 244, 0.92);
+  color: #0D0D0D;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+}
+.qm-btn-cancel:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.10);
+  background: #fff;
+}
+
+/* ===== Variants (danger/success) ===== */
+.qm-modal-box.is-danger .qm-modal-icon {
+  background: rgba(211, 47, 47, 0.12);
+  color: #d32f2f;
+  border-color: rgba(211, 47, 47, 0.22);
+}
+.qm-modal-box.is-danger .qm-btn-confirm {
+  background: #d32f2f;
+  box-shadow: 0 10px 24px rgba(211, 47, 47, 0.20);
+}
+.qm-modal-box.is-danger .qm-btn-confirm:hover {
+  background: #b71c1c;
+}
+
+.qm-modal-box.is-success .qm-modal-icon {
+  background: rgba(46, 125, 50, 0.12);
+  color: #2e7d32;
+  border-color: rgba(46, 125, 50, 0.22);
+}
+.qm-modal-box.is-success .qm-btn-confirm {
+  background: #2e7d32;
+  box-shadow: 0 10px 24px rgba(46, 125, 50, 0.18);
+}
+.qm-modal-box.is-success .qm-btn-confirm:hover {
+  background: #1b5e20;
+}
+
+/* Responsive */
+@media (max-width: 520px) {
   .qm-modal-actions {
-    padding: 12px 16px 16px;
-    display: flex;
-    gap: 10px;
-    justify-content: flex-start;
+    justify-content: stretch;
   }
-  
   .qm-btn-confirm,
   .qm-btn-cancel {
-    border: none;
-    border-radius: 14px;
-    padding: 10px 14px;
-    font-weight: 900;
-    cursor: pointer;
-    transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease,
-      opacity 0.14s ease;
+    width: 100%;
   }
-  
-  .qm-btn-confirm {
-    background: var(--primary-color);
-    color: #fff;
-    box-shadow: 0 10px 24px rgba(232, 180, 162, 0.22);
-  }
-  .qm-btn-confirm:hover {
-    background: var(--secondary-color);
-    transform: translateY(-1px);
-  }
-  
-  .qm-btn-cancel {
-    background: rgba(255, 255, 255, 0.85);
-    color: #3f2e28;
-    border: 1px solid rgba(63, 46, 40, 0.18);
-  }
-  .qm-btn-cancel:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 12px 22px rgba(0, 0, 0, 0.08);
-  }
-  
-  /* Variants */
-  .qm-modal-box.is-danger .qm-modal-icon {
-    background: rgba(211, 47, 47, 0.12);
-    color: #d32f2f;
-    border-color: rgba(211, 47, 47, 0.22);
-  }
-  
-  .qm-modal-box.is-success .qm-modal-icon {
-    background: rgba(46, 125, 50, 0.12);
-    color: #2e7d32;
-    border-color: rgba(46, 125, 50, 0.22);
-  }
-  
+}

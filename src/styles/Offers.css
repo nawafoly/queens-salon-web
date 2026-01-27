@@ -1,12 +1,27 @@
 /* =========================================
    Offers.css (Scoped) - Queens Salon
    ✅ Scoped داخل .offers-page فقط
-   ✅ Light card island فوق دارك الموقع (متناسق)
+   ✅ Queens Palette self-contained داخل الصفحة
    ✅ No !important
 ========================================= */
 
-.offers-page {
-  /* الصفحة نفسها "جزيرة" ناعمة داخل الموقع الدارك */
+.offers-page{
+  /* ✅ Local tokens (داخل الصفحة فقط) */
+  --qs-black: #0D0D0D;
+  --qs-gray-1: #515659;
+  --qs-gray-2: #6E7372;
+  --qs-gray-3: #888C8C;
+  --qs-accent: #40010D;
+  --qs-offwhite: #F5F5F4;
+
+  --qs-text: var(--qs-offwhite);
+  --qs-border: rgba(245, 245, 244, 0.14);
+  --qs-shadow: 0 18px 44px rgba(0,0,0,.30);
+  --qs-shadow-soft: 0 12px 30px rgba(0,0,0,.22);
+
+  /* hover helper */
+  --qs-accent-hover: #4d0211;
+
   background:
     radial-gradient(1200px 520px at 20% 10%, rgba(64, 1, 13, 0.10), transparent 60%),
     radial-gradient(900px 520px at 85% 20%, rgba(136, 140, 140, 0.14), transparent 55%),
@@ -15,43 +30,39 @@
   padding: 18px 0;
   overflow-x: hidden;
   font-family: "Tajawal", "Cairo", sans-serif;
-
-  /* توحيد ألوان النص داخل الصفحة */
   color: var(--qs-text);
 }
 
-.offers-page * { box-sizing: border-box; }
+.offers-page *{ box-sizing: border-box; }
 
 /* --------- Helpers --------- */
-.offers-page .text-gray { color: rgba(245, 245, 244, 0.72); }
+.offers-page .text-gray{ color: rgba(245, 245, 244, 0.72); }
+.offers-page .text-primary{ color: rgba(245, 245, 244, 0.92); }
 
-.offers-page .text-primary { color: rgba(64, 1, 13, 0.95); }
-
-/* ✅ جراديانت نص حقيقي */
+/* ✅ جراديانت نص */
 .offers-page .text-gradient{
-  background: linear-gradient(135deg, rgba(245,245,244,0.98), rgba(136,140,140,0.9));
+  background: linear-gradient(135deg, rgba(245,245,244,0.98), rgba(136,140,140,0.90));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-.offers-page .animate-fade-in { animation: offersFadeIn 0.55s ease both; }
+.offers-page .animate-fade-in{ animation: offersFadeIn 0.55s ease both; }
 
-@keyframes offersFadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
+@keyframes offersFadeIn{
+  from{ opacity: 0; transform: translateY(10px); }
+  to{ opacity: 1; transform: translateY(0); }
 }
 
 /* --------- Sections backgrounds --------- */
-/* نخلي الأقسام لايت بشكل "كرت زجاجي" بدل أبيض صافي */
-.offers-page .bg-gradient-primary {
+.offers-page .bg-gradient-primary{
   background:
     radial-gradient(1200px 420px at 50% 0%, rgba(64, 1, 13, 0.14), transparent 60%),
     radial-gradient(900px 360px at 15% 30%, rgba(136, 140, 140, 0.10), transparent 55%),
     linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.08) 100%);
 }
 
-.offers-page .bg-gradient-hero {
+.offers-page .bg-gradient-hero{
   background:
     radial-gradient(1200px 420px at 60% 30%, rgba(64, 1, 13, 0.12), transparent 60%),
     radial-gradient(900px 420px at 10% 20%, rgba(136, 140, 140, 0.10), transparent 58%),
@@ -59,9 +70,9 @@
 }
 
 /* --------- HERO --------- */
-.offers-page .offers-hero { border-bottom: 1px solid var(--qs-border); }
+.offers-page .offers-hero{ border-bottom: 1px solid var(--qs-border); }
 
-.offers-page .offers-hero .hero-content {
+.offers-page .offers-hero .hero-content{
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -73,14 +84,14 @@
 }
 
 /* --------- Hero Stats --------- */
-.offers-page .hero-stats {
+.offers-page .hero-stats{
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 18px;
 }
 
-.offers-page .stat-item {
+.offers-page .stat-item{
   flex: 1;
   min-width: 140px;
   background: rgba(255,255,255,0.08);
@@ -90,30 +101,30 @@
   box-shadow: 0 6px 18px rgba(0,0,0,.22);
 }
 
-.offers-page .stat-number {
+.offers-page .stat-number{
   font-size: 26px;
   font-weight: 900;
   color: var(--qs-text);
 }
 
-.offers-page .stat-label {
+.offers-page .stat-label{
   font-size: 13px;
   color: rgba(245,245,244,.72);
 }
 
 /* --------- Grid --------- */
-.offers-page .cards-grid-2 {
+.offers-page .cards-grid-2{
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
 
-@media (max-width: 992px) {
-  .offers-page .cards-grid-2 { grid-template-columns: 1fr; }
+@media (max-width: 992px){
+  .offers-page .cards-grid-2{ grid-template-columns: 1fr; }
 }
 
 /* --------- Offer Card --------- */
-.offers-page .offer-card-enhanced {
+.offers-page .offer-card-enhanced{
   position: relative;
   border-radius: 28px;
   overflow: hidden;
@@ -124,18 +135,18 @@
   transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
 }
 
-.offers-page .offer-card-enhanced:hover {
+.offers-page .offer-card-enhanced:hover{
   transform: translateY(-2px);
   box-shadow: var(--qs-shadow);
 }
 
-.offers-page .offer-card-enhanced.expired {
+.offers-page .offer-card-enhanced.expired{
   opacity: .85;
   filter: grayscale(.25);
 }
 
 /* --------- Offer Badge --------- */
-.offers-page .offer-badge {
+.offers-page .offer-badge{
   position: absolute;
   top: 14px;
   right: 14px;
@@ -157,14 +168,14 @@
 }
 
 /* --------- Image --------- */
-.offers-page .offer-image {
+.offers-page .offer-image{
   height: 210px;
   background-size: cover;
   background-position: center;
   position: relative;
 }
 
-.offers-page .offer-image::after {
+.offers-page .offer-image::after{
   content: "";
   position: absolute;
   inset: 0;
@@ -172,9 +183,9 @@
 }
 
 /* --------- Content --------- */
-.offers-page .offer-content { padding: 16px 16px 12px; }
+.offers-page .offer-content{ padding: 16px 16px 12px; }
 
-.offers-page .offer-title {
+.offers-page .offer-title{
   margin: 2px 0 10px;
   font-size: 20px;
   font-weight: 900;
@@ -182,7 +193,7 @@
 }
 
 /* mini row */
-.offers-page .offer-mini-row {
+.offers-page .offer-mini-row{
   display: flex;
   gap: 10px;
   align-items: center;
@@ -192,7 +203,7 @@
 
 /* pills */
 .offers-page .discount-badge,
-.offers-page .save-badge {
+.offers-page .save-badge{
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -205,14 +216,14 @@
   color: var(--qs-text);
 }
 
-.offers-page .discount-badge {
+.offers-page .discount-badge{
   background: linear-gradient(135deg, rgba(64,1,13,.28), rgba(255,255,255,0.05));
 }
 
-.offers-page .save-badge b { font-weight: 900; letter-spacing: .3px; }
+.offers-page .save-badge b{ font-weight: 900; letter-spacing: .3px; }
 
 /* status pills */
-.offers-page .status-pill {
+.offers-page .status-pill{
   margin-inline-start: auto;
   padding: 7px 12px;
   border-radius: 999px;
@@ -221,11 +232,11 @@
   border: 1px solid rgba(255,255,255,0.14);
 }
 
-.offers-page .status-pill.active { background: rgba(34,197,94,.14); color: #86efac; }
-.offers-page .status-pill.ended  { background: rgba(239,68,68,.14); color: #fecaca; }
+.offers-page .status-pill.active{ background: rgba(34,197,94,.14); color: #86efac; }
+.offers-page .status-pill.ended{  background: rgba(239,68,68,.14); color: #fecaca; }
 
 /* Validity row */
-.offers-page .offer-validity {
+.offers-page .offer-validity{
   display: flex;
   align-items: center;
   gap: 8px;
@@ -239,20 +250,20 @@
 }
 
 /* Details */
-.offers-page .offer-details {
+.offers-page .offer-details{
   margin-top: 12px;
   border-top: 1px dashed rgba(255,255,255,.14);
   padding-top: 12px;
 }
 
-.offers-page .offer-description {
+.offers-page .offer-description{
   margin: 0 0 10px;
   color: rgba(245,245,244,.78);
   line-height: 1.7;
   font-size: 14px;
 }
 
-.offers-page .offer-features ul {
+.offers-page .offer-features ul{
   list-style: none;
   padding: 0;
   margin: 0;
@@ -260,7 +271,7 @@
   gap: 8px;
 }
 
-.offers-page .offer-features li {
+.offers-page .offer-features li{
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -272,7 +283,7 @@
   color: var(--qs-text);
 }
 
-.offers-page .check-dot {
+.offers-page .check-dot{
   width: 10px;
   height: 10px;
   border-radius: 999px;
@@ -282,10 +293,10 @@
 }
 
 /* Collapse behavior */
-.offers-page .offer-card-enhanced.collapsed .offer-details { display: none; }
+.offers-page .offer-card-enhanced.collapsed .offer-details{ display: none; }
 
 /* Toggle button */
-.offers-page .toggle-details {
+.offers-page .toggle-details{
   width: 100%;
   margin-top: 12px;
 
@@ -305,29 +316,44 @@
   transition: transform .15s ease, background .15s ease, filter .15s ease;
 }
 
-.offers-page .toggle-details:hover {
+.offers-page .toggle-details:hover{
   transform: translateY(-1px);
   background: rgba(255,255,255,.08);
 }
 
 /* --------- Buttons (scoped) --------- */
-.offers-page .btn { font-weight: 900; }
+.offers-page .btn{ font-weight: 900; }
 
 /* ✅ Primary داخل العروض يعتمد على لون Queens */
-.offers-page .btn-primary {
+.offers-page .btn-primary{
   background: var(--qs-accent);
   border: 1px solid rgba(255,255,255,0.14);
   color: var(--qs-offwhite);
   box-shadow: 0 10px 22px rgba(64, 1, 13, 0.28);
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease, background .15s ease;
 }
-.offers-page .btn-primary:hover {
+
+.offers-page .btn-primary:hover{
   background: var(--qs-accent-hover);
   filter: brightness(1.03);
   box-shadow: 0 14px 28px rgba(64, 1, 13, 0.35);
+  transform: translateY(-1px);
+}
+
+.offers-page .btn-primary:active{
+  transform: translateY(0);
+  box-shadow: 0 10px 22px rgba(64, 1, 13, 0.28);
+}
+
+.offers-page .btn-primary:focus-visible{
+  outline: none;
+  box-shadow:
+    0 14px 28px rgba(64, 1, 13, 0.35),
+    0 0 0 2px rgba(64, 1, 13, 0.22);
 }
 
 /* ✅ Outline زر زجاجي */
-.offers-page .btn-outline {
+.offers-page .btn-outline{
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.16);
   color: var(--qs-text);
@@ -342,13 +368,22 @@
   transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
 }
 
-.offers-page .btn-outline:hover {
+.offers-page .btn-outline:hover{
   background: rgba(255,255,255,0.10);
   transform: translateY(-1px);
   box-shadow: 0 10px 22px rgba(0,0,0,0.22);
 }
 
-.offers-page .btn-sm {
+.offers-page .btn-outline:active{
+  transform: translateY(0);
+}
+
+.offers-page .btn-outline:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(245, 245, 244, 0.18);
+}
+
+.offers-page .btn-sm{
   font-size: 13px;
   font-weight: 900;
 }
@@ -394,7 +429,7 @@
 }
 
 /* --------- CTA Bottom Buttons --------- */
-.offers-page .offers-cta .cta-actions {
+.offers-page .offers-cta .cta-actions{
   display: flex;
   gap: 14px;
   justify-content: center;
@@ -403,30 +438,66 @@
   margin-top: 18px;
 }
 
-.offers-page .offers-cta .cta-actions .btn {
+.offers-page .offers-cta .cta-actions .btn{
   min-width: 230px;
   padding: 14px 26px;
   line-height: 1;
   white-space: nowrap;
 }
 
+/* =========================
+   ✅ Bootstrap button cleanup (scoped)
+   - يخلي btn-outline / btn-primary ما تتعارض مع bootstrap
+========================= */
+.offers-page .btn{
+  border-radius: 999px;
+  border-width: 1px;
+}
+
+.offers-page .btn:focus{
+  box-shadow: none;
+}
+
+.offers-page .btn.btn-lg{
+  padding: 14px 26px;
+}
+
+/* --------- Expanded/Collapsed (Smooth) --------- */
+.offers-page .offer-card-enhanced .offer-details{
+  animation: offersDetailsIn .22s ease both;
+}
+
+@keyframes offersDetailsIn{
+  from{ opacity: 0; transform: translateY(6px); }
+  to{ opacity: 1; transform: translateY(0); }
+}
+
+/* --------- CTA Section polish --------- */
+.offers-page .offers-cta{
+  border-top: 1px solid rgba(255,255,255,0.12);
+}
+
+.offers-page .offers-cta .container{
+  padding-top: 4px;
+}
+
 /* --------- Responsive tweaks --------- */
-@media (max-width: 576px) {
-  .offers-page .offers-hero .hero-content {
+@media (max-width: 576px){
+  .offers-page .offers-hero .hero-content{
     padding: 18px 14px;
     border-radius: 22px;
   }
 
-  .offers-page .offer-content { padding: 14px 14px 12px; }
-  .offers-page .offer-title { font-size: 18px; }
-  .offers-page .offer-image { height: 190px; }
+  .offers-page .offer-content{ padding: 14px 14px 12px; }
+  .offers-page .offer-title{ font-size: 18px; }
+  .offers-page .offer-image{ height: 190px; }
 
   .offers-page .offers-cta-btn{
     width: 100%;
     max-width: 320px;
   }
 
-  .offers-page .offers-cta .cta-actions .btn {
+  .offers-page .offers-cta .cta-actions .btn{
     width: 100%;
     max-width: 320px;
     min-width: 0;

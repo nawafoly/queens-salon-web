@@ -1,5 +1,3 @@
-
-
 // src/pages/Offers.tsx
 import { useEffect, useMemo, useState } from "react";
 import emma from "../assets/images/emma.webp";
@@ -344,10 +342,7 @@ const Offers = () => {
               return (
                 <div key={offer.id}>
                   <div
-                    className={[
-                      "offer-card-enhanced",
-                      expanded ? "expanded" : "collapsed",
-                    ].join(" ")}
+                    className={["offer-card-enhanced", expanded ? "expanded" : "collapsed"].join(" ")}
                     style={{ animationDelay: `${index * 0.06}s` }}
                   >
                     <div className="offer-badge">
@@ -567,4 +562,3 @@ const Offers = () => {
 };
 
 export default Offers;
-

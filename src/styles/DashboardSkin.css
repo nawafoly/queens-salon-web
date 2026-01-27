@@ -4,27 +4,29 @@
    ✅ Scoped داخل .dashboard-skin فقط
    ✅ بدون تكرار/تضارب (قدر الإمكان)
    ✅ يعزل Bootstrap داخل الداشبورد
+   ✅ Palette:
+      #0D0D0D, #515659, #6E7372, #888C8C, #40010D, #F5F5F4
 ========================================= */
 
 /* =========================
-   🔒 Bootstrap Isolation (Dashboard ONLY)
+   🔒 Bootstrap Isolation (Dashboard ONLY) - Queens
 ========================= */
 .dashboard-skin {
-  --bs-primary: #caa6dd;
-  --bs-primary-rgb: 202, 166, 221;
+  /* Bootstrap vars (dashboard scope only) */
+  --bs-primary: #40010D;
+  --bs-primary-rgb: 64, 1, 13;
 
-  --bs-secondary: #e8bda2;
-  --bs-secondary-rgb: 232, 189, 162;
+  --bs-secondary: #515659;
+  --bs-secondary-rgb: 81, 86, 89;
 
   --bs-link-color: inherit;
   --bs-link-hover-color: inherit;
 
-  --bs-border-color: rgba(255, 255, 255, 0.45);
-  --bs-body-color: #5a4a66;
+  --bs-border-color: rgba(13, 13, 13, 0.12);
+  --bs-body-color: #0D0D0D;
   --bs-body-bg: transparent;
 
-  --bs-light: rgba(255, 255, 255, 0.55);
-
+  --bs-light: rgba(245, 245, 244, 0.72);
 }
 
 /* 🚫 منع Bootstrap من تلوين nav-link داخل الداشبورد */
@@ -38,31 +40,38 @@
 }
 
 /* =========================
-   🌙 Dashboard Theme Variables (Scoped)
+   🌙 Dashboard Theme Variables (Scoped) - Queens
 ========================= */
 .dashboard-skin {
-  --dash-bg-1: #f3e9ff;
-  --dash-bg-2: #efe7ff;
-  --dash-bg-3: #e9e6ff;
+  /* Background base (only in DashboardSkin) */
+  --dash-bg-1: #ffffff;
+  --dash-bg-2: #F5F5F4;
+  --dash-bg-3: #F5F5F4;
 
-  --glass: rgba(255, 255, 255, 0.62);
-  --glass-strong: rgba(255, 255, 255, 0.78);
-  --glass-border: rgba(255, 255, 255, 0.65);
+  /* Glass */
+  --glass: rgba(245, 245, 244, 0.62);
+  --glass-strong: rgba(245, 245, 244, 0.78);
+  --glass-border: rgba(13, 13, 13, 0.10);
 
-  --text: #3a2f44;
-  --muted: rgba(58, 47, 68, 0.65);
+  /* Text */
+  --text: #0D0D0D;
+  --muted: rgba(81, 86, 89, 0.75);
 
-  --accent: #caa6ff;
-  --accent-ink: #6b3fa8;
+  /* Accent */
+  --accent: #40010D;
+  --accent-ink: #40010D;
 
-  --shadow: 0 18px 40px rgba(105, 60, 160, 0.10);
-  --shadow-soft: 0 12px 28px rgba(105, 60, 160, 0.08);
+  /* Shadows */
+  --shadow: 0 18px 40px rgba(13, 13, 13, 0.12);
+  --shadow-soft: 0 12px 28px rgba(13, 13, 13, 0.08);
 
+  /* Radii */
   --radius-xl: 22px;
   --radius-lg: 18px;
   --radius-md: 14px;
 
-  --line: rgba(120, 80, 170, 0.12);
+  /* Lines */
+  --line: rgba(13, 13, 13, 0.10);
 
   overflow: visible;
   /* ✅ لا نحط overflow هنا عشان sticky يشتغل */
@@ -78,14 +87,15 @@
 }
 
 /* =========================
-   ✅ Base Page
+   ✅ Base Page (DashboardSkin only)
 ========================= */
 .dashboard-skin.dashboard-page {
+  direction: rtl;
   min-height: 100vh;
   background:
-    radial-gradient(1200px 600px at 20% 10%, rgba(255, 255, 255, 0.60), transparent 60%),
-    radial-gradient(900px 520px at 70% 30%, rgba(255, 255, 255, 0.45), transparent 55%),
-    linear-gradient(135deg, var(--dash-bg-1) 0%, var(--dash-bg-2) 55%, var(--dash-bg-3) 100%);
+    radial-gradient(980px 520px at 12% 18%, rgba(64, 1, 13, 0.10), transparent 60%),
+    radial-gradient(820px 520px at 88% 22%, rgba(136, 140, 140, 0.12), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #F5F5F4 100%);
   font-family: "Tajawal", sans-serif;
   color: var(--text);
   overflow-x: hidden;
@@ -110,8 +120,8 @@
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  border: 4px solid rgba(90, 60, 150, 0.15);
-  border-top-color: rgba(90, 60, 150, 0.45);
+  border: 4px solid rgba(13, 13, 13, 0.10);
+  border-top-color: rgba(64, 1, 13, 0.55);
   animation: dashspin 1s linear infinite;
 }
 
@@ -142,9 +152,25 @@
 }
 
 /* =========================
+   ✅ Bootstrap Row/Col Overflow Fix (Dashboard only)
+   - يمنع negative margins اللي تسوي سكرول أفقي
+========================= */
+.dashboard-skin .row {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.dashboard-skin .container,
+.dashboard-skin .container-fluid {
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+}
+
+/* =========================
    ✅ Topbar (ONE + Sticky)
 ========================= */
 .dashboard-skin .dash-topbar {
+  position: relative;
   border-radius: var(--radius-xl);
   background: var(--glass-strong);
   border: 1px solid var(--glass-border);
@@ -204,20 +230,21 @@
   width: 40px;
   height: 40px;
   border-radius: 14px;
-  border: 1px solid rgba(140, 90, 190, 0.18);
-  background: rgba(255, 255, 255, 0.55);
-  box-shadow: 0 10px 20px rgba(105, 60, 160, 0.08);
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  background: rgba(245, 245, 244, 0.70);
+  box-shadow: 0 10px 20px rgba(13, 13, 13, 0.10);
   display: none;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: rgba(70, 50, 95, 0.82);
-  transition: transform .15s ease, background .15s ease;
+  color: rgba(13, 13, 13, 0.82);
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
 }
 
 .dashboard-skin .dash-topbar-toggle:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(245, 245, 244, 0.88);
+  border-color: rgba(64, 1, 13, 0.22);
 }
 
 @media (max-width: 767px) {
@@ -247,23 +274,23 @@
   place-items: center;
   gap: 8px;
   padding: 12px 10px 10px;
-  border-bottom: 1px solid rgba(140, 90, 190, 0.10);
+  border-bottom: 1px solid rgba(13, 13, 13, 0.08);
 }
 
 .dashboard-skin .sidebar-logo {
   width: 56px;
   height: 56px;
   object-fit: contain;
-  filter: drop-shadow(0 10px 18px rgba(105, 60, 160, 0.12));
+  filter: drop-shadow(0 10px 18px rgba(13, 13, 13, 0.12));
 }
 
 .dashboard-skin .user-info {
   margin-top: 12px;
   padding: 12px;
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.52);
-  border: 1px solid rgba(140, 90, 190, 0.10);
-  box-shadow: 0 14px 26px rgba(105, 60, 160, 0.06);
+  background: rgba(245, 245, 244, 0.62);
+  border: 1px solid rgba(13, 13, 13, 0.10);
+  box-shadow: 0 14px 26px rgba(13, 13, 13, 0.06);
 
   display: flex;
   align-items: center;
@@ -274,12 +301,12 @@
   width: 38px;
   height: 38px;
   border-radius: 14px;
-  background: rgba(215, 187, 255, 0.35);
-  border: 1px solid rgba(140, 90, 190, 0.14);
+  background: rgba(64, 1, 13, 0.12);
+  border: 1px solid rgba(64, 1, 13, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(70, 50, 95, 0.85);
+  color: rgba(64, 1, 13, 0.92);
 }
 
 .dashboard-skin .user-details h5 {
@@ -318,7 +345,7 @@
   border-radius: 16px;
 
   text-decoration: none;
-  color: rgba(58, 47, 68, 0.78) !important;
+  color: rgba(13, 13, 13, 0.78) !important;
   font-weight: 900;
   font-size: 14px;
 
@@ -335,17 +362,21 @@
 }
 
 .dashboard-skin .sidebar-nav .nav-link:hover {
-  background: rgba(255, 255, 255, 0.48) !important;
-  border-color: rgba(140, 90, 190, 0.10) !important;
+  background: rgba(245, 245, 244, 0.65) !important;
+  border-color: rgba(13, 13, 13, 0.10) !important;
   transform: translateY(-1px);
-  color: rgba(58, 47, 68, 0.92) !important;
+  color: rgba(13, 13, 13, 0.92) !important;
 }
 
 .dashboard-skin .sidebar-nav .nav-link.active {
-  background: linear-gradient(135deg, rgba(245, 231, 255, 0.78), rgba(255, 255, 255, 0.62)) !important;
-  border-color: rgba(190, 150, 255, 0.35) !important;
-  box-shadow: 0 16px 28px rgba(105, 60, 160, 0.08);
-  color: rgba(58, 47, 68, 0.95) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(64, 1, 13, 0.14),
+    rgba(245, 245, 244, 0.72)
+  ) !important;
+  border-color: rgba(64, 1, 13, 0.22) !important;
+  box-shadow: 0 16px 28px rgba(13, 13, 13, 0.10);
+  color: rgba(13, 13, 13, 0.95) !important;
 }
 
 /* Badge */
@@ -365,9 +396,9 @@
   justify-content: center;
   font-size: 12px;
   font-weight: 900;
-  color: rgba(70, 50, 95, 0.92);
-  background: rgba(215, 187, 255, 0.55);
-  border: 1px solid rgba(140, 90, 190, 0.18);
+  color: rgba(245, 245, 244, 0.95);
+  background: rgba(64, 1, 13, 0.85);
+  border: 1px solid rgba(64, 1, 13, 0.28);
 }
 
 /* =========================
@@ -376,7 +407,7 @@
 .dashboard-skin .dash-side-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(30, 16, 48, 0.28);
+  background: rgba(13, 13, 13, 0.28);
   z-index: 9998;
   backdrop-filter: blur(2px);
 }
@@ -422,11 +453,11 @@
     width: 38px;
     height: 38px;
     border-radius: 14px;
-    border: 1px solid rgba(140, 90, 190, 0.16);
-    background: rgba(255, 255, 255, 0.65);
+    border: 1px solid rgba(13, 13, 13, 0.14);
+    background: rgba(245, 245, 244, 0.78);
     align-items: center;
     justify-content: center;
-    color: rgba(58, 47, 68, 0.85);
+    color: rgba(13, 13, 13, 0.85);
     cursor: pointer;
     z-index: 2;
   }
@@ -441,9 +472,9 @@
 ========================= */
 .dashboard-skin .form-control,
 .dashboard-skin .form-select {
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  color: #5a4a66;
+  background: rgba(245, 245, 244, 0.86);
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  color: #0D0D0D;
 }
 
 /* =========================================
@@ -458,8 +489,8 @@
   font-size: 14px;
   font-weight: 800;
   line-height: 1;
-  border: 1px solid rgba(0, 0, 0, 0.07);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(13, 13, 13, 0.10);
+  box-shadow: 0 10px 22px rgba(13, 13, 13, 0.06);
   white-space: nowrap;
 }
 
@@ -482,28 +513,31 @@
 }
 
 .dashboard-skin .status-badge.completed {
-  background: #EDEBFF;
-  color: #4C1D95;
-  border-color: rgba(76, 29, 149, 0.18);
+  background: rgba(64, 1, 13, 0.10);
+  color: rgba(64, 1, 13, 0.95);
+  border-color: rgba(64, 1, 13, 0.22);
 }
 
 /* =========================
-   ✅ Buttons (dash-btn / exp-btn)
+   ✅ Buttons (dash-btn / exp-btn) - Queens
 ========================= */
 .dashboard-skin .dash-btn,
 .dashboard-skin .exp-btn {
-  border: 1px solid rgba(124, 58, 237, 0.16);
-  background: rgba(255, 255, 255, 0.92);
-  color: #3f3d56;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  background: rgba(245, 245, 244, 0.86);
+  color: rgba(13, 13, 13, 0.92);
   border-radius: 12px;
 
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
 
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 
   transition: transform .15s ease, background .15s ease, border-color .15s ease;
   user-select: none;
@@ -511,9 +545,9 @@
 
 .dashboard-skin .dash-btn:hover,
 .dashboard-skin .exp-btn:hover {
-  background: #f4f2fd;
+  background: rgba(245, 245, 244, 0.95);
   transform: translateY(-1px);
-  border-color: rgba(124, 58, 237, 0.26);
+  border-color: rgba(64, 1, 13, 0.22);
 }
 
 .dashboard-skin .dash-btn {
@@ -534,28 +568,28 @@
   align-items: center;
   gap: 8px;
 
-  background: rgba(139, 92, 246, 0.08);
-  color: #6d28d9;
+  background: rgba(64, 1, 13, 0.10);
+  color: rgba(64, 1, 13, 0.98);
 
-  border: 1px solid rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(64, 1, 13, 0.22);
   transition: all 0.2s ease;
 }
 
 .dashboard-skin .dash-btn.primary:hover,
 .dashboard-skin .exp-btn.primary:hover {
-  background: rgba(139, 92, 246, 0.14);
-  border-color: rgba(139, 92, 246, 0.28);
+  background: rgba(64, 1, 13, 0.14);
+  border-color: rgba(64, 1, 13, 0.30);
 }
 
 .dashboard-skin .dash-btn.primary:active,
 .dashboard-skin .exp-btn.primary:active {
-  background: rgba(139, 92, 246, 0.18);
+  background: rgba(64, 1, 13, 0.18);
 }
 
 .dashboard-skin .dash-btn.primary:focus-visible,
 .dashboard-skin .exp-btn.primary:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.22);
+  box-shadow: 0 0 0 2px rgba(64, 1, 13, 0.18);
 }
 
 .dashboard-skin .dash-btn svg,
@@ -566,7 +600,7 @@
 
 .dashboard-skin .dash-btn.ghost,
 .dashboard-skin .exp-btn.ghost {
-  background: rgba(255, 255, 255, 0.70);
+  background: rgba(245, 245, 244, 0.78);
 }
 
 .dashboard-skin .dash-btn.danger,
@@ -580,6 +614,7 @@
 .dashboard-skin .exp-btn.danger:hover {
   background: rgba(239, 68, 68, 0.14);
   border-color: rgba(239, 68, 68, 0.30);
+  transform: translateY(-1px);
 }
 
 .dashboard-skin .dash-btn.sm {
@@ -612,12 +647,12 @@
   width: 8px;
   height: 8px;
   transform: translateY(-55%) rotate(45deg);
-  border-right: 2px solid rgba(124, 58, 237, 0.9);
-  border-bottom: 2px solid rgba(124, 58, 237, 0.9);
+  border-right: 2px solid rgba(64, 1, 13, 0.78);
+  border-bottom: 2px solid rgba(64, 1, 13, 0.78);
 }
 
 /* =========================
-   ✅ Select (Unified) - SINGLE SOURCE
+   ✅ Select (Unified) - Queens
 ========================= */
 .dashboard-skin .dash-select {
   width: 100%;
@@ -631,14 +666,14 @@
   padding: 10px 12px;
   border-radius: 14px;
 
-  background: rgba(255, 255, 255, 0.90);
-  border: 1px solid rgba(124, 58, 237, 0.18);
+  background: rgba(245, 245, 244, 0.92);
+  border: 1px solid rgba(13, 13, 13, 0.12);
   box-shadow: none;
 
   font-family: "Tajawal", sans-serif;
   font-size: 14px;
-  font-weight: 600;
-  color: #3a2a42;
+  font-weight: 700;
+  color: #0D0D0D;
 
   cursor: pointer;
   text-align: right;
@@ -654,24 +689,24 @@
 }
 
 .dashboard-skin .dash-select:hover {
-  border-color: rgba(124, 58, 237, 0.22);
-  box-shadow: 0 12px 28px rgba(124, 58, 237, 0.14);
+  border-color: rgba(64, 1, 13, 0.22);
+  box-shadow: 0 12px 28px rgba(13, 13, 13, 0.10);
 }
 
 .dashboard-skin .dash-select:focus,
 .dashboard-skin .dash-select:focus-visible {
   outline: none !important;
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.12) !important;
-  border-color: rgba(124, 58, 237, 0.28) !important;
-  background: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: 0 0 0 2px rgba(64, 1, 13, 0.16) !important;
+  border-color: rgba(64, 1, 13, 0.28) !important;
+  background: rgba(245, 245, 244, 0.95) !important;
 }
 
 .dashboard-skin .dash-select:active {
-  background: rgba(255, 255, 255, 0.92) !important;
+  background: rgba(245, 245, 244, 0.95) !important;
   box-shadow: none !important;
 }
 
-/* سهم بسيط (✅ بدون مسافة داخل pseudo-element) */
+/* سهم بسيط */
 .dashboard-skin .dash-select::after {
   content: "▾";
   font-size: 14px;
@@ -696,8 +731,8 @@
   width: 8px;
   height: 8px;
   transform: rotate(45deg);
-  border-right: 2px solid rgba(124, 58, 237, 0.85);
-  border-bottom: 2px solid rgba(124, 58, 237, 0.85);
+  border-right: 2px solid rgba(64, 1, 13, 0.78);
+  border-bottom: 2px solid rgba(64, 1, 13, 0.78);
   pointer-events: none;
 }
 
@@ -733,8 +768,8 @@
   width: 8px;
   height: 8px;
   transform: translateY(-55%) rotate(45deg);
-  border-right: 2px solid rgba(124, 58, 237, 0.9);
-  border-bottom: 2px solid rgba(124, 58, 237, 0.9);
+  border-right: 2px solid rgba(64, 1, 13, 0.78);
+  border-bottom: 2px solid rgba(64, 1, 13, 0.78);
   pointer-events: none;
 }
 
@@ -749,11 +784,11 @@
   max-height: 280px;
   overflow: auto;
 
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(124, 58, 237, 0.14);
+  background: rgba(245, 245, 244, 0.92);
+  border: 1px solid rgba(13, 13, 13, 0.12);
   border-radius: 16px;
 
-  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 22px 60px rgba(13, 13, 13, 0.14);
   backdrop-filter: blur(10px);
 
   padding: 6px;
@@ -770,8 +805,8 @@
   border-radius: 12px;
 
   text-align: right;
-  color: #3a2a42;
-  font-weight: 600;
+  color: #0D0D0D;
+  font-weight: 700;
   cursor: pointer;
 
   display: flex;
@@ -783,76 +818,41 @@
 }
 
 .dashboard-skin .dash-dd-item:hover {
-  background: rgba(26, 12, 51, 0.08);
+  background: rgba(13, 13, 13, 0.06);
 }
 
-/* menu scrollbar */
+/* menu scrollbar (hidden) */
 .dashboard-skin .dash-dd-menu::-webkit-scrollbar {
-  width: 10px;
-}
-
-.dashboard-skin .dash-dd-menu::-webkit-scrollbar-track {
-  background: rgba(124, 58, 237, 0.08);
-  border-radius: 999px;
-}
-
-.dashboard-skin .dash-dd-menu::-webkit-scrollbar-thumb {
-  background: rgba(124, 58, 237, 0.35);
-  border-radius: 999px;
-}
-
-.dashboard-skin .dash-dd-menu::-webkit-scrollbar-thumb:hover {
-  background: rgba(124, 58, 237, 0.55);
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* =========================
-   ✅ Scrollbar for native select (اختياري)
+   ✅ Clients form helpers (scoped)
 ========================= */
-.dashboard-skin select::-webkit-scrollbar {
-  width: 10px;
-}
-
-.dashboard-skin select::-webkit-scrollbar-track {
-  background: rgba(124, 58, 237, 0.10);
-  border-radius: 999px;
-}
-
-.dashboard-skin select::-webkit-scrollbar-thumb {
-  background: rgba(124, 58, 237, 0.45);
-  border-radius: 999px;
-}
-
-.dashboard-skin select::-webkit-scrollbar-thumb:hover {
-  background: rgba(124, 58, 237, 0.65);
-}
-
-/* ✅ خلي صف الفورم يمسك العناصر صح */
-.clients-page .cl-form {
+.dashboard-skin .clients-page .cl-form {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   align-items: center;
 }
 
-/* ✅ الدروب داون (الفرز) لا يتمدد عرض الشاشة */
-.clients-page .cl-form .cl-sort-wrap {
+.dashboard-skin .clients-page .cl-form .cl-sort-wrap {
   flex: 0 0 auto;
   width: 240px;
   position: relative;
 }
 
-/* ✅ زر الدروب داون يكون بعرض الحاوية */
-.clients-page .cl-form .cl-sort-wrap .dash-select {
+.dashboard-skin .clients-page .cl-form .cl-sort-wrap .dash-select {
   width: 100%;
 }
 
-/* ✅ القائمة تنفتح تحت الزر وبنفس العرض */
-.clients-page .cl-form .cl-sort-wrap .dash-dd-menu {
+.dashboard-skin .clients-page .cl-form .cl-sort-wrap .dash-dd-menu {
   width: 100%;
 }
 
 /* =========================
-   ✅ REMOVE "Abu Al-Ghabash" Scrollbars (FINAL)
+   ✅ REMOVE Scrollbars (Dashboard only) - FINAL
 ========================= */
 
 /* 1) امنع أي overflow أفقي يطلع شريط تحت */
@@ -880,7 +880,7 @@
   }
 }
 
-/* 3) اي شيء داخلي يسوي scroll (dropdown/menu/select) نخفي الشريط */
+/* 3) اي شيء داخلي يسوي scroll نخفي الشريط */
 .dashboard-skin .dash-dd-menu,
 .dashboard-skin select,
 .dashboard-skin .dashboard-inner,
@@ -900,17 +900,11 @@
 /* =========================
    ✅ Topbar: اجعل زر القائمة ثابت يمين (Mobile)
 ========================= */
-.dashboard-skin .dash-topbar {
-  position: relative; /* مهم عشان absolute يشتغل داخلها */
-}
-
 @media (max-width: 767px) {
-  /* مساحة لزر القائمة يمين */
   .dashboard-skin .dash-topbar {
     padding-right: 60px;
   }
 
-  /* زر القائمة يصير فوق يمين */
   .dashboard-skin .dash-topbar-toggle {
     display: inline-flex;
     position: absolute;
@@ -919,7 +913,6 @@
     z-index: 2;
   }
 
-  /* خفف الزحمة داخل اليسار */
   .dashboard-skin .dash-topbar-left {
     width: 100%;
     gap: 10px;
@@ -932,7 +925,7 @@
 .dashboard-skin .sidebar-footer {
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid rgba(140, 90, 190, 0.12);
+  border-top: 1px solid rgba(13, 13, 13, 0.10);
   display: grid;
   gap: 10px;
 }
@@ -948,20 +941,20 @@
 .dashboard-skin .sidebar-footer .exp-btn.home {
   background: linear-gradient(
     135deg,
-    rgba(202, 166, 221, 0.22),
-    rgba(255, 255, 255, 0.85)
+    rgba(64, 1, 13, 0.14),
+    rgba(245, 245, 244, 0.92)
   );
-  border-color: rgba(190, 150, 255, 0.28);
-  color: rgba(58, 47, 68, 0.95);
-  box-shadow: 0 16px 28px rgba(105, 60, 160, 0.10);
+  border-color: rgba(64, 1, 13, 0.22);
+  color: rgba(13, 13, 13, 0.95);
+  box-shadow: 0 16px 28px rgba(13, 13, 13, 0.10);
 }
 
 .dashboard-skin .sidebar-footer .exp-btn.home:hover {
   transform: translateY(-1px);
   background: linear-gradient(
     135deg,
-    rgba(202, 166, 221, 0.28),
-    rgba(255, 255, 255, 0.92)
+    rgba(64, 1, 13, 0.18),
+    rgba(245, 245, 244, 0.98)
   );
 }
 
