@@ -12,10 +12,27 @@
     color: var(--qs-offwhite);
   
     background:
-      radial-gradient(900px 520px at 15% 20%, rgba(255,255,255,0.05), transparent 60%),
-      radial-gradient(800px 450px at 85% 25%, rgba(64,1,13,0.18), transparent 55%),
-      linear-gradient(180deg, var(--qs-black) 0%, #090909 100%);
+      /* لمسة مادة خفيفة */
+      radial-gradient(
+        900px 520px at 15% 20%,
+        rgba(255,255,255,0.06),
+        transparent 60%
+      ),
+  
+      radial-gradient(
+        800px 450px at 85% 25%,
+        rgba(64,1,13,0.10),
+        transparent 55%
+      ),
+  
+      /* أسود فاتح ومريح */
+      linear-gradient(
+        180deg,
+        #141414 0%,
+        #1b1b1b 100%
+      );
   }
+  
   
   /* ====== Titles ====== */
   .about-page .section-title{

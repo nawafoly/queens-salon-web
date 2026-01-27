@@ -20,6 +20,7 @@ export type UiRole =
   | "reception"
   | "staff"
   | "client"
+  | "pending"
   | "guest";
 
 export type UserProfile = {
@@ -74,6 +75,7 @@ function normalizeRole(roleRaw: unknown): UiRole {
     r === "reception" ||
     r === "staff" ||
     r === "client" ||
+    r === "pending" ||
     r === "guest"
   ) {
     return r as UiRole;
@@ -86,6 +88,7 @@ function buildDefaultName(role: UiRole) {
   if (role === "owner" || role === "admin") return "مدير الصالون";
   if (role === "reception" || role === "staff") return "موظفة";
   if (role === "client") return "عميلة";
+  if (role === "pending") return "حساب إداري (بانتظار التفعيل)";
   return "مستخدم";
 }
 
@@ -207,7 +210,14 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
   if (snapSalon.exists()) {
     const data = snapSalon.data() as any;
 
+    const active = data?.active !== false; // الافتراضي true
+
     let role = normalizeRole(data?.role);
+
+    // ✅ إذا غير مفعّل => Pending (حتى لو role مكتوب admin بالغلط)
+    if (!active) role = "pending";
+
+    // ✅ Bootstrap يفرض owner دائماً
     if (isBootstrap) role = "owner";
 
     let name =
@@ -228,7 +238,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       city: safeStr(data?.city),
       birthdate: safeStr(data?.birthdate),
       role,
-      active: data?.active !== false,
+      active,
       membershipId: safeStr(data?.membershipId),
       membershipPercent:
         typeof data?.membershipPercent === "number" ? data.membershipPercent : 0,
@@ -236,14 +246,18 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       updatedAt: data?.updatedAt,
     };
 
-    // ✅ patch خفيف: فقط حقول ناقصة — ولا نغير role إلا bootstrap
+    // ✅ patch خفيف: فقط حقول ناقصة — ولا نغير role إلا bootstrap أو role غير موجود
     const patch: any = {};
     if (!safeStr(data?.email) && authEmail) patch.email = authEmail;
     if (!safeStr(data?.name) || data?.name === "مستخدم") patch.name = name;
     if (!safeStr(data?.displayName) || data?.displayName === "مستخدم") patch.displayName = name;
 
-    // role: فقط لو ما كان موجود أو bootstrap يفرض owner
+    // role:
+    // - لو ما كان موجود => نكتب role المحسوب
+    // - لو غير مفعّل => نثبت pending
+    // - لو bootstrap => نثبت owner
     if (!data?.role) patch.role = role;
+    if (!active && String(data?.role || "").toLowerCase().trim() !== "pending") patch.role = "pending";
     if (isBootstrap && String(data?.role || "").toLowerCase().trim() !== "owner") patch.role = "owner";
 
     if (Object.keys(patch).length) {
@@ -283,16 +297,18 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
         inviteId = invite.id;
         const invRole = normalizeRole(invite.data?.role);
         if (invRole !== "guest") role = invRole;
-        active = invite.data?.active !== false; // لو false => Pending
+
+        active = invite.data?.active !== false;
+
+        // ✅ لو الدعوة غير مفعلة => Pending
+        if (!active) role = "pending";
       }
     } catch {
       // ignore
     }
   }
 
-  const name =
-    authDisplayName ||
-    (role === "owner" || role === "admin" ? "مدير الصالون" : buildDefaultName(role));
+  const name = authDisplayName || buildDefaultName(role);
 
   const membershipId =
     role === "client"
@@ -438,6 +454,7 @@ export async function debugWhoAmI() {
     console.log("✅ salons/main/users doc exists:", snap.exists());
     console.log("✅ salons/main/users data:", data);
     console.log("✅ normalized role:", normalizeRole(data?.role));
+    console.log("✅ active:", data?.active !== false);
 
     return { uid: u.uid, email: u.email, data, role: normalizeRole(data?.role) };
   } catch (e) {
@@ -445,5 +462,3 @@ export async function debugWhoAmI() {
     return null;
   }
 }
-
-

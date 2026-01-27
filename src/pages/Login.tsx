@@ -1,5 +1,3 @@
-
-
 // src/pages/Login.tsx
 import React, { useState } from "react";
 import logoBelak from "../assets/images/ssunnamed.png";
@@ -115,9 +113,7 @@ async function ensureAdminSessionFromUsers(params: {
           uid,
           linkedUid: uid,
           email,
-          name: String(
-            data?.displayName || data?.name || displayName || ""
-          ).trim(),
+          name: String(data?.displayName || data?.name || displayName || "").trim(),
           role: role === "pending" ? "pending" : role,
           active: role === "pending" ? false : true,
           showOnAbout: false,
@@ -217,6 +213,9 @@ const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // ✅ جديد: رسالة نجاح (عشان تعرف إن العملية تمت)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
   const navigate = useNavigate();
 
   // مساعدة: التحقق من الجوال والإيميل
@@ -248,17 +247,14 @@ const Login: React.FC = () => {
   const storeFirebaseSession = (
     profile: UserProfile | (Omit<UserProfile, "role"> & { role: any })
   ) => {
-    const uiRole = String((profile as any).role || "")
-      .toLowerCase()
-      .trim() as UiRole;
+    const uiRole = String((profile as any).role || "").toLowerCase().trim() as UiRole;
 
     // تنظيف أي جلسة local قديمة
     localStorage.removeItem("currentUser");
 
     // ✅ دايم نخزن الأساسيات (جلسة)
     const finalName =
-      String((profile as any).name || "").trim() ||
-      defaultNameByRole(String(uiRole));
+      String((profile as any).name || "").trim() || defaultNameByRole(String(uiRole));
 
     localStorage.setItem("authToken", "firebase");
     localStorage.setItem("userUid", String((profile as any).uid || ""));
@@ -266,19 +262,15 @@ const Login: React.FC = () => {
     localStorage.setItem("userName", finalName);
     localStorage.setItem("showWelcome", "true");
 
-    if ((profile as any).email)
-      localStorage.setItem("userEmail", String((profile as any).email));
-    if ((profile as any).phone)
-      localStorage.setItem("userPhone", String((profile as any).phone));
+    if ((profile as any).email) localStorage.setItem("userEmail", String((profile as any).email));
+    if ((profile as any).phone) localStorage.setItem("userPhone", String((profile as any).phone));
 
     // ✅ auth_user للجميع (لأن الداشبورد يحتاجه)
     localStorage.setItem(
       "auth_user",
       JSON.stringify({
         uid: String((profile as any).uid || ""),
-        email: String(
-          (profile as any).email || auth.currentUser?.email || ""
-        ),
+        email: String((profile as any).email || auth.currentUser?.email || ""),
         role: String(uiRole),
         displayName: finalName,
       })
@@ -329,11 +321,13 @@ const Login: React.FC = () => {
 
     window.dispatchEvent(new Event("authChanged"));
   };
+
   // ✅ تسجيل الدخول
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg(null);
+    setSuccessMsg(null);
 
     try {
       const identifier = loginData.identifier.trim();
@@ -372,6 +366,8 @@ const Login: React.FC = () => {
 
           storeFirebaseSession(profileForSession);
 
+          setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
+
           // ✅ توجيه
           if (role === "pending") {
             navigate("/dashboard-pending", { replace: true });
@@ -399,6 +395,8 @@ const Login: React.FC = () => {
 
         storeFirebaseSession(profile);
 
+        setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
+
         // توجيه حسب الدور
         if (canAccessDashboard(profile.role)) {
           navigate("/dashboard/overview", { replace: true });
@@ -420,6 +418,7 @@ const Login: React.FC = () => {
 
         if (user) {
           storeClientSessionLegacy(user);
+          setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
           navigate("/profile", { replace: true });
           return;
         }
@@ -440,6 +439,7 @@ const Login: React.FC = () => {
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMsg(null);
+    setSuccessMsg(null);
 
     if (!isPhone(registerData.phone)) {
       setErrorMsg("رقم الجوال يجب أن يبدأ بـ 05 ويكون مكون من 10 أرقام.");
@@ -487,6 +487,8 @@ const Login: React.FC = () => {
 
         storeFirebaseSession(profileForSession);
 
+        setSuccessMsg("تم إنشاء الحساب الإداري بنجاح ✅");
+
         // ✅ توجيه الإداريات
         navigate("/dashboard-pending", { replace: true });
         return;
@@ -513,6 +515,8 @@ const Login: React.FC = () => {
 
       // ✅ 6) خزّن الجلسة
       storeFirebaseSession(latest);
+
+      setSuccessMsg("تم إنشاء الحساب بنجاح ✅");
 
       // ✅ 7) توجيه العميلة
       navigate("/profile", { replace: true });
@@ -594,6 +598,7 @@ const Login: React.FC = () => {
               </div>
 
               {errorMsg && <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>}
+              {successMsg && <div style={{ color: "green", marginBottom: 8 }}>{successMsg}</div>}
 
               <button
                 type="submit"
@@ -739,6 +744,7 @@ const Login: React.FC = () => {
               </div>
 
               {errorMsg && <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>}
+              {successMsg && <div style={{ color: "green", marginBottom: 8 }}>{successMsg}</div>}
 
               <button
                 type="submit"
@@ -774,7 +780,11 @@ const Login: React.FC = () => {
                       fontWeight: "bold",
                       marginRight: 5,
                     }}
-                    onClick={() => setIsRegister(true)}
+                    onClick={() => {
+                      setErrorMsg(null);
+                      setSuccessMsg(null);
+                      setIsRegister(true);
+                    }}
                     type="button"
                   >
                     سجل الآن
@@ -792,7 +802,11 @@ const Login: React.FC = () => {
                       fontWeight: "bold",
                       marginRight: 5,
                     }}
-                    onClick={() => setIsRegister(false)}
+                    onClick={() => {
+                      setErrorMsg(null);
+                      setSuccessMsg(null);
+                      setIsRegister(false);
+                    }}
                     type="button"
                   >
                     تسجيل دخول
@@ -813,4 +827,3 @@ const Login: React.FC = () => {
 };
 
 export default Login;
-
