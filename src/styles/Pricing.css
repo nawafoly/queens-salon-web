@@ -1,9 +1,22 @@
 /* src/styles/Pricing.css */
 
+/* =========================================
+   Pricing.css (Scoped) - Queens Salon
+   ✅ جزيرة لايت داخل الدارك مثل Offers
+   ✅ يستخدم QS tokens
+   ✅ بدون !important
+========================================= */
+
 .pricing-page {
-  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  /* "جزيرة" فوق الدارك */
+  background:
+    radial-gradient(1200px 520px at 20% 10%, rgba(64, 1, 13, 0.10), transparent 60%),
+    radial-gradient(900px 520px at 85% 20%, rgba(136, 140, 140, 0.14), transparent 55%),
+    linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%);
   padding: 2.2rem 0 2.5rem;
   direction: rtl;
+  min-height: 100vh;
+  color: var(--qs-text);
 }
 
 .pricing-header {
@@ -12,16 +25,21 @@
 
 .pricing-title {
   font-size: 2rem;
-  color: var(--text-color);
-  font-weight: 800;
+  color: var(--qs-text);
+  font-weight: 900;
   margin-bottom: 0.35rem;
 }
 
 .pricing-subtitle {
-  color: var(--text-color);
-  opacity: 0.85;
+  color: rgba(245, 245, 244, 0.80);
   font-size: 1.05rem;
   margin: 0;
+}
+
+.pricing-hint {
+  margin-top: 8px;
+  font-size: 14px;
+  opacity: 0.8;
 }
 
 /* ===== Cards Grid ===== */
@@ -32,20 +50,22 @@
   margin-top: 1.2rem;
 }
 
+/* Card */
 .pricing-card {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(180, 139, 123, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 22px;
   padding: 1rem 1rem 0.85rem;
   text-align: right;
   cursor: pointer;
-  box-shadow: 0 8px 26px rgba(180, 139, 123, 0.08);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.25);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
 .pricing-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 12px 34px rgba(180, 139, 123, 0.14);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+  background: rgba(255, 255, 255, 0.09);
 }
 
 .card-top {
@@ -61,53 +81,38 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
-  color: var(--primary-color);
-  box-shadow: 0 6px 18px rgba(180, 139, 123, 0.10);
+  background: rgba(255,255,255,0.08);
+  color: var(--qs-text);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.22);
   flex: 0 0 auto;
   font-size: 1.1rem;
+  border: 1px solid rgba(255,255,255,0.12);
 }
 
 /* ✅ يشتغل مع TSX: className={`card-icon card-icon-${s.color}`} */
 .card-icon.card-icon-primary,
-.card-icon.card-icon-secondary,
-.card-icon.card-icon-accent,
-.card-icon.card-icon-info,
-.card-icon.card-icon-warning,
-.modal-icon.card-icon-primary,
-.modal-icon.card-icon-secondary,
-.modal-icon.card-icon-accent,
-.modal-icon.card-icon-info,
-.modal-icon.card-icon-warning {
-  background: linear-gradient(135deg, #fef6f2, #fdeae3 100%);
-  color: var(--primary-color);
+.modal-icon.card-icon-primary {
+  background: linear-gradient(135deg, rgba(64,1,13,0.35), rgba(255,255,255,0.06));
 }
 
-/* (اختياري) لو تبغى كل لون يطلع بدرجة مختلفة خفيفة */
-/* primary */
-.card-icon.card-icon-primary,
-.modal-icon.card-icon-primary {
-  background: linear-gradient(135deg, #fef6f2, #fdeae3 100%);
-}
-/* secondary */
 .card-icon.card-icon-secondary,
 .modal-icon.card-icon-secondary {
-  background: linear-gradient(135deg, #f2fbff, #e7f3ff 100%);
+  background: linear-gradient(135deg, rgba(136,140,140,0.22), rgba(255,255,255,0.06));
 }
-/* accent */
+
 .card-icon.card-icon-accent,
 .modal-icon.card-icon-accent {
-  background: linear-gradient(135deg, #fff3fb, #ffe4f4 100%);
+  background: linear-gradient(135deg, rgba(64,1,13,0.28), rgba(136,140,140,0.14));
 }
-/* info */
+
 .card-icon.card-icon-info,
 .modal-icon.card-icon-info {
-  background: linear-gradient(135deg, #f3fff9, #e6fff2 100%);
+  background: linear-gradient(135deg, rgba(245,245,244,0.14), rgba(136,140,140,0.14));
 }
-/* warning */
+
 .card-icon.card-icon-warning,
 .modal-icon.card-icon-warning {
-  background: linear-gradient(135deg, #fff9ef, #ffeccd 100%);
+  background: linear-gradient(135deg, rgba(64,1,13,0.25), rgba(245,245,244,0.10));
 }
 
 .card-titleWrap {
@@ -115,8 +120,8 @@
 }
 
 .card-title {
-  font-weight: 800;
-  color: var(--text-strong);
+  font-weight: 900;
+  color: var(--qs-text);
   font-size: 1.08rem;
   margin-bottom: 0.35rem;
 }
@@ -129,16 +134,17 @@
 }
 
 .meta-pill {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(180, 139, 123, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   padding: 0.25rem 0.55rem;
   font-size: 0.9rem;
-  color: var(--text-color);
+  color: rgba(245, 245, 244, 0.85);
 }
 
 .meta-dot {
   opacity: 0.35;
+  color: rgba(245,245,244,0.65);
 }
 
 .card-cta {
@@ -147,16 +153,16 @@
   justify-content: space-between;
   margin-top: 0.9rem;
   padding-top: 0.8rem;
-  border-top: 1px dashed rgba(180, 139, 123, 0.20);
-  color: var(--secondary-color);
-  font-weight: 700;
+  border-top: 1px dashed rgba(255, 255, 255, 0.14);
+  color: rgba(245, 245, 244, 0.78);
+  font-weight: 800;
 }
 
 .cta-arrow {
   opacity: 0.85;
 }
 
-/* ===== Footer Notes (خفيفة) ===== */
+/* ===== Footer Notes ===== */
 .pricing-footer {
   margin-top: 1.2rem;
   display: grid;
@@ -167,49 +173,52 @@
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  color: #7c675b;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(180, 139, 123, 0.12);
+  color: rgba(245, 245, 244, 0.78);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 14px;
   padding: 0.7rem 0.9rem;
-  box-shadow: 0 6px 18px rgba(180, 139, 123, 0.06);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.22);
 }
 
 .note-item svg {
-  color: var(--secondary-color);
+  color: rgba(245,245,244,0.9);
 }
 
 /* ===== Modal Overlay ===== */
 .pricing-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(30, 18, 14, 0.28);
-  z-index: 999999; /* 🔥 أعلى من النافبار */
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 999999;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 18px;
-  isolation: isolate; /* 🔥 يمنع تداخل stacking */
+  isolation: isolate;
 }
 
 /* Modal Container */
 .pricing-modal {
   position: relative;
-  z-index: 1000000; /* 🔥 فوق الـ overlay نفسه */
+  z-index: 1000000;
   width: min(860px, 96vw);
   max-height: min(84vh, 720px);
-  background: #fff;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
   border-radius: 26px;
   overflow: hidden;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.45);
   display: flex;
   flex-direction: column;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 /* Header */
 .modal-header {
   padding: 1rem 1rem 0.9rem;
-  border-bottom: 1px solid rgba(180, 139, 123, 0.12);
+  border-bottom: 1px solid rgba(255,255,255,0.12);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -229,19 +238,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #fef6f2, #fdeae3 100%);
-  color: var(--primary-color);
-  box-shadow: 0 6px 18px rgba(180, 139, 123, 0.10);
+  color: var(--qs-text);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.12);
 }
 
 .modal-title {
   font-weight: 900;
-  color: var(--primary-color);
+  color: var(--qs-text);
   font-size: 1.12rem;
 }
 
 .modal-sub {
-  color: #7c675b;
+  color: rgba(245,245,244,0.72);
   font-size: 0.95rem;
   margin-top: 0.2rem;
 }
@@ -250,8 +259,9 @@
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  border: 1px solid rgba(180, 139, 123, 0.14);
-  background: #fff;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: var(--qs-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -267,27 +277,27 @@
 /* Category */
 .modal-category {
   padding: 0.85rem 0.85rem 0.6rem;
-  background: rgba(248, 236, 247, 0.35);
-  border: 1px solid rgba(180, 139, 123, 0.10);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 18px;
   margin-bottom: 0.9rem;
 }
 
 .modal-category-title {
   font-weight: 900;
-  color: var(--text-color);
+  color: var(--qs-text);
   margin-bottom: 0.65rem;
 }
 
-/* List rows - compact */
+/* List rows */
 .modal-list {
   display: grid;
   gap: 0.55rem;
 }
 
 .modal-row {
-  background: #fff;
-  border: 1px dashed rgba(180, 139, 123, 0.22);
+  background: rgba(255,255,255,0.06);
+  border: 1px dashed rgba(255,255,255,0.18);
   border-radius: 14px;
   padding: 0.6rem 0.75rem;
   display: flex;
@@ -297,20 +307,20 @@
 }
 
 .modal-name .name-main {
-  font-weight: 700;
-  color: var(--text-color);
+  font-weight: 800;
+  color: var(--qs-text);
   font-size: 0.98rem;
 }
 
 .modal-name .name-note {
   font-size: 0.88rem;
-  color: #8a7a70;
+  color: rgba(245,245,244,0.70);
   margin-top: 0.2rem;
 }
 
 .modal-price {
   font-weight: 900;
-  color: var(--info-color-soft);
+  color: rgba(245,245,244,0.92);
   white-space: nowrap;
   font-size: 0.98rem;
 }
@@ -318,36 +328,33 @@
 /* Footer */
 .modal-footer {
   padding: 0.85rem 1rem 1rem;
-  border-top: 1px solid rgba(180, 139, 123, 0.12);
+  border-top: 1px solid rgba(255,255,255,0.12);
   display: flex;
   justify-content: flex-end;
 }
 
 .modal-primary {
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
+  background: rgba(64, 1, 13, 0.86);
+  color: var(--qs-offwhite);
+  border: 1px solid rgba(255,255,255,0.16);
   border-radius: 999px;
   padding: 0.65rem 1.4rem;
-  font-weight: 800;
+  font-weight: 900;
   cursor: pointer;
-  transition: transform 0.18s ease, background 0.18s ease;
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 12px 28px rgba(64,1,13,0.28);
 }
 
 .modal-primary:hover {
-  background: var(--secondary-color);
+  background: rgba(64, 1, 13, 0.95);
   transform: translateY(-1px);
+  box-shadow: 0 16px 34px rgba(64,1,13,0.36);
 }
 
 /* ===== Mobile => Bottom Sheet ===== */
 @media (max-width: 768px) {
-  .pricing-title {
-    font-size: 1.35rem;
-  }
-
-  .pricing-subtitle {
-    font-size: 0.98rem;
-  }
+  .pricing-title { font-size: 1.35rem; }
+  .pricing-subtitle { font-size: 0.98rem; }
 
   .pricing-modal-overlay {
     align-items: flex-end;
@@ -360,19 +367,11 @@
     border-radius: 22px 22px 0 0;
   }
 
-  .modal-body {
-    padding: 0.85rem;
-  }
+  .modal-body { padding: 0.85rem; }
 
-  .modal-row {
-    padding: 0.55rem 0.65rem;
-  }
+  .modal-row { padding: 0.55rem 0.65rem; }
 
-  .modal-name .name-main {
-    font-size: 0.94rem;
-  }
+  .modal-name .name-main { font-size: 0.94rem; }
 
-  .modal-price {
-    font-size: 0.95rem;
-  }
+  .modal-price { font-size: 0.95rem; }
 }

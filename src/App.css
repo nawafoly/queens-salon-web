@@ -1,74 +1,66 @@
 /* ===========================
    Global Styles - Queens Salon
-   ملف واحد فقط (بدون تكرار)
+   ONE FILE ONLY – FINAL ✅
+   Dark Elegant Theme
    =========================== */
 
-/* خطوط (مرة وحدة فقط) */
+/* Fonts (once only) */
 @import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap");
 
 /* ===========================
-   Root Variables (مرة وحدة فقط)
+   Root Variables
    =========================== */
 :root {
-  /* 🔒 إجبار الموقع على Light Mode (مهم للجوال) */
-  color-scheme: light;
+  color-scheme: dark;
 
-  /* ✅ Queens Approved Palette */
-  --qs-black: #0D0D0D;
+  /* Queens Approved Palette */
+  --qs-black: #0d0d0d;
   --qs-gray-900: #515659;
-  --qs-gray-700: #6E7372;
-  --qs-gray-500: #888C8C;
-  --qs-wine: #40010D;
-  --qs-offwhite: #F5F5F4;
+  --qs-gray-700: #6e7372;
+  --qs-gray-500: #888c8c;
+  --qs-wine: #40010d;
+  --qs-offwhite: #f5f5f4;
 
-  /* ✅ Semantic tokens (بنستخدمها في الصفحات) */
+  /* Semantic tokens */
   --qs-bg: var(--qs-black);
   --qs-surface: rgba(255, 255, 255, 0.06);
   --qs-border: rgba(255, 255, 255, 0.12);
 
-  --qs-text: rgb(0, 0, 0);
-  --qs-text-muted: var(--qs-gray-500);
+  --qs-text: var(--qs-offwhite);
+  --qs-text-muted: rgba(245, 245, 244, 0.72);
 
   --qs-accent: var(--qs-wine);
   --qs-accent-hover: #520114;
 
-  /* ===========================
-     🔁 Compatibility (عشان ما نخرب القديم الآن)
-     خلك تستخدم القديم لو باقي صفحات تعتمد عليه
-     =========================== */
+  /* Compatibility (legacy pages) */
   --primary-color: var(--qs-wine);
   --secondary-color: var(--qs-gray-700);
   --accent-color: var(--qs-gray-500);
 
   --background-color: var(--qs-black);
-
   --text-color: var(--qs-offwhite);
   --text-strong: var(--qs-offwhite);
 
   --white: #ffffff;
   --black: #000000;
 
-  /* Optional info */
   --info-color: #559bd9;
   --info-color-soft: rgb(28, 79, 124);
 
-  /* ===========================
-     BS System Variables (نخليها تشير للجديد)
-     =========================== */
+  /* Bootstrap mapping */
   --bs-primary-color: var(--qs-wine);
   --bs-secondary-color: var(--qs-gray-700);
   --bs-text-color: var(--qs-offwhite);
   --bs-hover-color: var(--qs-accent-hover);
 
   --bs-bg-light: var(--qs-black);
-  --bs-bg-white: rgba(255, 255, 255, 0.06);
+  --bs-bg-white: var(--qs-surface);
 
-  --bs-border-color: rgba(255, 255, 255, 0.12);
+  --bs-border-color: var(--qs-border);
   --bs-border-light: rgba(255, 255, 255, 0.08);
   --bs-border-dark: rgba(255, 255, 255, 0.18);
 
-  /* ظلال مناسبة للثيم الداكن */
   --bs-shadow-soft: 0 2px 18px rgba(0,0,0,0.25);
   --bs-shadow-medium: 0 10px 30px rgba(0,0,0,0.35);
   --bs-shadow-strong: 0 18px 55px rgba(0,0,0,0.45);
@@ -80,9 +72,11 @@
 }
 
 /* ===========================
-   Reset + Mobile Stability
+   Reset + Base
    =========================== */
-*, *::before, *::after { box-sizing: border-box; }
+*, *::before, *::after {
+  box-sizing: border-box;
+}
 
 html {
   font-size: 16px;
@@ -92,7 +86,8 @@ html {
   text-size-adjust: 100%;
 }
 
-html, body {
+html,
+body {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
@@ -100,100 +95,158 @@ html, body {
   padding: 0;
 }
 
-/* ✅ Body (مرة وحدة فقط) */
+/* Body */
 body {
-  font-family: "Tajawal", sans-serif !important;
-  color: var(--qs-text) !important;
-  background-color: var(--qs-bg) !important;
+  font-family: "Tajawal", "Cairo", sans-serif;
+  color: var(--qs-text);
+  background-color: var(--qs-bg);
   line-height: 1.6;
   direction: rtl;
   text-align: right;
   min-height: 100vh;
 
-  /* خلفية داكنة أنيقة (بدون صراخ) */
   background:
-    radial-gradient(900px 520px at 15% 20%, rgba(255, 255, 255, 0.06), transparent 60%),
-    radial-gradient(800px 450px at 85% 25%, rgba(64, 1, 13, 0.10), transparent 55%),
-    linear-gradient(180deg, var(--qs-black) 0%, #090909 100%) !important;
+    radial-gradient(900px 520px at 15% 20%, rgba(255,255,255,0.06), transparent 60%),
+    radial-gradient(800px 450px at 85% 25%, rgba(64,1,13,0.10), transparent 55%),
+    linear-gradient(180deg, var(--qs-black) 0%, #090909 100%);
 }
 
 /* Root wrappers */
-#root, .app, .main-content { width: 100%; max-width: 100%; }
-.app { display: flex; flex-direction: column; min-height: 100vh; }
-.main-content { flex: 1; }
-
-/* Media responsive everywhere */
-img, video, canvas, svg { max-width: 100%; height: auto; }
-
-/* Links */
-a { color: var(--qs-accent); text-decoration: none; transition: color 0.3s ease; }
-a:hover { color: var(--qs-accent-hover); }
-
-/* Typography */
-h1,h2,h3,h4,h5,h6 {
-  font-family: "Tajawal", sans-serif;
-  font-weight: 600;
-  color: var(--qs-text);
+#root,
+.app,
+.main-content {
+  width: 100%;
+  max-width: 100%;
 }
-p { line-height: 1.8; color: var(--qs-text); }
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+}
+
+/* Media */
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ===========================
+   Typography
+   =========================== */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Tajawal", "Cairo", sans-serif;
+  font-weight: 800;
+  color: var(--qs-text);
+  margin: 0;
+}
+
+p {
+  line-height: 1.8;
+  color: var(--qs-text);
+  margin: 0;
+}
 
 .section-title {
   font-size: 2rem;
-  font-weight: 700;
-  color: var(--qs-text);
+  font-weight: 900;
   margin-bottom: 2rem;
 }
 
-/* Buttons */
-.btn { padding: 0.75rem 1.5rem; border: none; font-weight: 600; transition: all 0.25s ease; }
+/* ===========================
+   Links
+   =========================== */
+a {
+  color: var(--qs-accent);
+  text-decoration: none;
+  transition: color 0.25s ease;
+}
+a:hover {
+  color: var(--qs-accent-hover);
+}
+
+/* ===========================
+   Buttons
+   =========================== */
+.btn {
+  font-weight: 700;
+  transition: all 0.25s ease;
+}
+
+.btn:not(.btn-sm):not(.btn-lg) {
+  padding: 0.75rem 1.5rem;
+}
+
 .btn-outline {
-  background-color: transparent;
+  background: transparent;
   color: var(--qs-text);
   border: 1px solid var(--qs-border);
 }
+
 .btn-outline:hover {
-  background-color: var(--qs-accent);
-  border-color: rgba(255,255,255,0.10);
+  background: var(--qs-accent);
   color: var(--qs-offwhite);
 }
 
-/* Forms */
+/* ===========================
+   Forms
+   =========================== */
+.form-control,
+.form-select,
+input,
+textarea {
+  font-family: "Tajawal", "Cairo", sans-serif;
+}
+
 .form-control {
   padding: 0.75rem 1rem;
   border: 1px solid var(--qs-border);
   border-radius: 12px;
-  background-color: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.05);
   color: var(--qs-text);
 }
+
+.form-control::placeholder {
+  color: var(--qs-text-muted);
+}
+
 .form-control:focus {
   outline: none;
-  box-shadow: 0 0 0 0.25rem rgba(64, 1, 13, 0.25);
-  border-color: rgba(64, 1, 13, 0.7);
-}
-.form-control::placeholder { color: var(--qs-text-muted); opacity: 0.9; }
-
-/* Icons */
-.fa-check-circle, .fa-circle-check {
-  color: var(--qs-text) !important;
-  font-size: 1.1em;
-  vertical-align: middle;
+  border-color: rgba(64,1,13,0.7);
+  box-shadow: 0 0 0 0.25rem rgba(64,1,13,0.25);
 }
 
-/* Responsive */
-@media (max-width: 991.98px) { .section-title { font-size: 1.8rem; } }
-@media (max-width: 767.98px) { .section-title { font-size: 1.5rem; } .btn { padding: 0.6rem 1.2rem; } }
-@media (max-width: 575.98px) { body { font-size: 0.95rem; } }
-
-/* Dark mode safety (نثبت لايت مود) */
-@media (prefers-color-scheme: dark) {
-  html, body {
-    color-scheme: light;
-    background-color: var(--qs-bg) !important;
-    color: var(--qs-text) !important;
-  }
+/* ===========================
+   Icons
+   =========================== */
+.fa-check-circle,
+.fa-circle-check {
+  color: var(--qs-text);
 }
 
-/* Dashboard (اختياري) */
-.main-content--dashboard { min-height: 100vh; padding: 0 !important; }
+/* ===========================
+   Responsive
+   =========================== */
+@media (max-width: 991.98px) {
+  .section-title { font-size: 1.8rem; }
+}
 
+@media (max-width: 767.98px) {
+  .section-title { font-size: 1.5rem; }
+}
 
+@media (max-width: 575.98px) {
+  body { font-size: 0.95rem; }
+}

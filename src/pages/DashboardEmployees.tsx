@@ -10,7 +10,9 @@ import {
   serverTimestamp,
   query,
   orderBy,
+  writeBatch,
 } from "firebase/firestore";
+
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPlus,
@@ -250,6 +252,307 @@ export default function DashboardEmployees() {
       setServiceOptions([]);
     }
   };
+
+
+  // ✅ FIX: migrate old bookings to include employeeUid/employeeKey
+  const fixBookingsEmployeeUid = async () => {
+    if (!canManage) return;
+
+    const ok = confirm(
+      "سيتم إصلاح الحجوزات القديمة بإضافة employeeUid/employeeKey حسب staff_public.linkedUid.\nهل تريد المتابعة؟"
+    );
+    if (!ok) return;
+
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      // 1) load staff_public map: employeeId -> linkedUid
+      const staffSnap = await getDocs(staffPublicCol());
+      const uidByEmployeeId = new Map<string, string>();
+
+      staffSnap.docs.forEach((d) => {
+        const data: any = d.data();
+        const linkedUid = String(data?.linkedUid || "").trim();
+        if (linkedUid) uidByEmployeeId.set(d.id, linkedUid);
+      });
+
+      // 2) read all bookings (or you can filter if you want)
+      const bookingsRef = collection(db, "salons", SALON_ID, "bookings");
+      const bSnap = await getDocs(bookingsRef);
+
+      let changed = 0;
+      let missingStaff = 0;
+
+      // batch limit: 500 writes
+      let batch = writeBatch(db);
+      let batchCount = 0;
+
+      const commitBatch = async () => {
+        if (batchCount === 0) return;
+        await batch.commit();
+        batch = writeBatch(db);
+        batchCount = 0;
+      };
+
+      for (const d of bSnap.docs) {
+        const b: any = d.data();
+
+        const employeeUid = String(b?.employeeUid || "").trim();
+        const employeeId = String(b?.employeeId || "").trim();
+
+        // ✅ fix only if employeeUid is missing but employeeId exists
+        if (employeeUid || !employeeId) continue;
+
+        const linkedUid = uidByEmployeeId.get(employeeId) || "";
+        if (!linkedUid) {
+          missingStaff += 1;
+          continue;
+        }
+
+        const ref = doc(db, "salons", SALON_ID, "bookings", d.id);
+
+        batch.update(ref, {
+          employeeUid: linkedUid,
+          employeeKey: linkedUid,
+          updatedAt: serverTimestamp(),
+        });
+
+        batchCount += 1;
+        changed += 1;
+
+        if (batchCount >= 450) {
+          // safe buffer under 500
+          await commitBatch();
+        }
+      }
+
+      await commitBatch();
+
+      alert(
+        `✅ تم الإصلاح بنجاح\n` +
+        `تم تحديث: ${changed} حجز\n` +
+        `حجوزات لم نجد لها linkedUid: ${missingStaff}\n\n` +
+        `ملاحظة: الحجوزات التي لم تُصلح معناها الموظفة غير مرتبطة (linkedUid ناقص) داخل staff_public.`
+      );
+    } catch (e) {
+      console.warn("fixBookingsEmployeeUid error:", e);
+      setErrorMsg("تعذر إصلاح الحجوزات (راجع Console)");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🔎 DIAG: show which employeeIds/names are missing linkedUid mapping
+  const diagnoseMissingLinkedUid = async () => {
+    if (!canManage) return;
+
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      const staffSnap = await getDocs(staffPublicCol());
+
+      // maps for matching
+      const uidByDocId = new Map<string, string>();       // docId -> linkedUid
+      const uidByName = new Map<string, string>();        // normalizedName -> linkedUid
+      const uidByEmail = new Map<string, string>();       // emailLower -> linkedUid
+
+      staffSnap.docs.forEach((d) => {
+        const data: any = d.data();
+        const linkedUid = String(data?.linkedUid || data?.uid || "").trim();
+        const name = String(data?.name || "").trim();
+        const email = String(data?.email || "").trim().toLowerCase();
+
+        if (linkedUid) uidByDocId.set(d.id, linkedUid);
+
+        const nk = normalizeArabicName(name);
+        if (nk && linkedUid) uidByName.set(nk, linkedUid);
+
+        if (email && linkedUid) uidByEmail.set(email, linkedUid);
+      });
+
+      const bookingsRef = collection(db, "salons", SALON_ID, "bookings");
+      const bSnap = await getDocs(bookingsRef);
+
+      // count missing by employeeId / employeeName
+      const byEmployeeId: Record<string, number> = {};
+      const byEmployeeName: Record<string, number> = {};
+      const examples: any[] = [];
+
+      for (const d of bSnap.docs) {
+        const b: any = d.data();
+        const employeeUid = String(b?.employeeUid || "").trim();
+        const employeeId = String(b?.employeeId || "").trim();
+        const employeeName = String(b?.employeeName || "").trim();
+        const employeeEmail = String(b?.employeeEmail || "").trim().toLowerCase();
+
+        // only those missing employeeUid
+        if (employeeUid) continue;
+
+        // try to see if we could match
+        const docMatch = employeeId && uidByDocId.get(employeeId);
+        const nameMatch = employeeName && uidByName.get(normalizeArabicName(employeeName));
+        const emailMatch = employeeEmail && uidByEmail.get(employeeEmail);
+
+        if (!docMatch && !nameMatch && !emailMatch) {
+          if (employeeId) byEmployeeId[employeeId] = (byEmployeeId[employeeId] || 0) + 1;
+          if (employeeName) byEmployeeName[employeeName] = (byEmployeeName[employeeName] || 0) + 1;
+
+          if (examples.length < 15) {
+            examples.push({
+              bookingId: d.id,
+              employeeId,
+              employeeName,
+              employeeEmail,
+              date: b?.date,
+              time: b?.time,
+            });
+          }
+        }
+      }
+
+      console.log("❗ Missing mapping by employeeId:", byEmployeeId);
+      console.log("❗ Missing mapping by employeeName:", byEmployeeName);
+      console.log("🧾 Examples (first 15):", examples);
+
+      alert(
+        "تم طباعة التشخيص في Console ✅\n\n" +
+        "افتح DevTools (F12) → Console وشوف:\n" +
+        "- Missing mapping by employeeId\n" +
+        "- Missing mapping by employeeName\n" +
+        "- Examples"
+      );
+    } catch (e) {
+      console.warn("diagnoseMissingLinkedUid error:", e);
+      setErrorMsg("تعذر التشخيص (راجع Console)");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ SMART FIX: fill employeeUid/employeeKey even if staff_public docId is not employeeId
+  const smartFixBookingsEmployeeUid = async () => {
+    if (!canManage) return;
+
+    const ok = confirm(
+      "إصلاح ذكي: سيتم محاولة إصلاح الحجوزات القديمة عبر مطابقة staff_public بالـ docId أو الاسم أو الإيميل + aliases.\nهل تريد المتابعة؟"
+    );
+    if (!ok) return;
+
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      const staffSnap = await getDocs(staffPublicCol());
+
+      const uidByDocId = new Map<string, string>();
+      const uidByName = new Map<string, string>();
+      const uidByEmail = new Map<string, string>();
+
+      staffSnap.docs.forEach((d) => {
+        const data: any = d.data();
+
+        // ✅ linkedUid is the source of truth (fallback to uid if present)
+        const linkedUid = String(data?.linkedUid || data?.uid || "").trim();
+        if (!linkedUid) return;
+
+        const name = String(data?.name || "").trim();
+        const email = String(data?.email || "").trim().toLowerCase();
+
+        // 1) docId
+        uidByDocId.set(d.id, linkedUid);
+
+        // 2) name
+        const nk = normalizeArabicName(name);
+        if (nk) uidByName.set(nk, linkedUid);
+
+        // 3) email
+        if (email) uidByEmail.set(email, linkedUid);
+
+        // ✅ 4) aliases (NEW)
+        const aliases: string[] = Array.isArray(data?.aliases) ? data.aliases : [];
+        for (const a of aliases) {
+          const s = String(a || "").trim();
+          if (!s) continue;
+
+          // alias as "employeeId style"
+          uidByDocId.set(s, linkedUid);
+
+          // alias as "name style"
+          uidByName.set(normalizeArabicName(s), linkedUid);
+        }
+      });
+
+      const bookingsRef = collection(db, "salons", SALON_ID, "bookings");
+      const bSnap = await getDocs(bookingsRef);
+
+      let changed = 0;
+      let stillMissing = 0;
+
+      let batch = writeBatch(db);
+      let batchCount = 0;
+
+      const commitBatch = async () => {
+        if (batchCount === 0) return;
+        await batch.commit();
+        batch = writeBatch(db);
+        batchCount = 0;
+      };
+
+      for (const d of bSnap.docs) {
+        const b: any = d.data();
+        const employeeUid = String(b?.employeeUid || "").trim();
+        if (employeeUid) continue;
+
+        const employeeId = String(b?.employeeId || "").trim();
+        const employeeName = String(b?.employeeName || "").trim();
+        const employeeEmail = String(b?.employeeEmail || "").trim().toLowerCase();
+
+        // try matches in order: docId/employeeId -> name -> email
+        let linkedUid =
+          (employeeId && uidByDocId.get(employeeId)) ||
+          (employeeName && uidByName.get(normalizeArabicName(employeeName))) ||
+          (employeeEmail && uidByEmail.get(employeeEmail)) ||
+          "";
+
+        linkedUid = String(linkedUid || "").trim();
+
+        if (!linkedUid) {
+          stillMissing += 1;
+          continue;
+        }
+
+        const ref = doc(db, "salons", SALON_ID, "bookings", d.id);
+        batch.update(ref, {
+          employeeUid: linkedUid,
+          employeeKey: linkedUid,
+          updatedAt: serverTimestamp(),
+        });
+
+        batchCount += 1;
+        changed += 1;
+
+        if (batchCount >= 450) await commitBatch();
+      }
+
+      await commitBatch();
+
+      alert(
+        `✅ تم الإصلاح الذكي\n` +
+        `تم تحديث: ${changed} حجز\n` +
+        `المتبقي بدون تطابق: ${stillMissing} حجز\n\n` +
+        `ملاحظة: هذا الإصلاح يعتمد على linkedUid/uid داخل staff_public، ويدعم aliases لو كانت موجودة.`
+      );
+    } catch (e) {
+      console.warn("smartFixBookingsEmployeeUid error:", e);
+      setErrorMsg("تعذر الإصلاح الذكي (راجع Console)");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
 
   useEffect(() => {
     load();
@@ -501,6 +804,15 @@ export default function DashboardEmployees() {
             >
               <FontAwesomeIcon icon={faRotateRight} /> تحديث
             </button>
+            <button
+              className="exp-btn"
+              onClick={fixBookingsEmployeeUid}
+              disabled={loading}
+              type="button"
+              title="إضافة employeeUid/employeeKey للحجوزات القديمة"
+            >
+              إصلاح الحجوزات القديمة
+            </button>
 
             <button
               className="exp-btn primary"
@@ -509,6 +821,26 @@ export default function DashboardEmployees() {
               type="button"
             >
               <FontAwesomeIcon icon={faPlus} /> إضافة موظفة
+            </button>
+
+            <button
+              className="exp-btn"
+              onClick={diagnoseMissingLinkedUid}
+              disabled={loading}
+              type="button"
+              title="يعرض سبب الحجوزات اللي ما تنصلح"
+            >
+              تشخيص الحجوزات
+            </button>
+
+            <button
+              className="exp-btn"
+              onClick={smartFixBookingsEmployeeUid}
+              disabled={loading}
+              type="button"
+              title="يحاول الإصلاح بمطابقة docId أو الاسم أو الإيميل"
+            >
+              إصلاح ذكي للحجوزات
             </button>
           </div>
         </div>

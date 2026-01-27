@@ -1,31 +1,49 @@
 /* =========================
    Booking.css (FULL) - Queens Salon
    ✅ Unified Inputs + Unified Dropdown (dash-select + bk-field) scoped to .booking-page
+   ✅ Using Official Palette
 ========================= */
 
-/* الصفحة الرئيسية للحجز */
 .booking-page {
-  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  direction: rtl;
   min-height: 100vh;
   padding: 40px 0 18px 0;
   font-family: "Tajawal", sans-serif;
 
+  /* ✅ Official palette fallbacks */
+  --qs-black: #0d0d0d;
+  --qs-gray-1: #515659;
+  --qs-gray-2: #6e7372;
+  --qs-gray-3: #888c8c;
+  --qs-wine: #40010d;
+  --qs-offwhite: #f5f5f4;
+
+  --primary-color: var(--qs-wine);
+  --secondary-color: var(--qs-gray-1);
+  --text-color: var(--qs-black);
+
+  /* ✅ Luxury background */
+  background:
+    radial-gradient(900px 520px at 12% 18%, rgba(64, 1, 13, 0.10), transparent 60%),
+    radial-gradient(820px 480px at 88% 24%, rgba(136, 140, 140, 0.12), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, var(--qs-offwhite) 100%);
+
   /* ✅ Firefox scrollbar base */
   scrollbar-width: thin;
-  scrollbar-color: rgba(232, 180, 162, 0.95) rgba(255, 255, 255, 0.55);
+  scrollbar-color: rgba(64, 1, 13, 0.55) rgba(255, 255, 255, 0.55);
 }
 
-/* البطاقة الأساسية */
 .booking-card {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.92);
   border-radius: 2.3rem;
-  box-shadow: 0 4px 24px 0 rgba(233, 180, 162, 0.12);
+  box-shadow: 0 10px 40px rgba(13, 13, 13, 0.08);
+  border: 1px solid rgba(13, 13, 13, 0.08);
   padding: 2.2rem 2rem 1.2rem 2rem;
   margin-bottom: 32px;
   margin-top: 16px;
+  backdrop-filter: blur(10px);
 }
 
-/* الهيدر */
 .booking-header {
   text-align: center;
   margin-bottom: 1.7rem;
@@ -33,34 +51,32 @@
 
 .booking-title {
   font-size: 2rem;
-  font-weight: bold;
+  font-weight: 900;
   color: var(--primary-color);
   margin-bottom: 0.4rem;
+  letter-spacing: 0.2px;
 }
 
 .booking-subtitle {
-  color: var(--text-color);
+  color: rgba(13, 13, 13, 0.82);
   font-size: 1.07rem;
-  opacity: 0.85;
 }
 
-/* نموذج الحجز */
 .booking-form label.form-label {
-  font-weight: 600;
-  color: var(--text-color);
+  font-weight: 800;
+  color: rgba(13, 13, 13, 0.85);
   margin-bottom: 0.4rem;
 }
 
 /* =========================
    ✅ Unified InputGroup Shell
-   (اسم/جوال/موظفة/وقت/تاريخ)
 ========================= */
 .booking-form .input-group {
-  background: rgba(243, 244, 246, 0.9);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(245, 245, 244, 0.95);
+  border: 1px solid rgba(13, 13, 13, 0.10);
   border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(233, 180, 162, 0.04);
+  box-shadow: 0 8px 24px rgba(13, 13, 13, 0.05);
 }
 
 /* نلغي حدود العناصر الداخلية لأنها صارت على الغلاف */
@@ -73,6 +89,10 @@
   font-size: 1rem;
   color: var(--text-color);
   height: 46px;
+}
+
+.booking-form .input-group .form-control::placeholder {
+  color: rgba(81, 86, 89, 0.70);
 }
 
 /* الأيقونة داخل نفس الإطار */
@@ -88,40 +108,40 @@
   height: 46px;
 }
 
-/* خط فاصل بسيط بين الأيقونة والحقل (RTL + LTR) */
+/* خط فاصل بسيط بين الأيقونة والحقل */
 .booking-form .input-group .input-group-text {
-  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  border-left: 1px solid rgba(13, 13, 13, 0.08);
 }
 [dir="rtl"] .booking-form .input-group .input-group-text {
   border-left: 0;
-  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  border-right: 1px solid rgba(13, 13, 13, 0.08);
 }
 
 /* Focus على المجموعة كاملة */
 .booking-form .input-group:focus-within {
-  border-color: rgba(232, 180, 162, 0.9);
-  box-shadow: 0 0 0 0.18rem #e8b4a240;
+  border-color: rgba(64, 1, 13, 0.45);
+  box-shadow: 0 0 0 0.18rem rgba(64, 1, 13, 0.16);
   background: #fff;
 }
 
 /* =========================
-   ✅ Base Inputs / Textarea
+   ✅ Base Inputs / Textarea (خارج input-group)
 ========================= */
 .booking-page .form-control {
   border-radius: 0.8rem !important;
-  background: rgba(243, 244, 246, 0.9) !important;
-  border: 1px solid rgba(90, 74, 66, 0.18) !important;
+  background: rgba(245, 245, 244, 0.95) !important;
+  border: 1px solid rgba(13, 13, 13, 0.12) !important;
   color: var(--text-color);
   font-size: 1rem;
   padding: 0.7rem 1rem;
   transition: box-shadow 0.2s, border-color 0.2s, background 0.2s;
-  box-shadow: 0 2px 8px rgba(233, 180, 162, 0.04);
+  box-shadow: 0 8px 22px rgba(13, 13, 13, 0.05);
 }
 
 .booking-page .form-control:focus {
   outline: none !important;
-  border-color: rgba(232, 180, 162, 0.9) !important;
-  box-shadow: 0 0 0 0.2rem rgba(232, 180, 162, 0.22) !important;
+  border-color: rgba(64, 1, 13, 0.45) !important;
+  box-shadow: 0 0 0 0.2rem rgba(64, 1, 13, 0.16) !important;
   background: #fff !important;
 }
 
@@ -131,15 +151,11 @@ textarea.form-control {
 
 /* =========================
    ✅ Unified Select (Booking)
-   (القسم/الخدمة/الدفع/وأي select عليه dash-select)
 ========================= */
-
-/* wrapper للـ select علشان السهم */
 .booking-page .bk-field {
   position: relative;
 }
 
-/* ✅ dash-select لازم يكون "native select" */
 .booking-page .dash-select {
   width: 100%;
   min-height: 46px;
@@ -147,12 +163,12 @@ textarea.form-control {
   padding: 12px 14px;
   border-radius: 14px;
 
-  background: rgba(243, 244, 246, 0.9);
-  border: 1px solid rgba(90, 74, 66, 0.18);
+  background: rgba(245, 245, 244, 0.95);
+  border: 1px solid rgba(13, 13, 13, 0.12);
 
   font-family: "Tajawal", sans-serif;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 800;
   color: var(--text-color);
 
   cursor: pointer;
@@ -165,55 +181,49 @@ textarea.form-control {
   -webkit-appearance: none;
   -moz-appearance: none;
 
-  /* مهم: نلغي أي background-image قديم */
   background-image: none !important;
 
   transition: box-shadow 0.18s ease, border-color 0.18s ease,
     background 0.18s ease, transform 0.18s ease;
 }
 
-/* hover */
 .booking-page .dash-select:hover {
-  border-color: rgba(232, 180, 162, 0.55);
-  box-shadow: 0 12px 28px rgba(232, 180, 162, 0.14);
+  border-color: rgba(64, 1, 13, 0.25);
+  box-shadow: 0 14px 34px rgba(13, 13, 13, 0.07);
   transform: translateY(-1px);
 }
 
-/* focus */
 .booking-page .dash-select:focus,
 .booking-page .dash-select:focus-visible {
   outline: none !important;
-  box-shadow: 0 0 0 0.18rem rgba(232, 180, 162, 0.22) !important;
-  border-color: rgba(232, 180, 162, 0.75) !important;
+  box-shadow: 0 0 0 0.18rem rgba(64, 1, 13, 0.16) !important;
+  border-color: rgba(64, 1, 13, 0.35) !important;
   background: #fff !important;
 }
 
-/* ✅ سهم (caret) موحّد — يشتغل مع bk-field */
 .booking-page .bk-field .dash-select {
-  padding-left: 44px; /* مساحة للسهم (RTL بيكون يسار) */
+  padding-left: 44px;
 }
 
 .booking-page .bk-field::after {
   content: "";
   position: absolute;
-  left: 16px; /* RTL: السهم يسار */
+  left: 16px;
   top: 50%;
   width: 8px;
   height: 8px;
   transform: translateY(-50%) rotate(45deg);
-  border-right: 2px solid rgba(232, 180, 162, 0.95);
-  border-bottom: 2px solid rgba(232, 180, 162, 0.95);
+  border-right: 2px solid rgba(64, 1, 13, 0.70);
+  border-bottom: 2px solid rgba(64, 1, 13, 0.70);
   pointer-events: none;
   opacity: 0.9;
 }
 
-/* لو كان LTR لأي سبب */
 [dir="ltr"] .booking-page .bk-field::after {
   right: 16px;
   left: auto;
 }
 
-/* تحسين شكل الخيارات */
 .booking-page select option,
 .booking-page select optgroup {
   font-family: "Tajawal", sans-serif;
@@ -226,41 +236,42 @@ textarea.form-control {
 .booking-btn {
   background: var(--primary-color) !important;
   color: #fff !important;
-  font-weight: 700;
+  font-weight: 900;
   border-radius: 1.2rem;
   font-size: 1.13rem;
   padding: 0.95rem 0;
-  box-shadow: 0 4px 14px rgba(232, 180, 162, 0.09);
+  border: 1px solid rgba(64, 1, 13, 0.18);
+  box-shadow: 0 14px 34px rgba(64, 1, 13, 0.18);
   margin-top: 12px;
-  transition: background 0.19s, box-shadow 0.19s, transform 0.19s;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
 .btn-primary:hover,
 .booking-btn:hover {
-  background: var(--secondary-color) !important;
-  color: #fff9f9;
-  transform: scale(1.04);
+  background: #2f0009 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 18px 42px rgba(64, 1, 13, 0.22);
 }
 
 /* صندوق السعر */
 .booking-price-box {
-  background: #f9f5f1;
-  border: 1px solid rgba(232, 180, 162, 0.18);
-  border-radius: 12px;
+  background: rgba(245, 245, 244, 0.92);
+  border: 1px solid rgba(13, 13, 13, 0.10);
+  border-radius: 14px;
   padding: 10px 12px;
 }
 
-/* رسائل */
 .booking-offer-msg {
-  color: rgba(90, 74, 66, 0.85);
-  font-weight: 600;
+  color: rgba(13, 13, 13, 0.75);
+  font-weight: 800;
 }
 
+/* Warning */
 .no-employee-warning {
-  color: #d32f2f;
-  background: #fff0f0;
-  border-right: 4px solid #d32f2f;
-  border-radius: 8px;
+  color: #b42318;
+  background: rgba(255, 242, 242, 0.95);
+  border-right: 4px solid #b42318;
+  border-radius: 10px;
   font-size: 1rem;
   margin-top: 6px;
   padding: 8px 14px 8px 8px;
@@ -275,7 +286,7 @@ textarea.form-control {
 .booking-success-modal {
   position: fixed;
   inset: 0;
-  background: rgba(50, 38, 32, 0.26);
+  background: rgba(13, 13, 13, 0.34);
   z-index: 4000;
   display: flex;
   align-items: center;
@@ -284,14 +295,16 @@ textarea.form-control {
 }
 
 .booking-success-content {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.94);
   border-radius: 2.3rem;
   max-width: 95vw;
   width: 430px;
-  box-shadow: 0 6px 28px rgba(233, 180, 162, 0.17);
+  box-shadow: 0 18px 55px rgba(13, 13, 13, 0.18);
+  border: 1px solid rgba(13, 13, 13, 0.10);
   padding: 2.2rem 1.2rem 1.7rem 1.2rem;
   text-align: center;
   animation: fadeIn 0.7s;
+  backdrop-filter: blur(10px);
 }
 
 .success-icon {
@@ -302,20 +315,21 @@ textarea.form-control {
 
 .success-title {
   font-size: 1.4rem;
-  font-weight: bold;
+  font-weight: 900;
   color: var(--text-color);
   margin-bottom: 0.5rem;
 }
 
 .success-message {
-  color: #92736b;
+  color: rgba(81, 86, 89, 0.85);
   font-size: 1.07rem;
   margin-bottom: 1.2rem;
 }
 
 .booking-details {
-  background: #f9f5f1;
-  border-radius: 0.9rem;
+  background: rgba(245, 245, 244, 0.92);
+  border: 1px solid rgba(13, 13, 13, 0.10);
+  border-radius: 14px;
   padding: 1rem 0.8rem 0.6rem 0.8rem;
   margin-bottom: 0.95rem;
   text-align: right;
@@ -329,13 +343,13 @@ textarea.form-control {
 }
 
 .booking-detail-label {
-  color: #a7836e;
-  font-weight: bold;
+  color: rgba(81, 86, 89, 0.85);
+  font-weight: 900;
 }
 
 .booking-detail-value {
   color: var(--primary-color);
-  font-weight: 600;
+  font-weight: 900;
 }
 
 .success-actions {
@@ -345,87 +359,69 @@ textarea.form-control {
 .success-primary-btn {
   background: var(--primary-color);
   color: #fff;
-  font-weight: bold;
+  font-weight: 900;
   border: none;
   border-radius: 1.3rem;
   padding: 0.8rem 2rem;
   font-size: 1.07rem;
-  transition: background 0.18s;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
   cursor: pointer;
+  box-shadow: 0 14px 34px rgba(64, 1, 13, 0.18);
 }
 
 .success-primary-btn:hover {
-  background: var(--secondary-color);
+  background: #2f0009;
+  transform: translateY(-1px);
+  box-shadow: 0 18px 42px rgba(64, 1, 13, 0.22);
 }
 
 .redirect-message {
   font-size: 0.99rem;
-  color: #a7836e;
+  color: rgba(81, 86, 89, 0.85);
 }
 
 .countdown {
   color: var(--primary-color);
-  font-weight: 800;
+  font-weight: 900;
   font-size: 1.15rem;
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* =========================
    Date picker UX
 ========================= */
-/* إخفاء أيقونة التقويم الافتراضية (Chrome / Edge / Safari) */
 .booking-page input[type="date"]::-webkit-calendar-picker-indicator {
   opacity: 0;
   cursor: pointer;
 }
 
-.booking-page .booking-date-group {
-  cursor: pointer;
-}
-
-.booking-page .booking-date-group * {
-  cursor: pointer;
-}
+.booking-page .booking-date-group { cursor: pointer; }
+.booking-page .booking-date-group * { cursor: pointer; }
 
 /* =========================
-   ✅ Premium Scrollbar (Queens) — فخم مثل الداشبورد
+   ✅ Premium Scrollbar (Queens)
 ========================= */
-
-/* Chrome / Edge / Safari */
-.booking-page ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
+.booking-page ::-webkit-scrollbar { width: 10px; height: 10px; }
 
 .booking-page ::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.55);
   border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(232, 180, 162, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(13, 13, 13, 0.10);
 }
 
 .booking-page ::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    180deg,
-    rgba(232, 180, 162, 0.95),
-    rgba(219, 165, 142, 0.95)
-  );
+  background: linear-gradient(180deg, rgba(64,1,13,0.70), rgba(81,86,89,0.55));
   border-radius: 999px;
   border: 2px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 6px 16px rgba(232, 180, 162, 0.25);
+  box-shadow: 0 10px 22px rgba(13, 13, 13, 0.18);
 }
 
 .booking-page ::-webkit-scrollbar-thumb:hover {
-  box-shadow: 0 10px 22px rgba(232, 180, 162, 0.35);
+  box-shadow: 0 14px 28px rgba(13, 13, 13, 0.22);
 }
 
 /* =========================
@@ -436,16 +432,11 @@ textarea.form-control {
     padding: 1.2rem 0.7rem 1rem 0.7rem;
     border-radius: 1.4rem;
   }
-
-  .booking-header {
-    margin-bottom: 1rem;
-  }
+  .booking-header { margin-bottom: 1rem; }
 }
 
 @media (max-width: 767px) {
-  .booking-title {
-    font-size: 1.28rem;
-  }
+  .booking-title { font-size: 1.28rem; }
 
   .booking-card {
     margin-top: 0.5rem;
@@ -466,9 +457,7 @@ textarea.form-control {
   }
 
   .booking-detail-label,
-  .booking-detail-value {
-    font-size: 0.92rem;
-  }
+  .booking-detail-value { font-size: 0.92rem; }
 
   .booking-page .form-control,
   .booking-page .dash-select {
@@ -478,28 +467,20 @@ textarea.form-control {
 }
 
 @media (max-width: 575px) {
-  .booking-page {
-    padding: 8px 0 4px 0;
-  }
-
-  .booking-title {
-    font-size: 1.03rem;
-  }
+  .booking-page { padding: 8px 0 4px 0; }
+  .booking-title { font-size: 1.03rem; }
 
   .booking-page .form-control,
-  .booking-page .dash-select {
-    font-size: 0.93rem;
-  }
+  .booking-page .dash-select { font-size: 0.93rem; }
 }
 
 /* زر رمادي (نسخ / حجز جديد) */
 .booking-page .btn-gray,
 .booking-page .btn-secondary {
-  color: #2f2f2f !important; /* نص داكن */
-  font-weight: 600;
+  color: #2f2f2f !important;
+  font-weight: 700;
 }
 
-/* لو فيه زر disabled */
 .booking-page .btn-gray:disabled {
   color: #6b6b6b !important;
   opacity: 0.7;
@@ -508,15 +489,13 @@ textarea.form-control {
 /* =========================
    ✅ Coupon Buttons (Apply / Remove)
 ========================= */
-.booking-page .bk-coupon-actions {
-  align-items: stretch;
-}
+.booking-page .bk-coupon-actions { align-items: stretch; }
 
 .booking-page .bk-coupon-btn {
   min-height: 46px;
   padding: 0 18px;
   border-radius: 14px;
-  font-weight: 800;
+  font-weight: 900;
   font-size: 0.98rem;
   border: 1px solid transparent;
   cursor: pointer;
@@ -525,43 +504,37 @@ textarea.form-control {
   white-space: nowrap;
 }
 
-.booking-page .bk-coupon-btn:active {
-  transform: translateY(0);
-}
+.booking-page .bk-coupon-btn:active { transform: translateY(0); }
 
-/* Apply */
 .booking-page .bk-coupon-btn--apply {
   background: var(--primary-color);
   color: #fff;
-  box-shadow: 0 10px 22px rgba(232, 180, 162, 0.18);
+  box-shadow: 0 14px 34px rgba(64, 1, 13, 0.18);
 }
 
 .booking-page .bk-coupon-btn--apply:hover {
-  background: var(--secondary-color);
+  background: #2f0009;
   transform: translateY(-1px);
-  box-shadow: 0 14px 28px rgba(232, 180, 162, 0.22);
+  box-shadow: 0 18px 42px rgba(64, 1, 13, 0.22);
 }
 
-/* Remove */
 .booking-page .bk-coupon-btn--remove {
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.85);
   color: var(--text-color);
-  border-color: rgba(90, 74, 66, 0.22);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.06);
+  border-color: rgba(13, 13, 13, 0.14);
+  box-shadow: 0 10px 22px rgba(13, 13, 13, 0.08);
 }
 
 .booking-page .bk-coupon-btn--remove:hover {
   background: #fff;
-  border-color: rgba(232, 180, 162, 0.55);
+  border-color: rgba(64, 1, 13, 0.25);
   transform: translateY(-1px);
-  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.07);
+  box-shadow: 0 14px 28px rgba(13, 13, 13, 0.10);
 }
 
-/* Disabled */
 .booking-page .bk-coupon-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
 }
-

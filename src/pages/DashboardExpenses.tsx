@@ -16,7 +16,9 @@ import type { Expense, PaymentMethod } from "../types/finance";
 import { FinanceSettingsService } from "../services/FinanceSettingsService";
 
 // ✅ Firebase Auth
+import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
+
 import { auth } from "../services/firebase";
 
 // ✅ Firestore Expenses
@@ -416,7 +418,7 @@ const DashboardExpenses: React.FC = () => {
 
     const run = async () => {
       try {
-        const user = await new Promise<import("firebase/auth").User | null>(
+        const user = await new Promise<User | null>(
           (resolve) => {
             const unsub = onAuthStateChanged(auth, (u) => {
               unsub();

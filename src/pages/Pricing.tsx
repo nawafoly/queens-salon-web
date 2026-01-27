@@ -1,5 +1,5 @@
 // src/pages/Pricing.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FC } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCut,
@@ -16,13 +16,7 @@ import {
 import "../styles/Pricing.css";
 
 // ✅ Firestore
-import {
-  collection,
-  getDocs,
-  orderBy,
-  query,
-  where,
-} from "firebase/firestore";
+import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 import { db } from "../services/firebase";
 
 interface PriceItem {
@@ -124,10 +118,7 @@ export const pricingSections: Record<string, PricingSection> = {
       {
         category: "البديكير والمناكير",
         items: [
-          {
-            name: "بدكير ومناكير كامل يد ورجل (الأدوات مجاناً)",
-            price: "190 ريال",
-          },
+          { name: "بدكير ومناكير كامل يد ورجل (الأدوات مجاناً)", price: "190 ريال" },
           { name: "بدكير ومناكير يدين كامل (الأدوات 15 ريال)", price: "79 ريال" },
           { name: "بدكير قدمين كامل (الأدوات 15 ريال)", price: "90 ريال" },
         ],
@@ -159,7 +150,10 @@ export const pricingSections: Record<string, PricingSection> = {
 function extractMinPrice(priceText: string): number | null {
   const cleaned = priceText.replace(/[^\d\-]/g, "");
   if (!cleaned) return null;
-  const parts = cleaned.split("-").filter(Boolean).map((n) => Number(n));
+  const parts = cleaned
+    .split("-")
+    .filter(Boolean)
+    .map((n) => Number(n));
   const valid = parts.filter((n) => Number.isFinite(n));
   if (!valid.length) return null;
   return Math.min(...valid);
@@ -203,7 +197,6 @@ const SALON_ID = "main";
 function iconAndColorForSection(sectionIdOrName: string) {
   const key = String(sectionIdOrName || "").toLowerCase();
 
-  // ✅ غطينا أشهر المسميات الممكنة سواء بالـ id أو بالـ name
   if (key.includes("hair") || key.includes("شعر")) return { icon: faCut, color: "primary" };
   if (key.includes("color") || key.includes("صبغ") || key.includes("صبغات")) return { icon: faPalette, color: "secondary" };
   if (key.includes("make") || key.includes("مكياج")) return { icon: faEye, color: "accent" };
@@ -218,10 +211,10 @@ function iconAndColorForSection(sectionIdOrName: string) {
   return { icon: faStar, color: "primary" };
 }
 
-const Pricing: React.FC = () => {
+const Pricing: FC = () => {
   const [openSectionId, setOpenSectionId] = useState<string | null>(null);
 
-  // ✅ الجديد: داتا Firestore (لو انقرأت)
+  // ✅ Firestore (لو انقرأت)
   const [fsSections, setFsSections] = useState<Record<string, PricingSection> | null>(null);
   const [loadingFs, setLoadingFs] = useState(false);
 
@@ -236,21 +229,20 @@ const Pricing: React.FC = () => {
         const sectionsRef = collection(db, "salons", SALON_ID, "service_sections");
         const servicesRef = collection(db, "salons", SALON_ID, "services");
 
-        // Sections (رتّب لو عندك order)
+        // Sections
         const sectionsSnap = await getDocs(query(sectionsRef, orderBy("order", "asc")));
         const sections: Array<{ id: string; data: FsSection }> = sectionsSnap.docs.map((d) => ({
           id: d.id,
           data: d.data() as FsSection,
         }));
 
-        // Services (جيب النشط فقط إن تبي)
+        // Services (active only)
         const servicesSnap = await getDocs(query(servicesRef, where("active", "==", true)));
         const services: Array<{ id: string; data: FsService }> = servicesSnap.docs.map((d) => ({
           id: d.id,
           data: d.data() as FsService,
         }));
 
-        // لو ما فيه أقسام أو خدمات… خله null عشان نستخدم fallback
         if (!sections.length || !services.length) {
           if (mounted) setFsSections(null);
           return;
@@ -265,7 +257,7 @@ const Pricing: React.FC = () => {
           bySection[secId].push(s.data);
         });
 
-        // Build PricingSections object
+        // Build PricingSections
         const built: Record<string, PricingSection> = {};
 
         sections.forEach((sec) => {
@@ -280,7 +272,6 @@ const Pricing: React.FC = () => {
 
           if (!list.length) return;
 
-          // ✅ لو عندك categoryName نخليها تصنيف… لو ما عندك نخليها "الخدمات"
           const groupedByCat: Record<string, PriceItem[]> = {};
 
           list.forEach((srv) => {
@@ -306,10 +297,7 @@ const Pricing: React.FC = () => {
           };
         });
 
-        if (mounted) {
-          // إذا طلع built فاضي، نخليه null للـ fallback
-          setFsSections(Object.keys(built).length ? built : null);
-        }
+        if (mounted) setFsSections(Object.keys(built).length ? built : null);
       } catch (e) {
         console.error("Pricing Firestore load error:", e);
         if (mounted) setFsSections(null);
@@ -341,8 +329,7 @@ const Pricing: React.FC = () => {
 
   const active = useMemo(() => {
     if (!openSectionId) return null;
-    const found = sectionCards.find((s) => s.id === openSectionId);
-    return found || null;
+    return sectionCards.find((s) => s.id === openSectionId) || null;
   }, [openSectionId, sectionCards]);
 
   // اغلاق بالـ ESC
@@ -359,12 +346,9 @@ const Pricing: React.FC = () => {
       <div className="container">
         <div className="pricing-header text-center">
           <h1 className="pricing-title">قائمة الأسعار</h1>
-          <p className="pricing-subtitle">
-            اختاري القسم واطلعي على التفاصيل بدون زحمة جداول طويلة
-          </p>
+          <p className="pricing-subtitle">اختاري القسم واطلعي على التفاصيل بدون زحمة جداول طويلة</p>
 
-          {/* ✅ توضيح بسيط (اختياري) */}
-          <p className="pricing-subtitle" style={{ marginTop: 8, fontSize: 14, opacity: 0.75 }}>
+          <p className="pricing-subtitle pricing-hint">
             {loadingFs
               ? "جاري تحميل الأسعار من النظام..."
               : fsSections
@@ -375,12 +359,7 @@ const Pricing: React.FC = () => {
 
         <div className="pricing-cards">
           {sectionCards.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className="pricing-card"
-              onClick={() => setOpenSectionId(s.id)}
-            >
+            <button key={s.id} type="button" className="pricing-card" onClick={() => setOpenSectionId(s.id)}>
               <div className="card-top">
                 <div className={`card-icon card-icon-${s.color}`}>
                   <FontAwesomeIcon icon={s.icon} />
@@ -419,17 +398,8 @@ const Pricing: React.FC = () => {
       </div>
 
       {active && (
-        <div
-          className="pricing-modal-overlay"
-          role="presentation"
-          onClick={() => setOpenSectionId(null)}
-        >
-          <div
-            className="pricing-modal"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="pricing-modal-overlay" role="presentation" onClick={() => setOpenSectionId(null)}>
+          <div className="pricing-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-header-left">
                 <div className={`modal-icon card-icon-${active.color}`}>
@@ -438,18 +408,12 @@ const Pricing: React.FC = () => {
                 <div>
                   <div className="modal-title">{active.title}</div>
                   <div className="modal-sub">
-                    {active.count} خدمة • يبدأ من{" "}
-                    {active.minPrice !== null ? `${active.minPrice} ريال` : "—"}
+                    {active.count} خدمة • يبدأ من {active.minPrice !== null ? `${active.minPrice} ريال` : "—"}
                   </div>
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setOpenSectionId(null)}
-                aria-label="إغلاق"
-              >
+              <button type="button" className="modal-close" onClick={() => setOpenSectionId(null)} aria-label="إغلاق">
                 <FontAwesomeIcon icon={faXmark} />
               </button>
             </div>
@@ -475,11 +439,7 @@ const Pricing: React.FC = () => {
             </div>
 
             <div className="modal-footer">
-              <button
-                type="button"
-                className="modal-primary"
-                onClick={() => setOpenSectionId(null)}
-              >
+              <button type="button" className="modal-primary" onClick={() => setOpenSectionId(null)}>
                 تم
               </button>
             </div>

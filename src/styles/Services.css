@@ -2,43 +2,47 @@
 
 .services-page{
   direction: rtl;
-  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+  background:
+    radial-gradient(900px 520px at 15% 18%, rgba(255,255,255,0.06), transparent 60%),
+    radial-gradient(900px 520px at 85% 24%, rgba(64, 1, 13, 0.18), transparent 55%),
+    linear-gradient(180deg, var(--qs-black) 0%, #090909 100%);
 }
 
 .services-title{
   font-weight: 900;
-  color: var(--text-strong, #2b1d17);
+  color: var(--qs-text);
   letter-spacing: 0.2px;
 }
 
 .services-subtitle{
-  color: var(--text-color, #5e4c43);
-  opacity: 0.9;
+  color: var(--qs-text-muted);
+  opacity: 0.95;
 }
 
 /* حالات التحميل/الخطأ */
 .services-state{
-  background: rgba(255,255,255,0.75);
-  border: 1px solid rgba(180, 139, 123, 0.12);
+  background: var(--qs-card-2);
+  border: 1px solid var(--qs-border);
   border-radius: 18px;
   padding: 1rem 1.1rem;
-  color: #6f5b52;
+  color: var(--qs-text-muted);
   text-align: center;
-  box-shadow: 0 10px 30px rgba(180, 139, 123, 0.08);
+  box-shadow: var(--qs-shadow-soft);
 }
+
 .services-state.is-error{
-  color: #7a2e2e;
-  border-color: rgba(220, 70, 70, 0.18);
-  background: rgba(255, 245, 245, 0.9);
+  color: #ffb4b4;
+  border-color: rgba(239, 68, 68, 0.30);
+  background: rgba(239, 68, 68, 0.10);
 }
 
 /* بلوك كل قسم */
 .service-category{
-  background: rgba(255,255,255,0.55);
-  border: 1px solid rgba(180, 139, 123, 0.10);
+  background: var(--qs-card);
+  border: 1px solid var(--qs-border);
   border-radius: 26px;
   padding: 1.1rem 1.1rem;
-  box-shadow: 0 14px 44px rgba(180, 139, 123, 0.08);
+  box-shadow: var(--qs-shadow-soft);
   overflow: hidden;
 }
 
@@ -46,7 +50,7 @@
   flex-direction: row-reverse;
 }
 
-/* صورة + خلفية منتج مثل اللي طلبتها */
+/* صورة + خلفية منتج */
 .service-category-image{
   position: relative;
   border-radius: 22px;
@@ -54,15 +58,15 @@
   min-height: 260px;
 }
 
-/* خلفية ناعمة “منتج” */
+/* خلفية “منتج” دارك فخمة */
 .product-bg{
   background:
-    radial-gradient(1200px 420px at 25% 20%, rgba(255, 209, 224, 0.55), transparent 60%),
-    radial-gradient(900px 380px at 85% 25%, rgba(210, 226, 255, 0.55), transparent 58%),
-    radial-gradient(800px 380px at 60% 90%, rgba(255, 235, 205, 0.45), transparent 60%),
-    linear-gradient(135deg, rgba(255,255,255,0.55), rgba(255,255,255,0.25));
-  border: 1px solid rgba(180, 139, 123, 0.12);
-  box-shadow: 0 16px 50px rgba(30, 18, 14, 0.10);
+    radial-gradient(1200px 420px at 22% 18%, rgba(64, 1, 13, 0.28), transparent 60%),
+    radial-gradient(900px 380px at 86% 22%, rgba(136, 140, 140, 0.16), transparent 58%),
+    radial-gradient(800px 380px at 60% 92%, rgba(255, 255, 255, 0.06), transparent 60%),
+    linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+  border: 1px solid var(--qs-border);
+  box-shadow: var(--qs-shadow);
 }
 
 .product-img{
@@ -70,7 +74,7 @@
   height: 100%;
   object-fit: contain;
   padding: 1.2rem;
-  filter: drop-shadow(0 18px 22px rgba(0,0,0,0.10));
+  filter: drop-shadow(0 18px 22px rgba(0,0,0,0.35));
 }
 
 /* محتوى */
@@ -85,22 +89,23 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #fef6f2, #fdeae3 100%);
-  color: var(--primary-color, #b48b7b);
-  box-shadow: 0 8px 24px rgba(180, 139, 123, 0.12);
+  background: linear-gradient(135deg, rgba(64,1,13,0.20), rgba(255,255,255,0.06));
+  color: var(--qs-text);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
   margin-bottom: 0.6rem;
   font-size: 1.15rem;
 }
 
 .service-category-title{
   font-weight: 900;
-  color: var(--text-strong, #2b1d17);
+  color: var(--qs-text);
   margin-bottom: 0.35rem;
 }
 
 .service-category-description{
-  color: var(--text-color, #5e4c43);
-  opacity: 0.92;
+  color: var(--qs-text-muted);
+  opacity: 0.95;
   margin-bottom: 0.9rem;
 }
 
@@ -112,8 +117,8 @@
 }
 
 .service-item{
-  background: rgba(255,255,255,0.78);
-  border: 1px dashed rgba(180, 139, 123, 0.22);
+  background: rgba(255,255,255,0.05);
+  border: 1px dashed rgba(255,255,255,0.14);
   border-radius: 16px;
   padding: 0.65rem 0.85rem;
   display: flex;
@@ -122,19 +127,17 @@
   gap: 0.8rem;
 }
 
-/* ✅ المسميات */
 .service-name{
   font-weight: 800;
-  color: var(--text-strong, #2b1d17);
+  color: var(--qs-text);
   font-size: 0.98rem;
 }
 
-/* ✅ الأسعار (أوضح + لون مختلف) */
 .service-price{
   font-weight: 900;
-  color: var(--primary-color, #b48b7b);
-  background: rgba(255, 236, 247, 0.65);
-  border: 1px solid rgba(180, 139, 123, 0.16);
+  color: var(--qs-offwhite);
+  background: rgba(64, 1, 13, 0.35);
+  border: 1px solid rgba(64, 1, 13, 0.55);
   border-radius: 999px;
   padding: 0.25rem 0.6rem;
   white-space: nowrap;
@@ -144,18 +147,18 @@
 /* زر الحجز */
 .services-primary-btn{
   display: inline-block;
-  background: var(--primary-color, #b48b7b);
-  color: #fff;
+  background: var(--qs-accent);
+  color: var(--qs-offwhite);
   font-weight: 900;
   padding: 0.7rem 1.3rem;
   text-decoration: none;
-  border: none;
-  box-shadow: 0 14px 34px rgba(180, 139, 123, 0.18);
-  transition: transform 0.18s ease, background 0.18s ease;
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 14px 34px rgba(64, 1, 13, 0.22);
+  transition: transform 0.18s ease, filter 0.18s ease;
 }
 
 .services-primary-btn:hover{
-  background: var(--secondary-color, #d49a86);
+  background: var(--qs-accent-hover);
   transform: translateY(-1px);
 }
 

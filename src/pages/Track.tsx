@@ -1,5 +1,5 @@
 // src/pages/Track.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../styles/Track.css";
 import { getTrackByPublicId } from "../services/firestoreBookings";
@@ -50,7 +50,7 @@ function normalizeMk(raw: string) {
   return `MK-${digits}`;
 }
 
-const Track: React.FC = () => {
+const Track = () => {
   const { trackId } = useParams();
   const navigate = useNavigate();
 
@@ -70,16 +70,13 @@ const Track: React.FC = () => {
     const raw = String(trackId).trim();
     const norm = normalizeMk(raw);
 
-    // لو ما قدرنا نستخرج رقم، ما نسوي redirect
     if (!norm) return;
-
-    // لو كان الرابط أصلا هو نفس المطلوب، خلاص
     if (raw.toUpperCase() === norm) return;
 
     navigate(`/track/${encodeURIComponent(norm)}`, { replace: true });
   }, [trackId, navigate]);
 
-  // ✅ نخلي الـ input يعكس آخر بارامتر (مفيد لو دخل من رابط قديم/رقم فقط)
+  // ✅ نخلي الـ input يعكس آخر بارامتر
   useEffect(() => {
     if (!trackId) return;
     const norm = normalizeMk(trackId);
@@ -109,9 +106,7 @@ const Track: React.FC = () => {
             publicId: res.publicId,
             status: res.status,
             serviceName:
-              res.serviceSnapshot?.serviceNameAtBooking ||
-              res.serviceName ||
-              "-",
+              res.serviceSnapshot?.serviceNameAtBooking || res.serviceName || "-",
             employeeName: res.employeeName || "-",
             date: res.date || "-",
             time: res.time || "-",
@@ -133,18 +128,14 @@ const Track: React.FC = () => {
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     const norm = normalizeMk(inputId);
     if (!norm) return;
-
     navigate(`/track/${encodeURIComponent(norm)}`);
   };
 
   const showContact =
     !loading &&
-    (notFound ||
-      data?.status === "pending" ||
-      data?.status === "cancelled");
+    (notFound || data?.status === "pending" || data?.status === "cancelled");
 
   return (
     <div className="track-page">
@@ -226,14 +217,11 @@ const Track: React.FC = () => {
                 </div>
 
                 <div className="track-hint">
-                  ℹ️ في حال تأخر تأكيد الحجز أو وجود أي استفسار، يسعدنا تواصلك
-                  معنا مباشرة.
+                  ℹ️ في حال تأخر تأكيد الحجز أو وجود أي استفسار، يسعدنا تواصلك معنا مباشرة.
                 </div>
               </div>
             ) : (
-              <div className="track-state">
-                أدخل رقم الحجز (MK) وستظهر تفاصيل الحجز هنا.
-              </div>
+              <div className="track-state">أدخل رقم الحجز (MK) وستظهر تفاصيل الحجز هنا.</div>
             )}
           </div>
         </div>

@@ -15,7 +15,7 @@ export async function resolveServiceName(serviceId?: string) {
         return cache.get(serviceId)!;
     }
 
-    try {
+    try {   
         const ref = doc(db, "salons", SALON_ID, "services", serviceId);
         const snap = await getDoc(ref);
 

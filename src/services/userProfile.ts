@@ -1,7 +1,6 @@
-
-
 // src/services/userProfile.ts
 import type { User } from "firebase/auth";
+import { getAuth } from "firebase/auth";
 import {
   doc,
   getDoc,
@@ -422,9 +421,6 @@ export function canAccessDashboard(role: UiRole): boolean {
 // ✅ DEV ONLY: quick whoami
 export async function debugWhoAmI() {
   try {
-    const { getAuth } = await import("firebase/auth");
-    const { getDoc } = await import("firebase/firestore");
-
     const auth = getAuth();
     const u = auth.currentUser;
 
@@ -449,4 +445,5 @@ export async function debugWhoAmI() {
     return null;
   }
 }
+
 

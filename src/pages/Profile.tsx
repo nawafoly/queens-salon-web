@@ -1,615 +1,804 @@
+  // src/pages/Profile.tsx
+  import React, { useEffect, useMemo, useRef, useState } from "react";
+  import { useNavigate } from "react-router-dom";
+  import "../styles/Profile.css";
 
+  import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
+  import { auth } from "../services/firebase";
 
-// src/pages/Profile.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import "../styles/Profile.css";
-
-import {
-  onAuthStateChanged,
-  signOut,
-  type User as FirebaseUser,
-} from "firebase/auth";
-import { auth } from "../services/firebase";
-
-import {
-  createOrLoadUserProfile,
-  updateUserProfile,
-  type UserProfile,
-} from "../services/userProfile";
-
-// =======================
-// دعم واتساب
-// =======================
-const SUPPORT_PHONE = "966573235247"; // ✅ بدون +
-const SUPPORT_MSG = "مرحباً، أحتاج مساعدة في حسابي في صالون ملكات.";
-
-function getWhatsAppLink(phoneDigits: string, msg: string) {
-  return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(msg)}`;
-}
-
-// =======================
-// خدمات (عرض فقط)
-// =======================
-const services = [
-  { id: "haircut", name: "قص الشعر" },
-  { id: "coloring", name: "صبغة الشعر" },
-  { id: "styling", name: "تسريحات الشعر" },
-  { id: "treatment", name: "معالجات الشعر" },
-  { id: "makeup", name: "مكياج" },
-  { id: "nails", name: "العناية بالأظافر" },
-  { id: "facial", name: "العناية بالبشرة" },
-  { id: "waxing", name: "إزالة الشعر" },
-];
-
-const getServiceName = (id: string) =>
-  services.find((s) => s.id === id)?.name || id;
-
-// =======================
-interface BookingData {
-  name: string;
-  phone: string;
-  service: string;
-  employee: string;
-  date: string;
-  time: string;
-  status?: string;
-}
-
-type ProfileMode = "firebase" | "local";
-
-// تحويل الحالة لكلاسات لطيفة
-function statusClass(status?: string) {
-  const s = String(status || "").trim();
-  if (s === "مؤكد" || s === "confirmed") return "confirmed";
-  if (s === "انتظار" || s === "pending") return "pending";
-  if (s === "مكتمل" || s === "completed") return "completed";
-  if (s === "ملغي" || s === "cancelled") return "cancelled";
-  return "";
-}
-
-function normalizeKsaPhone(raw: string) {
-  const digits = String(raw || "").replace(/\D/g, "");
-  if (!digits) return "";
-
-  if (digits.startsWith("9665") && digits.length === 12) return "0" + digits.slice(3);
-  if (digits.startsWith("5") && digits.length === 9) return "0" + digits;
-  if (digits.startsWith("05") && digits.length === 10) return digits;
-
-  return digits;
-}
-
-function clearClientCacheOnly() {
-  localStorage.removeItem("user_profile_v1");
-  localStorage.removeItem("userAvatar");
-  // لا تمسح userName/userEmail/userPhone لأنها بيانات جلسة عامة تظهر بالهيدر
-}
-
-const Profile: React.FC = () => {
-  const navigate = useNavigate();
-
-  const [profileMode, setProfileMode] = useState<ProfileMode>("local");
-  const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [profileDoc, setProfileDoc] = useState<UserProfile | null>(null);
-
-  // ✅ مهم: نمنع أي ريداركت قبل ما نخلص فحص Firebase Auth
-  const [authChecked, setAuthChecked] = useState(false);
-
-  // ✅ قراءة بروفايل مخزن (أولوية للعرض)
-  const cachedProfile = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("user_profile_v1") || "null");
-    } catch {
-      return null;
-    }
-  }, []);
-
-  // قديم (لو فيه عميلات باللوكال)
-  const currentUser = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("currentUser") || "null");
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const [userData, setUserData] = useState({
-    name:
-      cachedProfile?.name ||
-      currentUser?.name ||
-      localStorage.getItem("userName") ||
-      "",
-    phone: cachedProfile?.phone || currentUser?.phone || "",
-    email:
-      cachedProfile?.email ||
-      currentUser?.email ||
-      localStorage.getItem("userEmail") ||
-      "",
-    city: cachedProfile?.city || currentUser?.city || "",
-    birthdate: cachedProfile?.birthdate || currentUser?.birthdate || "",
-    avatar: localStorage.getItem("userAvatar") || "",
-  });
+  import { createOrLoadUserProfile, updateUserProfile, type UserProfile } from "../services/userProfile";
 
   // =======================
-  // Firebase / Local mode
+  // دعم واتساب
   // =======================
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user || null);
+  const SUPPORT_PHONE = "966573235247"; // ✅ بدون +
+  const SUPPORT_MSG = "مرحباً، أحتاج مساعدة في حسابي في صالون ملكات.";
 
-      // لا يوجد Firebase user => Local
-      if (!user) {
-        setProfileMode("local");
-        setFirebaseUid(null);
-        setProfileDoc(null);
+  function getWhatsAppLink(phoneDigits: string, msg: string) {
+    return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(msg)}`;
+  }
 
-        // لو فيه cache نعرضه
-        try {
-          const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
-          if (cached) {
-            setUserData((prev) => ({
-              ...prev,
-              name: cached.name || prev.name,
-              phone: cached.phone || prev.phone,
-              email: cached.email || prev.email,
-              city: cached.city || prev.city,
-              birthdate: cached.birthdate || prev.birthdate,
-            }));
-          }
-        } catch {}
+  // =======================
+  // خدمات (عرض فقط) - مؤقتاً
+  // =======================
+  const services = [
+    { id: "haircut", name: "قص الشعر" },
+    { id: "coloring", name: "صبغة الشعر" },
+    { id: "styling", name: "تسريحات الشعر" },
+    { id: "treatment", name: "معالجات الشعر" },
+    { id: "makeup", name: "مكياج" },
+    { id: "nails", name: "العناية بالأظافر" },
+    { id: "facial", name: "العناية بالبشرة" },
+    { id: "waxing", name: "إزالة الشعر" },
+  ];
 
-        setAuthChecked(true);
-        return;
-      }
+  const getServiceName = (id: string) => services.find((s) => s.id === id)?.name || id;
 
+  // =======================
+  interface BookingData {
+    name: string;
+    phone: string;
+    service: string;
+    employee: string;
+    date: string; // YYYY-MM-DD
+    time: string; // HH:mm
+    status?: string;
+    total?: number;
+    finalPrice?: number;
+    createdAt?: number; // optional
+  }
+
+  type ProfileMode = "firebase" | "local";
+
+  function statusClass(status?: string) {
+    const s = String(status || "").trim().toLowerCase();
+    if (s === "مؤكد" || s === "confirmed") return "confirmed";
+    if (s === "انتظار" || s === "pending") return "pending";
+    if (s === "مكتمل" || s === "completed") return "completed";
+    if (s === "ملغي" || s === "cancelled") return "cancelled";
+    return "";
+  }
+
+  function normalizeKsaPhone(raw: string) {
+    const digits = String(raw || "").replace(/\D/g, "");
+    if (!digits) return "";
+
+    if (digits.startsWith("9665") && digits.length === 12) return "0" + digits.slice(3);
+    if (digits.startsWith("5") && digits.length === 9) return "0" + digits;
+    if (digits.startsWith("05") && digits.length === 10) return digits;
+
+    return digits;
+  }
+
+  function clearClientCacheOnly() {
+    localStorage.removeItem("user_profile_v1");
+    localStorage.removeItem("userAvatar");
+  }
+
+  // YYYY-MM-DD + HH:mm -> timestamp
+  function toTs(dateISO: string, timeHHmm: string) {
+    const d = String(dateISO || "").trim();
+    const t = String(timeHHmm || "").trim();
+    if (!d || !t) return 0;
+    const iso = `${d}T${t}:00`;
+    const ms = new Date(iso).getTime();
+    return Number.isFinite(ms) ? ms : 0;
+  }
+
+  function formatDateAr(dateISO: string) {
+    if (!dateISO) return "";
+    // عرض بسيط: 2026-01-27 -> 27/01/2026
+    const [y, m, d] = dateISO.split("-");
+    if (!y || !m || !d) return dateISO;
+    return `${d}/${m}/${y}`;
+  }
+
+  const Profile: React.FC = () => {
+    const navigate = useNavigate();
+
+    const [profileMode, setProfileMode] = useState<ProfileMode>("local");
+    const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
+    const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+    const [profileDoc, setProfileDoc] = useState<UserProfile | null>(null);
+
+    const [authChecked, setAuthChecked] = useState(false);
+
+    const cachedProfile = useMemo(() => {
       try {
-        setProfileMode("firebase");
-        setFirebaseUid(user.uid);
+        return JSON.parse(localStorage.getItem("user_profile_v1") || "null");
+      } catch {
+        return null;
+      }
+    }, []);
 
-        // ✅ حمّل بروفايل من userProfile (SoT للعميلات)
-        const p = await createOrLoadUserProfile(user);
+    const currentUser = useMemo(() => {
+      try {
+        return JSON.parse(localStorage.getItem("currentUser") || "null");
+      } catch {
+        return null;
+      }
+    }, []);
 
-        // ✅ حماية: لو طلع الدور مو client → اطلع برا (لا تعرض بروفايل عميلة)
-        const pr = String((p as any)?.role || "").toLowerCase().trim();
-        if (pr && pr !== "client") {
-          clearClientCacheOnly();
-          navigate("/dashboard-pending", { replace: true });
+    const [userData, setUserData] = useState({
+      name: cachedProfile?.name || currentUser?.name || localStorage.getItem("userName") || "",
+      phone: cachedProfile?.phone || currentUser?.phone || localStorage.getItem("userPhone") || "",
+      email: cachedProfile?.email || currentUser?.email || localStorage.getItem("userEmail") || "",
+      city: cachedProfile?.city || currentUser?.city || "",
+      birthdate: cachedProfile?.birthdate || currentUser?.birthdate || "",
+      avatar: localStorage.getItem("userAvatar") || "",
+    });
+
+    // =======================
+    // Firebase / Local mode
+    // =======================
+    useEffect(() => {
+      const unsub = onAuthStateChanged(auth, async (user) => {
+        setFirebaseUser(user || null);
+
+        if (!user) {
+          setProfileMode("local");
+          setFirebaseUid(null);
+          setProfileDoc(null);
+
+          try {
+            const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
+            if (cached) {
+              setUserData((prev) => ({
+                ...prev,
+                name: cached.name || prev.name,
+                phone: cached.phone || prev.phone,
+                email: cached.email || prev.email,
+                city: cached.city || prev.city,
+                birthdate: cached.birthdate || prev.birthdate,
+              }));
+            }
+          } catch {}
+
           setAuthChecked(true);
           return;
         }
 
-        setProfileDoc(p);
-        setUserData((prev) => ({
-          ...prev,
-          name: p.name || prev.name,
-          phone: p.phone || prev.phone,
-          email: p.email || prev.email,
-          city: p.city || prev.city,
-          birthdate: p.birthdate || prev.birthdate,
+        try {
+          setProfileMode("firebase");
+          setFirebaseUid(user.uid);
+
+          const p = await createOrLoadUserProfile(user);
+
+          const pr = String((p as any)?.role || "").toLowerCase().trim();
+          if (pr && pr !== "client") {
+            clearClientCacheOnly();
+            navigate("/dashboard-pending", { replace: true });
+            setAuthChecked(true);
+            return;
+          }
+
+          setProfileDoc(p);
+          setUserData((prev) => ({
+            ...prev,
+            name: p.name || prev.name,
+            phone: p.phone || prev.phone,
+            email: p.email || prev.email,
+            city: p.city || prev.city,
+            birthdate: p.birthdate || prev.birthdate,
+          }));
+
+          localStorage.setItem("user_profile_v1", JSON.stringify(p));
+          if (p?.name) localStorage.setItem("userName", String(p.name));
+          if (p?.email) localStorage.setItem("userEmail", String(p.email));
+          if (p?.phone) localStorage.setItem("userPhone", String(p.phone));
+
+          window.dispatchEvent(new Event("authChanged"));
+        } catch (e) {
+          console.error("Profile load error:", e);
+          clearClientCacheOnly();
+          navigate("/dashboard-pending", { replace: true });
+        } finally {
+          setAuthChecked(true);
+        }
+      });
+
+      return () => unsub();
+    }, [navigate]);
+
+    useEffect(() => {
+      if (!authChecked) return;
+
+      const token = localStorage.getItem("authToken");
+      const firebaseOk = !!firebaseUser;
+
+      const localRole = String(localStorage.getItem("userRole") || "").toLowerCase().trim();
+      if (localRole && localRole !== "client") {
+        navigate("/dashboard-pending", { replace: true });
+        return;
+      }
+
+      if (!token && !firebaseOk) {
+        navigate("/login", { replace: true });
+      }
+    }, [authChecked, firebaseUser, navigate]);
+
+    // =======================
+    // الحجوزات (حالياً من localStorage)
+    // =======================
+    const [bookings, setBookings] = useState<BookingData[]>([]);
+
+    useEffect(() => {
+      const allBookings: BookingData[] = JSON.parse(localStorage.getItem("allBookings") || "[]");
+      const myPhone = normalizeKsaPhone(userData.phone);
+
+      if (!myPhone) {
+        setBookings([]);
+        return;
+      }
+
+      const mine = allBookings
+        .filter((b) => normalizeKsaPhone(b.phone) === myPhone)
+        .map((b) => ({
+          ...b,
+          status: b.status || "pending",
         }));
 
-        // تحديث كاش عام للموقع
-        localStorage.setItem("user_profile_v1", JSON.stringify(p));
-        if (p?.name) localStorage.setItem("userName", String(p.name));
-        if (p?.email) localStorage.setItem("userEmail", String(p.email));
-        if (p?.phone) localStorage.setItem("userPhone", String(p.phone));
+      // رتبها حسب تاريخ+وقت
+      mine.sort((a, b) => toTs(b.date, b.time) - toTs(a.date, a.time));
+      setBookings(mine);
+    }, [userData.phone]);
 
-        window.dispatchEvent(new Event("authChanged"));
-      } catch (e) {
-        console.error("Profile load error:", e);
+    const nowTs = Date.now();
 
-        // لو فشل تحميل بروفايل عميلة: نظف كاش العميلة وطلّعه
-        clearClientCacheOnly();
-        navigate("/dashboard-pending", { replace: true });
-      } finally {
-        setAuthChecked(true);
+    const upcomingBooking = useMemo(() => {
+      const list = bookings
+        .filter((b) => {
+          const s = String(b.status || "").toLowerCase().trim();
+          if (s === "ملغي" || s === "cancelled") return false;
+          if (s === "مكتمل" || s === "completed") return false;
+          return toTs(b.date, b.time) >= nowTs;
+        })
+        .sort((a, b) => toTs(a.date, a.time) - toTs(b.date, b.time));
+
+      return list[0] || null;
+    }, [bookings, nowTs]);
+
+    const lastBooking = useMemo(() => {
+      const list = bookings
+        .filter((b) => toTs(b.date, b.time) < nowTs)
+        .sort((a, b) => toTs(b.date, b.time) - toTs(a.date, a.time));
+
+      return list[0] || null;
+    }, [bookings, nowTs]);
+
+    // KPIs
+    const kpis = useMemo(() => {
+      const total = bookings.length;
+
+      const countBy = (key: "confirmed" | "pending" | "completed" | "cancelled") =>
+        bookings.filter((b) => statusClass(b.status) === key).length;
+
+      return {
+        total,
+        confirmed: countBy("confirmed"),
+        pending: countBy("pending"),
+        completed: countBy("completed"),
+        cancelled: countBy("cancelled"),
+      };
+    }, [bookings]);
+
+    // =======================
+    // عضوية / رقم عضوية
+    // =======================
+    const membershipPercent =
+      typeof (profileDoc as any)?.membershipPercent === "number"
+        ? (profileDoc as any).membershipPercent
+        : 0;
+
+    const membershipId =
+      (profileDoc as any)?.membershipId ||
+      (profileMode === "firebase" && firebaseUid
+        ? `client-${new Date().getFullYear()}-${firebaseUid.slice(0, 6)}`
+        : "client-0000");
+
+    const progress = Math.min(Math.max(Number(membershipPercent) || 0, 0), 100);
+
+    const copyMembershipId = async () => {
+      try {
+        await navigator.clipboard.writeText(String(membershipId));
+        alert("تم نسخ رقم العضوية ✅");
+      } catch {
+        const ta = document.createElement("textarea");
+        ta.value = String(membershipId);
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+        alert("تم نسخ رقم العضوية ✅");
       }
-    });
-
-    return () => unsub();
-  }, [navigate]);
-
-  // ✅ حماية صفحة البروفايل (لا تعتمد على authToken فقط)
-  // الشرط: (Firebase user موجود) OR (authToken موجود)
-  useEffect(() => {
-    if (!authChecked) return;
-
-    const token = localStorage.getItem("authToken");
-    const firebaseOk = !!firebaseUser;
-
-    // ✅ لو عنده دور إداري محفوظ باللوكال، امنعه
-    const localRole = String(localStorage.getItem("userRole") || "")
-      .toLowerCase()
-      .trim();
-
-    if (localRole && localRole !== "client") {
-      navigate("/dashboard-pending", { replace: true });
-      return;
-    }
-
-    if (!token && !firebaseOk) {
-      navigate("/login", { replace: true });
-    }
-  }, [authChecked, firebaseUser, navigate]);
-
-  // =======================
-  // الحجوزات
-  // =======================
-  const [bookings, setBookings] = useState<BookingData[]>([]);
-
-  useEffect(() => {
-    const allBookings: BookingData[] = JSON.parse(localStorage.getItem("allBookings") || "[]");
-    const myPhone = normalizeKsaPhone(userData.phone);
-
-    if (!myPhone) {
-      setBookings([]);
-      return;
-    }
-
-    setBookings(
-      allBookings.filter((b) => normalizeKsaPhone(b.phone) === myPhone).reverse()
-    );
-  }, [userData.phone]);
-
-  const nextBooking = useMemo(() => {
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
-    const tomorrowStr = new Date(today.getTime() + 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-
-    const next = bookings.find(
-      (b) =>
-        (b.date === todayStr || b.date === tomorrowStr) &&
-        b.status !== "ملغي" &&
-        b.status !== "مكتمل"
-    );
-
-    return next || null;
-  }, [bookings]);
-
-  // =======================
-  // عضوية / رقم عضوية (بدون QR)
-  // =======================
-  const membershipPercent =
-    typeof profileDoc?.membershipPercent === "number"
-      ? profileDoc.membershipPercent
-      : 0;
-
-  const membershipId =
-    profileDoc?.membershipId ||
-    (profileMode === "firebase" && firebaseUid
-      ? `client-${new Date().getFullYear()}-${firebaseUid.slice(0, 6)}`
-      : "client-0000");
-
-  const progress = Math.min(Math.max(Number(membershipPercent) || 0, 0), 100);
-
-  const copyMembershipId = async () => {
-    try {
-      await navigator.clipboard.writeText(String(membershipId));
-      alert("تم نسخ رقم العضوية ✅");
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = String(membershipId);
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      ta.remove();
-      alert("تم نسخ رقم العضوية ✅");
-    }
-  };
-
-  // =======================
-  // Avatar
-  // =======================
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = ev.target?.result as string;
-      setUserData((prev) => ({ ...prev, avatar: img }));
-      localStorage.setItem("userAvatar", img);
     };
-    reader.readAsDataURL(file);
-  };
 
-  // =======================
-  // Modal تعديل البيانات
-  // =======================
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editData, setEditData] = useState({ ...userData });
+    // =======================
+    // Avatar
+    // =======================
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => setEditData({ ...userData }), [userData]);
+    const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
-  const handleSaveEdit = async () => {
-    try {
-      // Firebase mode
-      if (profileMode === "firebase" && firebaseUid) {
-        await updateUserProfile(firebaseUid, {
-          name: editData.name,
-          phone: editData.phone,
-          email: editData.email,
-          city: editData.city,
-          birthdate: editData.birthdate,
-        } as any);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = ev.target?.result as string;
+        setUserData((prev) => ({ ...prev, avatar: img }));
+        localStorage.setItem("userAvatar", img);
+      };
+      reader.readAsDataURL(file);
+    };
 
-        setUserData(editData);
+    // =======================
+    // Modal تعديل البيانات
+    // =======================
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editData, setEditData] = useState({ ...userData });
 
-        const merged = {
-          ...(profileDoc || {}),
-          uid: firebaseUid,
-          name: editData.name,
-          phone: editData.phone,
-          email: editData.email,
-          city: editData.city,
-          birthdate: editData.birthdate,
-        };
+    useEffect(() => setEditData({ ...userData }), [userData]);
 
-        localStorage.setItem("user_profile_v1", JSON.stringify(merged));
+    const handleSaveEdit = async () => {
+      try {
+        if (profileMode === "firebase" && firebaseUid) {
+          await updateUserProfile(firebaseUid, {
+            name: editData.name,
+            phone: editData.phone,
+            email: editData.email,
+            city: editData.city,
+            birthdate: editData.birthdate,
+          } as any);
+
+          setUserData(editData);
+
+          const merged = {
+            ...(profileDoc || {}),
+            uid: firebaseUid,
+            name: editData.name,
+            phone: editData.phone,
+            email: editData.email,
+            city: editData.city,
+            birthdate: editData.birthdate,
+          };
+
+          localStorage.setItem("user_profile_v1", JSON.stringify(merged));
+          localStorage.setItem("userName", editData.name);
+          localStorage.setItem("userEmail", editData.email);
+          localStorage.setItem("userPhone", editData.phone);
+          window.dispatchEvent(new Event("authChanged"));
+
+          setShowEditModal(false);
+          return;
+        }
+
+        // Local mode
+        let clients = JSON.parse(localStorage.getItem("clients") || "[]");
+        clients = clients.map((u: any) => (u.phone === userData.phone ? { ...u, ...editData } : u));
+        localStorage.setItem("clients", JSON.stringify(clients));
+        localStorage.setItem("currentUser", JSON.stringify({ ...(currentUser || {}), ...editData }));
         localStorage.setItem("userName", editData.name);
         localStorage.setItem("userEmail", editData.email);
         localStorage.setItem("userPhone", editData.phone);
         window.dispatchEvent(new Event("authChanged"));
 
+        setUserData(editData);
         setShowEditModal(false);
-        return;
+      } catch (e) {
+        console.error("Save profile error:", e);
+        alert("صار خطأ أثناء حفظ البيانات. حاول مرة ثانية.");
       }
+    };
 
-      // localStorage mode
-      let clients = JSON.parse(localStorage.getItem("clients") || "[]");
-      clients = clients.map((u: any) =>
-        u.phone === userData.phone ? { ...u, ...editData } : u
-      );
-      localStorage.setItem("clients", JSON.stringify(clients));
-      localStorage.setItem("currentUser", JSON.stringify({ ...(currentUser || {}), ...editData }));
-      localStorage.setItem("userName", editData.name);
-      localStorage.setItem("userEmail", editData.email);
-      localStorage.setItem("userPhone", editData.phone);
+    // =======================
+    // تسجيل الخروج
+    // =======================
+    const handleLogout = async () => {
+      try {
+        await signOut(auth);
+      } catch {}
+
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userName");
+      localStorage.removeItem("currentUser");
+      localStorage.removeItem("auth_user");
+      localStorage.removeItem("userUid");
+      localStorage.removeItem("showWelcome");
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("userPhone");
+      localStorage.removeItem("user_profile_v1");
+      localStorage.removeItem("userAvatar");
+
       window.dispatchEvent(new Event("authChanged"));
+      window.location.href = "/login";
+    };
 
-      setUserData(editData);
-      setShowEditModal(false);
-    } catch (e) {
-      console.error("Save profile error:", e);
-      alert("صار خطأ أثناء حفظ البيانات. حاول مرة ثانية.");
+    // =======================
+    // UI helpers: search + filter
+    // =======================
+    const [statusFilter, setStatusFilter] = useState<string>("all");
+    const [q, setQ] = useState("");
+
+    const bookingsFiltered = useMemo(() => {
+      const qq = q.trim().toLowerCase();
+
+      return bookings.filter((b) => {
+        const st = statusClass(b.status);
+        if (statusFilter !== "all" && st !== statusFilter) return false;
+
+        if (!qq) return true;
+
+        const blob = [
+          getServiceName(b.service),
+          b.employee,
+          b.date,
+          b.time,
+          b.status,
+          String(b.total || ""),
+          String(b.finalPrice || ""),
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return blob.includes(qq);
+      });
+    }, [bookings, statusFilter, q]);
+
+    // =======================
+    // لودر قبل فحص الدخول
+    // =======================
+    if (!authChecked) {
+      return (
+        <div className="profile-page">
+          <div className="container" style={{ maxWidth: 980, textAlign: "center" }}>
+            جاري تحميل الحساب...
+          </div>
+        </div>
+      );
     }
-  };
 
-  // =======================
-  // تسجيل الخروج
-  // =======================
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch {}
-
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("userName");
-    localStorage.removeItem("currentUser");
-    localStorage.removeItem("auth_user");
-    localStorage.removeItem("userUid");
-    localStorage.removeItem("showWelcome");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("userPhone");
-    localStorage.removeItem("user_profile_v1");
-    localStorage.removeItem("userAvatar");
-
-    window.dispatchEvent(new Event("authChanged"));
-    window.location.href = "/login";
-  };
-
-  // ✅ لودر بسيط قبل ما نخلص فحص الدخول
-  if (!authChecked) {
     return (
       <div className="profile-page">
-        <div className="container" style={{ maxWidth: 820, textAlign: "center" }}>
-          جاري تحميل الحساب...
-        </div>
-      </div>
-    );
-  }
+        <div className="container" style={{ maxWidth: 980 }}>
+          {/* ===== Header / Quick Top ===== */}
+          <div className="profile-hero">
+            <div className="profile-hero-left">
+              <div className="profile-avatar">
+                {userData.avatar ? <img src={userData.avatar} alt="avatar" /> : <span>👩‍🦰</span>}
 
-  return (
-    <div className="profile-page">
-      <div className="container" style={{ maxWidth: 820 }}>
-        {nextBooking && (
-          <div className="profile-next-alert">
-            لديك حجز قريب: {getServiceName(nextBooking.service)} بتاريخ{" "}
-            {nextBooking.date} الساعة {nextBooking.time}
-          </div>
-        )}
+                <button
+                  type="button"
+                  className="avatar-upload-btn"
+                  title="تغيير الصورة"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  ✚
+                </button>
 
-        {/* ===== Card ===== */}
-        <div className="profile-card">
-          {/* Avatar */}
-          <div className="profile-avatar">
-            {userData.avatar ? <img src={userData.avatar} alt="avatar" /> : <span>👩‍🦰</span>}
+                <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
+              </div>
 
-            <button
-              type="button"
-              className="avatar-upload-btn"
-              title="تغيير الصورة"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              ✚
-            </button>
+              <div className="profile-hero-meta">
+                <h2 className="profile-name">{userData.name || "عميلة"}</h2>
+                <div className="profile-sub">
+                  {userData.phone ? <span>📱 {userData.phone}</span> : null}
+                  {userData.email ? <span>✉️ {userData.email}</span> : null}
+                  {userData.city ? <span>📍 {userData.city}</span> : null}
+                </div>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={handleAvatarChange}
-            />
-          </div>
-
-          <h2>{userData.name || "عميلة"}</h2>
-          <div className="profile-details">
-            {userData.phone ? <div>{userData.phone}</div> : null}
-            {userData.email ? <div>{userData.email}</div> : null}
-          </div>
-
-          {/* Membership */}
-          <div className="profile-progress">
-            <div className="profile-progress-bar" style={{ width: `${progress}%` }} />
-            <div className="profile-points-label">نسبة العضوية: {progress}%</div>
-          </div>
-
-          {/* Membership ID + Copy */}
-          <div className="profile-id-row" title="رقم العضوية">
-            <span>{membershipId}</span>
-            <span
-              className="profile-id-copy"
-              role="button"
-              tabIndex={0}
-              onClick={copyMembershipId}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") copyMembershipId();
-              }}
-              title="نسخ رقم العضوية"
-            >
-              📋
-            </span>
-          </div>
-
-          {/* Actions */}
-          <div className="profile-actions">
-            <button
-              className="btn btn-outline-primary"
-              type="button"
-              onClick={() => setShowEditModal(true)}
-            >
-              ✏️ تعديل البيانات
-            </button>
-
-            <a
-              className="profile-support-btn"
-              href={getWhatsAppLink(SUPPORT_PHONE, SUPPORT_MSG)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              💬 دعم واتساب
-            </a>
-
-            <button className="btn btn-outline-danger" onClick={handleLogout}>
-              🚪 تسجيل الخروج
-            </button>
-          </div>
-        </div>
-
-        {/* ===== Bookings ===== */}
-        <div className="profile-bookings">
-          <h3>حجوزاتي</h3>
-
-          {bookings.length === 0 ? (
-            <div style={{ textAlign: "center", color: "#7e695c" }}>
-              لا يوجد حجوزات مرتبطة بهذا الرقم حالياً.
+                <div className="profile-id-row" title="رقم العضوية">
+                  <span className="profile-id">{membershipId}</span>
+                  <span
+                    className="profile-id-copy"
+                    role="button"
+                    tabIndex={0}
+                    onClick={copyMembershipId}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") copyMembershipId();
+                    }}
+                    title="نسخ رقم العضوية"
+                  >
+                    📋
+                  </span>
+                </div>
+              </div>
             </div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>الخدمة</th>
-                    <th>الموظفة</th>
-                    <th>التاريخ</th>
-                    <th>الوقت</th>
-                    <th>الحالة</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bookings.map((b, idx) => (
-                    <tr key={idx}>
-                      <td>{getServiceName(b.service)}</td>
-                      <td>{b.employee || "-"}</td>
-                      <td>{b.date}</td>
-                      <td>{b.time}</td>
-                      <td>
+
+            <div className="profile-hero-right">
+              <div className="profile-progress">
+                <div className="profile-progress-bar" style={{ width: `${progress}%` }} />
+                <div className="profile-points-label">نسبة العضوية: {progress}%</div>
+              </div>
+
+              <div className="profile-actions">
+                <button className="qs-btn qs-btn--ghost" type="button" onClick={() => setShowEditModal(true)}>
+                  ✏️ تعديل البيانات
+                </button>
+
+                <a className="qs-btn qs-btn--wa" href={getWhatsAppLink(SUPPORT_PHONE, SUPPORT_MSG)} target="_blank" rel="noreferrer">
+                  💬 دعم واتساب
+                </a>
+
+                <button className="qs-btn qs-btn--danger" onClick={handleLogout}>
+                  🚪 تسجيل الخروج
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ===== KPIs ===== */}
+          <div className="profile-kpis">
+            <div className="kpi-card">
+              <div className="kpi-label">إجمالي الحجوزات</div>
+              <div className="kpi-value">{kpis.total}</div>
+            </div>
+
+            <div className="kpi-card">
+              <div className="kpi-label">مؤكدة</div>
+              <div className="kpi-value">{kpis.confirmed}</div>
+            </div>
+
+            <div className="kpi-card">
+              <div className="kpi-label">انتظار</div>
+              <div className="kpi-value">{kpis.pending}</div>
+            </div>
+
+            <div className="kpi-card">
+              <div className="kpi-label">مكتملة</div>
+              <div className="kpi-value">{kpis.completed}</div>
+            </div>
+
+            <div className="kpi-card">
+              <div className="kpi-label">ملغية</div>
+              <div className="kpi-value">{kpis.cancelled}</div>
+            </div>
+          </div>
+
+          {/* ===== Next + Last ===== */}
+          <div className="profile-grid">
+            <div className="profile-panel">
+              <div className="panel-head">
+                <h3>الحجز القادم</h3>
+                <button className="qs-link" onClick={() => navigate("/booking")}>
+                  حجز جديد ↩︎
+                </button>
+              </div>
+
+              {!upcomingBooking ? (
+                <div className="panel-empty">ما عندك حجز قادم حالياً. ✨ احجزي موعدك الآن.</div>
+              ) : (
+                <div className="booking-cardx">
+                  <div className="booking-cardx-top">
+                    <div className="booking-cardx-title">{getServiceName(upcomingBooking.service)}</div>
+                    <span className={`status-badge ${statusClass(upcomingBooking.status)}`}>
+                      {upcomingBooking.status || "—"}
+                    </span>
+                  </div>
+
+                  <div className="booking-cardx-meta">
+                    <div>👩‍💼 {upcomingBooking.employee || "-"}</div>
+                    <div>📅 {formatDateAr(upcomingBooking.date)}</div>
+                    <div>⏰ {upcomingBooking.time}</div>
+                  </div>
+
+                  <div className="booking-cardx-actions">
+                    <button
+                      className="qs-btn qs-btn--primary"
+                      onClick={() => {
+                        // لو عندك صفحة تتبع: غير المسار هنا
+                        navigate("/track");
+                      }}
+                      type="button"
+                    >
+                      تتبع الحجز
+                    </button>
+
+                    <a className="qs-btn qs-btn--ghost" href={getWhatsAppLink(SUPPORT_PHONE, `مرحباً، عندي حجز بتاريخ ${upcomingBooking.date} الساعة ${upcomingBooking.time}.`)} target="_blank" rel="noreferrer">
+                      تواصل بخصوص الحجز
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="profile-panel">
+              <div className="panel-head">
+                <h3>آخر حجز</h3>
+                <span className="panel-hint">آخر نشاط لك عندنا 💗</span>
+              </div>
+
+              {!lastBooking ? (
+                <div className="panel-empty">ما عندك حجوزات سابقة مرتبطة بهذا الرقم.</div>
+              ) : (
+                <div className="booking-cardx is-last">
+                  <div className="booking-cardx-top">
+                    <div className="booking-cardx-title">{getServiceName(lastBooking.service)}</div>
+                    <span className={`status-badge ${statusClass(lastBooking.status)}`}>
+                      {lastBooking.status || "—"}
+                    </span>
+                  </div>
+
+                  <div className="booking-cardx-meta">
+                    <div>👩‍💼 {lastBooking.employee || "-"}</div>
+                    <div>📅 {formatDateAr(lastBooking.date)}</div>
+                    <div>⏰ {lastBooking.time}</div>
+                  </div>
+
+                  <div className="booking-cardx-actions">
+                    <button
+                      className="qs-btn qs-btn--ghost"
+                      onClick={() => navigate("/booking")}
+                      type="button"
+                    >
+                      إعادة حجز مشابه
+                    </button>
+
+                    <button
+                      className="qs-btn qs-btn--primary"
+                      type="button"
+                      onClick={() => {
+                        // ممكن لاحقاً: تقييم/ملاحظات
+                        alert("قريباً: تقييم الخدمة ✨");
+                      }}
+                    >
+                      تقييم الخدمة
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ===== Activity Timeline ===== */}
+          <div className="profile-panel mt-3">
+            <div className="panel-head">
+              <h3>آخر النشاط</h3>
+              <span className="panel-hint">أحدث 5 حجوزات</span>
+            </div>
+
+            {bookings.length === 0 ? (
+              <div className="panel-empty">لا يوجد نشاط حتى الآن.</div>
+            ) : (
+              <div className="timeline">
+                {bookings.slice(0, 5).map((b, idx) => (
+                  <div className="timeline-item" key={idx}>
+                    <div className="timeline-dot" />
+                    <div className="timeline-card">
+                      <div className="timeline-top">
+                        <div className="timeline-title">{getServiceName(b.service)}</div>
                         <span className={`status-badge ${statusClass(b.status)}`}>
                           {b.status || "—"}
                         </span>
-                      </td>
+                      </div>
+                      <div className="timeline-meta">
+                        <span>📅 {formatDateAr(b.date)}</span>
+                        <span>⏰ {b.time}</span>
+                        <span>👩‍💼 {b.employee || "-"}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ===== Bookings Table ===== */}
+          <div className="profile-panel mt-3">
+            <div className="panel-head">
+              <h3>حجوزاتي</h3>
+
+              <div className="panel-tools">
+                <div className="qs-input">
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="ابحثي (خدمة، موظفة، تاريخ...)"
+                  />
+                </div>
+
+                <div className="qs-select">
+                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                    <option value="all">كل الحالات</option>
+                    <option value="confirmed">مؤكد</option>
+                    <option value="pending">انتظار</option>
+                    <option value="completed">مكتمل</option>
+                    <option value="cancelled">ملغي</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {bookingsFiltered.length === 0 ? (
+              <div className="panel-empty">لا يوجد نتائج مطابقة.</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table className="qs-table">
+                  <thead>
+                    <tr>
+                      <th>الخدمة</th>
+                      <th>الموظفة</th>
+                      <th>التاريخ</th>
+                      <th>الوقت</th>
+                      <th>الحالة</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {bookingsFiltered.map((b, idx) => (
+                      <tr key={idx}>
+                        <td className="td-strong">{getServiceName(b.service)}</td>
+                        <td>{b.employee || "-"}</td>
+                        <td>{formatDateAr(b.date)}</td>
+                        <td>{b.time}</td>
+                        <td>
+                          <span className={`status-badge ${statusClass(b.status)}`}>
+                            {b.status || "—"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ===== Edit Modal ===== */}
+          {showEditModal && (
+            <div className="profile-modal-overlay" onClick={() => setShowEditModal(false)}>
+              <div className="profile-modal-dialog" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-head">
+                  <h5>تعديل بيانات العميلة</h5>
+                  <button className="modal-x" onClick={() => setShowEditModal(false)} aria-label="close">
+                    ✕
+                  </button>
+                </div>
+
+                <div className="modal-grid">
+                  <div className="mb-2">
+                    <label>الاسم</label>
+                    <input className="form-control" value={editData.name} onChange={(e) => setEditData({ ...editData, name: e.target.value })} />
+                  </div>
+
+                  <div className="mb-2">
+                    <label>الجوال</label>
+                    <input className="form-control" value={editData.phone} onChange={(e) => setEditData({ ...editData, phone: e.target.value })} />
+                  </div>
+
+                  <div className="mb-2">
+                    <label>البريد</label>
+                    <input className="form-control" value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} />
+                  </div>
+
+                  <div className="mb-2">
+                    <label>المدينة</label>
+                    <input className="form-control" value={editData.city} onChange={(e) => setEditData({ ...editData, city: e.target.value })} />
+                  </div>
+
+                  <div className="mb-2">
+                    <label>تاريخ الميلاد</label>
+                    <input type="date" className="form-control" value={editData.birthdate} onChange={(e) => setEditData({ ...editData, birthdate: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="modal-actions">
+                  <button className="qs-btn qs-btn--primary" onClick={handleSaveEdit}>
+                    حفظ
+                  </button>
+                  <button className="qs-btn qs-btn--ghost" onClick={() => setShowEditModal(false)}>
+                    إلغاء
+                  </button>
+                </div>
+
+                <div className="modal-note">
+                  ملاحظة: قريباً نضيف (نقاط، مكافآت، سجل خدمات مفصل، وفواتير) 😌✨
+                </div>
+              </div>
             </div>
           )}
         </div>
-
-        {/* ===== Edit Modal ===== */}
-        {showEditModal && (
-          <div className="profile-modal-overlay" onClick={() => setShowEditModal(false)}>
-            <div className="profile-modal-dialog" onClick={(e) => e.stopPropagation()}>
-              <h5 style={{ marginBottom: 12 }}>تعديل بيانات العميلة</h5>
-
-              <div className="mb-2">
-                <label>الاسم</label>
-                <input
-                  className="form-control"
-                  value={editData.name}
-                  onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                />
-              </div>
-
-              <div className="mb-2">
-                <label>الجوال</label>
-                <input
-                  className="form-control"
-                  value={editData.phone}
-                  onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
-                />
-              </div>
-
-              <div className="mb-2">
-                <label>البريد</label>
-                <input
-                  className="form-control"
-                  value={editData.email}
-                  onChange={(e) => setEditData({ ...editData, email: e.target.value })}
-                />
-              </div>
-
-              <div className="mb-2">
-                <label>المدينة</label>
-                <input
-                  className="form-control"
-                  value={editData.city}
-                  onChange={(e) => setEditData({ ...editData, city: e.target.value })}
-                />
-              </div>
-
-              <div className="mb-3">
-                <label>تاريخ الميلاد</label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={editData.birthdate}
-                  onChange={(e) => setEditData({ ...editData, birthdate: e.target.value })}
-                />
-              </div>
-
-              <div className="d-flex gap-2">
-                <button className="btn btn-success btn-sm" onClick={handleSaveEdit}>
-                  حفظ
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={() => setShowEditModal(false)}>
-                  إلغاء
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
-    </div>
-  );
-};
+    );
+  };
 
-export default Profile;
-
+  export default Profile;

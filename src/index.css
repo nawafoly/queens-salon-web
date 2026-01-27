@@ -1,74 +1,142 @@
-/* 
-* Custom CSS for Body Beauty Salon
-* React Application
-*/
-/* خطوط عربية احترافية */
+/* ===========================
+   Global Styles - Queens Salon
+   ONE FILE ONLY ✅
+   Dark Elegant Theme (Fixed)
+   No !important (We control) ✅
+   =========================== */
+
+/* Fonts (مرة وحدة فقط) */
 @import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap");
 
-/* 🔒 إجبار الموقع على Light Mode (مهم للجوال) */
+/* ===========================
+   Root Variables (مرة وحدة فقط)
+   =========================== */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  /* 🎨 الألوان الأساسية */
-  --primary-color: #e8b4a2;
-  --secondary-color: #dba58e;
-  --accent-color: #f5cdbb;
+  /* ✅ Queens Approved Palette */
+  --qs-black: #0d0d0d;
+  --qs-gray-900: #515659;
+  --qs-gray-700: #6e7372;
+  --qs-gray-500: #888c8c;
+  --qs-wine: #40010d;
+  --qs-offwhite: #f5f5f4;
 
-  /* 🧱 الخلفيات */
-  --background-color: #fdf9f6;
+  /* ✅ Semantic Tokens */
+  --qs-bg: var(--qs-black);
+  --qs-card: rgba(255, 255, 255, 0.06);
+  --qs-card-2: rgba(255, 255, 255, 0.09);
+  --qs-border: rgba(255, 255, 255, 0.12);
 
-    /* 🔵 ألوان إضافية (Accent / Info) */
-  --info-color: #559BD9;        /* أزرق ناعم */
-  --info-color-soft: rgb(28, 79, 124);
+  --qs-text: var(--qs-offwhite);
+  --qs-text-muted: rgba(245, 245, 244, 0.72);
 
-  /* 📝 النصوص */
-  --text-color: #5a4a42;        /* النص الافتراضي */
-  --text-strong: #7c3e24;      /* 🔥 نص غامق / عناوين / أزرار */
+  --qs-accent: var(--qs-wine);
+  --qs-accent-hover: #520114;
 
-  /* ألوان عامة */
+  /* Effects + Radius */
+  --qs-shadow: 0 18px 55px rgba(0, 0, 0, 0.45);
+  --qs-shadow-soft: 0 12px 34px rgba(0, 0, 0, 0.30);
+  --qs-r-xl: 22px;
+  --qs-r-lg: 18px;
+  --qs-r-md: 14px;
+
+  /* Focus */
+  --qs-focus: 0 0 0 3px rgba(64, 1, 13, 0.25);
+
+  /* ===========================
+     ✅ Compatibility Tokens
+     (لصفحاتك القديمة بدون تخريب)
+     =========================== */
+  --primary-color: var(--qs-wine);
+  --secondary-color: var(--qs-gray-700);
+  --accent-color: var(--qs-gray-500);
+
+  --background-color: var(--qs-black);
+
+  --text-color: var(--qs-offwhite);
+  --text-strong: var(--qs-offwhite);
+
   --white: #ffffff;
   --black: #000000;
+
+  --info-color: #559bd9;
+  --info-color-soft: rgb(28, 79, 124);
+
+  /* ===========================
+     Bootstrap-ish tokens (لو عندك بقايا)
+     =========================== */
+  --bs-primary-color: var(--qs-wine);
+  --bs-secondary-color: var(--qs-gray-700);
+  --bs-text-color: var(--qs-offwhite);
+  --bs-hover-color: var(--qs-accent-hover);
+
+  --bs-bg-light: var(--qs-black);
+  --bs-bg-white: var(--qs-card);
+
+  --bs-border-color: var(--qs-border);
+  --bs-border-light: rgba(255, 255, 255, 0.08);
+  --bs-border-dark: rgba(255, 255, 255, 0.18);
+
+  --bs-shadow-soft: var(--qs-shadow-soft);
+  --bs-shadow-medium: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --bs-shadow-strong: var(--qs-shadow);
+
+  --bs-success-color: #22c55e;
+  --bs-warning-color: #f59e0b;
+  --bs-error-color: #ef4444;
+  --bs-info-color: var(--bs-primary-color);
 }
 
+/* ===========================
+   Reset + Base
+   =========================== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-
-
-/* لو الجهاز Dark، لا تقلب الموقع لأسود */
-@media (prefers-color-scheme: dark) {
-
-  html,
-  body {
-    color-scheme: light;
-    background-color: #fdf9f6 !important;
-    color: #5a4a42 !important;
-  }
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  direction: rtl;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 html,
 body {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
-  font-family: "Inter", "Tajawal", Arial, sans-serif;
-  background-color: var(--background-color);
-  min-height: 100vh;
-}
-
-#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   margin: 0;
   padding: 0;
 }
 
-/* === Global Styles === */
 body {
-  font-family: "Tajawal", sans-serif !important;
-  color: var(--text-color) !important;
-  background-color: var(--background-color) !important;
+  font-family: "Tajawal", "Cairo", system-ui, -apple-system, Segoe UI, Arial, sans-serif;
+  color: var(--qs-text);
+  background-color: var(--qs-bg);
   direction: rtl;
   text-align: right;
+  min-height: 100vh;
+  line-height: 1.6;
+
+  /* خلفية دارك أنيقة */
+  background:
+    radial-gradient(900px 520px at 15% 20%, rgba(255, 255, 255, 0.06), transparent 60%),
+    radial-gradient(800px 450px at 85% 25%, rgba(64, 1, 13, 0.12), transparent 55%),
+    linear-gradient(180deg, var(--qs-black) 0%, #090909 100%);
+}
+
+/* Root wrappers */
+#root,
+.app,
+.main-content {
+  width: 100%;
+  max-width: 100%;
 }
 
 .app {
@@ -81,161 +149,222 @@ body {
   flex: 1;
 }
 
-a {
-  color: var(--primary-color);
-  text-decoration: none;
-  transition: color 0.3s ease;
+/* Media */
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
 }
 
-a:hover {
-  color: var(--secondary-color);
-}
-
-/* === Typography === */
+/* ===========================
+   Typography
+   =========================== */
 h1,
 h2,
 h3,
 h4,
 h5,
 h6 {
-  font-family: "Tajawal", sans-serif;
-  font-weight: 500;
-  color: var(--text-color);
+  font-family: "Tajawal", "Cairo", sans-serif;
+  font-weight: 800;
+  color: var(--qs-text);
+  margin: 0;
 }
 
 p {
   line-height: 1.8;
+  color: var(--qs-text);
+  margin: 0;
 }
 
 .section-title {
   font-size: 2rem;
-  font-weight: 500;
-  color: var(--text-color);
+  font-weight: 900;
+  color: var(--qs-text);
   margin-bottom: 2rem;
 }
 
-/* === Buttons (Custom) === */
-.btn {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-.btn-outline {
-  background-color: transparent;
-  color: var(--primary-color);
-  border: 2px solid var(--primary-color);
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.btn-outline:hover {
-  background-color: var(--primary-color);
-  color: var(--white);
-}
-
-/* === Forms === */
-.form-control {
-  padding: 0.75rem 1rem;
-  border: none;
-  border-radius: 10px;
-  background-color: var(--background-color);
-  color: var(--text-color);
-}
-
-.form-control:focus {
-  box-shadow: 0 0 0 0.25rem rgba(232, 180, 162, 0.25);
-  border-color: var(--primary-color);
-}
-
-.form-control::placeholder {
-  color: var(--text-color);
-  opacity: 0.7;
-}
-
-/* === Animations === */
-.fade-in {
-  opacity: 0;
-  transform: translateY(20px);
-  animation: fadeIn 1s ease-out forwards;
-}
-
-.contact-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #ccc;
-}
-
-.contact-list li svg {
-  color: var(--primary-color);
-}
-
-.social-links {
-  margin-top: 1rem;
-  display: flex;
-  gap: 0.75rem;
-}
-
-.social-links a {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  background: #222;
-  border-radius: 50%;
-  color: #ccc;
-  font-size: 1.1rem;
-  transition: background 0.2s, color 0.2s;
-}
-
-.social-links a:hover {
-  background: var(--primary-color);
-  color: #111;
-}
-
-.back-to-top {
-  color: #777;
-  font-size: 1.2rem;
+/* Links */
+a {
+  color: var(--qs-accent);
   text-decoration: none;
-  transition: color 0.2s;
+  transition: color 0.2s ease;
+}
+a:hover {
+  color: var(--qs-accent-hover);
 }
 
-.back-to-top:hover {
-  color: var(--primary-color);
+/* ===========================
+   Forms
+   =========================== */
+.form-control,
+.form-select,
+input,
+select,
+textarea {
+  font-family: "Tajawal", "Cairo", sans-serif;
 }
 
+.form-control,
+.form-select {
+  border: 1px solid var(--qs-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--qs-text);
+  border-radius: 12px;
+}
+
+.form-control::placeholder,
+textarea::placeholder {
+  color: var(--qs-text-muted);
+  opacity: 1;
+}
+
+.form-control:focus,
+.form-select:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  box-shadow: var(--qs-focus);
+  border-color: rgba(64, 1, 13, 0.75);
+}
+
+/* ===========================
+   Buttons (Base)
+   =========================== */
+button,
+.btn,
+.qs-btn {
+  border-radius: 16px;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    filter 0.2s ease;
+}
+
+/* Generic bootstrap-like button touch */
+.btn {
+  font-weight: 800;
+}
+
+/* QS button */
+.qs-btn {
+  background: var(--qs-accent);
+  border: 1px solid var(--qs-accent);
+  color: var(--qs-offwhite);
+  padding: 12px 16px;
+  font-weight: 800;
+}
+.qs-btn:hover {
+  background: var(--qs-accent-hover);
+  border-color: var(--qs-accent-hover);
+  box-shadow: var(--qs-shadow-soft);
+  transform: translateY(-1px);
+}
+
+/* Outline (custom) */
+.btn-outline {
+  background: transparent;
+  color: var(--qs-text);
+  border: 1px solid var(--qs-border);
+}
+.btn-outline:hover {
+  background: var(--qs-accent);
+  border-color: rgba(255, 255, 255, 0.10);
+  color: var(--qs-offwhite);
+  box-shadow: var(--qs-shadow-soft);
+  transform: translateY(-1px);
+}
+
+/* ===========================
+   Bootstrap Overrides (QS Controls)
+   No !important ✅
+   =========================== */
+#root :where(.btn) {
+  font-weight: 800;
+  border-radius: 16px;
+}
+
+/* Primary */
+#root :where(.btn.btn-primary) {
+  background: var(--qs-accent);
+  border-color: var(--qs-accent);
+  color: var(--qs-offwhite);
+  box-shadow: 0 10px 26px rgba(64, 1, 13, 0.18);
+}
+#root :where(.btn.btn-primary:hover) {
+  background: var(--qs-accent-hover);
+  border-color: var(--qs-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px rgba(64, 1, 13, 0.24);
+}
+
+/* Outline Primary */
+#root :where(.btn.btn-outline-primary) {
+  background: transparent;
+  color: var(--qs-accent);
+  border-color: var(--qs-accent);
+}
+#root :where(.btn.btn-outline-primary:hover) {
+  background: rgba(64, 1, 13, 0.10);
+  border-color: var(--qs-accent-hover);
+  color: var(--qs-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+
+/* ===========================
+   Utilities + Bootstrap helpers
+   =========================== */
+#root :where(.text-muted) {
+  color: var(--qs-text-muted);
+}
+
+#root :where(.border, .border-top, .border-bottom, .border-start, .border-end) {
+  border-color: var(--qs-border);
+}
+
+/* Container width safety */
+.container,
+.container-fluid {
+  max-width: 1200px;
+}
+
+/* Icons helpers */
 .fa-check-circle,
 .fa-circle-check {
-  color: var(--black) !important;
+  color: var(--qs-text);
   font-size: 1.1em;
   vertical-align: middle;
 }
 
-/* الصور */
-.hero-image img,
-.offers-image img {
-  background: none !important;
-  border-radius: 22px !important;
-  box-shadow: 0 8px 32px rgba(180, 139, 123, 0.09) !important;
-  opacity: 0.7;
+/* ===========================
+   Animations
+   =========================== */
+.fade-in {
+  opacity: 0;
+  transform: translateY(18px);
+  animation: qsFadeIn 0.9s ease-out forwards;
 }
 
-@keyframes fadeIn {
+@keyframes qsFadeIn {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(18px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-/* === Responsive === */
+/* ===========================
+   Responsive
+   =========================== */
 @media (max-width: 991.98px) {
   .section-title {
     font-size: 1.8rem;
@@ -246,117 +375,74 @@ p {
   .section-title {
     font-size: 1.5rem;
   }
-
-  .btn {
-    padding: 0.6rem 1.2rem;
-  }
 }
 
 @media (max-width: 575.98px) {
   body {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
   }
 }
 
-/* ========================================
-   نظام CSS مخصص احترافي - صالون ملكات 
-   ======================================== */
-
-
-/* ========================================
-   المتغيرات الأساسية - الألوان المعتمدة
-   ======================================== */
-:root {
-  --bs-primary-color: #e8b4a2;
-  --bs-secondary-color: #dba58e;
-  --bs-text-color: #5a4a42;
-  --bs-hover-color: #c8947a;
-
-  --bs-primary-50: #faf7f5;
-  --bs-primary-100: #f5ede8;
-  --bs-primary-200: #eed9d0;
-  --bs-primary-300: #e8b4a2;
-  --bs-primary-400: #e09b85;
-  --bs-primary-500: #d49a84;
-  --bs-primary-600: #c8947a;
-  --bs-primary-700: #b8846a;
-  --bs-primary-800: #a8745a;
-  --bs-primary-900: #98644a;
-
-  --bs-secondary-50: #f9f6f4;
-  --bs-secondary-100: #f3ece8;
-  --bs-secondary-200: #e9d7d0;
-  --bs-secondary-300: #dba58e;
-  --bs-secondary-400: #d19578;
-  --bs-secondary-500: #c8947a;
-  --bs-secondary-600: #b8846a;
-  --bs-secondary-700: #a8745a;
-  --bs-secondary-800: #98644a;
-  --bs-secondary-900: #88543a;
-
-  --bs-text-50: #f7f5f4;
-  --bs-text-100: #ede8e6;
-  --bs-text-200: #ddd4d0;
-  --bs-text-300: #c4b5af;
-  --bs-text-400: #a8958d;
-  --bs-text-500: #8a7a73;
-  --bs-text-600: #6b5b54;
-  --bs-text-700: #5a4a42;
-  --bs-text-800: #4a3a32;
-  --bs-text-900: #3a2a22;
-
-  --bs-bg-light: #faf9f8;
-  --bs-bg-white: #ffffff;
-
-  --bs-border-color: #e8ddd8;
-  --bs-border-light: #f0e8e3;
-  --bs-border-dark: #d0c0b8;
-
-  --bs-shadow-soft: 0 2px 15px -3px rgba(232, 180, 162, 0.1),
-    0 10px 20px -2px rgba(232, 180, 162, 0.05);
-  --bs-shadow-medium: 0 4px 25px -5px rgba(232, 180, 162, 0.15),
-    0 10px 10px -5px rgba(232, 180, 162, 0.08);
-  --bs-shadow-strong: 0 10px 40px -10px rgba(232, 180, 162, 0.2),
-    0 2px 10px -2px rgba(232, 180, 162, 0.1);
-
-  --bs-success-color: #22c55e;
-  --bs-warning-color: #f59e0b;
-  --bs-error-color: #ef4444;
-  --bs-info-color: var(--bs-primary-color);
+/* ===========================
+   Global Utility Classes (QS)
+   استخدمها في كل الصفحات
+   =========================== */
+.qs-section {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(44px, 6vw, 78px) 0;
 }
 
-/* ========================================
-   الإعدادات الأساسية
-   ======================================== */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+.qs-surface {
+  background: var(--qs-card);
+  border: 1px solid var(--qs-border);
+  border-radius: var(--qs-r-xl);
+  box-shadow: var(--qs-shadow-soft);
 }
 
-html {
-  font-size: 16px;
-  scroll-behavior: smooth;
-  direction: rtl;
+.qs-card {
+  background: var(--qs-card);
+  border: 1px solid var(--qs-border);
+  border-radius: var(--qs-r-lg);
+  box-shadow: var(--qs-shadow-soft);
 }
 
-body {
-  font-family: "Tajawal", sans-serif !important;
-  color: var(--bs-text-color) !important;
-  background-color: var(--bs-bg-light) !important;
-  line-height: 1.6;
-  overflow-x: hidden;
-  min-height: 100vh;
-  padding-top: 0 !important;
+.qs-muted {
+  color: var(--qs-text-muted);
 }
 
-/* ✅ FIX: امنع أي سكرول داخلي يخلي الناف يبان ثابت */
-html, body {
-  height: auto !important;
-  overflow-y: auto !important;
+.qs-divider {
+  height: 1px;
+  background: var(--qs-border);
+  width: 100%;
 }
 
-#root, .app, .main-content {
-  height: auto !important;
-  overflow: visible !important;
+/* ===========================
+   Glass Button (QS Official)
+   Use with: class="qs-btn qs-btn--glass"
+   =========================== */
+.qs-btn--glass {
+  background: rgba(64, 1, 13, 0.78);
+  color: var(--qs-offwhite);
+
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 16px;
+
+  backdrop-filter: saturate(120%) blur(3px);
+  -webkit-backdrop-filter: saturate(120%) blur(3px);
+
+  box-shadow:
+    0 8px 22px rgba(64, 1, 13, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+
+  transition: all 0.2s ease;
+}
+
+.qs-btn--glass:hover {
+  background: rgba(64, 1, 13, 0.9);
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 14px 32px rgba(64, 1, 13, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
