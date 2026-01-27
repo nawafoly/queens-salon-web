@@ -1,75 +1,124 @@
 /* =========================
-   Dashboard Staff (FINAL)
+   Dashboard Staff (FINAL - Unified Queens)
    File: src/styles/DashboardStaff.css
    ✅ Scoped داخل .dashstaff-page فقط
 ========================= */
 
-.dashstaff-page {
+.dashstaff-page{
   width: min(1180px, calc(100% - 28px));
   margin: 0 auto;
+
+  /* ✅ توحيد ألوان/ستايل داخل صفحة الموظفة */
+  --ds-bg: #F5F5F4;                 /* off-white */
+  --ds-surface: rgba(255,255,255,.92);
+  --ds-border: rgba(13,13,13,.10);
+  --ds-text: #0D0D0D;
+  --ds-muted: rgba(13,13,13,.62);
+
+  --ds-brand: #40010D;              /* qs wine */
+  --ds-brand-2: #2a0008;
+  --ds-brand-soft: rgba(64,1,13,.10);
+
+  --ds-radius: 18px;
+  --ds-shadow: 0 14px 40px rgba(13,13,13,.10);
+
+  padding: 14px 0 40px;
+}
+
+/* ✅ خلفية خفيفة + نقش (فخم مثل اللي سويناه) */
+.dashstaff-page::before{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+
+  background:
+    radial-gradient(900px 520px at 15% 20%, rgba(64, 1, 13, 0.05), transparent 60%),
+    radial-gradient(800px 450px at 85% 25%, rgba(136, 140, 140, 0.10), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, var(--ds-bg) 100%);
+
+  opacity: 1;
+}
+
+/* نقش نقاط خفيف */
+.dashstaff-page::after{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+
+  background-image:
+    radial-gradient(rgba(13,13,13,0.03) 1px, transparent 1px),
+    radial-gradient(rgba(64,1,13,0.03) 1px, transparent 1px);
+  background-size: 22px 22px, 34px 34px;
+  background-position: 0 0, 10px 10px;
+  opacity: .55;
 }
 
 /* =========================
    Header
 ========================= */
-.dashstaff-page .dashstaff-header {
-  display: flex;
+.dashstaff-page .dashstaff-header{
+  display:flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 14px;
+  gap:14px;
   margin-bottom: 14px;
 }
 
-.dashstaff-page .dashstaff-title {
-  margin: 0;
+.dashstaff-page .dashstaff-title{
+  margin:0;
   font-weight: 900;
   font-size: 18px;
-  color: #222;
+  color: var(--ds-text);
 }
 
-.dashstaff-page .dashstaff-sub {
-  display: flex;
-  gap: 8px;
+.dashstaff-page .dashstaff-sub{
+  display:flex;
+  gap:8px;
   margin-top: 6px;
   flex-wrap: wrap;
 }
 
-.dashstaff-page .dashstaff-count {
-  background: rgba(139, 92, 246, 0.10);
-  border: 1px solid rgba(139, 92, 246, 0.22);
-  border-radius: 14px;
+.dashstaff-page .dashstaff-count{
+  background: rgba(64, 1, 13, 0.08);
+  border: 1px solid rgba(64, 1, 13, 0.18);
+  border-radius: 999px;
   padding: 8px 14px;
   font-weight: 900;
   font-size: 13px;
-  color: #6d28d9;
+  color: var(--ds-brand);
 }
 
 /* =========================
    Pills
 ========================= */
-.dashstaff-page .pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.dashstaff-page .pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
   padding: 6px 12px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 800;
-  background: rgba(139, 92, 246, 0.12);
-  color: #6d28d9;
-  border: 1px solid rgba(139, 92, 246, 0.24);
+
+  background: rgba(64, 1, 13, 0.08);
+  color: var(--ds-brand);
+  border: 1px solid rgba(64, 1, 13, 0.18);
 }
 
-.dashstaff-page .pill.soft {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.10);
-  color: #444;
+.dashstaff-page .pill.soft{
+  background: rgba(13, 13, 13, 0.04);
+  border-color: rgba(13, 13, 13, 0.10);
+  color: rgba(13,13,13,.72);
 }
 
 /* =========================
    Alerts
 ========================= */
-.dashstaff-page .dashstaff-box {
+.dashstaff-page .dashstaff-box{
   margin-top: 12px;
   padding: 12px 14px;
   border-radius: 14px;
@@ -77,123 +126,140 @@
   font-weight: 800;
 }
 
-.dashstaff-page .dashstaff-box.warn {
+.dashstaff-page .dashstaff-box.warn{
   background: rgba(251, 191, 36, 0.14);
   border: 1px solid rgba(251, 191, 36, 0.38);
   color: #92400e;
 }
 
-.dashstaff-page .dashstaff-box.error {
+.dashstaff-page .dashstaff-box.error{
   background: rgba(239, 68, 68, 0.14);
   border: 1px solid rgba(239, 68, 68, 0.36);
   color: #7f1d1d;
 }
 
-.dashstaff-page .dashstaff-box.empty {
-  background: rgba(0, 0, 0, 0.04);
-  border: 1px dashed rgba(0, 0, 0, 0.18);
-  color: #555;
-  text-align: center;
+.dashstaff-page .dashstaff-box.empty{
+  background: rgba(13, 13, 13, 0.04);
+  border: 1px dashed rgba(13, 13, 13, 0.18);
+  color: rgba(13,13,13,.70);
+  text-align:center;
 }
 
 /* =========================
    Filters
 ========================= */
-.dashstaff-page .dashstaff-filters {
+.dashstaff-page .dashstaff-filters{
   margin-top: 14px;
-  display: grid;
+  display:grid;
   grid-template-columns: 2fr 1fr 1fr;
   gap: 10px;
 }
 
-@media (max-width: 768px) {
-  .dashstaff-page .dashstaff-filters {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 768px){
+  .dashstaff-page .dashstaff-filters{ grid-template-columns: 1fr; }
 }
 
-.dashstaff-page .dashstaff-input {
+.dashstaff-page .dashstaff-input{
   height: 44px;
   padding: 0 12px;
   border-radius: 14px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+
+  border: 1px solid rgba(13, 13, 13, 0.12);
   background: rgba(255, 255, 255, 0.96);
-  outline: none;
-  font-weight: 700;
+
+  outline:none;
+  font-weight: 800;
   font-size: 13px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  color: var(--ds-text);
+
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
 
-.dashstaff-page .dashstaff-input:focus {
-  border-color: rgba(139, 92, 246, 0.45);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+.dashstaff-page .dashstaff-input:focus{
+  border-color: rgba(64, 1, 13, 0.35);
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.14);
 }
 
 /* =========================
    List & Cards
 ========================= */
-.dashstaff-page .dashstaff-list {
+.dashstaff-page .dashstaff-list{
   margin-top: 16px;
-  display: grid;
+  display:grid;
   gap: 12px;
 }
 
-.dashstaff-page .dashstaff-card {
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(139, 92, 246, 0.14);
-  border-radius: 18px;
+.dashstaff-page .dashstaff-card{
+  background: var(--ds-surface);
+  border: 1px solid rgba(13,13,13,.08);
+  border-radius: var(--ds-radius);
   padding: 14px;
-  box-shadow: 0 10px 26px rgba(124, 58, 237, 0.10);
+  box-shadow: var(--ds-shadow);
+  position: relative;
+  overflow: hidden;
 }
 
-.dashstaff-page .dashstaff-row {
-  display: flex;
-  gap: 12px;
+/* لمعة خفيفة */
+.dashstaff-page .dashstaff-card::after{
+  content:"";
+  position:absolute;
+  inset:-45%;
+  background: radial-gradient(circle, rgba(64,1,13,.10) 0%, transparent 55%);
+  opacity: 0;
+  transition: opacity .25s ease;
+  pointer-events:none;
+}
+.dashstaff-page .dashstaff-card:hover::after{ opacity: 1; }
+
+.dashstaff-page .dashstaff-row{
+  display:flex;
+  gap:12px;
   flex-wrap: wrap;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
+  color: var(--ds-text);
 }
 
-.dashstaff-page .dashstaff-row.top {
+.dashstaff-page .dashstaff-row.top{
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
 }
 
-.dashstaff-page .dashstaff-service {
+.dashstaff-page .dashstaff-service{
   font-weight: 900;
   font-size: 14px;
 }
 
-.dashstaff-page .dashstaff-meta {
-  color: #555;
+.dashstaff-page .dashstaff-meta{
+  color: rgba(13,13,13,.68);
   font-weight: 800;
 }
 
 /* =========================
    Status
 ========================= */
-.dashstaff-page .dashstaff-status {
-  padding: 4px 10px;
+.dashstaff-page .dashstaff-status{
+  padding: 5px 10px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 900;
   border: 1px solid transparent;
 }
 
-.dashstaff-page .dashstaff-status.pending {
+.dashstaff-page .dashstaff-status.pending{
   background: rgba(251, 191, 36, 0.18);
   color: #92400e;
   border-color: rgba(251, 191, 36, 0.42);
 }
 
-.dashstaff-page .dashstaff-status.confirmed {
+.dashstaff-page .dashstaff-status.confirmed{
   background: rgba(34, 197, 94, 0.18);
   color: #166534;
   border-color: rgba(34, 197, 94, 0.42);
 }
 
-.dashstaff-page .dashstaff-status.cancelled {
+.dashstaff-page .dashstaff-status.cancelled{
   background: rgba(239, 68, 68, 0.18);
   color: #7f1d1d;
   border-color: rgba(239, 68, 68, 0.42);
@@ -202,42 +268,45 @@
 /* =========================
    Note
 ========================= */
-.dashstaff-page .dashstaff-note {
+.dashstaff-page .dashstaff-note{
   margin-top: 8px;
   padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.04);
-  border-radius: 10px;
+  background: rgba(13, 13, 13, 0.04);
+  border-radius: 12px;
   font-size: 13px;
-  font-weight: 700;
-  color: #444;
+  font-weight: 800;
+  color: rgba(13,13,13,.72);
 }
 
 /* =========================
    Actions
 ========================= */
-.dashstaff-page .dashstaff-actions {
-  display: flex;
+.dashstaff-page .dashstaff-actions{
+  display:flex;
   gap: 8px;
   margin-top: 10px;
   flex-wrap: wrap;
 }
 
-.dashstaff-page .dashstaff-actions button {
+.dashstaff-page .dashstaff-actions button{
   height: 38px;
   padding: 0 14px;
   border-radius: 999px;
-  border: 1px solid rgba(139, 92, 246, 0.26);
-  background: rgba(139, 92, 246, 0.12);
-  color: #6d28d9;
+
+  border: 1px solid rgba(64, 1, 13, 0.22);
+  background: rgba(64, 1, 13, 0.08);
+  color: var(--ds-brand);
+
   font-weight: 900;
   font-size: 13px;
   cursor: pointer;
-  transition: transform 0.12s ease, box-shadow 0.12s ease,
-    background 0.12s ease;
+
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease, filter .12s ease;
 }
 
-.dashstaff-page .dashstaff-actions button:hover {
-  background: rgba(139, 92, 246, 0.20);
+.dashstaff-page .dashstaff-actions button:hover{
+  background: rgba(64, 1, 13, 0.12);
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(124, 58, 237, 0.14);
+  filter: brightness(1.02);
+  box-shadow: 0 10px 22px rgba(64, 1, 13, 0.14);
 }

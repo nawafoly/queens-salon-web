@@ -83,6 +83,10 @@ function normalizeAdminRole(raw: any): AdminRole {
  * - لو موجود: نقرأ role + active
  * - لو غير موجود: ننشئه pending + active=false
  * - ونضمن staff_public موجود كـ ملف موظفة (لكن بدون ما نعطي صلاحيات)
+ *
+ * 🔥 FIX مهم:
+ * staff_public rules عندك فيها hasOnly(keys)
+ * لذلك ممنوع نكتب أي حقول إضافية غير المسموح بها.
  */
 async function ensureAdminSessionFromUsers(params: {
   uid: string;
@@ -104,24 +108,26 @@ async function ensureAdminSessionFromUsers(params: {
     const role = active ? normalizeAdminRole(data?.role) : "pending";
 
     // ✅ ضمان وجود staff_public doc (اختياري لكنه مفيد للربط)
+    // 🔥 نكتب فقط المفاتيح المسموحة في rules
     const spRef = doc(db, ...STAFF_PUBLIC_COL, uid);
     const spSnap = await getDoc(spRef);
+
     if (!spSnap.exists()) {
+      const safeName = String(
+        data?.displayName || data?.name || displayName || ""
+      ).trim();
+
       await setDoc(
         spRef,
         {
-          uid,
-          linkedUid: uid,
           email,
-          name: String(data?.displayName || data?.name || displayName || "").trim(),
+          linkedUid: uid,
           role: role === "pending" ? "pending" : role,
           active: role === "pending" ? false : true,
+          name: safeName || (role === "pending" ? "حساب إداري (بانتظار التفعيل)" : "موظفة"),
+          phone: String(data?.phone || "").trim(),
           showOnAbout: false,
           showOnBooking: false,
-          specialties: [],
-          bio: "",
-          avatarUrl: "",
-          phone: String(data?.phone || "").trim(),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
@@ -153,22 +159,19 @@ async function ensureAdminSessionFromUsers(params: {
 
   await setDoc(userRef, pendingUserPayload, { merge: true });
 
+  // 🔥 نكتب فقط المفاتيح المسموحة في rules
   const spRef = doc(db, ...STAFF_PUBLIC_COL, uid);
   await setDoc(
     spRef,
     {
-      uid,
-      linkedUid: uid,
       email,
-      name: displayName || "حساب إداري (بانتظار التفعيل)",
+      linkedUid: uid,
       role: "pending",
       active: false,
+      name: displayName || "حساب إداري (بانتظار التفعيل)",
+      phone: "",
       showOnAbout: false,
       showOnBooking: false,
-      specialties: [],
-      bio: "",
-      avatarUrl: "",
-      phone: "",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     },
@@ -521,7 +524,14 @@ const Login: React.FC = () => {
       // ✅ 7) توجيه العميلة
       navigate("/profile", { replace: true });
     } catch (err: any) {
-      console.error("❌ SIGNUP FAILED:", err?.code, err?.message, err);
+      console.error("❌ SIGNUP FAILED:", {
+        code: err?.code,
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack,
+      });
+
+      alert(`SIGNUP FAILED:\n${String(err?.code)}\n${String(err?.message)}`);
 
       const code = String(err?.code || "");
       if (code.includes("auth/operation-not-allowed")) {

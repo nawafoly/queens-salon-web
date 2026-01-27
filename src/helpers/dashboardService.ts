@@ -1,5 +1,3 @@
-
-
 // src/helpers/dashboardService.ts
 import { db } from "../services/firebase";
 import {
@@ -23,7 +21,7 @@ export type Booking = {
   serviceId?: string;
   employeeName?: string;
   date: string; // YYYY-MM-DD
-  time: string; // e.g. "10:00 ص"
+  time: string; // "10:00 ص" or "17:30"
   status: BookingStatus;
   total?: number;
   note?: string;
@@ -37,42 +35,15 @@ export type DashboardStats = {
   todayBookings: number;
 };
 
+const SALON_ID = "main";
+
+// ✅ helpers
 function todayISO() {
   const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
-}
-
-// نفس أسعار Booking (fallback)
-function getServicePrice(serviceId: string): number {
-  const prices: Record<string, number> = {
-    haircut: 75,
-    coloring: 150,
-    styling: 80,
-    treatment: 120,
-    makeup: 100,
-    nails: 80,
-    facial: 120,
-    waxing: 60,
-  };
-  return prices[serviceId] || 0;
-}
-
-// نفس أسماء الخدمات في Booking (fallback)
-function getServiceName(serviceId: string) {
-  const map: Record<string, string> = {
-    haircut: "قص الشعر",
-    coloring: "صبغة الشعر",
-    styling: "تسريحات الشعر",
-    treatment: "معالجات الشعر",
-    makeup: "مكياج",
-    nails: "العناية بالأظافر",
-    facial: "العناية بالبشرة",
-    waxing: "إزالة الشعر",
-  };
-  return map[serviceId] || serviceId;
 }
 
 function normalizeStatus(status: any): BookingStatus {
@@ -91,19 +62,23 @@ function toMillis(v: any): number {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
   }
-  // Firestore Timestamp
   if (typeof v?.toMillis === "function") return v.toMillis();
   if (v?.seconds) return Number(v.seconds) * 1000;
   return 0;
 }
 
+// ✅ ✅ ✅ أهم تعديل: المسار الصحيح
 function bookingsCol() {
-  return collection(db, "bookings");
+  return collection(db, "salons", SALON_ID, "bookings");
 }
 
 function mapBookingDoc(id: string, b: any): Booking {
   const serviceId = b.serviceId ?? b.service ?? "";
-  const serviceName = b.serviceName ?? getServiceName(serviceId);
+  const serviceName =
+    b.serviceSnapshot?.serviceNameAtBooking ??
+    b.serviceName ??
+    serviceId ??
+    "—";
 
   const customerName =
     b.clientName ?? b.customerName ?? b.name ?? b.customer ?? "عميلة";
@@ -118,13 +93,13 @@ function mapBookingDoc(id: string, b: any): Booking {
 
   const status = normalizeStatus(b.status);
 
-  const totalRaw = b.total ?? b.finalPrice;
+  const totalRaw = b.finalPrice ?? b.total;
   const total =
     typeof totalRaw === "number"
       ? totalRaw
       : Number.isFinite(Number(totalRaw))
       ? Number(totalRaw)
-      : getServicePrice(serviceId);
+      : 0;
 
   const createdAt =
     toMillis(b.createdAt) || toMillis(b.updatedAt) || Date.now();
@@ -146,57 +121,40 @@ function mapBookingDoc(id: string, b: any): Booking {
 }
 
 export const DashboardService = {
-  /**
-   * ✅ Firestore: ما عاد فيه migrate من localStorage
-   * نخليها موجودة فقط عشان ما ينكسر أي استدعاء قديم
-   */
   migrateBookingsIfNeeded() {
     // no-op
   },
 
-  /**
-   * ✅ يجيب كل الحجوزات من Firestore
-   * - ملاحظة: async
-   */
   async getBookings(): Promise<Booking[]> {
+    // ✅ orderBy createdAt (ولو ناقص يضبط بعدين بالـ sort)
     const qy = query(bookingsCol(), orderBy("createdAt", "desc"));
     const snaps = await getDocs(qy);
 
     const rows: Booking[] = [];
-    snaps.forEach((d) => {
-      rows.push(mapBookingDoc(d.id, d.data()));
-    });
+    snaps.forEach((d) => rows.push(mapBookingDoc(d.id, d.data())));
 
-    // احتياط لو createdAt ناقص
     rows.sort((a, b) => b.createdAt - a.createdAt);
     return rows;
   },
 
-  /**
-   * ✅ آخر حجوزات (limit)
-   */
   async getLatestBookings(limit = 5): Promise<Booking[]> {
     const qy = query(bookingsCol(), orderBy("createdAt", "desc"), fsLimit(limit));
     const snaps = await getDocs(qy);
 
     const rows: Booking[] = [];
     snaps.forEach((d) => rows.push(mapBookingDoc(d.id, d.data())));
+
     rows.sort((a, b) => b.createdAt - a.createdAt);
     return rows;
   },
 
-  /**
-   * ✅ إحصائيات الداشبورد من Firestore
-   */
   async getStats(): Promise<DashboardStats> {
     const bookings = await this.getBookings();
     const today = todayISO();
 
     const todayBookings = bookings.filter((b) => b.date === today).length;
-
     const totalRevenue = bookings.reduce((sum, b) => sum + (b.total ?? 0), 0);
 
-    // client count (unique by phone if exists else by name)
     const clientKeySet = new Set<string>();
     bookings.forEach((b) => {
       const p = (b.phone || "").trim();
@@ -205,7 +163,6 @@ export const DashboardService = {
       if (key.trim()) clientKeySet.add(key);
     });
 
-    // employees count (unique by employeeName)
     const empSet = new Set<string>();
     bookings.forEach((b) => {
       const e = (b.employeeName || "").trim();
@@ -220,20 +177,14 @@ export const DashboardService = {
     };
   },
 
-  /**
-   * ✅ تحديث حالة الحجز في Firestore
-   */
   async updateBookingStatus(id: string, status: BookingStatus): Promise<void> {
     if (!id) return;
 
-    const ref = doc(db, "bookings", id);
+    // ✅ ✅ ✅ أهم تعديل: doc في salons/main/bookings
+    const ref = doc(db, "salons", SALON_ID, "bookings", id);
     await updateDoc(ref, { status });
   },
 
-  /**
-   * ✅ (اختياري) فلترة حجوزات اليوم مباشرة من Firestore بدون تحميل الكل
-   * إذا احتجتها في الداشبورد لاحقًا
-   */
   async getTodayBookingsCount(): Promise<number> {
     const today = todayISO();
     const qy = query(bookingsCol(), where("date", "==", today));
@@ -241,4 +192,3 @@ export const DashboardService = {
     return snaps.size;
   },
 };
-

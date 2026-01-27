@@ -1,5 +1,3 @@
-
-
 // ✅ src/pages/DashboardStaff.tsx
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -26,13 +24,13 @@ type BookingDoc = {
   serviceId?: string;
 
   employeeName?: string;
-  employeeId?: string;   // ✅ uid غالبًا
-  employeeUid?: string;  // ✅ إذا موجود في بعض الحجوزات
+  employeeId?: string;
+  employeeUid?: string;
 
-  employeeKey?: string; // موجود بالكود عندك لكن Rules ما تعتمد عليه للقراءة
+  employeeKey?: string;
 
-  date?: string;
-  time?: string;
+  date?: string; // YYYY-MM-DD
+  time?: string; // e.g. 05:30 PM أو 17:30
 
   status?: BookingStatus;
 
@@ -42,7 +40,6 @@ type BookingDoc = {
 type BookingWithId = BookingDoc & { id: string };
 
 const SALON_ID = "main";
-type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 
 function normalizeArabic(s: any) {
   return String(s || "")
@@ -51,125 +48,164 @@ function normalizeArabic(s: any) {
     .replace(/\s+/g, " ");
 }
 
-function allowStaffPortal(role: UiRole | "") {
-  return role === "staff" || role === "owner" || role === "admin" || role === "reception";
+function safeMs(ts: any): number {
+  try {
+    if (!ts) return 0;
+    if (typeof ts === "number") return ts;
+    if (typeof ts?.toMillis === "function") return ts.toMillis();
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+function parseTimeToMinutes(t?: string) {
+  const s = String(t || "").trim();
+  if (!s) return 99999;
+
+  // 17:30
+  const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) {
+    const hh = Number(m24[1]);
+    const mm = Number(m24[2]);
+    return hh * 60 + mm;
+  }
+
+  // 05:30 PM
+  const m12 = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let hh = Number(m12[1]);
+    const mm = Number(m12[2]);
+    const ap = String(m12[3]).toUpperCase();
+    if (ap === "PM" && hh < 12) hh += 12;
+    if (ap === "AM" && hh === 12) hh = 0;
+    return hh * 60 + mm;
+  }
+
+  return 99999;
+}
+
+type DateQuick = "all" | "today" | "tomorrow" | "week";
+
+function isInQuickRange(iso: string, mode: DateQuick) {
+  if (!iso) return false;
+  if (mode === "all") return true;
+
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+
+  const x = new Date(
+    Number(iso.slice(0, 4)),
+    Number(iso.slice(5, 7)) - 1,
+    Number(iso.slice(8, 10))
+  );
+  x.setHours(0, 0, 0, 0);
+
+  if (mode === "today") return x.getTime() === d.getTime();
+
+  if (mode === "tomorrow") {
+    const t = new Date(d);
+    t.setDate(t.getDate() + 1);
+    return x.getTime() === t.getTime();
+  }
+
+  // week: من اليوم إلى 7 أيام قدام
+  if (mode === "week") {
+    const end = new Date(d);
+    end.setDate(end.getDate() + 7);
+    return x >= d && x <= end;
+  }
+
+  return true;
+}
+
+/**
+ * ✅ Seen Store (per uid)
+ * - LocalStorage فقط (مؤقت وسريع)
+ */
+function seenKey(uid: string) {
+  return `qs_staff_seen_bookings_v1_${uid}`;
+}
+
+function loadSeenMap(uid: string): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(seenKey(uid));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSeenMap(uid: string, map: Record<string, number>) {
+  try {
+    localStorage.setItem(seenKey(uid), JSON.stringify(map));
+  } catch {
+    // ignore
+  }
 }
 
 export default function DashboardStaff() {
   const [myUid, setMyUid] = useState<string>("");
   const [myEmail, setMyEmail] = useState<string>("");
-  const [myName, setMyName] = useState<string>("");
 
-  const [myRole, setMyRole] = useState<UiRole | "">("");
-  const [roleLoading, setRoleLoading] = useState(true);
-
-  const [myBookingsRaw, setMyBookingsRaw] = useState<BookingWithId[]>([]);
+  const [allBookingsRaw, setAllBookingsRaw] = useState<BookingWithId[]>([]);
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string>("");
 
-  // ✅ 1) Auth + role من Firestore (source of truth)
+  const [seen, setSeen] = useState<Record<string, number>>({});
+
+  const [tab, setTab] = useState<"new" | "seen" | "all">("new");
+  const [q, setQ] = useState("");
+  const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [dateQuick, setDateQuick] = useState<DateQuick>("week");
+
+  // ✅ 1) Auth فقط (بدون أي شروط رول)
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setErrMsg("");
-      setMyBookingsRaw([]);
+      setAllBookingsRaw([]);
       setLoading(true);
-      setRoleLoading(true);
 
       if (!u) {
         setMyUid("");
         setMyEmail("");
-        setMyName("");
-        setMyRole("");
+        setSeen({});
+        // ما نوقف الصفحة.. بس نوضح أنه مو مسجل
         setLoading(false);
-        setRoleLoading(false);
-        setErrMsg("⚠️ لم يتم تسجيل الدخول. الرجاء تسجيل الدخول بحساب موظفة.");
+        setErrMsg("⚠️ ما فيه تسجيل دخول. (إذا الـ Rules تسمح بالقراءة العامة ممكن يشتغل بدون دخول)");
         return;
       }
 
       setMyUid(u.uid);
       setMyEmail(u.email || "");
-      setMyName(u.displayName || "");
 
+      // seen map
+      setSeen(loadSeenMap(u.uid));
+
+      // (اختياري) نتحقق أن وثيقة المستخدم موجودة، بدون ما نمنع الدخول
       try {
         const userRef = doc(db, "salons", SALON_ID, "users", u.uid);
-        const snap = await getDoc(userRef);
-
-        if (!snap.exists()) {
-          setMyRole("");
-          setRoleLoading(false);
-          setLoading(false);
-          setErrMsg(
-            "⚠️ لا يوجد ملف مستخدم لك داخل salons/main/users/{uid}. " +
-            "لازم إنشاء حساب الموظفة داخل النظام."
-          );
-          return;
-        }
-
-        const data = snap.data() as any;
-        const r = String(data?.role || "").toLowerCase().trim() as UiRole;
-
-        setMyRole(r);
-        setRoleLoading(false);
-
-        if (!allowStaffPortal(r)) {
-          setLoading(false);
-          setErrMsg(`⛔ لا تملك صلاحية فتح بوابة الموظفة. role الحالي: ${r || "غير محدد"}`);
-          return;
-        }
-
-        setLoading(true);
-      } catch (e: any) {
-        console.error("DashboardStaff role load error:", e);
-        setMyRole("");
-        setRoleLoading(false);
-        setLoading(false);
-        setErrMsg(
-          "❌ خطأ أثناء تحميل صلاحيات الحساب (role).\n" + String(e?.message || e)
-        );
+        await getDoc(userRef);
+      } catch {
+        // ignore
       }
+
+      setLoading(true);
     });
 
     return () => unsub();
   }, []);
 
-  // ✅ 2) Realtime: نقرأ حجوزات الموظفة فقط (حل التعليق مع Rules)
+  // ✅ 2) Realtime: confirmed فقط (بدون شروط رول)
   useEffect(() => {
-    if (!myUid) return;
-    if (roleLoading) return;
-    if (!allowStaffPortal(myRole)) return;
-
     setLoading(true);
     setErrMsg("");
-    setMyBookingsRaw([]);
+    setAllBookingsRaw([]);
 
     const colRef = collection(db, "salons", SALON_ID, "bookings");
-
-    // ✅ Query 1: employeeUid == myUid (لو موجود)
-    const qByEmployeeUid = query(colRef, where("employeeUid", "==", myUid));
-
-    // ✅ Query 2: employeeId == myUid (الأكثر شيوعًا عندك)
-    const qByEmployeeId = query(colRef, where("employeeId", "==", myUid));
-
-    let rowsUid: BookingWithId[] = [];
-    let rowsId: BookingWithId[] = [];
-
-    const mergeEmit = () => {
-      const m = new Map<string, BookingWithId>();
-      for (const x of rowsUid) m.set(x.id, x);
-      for (const x of rowsId) m.set(x.id, x);
-
-      const merged = Array.from(m.values());
-
-      // ✅ ترتيب محلي (بدون orderBy لتجنب index)
-      merged.sort((a, b) => {
-        const ta = (a.createdAt?.toMillis?.() ?? 0) as number;
-        const tb = (b.createdAt?.toMillis?.() ?? 0) as number;
-        return tb - ta;
-      });
-
-      setMyBookingsRaw(merged);
-      setLoading(false);
-    };
+    const qConfirmed = query(colRef, where("status", "==", "confirmed"));
 
     const onErr = (e: any) => {
       console.error("DashboardStaff snapshot error:", e);
@@ -177,172 +213,271 @@ export default function DashboardStaff() {
 
       setErrMsg(
         msg.includes("Missing or insufficient permissions")
-          ? "⚠️ تعذر تحميل حجوزاتك بسبب الصلاحيات (Rules). " +
-          "تحقق أن الحجز يحتوي employeeId أو employeeUid يساوي uid الموظفة."
+          ? "⚠️ الصلاحيات (Rules) تمنع قراءة الحجوزات. إذا تبغى الكل يقرأ لازم Rules تسمح بالقراءة."
           : "❌ خطأ أثناء تحميل الحجوزات:\n" + msg
       );
 
-      setMyBookingsRaw([]);
+      setAllBookingsRaw([]);
       setLoading(false);
     };
 
-    const unsub1 = onSnapshot(
-      qByEmployeeUid,
+    const unsub = onSnapshot(
+      qConfirmed,
       (snap) => {
-        rowsUid = snap.docs.map((d) => ({
+        const rows = snap.docs.map((d) => ({
           id: d.id,
           ...(d.data() as BookingDoc),
         }));
-        mergeEmit();
+
+        rows.sort((a, b) => safeMs(b.createdAt) - safeMs(a.createdAt));
+
+        setAllBookingsRaw(rows);
+        setLoading(false);
       },
       onErr
     );
 
-    const unsub2 = onSnapshot(
-      qByEmployeeId,
-      (snap) => {
-        rowsId = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as BookingDoc),
-        }));
-        mergeEmit();
-      },
-      onErr
-    );
+    return () => unsub();
+  }, []);
 
-    return () => {
-      unsub1();
-      unsub2();
-    };
-  }, [myUid, myRole, roleLoading]);
+  const employeeOptions = useMemo(() => {
+    const map = new Map<string, string>();
 
-  // ✅ 3) فلترة إضافية (احتياط) — بنفس منطقك السابق
-  const myBookings = useMemo(() => {
-    if (!myUid) return [];
+    allBookingsRaw.forEach((b) => {
+      const key =
+        b.employeeUid ||
+        b.employeeId ||
+        (normalizeArabic(b.employeeName) ? `name:${normalizeArabic(b.employeeName)}` : "");
 
-    const uid = myUid;
+      if (!key) return;
 
-    const filtered = myBookingsRaw.filter((b) => {
-      if (b.employeeUid && b.employeeUid === uid) return true;
-      if (b.employeeId && b.employeeId === uid) return true;
+      const label =
+        b.employeeName ||
+        (b.employeeUid ? `موظفة (${b.employeeUid.slice(0, 6)})` : "") ||
+        (b.employeeId ? `موظفة (${b.employeeId.slice(0, 6)})` : key);
 
-      // fallback بالاسم (عرض فقط — لكن لن يحل Rules لو كانت الحجوزات بدون uid)
-      const bName = normalizeArabic(b.employeeName);
-      const myN = normalizeArabic(myName);
-      if (myN && bName && bName === myN) return true;
-
-      return false;
+      if (!map.has(key)) map.set(key, label);
     });
 
-    return filtered;
-  }, [myBookingsRaw, myUid, myName]);
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, "ar"));
+  }, [allBookingsRaw]);
+
+  const filtered = useMemo(() => {
+    const text = normalizeArabic(q);
+
+    const list = allBookingsRaw.filter((b) => {
+      if (String(b.status || "") !== "confirmed") return false;
+
+      if (employeeFilter !== "all") {
+        const key =
+          b.employeeUid ||
+          b.employeeId ||
+          (normalizeArabic(b.employeeName) ? `name:${normalizeArabic(b.employeeName)}` : "");
+
+        if (key !== employeeFilter) return false;
+      }
+
+      const iso = String(b.date || "").trim();
+      if (!isInQuickRange(iso, dateQuick)) return false;
+
+      if (text) {
+        const hay = normalizeArabic(
+          `${b.clientName || ""} ${b.clientPhone || ""} ${b.serviceName || ""} ${b.employeeName || ""} ${b.date || ""} ${b.time || ""} ${b.id || ""}`
+        );
+        if (!hay.includes(text)) return false;
+      }
+
+      const isSeen = !!seen[b.id];
+      if (tab === "new" && isSeen) return false;
+      if (tab === "seen" && !isSeen) return false;
+
+      return true;
+    });
+
+    list.sort((a, b) => {
+      const da = String(a.date || "");
+      const dbb = String(b.date || "");
+      if (da !== dbb) return da.localeCompare(dbb);
+
+      const ta = parseTimeToMinutes(a.time);
+      const tb = parseTimeToMinutes(b.time);
+      if (ta !== tb) return ta - tb;
+
+      return safeMs(b.createdAt) - safeMs(a.createdAt);
+    });
+
+    return list;
+  }, [allBookingsRaw, q, employeeFilter, dateQuick, tab, seen]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, BookingWithId[]>();
+    for (const b of filtered) {
+      const k = String(b.date || "بدون تاريخ");
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(b);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filtered]);
+
+  const markSeen = (id: string) => {
+    if (!myUid) return;
+    setSeen((prev) => {
+      const next = { ...prev, [id]: Date.now() };
+      saveSeenMap(myUid, next);
+      return next;
+    });
+  };
+
+  const markAllSeen = () => {
+    if (!myUid) return;
+    setSeen((prev) => {
+      const next = { ...prev };
+      filtered.forEach((b) => {
+        if (!next[b.id]) next[b.id] = Date.now();
+      });
+      saveSeenMap(myUid, next);
+      return next;
+    });
+  };
 
   return (
-    <div className="dashstaff-page" style={{ padding: 16, direction: "rtl" }}>
-      <div style={{ marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontWeight: 900 }}>بوابة الموظفة</h2>
-        <p style={{ margin: "6px 0 0", opacity: 0.75, fontWeight: 800 }}>
-          {myEmail ? `تسجيل الدخول: ${myEmail}` : "جاري التحقق من الحساب..."}
-          {myRole ? ` • role: ${myRole}` : ""}
-        </p>
+    <div className="dashstaff-page" dir="rtl">
+      {/* Header */}
+      <div className="dashstaff-header">
+        <div>
+          <h2 className="dashstaff-title">بوابة الموظفات (بدون شروط عرض داخل الصفحة)</h2>
+          <div className="dashstaff-sub">
+            <span className="pill soft">
+              {myEmail ? `تسجيل الدخول: ${myEmail}` : "بدون تسجيل دخول"}
+            </span>
+            <span className="pill soft">عرض: confirmed فقط</span>
+          </div>
+        </div>
+
+        <div className="dashstaff-count">النتائج: {filtered.length}</div>
       </div>
 
-      {(roleLoading || loading) && !errMsg && (
-        <div style={{ padding: 14, border: "1px solid rgba(0,0,0,.08)", borderRadius: 12 }}>
-          جاري تحميل حجوزاتك...
-        </div>
-      )}
+      {loading && !errMsg && <div className="dashstaff-box warn">جاري تحميل الحجوزات...</div>}
 
-      {!roleLoading && errMsg && (
-        <div
-          style={{
-            padding: 14,
-            border: "1px solid rgba(255,0,0,.25)",
-            borderRadius: 12,
-            background: "rgba(255,0,0,.04)",
-            color: "#b00020",
-            fontWeight: 800,
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {errMsg}
-        </div>
-      )}
+      {!!errMsg && <div className="dashstaff-box error">{errMsg}</div>}
 
-      {!roleLoading && !loading && !errMsg && (
-        <div
-          style={{
-            marginTop: 12,
-            border: "1px solid rgba(0,0,0,.08)",
-            borderRadius: 14,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: 12,
-              background: "rgba(0,0,0,.03)",
-              fontWeight: 900,
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <span>حجوزاتي</span>
-            <span style={{ opacity: 0.75 }}>الإجمالي: {myBookings.length}</span>
+      {!loading && !errMsg && (
+        <>
+          {/* Filters */}
+          <div className="dashstaff-filters">
+            <input
+              className="dashstaff-input"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="بحث: اسم العميلة / رقم / خدمة / موظفة / تاريخ..."
+            />
+
+            <select
+              className="dashstaff-input"
+              value={employeeFilter}
+              onChange={(e) => setEmployeeFilter(e.target.value)}
+            >
+              <option value="all">كل الموظفات</option>
+              {employeeOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="dashstaff-input"
+              value={dateQuick}
+              onChange={(e) => setDateQuick(e.target.value as DateQuick)}
+            >
+              <option value="week">هذا الأسبوع</option>
+              <option value="today">اليوم</option>
+              <option value="tomorrow">بكرا</option>
+              <option value="all">كل التواريخ</option>
+            </select>
           </div>
 
-          {myBookings.length === 0 ? (
-            <div style={{ padding: 14, opacity: 0.75, fontWeight: 800 }}>
-              لا توجد حجوزات مرتبطة بك الآن.
-              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
-                (إذا عندك حجوزات قديمة بدون employeeId/employeeUid، لازم “ترحيل مرة واحدة” لتعبئتها)
-              </div>
-            </div>
+          {/* Tabs */}
+          <div className="dashstaff-actions">
+            <button type="button" onClick={() => setTab("new")}>
+              جديد ({allBookingsRaw.filter((b) => String(b.status) === "confirmed" && !seen[b.id]).length})
+            </button>
+            <button type="button" onClick={() => setTab("seen")}>
+              تمت مراجعته
+            </button>
+            <button type="button" onClick={() => setTab("all")}>
+              الكل ({allBookingsRaw.length})
+            </button>
+            <button type="button" onClick={markAllSeen} disabled={!myUid}>
+              تعليم الكل كمُراجع ✅
+            </button>
+          </div>
+
+          {/* List */}
+          {filtered.length === 0 ? (
+            <div className="dashstaff-box empty">ما فيه حجوزات حسب الفلاتر الحالية.</div>
           ) : (
-            <div style={{ padding: 12, display: "grid", gap: 10 }}>
-              {myBookings.map((b) => (
-                <div
-                  key={b.id}
-                  style={{
-                    padding: 12,
-                    border: "1px solid rgba(0,0,0,.08)",
-                    borderRadius: 14,
-                    background: "rgba(255,255,255,.96)",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                    <div style={{ fontWeight: 900 }}>
-                      {b.clientName || "—"}{" "}
-                      <span style={{ opacity: 0.65, fontWeight: 800 }}>
-                        {b.clientPhone ? `• ${b.clientPhone}` : ""}
-                      </span>
-                    </div>
-                    <div style={{ fontWeight: 900, opacity: 0.8 }}>
-                      {b.status || "pending"}
-                    </div>
+            <div className="dashstaff-list">
+              {grouped.map(([day, rows]) => (
+                <div key={day} className="dashstaff-card">
+                  <div className="dashstaff-row top">
+                    <div className="dashstaff-service">{day}</div>
+                    <div className="dashstaff-meta">{rows.length} حجز</div>
                   </div>
 
-                  <div style={{ marginTop: 8, opacity: 0.85, fontWeight: 800 }}>
-                    الخدمة: {b.serviceName || b.serviceId || "—"}
-                  </div>
+                  {rows.map((b) => {
+                    const isSeen = !!seen[b.id];
+                    return (
+                      <div key={b.id} className="dashstaff-card" style={{ marginTop: 10 }}>
+                        <div className="dashstaff-row top">
+                          <div className="dashstaff-service">
+                            {b.clientName || "—"}{" "}
+                            <span className="dashstaff-meta">
+                              {b.clientPhone ? `• ${b.clientPhone}` : ""}
+                            </span>
+                          </div>
 
-                  <div style={{ marginTop: 6, opacity: 0.85, fontWeight: 800 }}>
-                    الموعد: {b.date || "—"} • {b.time || "—"}
-                  </div>
+                          <span className={`dashstaff-status ${isSeen ? "cancelled" : "confirmed"}`}>
+                            {isSeen ? "تمت المراجعة" : "جديد"}
+                          </span>
+                        </div>
 
-                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.6, fontWeight: 800 }}>
-                    Booking ID: {b.id}
-                  </div>
+                        <div className="dashstaff-row">
+                          <div className="dashstaff-meta">
+                            الخدمة: <b>{b.serviceName || b.serviceId || "—"}</b>
+                          </div>
+                        </div>
+
+                        <div className="dashstaff-row">
+                          <div className="dashstaff-meta">
+                            الموعد: <b>{b.date || "—"}</b> • <b>{b.time || "—"}</b>
+                          </div>
+                        </div>
+
+                        <div className="dashstaff-row">
+                          <div className="dashstaff-meta">
+                            الموظفة: <b>{b.employeeName || "—"}</b>
+                          </div>
+                        </div>
+
+                        <div className="dashstaff-actions">
+                          <button type="button" onClick={() => markSeen(b.id)} disabled={!myUid}>
+                            تعليم كمُراجع ✅
+                          </button>
+
+                          <span className="pill soft">Booking ID: {b.id}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
 }
-
-
