@@ -451,7 +451,7 @@
 /* ✅ إلصاق سكشن CTA باللي بعده */
 .offers-page .offers-cta.bg-gradient-hero{
   margin-bottom: 0 !important;
-  padding-bottom: 0 !; /* يشيل تأثير py-5 من تحت */
+  padding-bottom: 0 !important; /* يشيل تأثير py-5 من تحت */
 }
 
 /* ✅ السكشن اللي بعد CTA (أي سكشن يجي بعده) */

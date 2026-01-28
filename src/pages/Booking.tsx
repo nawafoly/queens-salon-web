@@ -287,7 +287,6 @@ const Booking: React.FC = () => {
     async function loadSectionsFirstTime() {
       try {
         setCatalogLoading(true);
-        setCatalogError("");
 
         const secs = await listActiveSections(SALON_ID);
         if (cancelled) return;
@@ -306,9 +305,7 @@ const Booking: React.FC = () => {
 
           const msg = String(e?.message || "");
           if (msg.toLowerCase().includes("missing or insufficient permissions")) {
-            setCatalogError("صلاحيات قراءة الأقسام غير كافية. سيتم استخدام Pricing مؤقتًا.");
           } else {
-            setCatalogError("تعذر تحميل الأقسام من Firestore. سيتم استخدام Pricing مؤقتًا.");
           }
         }
       } finally {
@@ -344,7 +341,6 @@ const Booking: React.FC = () => {
 
       try {
         setCatalogLoading(true);
-        setCatalogError("");
 
         // ✅ 1) التصنيفات: حاول بـ orderBy وإذا فشل رجّع بدون orderBy (يحميك من عدم وجود order/index)
         const catsCol = collection(db, "salons", SALON_ID, "service_categories");
@@ -436,9 +432,7 @@ const Booking: React.FC = () => {
 
           const msg = String(e?.message || "");
           if (msg.toLowerCase().includes("requires an index")) {
-            setCatalogError("Firestore يحتاج Index (sectionId + order). افتح الكونسول واضغط Create index.");
           } else {
-            setCatalogError("تعذر تحميل الخدمات من Firestore. سيتم استخدام Pricing مؤقتًا.");
           }
 
           setCatalogMode("pricing");
