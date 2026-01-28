@@ -215,7 +215,6 @@ const Booking: React.FC = () => {
   // =========================
   const [catalogMode, setCatalogMode] = useState<"firestore" | "pricing">("pricing");
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalogError, setCatalogError] = useState("");
 
   const [fsSections, setFsSections] = useState<SectionDoc[]>([]);
   const [fsCategories, setFsCategories] = useState<CategoryDoc[]>([]);
