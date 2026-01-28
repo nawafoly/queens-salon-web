@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import logo from "../assets/images/ssunnamed1.png";
 
 import {
   faCalendarAlt,
@@ -1341,17 +1342,21 @@ const Booking: React.FC = () => {
           <div className="col-lg-8">
             <div className="booking-card">
               <div className="booking-header">
-                <h1 className="booking-title">احجزي موعدك الآن</h1>
-                <p className="booking-subtitle">اختاري الخدمة والوقت المناسب لك وسنكون بانتظارك</p>
+                <div className="booking-logo">
+                  <img src={logo} alt="Queens Salon Logo" />
+                </div>
 
-                <div className="mt-2 booking-offer-msg">
+                <h1 className="booking-title">احجزي موعدك الآن</h1>
+                {/* <p className="booking-subtitle">اختاري الخدمة والوقت المناسب لك وسنكون بانتظارك</p> */}
+
+                {/* <div className="mt-2 booking-offer-msg">
                   {catalogLoading
                     ? "جاري تحميل الخدمات..."
                     : catalogMode === "firestore"
                       ? "الخدمات: من قاعدة البيانات ✅"
                       : "الخدمات: مؤقتًا من التسعير (Pricing) ⏳"}
                   {catalogError ? ` — ${catalogError}` : ""}
-                </div>
+                </div> */}
               </div>
 
               <form className="booking-form" onSubmit={handleSubmit}>

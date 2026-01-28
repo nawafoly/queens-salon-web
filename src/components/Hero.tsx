@@ -26,7 +26,9 @@ export default function Hero() {
             في صالون <span className="heroV2__brand">ملكات</span>
           </h1>
 
-          <p className="heroV2__desc">
+          
+
+          <p className="heroV2__desc lead-strong">
             تجربة عناية فاخرة للشعر والبشرة والجسم، بخبرة فريق محترف ولمسة راقية
             تليق بكِ.
           </p>

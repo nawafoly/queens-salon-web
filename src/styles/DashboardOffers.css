@@ -5,13 +5,31 @@
    ✅ يعتمد على DashboardSkin.css للأزرار
 ========================= */
 
-.offers-page {
-  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
+.offers-page{
   min-height: 100vh;
-  padding: 18px 0 18px 0;
+  padding: 18px 0;
   overflow-x: hidden;
   font-family: "Tajawal", sans-serif;
+
+  /* Queens Salon – White theme (NO beige) */
+  background:
+    radial-gradient(
+      900px 520px at 15% 18%,
+      rgba(64,1,13,0.06),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 520px at 85% 24%,
+      rgba(136,140,140,0.10),
+      transparent 55%
+    ),
+    linear-gradient(
+      180deg,
+      #ffffff 0%,
+      #f5f5f4 100%
+    );
 }
+
 
 .offers-page * {
   box-sizing: border-box;
@@ -626,3 +644,42 @@
 .dashboard-skin .offers-page .dash-pill {
   -webkit-tap-highlight-color: transparent;
 }
+
+
+/* =========================
+   FIX: Text contrast inside Offers Modal
+========================= */
+
+.offers-modal,
+.offers-modal * {
+  color: #1f2937; /* رمادي داكن واضح */
+
+}
+
+.offers-modal label,
+.offers-modal .of-scope-title,
+.offers-modal .offers-card-title {
+  color: #111827;
+  opacity: 1;
+}
+
+.dashboard-skin .offers-page .dash-pill {
+  color: #4c1d95;   /* بنفسجي داكن */
+  font-weight: 700;
+}
+
+.dashboard-skin .offers-page .dash-pill svg {
+  color: #5b21b6;
+}
+
+.offers-modal input::placeholder,
+.offers-modal select::placeholder {
+  color: rgba(31, 41, 55, 0.55);
+}
+
+.of-pill,
+.of-checkline {
+  color: #111827;
+  font-weight: 600;
+}
+

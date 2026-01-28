@@ -4,9 +4,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import "../styles/Track.css";
 import { getTrackByPublicId } from "../services/firestoreBookings";
 
+// ✅ الشعار
+import logo from "../assets/images/ssunnamed1.png";
+
 type TrackData = {
-  id?: string; // bookingId الحقيقي (داخلي)
-  publicId?: string; // MK-xxxxx
+  id?: string;
+  publicId?: string;
   status?: "pending" | "confirmed" | "cancelled" | "completed" | string;
 
   serviceName?: string;
@@ -35,13 +38,6 @@ function statusClass(s?: string) {
   return "is-unknown";
 }
 
-/** ✅ توحيد أي إدخال إلى صيغة MK-12345
- * يقبل:
- * 10007
- * MK10007
- * mk-10007
- * "  mk 10007  "
- */
 function normalizeMk(raw: string) {
   const s = String(raw || "").trim().toUpperCase();
   const m = s.match(/\d+/);
@@ -60,30 +56,23 @@ const Track = () => {
   const [data, setData] = useState<TrackData | null>(null);
   const [error, setError] = useState("");
 
-  // ✅ نطبّع البارامتر إلى MK-xxxxx
   const normalizedParam = useMemo(() => normalizeMk(trackId || ""), [trackId]);
 
-  // ✅ لو الرابط مو MK-xxxxx نخليه يتعدل تلقائيًا (بدون ما يزيد history)
   useEffect(() => {
     if (!trackId) return;
-
     const raw = String(trackId).trim();
     const norm = normalizeMk(raw);
-
     if (!norm) return;
     if (raw.toUpperCase() === norm) return;
-
     navigate(`/track/${encodeURIComponent(norm)}`, { replace: true });
   }, [trackId, navigate]);
 
-  // ✅ نخلي الـ input يعكس آخر بارامتر
   useEffect(() => {
     if (!trackId) return;
     const norm = normalizeMk(trackId);
     setInputId(norm || trackId);
   }, [trackId]);
 
-  // ✅ جلب البيانات يعتمد فقط على normalizedParam
   useEffect(() => {
     if (!normalizedParam) return;
 
@@ -141,7 +130,11 @@ const Track = () => {
     <div className="track-page">
       <div className="track-card">
         <div className="track-head">
-          <div className="track-badge">📌</div>
+          {/* ✅ الشعار بدل الدبوس */}
+          <div className="track-logo">
+            <img src={logo} alt="Queens Salon Logo" />
+          </div>
+
           <h2 className="track-title">تتبع الحجز</h2>
           <p className="track-subtitle">
             أدخل رقم الحجز (MK-xxxxx) أو اكتب الرقم فقط وسنحوّله تلقائيًا
@@ -149,7 +142,6 @@ const Track = () => {
         </div>
 
         <div className="track-body">
-          {/* القسم الأيسر */}
           <div className="track-panel">
             <form className="track-form" onSubmit={onSubmit}>
               <input
@@ -188,7 +180,6 @@ const Track = () => {
             )}
           </div>
 
-          {/* القسم الأيمن */}
           <div className="track-side">
             {!loading && data ? (
               <div className="track-result">
@@ -221,7 +212,9 @@ const Track = () => {
                 </div>
               </div>
             ) : (
-              <div className="track-state">أدخل رقم الحجز (MK) وستظهر تفاصيل الحجز هنا.</div>
+              <div className="track-state">
+                أدخل رقم الحجز (MK) وستظهر تفاصيل الحجز هنا.
+              </div>
             )}
           </div>
         </div>

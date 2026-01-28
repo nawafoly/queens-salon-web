@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import {
   doc,
+  getDoc, // ✅ add
   getDocs,
   collection,
   orderBy,
@@ -37,6 +38,64 @@ function buildId(raw: string) {
 
   return cleaned.replace(/^_+|_+$/g, ""); // يشيل _ من البداية/النهاية
 }
+function sectionIdFromName(name: string) {
+  const n = String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[ـ]/g, "");
+
+  const map: Record<string, string> = {
+    "شعر": "hair-care",
+    "العناية بالشعر": "hair-care",
+    "قسم الشعر": "hair-care",
+    "hair": "hair-care",
+    "hair care": "hair-care",
+
+    "بشرة": "skin-care",
+    "العناية بالبشرة": "skin-care",
+    "قسم البشرة": "skin-care",
+    "skin": "skin-care",
+    "skin care": "skin-care",
+
+    "اظافر": "nail-care",
+    "أظافر": "nail-care",
+    "العناية بالأظافر": "nail-care",
+    "نيلز": "nail-care",
+    "nails": "nail-care",
+    "nail care": "nail-care",
+
+    "مكياج": "makeup",
+    "ميك اب": "makeup",
+    "makeup": "makeup",
+
+    "مساج": "massage",
+    "massage": "massage",
+
+    "باقات": "special-packages",
+    "باقة": "special-packages",
+    "packages": "special-packages",
+    "special packages": "special-packages",
+
+    // ✅ أقسام جديدة
+    "خدمات": "services",
+    "الخدمات": "services",
+
+    "خدمات منزلية": "home-services",
+    "الخدمات المنزلية": "home-services",
+    "home services": "home-services",
+
+    "الصبغات والمعالجات": "hair-color-treatments",
+    "صبغات ومعالجات": "hair-color-treatments",
+    "قسم الصبغات والمعالجات": "hair-color-treatments",
+    "hair color treatments": "hair-color-treatments",
+
+  };
+
+  // ✅ لو مو معروف، نرجع slug عادي (لكن الصورة في Services بتكون افتراضية)
+  return map[n] || buildId(name);
+}
+
 
 
 function clampInt(v: any, def = 0) {
@@ -218,7 +277,13 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     const name = String(newSectionName || "").trim();
     if (!name) return;
 
-    const id = buildId(name); // ✅ ID ثابت من الاسم
+    const id = sectionIdFromName(name); // ✅ ID ذكي عشان الصور
+
+    const ref = doc(db, ...SERVICE_SECTIONS_COLLECTION, id);
+    const exists = await getDoc(ref);
+    if (exists.exists()) {
+      return showCatalogMsg("❌ هذا القسم موجود مسبقًا (بنفس الـ ID)", 2500);
+    }
 
     try {
       setSecLoading(true);
@@ -228,13 +293,14 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           ? Math.max(...sectionsCatalog.map((s) => Number(s.order || 0))) + 1
           : 1;
 
-      await setDoc(doc(db, ...SERVICE_SECTIONS_COLLECTION, id), {
+      await setDoc(ref, {
         name,
         active: true,
         order: nextOrder,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
 
       setNewSectionName("");
       showCatalogMsg(`✅ تم إنشاء القسم (id: ${id})`);

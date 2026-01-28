@@ -1,40 +1,105 @@
 // src/components/HomeServices.tsx
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import "../styles/HomeServices.css";
 
-const HomeServices = () => {
-  const services = [
-    {
-      title: "العناية بالشعر",
-      desc: "خدمات متكاملة للشعر تشمل القص، الصبغ، التصفيف، والعلاجات المتخصصة.",
-      price: "ابتداءً من 50 ريال",
-    },
-    {
-      title: "العناية بالبشرة",
-      desc: "جلسات تنظيف وتقشير وترطيب للبشرة مع علاجات متخصصة للمشاكل المختلفة.",
-      price: "ابتداءً من 100 ريال",
-    },
-    {
-      title: "العناية بالأظافر",
-      desc: "خدمات المانيكير والباديكير مع تقنيات متطورة وألوان عصرية.",
-      price: "ابتداءً من 79 ريال",
-    },
-    {
-      title: "المكياج",
-      desc: "مكياج احترافي للمناسبات الخاصة والأعراس مع خيارات متنوعة تناسب جميع الأذواق.",
-      price: "ابتداءً من 85 ريال",
-    },
-    {
-      title: "المعالجات المتخصصة",
-      desc: "علاجات متطورة للشعر والبشرة باستخدام أحدث التقنيات والمنتجات العالمية.",
-      price: "ابتداءً من 300 ريال",
-    },
-    {
-      title: "باقات العروس",
-      desc: "باقات شاملة للعروس تشمل جميع خدمات التجميل لإطلالة مثالية في يومك المميز.",
-      price: "ابتداءً من 1000 ريال",
-    },
-  ];
+// ✅ صور (ثابتة حسب sectionId)
+import hair from "../assets/images/hair.png";
+import skin from "../assets/images/skin.png";
+import nails from "../assets/images/nails.png";
+import makeupImg from "../assets/images/makeup.png";
+import massageImg from "../assets/images/massage.png";
+import packagesImg from "../assets/images/packages.png";
+import servicesImg from "../assets/images/services.png";
+import homeServicesImg from "../assets/images/home-services.png";
+import hairColorTreatmentsImg from "../assets/images/hair-color-treatments.png";
+
+// ✅ Firestore
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { db } from "../services/firebase";
+
+const SALON_ID = "main";
+
+type SectionRow = {
+  id: string;
+  name: string;
+  active?: boolean;
+  order?: number;
+};
+
+type UiCard = {
+  id: string;
+  title: string;
+  image: string;
+};
+
+export default function HomeServices() {
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<SectionRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // ✅ نفس فكرة Services.tsx: mapping حسب sectionId
+  const imageBySectionId = useMemo(() => {
+    return {
+      "hair-care": hair,
+      "skin-care": skin,
+      "nail-care": nails,
+      makeup: makeupImg,
+      massage: massageImg,
+      "special-packages": packagesImg,
+      services: servicesImg,
+      "home-services": homeServicesImg,
+      "hair-color-treatments": hairColorTreatmentsImg,
+    } as Record<string, string>;
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // ✅ Sections فقط: هذا غالبًا ما يحتاج Index إضافي
+        const ref = collection(db, "salons", SALON_ID, "service_sections");
+        const qy = query(ref, orderBy("order", "asc"));
+        const snap = await getDocs(qy);
+
+        const list: SectionRow[] = snap.docs.map((d) => {
+          const x = d.data() as any;
+          return {
+            id: d.id,
+            name: String(x?.name || ""),
+            active: x?.active !== false,
+            order: Number(x?.order ?? 0),
+          };
+        });
+
+        if (!alive) return;
+
+        setRows(list.filter((s) => s.active !== false && s.name.trim()));
+      } catch (e: any) {
+        if (!alive) return;
+        console.error("HomeServices load error:", e);
+        setError(e?.message || "صار خطأ أثناء تحميل الأقسام");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const cards: UiCard[] = useMemo(() => {
+    return rows.map((s) => ({
+      id: s.id,
+      title: s.name || s.id,
+      image: imageBySectionId[s.id] || servicesImg, // ✅ fallback
+    }));
+  }, [rows, imageBySectionId]);
 
   return (
     <section className="home-services-section" aria-label="خدماتنا">
@@ -42,29 +107,55 @@ const HomeServices = () => {
         <div className="home-services-head">
           <h2 className="home-services-title">خدماتنا المميزة</h2>
           <p className="home-services-subtitle">
-            نقدم لك مجموعة شاملة من خدمات التجميل بأعلى معايير الجودة
+            اختاري القسم واستعرضي التفاصيل بأسلوب ناعم وفخم
           </p>
         </div>
 
-        <div className="home-services-grid">
-          {services.map((s, idx) => (
-            <div className="home-service-card" key={idx}>
-              <div className="home-service-top">
-                <h3 className="home-service-name">{s.title}</h3>
-                <div className="home-service-price">{s.price}</div>
-              </div>
+        {loading ? (
+          <div className="home-services-state">جاري تحميل الأقسام…</div>
+        ) : error ? (
+          <div className="home-services-state is-error">{error}</div>
+        ) : cards.length === 0 ? (
+          <div className="home-services-state">لا توجد أقسام ظاهرة حالياً.</div>
+        ) : (
+          <div className="home-services-grid">
+            {cards.map((c) => (
+              <Link
+                key={c.id}
+                to="/services"
+                className="home-service-card is-reveal"
+                style={{ textDecoration: "none" }}
+              >
+                <div
+                  className="reveal-front"
+                  style={{ backgroundImage: `url(${c.image})` }}
+                >
+                  <div className="reveal-overlay" />
+                  <h3 className="home-service-name">{c.title}</h3>
+                  <div className="reveal-hint">مرري لعرض التفاصيل</div>
+                </div>
 
-              <p className="home-service-desc">{s.desc}</p>
-
-              <Link to="/booking" className="home-service-btn">
-                احجزي الآن
+                <div className="reveal-back">
+                  <h3 className="home-service-name">{c.title}</h3>
+                  <p className="home-service-desc">
+                    افتحي صفحة الخدمات وشوفي التصنيفات والأسعار بالتفصيل.
+                  </p>
+                  <div className="reveal-footnote">اضغطي للانتقال 👈</div>
+                </div>
               </Link>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {/* زر واحد فقط تحت */}
+        {!loading && !error && cards.length > 0 && (
+          <div className="lead-strong" style={{ marginTop: 22, textAlign: "center" }}>
+            <Link to="/booking" className="offers-cta-btn">
+              الانتقال للحجز
+            </Link>
+          </div>
+        )}
       </div>
     </section>
   );
-};
-
-export default HomeServices;
+}

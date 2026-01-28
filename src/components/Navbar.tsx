@@ -187,9 +187,10 @@ const Navbar: React.FC = () => {
   const navLinks = [
     { path: "/", label: "الرئيسية" },
     { path: "/about", label: "عن المشغل" },
+    { path: "/booking", label: "احجزي" },
     { path: "/services", label: "الخدمات" },
     { path: "/offers", label: "العروض" },
-    { path: "/pricing", label: "الأسعار" },
+    // { path: "/pricing", label: "الأسعار" },
     { path: "/track", label: "تتبع الحجز" },
     { path: "/contact", label: "تواصل معنا" },
   ];

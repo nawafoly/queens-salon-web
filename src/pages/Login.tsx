@@ -1,6 +1,6 @@
 // src/pages/Login.tsx
 import React, { useState } from "react";
-import logoBelak from "../assets/images/ssunnamed.png";
+import logoBelak from "../assets/images/ssunnamed1.png";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -776,13 +776,13 @@ const Login: React.FC = () => {
             </form>
           )}
 
-          <div className="login-footer">
-            <p>
+          <div className="login-footer ">
+            <p className="qs-wine">
               {!isRegister ? (
                 <>
                   ليس لديك حساب؟
                   <button
-                    className="register-link"
+                    className="register-link" 
                     style={{
                       background: "none",
                       border: "none",

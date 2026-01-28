@@ -83,3 +83,9 @@
     font-size: 0.95rem;
   }
 }
+
+.welcome-title {
+  color: #40010D;              /* خمري Queens */
+  font-weight: 900;
+  letter-spacing: 0.3px;
+}

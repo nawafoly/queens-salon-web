@@ -138,3 +138,93 @@
 .forgot-password-link:hover {
   color: #8d54c1;
 }
+
+
+/* =========================
+   FIX: Login Contrast + Vars (Scoped)
+   داخل .login-page فقط
+========================= */
+
+.login-page{
+  /* لو المتغيرات مو معرفة, هنا نضمن قيم ثابتة */
+  --text-color: #111827;          /* داكن واضح */
+  --primary-color: #40010D;       /* خمري Queens */
+  --secondary-color: #2a0008;     /* أغمق للهفر */
+  --gray: #f5f5f4;                /* off-white */
+
+  color: var(--text-color);
+}
+
+/* العناوين والنصوص */
+.login-title,
+.login-subtitle,
+.login-footer{
+  color: var(--text-color);
+  opacity: 1;
+}
+
+.login-subtitle{
+  opacity: 0.75;
+}
+
+/* اللوقو كان باهت */
+.login-logo-img{
+  opacity: 0.95;
+}
+
+/* الحقول: كان عندك border أسود 1.0 قوي + خلفية رمادية */
+.form-control-login{
+  border: 1px solid rgba(13,13,13,0.14);
+  background-color: rgba(245,245,244,0.92);
+  color: rgba(17,24,39,0.95);
+}
+
+.form-control-login::placeholder{
+  color: rgba(17,24,39,0.50);
+}
+
+/* الفوكس */
+.form-control-login:focus{
+  outline: none;
+  border-color: rgba(64,1,13,0.35);
+  box-shadow: 0 0 0 4px rgba(64,1,13,0.10);
+}
+
+/* زر إظهار/إخفاء الباسورد */
+.password-toggle{
+  color: rgba(17,24,39,0.75);
+}
+.password-toggle:hover{
+  color: rgba(64,1,13,0.85);
+}
+
+/* زر تسجيل الدخول */
+.login-btn{
+  background-color: var(--primary-color);
+  color: #fff;
+  font-weight: 900;
+}
+.login-btn:hover{
+  background-color: var(--secondary-color);
+}
+
+/* روابط */
+.register-link,
+.back-home-link{
+  color: rgba(64,1,13,0.95);
+}
+
+/* forgot password وضوح أفضل */
+.forgot-password-link{
+  color: rgba(64,1,13,0.70);
+}
+.forgot-password-link:hover{
+  color: rgba(64,1,13,0.95);
+}
+
+/* demo box */
+.login-demo{
+  background: rgba(245,245,244,0.9);
+  border: 1px solid rgba(13,13,13,0.08);
+  color: rgba(17,24,39,0.85);
+}

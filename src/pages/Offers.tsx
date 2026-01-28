@@ -121,8 +121,8 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
         ? v1
         : vPercent
       : Number.isFinite(v1) && v1 > 0
-      ? v1
-      : Number(raw?.discountPrice ?? 0);
+        ? v1
+        : Number(raw?.discountPrice ?? 0);
 
   const computedPercent =
     discountType === "percent" ? Math.min(100, Math.max(0, Number(value || 0))) : 0;
@@ -294,10 +294,13 @@ const Offers = () => {
           <div className="row align-items-center justify-content-center">
             <div className="col-lg-10">
               <div className="hero-content animate-fade-in text-center">
-                <h1 className="display-4 fw-bold mb-3">
-                  <FontAwesomeIcon icon={faGift} className="me-3" />
-                  عروضنا الخاصة
-                </h1>
+              <h1
+  className="display-4 fw-bold mb-3"
+  style={{ color: "var(--qs-wine)" }}
+>
+  <FontAwesomeIcon icon={faGift} className="me-3" />
+  عروضنا الخاصة
+</h1>
 
                 <p className="lead mb-4">
                   العروض تُدار من لوحة الأونر وتظهر هنا تلقائيًا… اختاري العرض وطبّقي الكود عند الحجز
@@ -317,10 +320,6 @@ const Offers = () => {
                     <div className="stat-label">عميلة استفادت</div>
                   </div>
                 </div>
-
-                <Link to="/booking" className="offers-cta-btn mt-4">
-                  احجزي الآن
-                </Link>
               </div>
             </div>
           </div>
@@ -390,37 +389,40 @@ const Offers = () => {
                         ساري حتى: {new Date(offer.validUntil).toLocaleDateString("ar-SA")}
                       </div>
 
-                      <div className="offer-details">
-                        <p className="offer-description">{offer.description}</p>
-
-                        <div className="offer-features mb-3">
-                          <h5 className="fw-bold mb-2">
-                            <FontAwesomeIcon icon={faTag} className="me-2" />
-                            تفاصيل العرض:
-                          </h5>
-                          <ul>
-                            {offer.features.map((feature, idx) => (
-                              <li key={idx}>
-                                <span className="check-dot" />
-                                {feature}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        <Link to="/booking" className="btn btn-primary w-100 btn-lg rounded-pill">
-                          احجزي واستعملي الكود
-                        </Link>
-                      </div>
-
                       <button
                         type="button"
-                        className="toggle-details"
+                        className={["toggle-details", expanded ? "is-open" : ""].join(" ")}
                         onClick={() => setOpenOfferId(expanded ? null : offer.id)}
                       >
                         <span>{expanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}</span>
                         <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} />
                       </button>
+
+                      {expanded && (
+                        <div className="offer-details">
+                          <p className="offer-description">{offer.description}</p>
+
+                          <div className="offer-features mb-3">
+                            <h5 className="fw-bold mb-2">
+                              <FontAwesomeIcon icon={faTag} className="me-2" />
+                              تفاصيل العرض:
+                            </h5>
+                            <ul>
+                              {offer.features.map((feature, idx) => (
+                                <li key={idx}>
+                                  <span className="check-dot" />
+                                  {feature}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <Link to="/booking" className="btn btn-primary w-100 btn-lg rounded-pill">
+                            احجزي واستعملي الكود
+                          </Link>
+                        </div>
+                      )}
+
                     </div>
                   </div>
                 </div>
@@ -533,8 +535,8 @@ const Offers = () => {
       </section>
 
       {/* CTA */}
-      <section className="offers-cta bg-gradient-hero py-5">
-        <div className="container">
+      <section className="offers-cta is-white py-5">
+      <div className="container">
           <div className="row justify-content-center text-center">
             <div className="col-lg-8">
               <h2 className="h1 fw-bold text-gradient mb-3">لا تفوتي الفرصة!</h2>
@@ -543,10 +545,6 @@ const Offers = () => {
               </p>
 
               <div className="cta-actions">
-                <Link to="/booking" className="btn btn-primary btn-lg rounded-pill">
-                  <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
-                  احجزي موعدك
-                </Link>
 
                 <Link to="/contact" className="btn btn-outline btn-lg rounded-pill">
                   <FontAwesomeIcon icon={faTag} className="me-2" />
@@ -558,6 +556,7 @@ const Offers = () => {
         </div>
       </section>
     </div>
+
   );
 };
 

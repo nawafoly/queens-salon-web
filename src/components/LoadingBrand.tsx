@@ -1,5 +1,5 @@
 import "../styles/LoadingBrand.css";
-import logo from "../assets/images/ssunnamed.png"; // عدل الاسم إذا مختلف
+import logo from "../assets/images/ssunnamed1.png"; // عدل الاسم إذا مختلف
 
 type Props = {
   text?: string;

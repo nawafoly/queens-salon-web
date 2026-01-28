@@ -15,11 +15,15 @@ import "../styles/Footer.css";
 
 const Footer: React.FC = () => {
   return (
-    <footer className="footer-dark">
+    <footer className="footer-dark" dir="rtl">
       <div className="footer-inner">
         {/* Logo */}
         <div className="footer-col footer-col--logo">
-          <img src={logo} alt="Queens Salon" className="footer-logo" />
+          <img
+            src={logo}
+            alt="صالون ملكات"
+            className="footer-logo"
+          />
         </div>
 
         {/* Links */}
@@ -41,22 +45,22 @@ const Footer: React.FC = () => {
           <p>تواصلي الآن مع فريقنا المتخصص لاختيار أفضل الخدمات</p>
 
           <div className="social-links">
-            <a href="#" aria-label="Instagram">
+            <a href="#" aria-label="Instagram" target="_blank" rel="noopener noreferrer">
               <FontAwesomeIcon icon={faInstagram} />
             </a>
-            <a href="#" aria-label="YouTube">
+            <a href="#" aria-label="YouTube" target="_blank" rel="noopener noreferrer">
               <FontAwesomeIcon icon={faYoutube} />
             </a>
-            <a href="#" aria-label="Twitter">
+            <a href="#" aria-label="Twitter" target="_blank" rel="noopener noreferrer">
               <FontAwesomeIcon icon={faTwitter} />
             </a>
-            <a href="#" aria-label="Snapchat">
+            <a href="#" aria-label="Snapchat" target="_blank" rel="noopener noreferrer">
               <FontAwesomeIcon icon={faSnapchat} />
             </a>
-            <a href="#" aria-label="Facebook">
+            <a href="#" aria-label="Facebook" target="_blank" rel="noopener noreferrer">
               <FontAwesomeIcon icon={faFacebookF} />
             </a>
-            <a href="#" aria-label="TikTok">
+            <a href="#" aria-label="TikTok" target="_blank" rel="noopener noreferrer">
               <FontAwesomeIcon icon={faTiktok} />
             </a>
           </div>
@@ -64,11 +68,10 @@ const Footer: React.FC = () => {
       </div>
 
       <div className="footer-bottom">
-        <p>© جميع الحقوق محفوظة لصالون ملكات 2025</p>
+        <p> المطور نواف احمد العليان  © جميع الحقوق محفوظة لصالون ملكات 2026</p>
       </div>
     </footer>
   );
 };
 
 export default Footer;
-  

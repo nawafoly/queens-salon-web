@@ -1,444 +1,327 @@
 /* =========================
-   About Page – Queens Salon (Unified Dark Luxury)
-   ✅ كل شيء Scoped داخل .about-page عشان ما نخرب باقي الصفحات
-   ========================= */
+   About Page – Queens Salon (WHITE / OFF-WHITE)
+   ✅ Scoped داخل .about-page
+========================= */
 
-   .about-page{
-    min-height: 100vh;
-    padding: 40px 0 18px 0;
-    font-family: "Tajawal", sans-serif;
-    direction: rtl;
-    text-align: right;
-    color: var(--qs-offwhite);
-  
-    background:
-      /* لمسة مادة خفيفة */
-      radial-gradient(
-        900px 520px at 15% 20%,
-        rgba(255,255,255,0.06),
-        transparent 60%
-      ),
-  
-      radial-gradient(
-        800px 450px at 85% 25%,
-        rgba(64,1,13,0.10),
-        transparent 55%
-      ),
-  
-      /* أسود فاتح ومريح */
-      linear-gradient(
-        180deg,
-        #141414 0%,
-        #1b1b1b 100%
-      );
-  }
-  
-  
-  /* ====== Titles ====== */
-  .about-page .section-title{
-    font-size: 1.85rem;
-    font-weight: 900;
-    color: var(--qs-offwhite);
-    margin-bottom: 0.35rem;
-    text-align: center;
-  }
-  
-  .about-page .section-subtitle{
-    color: var(--qs-gray-500);
-    font-size: 1.05rem;
-    opacity: 0.95;
-    text-align: center;
-  }
-  
-  /* Hint تحت عنوان الفريق */
-  .about-page .about-team-hint{
-    margin-top: 10px;
-    font-size: 0.95rem;
-    opacity: 0.85;
-    color: var(--qs-gray-500);
-    text-align: center;
-  }
-  
-  /* ================= Intro ================= */
-  .about-page .about-intro{
-    background: var(--qs-surface);
-    border: 1px solid var(--qs-border);
-    border-radius: 2.3rem;
-    box-shadow: var(--bs-shadow-soft);
-    padding: 2.2rem 2rem;
-    overflow: hidden;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-  
-  .about-page .about-image{
-    position: relative;
-    border-radius: 1.6rem;
-    overflow: hidden;
-    box-shadow: var(--bs-shadow-medium);
-    border: 1px solid rgba(255,255,255,0.10);
-  }
-  
-  .about-page .about-image img{
-    width: 100%;
-    height: 100%;
-    display: block;
-    border-radius: 1.6rem;
-    transform: scale(1.02);
-    transition: transform 0.55s ease;
-  }
-  
-  .about-page .about-image:hover img{
-    transform: scale(1.07);
-  }
-  
-  .about-page .about-image::after{
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(5,5,5,0.55) 100%);
-    pointer-events: none;
-  }
-  
-  .about-page .about-content{
-    padding: 0.4rem 0.2rem;
-  }
-  
-  .about-page .about-title{
-    font-size: 2rem;
-    font-weight: 900;
-    color: var(--qs-offwhite);
-    letter-spacing: 0.2px;
-  }
-  
-  .about-page .about-text{
-    color: rgba(245,245,244,0.88);
-    font-size: 1.05rem;
-    line-height: 1.95;
-    opacity: 0.95;
-  }
-  
-  /* ================= Team ================= */
-  .about-page .about-team{
-    margin-top: 2.2rem;
-  }
-  
-  .about-page .team-grid{
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 1.25rem;
-  }
-  
-  .about-page .team-member-enhanced{
-    background: var(--qs-surface);
-    border-radius: 1.8rem;
-    box-shadow: var(--bs-shadow-soft);
-    border: 1px solid var(--qs-border);
-    overflow: hidden;
-    transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-  
-  .about-page .team-member-enhanced:hover{
-    transform: translateY(-7px);
-    box-shadow: var(--bs-shadow-medium);
-    border-color: rgba(255,255,255,0.22);
-  }
-  
-  .about-page .team-member-image-container{
-    position: relative;
-    height: 235px;
-    overflow: hidden;
-  }
-  
-  .about-page .team-member-image-enhanced{
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    transform: scale(1.03);
-    transition: transform 0.6s ease;
-  }
-  
-  .about-page .team-member-enhanced:hover .team-member-image-enhanced{
-    transform: scale(1.12);
-  }
-  
-  .about-page .team-member-overlay{
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(10,10,10,0.72) 100%);
-    opacity: 0;
-    transition: opacity 0.35s ease;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    padding: 1rem;
-  }
-  
-  .about-page .team-member-enhanced:hover .team-member-overlay{
-    opacity: 1;
-  }
-  
-  /* Social icons */
-  .about-page .team-member-social{
-    display: flex;
-    gap: 0.8rem;
-  }
-  
-  .about-page .team-member-social i{
-    width: 42px;
-    height: 42px;
-    border-radius: 999px;
-    display: grid;
-    place-items: center;
-  
-    background: rgba(255,255,255,0.10);
-    border: 1px solid rgba(255,255,255,0.18);
-    color: var(--qs-offwhite);
-  
-    box-shadow: 0 10px 22px rgba(0,0,0,0.28);
-    transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-  }
-  
-  .about-page .team-member-social i:hover{
-    transform: scale(1.08);
-    background: rgba(64,1,13,0.28);
-    border-color: rgba(255,255,255,0.22);
-  }
-  
-  .about-page .team-member-content{
-    padding: 1.15rem 1.1rem 1.15rem 1.1rem;
-  }
-  
-  .about-page .team-member-name-enhanced{
-    font-size: 1.18rem;
-    font-weight: 900;
-    color: var(--qs-offwhite);
-    margin: 0 0 0.15rem 0;
-  }
-  
-  .about-page .team-member-position-enhanced{
-    font-size: 0.98rem;
-    font-weight: 800;
-    color: var(--qs-gray-500);
-    margin: 0 0 0.65rem 0;
-  }
-  
-  .about-page .team-member-description-enhanced{
-    font-size: 0.99rem;
-    color: rgba(245,245,244,0.82);
-    line-height: 1.85;
-    margin: 0 0 0.9rem 0;
-  }
-  
-  /* Chips */
-  .about-page .team-member-chips{
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    margin: 0 0 0.9rem 0;
-  }
-  
-  .about-page .team-chip{
-    background: rgba(64,1,13,0.22);
-    color: var(--qs-offwhite);
-    border: 1px solid rgba(255,255,255,0.16);
-    padding: 0.25rem 0.65rem;
-    border-radius: 999px;
-    font-size: 0.86rem;
-    font-weight: 800;
-  }
-  
-  /* Skills */
-  .about-page .team-member-skills{
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-  }
-  
-  .about-page .skill-tag{
-    background: rgba(255,255,255,0.08);
-    color: var(--qs-gray-500);
-    border: 1px solid rgba(255,255,255,0.14);
-    padding: 0.28rem 0.7rem;
-    border-radius: 999px;
-    font-size: 0.86rem;
-    font-weight: 800;
-  }
-  
-  /* ================= Why Choose Us ================= */
+.about-page{
+  min-height: 100vh;
+  padding: 40px 0 18px 0;
+  font-family: "Tajawal", sans-serif;
+  direction: rtl;
+  text-align: right;
+  color: #0D0D0D;
+
+  background:
+    radial-gradient(
+      900px 520px at 15% 20%,
+      rgba(64,1,13,0.06),
+      transparent 60%
+    ),
+    radial-gradient(
+      800px 450px at 85% 25%,
+      rgba(136,140,140,0.10),
+      transparent 55%
+    ),
+    linear-gradient(
+      180deg,
+      #ffffff 0%,
+      #f5f5f4 100%
+    );
+}
+
+/* ====== Titles ====== */
+.about-page .section-title{
+  font-size: 1.85rem;
+  font-weight: 900;
+  color: #0D0D0D;
+  margin-bottom: 0.35rem;
+  text-align: center;
+}
+
+.about-page .section-subtitle{
+  color: #6E7372;
+  font-size: 1.05rem;
+  opacity: 0.95;
+  text-align: center;
+}
+
+/* Hint */
+.about-page .about-team-hint{
+  margin-top: 10px;
+  font-size: 0.95rem;
+  opacity: 0.85;
+  color: #6E7372;
+  text-align: center;
+}
+
+/* ================= Intro ================= */
+.about-page .about-intro{
+  background: rgba(255,255,255,0.9);
+  border: 1px solid rgba(13,13,13,0.12);
+  border-radius: 2.3rem;
+  box-shadow: 0 18px 44px rgba(13,13,13,0.10);
+  padding: 2.2rem 2rem;
+  overflow: hidden;
+}
+
+.about-page .about-image{
+  position: relative;
+  border-radius: 1.6rem;
+  overflow: hidden;
+  box-shadow: 0 14px 36px rgba(13,13,13,0.14);
+  border: 1px solid rgba(13,13,13,0.12);
+}
+
+.about-page .about-image img{
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 1.6rem;
+  transform: scale(1.02);
+  transition: transform 0.55s ease;
+}
+
+.about-page .about-image:hover img{
+  transform: scale(1.07);
+}
+
+.about-page .about-image::after{
+  display: none;
+}
+
+
+.about-page .about-content{
+  padding: 0.4rem 0.2rem;
+}
+
+.about-page .about-title{
+  font-size: 2rem;
+  font-weight: 900;
+  color: #0D0D0D;
+  letter-spacing: 0.2px;
+}
+
+.about-page .about-text{
+  color: rgba(13,13,13,0.78);
+  font-size: 1.05rem;
+  line-height: 1.95;
+}
+
+/* ================= Team ================= */
+.about-page .about-team{
+  margin-top: 2.2rem;
+}
+
+.about-page .team-grid{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.about-page .team-member-enhanced{
+  background: rgba(255,255,255,0.9);
+  border-radius: 1.8rem;
+  box-shadow: 0 18px 44px rgba(13,13,13,0.10);
+  border: 1px solid rgba(13,13,13,0.12);
+  overflow: hidden;
+  transition: transform 0.28s ease, box-shadow 0.28s ease;
+}
+
+.about-page .team-member-enhanced:hover{
+  transform: translateY(-6px);
+  box-shadow: 0 24px 60px rgba(13,13,13,0.16);
+}
+
+.about-page .team-member-image-container{
+  position: relative;
+  height: 235px;
+  overflow: hidden;
+}
+
+.about-page .team-member-image-enhanced{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scale(1.03);
+  transition: transform 0.6s ease;
+}
+
+.about-page .team-member-enhanced:hover .team-member-image-enhanced{
+  transform: scale(1.12);
+}
+
+.about-page .team-member-overlay{
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.88) 100%
+  );
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.about-page .team-member-enhanced:hover .team-member-overlay{
+  opacity: 1;
+}
+
+/* Social icons */
+.about-page .team-member-social{
+  display: flex;
+  gap: 0.8rem;
+}
+
+.about-page .team-member-social i{
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+
+  background: rgba(255,255,255,0.9);
+  border: 1px solid rgba(13,13,13,0.14);
+  color: #40010D;
+
+  box-shadow: 0 8px 22px rgba(13,13,13,0.18);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.about-page .team-member-social i:hover{
+  transform: scale(1.08);
+  background: rgba(64,1,13,0.12);
+}
+
+/* Content */
+.about-page .team-member-content{
+  padding: 1.15rem 1.1rem;
+}
+
+.about-page .team-member-name-enhanced{
+  font-size: 1.18rem;
+  font-weight: 900;
+  color: #0D0D0D;
+}
+
+.about-page .team-member-position-enhanced{
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #6E7372;
+  margin-bottom: 0.65rem;
+}
+
+.about-page .team-member-description-enhanced{
+  font-size: 0.99rem;
+  color: rgba(13,13,13,0.78);
+  line-height: 1.85;
+}
+
+/* Chips */
+.about-page .team-member-chips{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.9rem;
+}
+
+.about-page .team-chip{
+  background: rgba(64,1,13,0.10);
+  color: #40010D;
+  border: 1px solid rgba(64,1,13,0.25);
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+/* ================= Why Choose Us ================= */
+.about-page .why-choose-us{
+  background: rgba(255,255,255,0.9);
+  border: 1px solid rgba(13,13,13,0.12);
+  border-radius: 2.3rem;
+  box-shadow: 0 18px 44px rgba(13,13,13,0.10);
+  padding: 2rem;
+  margin-top: 2rem;
+}
+
+.about-page .why-choose-item{
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(13,13,13,0.12);
+  border-radius: 1.4rem;
+  padding: 1.35rem 1.1rem;
+  text-align: center;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.about-page .why-choose-item:hover{
+  transform: translateY(-6px);
+  box-shadow: 0 16px 32px rgba(13,13,13,0.18);
+}
+
+.about-page .why-choose-icon{
+  width: 62px;
+  height: 62px;
+  border-radius: 18px;
+  margin: 0 auto 0.8rem auto;
+  display: grid;
+  place-items: center;
+  background: rgba(64,1,13,0.14);
+  color: #40010D;
+  font-size: 1.6rem;
+}
+
+.about-page .why-choose-title{
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #0D0D0D;
+}
+
+.about-page .why-choose-description{
+  color: rgba(13,13,13,0.78);
+  line-height: 1.85;
+  font-size: 0.98rem;
+}
+
+/* ================= Animation ================= */
+.about-page .animate-fade-in{
+  opacity: 0;
+  transform: translateY(14px);
+  animation: aboutFadeInUp 0.7s ease forwards;
+}
+
+@keyframes aboutFadeInUp{
+  to{opacity: 1; transform: translateY(0);}
+}
+
+/* ================= Responsive ================= */
+@media (max-width: 991px){
+  .about-page .about-intro,
   .about-page .why-choose-us{
-    background: var(--qs-surface);
-    border: 1px solid var(--qs-border);
-    border-radius: 2.3rem;
-    box-shadow: var(--bs-shadow-soft);
-    padding: 2rem 2rem 2.2rem 2rem;
-    margin-top: 2rem;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    padding: 1.4rem 1.1rem;
+    border-radius: 1.6rem;
   }
-  
-  .about-page .why-choose-item{
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 1.4rem;
-    padding: 1.35rem 1.1rem;
-    height: 100%;
-    box-shadow: 0 10px 24px rgba(0,0,0,0.22);
-    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-    text-align: center;
+
+  .about-page .team-grid{
+    grid-template-columns: repeat(2, 1fr);
   }
-  
-  .about-page .why-choose-item:hover{
-    transform: translateY(-6px);
-    box-shadow: 0 16px 32px rgba(0,0,0,0.30);
-    border-color: rgba(255,255,255,0.20);
+
+  .about-page .about-title{
+    font-size: 1.55rem;
   }
-  
-  .about-page .why-choose-icon{
-    width: 62px;
-    height: 62px;
-    border-radius: 18px;
-    margin: 0 auto 0.8rem auto;
-    display: grid;
-    place-items: center;
-    background: rgba(64,1,13,0.22);
-    border: 1px solid rgba(255,255,255,0.14);
-    color: var(--qs-offwhite);
-    font-size: 1.6rem;
+}
+
+@media (max-width: 767px){
+  .about-page{
+    padding: 10px 0 8px 0;
   }
-  
-  .about-page .why-choose-title{
-    font-size: 1.15rem;
-    font-weight: 900;
-    color: var(--qs-offwhite);
-    margin-bottom: 0.35rem;
+
+  .about-page .team-grid{
+    grid-template-columns: 1fr;
   }
-  
-  .about-page .why-choose-description{
-    color: rgba(245,245,244,0.82);
-    line-height: 1.85;
-    font-size: 0.98rem;
-    margin: 0;
-  }
-  
-  /* ================= Features Lists ================= */
-  .about-page .about-features{
-    margin-top: 1.3rem;
-  }
-  
-  .about-page .about-features-title{
-    font-size: 1.15rem;
-    font-weight: 900;
-    color: var(--qs-offwhite);
-  }
-  
-  .about-page .features-list{
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-  
-  .about-page .features-list li{
-    display: flex;
-    gap: 0.6rem;
-    align-items: flex-start;
-  
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 1.15rem;
-  
-    padding: 0.85rem 0.85rem;
-    margin-bottom: 0.65rem;
-  
-    color: rgba(245,245,244,0.86);
-    font-size: 0.98rem;
-    line-height: 1.75;
-  }
-  
-  .about-page .feature-icon{
-    color: var(--qs-wine);
-    margin-top: 0.15rem;
-    font-size: 1.05rem;
-  }
-  
-  /* ================= Animation ================= */
-  .about-page .animate-fade-in{
-    opacity: 0;
-    transform: translateY(14px);
-    animation: aboutFadeInUp 0.7s ease forwards;
-  }
-  
-  @keyframes aboutFadeInUp{
-    to{opacity: 1; transform: translateY(0);}
-  }
-  
-  /* ================= Responsive ================= */
-  @media (max-width: 991px){
-    .about-page .about-intro,
-    .about-page .why-choose-us{
-      padding: 1.4rem 1.1rem;
-      border-radius: 1.6rem;
-    }
-  
-    .about-page .team-grid{
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  
-    .about-page .about-title{
-      font-size: 1.55rem;
-    }
-  }
-  
-  @media (max-width: 767px){
-    .about-page{
-      padding: 10px 0 8px 0;
-    }
-  
-    .about-page .section-title{
-      font-size: 1.25rem;
-    }
-  
-    .about-page .section-subtitle{
-      font-size: 0.98rem;
-    }
-  
-    .about-page .team-grid{
-      grid-template-columns: 1fr;
-      gap: 0.95rem;
-    }
-  
-    .about-page .team-member-image-container{
-      height: 210px;
-    }
-  
-    .about-page .team-member-content{
-      padding: 1rem 0.9rem;
-    }
-  
-    .about-page .why-choose-us{
-      padding: 1.15rem 0.9rem 1.2rem 0.9rem;
-      border-radius: 1.2rem;
-    }
-  
-    .about-page .features-list li{
-      border-radius: 0.95rem;
-    }
-  }
-  
-  @media (max-width: 575px){
-    .about-page .about-title{
-      font-size: 1.25rem;
-    }
-  
-    .about-page .about-text{
-      font-size: 0.98rem;
-    }
-  
-    .about-page .team-member-name-enhanced{
-      font-size: 1.08rem;
-    }
-  }
-  
+}
+

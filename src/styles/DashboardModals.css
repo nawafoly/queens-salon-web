@@ -66,6 +66,7 @@
   overflow: hidden;
   transform: translateY(10px) scale(0.985);
   animation: modalUp 0.22s ease-out forwards;
+  color: #0D0D0D; /* ✅ يخلي كل النصوص واضحة داخل المودال */
 
   text-align: right;
 }
@@ -134,6 +135,8 @@
   font-size: 18px;
   line-height: 1;
   transition: 0.2s ease;
+  color: #0D0D0D;
+
 }
 
 .modal-close:hover {
@@ -329,4 +332,130 @@
   font-size: 13px;
   padding: 0 12px;
   border-radius: 11px;
+}
+
+/* =========================
+   ✅ Global readability inside modals
+========================= */
+.modal-box,
+.dash-modal {
+  color: #0D0D0D;
+}
+
+.modal-box h1, .modal-box h2, .modal-box h3, .modal-box h4,
+.dash-modal h1, .dash-modal h2, .dash-modal h3, .dash-modal h4 {
+  color: #0D0D0D;
+}
+
+.modal-box label,
+.dash-modal label {
+  color: #0D0D0D;
+  opacity: 0.92;
+}
+
+.modal-box .modal-text,
+.dash-modal .modal-text,
+.modal-box p,
+.dash-modal p {
+  color: rgba(13,13,13,0.80);
+}
+
+/* =========================
+   ✅ Fix readability for ALL dashboard modals (Employees/Offers/Expenses)
+========================= */
+
+/* 1) أي input/select/textarea داخل مودال الداش */
+.dash-modal input,
+.dash-modal select,
+.dash-modal textarea,
+.modal-box input,
+.modal-box select,
+.modal-box textarea {
+  color: #0D0D0D !important;
+}
+
+/* 2) placeholder واضح (هذا اللي بالصورة باهت مرة) */
+.dash-modal input::placeholder,
+.dash-modal textarea::placeholder,
+.modal-box input::placeholder,
+.modal-box textarea::placeholder {
+  color: rgba(81, 86, 89, 0.60) !important;
+  opacity: 1 !important;
+}
+
+/* 3) لو تستخدم class اسمها dashboard-input في صفحاتك */
+.dash-modal .dashboard-input,
+.modal-box .dashboard-input {
+  color: #0D0D0D !important;
+}
+
+/* 4) أزرار الداش داخل المودال (حفظ/إلغاء) */
+.dash-modal .dash-btn,
+.modal-box .dash-btn,
+.dash-modal .dash-pill,
+.modal-box .dash-pill {
+  color: #0D0D0D !important;
+}
+
+/* زر الحفظ/الأساسي إذا عندك primary */
+.dash-modal .dash-btn.primary,
+.modal-box .dash-btn.primary {
+  color: #fff !important;
+}
+
+/* =========================
+   Selected services (Staff Picks)
+========================= */
+
+.staff-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.staff-picks .pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 8px 14px;
+  min-height: 38px;
+
+  border-radius: 999px;
+  border: 1px solid rgba(124, 58, 237, 0.25);
+
+  background: rgba(124, 58, 237, 0.08);
+  color: #2b2b2b;              /* ✅ خط غامق وواضح */
+
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.2;
+
+  cursor: pointer;
+  user-select: none;
+
+  transition: all 0.2s ease;
+}
+
+/* Hover */
+.staff-picks .pick:hover {
+  background: rgba(124, 58, 237, 0.14);
+  border-color: rgba(124, 58, 237, 0.35);
+  transform: translateY(-1px);
+}
+
+/* Active / Selected (لو فيه حالة active) */
+.staff-picks .pick.active,
+.staff-picks .pick.is-selected {
+  background: rgba(124, 58, 237, 0.18);
+  border-color: rgba(124, 58, 237, 0.45);
+  color: #3b1b66;
+}
+
+/* لو فيه زر حذف X داخل الـ pick */
+.staff-picks .pick button,
+.staff-picks .pick svg {
+  margin-inline-start: 6px;
+  font-size: 13px;
+  opacity: 0.85;
 }

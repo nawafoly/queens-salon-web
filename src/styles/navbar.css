@@ -363,3 +363,14 @@
 .dropdown-logout-btn:hover {
   background: rgba(255,255,255,0.08);
 }
+
+.logo-link {
+  display: flex;
+  align-items: center;
+}
+
+.logo {
+  height: 45px;        /* جرّب 48 → 56 → 64 */
+  width: auto;
+  object-fit: contain;
+}

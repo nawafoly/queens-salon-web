@@ -123,11 +123,9 @@ const About = () => {
 
           const position = buildPositionFromSpecialties(specialties);
 
-          const desc =
-            bio ||
-            (specialties.length
-              ? `متخصصة في: ${specialties.join(" • ")}`
-              : "خبيرة ضمن فريق صالون ملكات.");
+ const desc = bio || "خبيرة ضمن فريق صالون ملكات.";
+
+        
 
           return {
             id: d.id,
@@ -181,17 +179,17 @@ const About = () => {
             <div className="col-lg-6">
               <div className="about-content">
                 <h1 className="about-title mb-4">عن صالون ملكات</h1>
-                <p className="about-text mb-4">
+                <p className="about-text mb-4 lead-strong">
                   تأسس صالون ملكات للتجميل في عام 2020 بهدف تقديم خدمات تجميلية
                   متكاملة وعالية الجودة للسيدات. نسعى دائماً لتوفير تجربة فريدة
                   ومميزة لعميلاتنا في جو من الراحة والخصوصية.
                 </p>
-                <p className="about-text mb-4">
+                <p className="about-text mb-4 lead-strong">
                   يضم صالوننا فريقاً من الخبيرات المتخصصات في مجالات العناية بالشعر
                   والبشرة والمكياج والأظافر، ونستخدم أفضل المنتجات العالمية لضمان
                   نتائج مثالية.
                 </p>
-                <p className="about-text">
+                <p className="about-text lead-strong">
                   رؤيتنا هي أن نكون الوجهة الأولى للسيدات الباحثات عن التميز
                   والجودة في خدمات التجميل، ونسعى دائماً لمواكبة أحدث صيحات الموضة
                   والتجميل العالمية.
@@ -204,10 +202,8 @@ const About = () => {
         <section className="about-team mb-5">
           <div className="text-center mb-5">
             <h2 className="section-title">فريقنا المتميز</h2>
-            <p className="section-subtitle">تعرفي على فريق الخبيرات المتخصصات</p>
-            <div className="about-team-hint">
-              (يتم العرض تلقائياً من Firestore: <b>salons/main/staff_public</b>)
-            </div>
+            <p className="section-subtitle  lead-strong">تعرفي على فريق الخبيرات المتخصصات</p>
+
           </div>
 
           {teamLoading ? (
@@ -237,27 +233,15 @@ const About = () => {
                         </div>
                       </div>
                     </div>
-
                     <div className="team-member-content">
-                      <h3 className="team-member-name-enhanced">{member.name}</h3>
-                      <p className="team-member-position-enhanced">{member.position}</p>
-                      <p className="team-member-description-enhanced">{member.description}</p>
+  <h3 className="team-member-name-enhanced">{member.name}</h3>
 
-                      {!!member.specialties?.length && (
-                        <div className="team-member-chips">
-                          {member.specialties.slice(0, 6).map((sp, i) => (
-                            <span key={`${member.id}-sp-${i}`} className="team-chip">
-                              {labelSpecialty(sp)}
-                            </span>
-                          ))}
 
-                        </div>
-                      )}
+  <div className="team-member-skills">
+    <span className="skill-tag">موظفة معتمدة</span>
+  </div>
+</div>
 
-                      <div className="team-member-skills">
-                        <span className="skill-tag">موظفة معتمدة</span>
-                      </div>
-                    </div>
                   </div>
                 </div>
               ))}
@@ -284,8 +268,8 @@ const About = () => {
           <div className="about-features mt-5">
             <div className="row">
               <div className="col-lg-6 mb-4">
-                <h3 className="about-features-title mb-4">ماذا يميزنا؟</h3>
-                <ul className="features-list">
+                <h3 className="about-features-title mb-4 qs-wine ">ماذا يميزنا؟</h3>
+                <ul className="features-list lead-strong">
                   <li>
                     <FontAwesomeIcon icon={faCheck} className="feature-icon" /> أحدث التقنيات في مجال التجميل
                   </li>
@@ -304,8 +288,8 @@ const About = () => {
                 </ul>
               </div>
 
-              <div className="col-lg-6">
-                <h3 className="about-features-title mb-4">قيمنا</h3>
+              <div className="col-lg-6 lead-strong">
+                <h3 className="about-features-title mb-4 qs-wine ">قيمنا</h3>
                 <ul className="features-list">
                   <li>
                     <FontAwesomeIcon icon={faCheck} className="feature-icon" /> الاحترافية في تقديم الخدمات

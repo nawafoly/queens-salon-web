@@ -1,47 +1,49 @@
 /* src/styles/Services.css */
+/* WHITE / OFF-WHITE VERSION – Queens Salon */
 
 .services-page{
   direction: rtl;
   background:
-    radial-gradient(900px 520px at 15% 18%, rgba(255,255,255,0.06), transparent 60%),
-    radial-gradient(900px 520px at 85% 24%, rgba(64, 1, 13, 0.18), transparent 55%),
-    linear-gradient(180deg, var(--qs-black) 0%, #090909 100%);
+    radial-gradient(900px 520px at 15% 18%, rgba(64,1,13,0.08), transparent 60%),
+    radial-gradient(900px 520px at 85% 24%, rgba(136,140,140,0.12), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #f5f5f4 100%);
 }
 
+/* العناوين */
 .services-title{
   font-weight: 900;
-  color: var(--qs-text);
+  color: var(--qs-accent);
   letter-spacing: 0.2px;
 }
 
 .services-subtitle{
-  color: var(--qs-text-muted);
+  color: var(--qs-gray-700);
   opacity: 0.95;
 }
 
-/* حالات التحميل/الخطأ */
+/* حالات التحميل / الخطأ */
 .services-state{
-  background: var(--qs-card-2);
-  border: 1px solid var(--qs-border);
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(13,13,13,0.12);
   border-radius: 18px;
   padding: 1rem 1.1rem;
-  color: var(--qs-text-muted);
+  color: var(--qs-gray-700);
   text-align: center;
   box-shadow: var(--qs-shadow-soft);
 }
 
 .services-state.is-error{
-  color: #ffb4b4;
-  border-color: rgba(239, 68, 68, 0.30);
-  background: rgba(239, 68, 68, 0.10);
+  color: #9f1d1d;
+  border-color: rgba(239,68,68,0.25);
+  background: rgba(239,68,68,0.08);
 }
 
 /* بلوك كل قسم */
 .service-category{
-  background: var(--qs-card);
-  border: 1px solid var(--qs-border);
+  background: rgba(255,255,255,0.9);
+  border: 1px solid rgba(13,13,13,0.12);
   border-radius: 26px;
-  padding: 1.1rem 1.1rem;
+  padding: 1.1rem;
   box-shadow: var(--qs-shadow-soft);
   overflow: hidden;
 }
@@ -50,7 +52,7 @@
   flex-direction: row-reverse;
 }
 
-/* صورة + خلفية منتج */
+/* صورة + خلفية */
 .service-category-image{
   position: relative;
   border-radius: 22px;
@@ -58,15 +60,13 @@
   min-height: 260px;
 }
 
-/* خلفية “منتج” دارك فخمة */
 .product-bg{
   background:
-    radial-gradient(1200px 420px at 22% 18%, rgba(64, 1, 13, 0.28), transparent 60%),
-    radial-gradient(900px 380px at 86% 22%, rgba(136, 140, 140, 0.16), transparent 58%),
-    radial-gradient(800px 380px at 60% 92%, rgba(255, 255, 255, 0.06), transparent 60%),
-    linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
-  border: 1px solid var(--qs-border);
-  box-shadow: var(--qs-shadow);
+    radial-gradient(1200px 420px at 22% 18%, rgba(64,1,13,0.14), transparent 60%),
+    radial-gradient(900px 380px at 86% 22%, rgba(136,140,140,0.14), transparent 58%),
+    linear-gradient(135deg, #ffffff, #f5f5f4);
+  border: 1px solid rgba(13,13,13,0.12);
+  box-shadow: var(--qs-shadow-soft);
 }
 
 .product-img{
@@ -74,10 +74,10 @@
   height: 100%;
   object-fit: contain;
   padding: 1.2rem;
-  filter: drop-shadow(0 18px 22px rgba(0,0,0,0.35));
+  filter: drop-shadow(0 12px 18px rgba(0,0,0,0.18));
 }
 
-/* محتوى */
+/* المحتوى */
 .service-category-content{
   padding: 0.4rem 0.1rem;
 }
@@ -89,79 +89,162 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(64,1,13,0.20), rgba(255,255,255,0.06));
-  color: var(--qs-text);
-  border: 1px solid rgba(255,255,255,0.10);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  background: linear-gradient(135deg, rgba(64,1,13,0.16), rgba(255,255,255,0.9));
+  color: var(--qs-black);
+  border: 1px solid rgba(13,13,13,0.12);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.12);
   margin-bottom: 0.6rem;
   font-size: 1.15rem;
 }
 
 .service-category-title{
   font-weight: 900;
-  color: var(--qs-text);
+  color: var(--qs-accent);
   margin-bottom: 0.35rem;
 }
 
 .service-category-description{
-  color: var(--qs-text-muted);
+  color: var(--qs-gray-700);
   opacity: 0.95;
   margin-bottom: 0.9rem;
 }
 
-/* قائمة الخدمات */
-.service-list{
+/* =========================
+   ✅ Accordion (تصنيفات) - نفس إحساس العروض
+========================= */
+
+.svc-accordion{
   display: grid;
-  gap: 0.55rem;
-  margin-top: 0.35rem;
+  gap: 12px;
+  margin-top: 10px;
 }
 
-.service-item{
-  background: rgba(255,255,255,0.05);
-  border: 1px dashed rgba(255,255,255,0.14);
-  border-radius: 16px;
-  padding: 0.65rem 0.85rem;
+.svc-acc-item{
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(13,13,13,0.12);
+  box-shadow: var(--qs-shadow-soft);
+}
+
+.svc-acc-btn{
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.8rem;
-}
-
-.service-name{
-  font-weight: 800;
-  color: var(--qs-text);
-  font-size: 0.98rem;
-}
-
-.service-price{
+  gap: 12px;
+  padding: 14px 14px;
   font-weight: 900;
-  color: var(--qs-offwhite);
-  background: rgba(64, 1, 13, 0.35);
-  border: 1px solid rgba(64, 1, 13, 0.55);
+  color: var(--qs-black);
+}
+
+.svc-acc-title{
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.svc-acc-meta{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(13,13,13,0.85);
+}
+
+.svc-count-pill{
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
   border-radius: 999px;
-  padding: 0.25rem 0.6rem;
-  white-space: nowrap;
-  font-size: 0.95rem;
-}
-
-/* زر الحجز */
-.services-primary-btn{
-  display: inline-block;
-  background: var(--qs-accent);
-  color: var(--qs-offwhite);
+  font-size: 12px;
   font-weight: 900;
-  padding: 0.7rem 1.3rem;
-  text-decoration: none;
-  border: 1px solid rgba(255,255,255,0.10);
-  box-shadow: 0 14px 34px rgba(64, 1, 13, 0.22);
-  transition: transform 0.18s ease, filter 0.18s ease;
+  border: 1px solid rgba(13,13,13,0.14);
+  background: rgba(245,245,244,0.92);
+  color: var(--qs-black);
 }
 
-.services-primary-btn:hover{
-  background: var(--qs-accent-hover);
+.svc-acc-body{
+  padding: 0 14px 14px;
+}
+
+.svc-items{
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(13,13,13,0.14);
+}
+
+/* كرت/سطر الخدمة (اسم + سعر فقط) */
+.svc-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  padding: 12px 12px;
+  border-radius: 16px;
+
+  background: rgba(245,245,244,0.92);
+  border: 1px solid rgba(13,13,13,0.10);
+}
+
+.svc-name{
+  font-weight: 900;
+  color: var(--qs-black);
+  font-size: 14px;
+}
+
+.svc-price{
+  font-weight: 950;
+  color: var(--qs-burgundy);
+  background: rgba(64,1,13,0.10);
+  border: 1px solid rgba(64,1,13,0.28);
+  border-radius: 999px;
+  padding: 7px 12px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+/* زر آخر الصفحة */
+.services-bottom-cta{
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.services-cta-btn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  padding: 14px 34px;
+  min-height: 52px;
+
+  border-radius: 999px;
+  border: 1px solid rgba(64,1,13,0.55);
+
+  background: linear-gradient(135deg, #40010D 0%, #5a0213 100%);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: .2px;
+
+  box-shadow: 0 14px 34px rgba(64,1,13,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
+  text-decoration: none;
+
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+
+.services-cta-btn:hover{
+  filter: brightness(1.05);
   transform: translateY(-1px);
 }
 
+/* موبايل */
 @media (max-width: 768px){
   .service-category{
     padding: 0.95rem;
@@ -169,13 +252,93 @@
   .service-category-image{
     min-height: 220px;
   }
-  .service-item{
-    padding: 0.6rem 0.7rem;
+  .svc-acc-btn{
+    padding: 12px;
   }
-  .service-name{
-    font-size: 0.94rem;
+  .svc-acc-body{
+    padding: 0 12px 12px;
   }
-  .service-price{
-    font-size: 0.92rem;
-  }
+}
+
+/* src/styles/Services.css */
+/* Services uses Offers card look (1:1) */
+
+.services-page{
+  direction: rtl;
+}
+
+/* حالات التحميل / الخطأ (نفس ستايلك القديم) */
+.services-state{
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(13,13,13,0.12);
+  border-radius: 18px;
+  padding: 1rem 1.1rem;
+  color: rgba(81,86,89,0.85);
+  text-align: center;
+  box-shadow: var(--qs-shadow-soft);
+}
+
+.services-state.is-error{
+  color: #9f1d1d;
+  border-color: rgba(239,68,68,0.25);
+  background: rgba(239,68,68,0.08);
+}
+
+/* Stack التصنيفات داخل الكرت */
+.services-cat-stack{
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+/* تفاصيل التصنيف (داخل offer-details) */
+.services-cat-details{
+  margin-top: 10px;
+}
+
+/* قائمة الخدمات داخل التصنيف */
+.services-items{
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+/* كل خدمة: اسم + سعر (كبسولة) */
+.services-li{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  padding: 10px 12px;
+  border-radius: 14px;
+
+  background: rgba(245,245,244,0.92);
+  border: 1px solid rgba(13,13,13,0.10);
+}
+
+.services-item-name{
+  font-weight: 900;
+  color: rgba(13,13,13,0.92);
+  font-size: 14px;
+}
+
+.services-item-price{
+  font-weight: 950;
+  color: var(--qs-burgundy);
+  background: rgba(64,1,13,0.10);
+  border: 1px solid rgba(64,1,13,0.28);
+  border-radius: 999px;
+  padding: 6px 10px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+/* زر آخر الصفحة */
+.services-bottom-cta{
+  display: flex;
+  justify-content: center;
+  margin-top: 22px;
 }

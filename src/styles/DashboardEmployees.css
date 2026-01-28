@@ -333,3 +333,41 @@
     padding: 8px 10px;
   }
 }
+
+/* =========================
+   FIX: Modal text visibility (Dashboard)
+   Put at END of DashboardModals.css
+========================= */
+
+.dashboard-skin .dashboard-modal,
+.dashboard-skin .dashboard-modal * {
+  color: #0D0D0D; /* ✅ نص واضح داخل المودال */
+}
+
+/* Inputs inside modal */
+.dashboard-skin .dashboard-modal input,
+.dashboard-skin .dashboard-modal select,
+.dashboard-skin .dashboard-modal textarea {
+  color: #0D0D0D !important;
+  background: #fff !important;
+  border-color: rgba(13, 13, 13, 0.14) !important;
+}
+
+/* Placeholder */
+.dashboard-skin .dashboard-modal input::placeholder,
+.dashboard-skin .dashboard-modal textarea::placeholder {
+  color: rgba(13, 13, 13, 0.35) !important;
+  opacity: 1;
+}
+
+/* Labels */
+.dashboard-skin .dashboard-modal label {
+  color: rgba(13, 13, 13, 0.80) !important;
+}
+
+/* Buttons/pills text inside modal (لو عندك أزرار شكل pill) */
+.dashboard-skin .dashboard-modal .dash-pill,
+.dashboard-skin .dashboard-modal .dash-btn,
+.dashboard-skin .dashboard-modal button {
+  color: #0D0D0D;
+}

@@ -8,6 +8,9 @@ import nails from "../assets/images/nails.png";
 import makeupImg from "../assets/images/makeup.png";
 import massageImg from "../assets/images/massage.png";
 import packagesImg from "../assets/images/packages.png";
+import servicesImg from "../assets/images/services.png";
+import homeServicesImg from "../assets/images/home-services.png";
+import hairColorTreatmentsImg from "../assets/images/hair-color-treatments.png";
 
 import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -18,9 +21,14 @@ import {
   faHandSparkles,
   faMagic,
   faStar,
+  faChevronDown,
+  faChevronUp,
+  faList,
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/Services.css";
+// ✅ نستعمل نفس شكل كرت العروض 1:1
+import "../styles/Offers.css";
 
 // ✅ Firestore
 import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
@@ -28,19 +36,16 @@ import { db } from "../services/firebase";
 
 const SALON_ID = "main";
 
-type UiServiceItem = { name: string; price: number };
-
-type UiServiceCategory = {
-  id: string;
-  title: string;
-  icon: any;
-  image: string;
-  description: string;
-  services: UiServiceItem[];
-};
-
 type SectionRow = {
   id: string;
+  name: string;
+  active?: boolean;
+  order?: number;
+};
+
+type CategoryRow = {
+  id: string;
+  sectionId: string;
   name: string;
   active?: boolean;
   order?: number;
@@ -50,18 +55,40 @@ type ServiceRow = {
   id: string;
   name: string;
   sectionId: string;
+  categoryId?: string;
   price: number;
   active?: boolean;
+};
+
+type UiServiceItem = { id: string; name: string; price: number };
+
+type UiCategory = {
+  id: string;
+  name: string;
+  items: UiServiceItem[];
+};
+
+type UiSection = {
+  id: string;
+  title: string;
+  icon: any;
+  image: string;
+  description: string;
+  categories: UiCategory[];
+  totalServices: number;
 };
 
 export default function Services() {
   const [loading, setLoading] = useState(true);
   const [sections, setSections] = useState<SectionRow[]>([]);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ ثوابت العرض (صور/وصف/أيقونة) حسب sectionId
-  // مهم: sectionId هنا = doc.id داخل salons/main/service_sections
+  // ✅ فتح/إغلاق (تصنيف) مثل "عرض التفاصيل"
+  const [openCatKey, setOpenCatKey] = useState<string | null>(null);
+
+  // ✅ ثوابت العرض حسب sectionId
   const uiBySectionId = useMemo(() => {
     return {
       "hair-care": {
@@ -98,10 +125,25 @@ export default function Services() {
         icon: faMagic,
         description: "باقات متكاملة تجمع بين خدمات متنوعة بأسعار مميزة.",
       },
-    } as Record<
-      string,
-      { image: string; icon: any; description: string }
-    >;
+      services: {
+        image: servicesImg,
+        icon: faList,
+        description: "خدمات متنوعة مقدمة داخل الصالون.",
+      },
+
+      "home-services": {
+        image: homeServicesImg,
+        icon: faStar,
+        description: "خدمات الصالون المقدمة في المنزل براحة واحترافية.",
+      },
+
+      "hair-color-treatments": {
+        image: hairColorTreatmentsImg,
+        icon: faPaintBrush,
+        description: "صبغات الشعر والعلاجات المتخصصة بأحدث التقنيات.",
+      },
+
+    } as Record<string, { image: string; icon: any; description: string }>;
   }, []);
 
   useEffect(() => {
@@ -112,7 +154,7 @@ export default function Services() {
       setError(null);
 
       try {
-        // ✅ 1) جلب الأقسام
+        // ✅ 1) Sections
         const sectionsRef = collection(db, "salons", SALON_ID, "service_sections");
         const sectionsQ = query(sectionsRef, orderBy("order", "asc"));
         const sectionsSnap = await getDocs(sectionsQ);
@@ -127,7 +169,23 @@ export default function Services() {
           };
         });
 
-        // ✅ 2) جلب الخدمات (active فقط)
+        // ✅ 2) Categories
+        const catsRef = collection(db, "salons", SALON_ID, "service_categories");
+        const catsQ = query(catsRef, orderBy("order", "asc"));
+        const catsSnap = await getDocs(catsQ);
+
+        const catsRows: CategoryRow[] = catsSnap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            sectionId: String(data?.sectionId || ""),
+            name: String(data?.name || ""),
+            active: Boolean(data?.active ?? true),
+            order: Number(data?.order ?? 0),
+          };
+        });
+
+        // ✅ 3) Services (active only)
         const servicesRef = collection(db, "salons", SALON_ID, "services");
         const servicesQ = query(servicesRef, where("active", "==", true));
         const servicesSnap = await getDocs(servicesQ);
@@ -138,13 +196,16 @@ export default function Services() {
             id: d.id,
             name: String(data?.name || ""),
             sectionId: String(data?.sectionId || ""),
+            categoryId: data?.categoryId ? String(data.categoryId) : undefined,
             price: Number(data?.price ?? 0),
             active: Boolean(data?.active ?? true),
           };
         });
 
         if (!mounted) return;
+
         setSections(sectionsRows.filter((s) => s.active !== false));
+        setCategories(catsRows.filter((c) => c.active !== false));
         setServices(servicesRows);
       } catch (e: any) {
         if (!mounted) return;
@@ -162,26 +223,72 @@ export default function Services() {
     };
   }, []);
 
-  // ✅ بناء العرض النهائي: كل section + خدماته
-  const serviceCategories: UiServiceCategory[] = useMemo(() => {
-    const bySection = new Map<string, UiServiceItem[]>();
+  // ✅ Build: section -> categories -> services
+  const uiSections: UiSection[] = useMemo(() => {
+    const catsBySection = new Map<string, CategoryRow[]>();
+    categories.forEach((c) => {
+      if (!c.sectionId) return;
+      const list = catsBySection.get(c.sectionId) || [];
+      list.push(c);
+      catsBySection.set(c.sectionId, list);
+    });
+
+    const servicesByCategory = new Map<string, UiServiceItem[]>();
+    const servicesBySectionNoCat = new Map<string, UiServiceItem[]>();
+
     services.forEach((s) => {
       if (!s.sectionId) return;
-      const list = bySection.get(s.sectionId) || [];
-      list.push({ name: s.name, price: s.price });
-      bySection.set(s.sectionId, list);
+      const item: UiServiceItem = { id: s.id, name: s.name, price: s.price };
+
+      if (s.categoryId) {
+        const list = servicesByCategory.get(s.categoryId) || [];
+        list.push(item);
+        servicesByCategory.set(s.categoryId, list);
+      } else {
+        const list = servicesBySectionNoCat.get(s.sectionId) || [];
+        list.push(item);
+        servicesBySectionNoCat.set(s.sectionId, list);
+      }
     });
 
     return sections
       .map((sec) => {
         const ui = uiBySectionId[sec.id];
-        const icon = ui?.icon || faStar;
+        const icon =
+          ui?.icon ||
+          (sec.name.includes("شعر") ? faCut :
+            sec.name.includes("صبغ") ? faPaintBrush :
+              sec.name.includes("منزل") ? faStar :
+                faList);
         const image = ui?.image || packagesImg;
-        const description = ui?.description || "خدمات متنوعة ومميزة داخل هذا القسم.";
+        const description =
+        ui?.description ||
+        `اكتشفي أفضل خدمات ${sec.name} المتوفرة لدينا بجودة عالية.`;
+      
+        const cats = (catsBySection.get(sec.id) || []).sort(
+          (a, b) => (a.order ?? 0) - (b.order ?? 0)
+        );
 
-        const items = (bySection.get(sec.id) || [])
-          .filter((it) => it.name)
+        const uiCats: UiCategory[] = cats.map((cat) => {
+          const items = (servicesByCategory.get(cat.id) || [])
+            .filter((x) => x.name)
+            .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+          return { id: cat.id, name: cat.name || cat.id, items };
+        });
+
+        // fallback: خدمات بدون categoryId
+        const uncategorized = (servicesBySectionNoCat.get(sec.id) || [])
+          .filter((x) => x.name)
           .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+
+        if (uncategorized.length > 0) {
+          uiCats.unshift({ id: "__uncat__", name: "خدمات القسم", items: uncategorized });
+        }
+
+        const filteredCats = uiCats.filter((c) => c.items.length > 0);
+        const totalServices = filteredCats.reduce((sum, c) => sum + c.items.length, 0);
+
+        if (totalServices === 0) return null;
 
         return {
           id: sec.id,
@@ -189,86 +296,131 @@ export default function Services() {
           icon,
           image,
           description,
-          services: items,
-        };
+          categories: filteredCats,
+          totalServices,
+        } as UiSection;
       })
-      .filter((c) => c.services.length > 0); // نخفي الأقسام الفاضية
-  }, [sections, services, uiBySectionId]);
+      .filter(Boolean) as UiSection[];
+  }, [sections, categories, services, uiBySectionId]);
 
   return (
-    <div className="services-page py-5">
-      <div className="container">
-        <h1 className="services-title text-center mb-2">خدماتنا</h1>
-        <p className="services-subtitle text-center mb-5">
-          نقدم لكِ مجموعة متكاملة من خدمات التجميل والعناية بالجمال
-        </p>
-
-        {loading ? (
-          <div className="services-state">
-            جاري تحميل الخدمات…
+    // ✅ مهم: offers-page عشان Offers.css (scoped) يشتغل 1:1
+    <div className="services-page offers-page">
+      {/* HERO بسيط */}
+      <section className="bg-gradient-primary py-5">
+        <div className="container">
+          <div className="text-center">
+            <h1 className="display-5 fw-bold text-gradient mb-2">خدماتنا</h1>
+<p className="lead text-gray fw-semibold mb-0">
+            اختاري القسم ثم افتحي التصنيف وشوفي الخدمات والأسعار
+            </p>
           </div>
-        ) : error ? (
-          <div className="services-state is-error">
-            {error}
-          </div>
-        ) : serviceCategories.length === 0 ? (
-          <div className="services-state">
-            ما فيه خدمات ظاهرة حالياً (تأكدي إن الخدمات active ومربوطة بـ sectionId صحيح).
-          </div>
-        ) : (
-          serviceCategories.map((category, idx) => (
-            <div
-              className={`service-category mb-5 ${idx % 2 === 1 ? "reverse" : ""}`}
-              key={category.id}
-              id={category.id}
-            >
-              <div className="row align-items-center">
-                <div className="col-lg-6 mb-4 mb-lg-0">
-                  <div className="service-category-image product-bg">
-                    <img
-                      src={category.image}
-                      alt={category.title}
-                      className="img-fluid rounded product-img"
-                      loading="lazy"
-                    />
-                  </div>
-                </div>
+        </div>
+      </section>
 
-                <div className="col-lg-6">
-                  <div className="service-category-content">
-                    <div className="service-category-icon">
-                      <FontAwesomeIcon icon={category.icon} />
-                    </div>
-
-                    <h2 className="service-category-title">{category.title}</h2>
-                    <p className="service-category-description">
-                      {category.description}
-                    </p>
-
-                    <div className="service-list">
-                      {category.services.map((service, index) => (
-                        <div className="service-item" key={index}>
-                          <span className="service-name">{service.name}</span>
-                          <span className="service-price">
-                            {service.price} ريال
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <Link
-                      to="/booking"
-                      className="services-primary-btn rounded-pill mt-4"
-                    >
-                      احجزي الآن
-                    </Link>
-                  </div>
-                </div>
-              </div>
+      <section className="py-5">
+        <div className="container">
+          {loading ? (
+            <div className="services-state">جاري تحميل الخدمات…</div>
+          ) : error ? (
+            <div className="services-state is-error">{error}</div>
+          ) : uiSections.length === 0 ? (
+            <div className="services-state">
+              ما فيه خدمات ظاهرة حالياً (تأكدي إن الأقسام/التصنيفات/الخدمات active).
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            <div className="cards-grid-2">
+              {uiSections.map((sec, index) => {
+                return (
+                  <div key={sec.id}>
+                    {/* ✅ نفس كرت العروض */}
+                    <div
+                      className="offer-card-enhanced"
+                      style={{ animationDelay: `${index * 0.05}s` }}
+                    >
+                      {/* badge removed */}
+
+                      {/* ✅ Image header مثل الصورة */}
+                      <div
+                        className="offer-image"
+                        style={{ backgroundImage: `url(${sec.image})` }}
+                        aria-label={sec.title}
+                      />
+
+                      <div className="offer-content">
+                        {/* ✅ عنوان داخل الجسم مثل الصورة */}
+                        <h3 className="offer-title">{sec.title}</h3>
+
+                        {/* ✅ نفس mini-row كبسولات */}
+                        <div className="offer-mini-row" style={{ flexWrap: "wrap" }}>
+                          <span className="discount-badge">
+                            <FontAwesomeIcon icon={faList} className="me-2" />
+                            {sec.categories.length} تصنيف
+                          </span>
+
+                          <span className="save-badge">
+                            عدد الخدمات: <b>{sec.totalServices}</b>
+                          </span>
+
+                          <span className="status-pill active">متاح</span>
+                        </div>
+
+                        {/* ✅ نفس شريط رمادي (بدل التاريخ) */}
+                        <div className="offer-validity">{sec.description}</div>
+
+                        {/* ✅ التصنيفات = نفس زر "عرض التفاصيل" لكن باسم التصنيف */}
+                        <div className="services-cat-stack">
+                          {sec.categories.map((cat) => {
+                            const key = `${sec.id}__${cat.id}`;
+                            const expanded = openCatKey === key;
+
+                            return (
+                              <div key={key} className="services-cat-item">
+                                <button
+                                  type="button"
+                                  className={["toggle-details", expanded ? "is-open" : ""].join(" ")}
+                                  onClick={() => setOpenCatKey(expanded ? null : key)}
+                                >
+                                  <span>{cat.name}</span>
+                                  <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} />
+                                </button>
+
+                                {expanded && (
+                                  <div className="offer-details services-cat-details">
+                                    <ul className="services-items">
+                                      {cat.items.map((it) => (
+                                        <li key={it.id} className="services-li">
+                                          <span className="services-item-name">{it.name}</span>
+                                          <span className="services-item-price">
+                                            {it.price} ريال
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ✅ زر واحد آخر الصفحة */}
+          {!loading && !error && uiSections.length > 0 && (
+            <div className="services-bottom-cta">
+              <Link to="/booking" className="offers-cta-btn">
+                الانتقال للحجز
+              </Link>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

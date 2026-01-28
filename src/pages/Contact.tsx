@@ -72,7 +72,7 @@ const Contact: React.FC = () => {
           تواصلي معنا
         </h1>
 
-        <p className="contact-subtitle text-center mb-5">
+        <p className="contact-subtitle text-center lead-strong mb-5">
           نحن هنا للإجابة على جميع استفساراتك ومساعدتك في حجز موعدك
         </p>
 
@@ -189,7 +189,7 @@ const Contact: React.FC = () => {
                 </div>
                 <div className="contact-info-content">
                   <h3>العنوان</h3>
-                  <p>123 شارع الجمال، حي الروضة، الرياض، المملكة العربية السعودية</p>
+                  <p>شارع اسيد بن كعب ، حي البدراني ، المدينة المنورة</p>
                 </div>
               </div>
 
@@ -199,7 +199,7 @@ const Contact: React.FC = () => {
                 </div>
                 <div className="contact-info-content">
                   <h3>رقم الهاتف</h3>
-                  <p>+966 123 456 7890</p>
+                  <p>0548440401</p>
                 </div>
               </div>
 
@@ -209,7 +209,7 @@ const Contact: React.FC = () => {
                 </div>
                 <div className="contact-info-content">
                   <h3>البريد الإلكتروني</h3>
-                  <p>info@bodysalon.com</p>
+                  <p>salon.malikat@gmail.com</p>
                 </div>
               </div>
 
@@ -231,18 +231,39 @@ const Contact: React.FC = () => {
               </div>
             </div>
 
-            <div className="contact-map mt-4">
-              <iframe
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3624.674457239337!2d46.675291075361825!3d24.713454274656!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3e2f03890d489399%3A0xa11ce0e317979d56!2sRiyadh%20Saudi%20Arabia!5e0!3m2!1sen!2sus!4v1686058545929!5m2!1sen!2sus"
-                width="100%"
-                height="300"
-                style={{ border: 0, borderRadius: "14px" }}
-                allowFullScreen={true}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                title="Queens Salon Location"
-              />
-            </div>
+            <section style={{ background: "#fff", padding: "32px 0" }}>
+              <div className="container ">
+                <h3
+                  style={{
+                    textAlign: "center",
+                    marginBottom: 16,
+                    color: "#40010de6",
+                  }}
+                >
+                  موقع صالون ملكات
+                </h3>
+
+
+                <div className="contact-map">
+                  <iframe
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3689.1872586142654!2d39.6757839!3d24.4358439!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x15bd95894c3b4237%3A0xd6213f069dea2970!2z2YXYtNi62YQg2YjYtdin2YTZiNmGINmF2YTZg9in2Ko!5e1!3m2!1sar!2ssa!4v1769557938785!5m2!1sar!2ssa"
+                    width="100%"
+                    height="340"
+                    style={{
+                      border: 0,
+                      borderRadius: "18px",
+                      boxShadow: "0 20px 50px rgba(0,0,0,0.1)",
+                    }}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    title="Queens Salon Location"
+                  />
+                </div>
+              </div>
+            </section>
+
+
           </div>
         </div>
       </div>

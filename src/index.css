@@ -447,4 +447,11 @@ button,
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
+.qs-wine {
+  color: var(--qs-wine);
+}
 
+.lead-strong {
+  font-size: 1.15rem;
+  font-weight: 600;
+}

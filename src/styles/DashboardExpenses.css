@@ -660,3 +660,86 @@
 
 .exp-missing-note{font-size:12px;font-weight:800;opacity:.75}
 .exp-row-missing-note td{background: rgba(255, 243, 224, 0.35);}
+
+
+/* =========================
+   FIX: Better text contrast (Expenses)
+   Scoped داخل .exp-page فقط
+========================= */
+
+.exp-page{
+  color: #111827; /* نص أساسي داكن */
+}
+
+.exp-page h1,
+.exp-page h2,
+.exp-page h3,
+.exp-page h4{
+  color: #0f172a;
+}
+
+/* labels + titles */
+.exp-page label,
+.exp-page .exp-card h3,
+.exp-page .bd-title,
+.exp-page .exp-alert-title{
+  color: #111827;
+  opacity: 1;
+}
+
+/* muted text (بدل #777 الخفيف) */
+.exp-page .muted,
+.exp-page .empty,
+.exp-page .exp-stat .k,
+.exp-page .bd-sub,
+.exp-page .bd-pct,
+.exp-page .exp-alert-hint{
+  color: rgba(17, 24, 39, 0.65);
+  opacity: 1;
+}
+
+/* inputs placeholders */
+.exp-page input::placeholder,
+.exp-page textarea::placeholder{
+  color: rgba(17, 24, 39, 0.50);
+}
+
+/* table text */
+.exp-page .exp-table thead th{
+  color: #111827;
+}
+
+.exp-page .exp-table tbody td{
+  color: rgba(17, 24, 39, 0.92);
+}
+
+/* Buttons text clarity */
+.exp-page .exp-btn{
+  color: #111827;
+}
+
+.exp-page .exp-btn.primary{
+  color: #ffffff;
+}
+
+.exp-page .exp-btn.ghost{
+  color: #3b1b66;
+  font-weight: 800;
+}
+
+.exp-page .exp-btn.danger{
+  color: #b42318;
+  font-weight: 800;
+}
+
+/* reports buttons وضوح أعلى */
+.exp-page .reports-btn,
+.exp-page .reports-btn.primary{
+  color: #4c1d95;
+  font-weight: 800;
+}
+
+.exp-page .reports-btn svg,
+.exp-page .reports-btn.primary svg{
+  opacity: 1;
+}

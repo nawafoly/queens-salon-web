@@ -538,3 +538,18 @@ textarea.form-control {
   transform: none;
   box-shadow: none;
 }
+
+.booking-logo {
+  width: 247px;
+  height: 122px;
+  margin: 0 auto 6px;
+
+  display: grid;
+  place-items: center;
+}
+
+.booking-logo img {
+  max-width: 70%;
+  max-height: 70%;
+  object-fit: contain;
+}
