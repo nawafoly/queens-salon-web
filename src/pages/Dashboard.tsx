@@ -265,7 +265,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
             </div>
             <div className="ov-info">
               <h3 className="value">{stats.employeesCount}</h3>
-              <p>الموظفات</p>
+              <p>عدد الموظفات لديهم حجز</p>
             </div>
           </div>
         </div>

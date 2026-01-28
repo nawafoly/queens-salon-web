@@ -5,6 +5,7 @@ import "../styles/Profile.css";
 
 import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
 import { auth, db } from "../services/firebase";
+import LoadingBrand from "../components/LoadingBrand";
 
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 

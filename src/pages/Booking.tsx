@@ -17,11 +17,19 @@ import { generateSalonTimeSlots } from "../helpers/timeSlots";
 import "../styles/Booking.css";
 
 // ✅ Firestore slot availability check
-import { doc, getDoc, getDocs, collection, query, where, orderBy } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  getDocs,
+  collection,
+  query,
+  where,
+  orderBy,
+} from "firebase/firestore";
 import { db } from "../services/firebase";
 
-// ✅ Firebase Auth (Anonymous)
-import { getAuth, signInAnonymously } from "firebase/auth";
+// ✅ Firebase Auth (للقراءة فقط)
+import { getAuth } from "firebase/auth";
 
 // ✅ fallback Pricing (مؤقت فقط إذا Firestore فاضي)
 import { pricingSections } from "./Pricing";
@@ -185,17 +193,13 @@ function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {
   return { ok: true, reason: "" };
 }
 
-async function ensureUserUid(): Promise<string | null> {
+// ✅ نبي UID الحقيقي فقط (إذا مسجل دخول) ونرفض anonymous
+function getSignedInUidOrNull(): string | null {
   const auth = getAuth();
-  if (auth.currentUser?.uid) return auth.currentUser.uid;
-
-  try {
-    const cred = await signInAnonymously(auth);
-    return cred.user?.uid ?? null;
-  } catch (err) {
-    console.warn("[Booking] signInAnonymously failed:", err);
-    return null;
-  }
+  const u = auth.currentUser;
+  if (!u) return null;
+  if ((u as any).isAnonymous) return null;
+  return u.uid;
 }
 
 type UiModalState = {
@@ -272,11 +276,18 @@ const Booking: React.FC = () => {
     confirmText: "حسنًا",
   });
 
-  const openModal = (data: Omit<UiModalState, "open">) => {
+  // ✅ نخزن أكشن زر التأكيد (عشان ما يحول إلا بعد الضغط)
+  const [onUiConfirm, setOnUiConfirm] = useState<null | (() => void)>(null);
+
+  const openModal = (data: Omit<UiModalState, "open">, onConfirmAction?: () => void) => {
+    setOnUiConfirm(() => onConfirmAction ?? null);
     setUiModal({ open: true, ...data });
   };
 
-  const closeModal = () => setUiModal((p) => ({ ...p, open: false }));
+  const closeModal = () => {
+    setUiModal((p) => ({ ...p, open: false }));
+    setOnUiConfirm(null);
+  };
 
   // =========================
   // Load sections
@@ -745,7 +756,6 @@ const Booking: React.FC = () => {
     };
   }, [formData.service]);
 
-
   // =========================
   // Preload busy slots for employee+date (Firestore)
   // =========================
@@ -1106,6 +1116,24 @@ const Booking: React.FC = () => {
       return;
     }
 
+    // ✅ أهم تعديل: لا تحويل سريع
+    // إذا ما فيه حساب (أو anonymous) نعرض مودال، والتحويل يصير بعد ضغط زر المودال فقط
+    const signedUid = getSignedInUidOrNull();
+    if (!signedUid) {
+      openModal(
+        {
+          title: "لازم تسجّلين دخول",
+          message:
+            "عشان نثبت حجزك ونرسله لك في ملفك، لازم يكون عندك حساب.\n\n" +
+            "اضغطي زر تسجيل الدخول وبعدها كمّلي الحجز بسهولة ✅",
+          variant: "info",
+          confirmText: "تسجيل الدخول",
+        },
+        () => navigate("/login")
+      );
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -1155,28 +1183,18 @@ const Booking: React.FC = () => {
         setManualOverride(true);
       }
 
-      const finalPriceNum = Number(finalApplied.finalPrice || 0) > 0 ? finalApplied.finalPrice : basePrice;
+      const finalPriceNum =
+        Number(finalApplied.finalPrice || 0) > 0 ? finalApplied.finalPrice : basePrice;
 
       const durationMin = Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
-      const uid = await ensureUserUid();
-      if (!uid) {
-        openModal({
-          title: "تعذر إكمال الحجز",
-          message:
-            "لم نستطع إنشاء جلسة مستخدم للكتابة في Firestore.\n\n" +
-            "فعّل Anonymous Auth من Firebase Authentication.",
-          variant: "danger",
-          confirmText: "حسنًا",
-        });
-        return;
-      }
+      const uid = signedUid; // ✅ مؤكد موجود لأننا سوينا return فوق لو ما فيه
 
       const userNote = String(formData.note || "").trim();
       const offerNote = finalApplied.offer
         ? `Offer: ${(finalApplied.offer as any)?.title || normalizedCode || "-"} | discount=${Number(
-          finalApplied.discountAmount || 0
-        ).toFixed(0)}`
+            finalApplied.discountAmount || 0
+          ).toFixed(0)}`
         : "";
 
       const noteFinal = [userNote, offerNote].filter(Boolean).join(" | ") || undefined;
@@ -1192,8 +1210,10 @@ const Booking: React.FC = () => {
         clientName: String(formData.name || "").trim(),
         clientPhone: phone,
 
+        // ❗️حسب طلبك: ممنوع يتغير هذا السطر
         serviceName: formData.service,
         serviceId: formData.service,
+
         serviceSnapshot: {
           serviceNameAtBooking,
           priceAtBooking: Number(finalPriceNum || 0),
@@ -1311,7 +1331,7 @@ const Booking: React.FC = () => {
           if (s?.category) setSelectedCategory(String(s.category));
         }
       }
-    } catch { }
+    } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1326,7 +1346,11 @@ const Booking: React.FC = () => {
         message={uiModal.message}
         variant={uiModal.variant}
         confirmText={uiModal.confirmText || "حسنًا"}
-        onConfirm={closeModal}
+        onConfirm={() => {
+          const fn = onUiConfirm;
+          closeModal();
+          if (fn) fn();
+        }}
         onCancel={closeModal}
       />
 
@@ -1340,16 +1364,6 @@ const Booking: React.FC = () => {
                 </div>
 
                 <h1 className="booking-title">احجزي موعدك الآن</h1>
-                {/* <p className="booking-subtitle">اختاري الخدمة والوقت المناسب لك وسنكون بانتظارك</p> */}
-
-                {/* <div className="mt-2 booking-offer-msg">
-                  {catalogLoading
-                    ? "جاري تحميل الخدمات..."
-                    : catalogMode === "firestore"
-                      ? "الخدمات: من قاعدة البيانات ✅"
-                      : "الخدمات: مؤقتًا من التسعير (Pricing) ⏳"}
-                  {catalogError ? ` — ${catalogError}` : ""}
-                </div> */}
               </div>
 
               <form className="booking-form" onSubmit={handleSubmit}>
@@ -1370,7 +1384,7 @@ const Booking: React.FC = () => {
                         id="name"
                         name="name"
                         value={formData.name}
-                        onChange={() => { }}
+                        onChange={() => {}}
                         onInput={(e: any) => {
                           const v = String(e?.target?.value ?? "");
                           setFormData((p) => ({ ...p, name: v }));
@@ -1519,20 +1533,32 @@ const Booking: React.FC = () => {
                     )}
 
                     {staffError && <div className="text-danger small mt-1">{staffError}</div>}
+
+                    {slotChecking && (
+                      <div className="small text-muted mt-2">
+                        <FontAwesomeIcon icon={faSpinner} spin /> جاري فحص توفر الوقت…
+                      </div>
+                    )}
+
+                    {slotBusy && slotMsg && (
+                      <div className="text-danger small mt-2">{slotMsg}</div>
+                    )}
+
+                    {busyLoading && (
+                      <div className="small text-muted mt-2">
+                        <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات المتاحة…
+                      </div>
+                    )}
+
+                    {busyHint && <div className="small text-warning mt-2">{busyHint}</div>}
                   </div>
 
                   <div className="col-md-6 mb-4">
-                    <label className="form-label">التاريخ</label>
+                    <label htmlFor="date" className="form-label">
+                      التاريخ
+                    </label>
 
-                    <div
-                      className="input-group booking-date-group"
-                      onClick={() => {
-                        const el = dateInputRef.current as any;
-                        if (!el) return;
-                        el.focus();
-                        if (typeof el.showPicker === "function") el.showPicker(); // Chrome/Edge
-                      }}
-                    >
+                    <div className="input-group">
                       <span className="input-group-text">
                         <FontAwesomeIcon icon={faCalendarAlt} />
                       </span>
@@ -1541,18 +1567,26 @@ const Booking: React.FC = () => {
                         ref={dateInputRef}
                         type="date"
                         className="form-control"
+                        id="date"
                         name="date"
                         value={formData.date}
                         onChange={handleChange}
                         required
+                        min={new Date().toISOString().split("T")[0]}
+                        disabled={!formData.employeeId}
                       />
                     </div>
 
+                    {!formData.employeeId && (
+                      <div className="small text-muted mt-1">اختاري الموظفة أولاً عشان يظهر التقويم</div>
+                    )}
                   </div>
                 </div>
 
                 <div className="mb-4">
-                  <label className="form-label">الوقت</label>
+                  <label htmlFor="time" className="form-label">
+                    الوقت
+                  </label>
 
                   <div className="input-group">
                     <span className="input-group-text">
@@ -1561,102 +1595,118 @@ const Booking: React.FC = () => {
 
                     <select
                       className="form-select"
+                      id="time"
                       name="time"
                       value={formData.time}
                       onChange={handleChange}
                       required
+                      disabled={!formData.employeeId || !formData.date || busyLoading}
                     >
-                      <option value="" disabled>
-                        اختاري الوقت
-                      </option>
-
+                      <option value="">اختاري الوقت</option>
                       {timeSlots.map((t) => {
-                        const isDisabled = disabledStartTimes.has(t);
-
+                        const disabled = disabledStartTimes.has(t);
                         return (
-                          <option key={t} value={t} disabled={isDisabled}>
-                            {t} {isDisabled ? "— غير متاح" : ""}
+                          <option key={t} value={t} disabled={disabled}>
+                            {t} {disabled ? "— غير متاح" : ""}
                           </option>
                         );
                       })}
                     </select>
                   </div>
 
-                  {busyLoading ? (
-                    <div className="bk-hint">جاري فحص الأوقات المتاحة…</div>
-                  ) : busyHint ? (
-                    <div className="bk-hint text-danger">{busyHint}</div>
-                  ) : busyTimes.size > 0 ? (
-                    <div className="bk-hint">الأوقات المحجوزة في هذا اليوم: {busyTimes.size}</div>
-                  ) : null}
-
-                  {slotChecking && (
-                    <div className="small text-muted mt-1">
-                      <FontAwesomeIcon icon={faSpinner} spin /> فحص توفر الوقت…
-                    </div>
+                  {!formData.date && (
+                    <div className="small text-muted mt-1">اختاري التاريخ أولاً</div>
                   )}
-
-                  {slotMsg && <div className="text-danger small mt-1">{slotMsg}</div>}
                 </div>
 
                 <div className="mb-4">
-                  <label className="form-label">ملاحظات (اختياري)</label>
+                  <label htmlFor="note" className="form-label">
+                    ملاحظة (اختياري)
+                  </label>
+
                   <textarea
                     className="form-control"
-                    rows={3}
+                    id="note"
                     name="note"
                     value={formData.note}
                     onChange={handleChange}
-                    placeholder="أي ملاحظة تحبين إضافتها"
+                    rows={3}
+                    placeholder="أي ملاحظة تحبيها…"
                   />
                 </div>
 
                 <div className="mb-4">
-                  <label className="form-label">كود الخصم</label>
+                  <label className="form-label">كود الخصم (اختياري)</label>
 
-                  <div className="input-group bk-coupon-actions">
+                  <div className="input-group">
                     <input
                       type="text"
                       className="form-control"
                       value={couponCode}
                       onChange={(e) => setCouponCode(e.target.value)}
-                      placeholder="اكتبي كود الخصم"
+                      placeholder="اكتبي الكود هنا"
+                      disabled={!formData.service}
                     />
+
                     <button
                       type="button"
-                      className="bk-coupon-btn bk-coupon-btn--apply"
+                      className="btn btn-dark"
                       onClick={handleApplyCoupon}
+                      disabled={!formData.service || isLoading}
                     >
                       تطبيق
                     </button>
                   </div>
 
-
-                  {offerMsg && <div className="small mt-1">{offerMsg}</div>}
+                  {offerMsg && (
+                    <div className={`small mt-2 ${offerMsg.includes("✅") ? "text-success" : "text-danger"}`}>
+                      {offerMsg}
+                    </div>
+                  )}
                 </div>
 
-                <div className="booking-summary mb-4">
-                  <div>
-                    السعر:
-                    <strong className="ms-2">{basePrice} ريال</strong>
+                <div className="booking-summary mb-4 qs-black">
+                  <div className="d-flex justify-content-between">
+                    <span>السعر</span>
+                    <strong>{basePrice ? `${basePrice} ريال` : "—"}</strong>
                   </div>
 
-                  {applied.discountAmount > 0 && (
-                    <div>
-                      الخصم:
-                      <strong className="ms-2 text-success">−{applied.discountAmount} ريال</strong>
+                  {applied.offer && (
+                    <div className="d-flex justify-content-between mt-1">
+                      <span>الخصم</span>
+                      <strong>-{Number(applied.discountAmount || 0)} ريال</strong>
                     </div>
                   )}
 
-                  <div className="fs-5 mt-2">
-                    الإجمالي:
-                    <strong className="ms-2">{finalPrice} ريال</strong>
+                  <div className="d-flex justify-content-between mt-2">
+                    <span>الإجمالي</span>
+                    <strong>{finalPrice ? `${finalPrice} ريال` : "—"}</strong>
                   </div>
+
+                  {!!formData.durationMin && (
+                    <div className="small text-muted mt-1">
+                      مدة الخدمة: {Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN)} دقيقة
+                    </div>
+                  )}
                 </div>
 
-                <button type="submit" className="btn btn-primary w-100" disabled={isLoading || slotBusy}>
-                  {isLoading ? "جاري تأكيد الحجز…" : "تأكيد الحجز"}
+                <button
+                  type="submit"
+                  className="btn btn-primary w-100 booking-submit-btn"
+                  disabled={isLoading || slotChecking || slotBusy}
+                >
+                  {isLoading ? (
+                    <>
+                      <FontAwesomeIcon icon={faSpinner} spin /> جاري تأكيد الحجز…
+                    </>
+                  ) : (
+                    "تأكيد الحجز"
+                  )}
                 </button>
+
+                <div className="small text-muted mt-3 text-center">
+                  بإكمال الحجز أنتِ توافقين على سياسة الصالون ✨
+                </div>
               </form>
             </div>
           </div>
