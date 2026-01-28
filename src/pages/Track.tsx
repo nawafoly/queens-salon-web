@@ -5,7 +5,7 @@ import "../styles/Track.css";
 import { getTrackByPublicId } from "../services/firestoreBookings";
 
 // ✅ الشعار
-import logo from "../assets/images/ssunnamed1.png";
+import logo from "../assets/images/ssunnamed2.png";
 
 type TrackData = {
   id?: string;

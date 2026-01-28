@@ -1,6 +1,5 @@
 /* === Login Page === */
 .login-page {
-  background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
   padding: 4rem 1rem;
 }
 
@@ -228,3 +227,4 @@
   border: 1px solid rgba(13,13,13,0.08);
   color: rgba(17,24,39,0.85);
 }
+

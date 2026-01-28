@@ -19,6 +19,7 @@ import SettingsAdvanced from "./settings/SettingsAdvanced";
 import SettingsBookings from "./settings/SettingsBookings";
 import SettingsCatalog from "./settings/SettingsCatalog";
 import SettingsUsers from "./settings/SettingsUsers";
+import SettingsContact from "./settings/SettingsContact";
 
 
 /* =========================
@@ -258,57 +259,63 @@ const DashboardSettings: React.FC = () => {
         </div>
 
         {tab === "salon" && (
-          <div className="settings-card">
-            <h3 className="settings-title">بيانات الصالون</h3>
+          <>
+            <div className="settings-card">
+              <h3 className="settings-title">بيانات الصالون</h3>
 
-            <div className="settings-grid">
-              <div className="settings-field">
-                <label>اسم الصالون</label>
-                <input
-                  className="settings-input"
-                  value={(settings as any)?.salonName || ""}
-                  onChange={(e) =>
-                    hasAdminPower &&
-                    setSettings({ ...(settings as any), salonName: e.target.value })
-                  }
-                  disabled={!hasAdminPower}
-                />
+              <div className="settings-grid">
+                <div className="settings-field">
+                  <label>اسم الصالون</label>
+                  <input
+                    className="settings-input"
+                    value={(settings as any)?.salonName || ""}
+                    onChange={(e) =>
+                      hasAdminPower &&
+                      setSettings({ ...(settings as any), salonName: e.target.value })
+                    }
+                    disabled={!hasAdminPower}
+                  />
+                </div>
+
+                <div className="settings-field">
+                  <label>الجوال</label>
+                  <input
+                    className="settings-input"
+                    value={(settings as any)?.phone || ""}
+                    onChange={(e) =>
+                      hasAdminPower &&
+                      setSettings({ ...(settings as any), phone: e.target.value })
+                    }
+                    disabled={!hasAdminPower}
+                  />
+                </div>
+
+                <div className="settings-field">
+                  <label>المدينة</label>
+                  <input
+                    className="settings-input"
+                    value={(settings as any)?.city || ""}
+                    onChange={(e) =>
+                      hasAdminPower &&
+                      setSettings({ ...(settings as any), city: e.target.value })
+                    }
+                    disabled={!hasAdminPower}
+                  />
+                </div>
               </div>
 
-              <div className="settings-field">
-                <label>الجوال</label>
-                <input
-                  className="settings-input"
-                  value={(settings as any)?.phone || ""}
-                  onChange={(e) =>
-                    hasAdminPower &&
-                    setSettings({ ...(settings as any), phone: e.target.value })
-                  }
-                  disabled={!hasAdminPower}
-                />
-              </div>
-
-              <div className="settings-field">
-                <label>المدينة</label>
-                <input
-                  className="settings-input"
-                  value={(settings as any)?.city || ""}
-                  onChange={(e) =>
-                    hasAdminPower &&
-                    setSettings({ ...(settings as any), city: e.target.value })
-                  }
-                  disabled={!hasAdminPower}
-                />
-              </div>
+              {!hasAdminPower && (
+                <div className="settings-note">
+                  * للتعديل تحتاج صلاحية Owner/Admin.
+                </div>
+              )}
             </div>
 
-            {!hasAdminPower && (
-              <div className="settings-note">
-                * للتعديل تحتاج صلاحية Owner/Admin.
-              </div>
-            )}
-          </div>
+            {/* ✅ هنا البلوك الجديد اللي يعبّي المساحة الفاضية */}
+            <SettingsContact hasAdminPower={hasAdminPower} />
+          </>
         )}
+
 
         {tab === "sections" && (
           <div className="settings-card">
@@ -432,7 +439,10 @@ const DashboardSettings: React.FC = () => {
       <Route path="advanced/bookings" element={<SettingsBookings />} />
       <Route path="advanced/catalog" element={<SettingsCatalog hasAdminPower={hasAdminPower} />} />
       <Route path="advanced/users" element={<SettingsUsers />} />
-
+      <Route
+  path="advanced/contact"
+  element={<SettingsContact hasAdminPower={hasAdminPower} />}
+/>
       <Route path="*" element={<Navigate to="." replace />} />
     </Routes>
   );

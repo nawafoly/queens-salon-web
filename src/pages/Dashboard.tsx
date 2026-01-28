@@ -38,7 +38,7 @@ import DashboardIncome from "../pages/DashboardIncome";
 
 import DashboardStaff from "../pages/DashboardStaff";
 
-import logo1 from "../assets/images/ssunnamed1.png";
+import logo1 from "../assets/images/ssunnamed3.png";
 
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../services/firebase";

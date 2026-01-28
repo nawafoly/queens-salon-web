@@ -161,42 +161,65 @@ export default function DashboardStaff() {
   const [employeeFilter, setEmployeeFilter] = useState("all");
   const [dateQuick, setDateQuick] = useState<DateQuick>("week");
 
-  // ✅ 1) Auth فقط (بدون أي شروط رول)
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setErrMsg("");
-      setAllBookingsRaw([]);
-      setLoading(true);
+// ✅ 2) Realtime: حجوزاتي أنا كموظفة (بالـ employeeUid)
+useEffect(() => {
+  // لازم تسجيل دخول
+  if (!myUid) {
+    setAllBookingsRaw([]);
+    setLoading(false);
+    return;
+  }
 
-      if (!u) {
-        setMyUid("");
-        setMyEmail("");
-        setSeen({});
-        // ما نوقف الصفحة.. بس نوضح أنه مو مسجل
-        setLoading(false);
-        setErrMsg("⚠️ ما فيه تسجيل دخول. (إذا الـ Rules تسمح بالقراءة العامة ممكن يشتغل بدون دخول)");
-        return;
-      }
+  setLoading(true);
+  setErrMsg("");
+  setAllBookingsRaw([]);
 
-      setMyUid(u.uid);
-      setMyEmail(u.email || "");
+  const colRef = collection(db, "salons", SALON_ID, "bookings");
 
-      // seen map
-      setSeen(loadSeenMap(u.uid));
+  // ✅ نجيب حجوزات الموظفة الحالية فقط
+  // ملاحظة: لو عندك اندكس ناقص وطلع خطأ، بنسويه بعدين
+  const qMine = query(
+    colRef,
+    where("employeeUid", "==", myUid)
+  );
 
-      // (اختياري) نتحقق أن وثيقة المستخدم موجودة، بدون ما نمنع الدخول
-      try {
-        const userRef = doc(db, "salons", SALON_ID, "users", u.uid);
-        await getDoc(userRef);
-      } catch {
-        // ignore
-      }
+  const onErr = (e: any) => {
+    console.error("DashboardStaff snapshot error:", e);
+    const msg = String(e?.message || e);
 
-      setLoading(true);
-    });
+    setErrMsg(
+      msg.includes("Missing or insufficient permissions")
+        ? "⚠️ الصلاحيات (Rules) تمنع قراءة الحجوزات. تأكد أن booking فيه employeeUid = uid حقك."
+        : msg.includes("index")
+          ? "⚠️ يحتاج Index في Firestore للاستعلام. أرسل لي نص الخطأ بالكامل عشان أعطيك رابط إنشاء الـ Index."
+          : "❌ خطأ أثناء تحميل الحجوزات:\n" + msg
+    );
 
-    return () => unsub();
-  }, []);
+    setAllBookingsRaw([]);
+    setLoading(false);
+  };
+
+  const unsub = onSnapshot(
+    qMine,
+    (snap) => {
+      const rows = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as BookingDoc),
+      }));
+
+      // ✅ (اختياري) فلترة حالات هنا بدل الاستعلام
+      // تبغى تشوف كل الحالات؟ اتركها.
+      // تبغى confirmed فقط؟ خل الفلترة في useMemo عندك مثل ما هي.
+      rows.sort((a, b) => safeMs(b.createdAt) - safeMs(a.createdAt));
+
+      setAllBookingsRaw(rows);
+      setLoading(false);
+    },
+    onErr
+  );
+
+  return () => unsub();
+}, [myUid]);
 
   // ✅ 2) Realtime: confirmed فقط (بدون شروط رول)
   useEffect(() => {
@@ -268,8 +291,9 @@ export default function DashboardStaff() {
     const text = normalizeArabic(q);
 
     const list = allBookingsRaw.filter((b) => {
-      if (String(b.status || "") !== "confirmed") return false;
-
+      const st = String(b.status || "");
+      if (!["confirmed", "pending", "new"].includes(st)) return false;
+      
       if (employeeFilter !== "all") {
         const key =
           b.employeeUid ||

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import logo from "../assets/images/ssunnamed1.png";
+import logo from "../assets/images/ssunnamed2.png";
 
 import {
   faCalendarAlt,

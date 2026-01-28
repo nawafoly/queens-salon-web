@@ -1,26 +1,48 @@
+import React from "react";
 import "../styles/LoadingBrand.css";
-import logo from "../assets/images/ssunnamed1.png"; // عدل الاسم إذا مختلف
+import logo from "../assets/images/ssunnamed3.png"; // تأكد من صحة المسار في مشروعك
 
+/**
+ * Props for the LoadingBrand component.
+ */
 type Props = {
   text?: string;
   small?: boolean;
+  fullScreen?: boolean;
 };
 
+/**
+ * LoadingBrand Component
+ * مكون شاشة التحميل المطور مع الحفاظ على الهيكل الأصلي وإضافة تحسينات تقنية.
+ */
 export default function LoadingBrand({
   text = "جاري التحميل...",
-  small,
+  small = false,
+  fullScreen = false,
 }: Props) {
-  return (
-    <div className={`lb-root ${small ? "is-small" : ""}`}>
-      <div className="lb-content">
-        <img
-          src={logo}
-          alt="Malikat"
-          className="lb-logo"
-          draggable={false}
-        />
+  // دمج الفئات (Classes) بناءً على الخصائص (Props)
+  const containerClasses = [
+    "lb-root",
+    small ? "is-small" : "",
+    fullScreen ? "is-fullscreen" : "",
+  ].filter(Boolean).join(" ");
 
-        <div className="lb-text">{text}</div>
+  return (
+    <div className={containerClasses} aria-live="polite" aria-busy="true">
+      <div className="lb-content">
+        <div className="lb-logo-container">
+          <img
+            src={logo}
+            alt="Malikat Logo"
+            className="lb-logo"
+            draggable={false}
+            loading="eager"
+          />
+          {/* حلقة تحميل اختيارية يمكن تفعيلها عبر CSS */}
+          <div className="lb-loader-ring"></div>
+        </div>
+
+        {text && <div className="lb-text">{text}</div>}
       </div>
     </div>
   );

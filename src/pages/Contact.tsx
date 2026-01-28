@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+
 import {
   faMapMarkerAlt,
   faPhone,
@@ -7,7 +8,18 @@ import {
   faClock,
   faPaperPlane,
 } from "@fortawesome/free-solid-svg-icons";
+
 import "../styles/contact.css";
+
+// ✅ Firebase
+import { db } from "../services/firebase";
+import {
+  addDoc,
+  collection,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+} from "firebase/firestore";
 
 interface ContactFormData {
   name: string;
@@ -15,6 +27,39 @@ interface ContactFormData {
   phone: string;
   subject: string;
   message: string;
+}
+
+type PublicSettings = {
+  phone?: string;       // الجوال
+  whatsapp?: string;    // واتساب
+  email?: string;       // الإيميل
+  city?: string;        // المدينة
+  locationText?: string; // العنوان النصي
+  hoursText?: string;    // سطور متعددة \n
+  mapEmbedUrl?: string;  // رابط embed كامل أو pb فقط
+};
+
+const SALON_ID = "main";
+
+function normalizeMapEmbedUrl(input?: string) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+
+  // إذا المستخدم لصق الرابط كامل
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+
+  // إذا لصق pb فقط
+  if (raw.startsWith("pb=")) {
+    return `https://www.google.com/maps/embed?${raw}`;
+  }
+
+  // إذا لصق pb بدون pb=
+  if (raw.startsWith("!1m")) {
+    return `https://www.google.com/maps/embed?pb=${raw}`;
+  }
+
+  // fallback
+  return raw;
 }
 
 const Contact: React.FC = () => {
@@ -25,6 +70,48 @@ const Contact: React.FC = () => {
     subject: "",
     message: "",
   });
+
+  const [publicSettings, setPublicSettings] = useState<PublicSettings | null>(null);
+  const [sending, setSending] = useState(false);
+
+  // ✅ اسحب بيانات التواصل من Firestore (Live)
+  useEffect(() => {
+    const ref = doc(db, "salons", SALON_ID, "settings", "public");
+    const unsub = onSnapshot(
+      ref,
+      (snap) => setPublicSettings(snap.exists() ? (snap.data() as PublicSettings) : null),
+      (err) => {
+        console.error("public settings snapshot error:", err);
+        setPublicSettings(null);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // ✅ ساعات العمل: hoursText -> قائمة
+  const workingHours = useMemo(() => {
+    const raw = publicSettings?.hoursText?.trim();
+    if (!raw) {
+      return [
+        { day: "السبت - الأربعاء", hours: "10:00 صباحاً - 10:00 مساءً" },
+        { day: "الخميس", hours: "10:00 صباحاً - 11:00 مساءً" },
+        { day: "الجمعة", hours: "2:00 مساءً - 10:00 مساءً" },
+      ];
+    }
+
+    return raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const idx = line.indexOf(":");
+        if (idx === -1) return { day: line, hours: "" };
+        return {
+          day: line.slice(0, idx).trim(),
+          hours: line.slice(idx + 1).trim(),
+        };
+      });
+  }, [publicSettings?.hoursText]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -44,26 +131,46 @@ const Contact: React.FC = () => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  // ✅ إرسال الرسالة إلى Firestore
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log("Form submitted:", formData);
+    if (sending) return;
 
-    alert("تم إرسال رسالتك بنجاح! سنتواصل معك قريباً.");
+    try {
+      setSending(true);
 
-    setFormData({
-      name: "",
-      email: "",
-      phone: "",
-      subject: "",
-      message: "",
-    });
+      await addDoc(collection(db, "salons", SALON_ID, "contact_messages"), {
+        ...formData,
+        status: "new",
+        createdAt: serverTimestamp(),
+        source: "contact_page",
+      });
+
+      alert("تم إرسال رسالتك بنجاح! سنتواصل معك قريباً.");
+
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        subject: "",
+        message: "",
+      });
+    } catch (err) {
+      console.error("contact submit error:", err);
+      alert("صار خطأ أثناء الإرسال. جرّبي مرة ثانية.");
+    } finally {
+      setSending(false);
+    }
   };
 
-  const workingHours = [
-    { day: "السبت - الأربعاء", hours: "10:00 صباحاً - 10:00 مساءً" },
-    { day: "الخميس", hours: "10:00 صباحاً - 11:00 مساءً" },
-    { day: "الجمعة", hours: "2:00 مساءً - 10:00 مساءً" },
-  ];
+  // ✅ بيانات العرض (مع fallback واضح)
+  const locationText = publicSettings?.locationText || "لم يتم إعداد العنوان بعد";
+  const phone = publicSettings?.phone || "لم يتم إعداد رقم الهاتف بعد";
+  const email = publicSettings?.email || "لم يتم إعداد البريد بعد";
+  const hoursText = publicSettings?.hoursText || "";
+
+  const mapEmbedUrl = normalizeMapEmbedUrl(publicSettings?.mapEmbedUrl);
+  const hasMap = !!mapEmbedUrl && mapEmbedUrl.includes("google.com/maps/embed");
 
   return (
     <div className="contact-page py-5">
@@ -171,9 +278,14 @@ const Contact: React.FC = () => {
                   />
                 </div>
 
-                <button type="submit" className="btn-submit-enhanced">
+                <button
+                  type="submit"
+                  className="btn-submit-enhanced"
+                  disabled={sending}
+                  style={{ opacity: sending ? 0.7 : 1 }}
+                >
                   <FontAwesomeIcon icon={faPaperPlane} />
-                  إرسال الرسالة
+                  {sending ? " جاري الإرسال..." : " إرسال الرسالة"}
                 </button>
               </form>
             </div>
@@ -189,7 +301,7 @@ const Contact: React.FC = () => {
                 </div>
                 <div className="contact-info-content">
                   <h3>العنوان</h3>
-                  <p>شارع اسيد بن كعب ، حي البدراني ، المدينة المنورة</p>
+                  <p>{locationText}</p>
                 </div>
               </div>
 
@@ -199,7 +311,7 @@ const Contact: React.FC = () => {
                 </div>
                 <div className="contact-info-content">
                   <h3>رقم الهاتف</h3>
-                  <p>0548440401</p>
+                  <p>{phone}</p>
                 </div>
               </div>
 
@@ -209,7 +321,7 @@ const Contact: React.FC = () => {
                 </div>
                 <div className="contact-info-content">
                   <h3>البريد الإلكتروني</h3>
-                  <p>salon.malikat@gmail.com</p>
+                  <p>{email}</p>
                 </div>
               </div>
 
@@ -227,6 +339,13 @@ const Contact: React.FC = () => {
                       </li>
                     ))}
                   </ul>
+
+                  {/* للتأكد بس: لو hoursText فاضي */}
+                  {!hoursText?.trim() ? (
+                    <div style={{ marginTop: 10, opacity: 0.65, fontSize: 13 }}>
+                      (ملاحظة: ساعات العمل من لوحة التحكم غير مضافة بعد)
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -243,27 +362,38 @@ const Contact: React.FC = () => {
                   موقع صالون ملكات
                 </h3>
 
-
                 <div className="contact-map">
-                  <iframe
-                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3689.1872586142654!2d39.6757839!3d24.4358439!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x15bd95894c3b4237%3A0xd6213f069dea2970!2z2YXYtNi62YQg2YjYtdin2YTZiNmGINmF2YTZg9in2Ko!5e1!3m2!1sar!2ssa!4v1769557938785!5m2!1sar!2ssa"
-                    width="100%"
-                    height="340"
-                    style={{
-                      border: 0,
-                      borderRadius: "18px",
-                      boxShadow: "0 20px 50px rgba(0,0,0,0.1)",
-                    }}
-                    allowFullScreen
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    title="Queens Salon Location"
-                  />
+                  {hasMap ? (
+                    <iframe
+                      src={mapEmbedUrl}
+                      width="100%"
+                      height="340"
+                      style={{
+                        border: 0,
+                        borderRadius: "18px",
+                        boxShadow: "0 20px 50px rgba(0,0,0,0.1)",
+                      }}
+                      allowFullScreen
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      title="Queens Salon Location"
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        border: "1px dashed rgba(0,0,0,0.15)",
+                        padding: 18,
+                        textAlign: "center",
+                        color: "rgba(0,0,0,0.65)",
+                      }}
+                    >
+                      لم يتم إضافة رابط الخريطة بعد من لوحة التحكم.
+                    </div>
+                  )}
                 </div>
               </div>
             </section>
-
-
           </div>
         </div>
       </div>
