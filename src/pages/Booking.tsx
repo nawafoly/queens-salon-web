@@ -1,5 +1,5 @@
 // src/pages/Booking.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import logo from "../assets/images/ssunnamed2.png";
@@ -14,6 +14,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { generateSalonTimeSlots } from "../helpers/timeSlots";
+import { AppSettingsService } from "../services/AppSettingsService";
+
 import "../styles/Booking.css";
 
 // ✅ Firestore slot availability check
@@ -36,7 +38,10 @@ import { pricingSections } from "./Pricing";
 
 // ✅ Firestore Offers
 import type { Offer as FsOffer } from "../services/firestoreOffers";
-import { findActiveOfferByCode, offerAppliesToService } from "../services/firestoreOffers";
+import {
+  findActiveOfferByCode,
+  offerAppliesToService,
+} from "../services/firestoreOffers";
 
 // ✅ Staff Public (Firestore)
 import {
@@ -62,29 +67,29 @@ import ConfirmModal from "../components/ConfirmModal";
    Types
 ========================= */
 
+type CartItem = {
+  id: string; // local id
+  serviceId: string;
+  serviceName: string;
+  basePrice: number;
+  priceText: string;
+  durationMin: number;
+
+  employeeId: string; // staff_public doc id
+  employeeUid?: string; // linkedUid
+  employeeName?: string;
+
+  date: string; // YYYY-MM-DD
+  time: string; // slot string
+};
+
 interface BookingFormData {
   name: string;
   phone: string;
-  service: string; // ✅ serviceId
-  employee: string; // name (display)
-  employeeId?: string; // staff_public doc id
-  employeeUid?: string; // linkedUid الحقيقي (لـ Staff portal)
-  date: string;
-  time: string;
   note?: string;
 
-  couponCode?: string;
-  offerId?: string | null;
-  offerTitle?: string | null;
-  discountAmount?: number;
-  finalPrice?: number;
-  offerAppliesTo?: "all" | "services";
-  offerServiceIds?: string[];
-
-  total?: number;
-
-  // ✅ مدة الخدمة بالدقائق (لتفادي تداخل الحجوزات)
-  durationMin?: number;
+  // ✅ سلة خدمات: كل خدمة لها (موظفة/تاريخ/وقت)
+  items: CartItem[];
 }
 
 type AppliedOfferResult = {
@@ -131,32 +136,33 @@ type FlatService = {
 
 type CategoryOption = { id: string; name: string };
 
-const timeSlots = generateSalonTimeSlots();
 const SALON_ID = "main";
-
 const DEFAULT_SERVICE_DURATION_MIN = 60;
 
 // ✅ نفس منطق slotId الموجود في firestoreBookings.ts
-function safeKey(s: string) {
-  return String(s || "").trim().replaceAll("/", "-").replace(/\s+/g, "_");
+function safeKey(v: string) {
+  return String(v || "").trim().replaceAll("/", "-").replace(/\s+/g, "_");
 }
 
 function buildSlotId(salonId: string, employeeKey: string, date: string, time: string) {
   return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
 }
 
-// ✅ (مؤقت) نفس حساب BookingSlots بالصفحة (مبني على generateSalonTimeSlots)
-const SLOT_STEP_MIN = 30;
 const BUFFER_MIN = 0;
 
-function getTimesToLock(startTime: string, durationMin: number) {
-  const slots = generateSalonTimeSlots();
-  const idx = slots.indexOf(startTime);
+function getTimesToLock(
+  allSlots: string[],
+  slotStepMin: number,
+  startTime: string,
+  durationMin: number
+) {
+  const idx = allSlots.indexOf(startTime);
   if (idx < 0) return [startTime];
 
+  const step = Math.max(1, Number(slotStepMin || 10));
   const totalMin = Math.max(0, Number(durationMin || 0)) + Math.max(0, BUFFER_MIN);
-  const slotsNeeded = Math.max(1, Math.ceil(totalMin / SLOT_STEP_MIN));
-  return slots.slice(idx, idx + slotsNeeded);
+  const slotsNeeded = Math.max(1, Math.ceil(totalMin / step));
+  return allSlots.slice(idx, idx + slotsNeeded);
 }
 
 function calcDiscount(basePrice: number, offer: FsOffer) {
@@ -210,9 +216,88 @@ type UiModalState = {
   confirmText?: string;
 };
 
-const Booking: React.FC = () => {
+function makeLocalId() {
+  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+type BusyState = {
+  busyTimes: Set<string>;
+  disabledStartTimes: Set<string>;
+  loading: boolean;
+  hint: string;
+};
+
+const emptyBusyState = (): BusyState => ({
+  busyTimes: new Set(),
+  disabledStartTimes: new Set(),
+  loading: false,
+  hint: "",
+});
+
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function safeInt(v: any, fallback: number) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
+function safeTimeHHMM(v: any, fallback: string) {
+  const s = String(v || "").trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return fallback;
+
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return fallback;
+  if (hh < 0 || hh > 23) return fallback;
+  if (mm < 0 || mm > 59) return fallback;
+
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+const Booking = () => {
   const navigate = useNavigate();
-  const dateInputRef = useRef<HTMLInputElement | null>(null);
+
+  // =========================
+  // ✅ Settings (live)
+  // =========================
+  const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
+  const booking = (appSettings as any)?.booking || {};
+  const businessHours = (booking as any)?.businessHours || {};
+
+  const openTime = useMemo(
+    () => safeTimeHHMM((businessHours as any)?.sat?.start, "10:00"),
+    [(businessHours as any)?.sat?.start]
+  );
+
+  const closeTime = useMemo(
+    () => safeTimeHHMM((businessHours as any)?.sat?.end, "22:00"),
+    [(businessHours as any)?.sat?.end]
+  );
+
+  const slotStepMin = useMemo(() => {
+    const v = safeInt((booking as any)?.slotStepMin, 10);
+    return [10, 15, 30].includes(v) ? v : 10;
+  }, [(booking as any)?.slotStepMin]);
+
+
+  const timeSlots = useMemo(() => {
+    return generateSalonTimeSlots(openTime, closeTime, slotStepMin);
+  }, [openTime, closeTime, slotStepMin]);
+
+  useEffect(() => {
+    const unsub = AppSettingsService.subscribe((remote: any) => {
+      setAppSettings(remote || {});
+    });
+    return () => unsub();
+  }, []);
 
   // =========================
   // Catalog mode
@@ -226,18 +311,13 @@ const Booking: React.FC = () => {
 
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [servicePicker, setServicePicker] = useState<string>("");
 
   const [formData, setFormData] = useState<BookingFormData>({
     name: "",
     phone: "",
-    service: "",
-    employee: "",
-    employeeId: "",
-    employeeUid: "",
-    date: "",
-    time: "",
     note: "",
-    durationMin: DEFAULT_SERVICE_DURATION_MIN,
+    items: [],
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -251,21 +331,13 @@ const Booking: React.FC = () => {
   const [offerMsg, setOfferMsg] = useState("");
   const [manualOverride, setManualOverride] = useState(false);
 
-  // ✅ فحص مبكر لتوفر السلوّت من Firestore
-  const [slotBusy, setSlotBusy] = useState(false);
-  const [slotChecking, setSlotChecking] = useState(false);
-  const [slotMsg, setSlotMsg] = useState("");
+  // ✅ busy/disabled per item
+  const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
 
-  // ✅ تعطيل الأوقات غير المناسبة (حسب حجوزات الموظفة + مدة الخدمة)
-  const [busyTimes, setBusyTimes] = useState<Set<string>>(new Set());
-  const [disabledStartTimes, setDisabledStartTimes] = useState<Set<string>>(new Set());
-  const [busyLoading, setBusyLoading] = useState(false);
-  const [busyHint, setBusyHint] = useState("");
-
-  // ✅ الموظفات من Firestore حسب الخدمة (ID)
-  const [staff, setStaff] = useState<StaffPublicWithId[]>([]);
-  const [staffLoading, setStaffLoading] = useState(false);
-  const [staffError, setStaffError] = useState("");
+  // ✅ Staff per serviceId
+  const [staffByService, setStaffByService] = useState<Record<string, StaffPublicWithId[]>>({});
+  const [staffLoadingByService, setStaffLoadingByService] = useState<Record<string, boolean>>({});
+  const [staffErrorByService, setStaffErrorByService] = useState<Record<string, string>>({});
 
   // ✅ Modal بدل alert
   const [uiModal, setUiModal] = useState<UiModalState>({
@@ -276,7 +348,6 @@ const Booking: React.FC = () => {
     confirmText: "حسنًا",
   });
 
-  // ✅ نخزن أكشن زر التأكيد (عشان ما يحول إلا بعد الضغط)
   const [onUiConfirm, setOnUiConfirm] = useState<null | (() => void)>(null);
 
   const openModal = (data: Omit<UiModalState, "open">, onConfirmAction?: () => void) => {
@@ -309,15 +380,10 @@ const Booking: React.FC = () => {
           setCatalogMode("pricing");
           setFsSections([]);
         }
-      } catch (e: any) {
+      } catch {
         if (!cancelled) {
           setCatalogMode("pricing");
           setFsSections([]);
-
-          const msg = String(e?.message || "");
-          if (msg.toLowerCase().includes("missing or insufficient permissions")) {
-          } else {
-          }
         }
       } finally {
         if (!cancelled) setCatalogLoading(false);
@@ -340,8 +406,6 @@ const Booking: React.FC = () => {
     let cancelled = false;
 
     async function loadCatalogForSection() {
-      console.log("[Booking] loadCatalogForSection START", { catalogMode, selectedSectionId });
-
       if (catalogMode !== "firestore") return;
 
       if (!selectedSectionId) {
@@ -353,17 +417,12 @@ const Booking: React.FC = () => {
       try {
         setCatalogLoading(true);
 
-        // ✅ 1) التصنيفات: حاول بـ orderBy وإذا فشل رجّع بدون orderBy (يحميك من عدم وجود order/index)
         const catsCol = collection(db, "salons", SALON_ID, "service_categories");
 
         let catsSnap;
         try {
           catsSnap = await getDocs(
-            query(
-              catsCol,
-              where("sectionId", "==", selectedSectionId),
-              orderBy("order", "asc")
-            )
+            query(catsCol, where("sectionId", "==", selectedSectionId), orderBy("order", "asc"))
           );
         } catch {
           catsSnap = await getDocs(query(catsCol, where("sectionId", "==", selectedSectionId)));
@@ -376,19 +435,14 @@ const Booking: React.FC = () => {
           .filter((c) => String(c?.الاسم ?? c?.name ?? "").trim())
           .filter((c) => c?.active !== false);
 
-        console.log("[Booking] catsSnap size =", catsSnap.size, safeCats);
-
         setFsCategories(safeCats as any);
 
-        // ✅ catIds: ادعم id / key / categoryId (لو خدماتك تستخدم key بدل docId)
         const catIds = safeCats
           .map((c: any) => String(c.categoryId ?? c.key ?? c.id ?? "").trim())
           .filter(Boolean);
 
         // ✅ 2) لو ما فيه تصنيفات: رجّع للنظام القديم وجيب الخدمات بالـ sectionId
         if (catIds.length === 0) {
-          console.log("[Booking] NO categories -> old schema path. sectionId =", selectedSectionId);
-
           const colRef = collection(db, "salons", SALON_ID, "services");
           const snap = await getDocs(query(colRef, where("sectionId", "==", selectedSectionId)));
 
@@ -398,8 +452,6 @@ const Booking: React.FC = () => {
           const activeOnly = merged.filter((x) => x?.active !== false);
 
           setFsServices(activeOnly);
-          console.log("[Booking] old schema services loaded =", activeOnly.length, activeOnly);
-
           return;
         }
 
@@ -410,12 +462,10 @@ const Booking: React.FC = () => {
 
         const colRef = collection(db, "salons", SALON_ID, "services");
 
-        // A) خدمات النظام الجديد: categoryId in [...]
         const snaps = await Promise.all(
           chunks.map((arr) => getDocs(query(colRef, where("categoryId", "in", arr))))
         );
 
-        // B) خدمات النظام القديم: sectionId == selectedSectionId (حتى لو categoryId فاضي)
         const secSnap = await getDocs(query(colRef, where("sectionId", "==", selectedSectionId)));
 
         if (cancelled) return;
@@ -428,24 +478,16 @@ const Booking: React.FC = () => {
 
         secSnap.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
 
-        // إزالة التكرار حسب id
         const uniq = new Map<string, any>();
         merged.forEach((x) => uniq.set(String(x.id), x));
 
         const activeOnly = Array.from(uniq.values()).filter((x) => x?.active !== false);
 
         setFsServices(activeOnly);
-        console.log("[Booking] fsServices loaded =", activeOnly.length, activeOnly);
-      } catch (e: any) {
+      } catch {
         if (!cancelled) {
           setFsCategories([]);
           setFsServices([]);
-
-          const msg = String(e?.message || "");
-          if (msg.toLowerCase().includes("requires an index")) {
-          } else {
-          }
-
           setCatalogMode("pricing");
         }
       } finally {
@@ -469,19 +511,16 @@ const Booking: React.FC = () => {
     const sid = String(selectedSectionId || "").trim();
     const cid = String(selectedCategory || "").trim();
 
-    // لو ما فيه categories: فلترة بسيطة بالـ sectionId
     if (!fsCategories.length) {
       const base = fsServices.filter((s: any) => String(s.sectionId || "").trim() === sid);
       if (!cid) return base;
 
-      // هنا selectedCategory بنعامله كـ "اسم تصنيف" من داخل الخدمة
       return base.filter((s: any) => {
         const catName = String(s.category ?? s.categoryName ?? s.التصنيف ?? "").trim();
         return catName === cid;
       });
     }
 
-    // لو فيه categories: فلترة بالـ categoryId
     const catIdsInSection = new Set(
       fsCategories
         .filter((c: any) => String(c.sectionId || "").trim() === sid)
@@ -518,7 +557,6 @@ const Booking: React.FC = () => {
       const hasCats = fsCategories.length > 0;
 
       const list = (selectedSectionId ? fsServicesFiltered : []).map((x: any) => {
-        // ✅ لو ما عندنا Categories (schema قديم): اعتمد sectionId داخل الخدمة نفسها
         if (!hasCats) {
           const sectionId = String(x.sectionId || selectedSectionId || "").trim();
           const sectionTitle = secMap.get(sectionId) || sectionId || "—";
@@ -542,7 +580,6 @@ const Booking: React.FC = () => {
           };
         }
 
-        // ✅ schema الجديد: service.categoryId -> category.sectionId
         const catId = String(x.categoryId || "").trim();
         const catDoc = catById.get(catId);
 
@@ -568,7 +605,6 @@ const Booking: React.FC = () => {
         };
       });
 
-      console.log("[Booking] servicesFlat(list) =", list.length, list);
       return list;
     }
 
@@ -617,7 +653,6 @@ const Booking: React.FC = () => {
     if (!selectedSectionId) return [];
 
     if (catalogMode === "firestore" && fsSections.length > 0) {
-      // لو فيه categories (schema جديد)
       if (fsCategories.length) {
         const sid = String(selectedSectionId).trim();
 
@@ -633,7 +668,6 @@ const Booking: React.FC = () => {
         return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
       }
 
-      // لو ما فيه categories (schema قديم): استخرج تصنيفات من الخدمات
       const sid = String(selectedSectionId).trim();
       const base = fsServices
         .filter((s: any) => String(s.sectionId || "").trim() === sid)
@@ -646,7 +680,6 @@ const Booking: React.FC = () => {
         .map((n) => ({ id: n, name: n }));
     }
 
-    // Pricing mode
     const cats = servicesFlat
       .filter((s) => s.sectionId === selectedSectionId)
       .map((s) => ({ id: s.category, name: s.category }))
@@ -656,7 +689,6 @@ const Booking: React.FC = () => {
     return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
   }, [catalogMode, fsSections.length, fsCategories, fsServices, servicesFlat, selectedSectionId]);
 
-  // ✅✅✅ التعديل الوحيد هنا ✅✅✅
   const servicesInSection = useMemo(() => {
     if (!selectedSectionId) return [];
 
@@ -682,242 +714,254 @@ const Booking: React.FC = () => {
 
   const servicesGrouped = useMemo(() => {
     const map = new Map<string, FlatService[]>();
-    servicesInSection.forEach((s) => {
-      const arr = map.get(s.category) || [];
-      arr.push(s);
-      map.set(s.category, arr);
+    servicesInSection.forEach((sv) => {
+      const arr = map.get(sv.category) || [];
+      arr.push(sv);
+      map.set(sv.category, arr);
     });
     return Array.from(map.entries());
   }, [servicesInSection]);
 
-  const getServiceById = (id: string) => servicesFlat.find((s) => s.id === id) || null;
-  const getServiceName = (id: string) => getServiceById(id)?.name || id;
-  const getServiceBasePrice = (id: string) => getServiceById(id)?.basePrice || 0;
+  const getServiceById = (id: string) => servicesFlat.find((sv) => sv.id === id) || null;
 
   // =========================
-  // ✅ Load staff when service selected (SERVICE-ID based)
+  // Cart: add/remove + update item fields
+  // =========================
+  const addServiceToCart = (idRaw: string) => {
+    const id = String(idRaw || "").trim();
+    if (!id) return;
+
+    const sv = getServiceById(id);
+    if (!sv) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      items: [
+        ...(prev.items || []),
+        {
+          id: makeLocalId(),
+          serviceId: id,
+          serviceName: sv.name,
+          basePrice: Number(sv.basePrice || 0),
+          priceText: sv.priceText,
+          durationMin: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+          employeeId: "",
+          employeeUid: "",
+          employeeName: "",
+          date: "",
+          time: "",
+        },
+      ],
+    }));
+
+    setCouponCode("");
+    setManualOverride(false);
+    setOfferMsg("");
+    setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+  };
+
+  const removeServiceFromCart = (itemId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: (prev.items || []).filter((it) => it.id !== itemId),
+    }));
+
+    setBusyByItem((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+
+    setCouponCode("");
+    setManualOverride(false);
+    setOfferMsg("");
+    setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+  };
+
+  const updateItem = (itemId: string, patch: Partial<CartItem>) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: (prev.items || []).map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
+    }));
+
+    if (patch.serviceId || patch.employeeId || patch.date || patch.time) {
+      if (!couponCode.trim()) setManualOverride(false);
+    }
+  };
+
+  // =========================
+  // ✅ Load staff per serviceId when item exists
   // =========================
   useEffect(() => {
     let cancelled = false;
 
-    async function loadStaff() {
-      const serviceId = String(formData.service || "").trim();
+    async function loadNeededStaff() {
+      const serviceIds = Array.from(
+        new Set((formData.items || []).map((it) => String(it.serviceId || "").trim()).filter(Boolean))
+      );
 
-      if (!serviceId) {
-        setStaff([]);
-        setStaffError("");
-        setStaffLoading(false);
-        return;
+      if (!serviceIds.length) return;
+
+      for (const sid of serviceIds) {
+        if (cancelled) return;
+        if (staffByService[sid] && Array.isArray(staffByService[sid])) continue;
+
+        try {
+          setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
+          setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
+
+          const res = await listActiveStaffBySpecialty({
+            salonId: SALON_ID,
+            specialty: sid,
+          });
+
+          if (cancelled) return;
+
+          const today = todayISO();
+
+          const filtered = (res || []).filter((st: any) => {
+            const name = String(st?.name || "").trim();
+            if (!name) return false;
+            if (st?.showOnBooking === false) return false;
+            if (st?.active === false) return false;
+
+            const onLeave = !!st?.onLeave;
+            const leaveUntil = String(st?.leaveUntil || "").trim();
+            if (onLeave) {
+              if (!leaveUntil) return false;
+              if (leaveUntil >= today) return false;
+            }
+
+            const specs = Array.isArray(st?.specialties)
+              ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
+              : [];
+
+            return specs.includes(sid);
+          });
+
+          setStaffByService((p) => ({ ...p, [sid]: filtered }));
+
+          if (!filtered.length) {
+            setStaffErrorByService((p) => ({
+              ...p,
+              [sid]: `ما فيه موظفات لهذه الخدمة حالياً.`,
+            }));
+          }
+        } catch (e: any) {
+          const msg = String(e?.message || "");
+          let err = "تعذر تحميل قائمة الموظفات.";
+          if (msg.toLowerCase().includes("requires an index"))
+            err = "Firestore يحتاج Index للاستعلام. افتح Console واضغط Create index.";
+          if (msg.toLowerCase().includes("missing or insufficient permissions"))
+            err = "صلاحيات قراءة الموظفات غير كافية (staff_public).";
+
+          setStaffByService((p) => ({ ...p, [sid]: [] }));
+          setStaffErrorByService((p) => ({ ...p, [sid]: err }));
+        } finally {
+          if (!cancelled) setStaffLoadingByService((p) => ({ ...p, [sid]: false }));
+        }
       }
+    }
 
-      try {
-        setStaffLoading(true);
-        setStaffError("");
+    loadNeededStaff();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.items]);
 
-        // ✅ الربط الصحيح: بالـ serviceId الثابت
-        const res = await listActiveStaffBySpecialty({
-          salonId: SALON_ID,
-          specialty: serviceId,
-        });
+  // =========================
+  // ✅ Busy slots per item (employee+date+duration)
+  // =========================
+  useEffect(() => {
+    let cancelled = false;
 
+    async function loadBusyForItems() {
+      const items = formData.items || [];
+
+      for (const it of items) {
         if (cancelled) return;
 
-        setStaff(res || []);
+        const itemId = it.id;
+        const employeeId = String(it.employeeId || "").trim();
+        const date = String(it.date || "").trim();
+        const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
-        if (!res?.length) {
-          setStaffError(
-            `ما فيه موظفات مربوطة بهذه الخدمة. تأكد أن staff_public.specialties تحتوي serviceId التالي:\n${serviceId}`
-          );
+        if (!employeeId || !date) {
+          setBusyByItem((p) => ({ ...p, [itemId]: { ...emptyBusyState() } }));
+          continue;
         }
-      } catch (e: any) {
-        console.error("loadStaff error:", e);
 
-        if (!cancelled) {
-          const msg = String(e?.message || "");
+        setBusyByItem((p) => ({
+          ...p,
+          [itemId]: { ...(p[itemId] || emptyBusyState()), loading: true, hint: "" },
+        }));
 
-          if (msg.toLowerCase().includes("requires an index")) {
-            setStaffError("Firestore يحتاج Index للاستعلام. افتح Console واضغط Create index.");
-          } else if (msg.toLowerCase().includes("missing or insufficient permissions")) {
-            setStaffError("صلاحيات قراءة الموظفات غير كافية (staff_public).");
-          } else {
-            setStaffError("تعذر تحميل قائمة الموظفات.");
+        try {
+          const colRef = collection(db, "salons", SALON_ID, "booking_slots");
+          const q1 = query(colRef, where("employeeId", "==", employeeId), where("date", "==", date));
+          const snap = await getDocs(q1);
+
+          if (cancelled) return;
+
+          const taken = new Set<string>();
+          snap.docs.forEach((d) => {
+            const t = String((d.data() as any)?.time || "").trim();
+            if (t) taken.add(t);
+          });
+
+          const allSlots = timeSlots;
+          const disabled = new Set<string>();
+
+          for (const start of allSlots) {
+            const needed = getTimesToLock(allSlots, slotStepMin, start, durationMin);
+            const bad = needed.some((t) => taken.has(t));
+            if (bad) disabled.add(start);
           }
 
-          setStaff([]);
+          setBusyByItem((p) => ({
+            ...p,
+            [itemId]: {
+              busyTimes: taken,
+              disabledStartTimes: disabled,
+              loading: false,
+              hint: "",
+            },
+          }));
+
+          const currentTime = String(it.time || "").trim();
+          if (currentTime && disabled.has(currentTime)) {
+            updateItem(itemId, { time: "" });
+          }
+        } catch (e: any) {
+          const msg = String(e?.message || "");
+          const hint = msg.toLowerCase().includes("requires an index")
+            ? "Firestore يحتاج Index (employeeId + date). افتح Console واضغط Create index."
+            : "";
+
+          setBusyByItem((p) => ({
+            ...p,
+            [itemId]: { ...emptyBusyState(), loading: false, hint },
+          }));
         }
-      } finally {
-        if (!cancelled) setStaffLoading(false);
       }
     }
 
-    loadStaff();
+    loadBusyForItems();
     return () => {
       cancelled = true;
     };
-  }, [formData.service]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    slotStepMin,
+    timeSlots.join("|"),
+    formData.items.map((x) => `${x.id}|${x.employeeId}|${x.date}|${x.durationMin}`).join("::"),
+  ]);
 
   // =========================
-  // Preload busy slots for employee+date (Firestore)
+  // Change handlers (name/phone/note)
   // =========================
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadBusy() {
-      setBusyHint("");
-      setBusyTimes(new Set());
-      setDisabledStartTimes(new Set());
-
-      const employeeId = String(formData.employeeId || "").trim();
-      const date = String(formData.date || "").trim();
-
-      if (!employeeId || !date) return;
-
-      try {
-        setBusyLoading(true);
-
-        const colRef = collection(db, "salons", SALON_ID, "booking_slots");
-        const q1 = query(colRef, where("employeeId", "==", employeeId), where("date", "==", date));
-        const snap = await getDocs(q1);
-
-        if (cancelled) return;
-
-        const taken = new Set<string>();
-        snap.docs.forEach((d) => {
-          const t = String((d.data() as any)?.time || "").trim();
-          if (t) taken.add(t);
-        });
-
-        setBusyTimes(taken);
-
-        const durationMin = Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN);
-        const allSlots = generateSalonTimeSlots();
-
-        const disabled = new Set<string>();
-        for (const start of allSlots) {
-          const needed = getTimesToLock(start, durationMin);
-          const bad = needed.some((t) => taken.has(t));
-          if (bad) disabled.add(start);
-        }
-
-        setDisabledStartTimes(disabled);
-
-        const currentTime = String(formData.time || "").trim();
-        if (currentTime && disabled.has(currentTime)) {
-          setFormData((p) => ({ ...p, time: "" }));
-          setSlotBusy(true);
-          setSlotMsg("اخترنا لك حماية تلقائية: هذا الوقت ما يكفي لمدة الخدمة. اختاري وقتًا آخر.");
-        } else {
-          setSlotBusy(false);
-          setSlotMsg("");
-        }
-      } catch (e: any) {
-        const msg = String(e?.message || "");
-        if (msg.toLowerCase().includes("requires an index")) {
-          setBusyHint("Firestore يحتاج Index (employeeId + date). افتح Console واضغط Create index.");
-        }
-        setBusyTimes(new Set());
-        setDisabledStartTimes(new Set());
-      } finally {
-        if (!cancelled) setBusyLoading(false);
-      }
-    }
-
-    loadBusy();
-    return () => {
-      cancelled = true;
-    };
-  }, [formData.employeeId, formData.date, formData.durationMin]);
-
-  // =========================
-  // Slot availability check (Firestore)
-  // =========================
-  useEffect(() => {
-    let cancelled = false;
-
-    async function checkSlotAvailability() {
-      setSlotBusy(false);
-      setSlotMsg("");
-
-      const employeeKey = String(formData.employeeId || formData.employee || "").trim();
-      const date = String(formData.date || "").trim();
-      const time = String(formData.time || "").trim();
-
-      if (!employeeKey || !date || !time) return;
-
-      try {
-        setSlotChecking(true);
-
-        const durationMin = Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN);
-        const timesToCheck = getTimesToLock(time, durationMin);
-
-        const snaps = await Promise.all(
-          timesToCheck.map((t) => {
-            const slotId = buildSlotId(SALON_ID, employeeKey, date, t);
-            return getDoc(doc(db, "salons", SALON_ID, "booking_slots", slotId));
-          })
-        );
-
-        if (cancelled) return;
-
-        const anyTaken = snaps.some((s) => s.exists());
-        if (anyTaken) {
-          setSlotBusy(true);
-          setSlotMsg("هذا الوقت غير متاح. يرجى اختيار وقت آخر.");
-        } else {
-          setSlotBusy(false);
-          setSlotMsg("");
-        }
-      } catch {
-        if (!cancelled) {
-          setSlotBusy(false);
-          setSlotMsg("هذا الوقت غير متاح. يرجى اختيار وقت آخر.");
-        }
-      } finally {
-        if (!cancelled) setSlotChecking(false);
-      }
-    }
-
-    checkSlotAvailability();
-    return () => {
-      cancelled = true;
-    };
-  }, [formData.employeeId, formData.employee, formData.date, formData.time, formData.durationMin]);
-
-  // =========================
-  // Employee dropdown list
-  // =========================
-  const filteredEmployees = useMemo(() => {
-    const list = staff
-      .filter((s) => (s?.name || "").trim())
-      .map((s) => ({
-        id: s.id,
-        name: s.name.trim(),
-        uid: String((s as any).linkedUid || "").trim(),
-      }));
-
-    return list;
-  }, [staff]);
-
-  useEffect(() => {
-    const chosenId = String(formData.employeeId || "").trim();
-    const chosenName = String(formData.employee || "").trim();
-    if (!chosenId && !chosenName) return;
-
-    const exists =
-      (chosenId && filteredEmployees.some((e) => e.id === chosenId)) ||
-      (!chosenId && chosenName && filteredEmployees.some((e) => e.name === chosenName));
-
-    if (!exists) {
-      setFormData((p) => ({ ...p, employeeId: "", employeeUid: "", employee: "" }));
-    }
-  }, [filteredEmployees, formData.employeeId, formData.employee]);
-
-  // =========================
-  // Change handlers
-  // =========================
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
 
     if (name === "phone") {
@@ -926,29 +970,7 @@ const Booking: React.FC = () => {
       return;
     }
 
-    setFormData((prev) => {
-      const next = { ...prev, [name]: value } as BookingFormData;
-
-      if (name === "service") {
-        next.employee = "";
-        next.employeeId = "";
-        next.employeeUid = "";
-
-        const s = getServiceById(String(value));
-        next.durationMin = Number(s?.durationMin || DEFAULT_SERVICE_DURATION_MIN);
-
-        setCouponCode("");
-        setManualOverride(false);
-        setOfferMsg("");
-        setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
-      }
-
-      if (name === "date" || name === "time") {
-        if (!couponCode.trim()) setManualOverride(false);
-      }
-
-      return next;
-    });
+    setFormData((prev) => ({ ...prev, [name]: value } as any));
   };
 
   const handleSectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -956,15 +978,17 @@ const Booking: React.FC = () => {
     setSelectedSectionId(sectionId);
 
     setSelectedCategory("");
+    setServicePicker("");
 
     setFormData((prev) => ({
       ...prev,
-      service: "",
-      employee: "",
-      employeeId: "",
-      employeeUid: "",
-      durationMin: DEFAULT_SERVICE_DURATION_MIN,
+      items: [],
     }));
+
+    setBusyByItem({});
+    setStaffByService({});
+    setStaffLoadingByService({});
+    setStaffErrorByService({});
 
     setCouponCode("");
     setManualOverride(false);
@@ -975,15 +999,7 @@ const Booking: React.FC = () => {
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const catIdOrName = e.target.value;
     setSelectedCategory(catIdOrName);
-
-    setFormData((prev) => ({
-      ...prev,
-      service: "",
-      employee: "",
-      employeeId: "",
-      employeeUid: "",
-      durationMin: DEFAULT_SERVICE_DURATION_MIN,
-    }));
+    setServicePicker("");
 
     setCouponCode("");
     setManualOverride(false);
@@ -991,8 +1007,14 @@ const Booking: React.FC = () => {
     setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
   };
 
+  // =========================
+  // Totals + offer auto
+  // =========================
+  const cartItems = formData.items || [];
+  const basePrice = cartItems.reduce((sum, it) => sum + Number(it.basePrice || 0), 0);
+  const finalPrice = Number(applied.finalPrice || 0) > 0 ? applied.finalPrice : basePrice;
+
   useEffect(() => {
-    const basePrice = getServiceBasePrice(formData.service);
     if (!basePrice) {
       setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
       setOfferMsg("");
@@ -1003,19 +1025,19 @@ const Booking: React.FC = () => {
 
     setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
     setOfferMsg("");
-  }, [formData.service, formData.employeeId, formData.employee, formData.date, manualOverride]);
+  }, [basePrice, manualOverride, formData.items.map((x) => `${x.serviceId}|${x.date}`).join("::")]);
 
   const handleApplyCoupon = async () => {
-    const basePrice = getServiceBasePrice(formData.service);
-    const serviceId = formData.service;
+    const items = formData.items || [];
+    const primaryServiceId = String(items[0]?.serviceId || "").trim();
 
-    if (!serviceId || !basePrice) {
-      setOfferMsg("اختاري الخدمة أولاً قبل تطبيق الكود");
+    if (!items.length || !basePrice) {
+      setOfferMsg("اختاري خدمة أولاً قبل تطبيق الكود");
       return;
     }
 
-    if (!formData.date) {
-      setOfferMsg("اختاري تاريخ الحجز أولاً ثم طبّقي الكود");
+    if (!String(items[0]?.date || "").trim()) {
+      setOfferMsg("اختاري تاريخ الحجز (على الأقل لأول خدمة) ثم طبّقي الكود");
       return;
     }
 
@@ -1035,14 +1057,14 @@ const Booking: React.FC = () => {
         return;
       }
 
-      if (!offerAppliesToService(offer, serviceId)) {
+      if (!primaryServiceId || !offerAppliesToService(offer, primaryServiceId)) {
         setManualOverride(false);
         setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
         setOfferMsg("هذا الكود لا ينطبق على هذه الخدمة");
         return;
       }
 
-      const dateCheck = isOfferValidForBookingDate(offer as any, formData.date);
+      const dateCheck = isOfferValidForBookingDate(offer as any, String(items[0]?.date || "").trim());
       if (!dateCheck.ok) {
         setManualOverride(false);
         setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
@@ -1068,20 +1090,69 @@ const Booking: React.FC = () => {
   };
 
   // =========================
-  // Submit (Create Firestore booking مباشرة + Go Success)
+  // Helper: توزيع الخصم على العناصر (بشكل عادل)
+  // =========================
+  function allocateDiscount(items: CartItem[], discountTotal: number) {
+    const total = items.reduce((s, it) => s + Number(it.basePrice || 0), 0);
+    if (!total || !discountTotal) {
+      return items.map(() => 0);
+    }
+
+    const raw = items.map((it) => (Number(it.basePrice || 0) / total) * discountTotal);
+    const rounded = raw.map((x) => Math.floor(x));
+    let used = rounded.reduce((s, x) => s + x, 0);
+    let remaining = Math.max(0, Math.round(discountTotal - used));
+
+    let i = 0;
+    while (remaining > 0 && items.length) {
+      rounded[i % items.length] += 1;
+      remaining -= 1;
+      i += 1;
+    }
+
+    return rounded;
+  }
+
+  // =========================
+  // ✅ Slot check for one item (before submit)
+  // =========================
+  const checkOneItemSlot = async (it: CartItem) => {
+    const employeeKey = String(it.employeeId || "").trim();
+    const date = String(it.date || "").trim();
+    const time = String(it.time || "").trim();
+    if (!employeeKey || !date || !time) return { ok: false, msg: "بيانات الوقت ناقصة" };
+
+    const timesToCheck = getTimesToLock(
+      timeSlots,
+      slotStepMin,
+      time,
+      Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+    );
+
+    try {
+      const snaps = await Promise.all(
+        timesToCheck.map((t) => {
+          const slotId = buildSlotId(SALON_ID, employeeKey, date, t);
+          return getDoc(doc(db, "salons", SALON_ID, "booking_slots", slotId));
+        })
+      );
+
+      const anyTaken = snaps.some((s) => s.exists());
+      if (anyTaken) {
+        return { ok: false, msg: "هذا الوقت محجوز بالفعل لهذه الموظفة. اختاري وقتًا آخر." };
+      }
+
+      return { ok: true, msg: "" };
+    } catch {
+      return { ok: false, msg: "تعذر فحص الوقت. جرّبي وقتًا آخر." };
+    }
+  };
+
+  // =========================
+  // Submit (Create Firestore bookings لكل عنصر + Go Success)
   // =========================
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
-    if (slotBusy) {
-      openModal({
-        title: "الوقت غير متاح",
-        message: "هذا الوقت غير متاح لأن مدة الخدمة تتداخل مع حجز آخر. اختاري وقتًا آخر.",
-        variant: "danger",
-        confirmText: "حسنًا",
-      });
-      return;
-    }
 
     const phone = (formData.phone ?? "").replace(/\D/g, "");
     const isValidSaudiMobile = /^05\d{8}$/.test(phone);
@@ -1096,28 +1167,35 @@ const Booking: React.FC = () => {
       return;
     }
 
-    if (!String(formData.employeeId || "").trim() || !String(formData.employee || "").trim()) {
+    const items = (formData.items || []).map((x) => ({ ...x }));
+    if (!items.length) {
       openModal({
-        title: "اختيار الموظفة",
-        message: "فضلاً اختاري الموظفة من القائمة.",
+        title: "اختيار الخدمات",
+        message: "فضلاً اختاري خدمة واحدة على الأقل.",
         variant: "danger",
         confirmText: "حسنًا",
       });
       return;
     }
 
-    if (!String(formData.service || "").trim()) {
+    const missing = items.find((it) => {
+      if (!String(it.employeeId || "").trim()) return true;
+      if (!String(it.employeeName || "").trim()) return true;
+      if (!String(it.date || "").trim()) return true;
+      if (!String(it.time || "").trim()) return true;
+      return false;
+    });
+
+    if (missing) {
       openModal({
-        title: "اختيار الخدمة",
-        message: "فضلاً اختاري الخدمة من القائمة.",
+        title: "بيانات الحجز ناقصة",
+        message: "لكل خدمة داخل السلة: لازم تختارين (الموظفة + التاريخ + الوقت).",
         variant: "danger",
         confirmText: "حسنًا",
       });
       return;
     }
 
-    // ✅ أهم تعديل: لا تحويل سريع
-    // إذا ما فيه حساب (أو anonymous) نعرض مودال، والتحويل يصير بعد ضغط زر المودال فقط
     const signedUid = getSignedInUidOrNull();
     if (!signedUid) {
       openModal(
@@ -1137,13 +1215,11 @@ const Booking: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const basePrice = getServiceBasePrice(formData.service);
-      const serviceId = formData.service;
-
       const normalizedCode = couponCode.trim();
       let finalApplied: AppliedOfferResult = applied;
 
       if (normalizedCode) {
+        const primaryServiceId = String(items[0]?.serviceId || "").trim();
         const offer = await findActiveOfferByCode(SALON_ID, normalizedCode);
 
         if (!offer) {
@@ -1156,7 +1232,7 @@ const Booking: React.FC = () => {
           return;
         }
 
-        if (!offerAppliesToService(offer, serviceId)) {
+        if (!primaryServiceId || !offerAppliesToService(offer, primaryServiceId)) {
           openModal({
             title: "الكود لا ينطبق",
             message: "هذا الكود لا ينطبق على هذه الخدمة.",
@@ -1166,7 +1242,7 @@ const Booking: React.FC = () => {
           return;
         }
 
-        const dateCheck = isOfferValidForBookingDate(offer as any, formData.date);
+        const dateCheck = isOfferValidForBookingDate(offer as any, String(items[0]?.date || "").trim());
         if (!dateCheck.ok) {
           openModal({
             title: "العرض غير متاح لهذا التاريخ",
@@ -1183,92 +1259,125 @@ const Booking: React.FC = () => {
         setManualOverride(true);
       }
 
-      const finalPriceNum =
-        Number(finalApplied.finalPrice || 0) > 0 ? finalApplied.finalPrice : basePrice;
+      for (const it of items) {
+        const busyState = busyByItem[it.id];
+        const disabled = busyState?.disabledStartTimes;
+        if (disabled && disabled.has(String(it.time || "").trim())) {
+          openModal({
+            title: "الوقت غير متاح",
+            message: `خدمة "${it.serviceName}" الوقت المختار ما يكفي لمدة الخدمة أو فيه تعارض. اختاري وقتًا آخر.`,
+            variant: "danger",
+            confirmText: "حسنًا",
+          });
+          return;
+        }
 
-      const durationMin = Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+        const check = await checkOneItemSlot(it);
+        if (!check.ok) {
+          openModal({
+            title: "الوقت محجوز",
+            message: `خدمة "${it.serviceName}": ${check.msg}`,
+            variant: "danger",
+            confirmText: "حسنًا",
+          });
+          return;
+        }
+      }
 
-      const uid = signedUid; // ✅ مؤكد موجود لأننا سوينا return فوق لو ما فيه
+      const discountTotal = Number(finalApplied.discountAmount || 0);
+      const perItemDiscounts = allocateDiscount(items, discountTotal);
+
+      const uid = signedUid;
 
       const userNote = String(formData.note || "").trim();
       const offerNote = finalApplied.offer
         ? `Offer: ${(finalApplied.offer as any)?.title || normalizedCode || "-"} | discount=${Number(
-            finalApplied.discountAmount || 0
-          ).toFixed(0)}`
+          finalApplied.discountAmount || 0
+        ).toFixed(0)}`
         : "";
 
       const noteFinal = [userNote, offerNote].filter(Boolean).join(" | ") || undefined;
 
-      const serviceNameAtBooking = getServiceName(formData.service);
       const sectionIdAtBooking = String(selectedSectionId || "").trim() || undefined;
 
-      const res = await createBooking({
-        userId: uid,
-        createdBy: "client",
-        channel: "client",
+      const createdBookings: any[] = [];
 
-        clientName: String(formData.name || "").trim(),
-        clientPhone: phone,
+      for (let idx = 0; idx < items.length; idx++) {
+        const it = items[idx];
+        const itemDiscount = Number(perItemDiscounts[idx] || 0);
+        const itemFinal = Math.max(0, Number(it.basePrice || 0) - itemDiscount);
 
-        // ❗️حسب طلبك: ممنوع يتغير هذا السطر
-        serviceName: formData.service,
-        serviceId: formData.service,
+        const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
-        serviceSnapshot: {
-          serviceNameAtBooking,
-          priceAtBooking: Number(finalPriceNum || 0),
-          durationAtBooking: durationMin,
-          sectionIdAtBooking,
-        },
+        const res = await createBooking({
+          userId: uid,
+          createdBy: "client",
+          channel: "client",
 
-        employeeId: String(formData.employeeId || "").trim(),
-        employeeUid: String(formData.employeeUid || "").trim() || null,
-        employeeName: String(formData.employee || "").trim() || "-",
+          clientName: String(formData.name || "").trim(),
+          clientPhone: phone,
 
-        date: String(formData.date || "").trim(),
-        time: String(formData.time || "").trim(),
+          serviceName: it.serviceName,
+          serviceId: it.serviceId,
 
-        total: Number(finalPriceNum || 0),
-        finalPrice: Number(finalPriceNum || 0),
+          serviceSnapshot: {
+            serviceNameAtBooking: it.serviceName,
+            priceAtBooking: Number(itemFinal || 0),
+            durationAtBooking: durationMin,
+            sectionIdAtBooking,
+          },
 
-        status: "pending",
-        note: noteFinal,
+          employeeId: String(it.employeeId || "").trim(),
+          employeeUid: String(it.employeeUid || "").trim() || null,
+          employeeName: String(it.employeeName || "").trim() || "-",
 
-        durationMin,
-      } as any);
+          date: String(it.date || "").trim(),
+          time: String(it.time || "").trim(),
 
-      const currentBooking = {
-        bookingId: res.id,
-        id: res.id,
-        trackId: res.id,
-        publicId: (res as any).publicId,
+          total: Number(itemFinal || 0),
+          finalPrice: Number(itemFinal || 0),
 
-        name: String(formData.name || "").trim(),
-        phone,
-        service: formData.service,
-        serviceName: formData.service,
-        employee: String(formData.employee || "").trim(),
-        employeeId: String(formData.employeeId || "").trim(),
-        employeeUid: String(formData.employeeUid || "").trim(),
+          status: "pending",
+          note: noteFinal,
 
-        date: String(formData.date || "").trim(),
-        time: String(formData.time || "").trim(),
+          durationMin,
+        } as any);
 
-        total: Number(finalPriceNum || 0),
-        finalPrice: Number(finalPriceNum || 0),
+        createdBookings.push({
+          bookingId: res.id,
+          id: res.id,
+          trackId: res.id,
+          publicId: (res as any).publicId,
 
-        couponCode: normalizedCode || "",
-        offerId: (finalApplied.offer as any)?.id || null,
-        offerTitle: (finalApplied.offer as any)?.title || null,
-        discountAmount: Number(finalApplied.discountAmount || 0),
+          name: String(formData.name || "").trim(),
+          phone,
 
-        durationMin,
-        status: "pending",
-        createdAt: Date.now(),
-      };
+          service: it.serviceId,
+          serviceName: it.serviceName,
 
-      localStorage.setItem("currentBooking", JSON.stringify(currentBooking));
-      localStorage.removeItem("allBookings");
+          employee: String(it.employeeName || "").trim(),
+          employeeId: String(it.employeeId || "").trim(),
+          employeeUid: String(it.employeeUid || "").trim(),
+
+          date: String(it.date || "").trim(),
+          time: String(it.time || "").trim(),
+
+          total: Number(itemFinal || 0),
+          finalPrice: Number(itemFinal || 0),
+
+          couponCode: normalizedCode || "",
+          offerId: (finalApplied.offer as any)?.id || null,
+          offerTitle: (finalApplied.offer as any)?.title || null,
+          discountAmount: itemDiscount,
+
+          durationMin,
+          status: "pending",
+          createdAt: Date.now(),
+        });
+      }
+
+      localStorage.setItem("allBookings", JSON.stringify(createdBookings));
+      localStorage.setItem("currentBooking", JSON.stringify(createdBookings[0] || null));
       localStorage.removeItem("bookingDraft");
 
       navigate("/success");
@@ -1278,7 +1387,7 @@ const Booking: React.FC = () => {
       if (e?.code === "SLOT_TAKEN" || String(e?.message || "") === "SLOT_TAKEN") {
         openModal({
           title: "الوقت محجوز",
-          message: "هذا الوقت محجوز بالفعل لهذه الموظفة. اختاري وقتًا آخر.",
+          message: "هذا الوقت محجوز بالفعل. اختاري وقتًا آخر.",
           variant: "danger",
           confirmText: "حسنًا",
         });
@@ -1300,7 +1409,7 @@ const Booking: React.FC = () => {
   };
 
   // =========================
-  // Restore draft (optional)
+  // Restore draft (optional) - بسيط
   // =========================
   useEffect(() => {
     const draft = localStorage.getItem("bookingDraft");
@@ -1309,34 +1418,44 @@ const Booking: React.FC = () => {
     try {
       const parsed = JSON.parse(draft);
 
-      if (!parsed?.durationMin) parsed.durationMin = DEFAULT_SERVICE_DURATION_MIN;
-
+      const items: CartItem[] = Array.isArray(parsed?.items) ? parsed.items : [];
       setFormData((prev) => ({
         ...prev,
         ...parsed,
-        employee: String(parsed?.employee || "").trim(),
-        employeeId: String(parsed?.employeeId || "").trim(),
-        employeeUid: String(parsed?.employeeUid || "").trim(),
-        durationMin: Number(parsed?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+        phone: String(parsed?.phone || "").replace(/\D/g, "").slice(0, 10),
+        items: items.map((it) => ({
+          ...it,
+          id: String(it?.id || makeLocalId()),
+          durationMin: Number(it?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+          basePrice: Number(it?.basePrice || 0),
+          serviceId: String(it?.serviceId || "").trim(),
+          serviceName: String(it?.serviceName || "").trim(),
+          employeeId: String(it?.employeeId || "").trim(),
+          employeeUid: String(it?.employeeUid || "").trim(),
+          employeeName: String(it?.employeeName || "").trim(),
+          date: String(it?.date || "").trim(),
+          time: String(it?.time || "").trim(),
+          priceText: String(it?.priceText || "").trim(),
+        })),
       }));
 
-      if (parsed?.service) {
-        const s = getServiceById(parsed.service);
-        if (s?.sectionId) setSelectedSectionId(s.sectionId);
+      const firstServiceId = String(items[0]?.serviceId || "").trim();
+      if (firstServiceId) {
+        const sv = getServiceById(firstServiceId);
+        if (sv?.sectionId) setSelectedSectionId(sv.sectionId);
 
         if (catalogMode === "firestore") {
-          if (s?.categoryId) setSelectedCategory(String(s.categoryId));
+          if (sv?.categoryId) setSelectedCategory(String(sv.categoryId));
           else setSelectedCategory("");
         } else {
-          if (s?.category) setSelectedCategory(String(s.category));
+          if (sv?.category) setSelectedCategory(String(sv.category));
         }
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const basePrice = getServiceBasePrice(formData.service);
-  const finalPrice = Number(applied.finalPrice || 0) > 0 ? applied.finalPrice : basePrice;
 
   return (
     <div className="booking-page py-5">
@@ -1384,11 +1503,7 @@ const Booking: React.FC = () => {
                         id="name"
                         name="name"
                         value={formData.name}
-                        onChange={() => {}}
-                        onInput={(e: any) => {
-                          const v = String(e?.target?.value ?? "");
-                          setFormData((p) => ({ ...p, name: v }));
-                        }}
+                        onChange={handleChange}
                         placeholder="أدخلي اسمك الكامل"
                         required
                       />
@@ -1438,9 +1553,9 @@ const Booking: React.FC = () => {
                       اختاري القسم
                     </option>
 
-                    {sectionOptions.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.title}
+                    {sectionOptions.map((sec) => (
+                      <option key={sec.id} value={sec.id}>
+                        {sec.title}
                       </option>
                     ))}
                   </select>
@@ -1465,157 +1580,212 @@ const Booking: React.FC = () => {
                 </div>
 
                 <div className="mb-4 bk-field">
-                  <label className="form-label">الخدمة</label>
-
-                  <select
-                    className="form-select dash-select"
-                    name="service"
-                    value={formData.service}
-                    onChange={handleChange}
-                    required
-                    disabled={!selectedSectionId}
-                  >
-                    <option value="" disabled>
-                      اختاري الخدمة
-                    </option>
-
-                    {servicesGrouped.map(([cat, items]) => (
-                      <optgroup key={cat} label={cat}>
-                        {items.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name} — {s.priceText}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="row">
-                  <div className="col-md-6 mb-4">
-                    <label className="form-label">الموظفة</label>
-
-                    <div className="input-group">
-                      <span className="input-group-text">
-                        <FontAwesomeIcon icon={faUserTie} />
-                      </span>
-
-                      <select
-                        className="form-select"
-                        value={formData.employeeId}
-                        disabled={!formData.service || staffLoading}
-                        onChange={(e) => {
-                          const id = e.target.value;
-                          const emp = filteredEmployees.find((x) => x.id === id);
-
-                          setFormData((p) => ({
-                            ...p,
-                            employeeId: id,
-                            employeeUid: emp?.uid || "",
-                            employee: emp?.name || "",
-                          }));
-                        }}
-                        required
-                      >
-                        <option value="">اختاري الموظفة</option>
-                        {filteredEmployees.map((e) => (
-                          <option key={e.id} value={e.id}>
-                            {e.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {staffLoading && (
-                      <div className="small text-muted mt-1">
-                        <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الموظفات…
-                      </div>
-                    )}
-
-                    {staffError && <div className="text-danger small mt-1">{staffError}</div>}
-
-                    {slotChecking && (
-                      <div className="small text-muted mt-2">
-                        <FontAwesomeIcon icon={faSpinner} spin /> جاري فحص توفر الوقت…
-                      </div>
-                    )}
-
-                    {slotBusy && slotMsg && (
-                      <div className="text-danger small mt-2">{slotMsg}</div>
-                    )}
-
-                    {busyLoading && (
-                      <div className="small text-muted mt-2">
-                        <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات المتاحة…
-                      </div>
-                    )}
-
-                    {busyHint && <div className="small text-warning mt-2">{busyHint}</div>}
-                  </div>
-
-                  <div className="col-md-6 mb-4">
-                    <label htmlFor="date" className="form-label">
-                      التاريخ
-                    </label>
-
-                    <div className="input-group">
-                      <span className="input-group-text">
-                        <FontAwesomeIcon icon={faCalendarAlt} />
-                      </span>
-
-                      <input
-                        ref={dateInputRef}
-                        type="date"
-                        className="form-control"
-                        id="date"
-                        name="date"
-                        value={formData.date}
-                        onChange={handleChange}
-                        required
-                        min={new Date().toISOString().split("T")[0]}
-                        disabled={!formData.employeeId}
-                      />
-                    </div>
-
-                    {!formData.employeeId && (
-                      <div className="small text-muted mt-1">اختاري الموظفة أولاً عشان يظهر التقويم</div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <label htmlFor="time" className="form-label">
-                    الوقت
-                  </label>
+                  <label className="form-label">الخدمات</label>
 
                   <div className="input-group">
-                    <span className="input-group-text">
-                      <FontAwesomeIcon icon={faClock} />
-                    </span>
-
                     <select
-                      className="form-select"
-                      id="time"
-                      name="time"
-                      value={formData.time}
-                      onChange={handleChange}
-                      required
-                      disabled={!formData.employeeId || !formData.date || busyLoading}
+                      className="form-select dash-select"
+                      value={servicePicker}
+                      onChange={(e) => setServicePicker(e.target.value)}
+                      disabled={!selectedSectionId}
                     >
-                      <option value="">اختاري الوقت</option>
-                      {timeSlots.map((t) => {
-                        const disabled = disabledStartTimes.has(t);
-                        return (
-                          <option key={t} value={t} disabled={disabled}>
-                            {t} {disabled ? "— غير متاح" : ""}
-                          </option>
-                        );
-                      })}
+                      <option value="">اختاري خدمة لإضافتها</option>
+
+                      {servicesGrouped.map(([cat, items]) => (
+                        <optgroup key={cat} label={cat}>
+                          {items.map((sv) => (
+                            <option key={sv.id} value={sv.id}>
+                              {sv.name} — {sv.priceText}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
                     </select>
+
+                    <button
+                      type="button"
+                      className="btn btn-dark"
+                      disabled={!servicePicker}
+                      onClick={() => {
+                        addServiceToCart(servicePicker);
+                        setServicePicker("");
+                      }}
+                    >
+                      إضافة
+                    </button>
                   </div>
 
-                  {!formData.date && (
-                    <div className="small text-muted mt-1">اختاري التاريخ أولاً</div>
+                  {!!(formData.items || []).length && (
+                    <div className="mt-3">
+                      {(formData.items || []).map((it) => {
+                        const busy = busyByItem[it.id] || emptyBusyState();
+                        const serviceStaff = staffByService[it.serviceId] || [];
+                        const staffLoading = !!staffLoadingByService[it.serviceId];
+                        const staffError = staffErrorByService[it.serviceId] || "";
+
+                        return (
+                          <div
+                            key={it.id}
+                            className="mt-3 p-3"
+                            style={{
+                              border: "1px solid rgba(13,13,13,0.12)",
+                              borderRadius: 12,
+                              background: "rgba(245,245,244,0.75)",
+                              color: "#0D0D0D",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                              <div>
+                                <div style={{ fontWeight: 800 }}>{it.serviceName}</div>
+                                <div className="small">
+                                  {it.priceText || `${Number(it.basePrice || 0)} ريال`} •{" "}
+                                  {Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN)} دقيقة
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                className="btn btn-outline-dark btn-sm"
+                                onClick={() => removeServiceFromCart(it.id)}
+                              >
+                                حذف
+                              </button>
+                            </div>
+
+                            <div className="row mt-3">
+                              <div className="col-md-6 mb-3">
+                                <label className="form-label">الموظفة</label>
+
+                                <div className="input-group">
+                                  <span className="input-group-text">
+                                    <FontAwesomeIcon icon={faUserTie} />
+                                  </span>
+
+                                  <select
+                                    className="form-select"
+                                    value={it.employeeId}
+                                    disabled={staffLoading}
+                                    onChange={(e) => {
+                                      const empId = e.target.value;
+                                      const emp = serviceStaff
+                                        .filter((s) => (s?.name || "").trim())
+                                        .map((s) => ({
+                                          id: s.id,
+                                          name: String(s.name || "").trim(),
+                                          uid: String((s as any).linkedUid || "").trim(),
+                                        }))
+                                        .find((x) => x.id === empId);
+
+                                      updateItem(it.id, {
+                                        employeeId: empId,
+                                        employeeUid: emp?.uid || "",
+                                        employeeName: emp?.name || "",
+                                        date: "",
+                                        time: "",
+                                      });
+                                    }}
+                                    required
+                                  >
+                                    <option value="">اختاري الموظفة</option>
+                                    {serviceStaff
+                                      .filter((s) => (s?.name || "").trim())
+                                      .map((s) => ({
+                                        id: s.id,
+                                        name: s.name.trim(),
+                                      }))
+                                      .map((emp) => (
+                                        <option key={emp.id} value={emp.id}>
+                                          {emp.name}
+                                        </option>
+                                      ))}
+                                  </select>
+                                </div>
+
+                                {staffLoading && (
+                                  <div className="small text-muted mt-1">
+                                    <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الموظفات…
+                                  </div>
+                                )}
+
+                                {!!staffError && <div className="text-danger small mt-1">{staffError}</div>}
+                              </div>
+
+                              <div className="col-md-6 mb-3">
+                                <label htmlFor={`date_${it.id}`} className="form-label">
+                                  التاريخ
+                                </label>
+
+                                <div className="input-group">
+                                  <span className="input-group-text">
+                                    <FontAwesomeIcon icon={faCalendarAlt} />
+                                  </span>
+
+                                  <input
+                                    type="date"
+                                    className="form-control"
+                                    id={`date_${it.id}`}
+                                    value={it.date}
+                                    onChange={(e) => updateItem(it.id, { date: e.target.value, time: "" })}
+                                    required
+                                    min={todayISO()}
+                                    disabled={!it.employeeId}
+                                  />
+                                </div>
+
+                                {!it.employeeId && (
+                                  <div className="small text-muted mt-1">اختاري الموظفة أولاً عشان يظهر التقويم</div>
+                                )}
+                              </div>
+
+                              <div className="col-12">
+                                <label htmlFor={`time_${it.id}`} className="form-label">
+                                  الوقت
+                                </label>
+
+                                <div className="input-group">
+                                  <span className="input-group-text">
+                                    <FontAwesomeIcon icon={faClock} />
+                                  </span>
+
+                                  <select
+                                    className="form-select"
+                                    id={`time_${it.id}`}
+                                    value={it.time}
+                                    onChange={(e) => updateItem(it.id, { time: e.target.value })}
+                                    required
+                                    disabled={!it.employeeId || !it.date || busy.loading}
+                                  >
+                                    <option value="">اختاري الوقت</option>
+                                    {timeSlots.map((t) => {
+                                      const disabled = busy.disabledStartTimes.has(t);
+                                      return (
+                                        <option key={t} value={t} disabled={disabled}>
+                                          {t} {disabled ? "— غير متاح" : ""}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                </div>
+
+                                {busy.loading && (
+                                  <div className="small text-muted mt-2">
+                                    <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات المتاحة…
+                                  </div>
+                                )}
+
+                                {!!busy.hint && <div className="small text-warning mt-2">{busy.hint}</div>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {!formData.items?.length && (
+                    <div className="small text-muted mt-2">
+                      اختاري خدمة أو أكثر، وبعدها لكل خدمة: (الموظفة + التاريخ + الوقت) ✨
+                    </div>
                   )}
                 </div>
 
@@ -1645,14 +1815,14 @@ const Booking: React.FC = () => {
                       value={couponCode}
                       onChange={(e) => setCouponCode(e.target.value)}
                       placeholder="اكتبي الكود هنا"
-                      disabled={!formData.service}
+                      disabled={!formData.items?.length || isLoading}
                     />
 
                     <button
                       type="button"
                       className="btn btn-dark"
                       onClick={handleApplyCoupon}
-                      disabled={!formData.service || isLoading}
+                      disabled={!formData.items?.length || isLoading}
                     >
                       تطبيق
                     </button>
@@ -1683,18 +1853,10 @@ const Booking: React.FC = () => {
                     <strong>{finalPrice ? `${finalPrice} ريال` : "—"}</strong>
                   </div>
 
-                  {!!formData.durationMin && (
-                    <div className="small text-muted mt-1">
-                      مدة الخدمة: {Number(formData.durationMin || DEFAULT_SERVICE_DURATION_MIN)} دقيقة
-                    </div>
-                  )}
+                  <div className="small text-muted mt-2">ملاحظة: كل خدمة لها وقتها وموظفتها بشكل مستقل ✅</div>
                 </div>
 
-                <button
-                  type="submit"
-                  className="btn btn-primary w-100 booking-submit-btn"
-                  disabled={isLoading || slotChecking || slotBusy}
-                >
+                <button type="submit" className="btn btn-primary w-100 booking-submit-btn" disabled={isLoading}>
                   {isLoading ? (
                     <>
                       <FontAwesomeIcon icon={faSpinner} spin /> جاري تأكيد الحجز…
@@ -1704,9 +1866,7 @@ const Booking: React.FC = () => {
                   )}
                 </button>
 
-                <div className="small text-muted mt-3 text-center">
-                  بإكمال الحجز أنتِ توافقين على سياسة الصالون ✨
-                </div>
+                <div className="small text-muted mt-3 text-center">بإكمال الحجز أنتِ توافقين على سياسة الصالون ✨</div>
               </form>
             </div>
           </div>

@@ -67,7 +67,8 @@ function normalizeRole(roleRaw: unknown): UiRole {
   const r = String(roleRaw || "").toLowerCase().trim();
 
   if (r === "administrator") return "admin";
-  if (r === "receptionist" || r === "frontdesk" || r === "desk") return "reception";
+  if (r === "receptionist" || r === "frontdesk" || r === "desk")
+    return "reception";
 
   if (
     r === "owner" ||
@@ -192,6 +193,10 @@ async function consumeInvite(params: {
  *    1) إن وجد invite بالإيميل => role/active منها
  *    2) غير ذلك => client (AUTO)
  * - ROOT users/{uid}: optional mirror فقط (لا يعتمد عليه للـ role)
+ *
+ * ✅ FIX المطلوب:
+ * - createdAt يثبت وقت الإنشاء فقط
+ * - إذا doc موجود لكن createdAt ناقص (حسابات قديمة) نكتبه مرة واحدة فقط
  */
 export async function createOrLoadUserProfile(user: User): Promise<UserProfile> {
   const uid = user.uid;
@@ -252,16 +257,21 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     if (!safeStr(data?.name) || data?.name === "مستخدم") patch.name = name;
     if (!safeStr(data?.displayName) || data?.displayName === "مستخدم") patch.displayName = name;
 
+    // ✅ FIX: لو createdAt ناقص (حساب قديم) نكتبه مرة وحدة فقط
+    if (!data?.createdAt) patch.createdAt = serverTimestamp();
+
     // role:
     // - لو ما كان موجود => نكتب role المحسوب
     // - لو غير مفعّل => نثبت pending
     // - لو bootstrap => نثبت owner
     if (!data?.role) patch.role = role;
-    if (!active && String(data?.role || "").toLowerCase().trim() !== "pending") patch.role = "pending";
-    if (isBootstrap && String(data?.role || "").toLowerCase().trim() !== "owner") patch.role = "owner";
+    if (!active && String(data?.role || "").toLowerCase().trim() !== "pending")
+      patch.role = "pending";
+    if (isBootstrap && String(data?.role || "").toLowerCase().trim() !== "owner")
+      patch.role = "owner";
 
     if (Object.keys(patch).length) {
-      patch.updatedAt = serverTimestamp();
+      patch.updatedAt = serverTimestamp(); // ✅ فقط updatedAt يتغير كل مرة
       await setDoc(refSalon, patch, { merge: true });
     }
 
@@ -326,7 +336,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     active,
     membershipId,
     membershipPercent: 0,
-    createdAt: serverTimestamp(),
+    createdAt: serverTimestamp(), // ✅ وقت إنشاء الحساب فقط
     updatedAt: serverTimestamp(),
   };
 
@@ -367,7 +377,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
 /**
  * ✅ updateUserProfile
  * - يحدث فقط في salons/main/users/{uid}
- * - ❌ ممنوع تعديل role/active من هنا
+ * - ❌ ممنوع تعديل role/active/createdAt من هنا
  */
 export async function updateUserProfile(uid: string, updates: Partial<UserProfile>) {
   const refSalon = salonUserRef(uid);
@@ -377,9 +387,10 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
     if (v === undefined || v === null) return;
     if (typeof v === "string" && v.trim() === "") return;
 
-    // ✅ أمان: لا تسمح بتغيير role/active من هنا
+    // ✅ أمان: لا تسمح بتغيير role/active/createdAt من هنا
     if (k === "role") return;
     if (k === "active") return;
+    if (k === "createdAt") return; // ✅ FIX
 
     cleaned[k] = v;
   });
@@ -387,7 +398,7 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
   cleaned.updatedAt = serverTimestamp();
   await setDoc(refSalon, cleaned, { merge: true });
 
-  // ✅ mirror اختياري (بدون role/active)
+  // ✅ mirror اختياري (بدون role/active/createdAt)
   try {
     const mirror: any = {};
     if (typeof cleaned.email === "string") mirror.email = cleaned.email;
@@ -407,9 +418,10 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
     const current = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
     const merged = { ...(current || {}), ...updates, uid };
 
-    // ✅ تأكيد: ما نغير role/active في الكاش من update
+    // ✅ تأكيد: ما نغير role/active/createdAt في الكاش من update
     if (current?.role) merged.role = current.role;
     if (typeof current?.active === "boolean") merged.active = current.active;
+    if (current?.createdAt) merged.createdAt = current.createdAt; // ✅ FIX
 
     localStorage.setItem("user_profile_v1", JSON.stringify(merged));
     if (merged?.name) localStorage.setItem("userName", String(merged.name));

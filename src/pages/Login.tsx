@@ -531,7 +531,6 @@ const Login: React.FC = () => {
         stack: err?.stack,
       });
 
-      alert(`SIGNUP FAILED:\n${String(err?.code)}\n${String(err?.message)}`);
 
       const code = String(err?.code || "");
       if (code.includes("auth/operation-not-allowed")) {
