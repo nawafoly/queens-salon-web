@@ -1,5 +1,3 @@
-
-
 // src/pages/DashboardBookings.tsx
 import { useEffect, useMemo, useState, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -12,11 +10,21 @@ import {
   faXmark,
   faCircleInfo,
   faRotate,
+  faPlus,
 } from "@fortawesome/free-solid-svg-icons";
 
 // ✅ Firestore Auth
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../services/firebase";
+import { auth, db } from "../services/firebase";
+
+import {
+  collection,
+  doc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query as fsQuery,
+} from "firebase/firestore";
 
 import {
   listAllBookings,
@@ -32,6 +40,9 @@ import type { UiRole } from "../services/userProfile";
 // ✅ NEW: resolve service name (make it readable)
 import { resolveServiceName } from "../services/serviceResolver";
 
+// ✅ NEW: AppSettings from Firestore (source of truth)
+import { AppSettingsService, type AppSettings } from "../services/AppSettingsService";
+
 // ✅ Styles
 import "../styles/DashboardModals.css";
 import "../styles/DashboardBookings.css";
@@ -43,7 +54,6 @@ import "../styles/DashboardBookings.css";
 type StatusOption = BookingStatus | "all";
 
 const NOTES_KEY = "dashboard_booking_notes_v1";
-const SETTINGS_KEY = "dashboard_settings_v1";
 
 const statusLabel: Record<BookingStatus, string> = {
   confirmed: "مؤكد",
@@ -52,84 +62,9 @@ const statusLabel: Record<BookingStatus, string> = {
   completed: "مكتمل",
 };
 
-/** ✅ App Settings (Backward compatible)
- * - الجديد: allowReceptionChangeStatus / allowReceptionViewClients
- * - القديم: allowStaffChangeStatus / allowStaffViewClients
- */
-type AppSettings = {
-  policies?: {
-    allowReceptionChangeStatus?: boolean;
-    allowReceptionViewClients?: boolean;
-
-    // legacy keys (older builds)
-    allowStaffChangeStatus?: boolean;
-    allowStaffViewClients?: boolean;
-  };
-};
-
-const defaultSettings: AppSettings = {
-  policies: {
-    allowReceptionChangeStatus: true,
-    allowReceptionViewClients: true,
-
-    // keep legacy default on for safety
-    allowStaffChangeStatus: true,
-    allowStaffViewClients: true,
-  },
-};
-
 /* =========================
    Helpers
 ========================= */
-
-function loadSettings(): AppSettings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return defaultSettings;
-
-    const parsed = JSON.parse(raw);
-
-    const merged: AppSettings = {
-      ...defaultSettings,
-      ...parsed,
-      policies: {
-        ...defaultSettings.policies,
-        ...(parsed?.policies || {}),
-      },
-    };
-
-    // ✅ If only legacy keys exist, reflect them into the new keys (without overwriting explicit new keys)
-    const p = merged.policies || {};
-    const legacyChange =
-      typeof p.allowStaffChangeStatus === "boolean"
-        ? p.allowStaffChangeStatus
-        : undefined;
-
-    const legacyView =
-      typeof p.allowStaffViewClients === "boolean"
-        ? p.allowStaffViewClients
-        : undefined;
-
-    if (
-      typeof p.allowReceptionChangeStatus !== "boolean" &&
-      typeof legacyChange === "boolean"
-    ) {
-      p.allowReceptionChangeStatus = legacyChange;
-    }
-
-    if (
-      typeof p.allowReceptionViewClients !== "boolean" &&
-      typeof legacyView === "boolean"
-    ) {
-      p.allowReceptionViewClients = legacyView;
-    }
-
-    merged.policies = p;
-    return merged;
-  } catch {
-    return defaultSettings;
-  }
-}
 
 function safeISODate(d: string | undefined | null) {
   if (!d) return "";
@@ -213,7 +148,6 @@ function getUiRole(): UiRole {
 
 /** ✅ Get auth user name/email safely (from localStorage first, fallback to firebase user) */
 function getAuthUserSafe(): { displayName: string; email: string } {
-  // ✅ Try localStorage auth_user first
   try {
     const raw = localStorage.getItem("auth_user");
     if (raw) {
@@ -226,7 +160,6 @@ function getAuthUserSafe(): { displayName: string; email: string } {
     // ignore
   }
 
-  // ✅ Fallback to Firebase user
   const u = auth.currentUser;
   const displayName = String(u?.displayName || "").trim();
   const email = String(u?.email || "").trim();
@@ -238,7 +171,6 @@ function getAuthUserSafe(): { displayName: string; email: string } {
 ========================= */
 
 function stripArabicDiacritics(s: string) {
-  // remove harakat + tatweel
   return s
     .replace(
       /[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g,
@@ -251,7 +183,6 @@ function normalizeArabicName(input: string) {
   const s = String(input || "").trim().toLowerCase();
   const noDia = stripArabicDiacritics(s);
 
-  // unify alef variants + yaa/taa marbuta, remove punctuation
   const unified = noDia
     .replace(/[إأآٱ]/g, "ا")
     .replace(/ى/g, "ي")
@@ -283,13 +214,9 @@ function smartEmployeeMatch(
   const emp = normalizeArabicName(empRaw);
   const meN = normalizeArabicName(myNameRaw);
 
-  // 1) exact after normalize
   if (meN && emp === meN) return true;
-
-  // 2) contains (handles "فرح" vs "فرح محمد")
   if (meN && (emp.includes(meN) || meN.includes(emp))) return true;
 
-  // 3) token overlap (avoid matching short common tokens)
   const empTokens = tokenizeName(empRaw);
   const meTokens = tokenizeName(myNameRaw);
 
@@ -299,7 +226,6 @@ function smartEmployeeMatch(
     if (hasStrongCommon) return true;
   }
 
-  // 4) fallback: match email local-part if booking stored email-ish text
   if (myEmail) {
     const local = myEmail.split("@")[0] || "";
     const localN = normalizeArabicName(local.replace(/[._-]/g, " "));
@@ -310,19 +236,101 @@ function smartEmployeeMatch(
 }
 
 /* =========================
+   ✅ Services helpers (multi-services support)
+========================= */
+
+type BookingServiceItem = {
+  serviceId?: string;
+  serviceName?: string;
+  price?: number;
+  durationMin?: number;
+};
+
+function toStringArray(v: any): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x ?? "").trim()).filter(Boolean);
+  return [];
+}
+
+function extractServicesFromAny(anyB: any): BookingServiceItem[] {
+  // ✅ #1: services: [{serviceId, serviceName, ...}]
+  const sArr = Array.isArray(anyB?.services) ? anyB.services : null;
+  if (sArr && sArr.length) {
+    return sArr
+      .map((x: any) => ({
+        serviceId: String(x?.serviceId ?? x?.id ?? x?.key ?? "").trim() || undefined,
+        serviceName: String(x?.serviceName ?? x?.name ?? "").trim() || undefined,
+        price: Number.isFinite(Number(x?.price)) ? Number(x?.price) : undefined,
+        durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x?.durationMin) : undefined,
+      }))
+      .filter((x: any) => x.serviceId || x.serviceName);
+  }
+
+  // ✅ #2: serviceIds + serviceNames (arrays)
+  const ids = toStringArray(anyB?.serviceIds);
+  const names = toStringArray(anyB?.serviceNames);
+
+  if (ids.length || names.length) {
+    const max = Math.max(ids.length, names.length);
+    const out: BookingServiceItem[] = [];
+    for (let i = 0; i < max; i++) {
+      const serviceId = ids[i] || "";
+      const serviceName = names[i] || "";
+      if (serviceId || serviceName) out.push({ serviceId: serviceId || undefined, serviceName: serviceName || undefined });
+    }
+    return out;
+  }
+
+  // ✅ #3: fallback single service
+  const serviceId = String(anyB?.serviceId ?? anyB?.service ?? anyB?.serviceKey ?? "").trim();
+  const serviceName = String(anyB?.serviceName ?? "").trim();
+
+  if (serviceId || serviceName) return [{ serviceId: serviceId || undefined, serviceName: serviceName || undefined }];
+
+  return [];
+}
+
+function serviceSummaryForTable(b: Booking): string {
+  const list = b.services || [];
+  if (!list.length) return b.serviceName || b.serviceId || "—";
+
+  const firstName = (list[0]?.serviceName || list[0]?.serviceId || "").trim();
+  if (list.length <= 1) return firstName || b.serviceName || b.serviceId || "—";
+
+  const extra = list.length - 1;
+  return `${firstName || (b.serviceName || b.serviceId || "خدمة")} + ${extra} خدمات`;
+}
+
+function servicesFullListText(b: Booking): string[] {
+  const list = b.services || [];
+  if (!list.length) {
+    const single = String(b.serviceName || b.serviceId || "").trim();
+    return single ? [single] : [];
+  }
+  return list.map((x) => String(x.serviceName || x.serviceId || "").trim()).filter(Boolean);
+}
+
+/* =========================
    UI Booking type + mappers
 ========================= */
 
 type Booking = {
   id: string;
 
+  publicId?: string;
+
   customerName?: string;
   phone?: string;
 
+  // legacy (single)
   serviceName?: string;
   serviceId?: string;
 
+  // ✅ multi
+  services?: BookingServiceItem[];
+
   employeeName?: string;
+  employeeId?: string | null;
+  employeeUid?: string | null;
 
   date: string;
   time: string;
@@ -354,17 +362,23 @@ function mapBooking(b: any): Booking {
   const serviceId = String(b?.serviceId ?? b?.service ?? b?.serviceKey ?? "").trim();
   const rawServiceName = String(b?.serviceName ?? "").trim();
 
+  const services = extractServicesFromAny(b);
+
   return {
     id: String(b.id ?? ""),
+    publicId: String(b?.publicId ?? "").trim() || undefined,
 
     customerName: b.clientName ?? b.customerName ?? b.name ?? b.customer ?? "",
     phone: b.clientPhone ?? b.phone ?? b.mobile ?? "",
 
     serviceId,
-    // ✅ نخليها مؤقتًا raw (بنحوّلها لاسم مفهوم لاحقًا)
     serviceName: rawServiceName || serviceId || "",
 
+    services: services.length ? services : undefined,
+
     employeeName: b.employeeName ?? b.employee ?? "",
+    employeeId: b.employeeId ?? null,
+    employeeUid: b.employeeUid ?? null,
 
     date: b.date ?? "",
     time: b.time ?? "",
@@ -400,9 +414,31 @@ async function safeResolveServiceName(key: string): Promise<string> {
 }
 
 async function enrichBookingsServiceNames(list: Booking[]): Promise<Booking[]> {
-  // resolve using serviceId first, fallback to current serviceName
   const out = await Promise.all(
     list.map(async (b) => {
+      // ✅ multi-services: resolve each item by serviceId (if present)
+      if (b.services?.length) {
+        const nextServices = await Promise.all(
+          b.services.map(async (it) => {
+            const id = String(it?.serviceId || "").trim();
+            if (!id) return it;
+            const resolved = await safeResolveServiceName(id);
+            return { ...it, serviceName: resolved || it.serviceName };
+          })
+        );
+
+        // also keep legacy serviceName resolved (for older UI parts)
+        const legacyKey = String(b.serviceId || b.serviceName || "").trim();
+        const legacyResolved = legacyKey ? await safeResolveServiceName(legacyKey) : "";
+
+        return {
+          ...b,
+          services: nextServices,
+          serviceName: legacyResolved || b.serviceName,
+        };
+      }
+
+      // legacy single
       const key = String(b.serviceId || b.serviceName || "").trim();
       if (!key) return b;
 
@@ -456,13 +492,39 @@ function Modal({
 }
 
 /* =========================
+   Staff list (for proper employeeId/uid)
+========================= */
+
+type StaffRow = {
+  id: string; // staff_public doc id (employeeId)
+  name: string;
+  linkedUid?: string; // employeeUid (optional)
+  active: boolean;
+  showOnBooking?: boolean;
+  onLeave?: boolean;
+};
+
+const SALON_ID = "main";
+const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
+
+function pickStaffById(list: StaffRow[], id: string) {
+  const key = String(id || "").trim();
+  if (!key) return null;
+  return list.find((x) => x.id === key) || null;
+}
+
+/* =========================
    Component
 ========================= */
 
 const DashboardBookings = () => {
-  // ✅ role + settings
+  // ✅ role + settings (SOURCE OF TRUTH: AppSettingsService)
   const [uiRole, setUiRole] = useState<UiRole>(() => getUiRole());
-  const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => AppSettingsService.getCached());
+
+  // ✅ staff list
+  const [staff, setStaff] = useState<StaffRow[]>([]);
+  const [staffLoading, setStaffLoading] = useState(false);
 
   // ✅ data
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -507,8 +569,9 @@ const DashboardBookings = () => {
   const [form, setForm] = useState({
     clientName: "",
     clientPhone: "",
-    serviceName: "",
-    employeeName: "",
+    serviceKey: "", // can be serviceId OR name (temporary)
+    staffId: "", // staff_public id
+    employeeName: "", // fallback
     date: "",
     time: "",
     total: "",
@@ -523,7 +586,8 @@ const DashboardBookings = () => {
   const [editForm, setEditForm] = useState({
     customerName: "",
     phone: "",
-    serviceName: "",
+    serviceKey: "",
+    staffId: "",
     employeeName: "",
     date: "",
     time: "",
@@ -535,12 +599,11 @@ const DashboardBookings = () => {
      ✅ staff NOT allowed here
   ========================= */
 
-  const canView =
-    uiRole === "owner" || uiRole === "admin" || uiRole === "reception";
+  const canView = uiRole === "owner" || uiRole === "admin" || uiRole === "reception";
 
   const allowReceptionChangeStatus =
-    settings?.policies?.allowReceptionChangeStatus ??
-    settings?.policies?.allowStaffChangeStatus ??
+    (appSettings as any)?.policies?.allowReceptionChangeStatus ??
+    (appSettings as any)?.policies?.allowStaffChangeStatus ??
     true;
 
   const canEditStatus =
@@ -580,7 +643,6 @@ const DashboardBookings = () => {
       const data = await listAllBookings();
       const mapped: Booking[] = (Array.isArray(data) ? data : []).map(mapBooking);
 
-      // ✅ make service names readable
       const withNames = await enrichBookingsServiceNames(mapped);
 
       setBookings(withNames);
@@ -589,56 +651,92 @@ const DashboardBookings = () => {
         const fresh = withNames.find((x) => x.id === prev.id);
         return fresh ?? prev;
       });
-} catch (e: any) {
-  console.error("Failed to load bookings from Firestore:", e);
+    } catch (e: any) {
+      console.error("Failed to load bookings from Firestore:", e);
 
-  const code = String(e?.code || e?.name || "").toLowerCase();
-  const msg = String(e?.message || "");
+      const code = String(e?.code || e?.name || "").toLowerCase();
+      const msg = String(e?.message || "");
+      const m = msg.toLowerCase();
 
-  // ✅ DEBUG: show exact error to know if rules/path issue
-  alert(`❌ Firestore Load Error\ncode: ${code || "-"}\nmsg: ${msg || "-"}`);
+      if (m.includes("missing or insufficient permissions") || code.includes("permission-denied")) {
+        setLoadError(
+          "⚠️ لا توجد صلاحيات كافية لعرض الحجوزات (permission-denied). تأكد من Rules وأن حسابك owner/admin/reception."
+        );
+      } else if (code.includes("unavailable") || m.includes("network")) {
+        setLoadError("⚠️ تعذر الاتصال بـ Firestore (Network/Unavailable). جرّب تحديث الصفحة.");
+      } else {
+        setLoadError(`⚠️ تعذر تحميل الحجوزات.${msg ? ` تفاصيل: ${msg}` : ""}`);
+      }
 
-  const m = msg.toLowerCase();
-
-  if (m.includes("missing or insufficient permissions") || code.includes("permission-denied")) {
-    setLoadError(
-      "⚠️ لا توجد صلاحيات كافية لعرض الحجوزات (permission-denied). تأكد من Firestore Rules وأن الحساب مسجّل دخول بالرول الصحيح."
-    );
-  } else if (code.includes("unavailable") || m.includes("failed to get document") || m.includes("network")) {
-    setLoadError("⚠️ تعذر الاتصال بـ Firestore (Network/Unavailable). جرّب تحديث الصفحة أو تأكد من الإنترنت.");
-  } else if (code.includes("not-found") || m.includes("not found")) {
-    setLoadError("⚠️ المسار غير موجود أو Collection غلط. تأكد أن listAllBookings() يقرأ من نفس مسار الحجوزات الصحيح.");
-  } else {
-    setLoadError(`⚠️ تعذر تحميل الحجوزات.\n${msg ? `تفاصيل: ${msg}` : ""}`);
-  }
-
-  setBookings([]);
-} finally {
-  setLoading(false);
-}
-
+      setBookings([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   /* =========================
-     Effects: auth + realtime
+     Staff list loader (realtime)
+  ========================= */
+
+  useEffect(() => {
+    if (!canView) return;
+
+    setStaffLoading(true);
+
+    const q = fsQuery(collection(db, ...STAFF_PUBLIC_COLLECTION), orderBy("name", "asc"));
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const rows: StaffRow[] = snap.docs.map((d) => {
+          const x = d.data() as any;
+          return {
+            id: d.id,
+            name: String(x?.name || "").trim(),
+            linkedUid: String(x?.linkedUid || x?.uid || "").trim() || undefined,
+            active: x?.active !== false,
+            showOnBooking: x?.showOnBooking !== false,
+            onLeave: !!x?.onLeave,
+          };
+        });
+
+        // خليها مرتبة عربي
+        rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
+
+        setStaff(rows);
+        setStaffLoading(false);
+      },
+      (err) => {
+        console.error("staff_public watch error:", err);
+        setStaff([]);
+        setStaffLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, [canView]);
+
+  /* =========================
+     Effects: auth + realtime + AppSettings
   ========================= */
 
   useEffect(() => {
     setNotesMap(loadNotesMap());
 
-    const unsub = onAuthStateChanged(auth, (u) => {
+    // ✅ subscribe AppSettings (source of truth)
+    const unsubSettings = AppSettingsService.subscribe((s) => setAppSettings(s));
+
+    const unsubAuth = onAuthStateChanged(auth, (u) => {
       setUiRole(getUiRole());
 
-      // ✅ stop any previous realtime watcher
+      // stop previous realtime watcher
       if (watchUnsubRef.current) {
         watchUnsubRef.current();
         watchUnsubRef.current = null;
       }
 
-      // ✅ guard: if user has no permission, don't even watch
       const roleNow = getUiRole();
-      const canViewNow =
-        roleNow === "owner" || roleNow === "admin" || roleNow === "reception";
+      const canViewNow = roleNow === "owner" || roleNow === "admin" || roleNow === "reception";
 
       if (!u) {
         setBookings([]);
@@ -657,12 +755,9 @@ const DashboardBookings = () => {
       setLoading(true);
       setLoadError("");
 
-      // ✅ FIX: watchAllBookings expects ONLY 1 argument (onData)
       watchUnsubRef.current = watchAllBookings(async (data) => {
         try {
           const mapped: Booking[] = (Array.isArray(data) ? data : []).map(mapBooking);
-
-          // ✅ make service names readable
           const withNames = await enrichBookingsServiceNames(mapped);
 
           setBookings(withNames);
@@ -680,19 +775,16 @@ const DashboardBookings = () => {
     const onAuthChanged = () => setUiRole(getUiRole());
     window.addEventListener("authChanged", onAuthChanged);
 
-    const onSettingsChanged = () => setSettings(loadSettings());
-    window.addEventListener("settingsChanged", onSettingsChanged);
-
     return () => {
-      unsub();
+      unsubAuth();
 
       if (watchUnsubRef.current) {
         watchUnsubRef.current();
         watchUnsubRef.current = null;
       }
 
+      unsubSettings?.();
       window.removeEventListener("authChanged", onAuthChanged);
-      window.removeEventListener("settingsChanged", onSettingsChanged);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -768,7 +860,6 @@ const DashboardBookings = () => {
         if (emp !== employee) return false;
       }
 
-      // ✅ Smart staff filter (future-ready)
       if (isStaffView) {
         if (!smartEmployeeMatch(String(b.employeeName ?? ""), me)) return false;
       }
@@ -776,7 +867,12 @@ const DashboardBookings = () => {
       if (q) {
         const name = String(b.customerName ?? "").toLowerCase();
         const phone = getBookingPhone(b).toLowerCase();
-        if (!name.includes(q) && !phone.includes(q)) return false;
+        const pid = String(b.publicId || "").toLowerCase();
+
+        // ✅ search service summary too (helpful)
+        const svc = serviceSummaryForTable(b).toLowerCase();
+
+        if (!name.includes(q) && !phone.includes(q) && !pid.includes(q) && !svc.includes(q)) return false;
       }
 
       return true;
@@ -823,10 +919,7 @@ const DashboardBookings = () => {
     setQuery("");
   };
 
-  const changeStatus = async (
-    id: string | undefined | null,
-    newStatus: BookingStatus
-  ) => {
+  const changeStatus = async (id: string | undefined | null, newStatus: BookingStatus) => {
     if (!id) return;
     if (!canEditStatus) return;
 
@@ -866,10 +959,13 @@ const DashboardBookings = () => {
     const rows: string[][] = [
       [
         "ID",
+        "MK",
         "العميلة",
         "الجوال",
-        "الخدمة",
+        "الخدمة (مختصر)",
+        "الخدمات (تفصيل)",
         "الموظفة",
+        "employeeId",
         "التاريخ",
         "الوقت",
         "الحالة",
@@ -879,12 +975,16 @@ const DashboardBookings = () => {
     ];
 
     filtered.forEach((b) => {
+      const fullList = servicesFullListText(b).join(" | ");
       rows.push([
         b.id ?? "",
+        b.publicId ?? "",
         b.customerName ?? "",
         getBookingPhone(b),
-        String(b.serviceName ?? b.serviceId ?? ""),
+        serviceSummaryForTable(b),
+        fullList,
         String(b.employeeName ?? ""),
+        String(b.employeeId ?? ""),
         b.date ?? "",
         b.time ?? "",
         statusLabel[b.status] ?? b.status,
@@ -910,6 +1010,13 @@ const DashboardBookings = () => {
     setCreateError("");
     setCreating(false);
     setCreateOpen(true);
+
+    // reset quickly
+    setForm((p) => ({
+      ...p,
+      staffId: "",
+      employeeName: "",
+    }));
   }
 
   function closeCreate() {
@@ -923,23 +1030,27 @@ const DashboardBookings = () => {
 
       const uid = auth.currentUser?.uid;
       if (!uid) {
-        setCreateError(
-          "لا يوجد مستخدم مسجّل دخول حالياً. سجّل دخول الإدارة أولاً."
-        );
+        setCreateError("لا يوجد مستخدم مسجّل دخول حالياً. سجّل دخول الإدارة أولاً.");
         return;
       }
 
       const clientName = form.clientName.trim();
       const clientPhone = form.clientPhone.trim();
-      const serviceName = form.serviceName.trim();
-      const employeeName = form.employeeName.trim();
+      const serviceKey = form.serviceKey.trim();
       const date = form.date.trim();
       const time = form.time.trim();
 
+      const staffId = String(form.staffId || "").trim();
+      const picked = pickStaffById(staff, staffId);
+
+      const employeeId = picked?.id || (staffId ? staffId : null);
+      const employeeUid = picked?.linkedUid || null;
+      const employeeName = String(picked?.name || form.employeeName || "").trim();
+
       if (!clientName) return setCreateError("اكتب اسم العميلة.");
       if (!clientPhone) return setCreateError("اكتب رقم جوال العميلة.");
-      if (!serviceName) return setCreateError("اكتب اسم الخدمة.");
-      if (!employeeName) return setCreateError("اكتب اسم الموظفة.");
+      if (!serviceKey) return setCreateError("اكتب الخدمة (اسم أو ID).");
+      if (!employeeName) return setCreateError("اختر الموظفة أو اكتب اسمها.");
       if (!date) return setCreateError("اختر التاريخ.");
       if (!time) return setCreateError("اختر الوقت.");
 
@@ -948,12 +1059,19 @@ const DashboardBookings = () => {
       const totalNumber = Number(form.total || 0);
       const total = Number.isFinite(totalNumber) ? totalNumber : 0;
 
+      // ✅ مهم: نرسل employeeId لو متوفر (علشان Slot locks تكون صحيحة)
       await createDashboardBooking({
         createdBy: uid,
         clientName,
         clientPhone,
-        serviceName,
+
+        // legacy (temporarily)
+        serviceName: serviceKey,
+
         employeeName,
+        employeeId: employeeId ?? null,
+        employeeUid: employeeUid ?? null,
+
         date,
         time,
         total,
@@ -966,7 +1084,8 @@ const DashboardBookings = () => {
       setForm({
         clientName: "",
         clientPhone: "",
-        serviceName: "",
+        serviceKey: "",
+        staffId: "",
         employeeName: "",
         date: "",
         time: "",
@@ -977,9 +1096,7 @@ const DashboardBookings = () => {
       await refresh();
     } catch (e) {
       console.error(e);
-      setCreateError(
-        "صار خطأ أثناء إنشاء الحجز. تأكد من Firestore Rules ثم جرّب مرة ثانية."
-      );
+      setCreateError("صار خطأ أثناء إنشاء الحجز. تأكد من Firestore Rules ثم جرّب مرة ثانية.");
     } finally {
       setCreating(false);
     }
@@ -997,10 +1114,14 @@ const DashboardBookings = () => {
     setSavingEdit(false);
     setModalStatusOpen(false);
 
+    // try match staffId from booking.employeeId
+    const staffId = String(b.employeeId ?? "").trim();
+
     setEditForm({
       customerName: String(b.customerName ?? ""),
       phone: String(getBookingPhone(b) ?? ""),
-      serviceName: String(b.serviceName ?? b.serviceId ?? ""),
+      serviceKey: String(b.serviceId ?? b.serviceName ?? ""),
+      staffId: staffId,
       employeeName: String(b.employeeName ?? ""),
       date: String(b.date ?? ""),
       time: String(b.time ?? ""),
@@ -1025,15 +1146,21 @@ const DashboardBookings = () => {
 
     const customerName = editForm.customerName.trim();
     const phone = editForm.phone.trim();
-    const serviceName = editForm.serviceName.trim();
-    const employeeName = editForm.employeeName.trim();
+    const serviceKey = editForm.serviceKey.trim();
     const date = editForm.date.trim();
     const time = editForm.time.trim();
 
+    const staffId = String(editForm.staffId || "").trim();
+    const picked = pickStaffById(staff, staffId);
+
+    const employeeId = picked?.id || (staffId ? staffId : null);
+    const employeeUid = picked?.linkedUid || null;
+    const employeeName = String(picked?.name || editForm.employeeName || "").trim();
+
     if (!customerName) return setEditError("اكتب اسم العميلة.");
     if (!phone) return setEditError("اكتب رقم جوال العميلة.");
-    if (!serviceName) return setEditError("اكتب اسم الخدمة.");
-    if (!employeeName) return setEditError("اكتب اسم الموظفة.");
+    if (!serviceKey) return setEditError("اكتب الخدمة (اسم أو ID).");
+    if (!employeeName) return setEditError("اختر الموظفة أو اكتب اسمها.");
     if (!date) return setEditError("اختر التاريخ.");
     if (!time) return setEditError("اختر الوقت.");
 
@@ -1046,8 +1173,14 @@ const DashboardBookings = () => {
       await updateBookingFields(selected.id, {
         clientName: customerName,
         clientPhone: phone,
-        serviceName,
+
+        // legacy for now
+        serviceName: serviceKey,
+
         employeeName,
+        employeeId: employeeId ?? null,
+        employeeUid: employeeUid ?? null,
+
         date,
         time,
         total,
@@ -1061,8 +1194,10 @@ const DashboardBookings = () => {
                 ...b,
                 customerName,
                 phone,
-                serviceName,
+                serviceName: serviceKey,
                 employeeName,
+                employeeId,
+                employeeUid,
                 date,
                 time,
                 total,
@@ -1078,8 +1213,10 @@ const DashboardBookings = () => {
               ...prev,
               customerName,
               phone,
-              serviceName,
+              serviceName: serviceKey,
               employeeName,
+              employeeId,
+              employeeUid,
               date,
               time,
               total,
@@ -1091,9 +1228,7 @@ const DashboardBookings = () => {
       setEditMode(false);
     } catch (e) {
       console.error(e);
-      setEditError(
-        "صار خطأ أثناء حفظ التعديل. تأكد من الصلاحيات ثم جرّب مرة ثانية."
-      );
+      setEditError("صار خطأ أثناء حفظ التعديل. تأكد من الصلاحيات ثم جرّب مرة ثانية.");
     } finally {
       setSavingEdit(false);
     }
@@ -1112,8 +1247,7 @@ const DashboardBookings = () => {
     );
   }
 
-  const statusText =
-    status === "all" ? "الكل" : statusLabel[status as BookingStatus] ?? "اختر";
+  const statusText = status === "all" ? "الكل" : statusLabel[status as BookingStatus] ?? "اختر";
 
   /* =========================
      JSX
@@ -1123,33 +1257,81 @@ const DashboardBookings = () => {
     <div className="bookings-page">
       {/* Header */}
       <div className="bookings-header">
-        <h1>الحجوزات</h1>
-        <p>فلترة + إدارة + تصدير (Realtime)</p>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h1>الحجوزات</h1>
+            <p style={{ marginTop: 6 }}>
+              إدارة واضحة وسريعة (Realtime) ✅
+              <span style={{ opacity: 0.7 }}> • البحث يشمل الاسم/الجوال/رقم MK</span>
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button className="reports-btn" type="button" onClick={refresh} disabled={loading}>
+              <FontAwesomeIcon icon={faRotate} /> تحديث
+            </button>
+
+            <button
+              className="reports-btn"
+              type="button"
+              onClick={openCreate}
+              disabled={!canEditStatus}
+              title={!canEditStatus ? "لا تملك صلاحية الإنشاء" : "إنشاء حجز"}
+            >
+              <FontAwesomeIcon icon={faPlus} /> إنشاء حجز
+            </button>
+
+            {canExportCSV && (
+              <button className="reports-btn" type="button" onClick={exportCSV} disabled={loading}>
+                <FontAwesomeIcon icon={faFileCsv} /> CSV
+              </button>
+            )}
+          </div>
+        </div>
 
         {loadError && <div className="bookings-error">{loadError}</div>}
       </div>
 
-      {/* Filters */}
+      {/* Stats */}
+      <div className="bookings-header" style={{ marginTop: 0 }}>
+        <div className="clients-stats" style={{ margin: 0 }}>
+          <div className="stat-card stat-3">
+            <div className="stat-info">
+              <h3 className="value">{stats.totalBookings}</h3>
+              <p>عدد الحجوزات (بعد الفلترة)</p>
+            </div>
+          </div>
+
+          <div className="stat-card stat-3">
+            <div className="stat-info">
+              <h3 className="value">{stats.totalRevenue.toLocaleString()}</h3>
+              <p>إجمالي الإيراد</p>
+            </div>
+          </div>
+
+          <div className="stat-card stat-6">
+            <div className="stat-info">
+              <h3 className="value1">
+                مؤكد: {stats.dist.confirmed} — انتظار: {stats.dist.pending} — ملغي:{" "}
+                {stats.dist.cancelled} — مكتمل: {stats.dist.completed}
+              </h3>
+              <p>توزيع الحالات</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters (no nested scroll, clean) */}
       <div className="bk-mini">
         <div className="bk-filters">
           <div className="bk-field w-180">
             <label>من تاريخ</label>
-            <input
-              className="form-control"
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
+            <input className="form-control" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           </div>
 
           <div className="bk-field w-180">
             <label>إلى تاريخ</label>
-            <input
-              className="form-control"
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
+            <input className="form-control" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </div>
 
           {/* Status */}
@@ -1158,12 +1340,7 @@ const DashboardBookings = () => {
               <FontAwesomeIcon icon={faFilter} /> الحالة
             </label>
 
-            <button
-              type="button"
-              className="bk-select"
-              onClick={() => setStatusOpen((s) => !s)}
-              aria-expanded={statusOpen}
-            >
+            <button type="button" className="bk-select" onClick={() => setStatusOpen((s) => !s)} aria-expanded={statusOpen}>
               {statusText}
             </button>
 
@@ -1180,9 +1357,7 @@ const DashboardBookings = () => {
                   الكل
                 </button>
 
-                {(
-                  ["confirmed", "pending", "cancelled", "completed"] as BookingStatus[]
-                ).map((s) => (
+                {(["confirmed", "pending", "cancelled", "completed"] as BookingStatus[]).map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -1202,12 +1377,7 @@ const DashboardBookings = () => {
           {/* Employee */}
           <div className="bk-field w-200" ref={empWrapRef}>
             <label>الموظفة</label>
-            <button
-              type="button"
-              className="bk-select"
-              onClick={() => setEmpOpen((s) => !s)}
-              aria-expanded={empOpen}
-            >
+            <button type="button" className="bk-select" onClick={() => setEmpOpen((s) => !s)} aria-expanded={empOpen}>
               {employee === "all" ? "الكل" : employee}
             </button>
 
@@ -1244,197 +1414,133 @@ const DashboardBookings = () => {
           {/* Search */}
           <div className="bk-search">
             <label>
-              <FontAwesomeIcon icon={faSearch} /> بحث (اسم / جوال)
+              <FontAwesomeIcon icon={faSearch} /> بحث (اسم / جوال / MK)
             </label>
             <div className="bk-search-row">
               <input
                 className="form-control"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="مثال: نورة أو 05xxxxxxx"
+                placeholder="مثال: نورة أو 05xxxxxxx أو MK-10021"
               />
 
-              <button className="reports-btn" type="button" onClick={refresh}>
-                <FontAwesomeIcon icon={faRotate} /> تحديث
+              <button className="reports-btn" type="button" onClick={setToday}>
+                اليوم
               </button>
-            </div>
-          </div>
 
-          {/* Actions */}
-          <div className="bk-actions">
-            <button className="reports-btn" type="button" onClick={setToday}>
-              اليوم
-            </button>
-
-            <button className="reports-btn" type="button" onClick={resetFilters}>
-              تصفير
-            </button>
-
-            <button
-              className="reports-btn"
-              type="button"
-              onClick={openCreate}
-              disabled={!canEditStatus}
-              title={!canEditStatus ? "لا تملك صلاحية الإنشاء" : "إنشاء حجز"}
-            >
-              + إنشاء حجز
-            </button>
-
-            {canExportCSV && (
-              <button
-                className="reports-btn"
-                type="button"
-                onClick={exportCSV}
-                disabled={loading}
-                title="تصدير CSV"
-              >
-                <FontAwesomeIcon icon={faFileCsv} /> CSV
+              <button className="reports-btn" type="button" onClick={resetFilters}>
+                تصفير
               </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="bookings-header" style={{ marginTop: 0 }}>
-        <div className="clients-stats" style={{ margin: 0 }}>
-          <div className="stat-card stat-3">
-            <div className="stat-info">
-              <h3 className="value">{stats.totalBookings}</h3>
-              <p>عدد الحجوزات (بعد الفلترة)</p>
-            </div>
-          </div>
-
-          <div className="stat-card stat-3">
-            <div className="stat-info">
-              <h3 className="value">{stats.totalRevenue.toLocaleString()}</h3>
-              <p>إجمالي الإيراد</p>
-            </div>
-          </div>
-
-          <div className="stat-card stat-6">
-            <div className="stat-info">
-              <h3 className="value1">
-                مؤكد: {stats.dist.confirmed} — انتظار: {stats.dist.pending} — ملغي:{" "}
-                {stats.dist.cancelled} — مكتمل: {stats.dist.completed}
-              </h3>
-              <p>توزيع الحالات</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table (single-scroll page) */}
       <div className="bookings-table-card">
-        <div className="bk-table-wrap">
-          <div className="table-responsive">
-            <table className="bookings-table">
-              <thead>
-                <tr>
-                  <th>العميلة</th>
-                  <th>الجوال</th>
-                  <th>الخدمة</th>
-                  <th>الموظفة</th>
-                  <th>التاريخ</th>
-                  <th>الوقت</th>
-                  <th>الحالة</th>
-                  <th>الإجمالي</th>
-                  <th>إجراء</th>
-                </tr>
-              </thead>
+        <table className="bookings-table">
+          <thead>
+            <tr>
+              <th>MK</th>
+              <th>العميلة</th>
+              <th>الجوال</th>
+              <th>الخدمة</th>
+              <th>الموظفة</th>
+              <th>التاريخ</th>
+              <th>الوقت</th>
+              <th>الحالة</th>
+              <th>الإجمالي</th>
+              <th>إجراء</th>
+            </tr>
+          </thead>
 
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={9} style={{ padding: 16, textAlign: "center" }}>
-                      جاري التحميل...
-                    </td>
-                  </tr>
-                ) : filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} style={{ padding: 16, textAlign: "center" }}>
-                      لا توجد نتائج
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((b) => (
-                    <tr key={b.id}>
-                      <td>{b.customerName || "—"}</td>
-                      <td>{getBookingPhone(b) || "—"}</td>
-                      <td>{b.serviceName || b.serviceId || "—"}</td>
-                      <td>{b.employeeName || "—"}</td>
-                      <td>{b.date || "—"}</td>
-                      <td>{b.time || "—"}</td>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={10} style={{ padding: 16, textAlign: "center" }}>
+                  جاري التحميل...
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={10} style={{ padding: 16, textAlign: "center" }}>
+                  لا توجد نتائج
+                </td>
+              </tr>
+            ) : (
+              filtered.map((b) => (
+                <tr key={b.id}>
+                  <td style={{ fontWeight: 900 }}>{b.publicId || "—"}</td>
+                  <td>{b.customerName || "—"}</td>
+                  <td>{getBookingPhone(b) || "—"}</td>
 
-                      <td>
-                        {!canEditStatus ? (
-                          <StatusDot status={b.status} />
-                        ) : (
-                          <div
-                            className="dash-dd-wrap"
-                            ref={(el) => {
-                              rowStatusWrapRefs.current[b.id] = el;
-                            }}
-                          >
-                            <button
-                              type="button"
-                              className="dash-select dash-select--sm"
-                              onClick={() =>
-                                setRowStatusOpenId((prev) => (prev === b.id ? null : b.id))
-                              }
-                              aria-expanded={rowStatusOpenId === b.id}
-                            >
-                              {statusLabel[b.status] ?? b.status}
-                            </button>
+                  {/* ✅ هنا المطلوب: عرض مبسط بالجدول */}
+                  <td>{serviceSummaryForTable(b)}</td>
 
-                            {rowStatusOpenId === b.id && (
-                              <div className="dash-dd-menu" role="listbox">
-                                {(
-                                  ["confirmed", "pending", "cancelled", "completed"] as BookingStatus[]
-                                ).map((s) => (
-                                  <button
-                                    key={s}
-                                    type="button"
-                                    className={`dash-dd-item ${b.status === s ? "is-active" : ""}`}
-                                    onClick={() => {
-                                      setRowStatusOpenId(null);
-                                      changeStatus(b.id, s);
-                                    }}
-                                    role="option"
-                                    aria-selected={b.status === s}
-                                  >
-                                    {statusLabel[s]}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
+                  <td>{b.employeeName || "—"}</td>
+                  <td>{b.date || "—"}</td>
+                  <td>{b.time || "—"}</td>
+
+                  <td>
+                    {!canEditStatus ? (
+                      <StatusDot status={b.status} />
+                    ) : (
+                      <div
+                        className="dash-dd-wrap"
+                        ref={(el) => {
+                          rowStatusWrapRefs.current[b.id] = el;
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="dash-select dash-select--sm"
+                          onClick={() =>
+                            setRowStatusOpenId((prev) => (prev === b.id ? null : b.id))
+                          }
+                          aria-expanded={rowStatusOpenId === b.id}
+                        >
+                          {statusLabel[b.status] ?? b.status}
+                        </button>
+
+                        {rowStatusOpenId === b.id && (
+                          <div className="dash-dd-menu" role="listbox">
+                            {(["confirmed", "pending", "cancelled", "completed"] as BookingStatus[]).map((s) => (
+                              <button
+                                key={s}
+                                type="button"
+                                className={`dash-dd-item ${b.status === s ? "is-active" : ""}`}
+                                onClick={() => {
+                                  setRowStatusOpenId(null);
+                                  changeStatus(b.id, s);
+                                }}
+                                role="option"
+                                aria-selected={b.status === s}
+                              >
+                                {statusLabel[s]}
+                              </button>
+                            ))}
                           </div>
                         )}
-                      </td>
+                      </div>
+                    )}
+                  </td>
 
-                      <td>
-                        {getBookingTotal(b) ? getBookingTotal(b).toLocaleString() : "—"}
-                      </td>
+                  <td>
+                    {getBookingTotal(b) ? getBookingTotal(b).toLocaleString() : "—"}
+                  </td>
 
-                      <td>
-                        <div className="bk-actions-cell">
-                          <button
-                            className="reports-btn"
-                            type="button"
-                            onClick={() => openDetails(b)}
-                            title="تفاصيل"
-                          >
-                            <FontAwesomeIcon icon={faCircleInfo} /> تفاصيل
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  <td>
+                    <div className="bk-actions-cell">
+                      <button className="reports-btn" type="button" onClick={() => openDetails(b)} title="تفاصيل">
+                        <FontAwesomeIcon icon={faCircleInfo} /> تفاصيل
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Create Booking Modal */}
@@ -1465,37 +1571,59 @@ const DashboardBookings = () => {
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
-            <label>الخدمة</label>
+            <label>الخدمة (اسم أو ID)</label>
             <input
               className="form-control"
-              value={form.serviceName}
-              onChange={(e) => setField("serviceName", e.target.value)}
-              placeholder="مثال: قص الشعر"
+              value={form.serviceKey}
+              onChange={(e) => setField("serviceKey", e.target.value)}
+              placeholder="مثال: قص الشعر أو serviceId"
               disabled={creating}
             />
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
-            <label>الموظفة</label>
+            <label>الموظفة (الأفضل: اختر من القائمة)</label>
+
+            <select
+              className="form-select dash-select"
+              value={form.staffId}
+              disabled={creating || staffLoading}
+              onChange={(e) => {
+                const id = e.target.value;
+                setField("staffId", id);
+
+                const picked = pickStaffById(staff, id);
+                if (picked?.name) setField("employeeName", picked.name);
+              }}
+            >
+              <option value="">{staffLoading ? "جاري تحميل الموظفات..." : "اختر موظفة (يعبي employeeId تلقائيًا)"}</option>
+              {staff
+                .filter((s) => s.active !== false)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name || s.id}
+                  </option>
+                ))}
+            </select>
+
             <input
               className="form-control"
               value={form.employeeName}
               onChange={(e) => setField("employeeName", e.target.value)}
-              placeholder="مثال: خديجة"
+              placeholder="Fallback: اكتب الاسم يدويًا"
               disabled={creating}
+              style={{ marginTop: 8 }}
             />
+
+            <div style={{ fontSize: 12, opacity: 0.7 }}>
+              * اختيار الموظفة من القائمة يرسل employeeId (staff_public id) وهذا أهم شيء لقفل الـ slots صح ✅
+            </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div style={{ display: "grid", gap: 8 }}>
               <label>التاريخ</label>
-              <input
-                className="form-control"
-                type="date"
-                value={form.date}
-                onChange={(e) => setField("date", e.target.value)}
-                disabled={creating}
-              />
+              <input className="form-control" type="date" value={form.date} onChange={(e) => setField("date", e.target.value)} disabled={creating} />
             </div>
 
             <div style={{ display: "grid", gap: 8 }}>
@@ -1512,13 +1640,7 @@ const DashboardBookings = () => {
 
           <div style={{ display: "grid", gap: 8 }}>
             <label>الإجمالي (اختياري)</label>
-            <input
-              className="form-control"
-              value={form.total}
-              onChange={(e) => setField("total", e.target.value)}
-              placeholder="مثال: 200"
-              disabled={creating}
-            />
+            <input className="form-control" value={form.total} onChange={(e) => setField("total", e.target.value)} placeholder="مثال: 200" disabled={creating} />
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
@@ -1534,20 +1656,10 @@ const DashboardBookings = () => {
           </div>
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-            <button
-              className="reports-btn"
-              type="button"
-              onClick={closeCreate}
-              disabled={creating}
-            >
+            <button className="reports-btn" type="button" onClick={closeCreate} disabled={creating}>
               إلغاء
             </button>
-            <button
-              className="reports-btn"
-              type="button"
-              onClick={handleCreateBooking}
-              disabled={creating}
-            >
+            <button className="reports-btn" type="button" onClick={handleCreateBooking} disabled={creating}>
               {creating ? "جارٍ الإنشاء..." : "إنشاء"}
             </button>
           </div>
@@ -1557,20 +1669,13 @@ const DashboardBookings = () => {
       {/* Details / Edit Modal */}
       <Modal
         open={!!selected}
-        title={selected ? `تفاصيل الحجز — ${selected.customerName || "—"}` : "تفاصيل"}
+        title={selected ? `تفاصيل الحجز — ${selected.publicId || selected.customerName || "—"}` : "تفاصيل"}
         onClose={closeDetails}
       >
         {!selected ? null : (
           <div>
             {/* Top actions */}
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                marginBottom: 12,
-              }}
-            >
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
               <button
                 className="reports-btn"
                 type="button"
@@ -1596,9 +1701,7 @@ const DashboardBookings = () => {
 
                 {canEditStatus && modalStatusOpen && (
                   <div className="dash-dd-menu" role="listbox">
-                    {(
-                      ["confirmed", "pending", "cancelled", "completed"] as BookingStatus[]
-                    ).map((s) => (
+                    {(["confirmed", "pending", "cancelled", "completed"] as BookingStatus[]).map((s) => (
                       <button
                         key={s}
                         type="button"
@@ -1620,6 +1723,46 @@ const DashboardBookings = () => {
 
             {editError && <div className="bookings-error">{editError}</div>}
 
+            {/* Quick meta */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10, opacity: 0.85 }}>
+              <span style={{ fontWeight: 900 }}>MK:</span> <span>{selected.publicId || "—"}</span>
+              <span style={{ fontWeight: 900 }}>DocId:</span> <span>{selected.id}</span>
+              <span style={{ fontWeight: 900 }}>employeeId:</span> <span>{String(selected.employeeId ?? "—")}</span>
+            </div>
+
+            {/* ✅ Services details (show FULL list when available) */}
+            {!editMode && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>الخدمات</div>
+
+                {servicesFullListText(selected).length ? (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {servicesFullListText(selected).map((name, idx) => (
+                      <div
+                        key={`${selected.id}-svc-${idx}`}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          background: "rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        {idx + 1}. {name}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ opacity: 0.7 }}>—</div>
+                )}
+
+                {selected.services?.length && selected.services.length > 1 ? (
+                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
+                    * في الجدول يظهر مختصر فقط (مثال: {serviceSummaryForTable(selected)})
+                  </div>
+                ) : null}
+              </div>
+            )}
+
             {/* Details grid */}
             <div className="bk-details-grid">
               <div className="bk-item">
@@ -1627,12 +1770,7 @@ const DashboardBookings = () => {
                 {!editMode ? (
                   <span>{selected.customerName || "—"}</span>
                 ) : (
-                  <input
-                    className="form-control"
-                    value={editForm.customerName}
-                    onChange={(e) => setEditField("customerName", e.target.value)}
-                    disabled={savingEdit}
-                  />
+                  <input className="form-control" value={editForm.customerName} onChange={(e) => setEditField("customerName", e.target.value)} disabled={savingEdit} />
                 )}
               </div>
 
@@ -1641,26 +1779,16 @@ const DashboardBookings = () => {
                 {!editMode ? (
                   <span>{getBookingPhone(selected) || "—"}</span>
                 ) : (
-                  <input
-                    className="form-control"
-                    value={editForm.phone}
-                    onChange={(e) => setEditField("phone", e.target.value)}
-                    disabled={savingEdit}
-                  />
+                  <input className="form-control" value={editForm.phone} onChange={(e) => setEditField("phone", e.target.value)} disabled={savingEdit} />
                 )}
               </div>
 
               <div className="bk-item">
-                <strong>الخدمة</strong>
+                <strong>الخدمة (للتعديل اليدوي)</strong>
                 {!editMode ? (
-                  <span>{selected.serviceName || selected.serviceId || "—"}</span>
+                  <span>{serviceSummaryForTable(selected)}</span>
                 ) : (
-                  <input
-                    className="form-control"
-                    value={editForm.serviceName}
-                    onChange={(e) => setEditField("serviceName", e.target.value)}
-                    disabled={savingEdit}
-                  />
+                  <input className="form-control" value={editForm.serviceKey} onChange={(e) => setEditField("serviceKey", e.target.value)} disabled={savingEdit} />
                 )}
               </div>
 
@@ -1669,12 +1797,37 @@ const DashboardBookings = () => {
                 {!editMode ? (
                   <span>{selected.employeeName || "—"}</span>
                 ) : (
-                  <input
-                    className="form-control"
-                    value={editForm.employeeName}
-                    onChange={(e) => setEditField("employeeName", e.target.value)}
-                    disabled={savingEdit}
-                  />
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <select
+                      className="form-select dash-select"
+                      value={editForm.staffId}
+                      disabled={savingEdit || staffLoading}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setEditField("staffId", id);
+
+                        const picked = pickStaffById(staff, id);
+                        if (picked?.name) setEditField("employeeName", picked.name);
+                      }}
+                    >
+                      <option value="">{staffLoading ? "جاري تحميل..." : "اختر موظفة (يعبي employeeId)"}</option>
+                      {staff
+                        .filter((s) => s.active !== false)
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name || s.id}
+                          </option>
+                        ))}
+                    </select>
+
+                    <input
+                      className="form-control"
+                      value={editForm.employeeName}
+                      onChange={(e) => setEditField("employeeName", e.target.value)}
+                      disabled={savingEdit}
+                      placeholder="Fallback: اكتب الاسم"
+                    />
+                  </div>
                 )}
               </div>
 
@@ -1683,13 +1836,7 @@ const DashboardBookings = () => {
                 {!editMode ? (
                   <span>{selected.date || "—"}</span>
                 ) : (
-                  <input
-                    className="form-control"
-                    type="date"
-                    value={editForm.date}
-                    onChange={(e) => setEditField("date", e.target.value)}
-                    disabled={savingEdit}
-                  />
+                  <input className="form-control" type="date" value={editForm.date} onChange={(e) => setEditField("date", e.target.value)} disabled={savingEdit} />
                 )}
               </div>
 
@@ -1698,12 +1845,7 @@ const DashboardBookings = () => {
                 {!editMode ? (
                   <span>{selected.time || "—"}</span>
                 ) : (
-                  <input
-                    className="form-control"
-                    value={editForm.time}
-                    onChange={(e) => setEditField("time", e.target.value)}
-                    disabled={savingEdit}
-                  />
+                  <input className="form-control" value={editForm.time} onChange={(e) => setEditField("time", e.target.value)} disabled={savingEdit} />
                 )}
               </div>
 
@@ -1711,17 +1853,10 @@ const DashboardBookings = () => {
                 <strong>الإجمالي</strong>
                 {!editMode ? (
                   <span>
-                    {getBookingTotal(selected)
-                      ? `${getBookingTotal(selected).toLocaleString()} ريال`
-                      : "—"}
+                    {getBookingTotal(selected) ? `${getBookingTotal(selected).toLocaleString()} ريال` : "—"}
                   </span>
                 ) : (
-                  <input
-                    className="form-control"
-                    value={editForm.total}
-                    onChange={(e) => setEditField("total", e.target.value)}
-                    disabled={savingEdit}
-                  />
+                  <input className="form-control" value={editForm.total} onChange={(e) => setEditField("total", e.target.value)} disabled={savingEdit} />
                 )}
               </div>
 
@@ -1745,20 +1880,8 @@ const DashboardBookings = () => {
               />
 
               {editMode && (
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 10,
-                    marginTop: 10,
-                  }}
-                >
-                  <button
-                    className="reports-btn"
-                    type="button"
-                    onClick={saveBookingEdits}
-                    disabled={savingEdit}
-                  >
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
+                  <button className="reports-btn" type="button" onClick={saveBookingEdits} disabled={savingEdit}>
                     {savingEdit ? "جارٍ الحفظ..." : "حفظ التعديل"}
                   </button>
                 </div>
@@ -1772,4 +1895,3 @@ const DashboardBookings = () => {
 };
 
 export default DashboardBookings;
-

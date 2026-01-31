@@ -1,5 +1,3 @@
-
-
 // src/services/firestoreBookings.ts
 import { db } from "./firebase";
 import {
@@ -172,6 +170,16 @@ function safeKey(s: string) {
     .replace(/\s+/g, "_");
 }
 
+/**
+ * ✅ IMPORTANT (Contract):
+ * Lock key for booking_slots MUST match Booking.tsx checks.
+ * Currently Booking.tsx checks by:
+ * - query booking_slots where employeeId == staff_public doc id
+ * and reads docs by slotId:
+ *   `${salonId}__${date}__${time}__${employeeKey}`
+ *
+ * So in locks we use employeeKeyForLock = employeeId (staff_public id).
+ */
 function buildSlotId(date: string, time: string, employeeKey: string) {
   return `${SALON_ID}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
 }
@@ -184,6 +192,13 @@ export function buildBookingSlotId(date: string, time: string, employeeKey: stri
 function slotTakenError() {
   const e: any = new Error("SLOT_TAKEN");
   e.code = "SLOT_TAKEN";
+  return e;
+}
+
+// ✅ New: explicit employee required error
+function employeeRequiredError() {
+  const e: any = new Error("EMPLOYEE_REQUIRED");
+  e.code = "EMPLOYEE_REQUIRED";
   return e;
 }
 
@@ -216,6 +231,7 @@ function getSlotSettings() {
 function getTimesToLock(startTime: string, durationMin: number) {
   const { slotStepMin, bufferMin } = getSlotSettings();
 
+  // ⚠️ generateSalonTimeSlots() هنا بدون ساعات عمل لأنه نفس اللي عندكم سابقًا
   const slots = generateSalonTimeSlots();
   const idx = slots.indexOf(startTime);
 
@@ -236,7 +252,12 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const employeeIdTrimmed = String(data.employeeId ?? "").trim();
   const employeeNameTrimmed = String(data.employeeName || "").trim();
 
-  const employeeKeyForLock = employeeIdTrimmed || employeeNameTrimmed || "unknown_employee";
+  // ✅ enforce employeeId 100% (contract)
+  if (!employeeIdTrimmed) {
+    throw employeeRequiredError();
+  }
+
+  const employeeKeyForLock = employeeIdTrimmed;
 
   // ✅ employeeKey للـ staff portal = linkedUid (إن وجد) وإلا staff_public id وإلا safeKey(name)
   const employeeUidTrimmed = String(data.employeeUid ?? "").trim();
@@ -278,10 +299,12 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
   const payloadBase = stripUndefined({
     ...data,
+
+    // ✅ normalize nullables
     employeeId: (data.employeeId ?? null) as any,
     employeeUid: (data.employeeUid ?? null) as any,
-    durationMin,
 
+    durationMin,
     employeeKey,
     slotId: startSlotId,
 
@@ -370,7 +393,10 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
       tx.set(slotRef, {
         bookingId: bookingRef.id,
+
+        // ✅ must match Booking.tsx queries (employeeId + date)
         employeeId: data.employeeId ?? null,
+
         employeeUid: data.employeeUid ?? null,
         employeeName: data.employeeName,
 
@@ -450,7 +476,7 @@ export async function createDashboardBooking(args: {
   durationMin?: number;
 
   employeeName: string;
-  employeeId?: string | null;
+  employeeId: string; // ✅ REQUIRED
   employeeUid?: string | null;
 
   date: string;
@@ -462,6 +488,9 @@ export async function createDashboardBooking(args: {
   status?: BookingStatus;
   note?: string;
 }) {
+  const dashEmployeeId = String(args.employeeId || "").trim();
+  if (!dashEmployeeId) throw employeeRequiredError();
+
   const payload: BookingDoc = {
     userId: null,
     createdBy: args.createdBy,
@@ -478,7 +507,7 @@ export async function createDashboardBooking(args: {
 
     durationMin: args.durationMin,
 
-    employeeId: args.employeeId ?? null,
+    employeeId: dashEmployeeId,
     employeeUid: args.employeeUid ?? null,
     employeeName: args.employeeName,
 
@@ -962,4 +991,3 @@ export async function backfillServiceFields(opts?: { dryRun?: boolean; limit?: n
 
   return { scanned: snap.size, patched, dryRun };
 }
-

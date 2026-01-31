@@ -1,5 +1,3 @@
-
-
 // src/services/AppSettingsService.ts
 import { db } from "./firebase";
 import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
@@ -77,8 +75,21 @@ export type AppSettings = {
   updatedAt?: string;
 };
 
-const LS_KEY = "app_settings_cache_v1";
-const DOC_PATH = { col: "settings", id: "app" };
+/**
+ * ✅ IMPORTANT:
+ * قبل كان يكتب في settings/app (جذر) وهذا ما تسمح به Rules عندك.
+ * الآن نكتب في المسار الصحيح: salons/main/settings/app
+ */
+const SALON_ID = "main";
+
+// ✅ خله نفس اللي تستخدمه صفحات الداشبورد عندك (SettingsBookings)
+const LS_KEY = "qs_app_settings_cache_v1";
+
+// ✅ المسار الصحيح المتوافق مع rules: match /salons/{salonId}/settings/{id}
+const DOC_PATH = {
+  col: ["salons", SALON_ID, "settings"] as const,
+  id: "app",
+};
 
 function defaultBusinessHours(): Record<WeekdayKey, BusinessHoursDay> {
   return {
@@ -217,13 +228,20 @@ function sanitize(input: any): AppSettings {
     fri: safeDayHours(bookingRaw.businessHours?.fri, bhFallback.fri),
   };
 
-  const slotStepMin = Math.max(5, safeNumber(bookingRaw.slotStepMin, defaultSettings.booking!.slotStepMin));
-  const bufferMin = Math.max(0, safeNumber(bookingRaw.bufferMin, defaultSettings.booking!.bufferMin));
+  const slotStepMin = Math.max(
+    5,
+    safeNumber(bookingRaw.slotStepMin, defaultSettings.booking!.slotStepMin)
+  );
+  const bufferMin = Math.max(
+    0,
+    safeNumber(bookingRaw.bufferMin, defaultSettings.booking!.bufferMin)
+  );
 
   return {
     ...defaultSettings,
 
-    salonName: typeof s.salonName === "string" ? s.salonName : defaultSettings.salonName,
+    salonName:
+      typeof s.salonName === "string" ? s.salonName : defaultSettings.salonName,
     phone: typeof s.phone === "string" ? s.phone : defaultSettings.phone,
     city: typeof s.city === "string" ? s.city : defaultSettings.city,
 
@@ -231,7 +249,10 @@ function sanitize(input: any): AppSettings {
       overview: safeBool(sectionsRaw.overview, defaultSettings.sections.overview),
       bookings: safeBool(sectionsRaw.bookings, defaultSettings.sections.bookings),
       clients: safeBool(sectionsRaw.clients, defaultSettings.sections.clients),
-      employees: safeBool(sectionsRaw.employees, defaultSettings.sections.employees),
+      employees: safeBool(
+        sectionsRaw.employees,
+        defaultSettings.sections.employees
+      ),
       offers: safeBool(sectionsRaw.offers, defaultSettings.sections.offers),
       reports: safeBool(sectionsRaw.reports, defaultSettings.sections.reports),
       income: safeBool(sectionsRaw.income, defaultSettings.sections.income),
@@ -274,7 +295,8 @@ function sanitize(input: any): AppSettings {
       catalog: sanitizeServicesCatalog(servicesRaw.catalog),
     },
 
-    updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : defaultSettings.updatedAt,
+    updatedAt:
+      typeof s.updatedAt === "string" ? s.updatedAt : defaultSettings.updatedAt,
   };
 }
 
@@ -284,7 +306,6 @@ function cacheWrite(settings: AppSettings) {
     localStorage.setItem(LS_KEY, JSON.stringify(settings));
   } catch {}
 }
-
 
 function cacheRead(): AppSettings | null {
   if (STRICT_FIREBASE) return null;
@@ -297,10 +318,9 @@ function cacheRead(): AppSettings | null {
   }
 }
 
-
-/** ✅ إنشاء settings/app مرة واحدة لو غير موجود */
+/** ✅ إنشاء salons/main/settings/app مرة واحدة لو غير موجود */
 async function ensureRemoteExists() {
-  const ref = doc(db, DOC_PATH.col, DOC_PATH.id);
+  const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
   const snap = await getDoc(ref);
   if (snap.exists()) return;
 
@@ -327,26 +347,26 @@ export const AppSettingsService = {
   },
 
   async fetchRemote(): Promise<AppSettings> {
-    const ref = doc(db, DOC_PATH.col, DOC_PATH.id);
+    const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
 
     const snap = await getDoc(ref);
     if (!snap.exists()) {
       if (STRICT_FIREBASE) {
-        throw new Error("🔥 settings/app does not exist in Firestore");
+        throw new Error("🔥 salons/main/settings/app does not exist in Firestore");
       }
-    
+
       await ensureRemoteExists();
       cacheWrite(defaultSettings);
       return defaultSettings;
     }
-    
+
     const remote = sanitize(snap.data());
     cacheWrite(remote);
     return remote;
   },
 
   subscribe(cb: (settings: AppSettings) => void) {
-    const ref = doc(db, DOC_PATH.col, DOC_PATH.id);
+    const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
 
     const unsub = onSnapshot(
       ref,
@@ -370,21 +390,21 @@ export const AppSettingsService = {
       },
       (err) => {
         console.error("🔥 AppSettingsService subscribe error:", err);
-      
+
         if (STRICT_FIREBASE) {
           throw err; // خل الصفحة تفشل بوضوح
         }
-      
+
         const cached = cacheRead() || defaultSettings;
         cb(cached);
-      }      
+      }
     );
 
     return unsub;
   },
 
   async saveRemote(settings: AppSettings) {
-    const ref = doc(db, DOC_PATH.col, DOC_PATH.id);
+    const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
 
     const payload: AppSettings = sanitize({
       ...settings,
@@ -396,4 +416,3 @@ export const AppSettingsService = {
     return payload;
   },
 };
-

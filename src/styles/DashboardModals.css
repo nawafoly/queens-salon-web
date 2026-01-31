@@ -1,15 +1,17 @@
 /* =========================
-   Dashboard Modals (Unified / FINAL CLEAN)
+   Dashboard Modals (SAFE SCOPED)
    File: src/styles/DashboardModals.css
 
-   ✅ Single source of truth
-   ✅ Scroll strategy (NO double scroll):
-      - overlay scrolls (page-safe)
-      - modal body scrolls internally (best UX)
-   ✅ Works on mobile (safe-area)
+   ✅ Scoped: affects ONLY modal overlays/boxes
+   ✅ No global overrides to pages
+   ✅ No double scroll:
+      - overlay can scroll if content tall
+      - modal body scrolls internally
 ========================= */
 
-/* Overlay */
+/* =========================
+   Overlay (both variants)
+========================= */
 .modal-overlay,
 .dash-modal-overlay {
   position: fixed;
@@ -19,25 +21,26 @@
   background: rgba(10, 10, 12, 0.55);
   backdrop-filter: blur(6px);
 
+  /* ✅ allow page-safe scrolling when needed */
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 
   padding: 22px;
   padding-bottom: calc(22px + env(safe-area-inset-bottom));
   padding-top: calc(22px + env(safe-area-inset-top));
 
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-
   display: flex;
   align-items: center;
   justify-content: center;
 
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+
   animation: modalFade 0.18s ease-out;
 }
 
-/* ✅ Mobile: align to top to avoid "center jump" */
+/* ✅ Mobile: align to top to avoid center jump */
 @media (max-width: 700px) {
   .modal-overlay,
   .dash-modal-overlay {
@@ -48,15 +51,17 @@
   }
 }
 
-/* Modal Box */
+/* =========================
+   Modal Box (both variants)
+========================= */
 .modal-box,
 .dash-modal {
   width: min(980px, 96vw);
   max-height: calc(100dvh - 44px);
 
   background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(13, 13, 13, 0.10);
   border-radius: 22px;
-  border: 1px solid rgba(124, 58, 237, 0.14);
   box-shadow: 0 26px 70px rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(10px);
 
@@ -66,8 +71,9 @@
   overflow: hidden;
   transform: translateY(10px) scale(0.985);
   animation: modalUp 0.22s ease-out forwards;
-  color: #0D0D0D; /* ✅ يخلي كل النصوص واضحة داخل المودال */
 
+  /* ✅ readability inside modal only */
+  color: #0D0D0D;
   text-align: right;
 }
 
@@ -77,8 +83,11 @@
   width: min(1100px, 96vw);
 }
 
-/* Header */
-.modal-head {
+/* =========================
+   Header (keep it light + sticky)
+========================= */
+.modal-head,
+.dash-modal-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -95,6 +104,7 @@
   backdrop-filter: blur(10px);
 }
 
+/* Title area (custom modal-head only) */
 .modal-title-wrap {
   display: flex;
   align-items: center;
@@ -110,11 +120,12 @@
   place-items: center;
   font-size: 18px;
 
-  background: rgba(124, 58, 237, 0.12);
-  color: #5b21b6;
+  background: rgba(64, 1, 13, 0.10);
+  color: #40010D;
 }
 
-.modal-title {
+.modal-title,
+.dash-modal-header h3 {
   margin: 0;
   font-size: 16px;
   font-weight: 900;
@@ -125,7 +136,9 @@
   text-overflow: ellipsis;
 }
 
-.modal-close {
+/* Close buttons */
+.modal-close,
+.dash-close {
   width: 38px;
   height: 38px;
   border-radius: 12px;
@@ -136,16 +149,19 @@
   line-height: 1;
   transition: 0.2s ease;
   color: #0D0D0D;
-
 }
 
-.modal-close:hover {
+.modal-close:hover,
+.dash-close:hover {
   background: rgba(0, 0, 0, 0.10);
   transform: translateY(-1px);
 }
 
-/* Body */
-.modal-body {
+/* =========================
+   Body (scroll here, not page)
+========================= */
+.modal-body,
+.dash-modal-body {
   padding: 14px 16px 16px 16px;
 
   overflow: auto;
@@ -155,39 +171,18 @@
   flex: 1;
 }
 
+/* Text inside modal only */
 .modal-text {
   margin: 0;
   font-size: 14px;
   line-height: 1.85;
-  color: #444;
+  color: rgba(13, 13, 13, 0.78);
   white-space: pre-line;
 }
 
-/* Typography inside modal */
-.modal-box,
-.dash-modal,
-.modal-box label,
-.dash-modal label,
-.modal-box p,
-.dash-modal p {
-  font-size: 15px;
-  line-height: 1.7;
-}
-
-/* Form controls inside modals */
-.modal-box .form-control,
-.dash-modal .form-control {
-  min-height: 44px;
-  font-size: 15px;
-  border-radius: 14px;
-}
-
-.modal-box textarea.form-control,
-.dash-modal textarea.form-control {
-  min-height: 140px;
-}
-
-/* Footer / Actions */
+/* =========================
+   Actions footer (optional)
+========================= */
 .modal-actions {
   display: flex;
   gap: 10px;
@@ -195,7 +190,8 @@
 
   padding: 12px 16px 16px 16px;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
-  background: rgba(255, 255, 255, 0.70);
+
+  background: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(8px);
 
   position: sticky;
@@ -216,13 +212,12 @@
 
 /* Primary */
 .modal-actions .btn-confirm {
-  background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+  background: linear-gradient(135deg, #40010D 0%, rgba(64, 1, 13, 0.70) 100%);
   color: #fff;
-  border: 1px solid rgba(124, 58, 237, 0.18);
+  border: 1px solid rgba(64, 1, 13, 0.18);
 }
 
 .modal-actions .btn-confirm:hover {
-  background: linear-gradient(135deg, #6d28d9 0%, #9f7aea 100%);
   transform: translateY(-1px);
 }
 
@@ -237,20 +232,60 @@
   transform: translateY(-1px);
 }
 
-/* Animations */
+/* =========================
+   ✅ SAFE: form controls ONLY inside modals
+   (No global .form-control changes)
+========================= */
+.modal-box input,
+.modal-box select,
+.modal-box textarea,
+.dash-modal input,
+.dash-modal select,
+.dash-modal textarea {
+  color: #0D0D0D;
+}
+
+.modal-box input::placeholder,
+.modal-box textarea::placeholder,
+.dash-modal input::placeholder,
+.dash-modal textarea::placeholder {
+  color: rgba(81, 86, 89, 0.60);
+  opacity: 1;
+}
+
+/* If you use .form-control inside modal, make it nice (scoped) */
+.modal-box .form-control,
+.dash-modal .form-control {
+  min-height: 44px;
+  font-size: 14px;
+  border-radius: 14px;
+
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: #fff;
+  box-shadow: none;
+}
+
+.modal-box textarea.form-control,
+.dash-modal textarea.form-control {
+  min-height: 120px;
+}
+
+/* Keep dash-select readable inside modal only */
+.modal-box .dash-select,
+.dash-modal .dash-select {
+  color: #0D0D0D;
+}
+
+/* =========================
+   Animations
+========================= */
 @keyframes modalFade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes modalUp {
-  to {
-    transform: translateY(0) scale(1);
-  }
+  to { transform: translateY(0) scale(1); }
 }
 
 /* Responsive */
@@ -262,200 +297,8 @@
     max-height: calc(100dvh - 28px);
   }
 
-  .modal-title {
+  .modal-title,
+  .dash-modal-header h3 {
     font-size: 15px;
   }
-}
-
-/* =========================
-   ✅ Select داخل المودال فقط (Scoped)
-   - إذا استخدمت class "dash-select" داخل المودال
-========================= */
-.modal-box .dash-select,
-.dash-modal .dash-select {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-
-  width: 100%;
-  min-width: 180px;
-  height: 40px;
-
-  padding: 0 14px;
-  border-radius: 12px;
-
-  border: 1px solid rgba(124, 58, 237, 0.18);
-  background: rgba(255, 255, 255, 0.9);
-
-  font-family: "Tajawal", sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-
-  color: #1f1f1f;
-  text-align: center;
-
-  outline: none;
-  transition: 0.2s ease;
-  cursor: pointer;
-
-  background-image: linear-gradient(
-      45deg,
-      transparent 50%,
-      rgba(124, 58, 237, 0.9) 50%
-    ),
-    linear-gradient(
-      135deg,
-      rgba(124, 58, 237, 0.9) 50%,
-      transparent 50%
-    );
-  background-position: calc(100% - 18px) 16px, calc(100% - 12px) 16px;
-  background-size: 6px 6px, 6px 6px;
-  background-repeat: no-repeat;
-}
-
-.modal-box .dash-select:focus,
-.dash-modal .dash-select:focus {
-  border-color: rgba(124, 58, 237, 0.35);
-  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.10);
-}
-
-.modal-box .dash-select:disabled,
-.dash-modal .dash-select:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.modal-box .dash-select--sm,
-.dash-modal .dash-select--sm {
-  min-width: 170px;
-  height: 38px;
-  font-size: 13px;
-  padding: 0 12px;
-  border-radius: 11px;
-}
-
-/* =========================
-   ✅ Global readability inside modals
-========================= */
-.modal-box,
-.dash-modal {
-  color: #0D0D0D;
-}
-
-.modal-box h1, .modal-box h2, .modal-box h3, .modal-box h4,
-.dash-modal h1, .dash-modal h2, .dash-modal h3, .dash-modal h4 {
-  color: #0D0D0D;
-}
-
-.modal-box label,
-.dash-modal label {
-  color: #0D0D0D;
-  opacity: 0.92;
-}
-
-.modal-box .modal-text,
-.dash-modal .modal-text,
-.modal-box p,
-.dash-modal p {
-  color: rgba(13,13,13,0.80);
-}
-
-/* =========================
-   ✅ Fix readability for ALL dashboard modals (Employees/Offers/Expenses)
-========================= */
-
-/* 1) أي input/select/textarea داخل مودال الداش */
-.dash-modal input,
-.dash-modal select,
-.dash-modal textarea,
-.modal-box input,
-.modal-box select,
-.modal-box textarea {
-  color: #0D0D0D !important;
-}
-
-/* 2) placeholder واضح (هذا اللي بالصورة باهت مرة) */
-.dash-modal input::placeholder,
-.dash-modal textarea::placeholder,
-.modal-box input::placeholder,
-.modal-box textarea::placeholder {
-  color: rgba(81, 86, 89, 0.60) !important;
-  opacity: 1 !important;
-}
-
-/* 3) لو تستخدم class اسمها dashboard-input في صفحاتك */
-.dash-modal .dashboard-input,
-.modal-box .dashboard-input {
-  color: #0D0D0D !important;
-}
-
-/* 4) أزرار الداش داخل المودال (حفظ/إلغاء) */
-.dash-modal .dash-btn,
-.modal-box .dash-btn,
-.dash-modal .dash-pill,
-.modal-box .dash-pill {
-  color: #0D0D0D !important;
-}
-
-/* زر الحفظ/الأساسي إذا عندك primary */
-.dash-modal .dash-btn.primary,
-.modal-box .dash-btn.primary {
-  color: #fff !important;
-}
-
-/* =========================
-   Selected services (Staff Picks)
-========================= */
-
-.staff-picks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.staff-picks .pick {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  padding: 8px 14px;
-  min-height: 38px;
-
-  border-radius: 999px;
-  border: 1px solid rgba(124, 58, 237, 0.25);
-
-  background: rgba(124, 58, 237, 0.08);
-  color: #2b2b2b;              /* ✅ خط غامق وواضح */
-
-  font-size: 13px;
-  font-weight: 900;
-  line-height: 1.2;
-
-  cursor: pointer;
-  user-select: none;
-
-  transition: all 0.2s ease;
-}
-
-/* Hover */
-.staff-picks .pick:hover {
-  background: rgba(124, 58, 237, 0.14);
-  border-color: rgba(124, 58, 237, 0.35);
-  transform: translateY(-1px);
-}
-
-/* Active / Selected (لو فيه حالة active) */
-.staff-picks .pick.active,
-.staff-picks .pick.is-selected {
-  background: rgba(124, 58, 237, 0.18);
-  border-color: rgba(124, 58, 237, 0.45);
-  color: #3b1b66;
-}
-
-/* لو فيه زر حذف X داخل الـ pick */
-.staff-picks .pick button,
-.staff-picks .pick svg {
-  margin-inline-start: 6px;
-  font-size: 13px;
-  opacity: 0.85;
 }

@@ -1,4 +1,5 @@
 // ✅ src/pages/settings/SettingsBookings.tsx
+
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -108,7 +109,6 @@ function defaultBusinessHoursLocal() {
   };
 }
 
-
 export default function SettingsBookings() {
   const navigate = useNavigate();
 
@@ -139,80 +139,107 @@ export default function SettingsBookings() {
         booking: { ...(prev?.booking || {}), ...patch },
       };
 
-      // ✅ كاش محلي فوري (بديل setCached)
+      // ✅ كاش محلي فوري
       saveLocalSettings(next);
+      // ✅ كاش AppSettingsService لو موجود
+      AppSettingsService.setCached?.(next);
+
       return next;
     });
   };
 
-  // ✅ Defaults (لو ما كانت موجودة)
+  // ✅ Defaults
   const slotStepMin = useMemo(() => {
     const raw = bookingSettings?.slotStepMin;
     const v = safeInt(raw, 10);
     return [10, 15, 30].includes(v) ? v : 10;
   }, [bookingSettings?.slotStepMin]);
 
-  const businessHours =
-  (bookingSettings as any)?.businessHours || defaultBusinessHoursLocal();
+  const businessHours = useMemo(() => {
+    return (bookingSettings as any)?.businessHours || defaultBusinessHoursLocal();
+  }, [bookingSettings?.businessHours]);
 
   const openTime = useMemo(() => {
-    // نأخذ السبت كمرجع للعرض
     return safeTimeHHMM(businessHours?.sat?.start, "10:00");
   }, [businessHours?.sat?.start]);
-  
+
   const closeTime = useMemo(() => {
     return safeTimeHHMM(businessHours?.sat?.end, "22:00");
   }, [businessHours?.sat?.end]);
-  
 
   const [savedMsg, setSavedMsg] = useState("");
+
+  // ✅ helper: خذ آخر نسخة مؤكدة (localStorage أولاً)
+  function getLatestSettingsSnapshot() {
+    return (
+      loadLocalSettings() ||
+      AppSettingsService.getCached?.() ||
+      settings ||
+      {}
+    );
+  }
 
   const saveAll = async () => {
     if (!hasAdminPower) return;
 
     try {
-      const bh =
-      (settings as any)?.booking?.businessHours || defaultBusinessHoursLocal();
-    
-    const oRaw = bh?.sat?.start;
-    const cRaw = bh?.sat?.end;
-    
+      // ✅ أهم نقطة: نقرأ آخر نسخة من localStorage (عشان ما نتعلق بتأخير setState)
+      const latest = getLatestSettingsSnapshot();
+      const latestBooking = (latest as any)?.booking || {};
+
+      const bhRaw =
+        latestBooking?.businessHours || defaultBusinessHoursLocal();
+
+      const oRaw = bhRaw?.sat?.start;
+      const cRaw = bhRaw?.sat?.end;
 
       const oNorm = safeTimeHHMM(oRaw, "10:00");
       const cNorm = safeTimeHHMM(cRaw, "22:00");
 
-      // ✅ طبّع القيم في الستيت قبل الحفظ
-      const normalizedSettingsToSave = {
-        ...(settings || {}),
-        booking: {
-          ...((settings as any)?.booking || {}),
-          slotStepMin,
-          businessHours: bh,
-        },        
-      };
-
-      // ✅ تحقق صحيح بعد التطبيع
       if (oNorm >= cNorm) {
         setSavedMsg("❌ بداية الدوام لازم تكون قبل نهاية الدوام");
         setTimeout(() => setSavedMsg(""), 2200);
         return;
       }
 
-      // ✅ حفظ على الريموت (AppSettings)
+      // ✅ طبّع فعليًا داخل businessHours قبل الحفظ
+      const bh = { ...(bhRaw || defaultBusinessHoursLocal()) };
+      bh.sat = { ...(bh.sat || { enabled: true }), start: oNorm, end: cNorm };
+
+      const normalizedSettingsToSave = {
+        ...(latest || {}),
+        booking: {
+          ...(latestBooking || {}),
+          slotStepMin, // من UI (مضمون 10/15/30)
+          businessHours: bh,
+        },
+      };
+
+      // ✅ حفظ ريموت
       await AppSettingsService.saveRemote(normalizedSettingsToSave);
-      // ✅ مهم جداً: حدّث كاش AppSettingsService عشان أي صفحة تقرأ منه تشوف التغيير فوراً
 
-      console.log("SAVED booking:", normalizedSettingsToSave.booking);
-
-      // ✅ حدّث الستيت + كاش محلي
-      setSettings(normalizedSettingsToSave);
+      // ✅ حدّث الكاشين فورًا
+      AppSettingsService.setCached?.(normalizedSettingsToSave);
       saveLocalSettings(normalizedSettingsToSave);
+      setSettings(normalizedSettingsToSave);
+
+      console.log("✅ SAVED booking:", normalizedSettingsToSave.booking);
 
       setSavedMsg("✅ تم حفظ الإعدادات");
       setTimeout(() => setSavedMsg(""), 1800);
-    } catch {
-      setSavedMsg("❌ تعذر حفظ الإعدادات");
-      setTimeout(() => setSavedMsg(""), 2200);
+    } catch (e: any) {
+      console.error("❌ saveAll error:", e);
+
+      const msg =
+        String(e?.message || e?.code || "")
+          .toLowerCase()
+          .includes("permission") ||
+        String(e?.code || "").toLowerCase().includes("permission")
+          ? "❌ فشل الحفظ: الصلاحيات (Rules) تمنع الكتابة"
+          : "❌ تعذر حفظ الإعدادات";
+
+      setSavedMsg(msg);
+      setTimeout(() => setSavedMsg(""), 2600);
     }
   };
 
@@ -319,9 +346,10 @@ export default function SettingsBookings() {
       .then((remote) => {
         setSettings(remote || {});
         saveLocalSettings(remote || {});
+        AppSettingsService.setCached?.(remote || {});
       })
       .catch(() => {
-        // لو فشل: لا نسوي شيء لأننا أساساً بدأنا من cached/local
+        // لو فشل: نعتمد على cached/local
       });
 
     // ✅ اشتراك التحديثات
@@ -329,7 +357,7 @@ export default function SettingsBookings() {
       setSettings((prev: any) => {
         const prevB = prev?.booking || {};
         const remoteB = (remote as any)?.booking || {};
-        
+
         const merged = {
           ...(prev || {}),
           ...(remote || {}),
@@ -338,10 +366,9 @@ export default function SettingsBookings() {
             ...remoteB,
           },
         };
-        
 
-        // ✅ خزّن محلياً
         saveLocalSettings(merged);
+        AppSettingsService.setCached?.(merged);
         return merged;
       });
     });
@@ -497,13 +524,13 @@ export default function SettingsBookings() {
                 onChange={(e) => {
                   const v = e.target.value;
                   const bh = bookingSettings?.businessHours || defaultBusinessHoursLocal();
-                
+
                   const next = { ...bh };
                   next.sat = { ...next.sat, start: v };
-                
+
                   setBookingSettings({ businessHours: next });
                 }}
-                                placeholder="10:00"
+                placeholder="10:00"
               />
             </div>
 
@@ -525,19 +552,19 @@ export default function SettingsBookings() {
                 onChange={(e) => {
                   const v = e.target.value;
                   const bh = bookingSettings?.businessHours || defaultBusinessHoursLocal();
-                
+
                   const next = { ...bh };
                   next.sat = { ...next.sat, end: v };
-                
+
                   setBookingSettings({ businessHours: next });
                 }}
-                                placeholder="22:00"
+                placeholder="22:00"
               />
             </div>
           </div>
 
           <div className="settings-footnote">
-          * يتم الحفظ في AppSettings داخل: booking.businessHours.sat.start / booking.businessHours.sat.end / booking.slotStepMin
+            * يتم الحفظ في AppSettings داخل: booking.businessHours.sat.start / booking.businessHours.sat.end / booking.slotStepMin
             <br />
             * ربطها بصفحة الحجز: Booking.tsx يقرأ من AppSettingsService.getCached()
           </div>

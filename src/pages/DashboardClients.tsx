@@ -1,5 +1,3 @@
-
-
 // src/pages/DashboardClients.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -9,6 +7,7 @@ import {
   faUsers,
   faXmark,
   faCircleInfo,
+  faFileArrowUp,
 } from "@fortawesome/free-solid-svg-icons";
 import * as XLSX from "xlsx";
 
@@ -26,6 +25,18 @@ import {
   type BookingDocWithId,
   type BookingStatus,
 } from "../services/firestoreBookings";
+
+// ✅ Firestore (for Clients import)
+import {
+  collection,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  serverTimestamp,
+  writeBatch,
+} from "firebase/firestore";
+import { db } from "../services/firebase";
 
 /** ✅ UiRole */
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
@@ -82,6 +93,20 @@ type ClientRow = {
   bookingsCount: number;
   lastVisitDate: string; // YYYY-MM-DD
   lastVisitTime: string;
+  // ✅ from imported clients collection
+  vip?: boolean;
+  importedNote?: string;
+  source?: "bookings" | "imported" | "both";
+};
+
+type ImportedClientDoc = {
+  id: string; // phoneDigits (recommended)
+  name?: string;
+  phone?: string; // normalized phone string
+  vip?: boolean;
+  note?: string;
+  createdAt?: any;
+  updatedAt?: any;
 };
 
 const statusLabel: Record<BookingStatus, string> = {
@@ -91,8 +116,6 @@ const statusLabel: Record<BookingStatus, string> = {
   completed: "مكتمل",
 };
 
-
-
 function downloadXLSX(filename: string, rows: any[][], sheetName = "Sheet1") {
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb = XLSX.utils.book_new();
@@ -100,15 +123,96 @@ function downloadXLSX(filename: string, rows: any[][], sheetName = "Sheet1") {
   XLSX.writeFile(wb, filename);
 }
 
+/** ✅ تنظيف الجوال (للعرض) */
 function cleanPhone(v: any) {
   return String(v ?? "").trim();
 }
 
+/** ✅ استخراج أرقام فقط (للمطابقة والتخزين) */
+function phoneDigits(v: any) {
+  const s = String(v ?? "").trim();
+  const d = s.replace(/[^\d]/g, "");
+  return d;
+}
+
+/** ✅ توحيد الجوال السعودي بشكل بسيط */
+function normalizeSaudiPhone(raw: any) {
+  const d = phoneDigits(raw);
+  if (!d) return { phone: "", digits: "" };
+
+  // حالات شائعة:
+  // 05xxxxxxxx -> digits = 05...
+  // 9665xxxxxxxx -> digits = 9665...
+  // 5xxxxxxxx -> digits = 5...
+  let digits = d;
+
+  // لو يبدأ 00966
+  if (digits.startsWith("00966")) digits = "966" + digits.slice(5);
+
+  // لو يبدأ 9660 (خطأ شائع)
+  if (digits.startsWith("9660")) digits = "966" + digits.slice(4);
+
+  // لو يبدأ 0 وتاليه 5 -> نخليه كما هو للعرض، لكن key بنحوله
+  // key الأفضل: 9665xxxxxxxx
+  let keyDigits = digits;
+
+  if (digits.length === 10 && digits.startsWith("05")) {
+    keyDigits = "966" + digits.slice(1); // 9665xxxxxxxx
+  } else if (digits.length === 9 && digits.startsWith("5")) {
+    keyDigits = "966" + digits; // 9665xxxxxxxx
+  } else if (digits.length === 12 && digits.startsWith("966")) {
+    keyDigits = digits;
+  }
+
+  // للعرض نخليه 05xxxxxxxx إذا ممكن
+  let display = digits;
+  if (keyDigits.startsWith("9665") && keyDigits.length === 12) {
+    display = "0" + keyDigits.slice(3); // 05xxxxxxxx
+  }
+
+  return { phone: display, digits: keyDigits };
+}
+
 function makeClientKey(name: string, phone: string) {
-  return phone ? `p:${phone}` : `n:${name.trim().toLowerCase()}`;
+  // ✅ نحاول نخلي المفتاح دايم بالجوال لو موجود
+  const norm = normalizeSaudiPhone(phone);
+  const pd = norm.digits;
+  return pd ? `p:${pd}` : `n:${name.trim().toLowerCase()}`;
 }
 
 const NOTES_KEY = "dashboard_client_notes_v1";
+
+const SALON_ID = "main";
+const CLIENTS_COLLECTION = ["salons", SALON_ID, "clients"] as const;
+
+function pickHeader(obj: any, keys: string[]) {
+  for (const k of keys) {
+    if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return obj[k];
+  }
+  return undefined;
+}
+
+function normalizeHeaderKey(k: string) {
+  return String(k || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+/** ✅ يحاول يلقط العمود من عدة أسماء (عربي/إنجليزي) */
+function getField(row: any, candidates: string[]) {
+  // row keys may be Arabic/English with random spacing
+  const map: Record<string, any> = {};
+  Object.keys(row || {}).forEach((kk) => {
+    map[normalizeHeaderKey(kk)] = row[kk];
+  });
+
+  for (const c of candidates) {
+    const v = map[normalizeHeaderKey(c)];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+  return "";
+}
 
 const DashboardClients: React.FC = () => {
   // ✅ Role + Settings (NEW)
@@ -116,7 +220,7 @@ const DashboardClients: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
 
   const [bookings, setBookings] = useState<BookingDocWithId[]>([]);
-  const [query, setQuery] = useState("");
+  const [queryText, setQueryText] = useState("");
   const [selectedClient, setSelectedClient] = useState<ClientRow | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -127,9 +231,29 @@ const DashboardClients: React.FC = () => {
   const [notesMap, setNotesMap] = useState<Record<string, string>>({});
   const [noteText, setNoteText] = useState("");
 
+  // ✅ Imported clients (Firestore)
+  const [importedMap, setImportedMap] = useState<Record<string, ImportedClientDoc>>({});
+  const [importLoading, setImportLoading] = useState(false);
+
   // ✅ Custom Sort Dropdown (Unified with DashboardSkin)
   const [sortOpen, setSortOpen] = useState(false);
   const sortWrapRef = useRef<HTMLDivElement | null>(null);
+
+  // ✅ Import Excel UI
+  const [importOpen, setImportOpen] = useState(false);
+  const [importErr, setImportErr] = useState("");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  type ImportPreviewRow = {
+    name: string;
+    phone: string; // display
+    digits: string; // key digits 9665...
+    vip: boolean;
+    note: string;
+  };
+
+  const [preview, setPreview] = useState<ImportPreviewRow[]>([]);
 
   const sortOptions = useMemo(
     () => [
@@ -148,7 +272,8 @@ const DashboardClients: React.FC = () => {
   };
 
   // ✅ صلاحيات العرض لصفحة العميلات (NEW)
-  const allowStaffViewClients = settings?.policies?.allowStaffViewClients === true;
+  const allowStaffViewClients =
+    settings?.policies?.allowStaffViewClients === true;
 
   const canViewClients =
     uiRole === "owner" ||
@@ -156,8 +281,9 @@ const DashboardClients: React.FC = () => {
     uiRole === "reception" ||
     (uiRole === "staff" && allowStaffViewClients);
 
-  // ✅ (اختياري) تصدير Excel نخليه للـ owner/admin فقط
+  // ✅ تصدير + استيراد: نخليها owner/admin
   const canExport = uiRole === "owner" || uiRole === "admin";
+  const canImport = uiRole === "owner" || uiRole === "admin";
 
   // ✅ إغلاق قائمة الفرز عند الضغط خارجها أو ESC
   useEffect(() => {
@@ -196,7 +322,7 @@ const DashboardClients: React.FC = () => {
     };
   }, []);
 
-  // ✅ جلب من Firestore
+  // ✅ جلب الحجوزات من Firestore
   useEffect(() => {
     if (!canViewClients) {
       // ما نحمّل بيانات أصلاً إذا غير مصرح
@@ -231,6 +357,48 @@ const DashboardClients: React.FC = () => {
     };
   }, [canViewClients]);
 
+  // ✅ جلب العملاء المستوردين (Firestore) - آمن وما يأثر على الحجوزات
+  useEffect(() => {
+    if (!canViewClients) return;
+
+    let mounted = true;
+
+    (async () => {
+      try {
+        setImportLoading(true);
+        const q = query(collection(db, ...CLIENTS_COLLECTION), orderBy("updatedAt", "desc"));
+        const snap = await getDocs(q);
+
+        if (!mounted) return;
+
+        const next: Record<string, ImportedClientDoc> = {};
+        snap.docs.forEach((d) => {
+          const x = d.data() as any;
+          next[d.id] = {
+            id: d.id,
+            name: String(x?.name || "").trim() || undefined,
+            phone: String(x?.phone || "").trim() || undefined,
+            vip: !!x?.vip,
+            note: String(x?.note || "").trim() || undefined,
+            createdAt: x?.createdAt,
+            updatedAt: x?.updatedAt,
+          };
+        });
+
+        setImportedMap(next);
+      } catch (e) {
+        console.error("DashboardClients: load imported clients failed", e);
+        setImportedMap({});
+      } finally {
+        if (mounted) setImportLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [canViewClients]);
+
   // ✅ تحميل الملاحظات من localStorage
   useEffect(() => {
     try {
@@ -244,6 +412,7 @@ const DashboardClients: React.FC = () => {
   }, []);
 
   const clients = useMemo<ClientRow[]>(() => {
+    // 1) جمع العملاء من الحجوزات
     const map = new Map<
       string,
       { name: string; phone: string; list: BookingDocWithId[] }
@@ -251,19 +420,22 @@ const DashboardClients: React.FC = () => {
 
     bookings.forEach((b) => {
       const name = String((b as any).clientName ?? "").trim() || "—";
-      const phone = cleanPhone((b as any).clientPhone);
+      const phoneRaw = cleanPhone((b as any).clientPhone);
+      const norm = normalizeSaudiPhone(phoneRaw);
+      const phone = norm.phone || phoneRaw;
       const key = makeClientKey(name, phone);
 
       if (!map.has(key)) map.set(key, { name, phone, list: [] });
       map.get(key)!.list.push(b);
     });
 
-    const rows: ClientRow[] = [];
+    // 2) تحويل إلى rows من الحجوزات
+    const rowsFromBookings: ClientRow[] = [];
     map.forEach((v, key) => {
       const sorted = [...v.list].sort((a, b) => {
         const da = ((a as any).date ?? "").toString();
-        const db = ((b as any).date ?? "").toString();
-        if (da !== db) return db.localeCompare(da); // desc
+        const dbb = ((b as any).date ?? "").toString();
+        if (da !== dbb) return dbb.localeCompare(da); // desc
         return ((b as any).time ?? "")
           .toString()
           .localeCompare(((a as any).time ?? "").toString()); // desc
@@ -271,13 +443,47 @@ const DashboardClients: React.FC = () => {
 
       const last = sorted[0];
 
-      rows.push({
+      // match imported by phone digits if possible
+      const pd = key.startsWith("p:") ? key.slice(2) : "";
+      const imported = pd ? importedMap[pd] : undefined;
+
+      rowsFromBookings.push({
         key,
         name: v.name,
         phone: v.phone || "—",
         bookingsCount: v.list.length,
         lastVisitDate: ((last as any)?.date ?? "").toString(),
         lastVisitTime: ((last as any)?.time ?? "").toString(),
+        vip: imported?.vip ?? (v.list.length >= 5),
+        importedNote: imported?.note,
+        source: imported ? "both" : "bookings",
+      });
+    });
+
+    // 3) إضافة العملاء المستوردين اللي ما عندهم حجوزات
+    const rows: ClientRow[] = [...rowsFromBookings];
+
+    Object.keys(importedMap).forEach((idDigits) => {
+      const imp = importedMap[idDigits];
+      if (!imp) return;
+
+      const key = `p:${idDigits}`;
+      const already = rowsFromBookings.find((r) => r.key === key);
+      if (already) return;
+
+      const name = String(imp.name || "—").trim() || "—";
+      const phone = String(imp.phone || "").trim() || (idDigits ? "0" + idDigits.slice(3) : "—");
+
+      rows.push({
+        key,
+        name,
+        phone: phone || "—",
+        bookingsCount: 0,
+        lastVisitDate: "",
+        lastVisitTime: "",
+        vip: !!imp.vip,
+        importedNote: String(imp.note || "").trim() || undefined,
+        source: "imported",
       });
     });
 
@@ -287,40 +493,44 @@ const DashboardClients: React.FC = () => {
         if (b.bookingsCount !== a.bookingsCount)
           return b.bookingsCount - a.bookingsCount;
       }
-      // الأحدث أولاً
+
+      // الأحدث أولاً (اللي عنده آخر زيارة)
       if (b.lastVisitDate !== a.lastVisitDate)
         return (b.lastVisitDate || "").localeCompare(a.lastVisitDate || "");
       return (b.lastVisitTime || "").localeCompare(a.lastVisitTime || "");
     });
 
     return rows;
-  }, [bookings, sortBy]);
+  }, [bookings, sortBy, importedMap]);
 
   const filteredClients = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = queryText.trim().toLowerCase();
     if (!q) return clients;
 
     return clients.filter((c) => {
       const name = (c.name ?? "").toLowerCase();
       const phone = (c.phone ?? "").toLowerCase();
-      return name.includes(q) || phone.includes(q);
+      const src = (c.source ?? "").toLowerCase();
+      return name.includes(q) || phone.includes(q) || src.includes(q);
     });
-  }, [clients, query]);
+  }, [clients, queryText]);
 
   const selectedBookings = useMemo(() => {
     if (!selectedClient) return [];
 
     const list = bookings.filter((b) => {
       const name = String((b as any).clientName ?? "").trim() || "—";
-      const phone = cleanPhone((b as any).clientPhone);
+      const phoneRaw = cleanPhone((b as any).clientPhone);
+      const norm = normalizeSaudiPhone(phoneRaw);
+      const phone = norm.phone || phoneRaw;
       const key = makeClientKey(name, phone);
       return key === selectedClient.key;
     });
 
     return list.sort((a, b) => {
       const da = ((a as any).date ?? "").toString();
-      const db = ((b as any).date ?? "").toString();
-      if (da !== db) return db.localeCompare(da);
+      const dbb = ((b as any).date ?? "").toString();
+      if (da !== dbb) return dbb.localeCompare(da);
       return ((b as any).time ?? "")
         .toString()
         .localeCompare(((a as any).time ?? "").toString());
@@ -348,11 +558,19 @@ const DashboardClients: React.FC = () => {
   ========================= */
   const exportClientsXLSX = () => {
     const rows: any[][] = [
-      ["العميلة", "الجوال", "عدد الحجوزات", "آخر زيارة (تاريخ)", "آخر زيارة (وقت)"],
+      ["العميلة", "الجوال", "VIP", "عدد الحجوزات", "آخر زيارة (تاريخ)", "آخر زيارة (وقت)", "المصدر"],
     ];
 
     filteredClients.forEach((c) => {
-      rows.push([c.name, c.phone, c.bookingsCount, c.lastVisitDate, c.lastVisitTime]);
+      rows.push([
+        c.name,
+        c.phone,
+        c.vip ? "YES" : "NO",
+        c.bookingsCount,
+        c.lastVisitDate,
+        c.lastVisitTime,
+        c.source || "",
+      ]);
     });
 
     const stamp = new Date();
@@ -362,6 +580,165 @@ const DashboardClients: React.FC = () => {
 
     downloadXLSX(`dashboard_clients_${yyyy}-${mm}-${dd}.xlsx`, rows, "Clients");
   };
+
+  /* =========================
+     Import Excel actions (SAFE MERGE)
+  ========================= */
+
+  function openImport() {
+    setImportErr("");
+    setPreview([]);
+    setImportOpen(true);
+    setImporting(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function closeImport() {
+    if (importing) return;
+    setImportOpen(false);
+    setImportErr("");
+    setPreview([]);
+  }
+
+  function parseVip(v: any) {
+    const s = String(v ?? "").trim().toLowerCase();
+    if (!s) return false;
+    return s === "1" || s === "true" || s === "yes" || s === "vip" || s === "نعم" || s === "صح";
+  }
+
+  function onPickFile(file: File) {
+    setImportErr("");
+    setPreview([]);
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target?.result;
+        const wb = XLSX.read(data, { type: "array" });
+
+        const firstSheet = wb.SheetNames[0];
+        if (!firstSheet) {
+          setImportErr("الملف ما فيه Sheets.");
+          return;
+        }
+
+        const ws = wb.Sheets[firstSheet];
+        const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+        if (!json.length) {
+          setImportErr("الملف فاضي.");
+          return;
+        }
+
+        const tmp: ImportPreviewRow[] = [];
+        const seen = new Set<string>();
+
+        json.forEach((row: any) => {
+          const name = String(
+            getField(row, ["name", "الاسم", "اسم", "العميلة", "client", "clientName"])
+          ).trim();
+
+          const phoneRaw = String(
+            getField(row, ["phone", "الجوال", "رقم", "mobile", "clientPhone"])
+          ).trim();
+
+          const note = String(
+            getField(row, ["note", "ملاحظة", "ملاحظات", "notes", "remark"])
+          ).trim();
+
+          const vipRaw = getField(row, ["vip", "VIP", "مميزة", "عميلة مميزة"]);
+
+          const norm = normalizeSaudiPhone(phoneRaw);
+          if (!norm.digits) return; // تجاهل اللي ما عنده رقم
+
+          const digits = norm.digits;
+          if (seen.has(digits)) return;
+          seen.add(digits);
+
+          tmp.push({
+            name: name || "—",
+            phone: norm.phone || phoneRaw || "—",
+            digits,
+            vip: parseVip(vipRaw),
+            note: note || "",
+          });
+        });
+
+        if (!tmp.length) {
+          setImportErr("ما لقينا صفوف صالحة (لازم اسم + جوال).");
+          return;
+        }
+
+        setPreview(tmp);
+      } catch (e) {
+        console.error(e);
+        setImportErr("فشل قراءة الملف. تأكد إنه Excel صحيح (.xlsx).");
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function commitImport() {
+    try {
+      setImportErr("");
+
+      if (!preview.length) {
+        setImportErr("ما فيه بيانات للحفظ.");
+        return;
+      }
+
+      setImporting(true);
+
+      // ✅ Batch merge (no overwrite destructive)
+      const batch = writeBatch(db);
+
+      preview.forEach((r) => {
+        const ref = doc(db, ...CLIENTS_COLLECTION, r.digits);
+        batch.set(
+          ref,
+          {
+            name: r.name || "",
+            phone: r.phone || "",
+            vip: !!r.vip,
+            note: r.note || "",
+            updatedAt: serverTimestamp(),
+            // createdAt only if not exists? (batch can't check) so we keep both:
+            createdAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      });
+
+      await batch.commit();
+
+      // ✅ reload imported list
+      const q = query(collection(db, ...CLIENTS_COLLECTION), orderBy("updatedAt", "desc"));
+      const snap = await getDocs(q);
+      const next: Record<string, ImportedClientDoc> = {};
+      snap.docs.forEach((d) => {
+        const x = d.data() as any;
+        next[d.id] = {
+          id: d.id,
+          name: String(x?.name || "").trim() || undefined,
+          phone: String(x?.phone || "").trim() || undefined,
+          vip: !!x?.vip,
+          note: String(x?.note || "").trim() || undefined,
+          createdAt: x?.createdAt,
+          updatedAt: x?.updatedAt,
+        };
+      });
+      setImportedMap(next);
+
+      setImportOpen(false);
+      setPreview([]);
+    } catch (e) {
+      console.error(e);
+      setImportErr("صار خطأ أثناء الحفظ. تأكد من Rules وصلاحيات Firestore ثم جرّب.");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   // ✅ Gate: غير مصرح (NEW)
   if (!canViewClients) {
@@ -385,10 +762,13 @@ const DashboardClients: React.FC = () => {
           <h1>
             <FontAwesomeIcon icon={faUsers} /> العميلات
           </h1>
+          <div style={{ opacity: 0.75, marginTop: 6, fontSize: 13 }}>
+            {importLoading ? "جارٍ تحميل عميلات Excel..." : "الصفحة تجمع: حجوزات + عميلات مستوردات"}
+          </div>
         </div>
       </div>
 
-      {/* Search + Sort + Export */}
+      {/* Search + Sort + Export + Import */}
       <div className="cl-section">
         <div className="cl-mini">
           <div className="mini-title">
@@ -398,12 +778,12 @@ const DashboardClients: React.FC = () => {
           <div className="cl-form">
             <input
               className="cl-input"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={queryText}
+              onChange={(e) => setQueryText(e.target.value)}
               placeholder="مثال: نورة أو 05xxxxxxx"
             />
 
-            {/* ✅ Unified Dropdown (DashboardSkin) */}
+            {/* ✅ Unified Dropdown */}
             <div className="dash-dd-wrap cl-sort-wrap" ref={sortWrapRef}>
               <button
                 type="button"
@@ -420,9 +800,7 @@ const DashboardClients: React.FC = () => {
                     <button
                       key={opt.value}
                       type="button"
-                      className={`dash-dd-item ${
-                        sortBy === opt.value ? "is-active" : ""
-                      }`}
+                      className={`dash-dd-item ${sortBy === opt.value ? "is-active" : ""}`}
                       onClick={() => selectSort(opt.value)}
                       role="option"
                       aria-selected={sortBy === opt.value}
@@ -434,7 +812,20 @@ const DashboardClients: React.FC = () => {
               )}
             </div>
 
-            {/* ✅ Export للـ owner/admin فقط */}
+            {/* ✅ Import Excel (owner/admin) */}
+            {canImport && (
+              <button
+                className="reports-btn cl-export"
+                type="button"
+                onClick={openImport}
+                disabled={loading || importLoading}
+                title="استيراد Excel .xlsx"
+              >
+                <FontAwesomeIcon icon={faFileArrowUp} /> استيراد Excel
+              </button>
+            )}
+
+            {/* ✅ Export (owner/admin) */}
             {canExport && (
               <button
                 className="reports-btn cl-export"
@@ -501,8 +892,10 @@ const DashboardClients: React.FC = () => {
                 <tr>
                   <th>العميلة</th>
                   <th>الجوال</th>
+                  <th>VIP</th>
                   <th>عدد الحجوزات</th>
                   <th>آخر زيارة</th>
+                  <th>المصدر</th>
                   <th>سجل</th>
                 </tr>
               </thead>
@@ -510,13 +903,13 @@ const DashboardClients: React.FC = () => {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="cl-td-center">
+                    <td colSpan={7} className="cl-td-center">
                       جاري التحميل...
                     </td>
                   </tr>
                 ) : filteredClients.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="cl-td-center">
+                    <td colSpan={7} className="cl-td-center">
                       لا توجد نتائج
                     </td>
                   </tr>
@@ -525,9 +918,6 @@ const DashboardClients: React.FC = () => {
                     <tr key={c.key}>
                       <td className="cl-nameCell">
                         <span className="cl-name">{c.name}</span>
-                        {c.bookingsCount >= 5 ? (
-                          <span className="dash-pill dash-pill-primary">VIP</span>
-                        ) : null}
                       </td>
 
                       <td className="cl-phone">
@@ -559,12 +949,24 @@ const DashboardClients: React.FC = () => {
                         </div>
                       </td>
 
+                      <td>
+                        {c.vip ? (
+                          <span className="dash-pill dash-pill-primary">VIP</span>
+                        ) : (
+                          <span style={{ opacity: 0.5 }}>—</span>
+                        )}
+                      </td>
+
                       <td className="cl-num">{c.bookingsCount}</td>
 
                       <td className="cl-last">
                         {c.lastVisitDate
                           ? `${c.lastVisitDate} — ${c.lastVisitTime || ""}`
                           : "—"}
+                      </td>
+
+                      <td style={{ opacity: 0.75 }}>
+                        {c.source === "both" ? "حجوزات + Excel" : c.source === "imported" ? "Excel" : "حجوزات"}
                       </td>
 
                       <td>
@@ -594,7 +996,7 @@ const DashboardClients: React.FC = () => {
           <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
             <div className="cl-modalHeader">
               <h3 className="cl-modalTitle">
-                سجل حجوزات: {selectedClient.name}{" "}
+                سجل: {selectedClient.name}{" "}
                 {selectedClient.phone !== "—" ? `— ${selectedClient.phone}` : ""}
               </h3>
 
@@ -622,6 +1024,9 @@ const DashboardClients: React.FC = () => {
                   localStorage.setItem(NOTES_KEY, JSON.stringify(next));
                 };
 
+                // ✅ imported note (from excel)
+                const importedNote = selectedClient.importedNote || "";
+
                 return (
                   <>
                     <div className="cl-client-summary">
@@ -644,6 +1049,15 @@ const DashboardClients: React.FC = () => {
                         <div className="cl-sum-label">إجمالي الصرف</div>
                       </div>
                     </div>
+
+                    {importedNote ? (
+                      <div className="cl-notes" style={{ marginTop: 10 }}>
+                        <div className="cl-notesHead">ملاحظة (من Excel)</div>
+                        <div style={{ padding: 10, borderRadius: 10, background: "rgba(255,255,255,0.04)" }}>
+                          {importedNote}
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="cl-notes">
                       <div className="cl-notesHead">ملاحظات إدارية (داخلية)</div>
@@ -680,7 +1094,7 @@ const DashboardClients: React.FC = () => {
                         {selectedBookings.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="cl-td-center">
-                              لا يوجد سجل حجوزات
+                              لا يوجد سجل حجوزات (هذه عميلة Excel فقط)
                             </td>
                           </tr>
                         ) : (
@@ -712,7 +1126,100 @@ const DashboardClients: React.FC = () => {
               </div>
 
               <div className="cl-modalHint">
-                * السجل مستخرج تلقائيًا من الحجوزات الموجودة في Firestore.
+                * السجل من الحجوزات + بيانات Excel محفوظة في Firestore (clients).
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal (Unified style using same overlay pattern) */}
+      {importOpen && (
+        <div className="dash-modal-overlay" onClick={closeImport}>
+          <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="dash-modal-header">
+              <h3>استيراد عميلات من Excel (دمج آمن)</h3>
+              <button className="dash-close" type="button" onClick={closeImport} disabled={importing}>
+                <FontAwesomeIcon icon={faXmark} />
+              </button>
+            </div>
+
+            <div className="dash-modal-body">
+              {importErr && (
+                <div className="bookings-error" style={{ marginBottom: 10 }}>
+                  {importErr}
+                </div>
+              )}
+
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 13, opacity: 0.8 }}>
+                  الأعمدة المدعومة: <b>name/الاسم</b> + <b>phone/الجوال</b> (اختياري: vip, note/ملاحظة)
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onPickFile(f);
+                  }}
+                  disabled={importing}
+                />
+
+                {preview.length > 0 && (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ fontWeight: 900 }}>
+                        Preview: {preview.length} عميلة
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        سيتم الدمج على رقم الجوال (بدون مسح بيانات)
+                      </div>
+                    </div>
+
+                    <div style={{ maxHeight: 260, overflow: "auto", borderRadius: 10 }}>
+                      <table className="clients-table">
+                        <thead>
+                          <tr>
+                            <th>الاسم</th>
+                            <th>الجوال</th>
+                            <th>VIP</th>
+                            <th>ملاحظة</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {preview.slice(0, 80).map((r) => (
+                            <tr key={r.digits}>
+                              <td>{r.name}</td>
+                              <td>{r.phone}</td>
+                              <td>{r.vip ? "VIP" : "—"}</td>
+                              <td style={{ maxWidth: 280, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {r.note || "—"}
+                              </td>
+                            </tr>
+                          ))}
+                          {preview.length > 80 ? (
+                            <tr>
+                              <td colSpan={4} style={{ textAlign: "center", opacity: 0.7 }}>
+                                تم عرض 80 فقط من {preview.length}
+                              </td>
+                            </tr>
+                          ) : null}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
+                      <button className="reports-btn" type="button" onClick={closeImport} disabled={importing}>
+                        إلغاء
+                      </button>
+                      <button className="reports-btn" type="button" onClick={commitImport} disabled={importing}>
+                        {importing ? "جارٍ الحفظ..." : "حفظ ودمج"}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -723,4 +1230,3 @@ const DashboardClients: React.FC = () => {
 };
 
 export default DashboardClients;
-

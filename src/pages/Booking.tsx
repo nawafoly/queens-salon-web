@@ -1,4 +1,5 @@
 // src/pages/Booking.tsx
+
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -286,7 +287,6 @@ const Booking = () => {
     const v = safeInt((booking as any)?.slotStepMin, 10);
     return [10, 15, 30].includes(v) ? v : 10;
   }, [(booking as any)?.slotStepMin]);
-
 
   const timeSlots = useMemo(() => {
     return generateSalonTimeSlots(openTime, closeTime, slotStepMin);
