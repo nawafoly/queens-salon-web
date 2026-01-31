@@ -141,14 +141,36 @@
   max-width: 100%;
 }
 
+/* ✅ FIX: remove centering + max-width clamp (كان يوسّط الداشبورد ويخليه ينحّف)
+   + نخلي Desktop layout flex (Sidebar + Content جنب بعض)
+*/
 .dashboard-skin .dashboard-inner {
-  width: min(1400px, calc(100% - 28px));
-  margin: 0 auto;
-  max-width: 1180px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;                 /* ✅ شل التوسيط */
   min-width: 0;
-  overflow-x: hidden;
+
   padding-top: 12px;
   padding-inline: 14px;
+
+  overflow-x: hidden;
+
+  /* ✅ Desktop layout */
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+/* ✅ Sidebar width on desktop */
+@media (min-width: 992px) {
+  .dashboard-skin .dashboard-sidebar {
+    flex: 0 0 320px;
+  }
+
+  .dashboard-skin .dashboard-main {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 /* =========================
@@ -425,6 +447,11 @@
 }
 
 @media (max-width: 991px) {
+  /* ✅ في الموبايل: inner يرجع عمودي (سايدبار drawer) */
+  .dashboard-skin .dashboard-inner {
+    display: block;
+  }
+
   .dashboard-skin .dashboard-sidebar {
     position: fixed !important;
     top: 12px;
@@ -855,14 +882,11 @@
    ✅ REMOVE Scrollbars (Dashboard only) - FINAL
 ========================= */
 
-/* 1) امنع أي overflow أفقي يطلع شريط تحت */
-.dashboard-skin.dashboard-page,
-.dashboard-skin.dashboard-page .container-fluid,
-.dashboard-skin.dashboard-page .row,
-.dashboard-skin.dashboard-page .dashboard-main,
-.dashboard-skin.dashboard-page .dashboard-inner {
+/* ✅ امنع السكرول الأفقي على الصفحة فقط (بدون خنق المحتوى) */
+.dashboard-skin.dashboard-page {
   overflow-x: hidden !important;
 }
+
 
 /* 2) Sidebar drawer (على الموبايل) خليها تسكرول بس بدون شريط */
 @media (max-width: 991px) {

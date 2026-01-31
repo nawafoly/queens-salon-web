@@ -323,7 +323,7 @@ const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
             onChange={(e) => onChange("hoursText", e.target.value)}
             disabled={!hasAdminPower}
             placeholder={
-              "السبت - الأربعاء: 10:00 ص - 10:00 م\nالخميس: ...\nالجمعة: ..."
+              "السبت - الأربعاء: 10:00 ص - 10:00 م\n الخميس: ...\n الجمعة: ..."
             }
           />
         </div>
@@ -433,7 +433,7 @@ const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
 
       {!hasAdminPower ? (
         <div className="settings-note" style={{ marginTop: 10 }}>
-          * للتعديل تحتاج صلاحية Owner/Admin. (الاستقبال/الموظفات عرض فقط)
+          * للتعديل تحتاج صلاحية Owner / Admin. (الاستقبال/الموظفات عرض فقط)
         </div>
       ) : null}
     </div>

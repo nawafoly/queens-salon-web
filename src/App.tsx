@@ -181,7 +181,6 @@ const App: React.FC = () => {
 
       <main className="main-content">
         <ScrollToTop />
-
         <Routes>
           {/* Public */}
           <Route path="/" element={<Home />} />
@@ -190,7 +189,6 @@ const App: React.FC = () => {
           <Route path="/booking" element={<Booking />} />
 
           <Route path="/checkout" element={<Navigate to="/success" replace />} />
-
           <Route path="/success" element={<Success />} />
           <Route path="/offers" element={<Offers />} />
           <Route path="/reviews" element={<Reviews />} />
@@ -202,7 +200,7 @@ const App: React.FC = () => {
           <Route path="/track" element={<Track />} />
           <Route path="/track/:trackId" element={<Track />} />
 
-          {/* ✅ NEW: Pending */}
+          {/* Pending */}
           <Route path="/dashboard-pending" element={<DashboardPending />} />
 
           {/* Client (Protected) */}
@@ -225,6 +223,8 @@ const App: React.FC = () => {
             }
           />
 
+       
+
           {/* Profile (Protected) */}
           <Route
             path="/profile"
@@ -236,16 +236,16 @@ const App: React.FC = () => {
           />
 
           <Route path="/forgot-password" element={<ForgotPassword />} />
-
           <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
           {/* Payments */}
           <Route path="/pay" element={<Pay />} />
           <Route path="/payment-callback" element={<PaymentCallback />} />
 
-          {/* Fallback */}
+          {/* ✅ Fallback لازم يكون آخر شيء */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+
       </main>
 
       {!isInDashboard && <Footer />}

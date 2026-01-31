@@ -11,7 +11,10 @@ export type SectionKey =
   | "offers"
   | "reports"
   | "income"
-  | "expenses";
+  | "expenses"
+  | "logs"
+  | "settings";
+
 
 /* =========================
    ✅ NEW: Booking / Services settings types
@@ -117,6 +120,8 @@ const defaultSettings: AppSettings = {
     reports: true,
     income: true,
     expenses: true,
+    logs: true,
+    settings: true,
   },
 
   policies: {
@@ -249,15 +254,16 @@ function sanitize(input: any): AppSettings {
       overview: safeBool(sectionsRaw.overview, defaultSettings.sections.overview),
       bookings: safeBool(sectionsRaw.bookings, defaultSettings.sections.bookings),
       clients: safeBool(sectionsRaw.clients, defaultSettings.sections.clients),
-      employees: safeBool(
-        sectionsRaw.employees,
-        defaultSettings.sections.employees
-      ),
+      employees: safeBool(sectionsRaw.employees, defaultSettings.sections.employees),
       offers: safeBool(sectionsRaw.offers, defaultSettings.sections.offers),
       reports: safeBool(sectionsRaw.reports, defaultSettings.sections.reports),
       income: safeBool(sectionsRaw.income, defaultSettings.sections.income),
       expenses: safeBool(sectionsRaw.expenses, defaultSettings.sections.expenses),
+    
+      logs: safeBool((sectionsRaw as any).logs, defaultSettings.sections.logs),
+      settings: safeBool((sectionsRaw as any).settings, defaultSettings.sections.settings),
     },
+    
 
     policies: {
       allowStaffChangeStatus: safeBool(
@@ -304,7 +310,7 @@ function cacheWrite(settings: AppSettings) {
   if (STRICT_FIREBASE) return;
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(settings));
-  } catch {}
+  } catch { }
 }
 
 function cacheRead(): AppSettings | null {

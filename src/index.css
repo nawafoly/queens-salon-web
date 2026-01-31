@@ -328,11 +328,7 @@ button,
   border-color: var(--qs-border);
 }
 
-/* Container width safety */
-.container,
-.container-fluid {
-  max-width: 1200px;
-}
+
 
 /* Icons helpers */
 .fa-check-circle,

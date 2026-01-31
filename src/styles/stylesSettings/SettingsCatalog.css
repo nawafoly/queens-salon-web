@@ -1,80 +1,131 @@
 /* ✅ src/styles/stylesSettings/SettingsCatalog.css */
 
 .scatalog .settings-wrap {
-    max-width: 1100px;
+  max-width: 1100px;
+}
+
+.scatalog__header h1 {
+  margin-bottom: 6px;
+}
+
+.scatalog__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.scatalog__msg {
+  border-radius: 12px;
+}
+
+.scatalog__card {
+  border-radius: 18px;
+}
+
+.scatalog__row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.scatalog__row .settings-input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.scatalog__listRow {
+  align-items: center;
+  gap: 10px;
+}
+
+/* ====== Numbers / Select widths ====== */
+.scatalog__num {
+  width: 110px;
+}
+
+.scatalog__numWide {
+  width: 130px;
+}
+
+.scatalog__select {
+  width: 220px;
+  min-width: 180px;
+}
+
+.scatalog__check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+/* =========================================
+   ✅ Headers (توضيح الأعمدة فوق القوائم)
+   - نفس روح الـ settings-row
+   - واضح: هذا ايش وهذا ايش
+========================================= */
+.scatalog__thead {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px dashed rgba(13, 13, 13, 0.14);
+  background: rgba(13, 13, 13, 0.03);
+  font-size: 12px;
+  font-weight: 900;
+  opacity: 0.9;
+
+  display: grid;
+  gap: 10px;
+  align-items: center;
+}
+
+.scatalog__th {
+  padding-inline: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ✅ 1) Sections header columns */
+.scatalog__thead--sections {
+  grid-template-columns: 1.1fr 1.6fr 0.6fr 0.8fr 0.7fr 0.9fr;
+}
+
+/* ✅ 2) Categories header columns */
+.scatalog__thead--cats {
+  grid-template-columns: 1.2fr 1.4fr 0.6fr 0.7fr 0.8fr 0.9fr;
+}
+
+/* ✅ 3) Services header columns */
+.scatalog__thead--services {
+  grid-template-columns: 1.1fr 1.3fr 0.7fr 0.7fr 1fr 0.7fr 0.7fr;
+}
+
+/* =========================================
+   موبايل
+========================================= */
+@media (max-width: 820px) {
+  .scatalog .settings-wrap {
+    padding: 14px;
   }
-  
-  .scatalog__header h1 {
-    margin-bottom: 6px;
-  }
-  
-  .scatalog__actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  
-  .scatalog__msg {
-    border-radius: 12px;
-  }
-  
-  .scatalog__card {
-    border-radius: 18px;
-  }
-  
-  .scatalog__row {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  
-  .scatalog__row .settings-input {
-    flex: 1;
-    min-width: 220px;
-  }
-  
-  .scatalog__listRow {
-    align-items: center;
-    gap: 10px;
-  }
-  
-  .scatalog__num {
-    width: 110px;
-  }
-  
-  .scatalog__numWide {
-    width: 130px;
-  }
-  
+
+  .scatalog__num,
+  .scatalog__numWide,
   .scatalog__select {
-    width: 220px;
-    min-width: 180px;
+    width: 100%;
+    min-width: 0;
   }
-  
-  .scatalog__check {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    font-weight: 900;
-    white-space: nowrap;
+
+  .scatalog__row .settings-input {
+    min-width: 0;
   }
-  
-  /* موبايل */
-  @media (max-width: 820px) {
-    .scatalog .settings-wrap {
-      padding: 14px;
-    }
-  
-    .scatalog__num,
-    .scatalog__numWide,
-    .scatalog__select {
-      width: 100%;
-      min-width: 0;
-    }
-  
-    .scatalog__row .settings-input {
-      min-width: 0;
-    }
+
+  /* ✅ الهيدر يختفي بالموبايل عشان ما يزحم
+     (لأن الصفوف نفسها تحت بتصير عمودية)
+  */
+  .scatalog__thead {
+    display: none;
   }
-  
+}

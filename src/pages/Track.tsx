@@ -127,10 +127,9 @@ const Track = () => {
     (notFound || data?.status === "pending" || data?.status === "cancelled");
 
   return (
-    <div className="track-page">
+    <div className="track-page" dir="rtl">
       <div className="track-card">
         <div className="track-head">
-          {/* ✅ الشعار بدل الدبوس */}
           <div className="track-logo">
             <img src={logo} alt="Queens Salon Logo" />
           </div>

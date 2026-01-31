@@ -20,6 +20,7 @@ import {
   faXmark,
   faBars,
   faHouse,
+  faClockRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/DashboardSkin.css";
@@ -35,6 +36,7 @@ import DashboardClients from "./DashboardClients";
 import DashboardSettings from "../pages/DashboardSettings";
 import DashboardExpenses from "../pages/DashboardExpenses";
 import DashboardIncome from "../pages/DashboardIncome";
+import DashboardLogs from "../pages/DashboardLogs";
 
 import DashboardStaff from "../pages/DashboardStaff";
 
@@ -79,7 +81,9 @@ type SectionKey =
   | "reports"
   | "income"
   | "expenses"
+  | "logs"
   | "settings";
+
 
 type AppSettings = {
   salonName: string;
@@ -109,8 +113,10 @@ const defaultSettings: AppSettings = {
     reports: true,
     income: true,
     expenses: true,
+    logs: true,
     settings: true,
   },
+
   policies: {
     allowStaffChangeStatus: true,
     allowReceptionChangeStatus: true,
@@ -882,7 +888,7 @@ const Dashboard: React.FC = () => {
   if (!userInfo) {
     return <LoadingBrand text="جاري تحميل لوحة التحكم..." />;
   }
-  
+
   return (
     <div className="dashboard-skin dashboard-page dashboard-skin-page">
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
@@ -1114,6 +1120,19 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
+                {hasAdminPower && canSeeSection("logs") && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/logs"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faClockRotateLeft} />
+                      سجل الحركات
+                    </NavLink>
+                  </li>
+                )}
+
                 {hasAdminPower && canSeeSection("settings") && (
                   <li>
                     <NavLink
@@ -1263,6 +1282,11 @@ const Dashboard: React.FC = () => {
                 {hasAdminPower && canSeeSection("settings") && (
                   <Route path="settings/*" element={<DashboardSettings />} />
                 )}
+
+                {hasAdminPower && canSeeSection("logs") && (
+                  <Route path="logs" element={<DashboardLogs />} />
+                )}
+
 
                 <Route
                   path="*"

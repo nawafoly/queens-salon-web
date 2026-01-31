@@ -1,5 +1,3 @@
-
-
 // src/pages/Success.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -33,6 +31,7 @@ import { getBookingById } from "../services/firestoreBookings";
 type UiBookingView = {
   id: string; // داخلي فقط
   publicId?: string; // MK-xxxx للعرض
+
   clientName: string;
   clientPhone: string;
 
@@ -47,7 +46,15 @@ type UiBookingView = {
   status: string;
 };
 
+type LocalBookingRef = {
+  id?: string;
+  bookingId?: string;
+  publicId?: string;
+};
+
 const BOOKING_KEY = "currentBooking";
+const ALL_BOOKINGS_KEY = "allBookings";
+
 const SALON_ID = "main";
 const SALON_WHATSAPP = "966548440401";
 
@@ -89,20 +96,30 @@ function statusClass(s: string) {
   return "default";
 }
 
-function buildWhatsappMessage(args: { publicId: string; date: string; time: string }) {
-  return (
-    `مرحباً 🌷\n` +
-    `أود تأكيد حجزي في صالون ملكات\n\n` +
-    `رقم الحجز: ${args.publicId}\n` +
-    `التاريخ: ${args.date}\n` +
-    `الوقت: ${args.time}\n\n` +
-    `شكراً لكم 🤍`
-  );
+function buildWhatsappMessageAll(bookings: UiBookingView[]) {
+  const lines: string[] = [];
+  lines.push("مرحباً 🌷");
+  lines.push("أود تأكيد حجزي/حجوزاتي في صالون ملكات");
+  lines.push("");
+
+  bookings.forEach((b, i) => {
+    const mk = String(b.publicId || "").trim() || "—";
+    lines.push(`(${i + 1}) رقم الحجز: ${mk}`);
+    lines.push(`الخدمة: ${b.serviceName || "—"}`);
+    lines.push(`التاريخ: ${b.date || "—"}`);
+    lines.push(`الوقت: ${b.time || "—"}`);
+    lines.push(`الموظفة: ${b.employeeName || "—"}`);
+    lines.push("");
+  });
+
+  lines.push("شكراً لكم 🤍");
+  return lines.join("\n");
 }
 
 // اختياري: لو ما عندك snapshot أو تبي احتياط
 async function resolveServiceName(serviceId: string): Promise<string> {
   if (!serviceId) return "—";
+
   // إذا واضح إنه اسم مو ID (مثل "قص شعر")
   if (serviceId.length < 10) return serviceId;
 
@@ -116,14 +133,50 @@ async function resolveServiceName(serviceId: string): Promise<string> {
   }
 }
 
+/** اقرأ allBookings (الجديد) ثم fallback لـ currentBooking (قديم) */
+function readLocalBookingRefs(): LocalBookingRef[] {
+  // 1) allBookings
+  try {
+    const rawAll = localStorage.getItem(ALL_BOOKINGS_KEY);
+    const parsedAll = rawAll ? JSON.parse(rawAll) : null;
+
+    if (Array.isArray(parsedAll) && parsedAll.length) {
+      return parsedAll
+        .map((x: any) => ({
+          id: x?.id,
+          bookingId: x?.bookingId,
+          publicId: x?.publicId,
+        }))
+        .filter((x) => String(x?.id || x?.bookingId || "").trim());
+    }
+  } catch {
+    // ignore
+  }
+
+  // 2) fallback currentBooking
+  try {
+    const raw = localStorage.getItem(BOOKING_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    const one: LocalBookingRef = {
+      id: parsed?.id,
+      bookingId: parsed?.bookingId,
+      publicId: parsed?.publicId,
+    };
+    if (String(one?.id || one?.bookingId || "").trim()) return [one];
+  } catch {
+    // ignore
+  }
+
+  return [];
+}
+
 export default function Success() {
   const navigate = useNavigate();
-  const location = useLocation(); // موجود إذا احتجته (تقدر تحذفه لو ما تستخدمه)
-
+  const location = useLocation(); // موجود إذا احتجته
   void location;
 
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<UiBookingView | null>(null);
+  const [views, setViews] = useState<UiBookingView[]>([]);
   const [error, setError] = useState("");
 
   const [toastMsg, setToastMsg] = useState<string>("");
@@ -136,15 +189,7 @@ export default function Success() {
     (showToast as any)._t = window.setTimeout(() => setToastMsg(""), 1600);
   };
 
-  const bookingId = useMemo(() => {
-    try {
-      const raw = localStorage.getItem(BOOKING_KEY);
-      const parsed = raw ? JSON.parse(raw) : null;
-      return String(parsed?.id || parsed?.bookingId || "").trim();
-    } catch {
-      return "";
-    }
-  }, []);
+  const bookingRefs = useMemo(() => readLocalBookingRefs(), []);
 
   useEffect(() => {
     let mounted = true;
@@ -153,42 +198,61 @@ export default function Success() {
       try {
         setLoading(true);
         setError("");
-        setView(null);
+        setViews([]);
 
-        if (!bookingId) {
+        if (!bookingRefs.length) {
           setError("رقم الحجز غير موجود");
           return;
         }
 
-        const docData: any = await getBookingById(bookingId);
-        if (!docData) {
+        // ✅ اجلب كل الحجوزات (best-effort)
+        const results: UiBookingView[] = [];
+
+        for (const ref of bookingRefs) {
+          const bookingId = String(ref?.id || ref?.bookingId || "").trim();
+          if (!bookingId) continue;
+
+          const docData: any = await getBookingById(bookingId);
+          if (!docData) continue;
+
+          // ✅ اسم الخدمة: snapshot أولاً (ثابت) ثم احتياط من services
+          const serviceId = String(docData.serviceId ?? docData.serviceName ?? "").trim();
+          const snapName = String(docData.serviceSnapshot?.serviceNameAtBooking ?? "").trim();
+          const serviceName = snapName || (await resolveServiceName(serviceId));
+
+          if (!mounted) return;
+
+          results.push({
+            id: docData.id || bookingId,
+            publicId: normalizeMk(docData.publicId || ref.publicId || ""),
+            clientName: docData.clientName || "-",
+            clientPhone: docData.clientPhone || "-",
+
+            serviceId,
+            serviceName,
+
+            employeeName: docData.employeeName || "-",
+            date: docData.date || "-",
+            time: docData.time || "-",
+
+            total: safeNum(docData.finalPrice ?? docData.total),
+            status: docData.status || "pending",
+          });
+        }
+
+        if (!results.length) {
           setError("لم يتم العثور على الحجز");
           return;
         }
 
-        // ✅ اسم الخدمة: snapshot أولاً (ثابت) ثم احتياط من services
-        const serviceId = String(docData.serviceId ?? docData.serviceName ?? "").trim();
-        const snapName = String(docData.serviceSnapshot?.serviceNameAtBooking ?? "").trim();
-        const serviceName = snapName || (await resolveServiceName(serviceId));
-
-        if (!mounted) return;
-
-        setView({
-          id: docData.id || bookingId,
-          publicId: normalizeMk(docData.publicId || ""),
-          clientName: docData.clientName || "-",
-          clientPhone: docData.clientPhone || "-",
-
-          serviceId,
-          serviceName,
-
-          employeeName: docData.employeeName || "-",
-          date: docData.date || "-",
-          time: docData.time || "-",
-
-          total: safeNum(docData.finalPrice ?? docData.total),
-          status: docData.status || "pending",
+        // ترتيب بسيط: حسب التاريخ/الوقت (نصياً) ثم MK
+        results.sort((a, b) => {
+          const ad = `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`);
+          if (ad !== 0) return ad;
+          return String(a.publicId || "").localeCompare(String(b.publicId || ""));
         });
+
+        setViews(results);
       } catch (e: any) {
         console.error(e);
         setError(e?.message || "صار خطأ أثناء تحميل بيانات الحجز");
@@ -201,10 +265,10 @@ export default function Success() {
     return () => {
       mounted = false;
     };
-  }, [bookingId]);
+  }, [bookingRefs]);
 
-  const copyPublicId = async () => {
-    const publicId = String(view?.publicId || "").trim();
+  const copyOne = async (publicIdRaw: string) => {
+    const publicId = String(publicIdRaw || "").trim();
     if (!publicId) return showToast("رقم الحجز غير متوفر", "error");
     try {
       await navigator.clipboard.writeText(publicId);
@@ -214,16 +278,29 @@ export default function Success() {
     }
   };
 
+  const copyAll = async () => {
+    const ids = views
+      .map((v) => String(v.publicId || "").trim())
+      .filter((x) => x && x !== "—");
+
+    if (!ids.length) return showToast("ما فيه أرقام MK للنسخ", "error");
+
+    const text = ids.join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast("تم نسخ كل أرقام الحجوزات ✅", "success");
+    } catch {
+      showToast("تعذر النسخ", "error");
+    }
+  };
+
   const openWhatsapp = () => {
-    const publicId = String(view?.publicId || "").trim();
-    if (!publicId) return showToast("رقم الحجز غير متوفر لإرسال الواتساب", "error");
+    if (!views.length) return showToast("بيانات الحجز غير متوفرة", "error");
 
-    const msg = buildWhatsappMessage({
-      publicId,
-      date: String(view?.date || "").trim() || "-",
-      time: String(view?.time || "").trim() || "-",
-    });
+    const hasAnyMk = views.some((v) => String(v.publicId || "").trim());
+    if (!hasAnyMk) return showToast("رقم الحجز غير متوفر لإرسال الواتساب", "error");
 
+    const msg = buildWhatsappMessageAll(views);
     const url = `https://wa.me/${SALON_WHATSAPP}?text=${encodeURIComponent(msg)}`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
@@ -231,7 +308,7 @@ export default function Success() {
   if (loading) {
     return <LoadingBrand text="جاري تحميل البيانات..." />;
   }
-  
+
   if (error) {
     return (
       <div className="success-page">
@@ -242,7 +319,11 @@ export default function Success() {
           </div>
 
           <div className="success-actions">
-            <button className="success-btn success-home" onClick={() => navigate("/booking")} type="button">
+            <button
+              className="success-btn success-home"
+              onClick={() => navigate("/booking")}
+              type="button"
+            >
               <FontAwesomeIcon icon={faArrowRight} /> رجوع للحجز
             </button>
           </div>
@@ -251,17 +332,31 @@ export default function Success() {
     );
   }
 
-  if (!view) return null;
+  const first = views[0];
+  const st = normStatus(first?.status || "pending");
+  const isConfirmed = st === "confirmed" || first?.status === "مؤكد";
 
-  const st = normStatus(view.status);
-  const isConfirmed = st === "confirmed" || view.status === "مؤكد";
-  const heroTitle = isConfirmed ? "تم تأكيد حجزك بنجاح! 🎉" : "تم استلام طلب حجزك بنجاح";
+  const heroTitle =
+    views.length > 1
+      ? isConfirmed
+        ? "تم تأكيد حجوزاتك بنجاح! 🎉"
+        : "تم استلام طلب حجوزاتك بنجاح"
+      : isConfirmed
+      ? "تم تأكيد حجزك بنجاح! 🎉"
+      : "تم استلام طلب حجزك بنجاح";
+
   const heroDesc = isConfirmed
     ? "تم تأكيد الموعد. إذا احتجتِ تعديل، تواصلي معنا عبر الواتساب."
     : "تم استلام طلب حجزك، وسيتم التواصل معك قريبًا لتأكيد الموعد.";
 
-  const displayPublicId = String(view.publicId || "").trim() || "—";
-  const canTrack = displayPublicId !== "—";
+  const mkList = views
+    .map((v) => String(v.publicId || "").trim())
+    .filter(Boolean);
+
+  const firstMk = String(first?.publicId || "").trim() || "—";
+  const canTrack = firstMk !== "—";
+
+  const totalAll = views.reduce((s, v) => s + safeNum(v.total), 0);
 
   return (
     <div className="success-page">
@@ -270,79 +365,131 @@ export default function Success() {
 
         <div className="success-header">
           <div className="success-icon" aria-hidden="true">
-          <span className="success-check">✓</span>
+            <span className="success-check">✓</span>
           </div>
 
           <h1 className="success-title">{heroTitle}</h1>
           <p className="success-subtitle">{heroDesc}</p>
 
+          {/* ✅ Badge: إذا أكثر من حجز نعرض أول MK + عدد */}
           <div className="success-badge">
-            <span>رقم الحجز</span>
-            <span className="mono">{displayPublicId}</span>
+            <span>{views.length > 1 ? "أرقام الحجوزات" : "رقم الحجز"}</span>
+            <span className="mono">
+              {views.length > 1 ? `${firstMk} (+${views.length - 1})` : firstMk}
+            </span>
           </div>
 
-          <p className="text-black">احتفظي بالرقم للتتبع أو انسخيه بضغطة واحدة</p>
+          <p className="text-black">
+            احتفظي بالأرقام للتتبع. تقدري تنسخي رقم واحد أو كل الأرقام بضغطة ✨
+          </p>
         </div>
 
+        {/* ✅ قائمة/بطاقات الحجوزات */}
         <div className="success-details">
-          <div className="detail-row">
-            <FontAwesomeIcon icon={faUser} className="detail-ico" />
-            <span className="detail-label">العميلة</span>
-            <span className="detail-value">{view.clientName}</span>
-          </div>
+          {views.map((v, idx) => {
+            const mk = String(v.publicId || "").trim() || "—";
+            return (
+              <div key={v.id} style={{ paddingTop: idx ? 14 : 0 }}>
+                {idx > 0 && <div className="success-sep" style={{ opacity: 0.15 }} />}
 
-          <div className="detail-row">
-            <FontAwesomeIcon icon={faPhone} className="detail-ico" />
-            <span className="detail-label">الجوال</span>
-            <span className="detail-value">{view.clientPhone}</span>
-          </div>
+                <div className="detail-row detail-row--full" style={{ justifyContent: "space-between" }}>
+                  <span className="mono qs-black " style={{ fontWeight: 800 }}>
+                    {mk}
+                  </span>
 
-          <div className="detail-row">
-            <FontAwesomeIcon icon={faScissors} className="detail-ico" />
-            <span className="detail-label">الخدمة</span>
-            <span className="detail-value">{view.serviceName}</span>
-          </div>
+                  <button
+                    type="button"
+                    className="success-mini-copy qs-black"
+                    onClick={() => copyOne(mk)}
+                    title="نسخ رقم الحجز"
+                    style={{
+                      border: "1px solid rgba(13,13,13,0.15)",
+                      background: "#fff",
+                      borderRadius: 10,
+                      padding: "6px 10px",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faCopy} /> نسخ
+                  </button>
+                </div>
 
-          <div className="detail-row">
-            <FontAwesomeIcon icon={faUserTie} className="detail-ico" />
-            <span className="detail-label">الموظفة</span>
-            <span className="detail-value">{view.employeeName}</span>
-          </div>
+                <div className="detail-row">
+                  <FontAwesomeIcon icon={faUser} className="detail-ico" />
+                  <span className="detail-label">العميلة</span>
+                  <span className="detail-value">{v.clientName}</span>
+                </div>
 
-          <div className="detail-row">
-            <FontAwesomeIcon icon={faCalendarAlt} className="detail-ico" />
-            <span className="detail-label">التاريخ</span>
-            <span className="detail-value">{view.date}</span>
-          </div>
+                <div className="detail-row">
+                  <FontAwesomeIcon icon={faPhone} className="detail-ico" />
+                  <span className="detail-label">الجوال</span>
+                  <span className="detail-value">{v.clientPhone}</span>
+                </div>
 
-          <div className="detail-row">
-            <FontAwesomeIcon icon={faClock} className="detail-ico" />
-            <span className="detail-label">الوقت</span>
-            <span className="detail-value">{view.time}</span>
-          </div>
+                <div className="detail-row">
+                  <FontAwesomeIcon icon={faScissors} className="detail-ico" />
+                  <span className="detail-label">الخدمة</span>
+                  <span className="detail-value">{v.serviceName}</span>
+                </div>
 
-          <div className="detail-row detail-row--full">
-            <span className={`status-pill ${statusClass(view.status)}`}>{statusLabel(view.status)}</span>
-          </div>
+                <div className="detail-row">
+                  <FontAwesomeIcon icon={faUserTie} className="detail-ico" />
+                  <span className="detail-label">الموظفة</span>
+                  <span className="detail-value">{v.employeeName}</span>
+                </div>
 
-          <div className="total-row">
-            <FontAwesomeIcon icon={faMoneyBill} />
-            <span>{view.total ? `${view.total.toLocaleString()} ريال` : "—"}</span>
-          </div>
+                <div className="detail-row">
+                  <FontAwesomeIcon icon={faCalendarAlt} className="detail-ico" />
+                  <span className="detail-label">التاريخ</span>
+                  <span className="detail-value">{v.date}</span>
+                </div>
+
+                <div className="detail-row">
+                  <FontAwesomeIcon icon={faClock} className="detail-ico" />
+                  <span className="detail-label">الوقت</span>
+                  <span className="detail-value">{v.time}</span>
+                </div>
+
+                <div className="detail-row detail-row--full">
+                  <span className={`status-pill ${statusClass(v.status)}`}>{statusLabel(v.status)}</span>
+                </div>
+
+                <div className="total-row">
+                  <FontAwesomeIcon icon={faMoneyBill} />
+                  <span>{v.total ? `${v.total.toLocaleString()} ريال` : "—"}</span>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* ✅ إجمالي الكل إذا متعدد */}
+          {views.length > 1 && (
+            <div className="total-row" style={{ marginTop: 14 }}>
+              <FontAwesomeIcon icon={faMoneyBill} />
+              <span style={{ fontWeight: 800 }}>
+                الإجمالي لكل الحجوزات: {totalAll ? `${totalAll.toLocaleString()} ريال` : "—"}
+              </span>
+            </div>
+          )}
         </div>
 
-        <button type="button" className="success-copy-btn" onClick={copyPublicId}>
-          <FontAwesomeIcon icon={faCopy} /> نسخ رقم الحجز (MK)
+        {/* ✅ أزرار النسخ/واتساب */}
+        <button type="button" className="success-copy-btn" onClick={views.length > 1 ? copyAll : () => copyOne(firstMk)}>
+          <FontAwesomeIcon icon={faCopy} /> {views.length > 1 ? "نسخ كل أرقام الحجوزات (MK)" : "نسخ رقم الحجز (MK)"}
         </button>
 
         <button type="button" className="success-copy-btn" onClick={openWhatsapp}>
           <FontAwesomeIcon icon={faWhatsapp} /> تأكيد عبر واتساب
         </button>
 
+        {/* ✅ أكشنز */}
         <div className="success-actions">
           <button
             className="success-btn success-primary"
-            onClick={() => navigate(`/track/${encodeURIComponent(displayPublicId)}`)}
+            onClick={() => navigate(`/track/${encodeURIComponent(firstMk)}`)}
             type="button"
             disabled={!canTrack}
             title={canTrack ? "تتبع الحجز" : "رقم التتبع غير متوفر"}
@@ -364,4 +511,3 @@ export default function Success() {
     </div>
   );
 }
-

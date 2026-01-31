@@ -72,6 +72,10 @@ type CartItem = {
   id: string; // local id
   serviceId: string;
   serviceName: string;
+  serviceSectionId: string;     // ✅ القسم الحقيقي للخدمة وقت الإضافة
+  serviceCategoryId?: string;   // ✅ للتوافق (اختياري)
+  serviceCategoryName?: string; // ✅ لو التصنيف نصي (للـ legacy)
+
   basePrice: number;
   priceText: string;
   durationMin: number;
@@ -149,19 +153,18 @@ function buildSlotId(salonId: string, employeeKey: string, date: string, time: s
   return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
 }
 
-const BUFFER_MIN = 0;
-
 function getTimesToLock(
   allSlots: string[],
   slotStepMin: number,
   startTime: string,
-  durationMin: number
+  durationMin: number,
+  bufferMin: number
 ) {
   const idx = allSlots.indexOf(startTime);
   if (idx < 0) return [startTime];
 
   const step = Math.max(1, Number(slotStepMin || 10));
-  const totalMin = Math.max(0, Number(durationMin || 0)) + Math.max(0, BUFFER_MIN);
+  const totalMin = Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
   const slotsNeeded = Math.max(1, Math.ceil(totalMin / step));
   return allSlots.slice(idx, idx + slotsNeeded);
 }
@@ -287,6 +290,11 @@ const Booking = () => {
     const v = safeInt((booking as any)?.slotStepMin, 10);
     return [10, 15, 30].includes(v) ? v : 10;
   }, [(booking as any)?.slotStepMin]);
+
+  // ✅ NEW: bufferMin from settings (same contract as firestoreBookings)
+  const bufferMin = useMemo(() => {
+    return Math.max(0, safeInt((booking as any)?.bufferMin, 0));
+  }, [(booking as any)?.bufferMin]);
 
   const timeSlots = useMemo(() => {
     return generateSalonTimeSlots(openTime, closeTime, slotStepMin);
@@ -750,6 +758,9 @@ const Booking = () => {
           employeeName: "",
           date: "",
           time: "",
+          serviceSectionId: String(sv.sectionId || "").trim(),
+          serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
+          serviceCategoryName: String(sv.category || "").trim() || undefined,
         },
       ],
     }));
@@ -914,7 +925,7 @@ const Booking = () => {
           const disabled = new Set<string>();
 
           for (const start of allSlots) {
-            const needed = getTimesToLock(allSlots, slotStepMin, start, durationMin);
+            const needed = getTimesToLock(allSlots, slotStepMin, start, durationMin, bufferMin);
             const bad = needed.some((t) => taken.has(t));
             if (bad) disabled.add(start);
           }
@@ -954,6 +965,7 @@ const Booking = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     slotStepMin,
+    bufferMin,
     timeSlots.join("|"),
     formData.items.map((x) => `${x.id}|${x.employeeId}|${x.date}|${x.durationMin}`).join("::"),
   ]);
@@ -980,20 +992,9 @@ const Booking = () => {
     setSelectedCategory("");
     setServicePicker("");
 
-    setFormData((prev) => ({
-      ...prev,
-      items: [],
-    }));
-
-    setBusyByItem({});
-    setStaffByService({});
-    setStaffLoadingByService({});
-    setStaffErrorByService({});
-
-    setCouponCode("");
-    setManualOverride(false);
-    setOfferMsg("");
-    setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+    // ✅ لا تمسح السلة
+    // ✅ لا تمسح busy/staff لأنها مربوطة بالسلة
+    // ✅ لا تصفّر الكوبون هنا لأن السلة ما تغيّرت
   };
 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -1029,15 +1030,8 @@ const Booking = () => {
 
   const handleApplyCoupon = async () => {
     const items = formData.items || [];
-    const primaryServiceId = String(items[0]?.serviceId || "").trim();
-
     if (!items.length || !basePrice) {
       setOfferMsg("اختاري خدمة أولاً قبل تطبيق الكود");
-      return;
-    }
-
-    if (!String(items[0]?.date || "").trim()) {
-      setOfferMsg("اختاري تاريخ الحجز (على الأقل لأول خدمة) ثم طبّقي الكود");
       return;
     }
 
@@ -1057,27 +1051,52 @@ const Booking = () => {
         return;
       }
 
-      if (!primaryServiceId || !offerAppliesToService(offer, primaryServiceId)) {
+      // ✅ العناصر اللي ينطبق عليها العرض داخل السلة
+      const applicable = items.filter((it) => {
+        const sid = String(it.serviceId || "").trim();
+        return sid && offerAppliesToService(offer, sid);
+      });
+
+      if (!applicable.length) {
         setManualOverride(false);
         setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
-        setOfferMsg("هذا الكود لا ينطبق على هذه الخدمة");
+        setOfferMsg("هذا الكود لا ينطبق على الخدمات المختارة");
         return;
       }
 
-      const dateCheck = isOfferValidForBookingDate(offer as any, String(items[0]?.date || "").trim());
-      if (!dateCheck.ok) {
-        setManualOverride(false);
-        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
-        setOfferMsg(dateCheck.reason || "هذا العرض غير متاح لتاريخ الحجز المختار");
+      // ✅ لازم يكون لكل خدمة ينطبق عليها العرض تاريخ حجز
+      const missingDate = applicable.find((it) => !String(it.date || "").trim());
+      if (missingDate) {
+        setOfferMsg("اختاري تاريخ الحجز للخدمات قبل تطبيق الكود");
         return;
       }
 
-      const { discountAmount, finalPrice } = calcDiscount(basePrice, offer);
+      // ✅ تحقق صلاحية العرض حسب تاريخ كل خدمة (مو اليوم)
+      const badDate = applicable
+        .map((it) => ({
+          it,
+          check: isOfferValidForBookingDate(offer as any, String(it.date || "").trim()),
+        }))
+        .find((x) => !x.check.ok);
+
+      if (badDate) {
+        setManualOverride(false);
+        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
+        setOfferMsg(badDate.check.reason || "هذا العرض غير متاح لتاريخ الحجز المختار");
+        return;
+      }
+
+      // ✅ احسب الخصم على مجموع الخدمات المطابقة فقط
+      const applicableTotal = applicable.reduce((s, it) => s + Number(it.basePrice || 0), 0);
+      const { discountAmount } = calcDiscount(applicableTotal, offer);
+
+      // ✅ النهائي = basePrice - الخصم (لأن الباقي ما عليه خصم)
+      const nextFinal = Math.max(0, basePrice - discountAmount);
 
       setApplied({
         offer,
         discountAmount,
-        finalPrice,
+        finalPrice: nextFinal,
         reason: "تم تطبيق الخصم ✅",
       });
 
@@ -1126,7 +1145,8 @@ const Booking = () => {
       timeSlots,
       slotStepMin,
       time,
-      Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+      Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+      bufferMin
     );
 
     try {
@@ -1219,7 +1239,6 @@ const Booking = () => {
       let finalApplied: AppliedOfferResult = applied;
 
       if (normalizedCode) {
-        const primaryServiceId = String(items[0]?.serviceId || "").trim();
         const offer = await findActiveOfferByCode(SALON_ID, normalizedCode);
 
         if (!offer) {
@@ -1232,29 +1251,59 @@ const Booking = () => {
           return;
         }
 
-        if (!primaryServiceId || !offerAppliesToService(offer, primaryServiceId)) {
+        const applicable = items.filter((it) => {
+          const sid = String(it.serviceId || "").trim();
+          return sid && offerAppliesToService(offer, sid);
+        });
+
+        if (!applicable.length) {
           openModal({
             title: "الكود لا ينطبق",
-            message: "هذا الكود لا ينطبق على هذه الخدمة.",
+            message: "هذا الكود لا ينطبق على الخدمات المختارة.",
             variant: "danger",
             confirmText: "حسنًا",
           });
           return;
         }
 
-        const dateCheck = isOfferValidForBookingDate(offer as any, String(items[0]?.date || "").trim());
-        if (!dateCheck.ok) {
+        const missingDate = applicable.find((it) => !String(it.date || "").trim());
+        if (missingDate) {
+          openModal({
+            title: "ناقص تاريخ الحجز",
+            message: "اختاري تاريخ الحجز للخدمات قبل تطبيق الكود.",
+            variant: "danger",
+            confirmText: "حسنًا",
+          });
+          return;
+        }
+
+        const badDate = applicable
+          .map((it) => ({
+            it,
+            check: isOfferValidForBookingDate(offer as any, String(it.date || "").trim()),
+          }))
+          .find((x) => !x.check.ok);
+
+        if (badDate) {
           openModal({
             title: "العرض غير متاح لهذا التاريخ",
-            message: dateCheck.reason || "هذا العرض غير متاح لتاريخ الحجز المختار.",
+            message: badDate.check.reason || "هذا العرض غير متاح لتاريخ الحجز المختار.",
             variant: "danger",
             confirmText: "حسنًا",
           });
           return;
         }
 
-        const { discountAmount, finalPrice } = calcDiscount(basePrice, offer);
-        finalApplied = { offer, discountAmount, finalPrice, reason: "تم تطبيق الخصم ✅" };
+        const applicableTotal = applicable.reduce((s, it) => s + Number(it.basePrice || 0), 0);
+        const { discountAmount } = calcDiscount(applicableTotal, offer);
+
+        finalApplied = {
+          offer,
+          discountAmount,
+          finalPrice: Math.max(0, basePrice - discountAmount),
+          reason: "تم تطبيق الخصم ✅",
+        };
+
         setApplied(finalApplied);
         setManualOverride(true);
       }
@@ -1285,7 +1334,25 @@ const Booking = () => {
       }
 
       const discountTotal = Number(finalApplied.discountAmount || 0);
-      const perItemDiscounts = allocateDiscount(items, discountTotal);
+
+      // ✅ لو فيه عرض: الخصم يروح فقط للخدمات المطابقة
+      const offerObj = finalApplied.offer;
+      const applicableIdx: number[] = offerObj
+        ? items
+          .map((it, idx) => ({ it, idx }))
+          .filter(({ it }) => offerAppliesToService(offerObj, String(it.serviceId || "").trim()))
+          .map(({ idx }) => idx)
+        : [];
+
+      const perItemDiscounts = items.map(() => 0);
+
+      if (discountTotal > 0 && applicableIdx.length) {
+        const applicableItems = applicableIdx.map((i) => items[i]);
+        const allocated = allocateDiscount(applicableItems, discountTotal);
+        applicableIdx.forEach((originalIndex, j) => {
+          perItemDiscounts[originalIndex] = Number(allocated[j] || 0);
+        });
+      }
 
       const uid = signedUid;
 
@@ -1298,8 +1365,6 @@ const Booking = () => {
 
       const noteFinal = [userNote, offerNote].filter(Boolean).join(" | ") || undefined;
 
-      const sectionIdAtBooking = String(selectedSectionId || "").trim() || undefined;
-
       const createdBookings: any[] = [];
 
       for (let idx = 0; idx < items.length; idx++) {
@@ -1308,6 +1373,12 @@ const Booking = () => {
         const itemFinal = Math.max(0, Number(it.basePrice || 0) - itemDiscount);
 
         const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+
+        const sv = getServiceById(String(it.serviceId || "").trim());
+        const sectionIdAtBooking =
+          String(it.serviceSectionId || "").trim() ||
+          String(sv?.sectionId || "").trim() ||
+          undefined;
 
         const res = await createBooking({
           userId: uid,
@@ -1436,6 +1507,9 @@ const Booking = () => {
           date: String(it?.date || "").trim(),
           time: String(it?.time || "").trim(),
           priceText: String(it?.priceText || "").trim(),
+          serviceSectionId: String((it as any)?.serviceSectionId || "").trim(),
+          serviceCategoryId: String((it as any)?.serviceCategoryId || "").trim() || undefined,
+          serviceCategoryName: String((it as any)?.serviceCategoryName || "").trim() || undefined,
         })),
       }));
 
@@ -1607,12 +1681,18 @@ const Booking = () => {
                       className="btn btn-dark"
                       disabled={!servicePicker}
                       onClick={() => {
+                        // ✅ 1) أضف الخدمة للسلة
                         addServiceToCart(servicePicker);
+
+                        // ✅ 2) صفّر الاختيارات عشان العميلة تضيف خدمة ثانية بسهولة
                         setServicePicker("");
+                        setSelectedCategory("");
+                        setSelectedSectionId("");
                       }}
                     >
                       إضافة
                     </button>
+
                   </div>
 
                   {!!(formData.items || []).length && (

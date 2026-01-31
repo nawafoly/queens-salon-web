@@ -5,7 +5,7 @@ import "../styles/Profile.css";
 
 import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
 import { auth, db } from "../services/firebase";
-import LoadingBrand from "../components/LoadingBrand";
+
 
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 
@@ -202,7 +202,9 @@ const Profile: React.FC = () => {
 
   const [userData, setUserData] = useState({
     name: cachedProfile?.name || currentUser?.name || localStorage.getItem("userName") || "",
-    phone: normalizeKsaPhone(cachedProfile?.phone || currentUser?.phone || localStorage.getItem("userPhone") || ""),
+    phone: normalizeKsaPhone(
+      cachedProfile?.phone || currentUser?.phone || localStorage.getItem("userPhone") || ""
+    ),
     email: cachedProfile?.email || currentUser?.email || localStorage.getItem("userEmail") || "",
     city: cachedProfile?.city || currentUser?.city || "",
     birthdate: cachedProfile?.birthdate || currentUser?.birthdate || "",
@@ -313,8 +315,7 @@ const Profile: React.FC = () => {
     setBookingsErr("");
 
     const colRef = collection(db, "salons", SALON_ID, "bookings");
-
-    const qy = query(colRef, where("userId", "==", firebaseUid), orderBy("createdAt", "desc"));
+    const qy = query(colRef, where("userId", "==", firebaseUid));
 
     const unsub = onSnapshot(
       qy,
@@ -378,7 +379,9 @@ const Profile: React.FC = () => {
 
   const membershipId =
     (profileDoc as any)?.membershipId ||
-    (profileMode === "firebase" && firebaseUid ? `client-${new Date().getFullYear()}-${firebaseUid.slice(0, 6)}` : "client-0000");
+    (profileMode === "firebase" && firebaseUid
+      ? `client-${new Date().getFullYear()}-${firebaseUid.slice(0, 6)}`
+      : "client-0000");
 
   const progress = Math.min(Math.max(Number(membershipPercent) || 0, 0), 100);
 
@@ -460,9 +463,14 @@ const Profile: React.FC = () => {
 
       // Local mode
       let clients = JSON.parse(localStorage.getItem("clients") || "[]");
-      clients = clients.map((u: any) => (u.phone === userData.phone ? { ...u, ...editData, phone: normalizedPhone } : u));
+      clients = clients.map((u: any) =>
+        u.phone === userData.phone ? { ...u, ...editData, phone: normalizedPhone } : u
+      );
       localStorage.setItem("clients", JSON.stringify(clients));
-      localStorage.setItem("currentUser", JSON.stringify({ ...(currentUser || {}), ...editData, phone: normalizedPhone }));
+      localStorage.setItem(
+        "currentUser",
+        JSON.stringify({ ...(currentUser || {}), ...editData, phone: normalizedPhone })
+      );
       localStorage.setItem("userName", editData.name);
       localStorage.setItem("userEmail", editData.email);
       localStorage.setItem("userPhone", normalizedPhone);
@@ -566,7 +574,12 @@ const Profile: React.FC = () => {
                   {userData.avatar ? <img src={userData.avatar} alt="avatar" /> : <span>👩‍🦰</span>}
                 </div>
 
-                <button className="p-avatar-plus" type="button" title="تغيير الصورة" onClick={() => fileInputRef.current?.click()}>
+                <button
+                  className="p-avatar-plus"
+                  type="button"
+                  title="تغيير الصورة"
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   +
                 </button>
 
@@ -650,7 +663,7 @@ const Profile: React.FC = () => {
                 <div className="p-booking-card">
                   <div className="p-booking-top">
                     <div className="p-booking-title">{upcomingBooking.service}</div>
-                    <span className={`p-status-tag p-${statusKey(upcomingBooking.status)}`}>
+                    <span className={`p-status-tag p-status-${statusKey(upcomingBooking.status)}`}>
                       {statusLabelAr(upcomingBooking.status)}
                     </span>
                   </div>
@@ -669,7 +682,10 @@ const Profile: React.FC = () => {
 
                     <a
                       className="p-btn p-btn-ghost"
-                      href={getWhatsAppLink(SUPPORT_PHONE, `مرحباً، عندي حجز بتاريخ ${upcomingBooking.date} الساعة ${upcomingBooking.time}.`)}
+                      href={getWhatsAppLink(
+                        SUPPORT_PHONE,
+                        `مرحباً، عندي حجز بتاريخ ${upcomingBooking.date} الساعة ${upcomingBooking.time}.`
+                      )}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -717,12 +733,14 @@ const Profile: React.FC = () => {
                     <tbody>
                       {bookingsFiltered.map((b) => (
                         <tr key={b.id}>
-                          <td className="p-strong">{b.service}</td>
+                          <td className="p-td-strong">{b.service}</td>
                           <td>{b.employee || "-"}</td>
                           <td>{formatDateAr(b.date)}</td>
                           <td>{b.time}</td>
                           <td>
-                            <span className={`p-status-tag p-${statusKey(b.status)}`}>{statusLabelAr(b.status)}</span>
+                            <span className={`p-status-tag p-status-${statusKey(b.status)}`}>
+                              {statusLabelAr(b.status)}
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -765,7 +783,9 @@ const Profile: React.FC = () => {
                 <div className="p-booking-card p-booking-last">
                   <div className="p-booking-top">
                     <div className="p-booking-title">{lastBooking.service}</div>
-                    <span className={`p-status-tag p-${statusKey(lastBooking.status)}`}>{statusLabelAr(lastBooking.status)}</span>
+                    <span className={`p-status-tag p-status-${statusKey(lastBooking.status)}`}>
+                      {statusLabelAr(lastBooking.status)}
+                    </span>
                   </div>
 
                   <div className="p-booking-meta">
@@ -795,7 +815,7 @@ const Profile: React.FC = () => {
             <div className="p-modal-content" onClick={(e) => e.stopPropagation()}>
               <div className="p-modal-head">
                 <h3 style={{ margin: 0 }}>تعديل بيانات العميلة</h3>
-                <button className="p-x" type="button" onClick={() => setShowEditModal(false)} aria-label="close">
+                <button className="p-modal-x" type="button" onClick={() => setShowEditModal(false)} aria-label="close">
                   ✕
                 </button>
               </div>

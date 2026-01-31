@@ -10,12 +10,7 @@
   max-width: 100%;
 }
 
-/* ✅ Wrapper */
-.dashboard-skin .settings-wrap {
-  width: min(760px, 100%);
-  margin-inline: auto;           /* يشتغل RTL/LTR */
-  padding-inline: 10px;
-}
+
 
 /* ✅ Header */
 .dashboard-skin .settings-header {
@@ -122,7 +117,6 @@
 
 /* ✅ Input (Unified / Glass) */
 .dashboard-skin .settings-input {
-  width: 100%;
   max-width: 100%;
   min-height: 44px;
   padding: 10px 12px;
@@ -535,4 +529,18 @@
   .dashboard-skin .ur-email {
     white-space: normal;
   }
+}
+
+/* ✅ تحسين ظهور الأرقام داخل حقول الإدخال */
+.dashboard-skin .settings-input.is-num {
+  direction: ltr;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+}
+
+/* لو عندك حقول رقمية صغيرة (ترتيب/مدة) */
+.dashboard-skin .settings-input.is-num.is-small {
+  max-width: 90px;
+  padding-inline: 10px;
 }

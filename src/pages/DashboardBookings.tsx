@@ -1043,10 +1043,11 @@ const DashboardBookings = () => {
       const staffId = String(form.staffId || "").trim();
       const picked = pickStaffById(staff, staffId);
 
-      const employeeId = picked?.id || (staffId ? staffId : null);
+      const employeeId = String(picked?.id || staffId || "").trim();
       const employeeUid = picked?.linkedUid || null;
       const employeeName = String(picked?.name || form.employeeName || "").trim();
 
+      if (!employeeId) return setCreateError("اختر الموظفة من القائمة (لازم employeeId).");
       if (!clientName) return setCreateError("اكتب اسم العميلة.");
       if (!clientPhone) return setCreateError("اكتب رقم جوال العميلة.");
       if (!serviceKey) return setCreateError("اكتب الخدمة (اسم أو ID).");
@@ -1069,7 +1070,7 @@ const DashboardBookings = () => {
         serviceName: serviceKey,
 
         employeeName,
-        employeeId: employeeId ?? null,
+        employeeId: employeeId,
         employeeUid: employeeUid ?? null,
 
         date,
@@ -1153,7 +1154,7 @@ const DashboardBookings = () => {
     const staffId = String(editForm.staffId || "").trim();
     const picked = pickStaffById(staff, staffId);
 
-    const employeeId = picked?.id || (staffId ? staffId : null);
+    const employeeId = String(picked?.id || staffId || "").trim();
     const employeeUid = picked?.linkedUid || null;
     const employeeName = String(picked?.name || editForm.employeeName || "").trim();
 
@@ -1178,7 +1179,7 @@ const DashboardBookings = () => {
         serviceName: serviceKey,
 
         employeeName,
-        employeeId: employeeId ?? null,
+        employeeId: employeeId,
         employeeUid: employeeUid ?? null,
 
         date,

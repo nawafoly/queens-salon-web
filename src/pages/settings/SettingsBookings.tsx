@@ -142,7 +142,7 @@ export default function SettingsBookings() {
       // ✅ كاش محلي فوري
       saveLocalSettings(next);
       // ✅ كاش AppSettingsService لو موجود
-      AppSettingsService.setCached?.(next);
+// AppSettingsService.setCached?.(next);
 
       return next;
     });
@@ -219,8 +219,8 @@ export default function SettingsBookings() {
       await AppSettingsService.saveRemote(normalizedSettingsToSave);
 
       // ✅ حدّث الكاشين فورًا
-      AppSettingsService.setCached?.(normalizedSettingsToSave);
-      saveLocalSettings(normalizedSettingsToSave);
+// AppSettingsService.setCached?.(normalizedSettingsToSave);
+saveLocalSettings(normalizedSettingsToSave);
       setSettings(normalizedSettingsToSave);
 
       console.log("✅ SAVED booking:", normalizedSettingsToSave.booking);
@@ -346,8 +346,8 @@ export default function SettingsBookings() {
       .then((remote) => {
         setSettings(remote || {});
         saveLocalSettings(remote || {});
-        AppSettingsService.setCached?.(remote || {});
-      })
+// AppSettingsService.setCached?.(remote || {});
+})
       .catch(() => {
         // لو فشل: نعتمد على cached/local
       });
@@ -368,8 +368,8 @@ export default function SettingsBookings() {
         };
 
         saveLocalSettings(merged);
-        AppSettingsService.setCached?.(merged);
-        return merged;
+// AppSettingsService.setCached?.(merged);
+return merged;
       });
     });
 

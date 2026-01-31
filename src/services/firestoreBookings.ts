@@ -23,6 +23,9 @@ import { generateSalonTimeSlots } from "../helpers/timeSlots";
 // ✅ read slotStep/buffer from settings/app (source of truth)
 import { AppSettingsService } from "./AppSettingsService";
 
+// ✅ for logging who did the action (best effort)
+import { getAuth } from "firebase/auth";
+
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 export type BookingChannel = "client" | "dashboard";
 
@@ -107,6 +110,9 @@ const INCOME_COL = ["salons", SALON_ID, "income"] as const;
 const COUNTERS_COL = ["salons", SALON_ID, "counters"] as const;
 const BOOKINGS_COUNTER_DOC = "bookings";
 
+// ✅ Booking Logs
+const LOGS_COL = ["salons", SALON_ID, "booking_logs"] as const;
+
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   const cleaned: Record<string, any> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -181,7 +187,7 @@ function safeKey(s: string) {
  * So in locks we use employeeKeyForLock = employeeId (staff_public id).
  */
 function buildSlotId(date: string, time: string, employeeKey: string) {
-  return `${SALON_ID}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
+  return `${safeKey(SALON_ID)}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
 }
 
 // ✅ Exported helper so Checkout/Booking can display the SAME slotId format used by Firestore lock
@@ -215,24 +221,53 @@ function getAmount(b: BookingDoc): number {
   return Number.isFinite(v) ? v : 0;
 }
 
+// ====== helpers to mirror Booking.tsx ======
+function safeInt(v: any, fallback: number) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
+function safeTimeHHMM(v: any, fallback: string) {
+  const s = String(v || "").trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return fallback;
+
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return fallback;
+  if (hh < 0 || hh > 23) return fallback;
+  if (mm < 0 || mm > 59) return fallback;
+
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
 /** ✅ read slot settings safely (fallback to defaults) */
 function getSlotSettings() {
-  const cached = AppSettingsService.getCached();
-  const slotStepMin = Math.max(5, Number((cached as any)?.booking?.slotStepMin ?? 30));
-  const bufferMin = Math.max(0, Number((cached as any)?.booking?.bufferMin ?? 0));
-  return { slotStepMin, bufferMin };
+  const cached = AppSettingsService.getCached() || {};
+  const booking = (cached as any)?.booking || {};
+  const businessHours = booking?.businessHours || {};
+
+  // ✅ same defaults as Booking.tsx (sat currently)
+  const openTime = safeTimeHHMM(businessHours?.sat?.start, "10:00");
+  const closeTime = safeTimeHHMM(businessHours?.sat?.end, "22:00");
+
+  const rawStep = safeInt(booking?.slotStepMin, 10);
+  const slotStepMin = [10, 15, 30].includes(rawStep) ? rawStep : 10;
+
+  const bufferMin = Math.max(0, safeInt(booking?.bufferMin, 0));
+
+  return { openTime, closeTime, slotStepMin, bufferMin };
 }
 
 /**
  * ✅ lock multiple time slots based on duration
- * - Uses same slots list from generateSalonTimeSlots()
+ * - Uses same slots list from generateSalonTimeSlots(open, close, step)
  * - If time not found, falls back to locking only the chosen time
  */
 function getTimesToLock(startTime: string, durationMin: number) {
-  const { slotStepMin, bufferMin } = getSlotSettings();
+  const { openTime, closeTime, slotStepMin, bufferMin } = getSlotSettings();
 
-  // ⚠️ generateSalonTimeSlots() هنا بدون ساعات عمل لأنه نفس اللي عندكم سابقًا
-  const slots = generateSalonTimeSlots();
+  const slots = generateSalonTimeSlots(openTime, closeTime, slotStepMin);
   const idx = slots.indexOf(startTime);
 
   if (idx < 0) return [startTime];
@@ -241,6 +276,48 @@ function getTimesToLock(startTime: string, durationMin: number) {
   const slotsNeeded = Math.max(1, Math.ceil(totalMin / slotStepMin));
 
   return slots.slice(idx, idx + slotsNeeded);
+}
+
+/* =========================
+   ✅ Booking Logs (Audit) - Best Effort
+========================= */
+
+function bookingEventsCol(bookingId: string) {
+  return collection(db, ...LOGS_COL, bookingId, "events");
+}
+
+type BookingLogType = "created" | "status_changed" | "details_updated" | "staff_acknowledged";
+
+async function writeBookingLog(args: {
+  bookingId: string;
+  type: BookingLogType;
+  note?: string;
+  patch?: any;
+}) {
+  try {
+    const auth = getAuth();
+    const u = auth.currentUser;
+
+    const evRef = doc(bookingEventsCol(args.bookingId));
+
+    await setDoc(
+      evRef,
+      stripUndefined({
+        type: args.type,
+        bookingId: args.bookingId,
+
+        byUid: u?.uid || null,
+        byEmail: u?.email || null,
+
+        note: args.note || "",
+        patch: args.patch || null,
+
+        at: serverTimestamp(),
+      }) as any
+    );
+  } catch {
+    // best-effort: اللوق ما يكسر شغل الحجز
+  }
 }
 
 /* =========================
@@ -284,8 +361,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   // ✅ snapshot: لو ما انرسل، نبني واحد minimal من الموجود
   const snapFromInput = data.serviceSnapshot;
   const fallbackName =
-    String(snapFromInput?.serviceNameAtBooking || "").trim() ||
-    String(data.serviceName || "").trim();
+    String(snapFromInput?.serviceNameAtBooking || "").trim() || String(data.serviceName || "").trim();
 
   const fallbackPrice = Number(snapFromInput?.priceAtBooking ?? data.finalPrice ?? data.total ?? 0);
   const fallbackDur = Number(snapFromInput?.durationAtBooking ?? durationMin);
@@ -345,8 +421,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
         const sameUser =
           (data.userId && existingBooking.userId && data.userId === existingBooking.userId) ||
-          (!data.userId &&
-            String(existingBooking.clientPhone || "") === String(data.clientPhone || ""));
+          (!data.userId && String(existingBooking.clientPhone || "") === String(data.clientPhone || ""));
 
         const sameDate = String(existingBooking.date || "") === String(data.date || "");
         const sameStart = String(existingBooking.time || "") === String(data.time || "");
@@ -354,9 +429,8 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         // ✅ prefer employeeKey comparison
         const sameEmp =
           String(existingBooking.employeeKey || "") === String(employeeKey) ||
-          safeKey(
-            String(existingBooking.employeeId ?? "").trim() || existingBooking.employeeName.trim()
-          ) === safeKey(employeeKeyForLock);
+          safeKey(String(existingBooking.employeeId ?? "").trim() || existingBooking.employeeName.trim()) ===
+            safeKey(employeeKeyForLock);
 
         if (sameUser && sameDate && sameStart && sameEmp) {
           const existingPublic = String(existingBooking.publicId || "").trim();
@@ -456,6 +530,21 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   } catch (e) {
     console.warn("[createBooking] track write failed (ignored):", e);
   }
+
+  // ✅ booking log: created (best effort)
+  await writeBookingLog({
+    bookingId,
+    type: "created",
+    note: "تم إنشاء الحجز",
+    patch: {
+      serviceId: data.serviceId ?? null,
+      employeeId: data.employeeId ?? null,
+      employeeUid: data.employeeUid ?? null,
+      date: data.date,
+      time: data.time,
+      total: Number(data.finalPrice ?? data.total ?? 0),
+    },
+  });
 
   return { id: bookingId, publicId };
 }
@@ -760,6 +849,14 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     return booking;
   });
 
+  // ✅ booking log: status changed (best effort)
+  await writeBookingLog({
+    bookingId,
+    type: "status_changed",
+    note: `تغيير الحالة إلى: ${status}`,
+    patch: { status },
+  });
+
   // ✅ 2) Best-effort: income خارج الترانزاكشن (ما يمنع تعديل الحجز)
   try {
     const amount = getAmount(bookingForIncome);
@@ -814,6 +911,14 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
       updatedAt: serverTimestamp(),
     }) as any
   );
+
+  // ✅ booking log: details updated (best effort)
+  await writeBookingLog({
+    bookingId,
+    type: "details_updated",
+    note: "تم تعديل بيانات الحجز",
+    patch,
+  });
 
   // ✅ best-effort track update (إذا track ناقص أو rules تمنع، لا نكسر حفظ الحجز)
   try {
@@ -946,8 +1051,7 @@ export async function backfillServiceFields(opts?: { dryRun?: boolean; limit?: n
 
     const legacy = String(b.serviceName || "").trim();
 
-    const looksLikeId =
-      legacy.length >= 15 && !legacy.includes(" ") && /^[A-Za-z0-9_-]+$/.test(legacy);
+    const looksLikeId = legacy.length >= 15 && !legacy.includes(" ") && /^[A-Za-z0-9_-]+$/.test(legacy);
 
     const nextServiceId = hasServiceId ? b.serviceId : looksLikeId ? legacy : undefined;
 
