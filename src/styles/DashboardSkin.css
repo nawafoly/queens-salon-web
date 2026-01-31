@@ -994,3 +994,14 @@
   border-color: rgba(239, 68, 68, 0.30);
   transform: translateY(-1px);
 }
+
+/* overlay تحت */
+.dashboard-skin .dash-side-overlay{
+  z-index: 9998;
+  pointer-events: auto; /* يمسك الضغط للإغلاق */
+}
+
+/* sidebar فوق */
+.dashboard-skin .dashboard-sidebar{
+  z-index: 9999 !important;
+}

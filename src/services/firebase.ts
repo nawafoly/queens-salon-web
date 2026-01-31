@@ -3,11 +3,11 @@ import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
+import { getStorage } from "firebase/storage"; // ✅ أضفناها
 
 function must(name: string) {
   const v = (import.meta as any).env?.[name];
   if (!v) {
-    // خطأ واضح بدل ما نضيع وقت في "Missing permissions" وهو أصلاً config غلط
     throw new Error(`[Firebase ENV Missing] ${name} is not set in .env`);
   }
   return String(v);
@@ -25,27 +25,14 @@ const firebaseConfig = {
 console.log("✅ Firebase Project:", firebaseConfig.projectId);
 console.log("✅ Firebase AuthDomain:", firebaseConfig.authDomain);
 
-// ✅ يمنع تهيئة مكررة (HMR / dev / build)
 export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app); // ✅ هذا المهم
 
-// ✅ نفس Region حق الفنكشن (لو ما تستخدم Functions عادي تتركه)
 export const functions = getFunctions(app, "us-central1");
 
-// ✅ Debug فقط
 if (import.meta.env.DEV) {
-  (window as any).__fb = { app, auth, db, functions, firebaseConfig };
+  (window as any).__fb = { app, auth, db, storage, functions, firebaseConfig };
 }
-
-// ===== Settings Types (Salon UI) =====
-export type UiPaymentMethod = "كاش" | "شبكة" | "تحويل";
-export type BookingIncomeStatus = "confirmed" | "completed";
-
-export type FinanceSettings = {
-  expenseCategories: string[];
-  paymentMethods: UiPaymentMethod[];
-  currency: string;
-  incomeBookingStatuses: BookingIncomeStatus[];
-};

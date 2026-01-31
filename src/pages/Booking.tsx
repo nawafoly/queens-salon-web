@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import logo from "../assets/images/ssunnamed2.png";
+const hairGuideImg = "/hair-length-guide.png";
 
 import {
   faCalendarAlt,
@@ -28,11 +29,16 @@ import {
   query,
   where,
   orderBy,
+  setDoc, // ✅ add
 } from "firebase/firestore";
-import { db } from "../services/firebase";
+
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
+// ✅ انتبه: لازم firebase.ts يصدّر storage
+import { db, storage } from "../services/firebase";
 
 // ✅ Firebase Auth (للقراءة فقط)
-import { getAuth } from "firebase/auth";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 // ✅ fallback Pricing (مؤقت فقط إذا Firestore فاضي)
 import { pricingSections } from "./Pricing";
@@ -72,8 +78,8 @@ type CartItem = {
   id: string; // local id
   serviceId: string;
   serviceName: string;
-  serviceSectionId: string;     // ✅ القسم الحقيقي للخدمة وقت الإضافة
-  serviceCategoryId?: string;   // ✅ للتوافق (اختياري)
+  serviceSectionId: string; // ✅ القسم الحقيقي للخدمة وقت الإضافة
+  serviceCategoryId?: string; // ✅ للتوافق (اختياري)
   serviceCategoryName?: string; // ✅ لو التصنيف نصي (للـ legacy)
 
   basePrice: number;
@@ -149,8 +155,15 @@ function safeKey(v: string) {
   return String(v || "").trim().replaceAll("/", "-").replace(/\s+/g, "_");
 }
 
-function buildSlotId(salonId: string, employeeKey: string, date: string, time: string) {
-  return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
+function buildSlotId(
+  salonId: string,
+  employeeKey: string,
+  date: string,
+  time: string
+) {
+  return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(
+    employeeKey
+  )}`;
 }
 
 function getTimesToLock(
@@ -164,7 +177,8 @@ function getTimesToLock(
   if (idx < 0) return [startTime];
 
   const step = Math.max(1, Number(slotStepMin || 10));
-  const totalMin = Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
+  const totalMin =
+    Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
   const slotsNeeded = Math.max(1, Math.ceil(totalMin / step));
   return allSlots.slice(idx, idx + slotsNeeded);
 }
@@ -321,6 +335,14 @@ const Booking = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [servicePicker, setServicePicker] = useState<string>("");
 
+  // ✅ دليل أطوال الشعر (عرض)
+  const [showHairGuide, setShowHairGuide] = useState(false);
+
+  // ✅ دليل أطوال الشعر (رابط + رفع للأونر)
+  const [hairGuideUrl, setHairGuideUrl] = useState<string>(hairGuideImg);
+  const [isOwner, setIsOwner] = useState(false);
+  const [uploadingGuide, setUploadingGuide] = useState(false);
+
   const [formData, setFormData] = useState<BookingFormData>({
     name: "",
     phone: "",
@@ -367,6 +389,90 @@ const Booking = () => {
     setUiModal((p) => ({ ...p, open: false }));
     setOnUiConfirm(null);
   };
+
+  // =========================
+  // ✅ Load hair guide URL + role (owner/admin)
+  // ✅ FIX: use onAuthStateChanged so role doesn't stay false
+  // =========================
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadGuideUrl() {
+      try {
+        const guideRef = doc(db, "salons", SALON_ID, "settings", "booking");
+        const guideSnap = await getDoc(guideRef);
+
+        if (!cancelled) {
+          const url = String((guideSnap.data() as any)?.hairGuideUrl || "").trim();
+          setHairGuideUrl(url ? url : hairGuideImg);
+        }
+      } catch {
+        if (!cancelled) setHairGuideUrl(hairGuideImg);
+      }
+    }
+
+    loadGuideUrl();
+
+    const auth = getAuth();
+    const unsubAuth = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (!u || (u as any).isAnonymous) {
+          if (!cancelled) setIsOwner(false);
+          return;
+        }
+
+        const userRef = doc(db, "salons", SALON_ID, "users", u.uid);
+        const userSnap = await getDoc(userRef);
+        const role = String((userSnap.data() as any)?.role || "").toLowerCase();
+
+        if (!cancelled) setIsOwner(role === "owner" || role === "admin");
+      } catch {
+        if (!cancelled) setIsOwner(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unsubAuth();
+    };
+  }, []);
+
+  // ✅ رفع صورة دليل الشعر (Owner/Admin فقط)
+  async function uploadHairGuide(file: File) {
+    setUploadingGuide(true);
+    try {
+      const path = `salons/${SALON_ID}/booking/hair-guide_${Date.now()}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+
+      const url = await getDownloadURL(storageRef);
+
+      const guideRef = doc(db, "salons", SALON_ID, "settings", "booking");
+      await setDoc(guideRef, { hairGuideUrl: url }, { merge: true });
+
+      setHairGuideUrl(url);
+
+      openModal({
+        title: "تم ✅",
+        message: "تم رفع صورة دليل أطوال الشعر وتحديثها.",
+        variant: "success",
+        confirmText: "تمام",
+      });
+    } catch (e: any) {
+      // ✅ IMPORTANT: show real error
+      openModal({
+        title: "فشل الرفع",
+        message:
+          `صار خطأ أثناء رفع الصورة\n\n` +
+          `code: ${String(e?.code || "—")}\n` +
+          `message: ${String(e?.message || "—")}`,
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+    } finally {
+      setUploadingGuide(false);
+    }
+  }
 
   // =========================
   // Load sections
@@ -547,6 +653,15 @@ const Booking = () => {
   // =========================
   // One source services list (Firestore else Pricing)
   // =========================
+
+  const HAIR_SECTION_IDS = new Set([
+    "hair",
+    "الشعر",
+    "hair_section",
+    "قص",
+    "قص_شعر",
+  ]);
+
   const servicesFlat: FlatService[] = useMemo(() => {
     if (catalogMode === "firestore" && fsSections.length > 0) {
       const secMap = new Map<string, string>();
@@ -729,6 +844,24 @@ const Booking = () => {
     });
     return Array.from(map.entries());
   }, [servicesInSection]);
+
+  // ✅ هل القسم الحالي يخص الشعر؟
+  const isHairSection = useMemo(() => {
+    const id = String(selectedSectionId || "").trim().toLowerCase();
+
+    if (HAIR_SECTION_IDS.has(id)) return true;
+
+    const sec = sectionOptions.find((s) => String(s.id) === String(selectedSectionId));
+    const title = String(sec?.title || "").toLowerCase();
+
+    return (
+      title.includes("شعر") ||
+      title.includes("hair") ||
+      title.includes("صبغ") ||
+      title.includes("استشوار") ||
+      title.includes("تساريح")
+    );
+  }, [selectedSectionId, sectionOptions]);
 
   const getServiceById = (id: string) => servicesFlat.find((sv) => sv.id === id) || null;
 
@@ -987,14 +1120,16 @@ const Booking = () => {
 
   const handleSectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const sectionId = e.target.value;
+
     setSelectedSectionId(sectionId);
+
+    // ✅ قفل الصورة افتراضيًا عند تغيير القسم
+    setShowHairGuide(false);
 
     setSelectedCategory("");
     setServicePicker("");
 
-    // ✅ لا تمسح السلة
-    // ✅ لا تمسح busy/staff لأنها مربوطة بالسلة
-    // ✅ لا تصفّر الكوبون هنا لأن السلة ما تغيّرت
+    // ✅ لا تمسح السلة ولا الكوبون
   };
 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -1051,7 +1186,6 @@ const Booking = () => {
         return;
       }
 
-      // ✅ العناصر اللي ينطبق عليها العرض داخل السلة
       const applicable = items.filter((it) => {
         const sid = String(it.serviceId || "").trim();
         return sid && offerAppliesToService(offer, sid);
@@ -1064,14 +1198,12 @@ const Booking = () => {
         return;
       }
 
-      // ✅ لازم يكون لكل خدمة ينطبق عليها العرض تاريخ حجز
       const missingDate = applicable.find((it) => !String(it.date || "").trim());
       if (missingDate) {
         setOfferMsg("اختاري تاريخ الحجز للخدمات قبل تطبيق الكود");
         return;
       }
 
-      // ✅ تحقق صلاحية العرض حسب تاريخ كل خدمة (مو اليوم)
       const badDate = applicable
         .map((it) => ({
           it,
@@ -1086,11 +1218,8 @@ const Booking = () => {
         return;
       }
 
-      // ✅ احسب الخصم على مجموع الخدمات المطابقة فقط
       const applicableTotal = applicable.reduce((s, it) => s + Number(it.basePrice || 0), 0);
       const { discountAmount } = calcDiscount(applicableTotal, offer);
-
-      // ✅ النهائي = basePrice - الخصم (لأن الباقي ما عليه خصم)
       const nextFinal = Math.max(0, basePrice - discountAmount);
 
       setApplied({
@@ -1109,7 +1238,7 @@ const Booking = () => {
   };
 
   // =========================
-  // Helper: توزيع الخصم على العناصر (بشكل عادل)
+  // Helper: توزيع الخصم على العناصر
   // =========================
   function allocateDiscount(items: CartItem[], discountTotal: number) {
     const total = items.reduce((s, it) => s + Number(it.basePrice || 0), 0);
@@ -1133,7 +1262,7 @@ const Booking = () => {
   }
 
   // =========================
-  // ✅ Slot check for one item (before submit)
+  // ✅ Slot check for one item
   // =========================
   const checkOneItemSlot = async (it: CartItem) => {
     const employeeKey = String(it.employeeId || "").trim();
@@ -1169,7 +1298,7 @@ const Booking = () => {
   };
 
   // =========================
-  // Submit (Create Firestore bookings لكل عنصر + Go Success)
+  // Submit
   // =========================
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1335,13 +1464,12 @@ const Booking = () => {
 
       const discountTotal = Number(finalApplied.discountAmount || 0);
 
-      // ✅ لو فيه عرض: الخصم يروح فقط للخدمات المطابقة
       const offerObj = finalApplied.offer;
       const applicableIdx: number[] = offerObj
         ? items
-          .map((it, idx) => ({ it, idx }))
-          .filter(({ it }) => offerAppliesToService(offerObj, String(it.serviceId || "").trim()))
-          .map(({ idx }) => idx)
+            .map((it, idx) => ({ it, idx }))
+            .filter(({ it }) => offerAppliesToService(offerObj, String(it.serviceId || "").trim()))
+            .map(({ idx }) => idx)
         : [];
 
       const perItemDiscounts = items.map(() => 0);
@@ -1359,8 +1487,8 @@ const Booking = () => {
       const userNote = String(formData.note || "").trim();
       const offerNote = finalApplied.offer
         ? `Offer: ${(finalApplied.offer as any)?.title || normalizedCode || "-"} | discount=${Number(
-          finalApplied.discountAmount || 0
-        ).toFixed(0)}`
+            finalApplied.discountAmount || 0
+          ).toFixed(0)}`
         : "";
 
       const noteFinal = [userNote, offerNote].filter(Boolean).join(" | ") || undefined;
@@ -1480,7 +1608,7 @@ const Booking = () => {
   };
 
   // =========================
-  // Restore draft (optional) - بسيط
+  // Restore draft (optional)
   // =========================
   useEffect(() => {
     const draft = localStorage.getItem("bookingDraft");
@@ -1681,19 +1809,86 @@ const Booking = () => {
                       className="btn btn-dark"
                       disabled={!servicePicker}
                       onClick={() => {
-                        // ✅ 1) أضف الخدمة للسلة
                         addServiceToCart(servicePicker);
-
-                        // ✅ 2) صفّر الاختيارات عشان العميلة تضيف خدمة ثانية بسهولة
                         setServicePicker("");
-                        setSelectedCategory("");
-                        setSelectedSectionId("");
                       }}
                     >
                       إضافة
                     </button>
-
                   </div>
+
+                  {/* ✅ دليل أطوال الشعر (مرة واحدة فقط) */}
+                  {selectedSectionId && isHairSection && (
+                    <div
+                      className="mt-3"
+                      style={{
+                        border: "1px dashed rgba(13,13,13,0.18)",
+                        borderRadius: 14,
+                        padding: 12,
+                      }}
+                    >
+                      <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                        <div style={{ fontWeight: 900, color: "#0D0D0D" }}>
+                          📏 دليل أطوال الشعر
+                          <div className="small text-muted" style={{ fontWeight: 700 }}>
+                            اختاري طول شعرك من الصورة قبل ما تكملي الحجز
+                          </div>
+                        </div>
+
+                        <div className="d-flex align-items-center gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-outline-dark btn-sm"
+                            onClick={() => setShowHairGuide((v) => !v)}
+                          >
+                            {showHairGuide ? "إخفاء الصورة" : "عرض الصورة"}
+                          </button>
+
+                          {isOwner && (
+                            <>
+                              <input
+                                id="hairGuideUploadInput"
+                                type="file"
+                                accept="image/*"
+                                style={{ display: "none" }}
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) uploadHairGuide(f);
+                                  e.currentTarget.value = "";
+                                }}
+                              />
+
+                              <button
+                                type="button"
+                                className="btn btn-dark btn-sm"
+                                disabled={uploadingGuide}
+                                onClick={() =>
+                                  document.getElementById("hairGuideUploadInput")?.click()
+                                }
+                              >
+                                {uploadingGuide ? "جاري الرفع..." : "رفع صورة"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {showHairGuide && (
+                        <div className="mt-3 text-center">
+                          <img
+                            src={hairGuideUrl}
+                            alt="دليل أطوال الشعر"
+                            style={{
+                              width: "100%",
+                              maxWidth: 520,
+                              borderRadius: 16,
+                              boxShadow: "0 10px 28px rgba(0,0,0,0.14)",
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {!!(formData.items || []).length && (
                     <div className="mt-3">

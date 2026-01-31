@@ -653,3 +653,93 @@
     radial-gradient(800px 450px at 85% 25%, rgba(13, 13, 13, 0.04), transparent 55%),
     linear-gradient(180deg, #F5F5F4 0%, #ffffff 100%);
 }
+
+/* =========================
+   ✅ Mobile polish (Profile)
+========================= */
+@media (max-width: 600px) {
+  .p-root {
+    padding: 22px 12px; /* أخف للجوال */
+  }
+
+  .p-card {
+    border-radius: 20px;
+    padding: 16px;
+  }
+
+  .p-avatar-circle {
+    width: 78px;
+    height: 78px;
+    font-size: 34px;
+  }
+
+  .p-avatar-plus {
+    width: 28px;
+    height: 28px;
+  }
+
+  .p-user-name {
+    font-size: 1.35rem;
+  }
+
+  .p-user-sub {
+    font-size: 0.88rem;
+    gap: 8px;
+  }
+
+  .p-user-badges {
+    justify-content: center;
+  }
+
+  /* ✅ Table: خفف صدمة المين-ويدث */
+  .p-table {
+    min-width: 520px; /* بدل 650 */
+  }
+
+  .p-table th,
+  .p-table td {
+    padding: 12px 10px;
+    font-size: 0.9rem;
+  }
+}
+
+/* أصغر من كذا: نخلي الجدول يلف نصوصه شوي */
+@media (max-width: 420px) {
+  .p-table {
+    min-width: 460px;
+  }
+
+  .p-table td {
+    white-space: normal; /* بدل nowrap */
+  }
+
+  .p-td-strong {
+    max-width: 220px;
+  }
+}
+
+/* =========================
+   ✅ Edit Modal mobile-safe
+========================= */
+@media (max-width: 600px) {
+  .p-modal-overlay {
+    align-items: flex-start;       /* بدل السنتر */
+    overflow-y: auto;              /* لو طالت */
+    padding: 14px;
+    padding-top: calc(14px + env(safe-area-inset-top));
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .p-modal-content {
+    margin-top: 12px;
+    border-radius: 22px;
+    padding: 18px;
+    max-height: calc(100dvh - 28px);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .p-modal-actions .p-btn {
+    width: 100%;
+  }
+}

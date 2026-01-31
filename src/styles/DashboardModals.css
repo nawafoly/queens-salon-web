@@ -12,8 +12,8 @@
 /* =========================
    Overlay (both variants)
 ========================= */
-.modal-overlay,
-.dash-modal-overlay {
+.dashboard-page .modal-overlay,
+.dashboard-page .dash-modal-overlay {
   position: fixed;
   inset: 0;
   z-index: 10000;

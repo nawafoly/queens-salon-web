@@ -310,3 +310,109 @@
   filter: brightness(1.02);
   box-shadow: 0 10px 22px rgba(64, 1, 13, 0.14);
 }
+
+/* =========================
+   ✅ Mobile polish (DashboardStaff)
+   Add at END of DashboardStaff.css
+========================= */
+
+/* 1) نخفف عرض الكونتينر + padding بالجوال */
+@media (max-width: 600px){
+  .dashstaff-page{
+    width: calc(100% - 18px);
+    padding: 10px 0 26px;
+  }
+
+  /* الخلفية: خفف النقش شوي عشان ما يزحم */
+  .dashstaff-page::after{ opacity: .38; }
+}
+
+/* 2) جوال صغير: نرتب الهيدر والفلاتر والكروت */
+@media (max-width: 520px){
+  /* Header يصير ستاك */
+  .dashstaff-page .dashstaff-header{
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .dashstaff-page .dashstaff-title{
+    font-size: 16px;
+    line-height: 1.3;
+  }
+
+  /* عداد/بادجات: خليها تمسك عرضها وتتوزع */
+  .dashstaff-page .dashstaff-sub{
+    gap: 8px;
+  }
+  .dashstaff-page .dashstaff-count{
+    padding: 7px 12px;
+    font-size: 12px;
+  }
+
+  /* Filters: كلها 100% وبـ ارتفاع مريح */
+  .dashstaff-page .dashstaff-filters{
+    margin-top: 10px;
+    gap: 8px;
+  }
+  .dashstaff-page .dashstaff-input{
+    height: 46px;
+    border-radius: 16px;
+    font-size: 13px;
+  }
+
+  /* List spacing أقل */
+  .dashstaff-page .dashstaff-list{
+    margin-top: 12px;
+    gap: 10px;
+  }
+
+  /* Card: خفف الظل + padding */
+  .dashstaff-page .dashstaff-card{
+    padding: 12px;
+    border-radius: 16px;
+    box-shadow: 0 10px 24px rgba(13,13,13,.08);
+  }
+
+  /* Row top: خله يلف بشكل نظيف */
+  .dashstaff-page .dashstaff-row.top{
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .dashstaff-page .dashstaff-service{
+    font-size: 13.5px;
+  }
+
+  .dashstaff-page .dashstaff-meta{
+    font-size: 12px;
+  }
+
+  /* Status أصغر شوي */
+  .dashstaff-page .dashstaff-status{
+    font-size: 11.5px;
+    padding: 5px 9px;
+  }
+
+  /* Actions: خلي الأزرار تاخذ سطرين بشكل مرتب */
+  .dashstaff-page .dashstaff-actions{
+    gap: 8px;
+  }
+  .dashstaff-page .dashstaff-actions button{
+    height: 40px;
+    padding: 0 12px;
+    font-size: 12.5px;
+    border-radius: 999px;
+  }
+
+  /* ✅ لمسة مهمة للجوال: قلل hover لأن الجوال ما يحتاجه */
+  .dashstaff-page .dashstaff-card:hover::after{ opacity: 0; }
+}
+
+/* 3) جوالات أصغر جدًا */
+@media (max-width: 380px){
+  .dashstaff-page{ width: calc(100% - 14px); }
+  .dashstaff-page .dashstaff-count{ width: 100%; text-align: center; }
+  .dashstaff-page .dashstaff-actions button{ width: 100%; justify-content: center; }
+}

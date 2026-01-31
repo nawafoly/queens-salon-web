@@ -7,7 +7,7 @@ import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase
 import { auth, db } from "../services/firebase";
 
 
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { collection, onSnapshot,  query, where } from "firebase/firestore";
 
 import { createOrLoadUserProfile, updateUserProfile, type UserProfile } from "../services/userProfile";
 
