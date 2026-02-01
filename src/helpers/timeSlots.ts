@@ -15,7 +15,7 @@ function safeTimeHHMM(v: any, fallback: string) {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
-function toMinutes(hhmm: string) {
+export function toMinutes(hhmm: string) {
   const [h, m] = hhmm.split(":").map((x) => Number(x));
   return (Number(h) || 0) * 60 + (Number(m) || 0);
 }
@@ -34,12 +34,49 @@ function toArabic12hLabel(totalMin: number) {
   return `${hh}:${mm} ${suffix}`;
 }
 
+/**
+ * ✅ NEW: تحويل "HH:MM ص/م" إلى دقائق (0..1439)
+ * مثال: "04:15 م" -> 16*60+15
+ */
+export function slotLabelToMinutes(label: string): number | null {
+  const s = String(label || "").trim();
+
+  // نقبل: "04:15 ص" أو "4:15 م"
+  const m = s.match(/^(\d{1,2}):(\d{2})\s*(ص|م)$/);
+  if (!m) return null;
+
+  let hh = Number(m[1]);
+  const mm = Number(m[2]);
+  const ap = m[3]; // ص / م
+
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  if (hh < 1 || hh > 12) return null;
+  if (mm < 0 || mm > 59) return null;
+
+  // تحويل 12h -> 24h
+  // 12 ص = 00
+  // 12 م = 12
+  if (ap === "ص") {
+    if (hh === 12) hh = 0;
+  } else {
+    if (hh !== 12) hh = hh + 12;
+  }
+
+  return hh * 60 + mm;
+}
+
 // ✅ توليد الأوقات حسب إعدادات الصالون
-export function generateSalonTimeSlots(openTime?: string, closeTime?: string, stepMinutes?: number) {
+export function generateSalonTimeSlots(
+  openTime?: string,
+  closeTime?: string,
+  stepMinutes?: number
+) {
   const open = safeTimeHHMM(openTime, "09:00");
   const close = safeTimeHHMM(closeTime, "22:00");
 
-  const step = Math.max(1, Number(stepMinutes || 10));
+  // ✅ الاتفاق: الافتراضي = 5
+  const step = Math.max(1, Number(stepMinutes || 5));
+
   const startMin = toMinutes(open);
   const endMin = toMinutes(close);
 
@@ -48,8 +85,9 @@ export function generateSalonTimeSlots(openTime?: string, closeTime?: string, st
 
   const slots: string[] = [];
 
-  for (let t = startMin; t <= endMin; t += step) {
-    if (t > endMin) break;
+  // ✅ مهم: لا نضيف slot عند نهاية الدوام نفسها
+  // لأن النهاية "وقت إغلاق" وليست بداية حجز
+  for (let t = startMin; t < endMin; t += step) {
     slots.push(toArabic12hLabel(t));
   }
 

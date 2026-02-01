@@ -7,7 +7,7 @@
   font-size: 0.95rem;
 }
 
-/* ✅ Alert */
+/* Alert */
 .dash-alert {
   margin: 12px 0;
   padding: 12px 14px;
@@ -16,64 +16,33 @@
   border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-/* ✅ Card */
+/* Card */
 .dash-card {
   width: 100%;
-  max-width: 100%;
-  min-width: 0;
-
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 18px;
-
   padding: 14px;
   margin: 12px 0;
-
   box-sizing: border-box;
 }
 
-/* ✅ Filters row */
+/* Filters row */
 .dash-row {
   display: grid;
   grid-template-columns: 1fr 220px 220px;
   gap: 10px;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
 }
 
-.dash-meta {
-  margin-top: 10px;
-  opacity: 0.75;
-  font-size: 0.92rem;
-}
-
-/* ✅ Inputs */
+/* Inputs */
 .dash-input,
 .dash-select,
 .dash-textarea {
   width: 100%;
-  min-width: 0;
-
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 12px;
   padding: 10px 12px;
-
-  outline: none;
   background: #fff;
-  line-height: 1.25;
-
-  box-sizing: border-box;
-}
-
-.dash-input:focus,
-.dash-select:focus,
-.dash-textarea:focus {
-  border-color: rgba(0, 0, 0, 0.35);
-}
-
-.dash-textarea {
-  resize: vertical;
 }
 
 .dash-field label {
@@ -82,90 +51,46 @@
   font-weight: 700;
 }
 
-/* ✅ Grid list */
+/* Grid */
 .dash-grid {
-  width: 100%;
-  min-width: 0;
-  margin-bottom: 18px;
-
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  align-items: stretch;
 }
 
-/* ✅ Staff card */
+/* Staff card */
 .staff-card {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
   margin: 0;
-  /* مهم داخل grid */
 }
 
-/* Header row inside staff card */
-.staff-card .staff-top {
+/* Header */
+.staff-top {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: flex-start;
-}
-
-/* ✅ prevent long text breaking layout */
-.staff-name {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.staff-name b {
-  overflow-wrap: anywhere;
-}
-
-/* Actions */
-.staff-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
 }
 
 /* Status pill */
 .staff-pill {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 0.85rem;
-
   border: 1px solid rgba(0, 0, 0, 0.10);
   background: rgba(255, 255, 255, 0.75);
-
-  width: fit-content;
 }
 
 .staff-pill.on {
-  background: rgba(0, 200, 120, 0.10);
+  background: rgba(34, 197, 94, 0.12);
 }
 
 .staff-pill.off {
-  background: rgba(200, 0, 60, 0.08);
+  background: rgba(239, 68, 68, 0.10);
 }
 
 /* Bio */
 .staff-bio {
   margin-top: 10px;
-  line-height: 1.75;
-  opacity: 0.92;
-  overflow-wrap: anywhere;
-}
-
-.staff-bio.muted {
-  opacity: 0.62;
+  line-height: 1.7;
 }
 
 /* Chips */
@@ -182,74 +107,49 @@
   border: 1px dashed rgba(0, 0, 0, 0.18);
   font-size: 0.85rem;
   background: rgba(255, 255, 255, 0.75);
-  max-width: 100%;
-  word-break: break-word;
 }
 
-/* ID */
-.staff-id {
-  margin-top: 10px;
-  opacity: 0.55;
-  font-size: 0.82rem;
-  overflow-wrap: anywhere;
-}
+/* =================================================
+   ⭐⭐⭐ الحل الحقيقي هنا ⭐⭐⭐
+   Service Picks (الأزرار اللي تعبتنا)
+================================================= */
 
-/* Multi-pick buttons */
 .staff-picks {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
+/* غير مختار */
 .staff-picks .pick {
   border: 1px solid rgba(0, 0, 0, 0.12);
-  background: #fff;
+  background: #ffffff;
+  color: #0D0D0D;
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 1px 14px;
+  font-weight: 600;
   cursor: pointer;
-
-  line-height: 1.1;
-  min-height: 38px;
+  transition: all 0.15s ease;
 }
 
+/* hover خفيف */
+.staff-picks .pick:hover {
+  background: #f2f2f2;
+}
+
+/* ✅ المختار (Queens Black) */
 .staff-picks .pick.on {
-  border-color: rgba(232, 180, 162, 0.95);
-  background: rgba(232, 180, 162, 0.18);
+  background: #0D0D0D;
+  color: #ffffff;
+  border-color: #0D0D0D;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  transform: scale(1.05);
 }
 
-/* ✅ Responsive */
-@media (max-width: 900px) {
-  .dash-grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
+/* Responsive */
+@media (max-width: 20px) {
   .dash-row {
     grid-template-columns: 1fr;
   }
-
-  .staff-card .staff-top {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .staff-actions {
-    justify-content: flex-start;
-  }
 }
 
-@media (max-width: 430px) {
-  .dash-card {
-    padding: 12px;
-    border-radius: 16px;
-  }
-
-  .dash-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .staff-pill {
-    font-size: 0.83rem;
-  }
-}

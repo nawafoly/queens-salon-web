@@ -53,7 +53,6 @@
    Header
 ========================= */
 .exp-header {
-  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -742,4 +741,192 @@
 .exp-page .reports-btn svg,
 .exp-page .reports-btn.primary svg{
   opacity: 1;
+}
+
+/* =========================
+   ✅ Queens WHITE Override (EXPENSES) - IMPORTANT
+   يلغي البنفسجي ويضبط الراحة والفخامة
+========================= */
+
+.exp-page{
+  background:
+    radial-gradient(900px 520px at 15% 18%, rgba(64,1,13,0.06), transparent 60%),
+    radial-gradient(900px 520px at 85% 24%, rgba(136,140,140,0.10), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #f5f5f4 100%) !important;
+
+  color: #0D0D0D !important;
+}
+
+/* عناوين */
+.exp-header h1{
+  color: #0D0D0D !important;
+  letter-spacing: 0 !important;
+}
+
+/* Cards فخمة */
+.exp-card,
+.exp-stat,
+.exp-breakdown,
+.exp-table-wrap{
+  background: rgba(255,255,255,0.92) !important;
+  border: 1px solid rgba(13,13,13,0.08) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 10px 26px rgba(13,13,13,0.06) !important;
+}
+
+/* نصوص مريحة */
+.exp-page label{
+  font-weight: 900 !important;
+  color: rgba(13,13,13,0.92) !important;
+}
+
+.exp-page .muted,
+.exp-page .empty,
+.exp-page .exp-stat .k,
+.exp-page .bd-sub,
+.exp-page .bd-pct,
+.exp-page .exp-alert-hint{
+  color: rgba(13,13,13,0.62) !important;
+}
+
+/* Inputs: بدون بنفسجي */
+.exp-page input,
+.exp-page select,
+.exp-page textarea{
+  border: 1px solid rgba(13,13,13,0.12) !important;
+  border-radius: 14px !important;
+  padding: 10px 12px !important;
+  background: #fff !important;
+  color: #0D0D0D !important;
+}
+
+.exp-page input:focus,
+.exp-page select:focus,
+.exp-page textarea:focus{
+  border-color: rgba(64,1,13,0.28) !important;
+  box-shadow: 0 0 0 4px rgba(64,1,13,0.10) !important;
+}
+
+/* =========================
+   ✅ Replace reports-btn purple -> Queens maroon
+========================= */
+.exp-page .reports-btn{
+  border: 1px solid rgba(64,1,13,0.16) !important;
+  background: rgba(255,255,255,0.92) !important;
+  color: #0D0D0D !important;
+
+  border-radius: 14px !important;
+  padding: 10px 14px !important;
+
+  font-size: 13px !important;
+  font-weight: 900 !important;
+
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+
+  cursor: pointer !important;
+  transition: transform .15s ease, background .15s ease, border-color .15s ease !important;
+}
+
+.exp-page .reports-btn:hover{
+  background: rgba(64,1,13,0.06) !important;
+  border-color: rgba(64,1,13,0.22) !important;
+  transform: translateY(-1px) !important;
+}
+
+.exp-page .reports-btn.primary{
+  background: rgba(64,1,13,0.08) !important;
+  border: 1px solid rgba(64,1,13,0.22) !important;
+  color: #40010D !important;
+}
+
+.exp-page .reports-btn.primary:hover{
+  background: rgba(64,1,13,0.12) !important;
+  border-color: rgba(64,1,13,0.30) !important;
+}
+
+.exp-page .reports-btn.primary:focus-visible{
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(64,1,13,0.16) !important;
+}
+
+/* ✅ Buttons داخل exp-btn (لو تبغى نخليها ملكات) */
+.exp-page .exp-btn.primary{
+  background: #40010D !important;
+  border-color: #40010D !important;
+  color: #fff !important;
+}
+
+.exp-page .exp-btn.ghost{
+  background: rgba(64,1,13,0.06) !important;
+  border-color: rgba(64,1,13,0.16) !important;
+  color: #40010D !important;
+}
+
+.exp-page .exp-btn.danger{
+  background: rgba(220,38,38,0.08) !important;
+  border-color: rgba(220,38,38,0.20) !important;
+  color: #b91c1c !important;
+}
+
+/* =========================
+   ✅ Breakdown pills/bars: remove purple
+========================= */
+.exp-page .bd-pill{
+  background: rgba(64,1,13,0.06) !important;
+  border-color: rgba(64,1,13,0.14) !important;
+  color: #40010D !important;
+}
+
+.exp-page .bd-dot{
+  background: rgba(64,1,13,0.60) !important;
+}
+
+.exp-page .bd-fill{
+  background: rgba(64,1,13,0.55) !important;
+}
+
+/* =========================
+   ✅ Alert card: Queens
+========================= */
+.exp-page .exp-alert-card{
+  border-color: rgba(64,1,13,0.14) !important;
+}
+
+.exp-page .exp-alert-ico{
+  background: rgba(64,1,13,0.10) !important;
+}
+
+/* =========================
+   ✅ Table: header soft maroon
+========================= */
+.exp-page .exp-table thead th{
+  background: rgba(64,1,13,0.06) !important;
+  border-bottom: 1px solid rgba(64,1,13,0.14) !important;
+  color: #0D0D0D !important;
+}
+
+.exp-page .exp-table tbody tr:hover td{
+  background: rgba(64,1,13,0.035) !important;
+}
+
+/* =========================
+   ✅ Mobile comfort: bigger spacing
+========================= */
+@media (max-width: 640px){
+  .exp-page{
+    padding: 14px 10px !important;
+  }
+  .exp-header{
+    align-items: flex-start !important;
+  }
+  .exp-header-actions{
+    width: 100% !important;
+  }
+  .exp-header-actions .reports-btn,
+  .exp-header-actions .reports-btn.primary{
+    width: 100% !important;
+    justify-content: center !important;
+  }
 }

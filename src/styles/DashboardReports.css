@@ -1,202 +1,372 @@
 /* =========================
-   Dashboard Reports (Polished like Bookings/Clients)
+   Dashboard Reports (Queens WHITE + Mobile Cards)
    File: src/styles/DashboardReports.css
    ✅ Scoped داخل .reports-page فقط
+   ✅ White theme + Wine (#40010D) (بدون بنفسجي)
 ========================= */
 
-.reports-page {
-    background: linear-gradient(135deg, #f8ecf7 0%, #ece9fa 65%, #e1e5f8 100%);
-    min-height: 100vh;
-    padding: 18px 0;
-    overflow-x: hidden;
-    font-family: "Tajawal", sans-serif;
-  }
-  
-  .reports-page * { box-sizing: border-box; }
-  
-  /* Header card */
-  .reports-header {
-    width: min(1180px, calc(100% - 28px));
-    margin: 0 auto 12px auto;
-    background: rgba(255, 255, 255, 0.72);
-    border: 1px solid rgba(124, 58, 237, 0.10);
-    border-radius: 18px;
-    padding: 14px 16px;
-    backdrop-filter: blur(8px);
-  
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  
-  .reports-header h1 {
-    margin: 0 0 6px 0;
-    font-size: 18px;
-    font-weight: 800;
-    color: #3f3d56;
-  }
-  
-  .reports-header p {
-    margin: 0;
-    font-size: 13px;
-    color: rgba(55, 65, 81, 0.8);
-  }
-  
-  /* Toolbar */
-  .reports-toolbar {
-    width: min(1180px, calc(100% - 28px));
-    margin: 0 auto 12px auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  
-  .reports-toolbar .left,
-  .reports-toolbar .right {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  
-  /* Buttons (same vibe) */
-  .reports-btn {
-    border: 1px solid rgba(124, 58, 237, 0.16);
-    background: rgba(255,255,255,0.92);
-    color: #3f3d56;
-    border-radius: 12px;
-    padding: 8px 12px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    transition: transform .15s ease, background .15s ease;
-  }
-  
-  .reports-btn:hover {
-    background: #f4f2fd;
-    transform: translateY(-1px);
-  }
-  
-  .reports-btn.primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  
-    padding: 6px 12px;
-    border-radius: 999px;
-  
-    font-size: 13px;
-    font-weight: 500;
-  
-    background: rgba(139, 92, 246, 0.08);
-    color: #6d28d9;
-  
-    border: 1px solid rgba(139, 92, 246, 0.18);
-    cursor: pointer;
-  
-    transition: all 0.2s ease;
+.reports-page{
+  min-height: 100vh;
+  padding: 18px 0;
+  overflow-x: hidden;
+  font-family: "Tajawal", sans-serif;
+
+  /* Queens Salon – White theme */
+  background:
+    radial-gradient(900px 520px at 15% 18%, rgba(64,1,13,0.06), transparent 60%),
+    radial-gradient(900px 520px at 85% 24%, rgba(136,140,140,0.10), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #f5f5f4 100%);
+}
+
+.reports-page *{ box-sizing: border-box; }
+
+/* =========================
+   Header card
+========================= */
+.reports-header{
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 12px auto;
+
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(13, 13, 13, 0.07);
+  border-radius: 18px;
+  padding: 14px 16px;
+
+  box-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
+
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.reports-header h1{
+  margin: 0 0 6px 0;
+  font-size: 18px;
+  font-weight: 900;
+  color: #0D0D0D;
+}
+
+.reports-header p{
+  margin: 0;
+  font-size: 13px;
+  color: rgba(13, 13, 13, 0.60);
+}
+
+/* =========================
+   Buttons (Queens vibe)
+========================= */
+.reports-actions{
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.reports-btn{
+  border: 1px solid rgba(13, 13, 13, 0.10);
+  background: rgba(255,255,255,0.92);
+  color: #0D0D0D;
+
+  border-radius: 14px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 900;
+
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.reports-btn:hover{
+  background: rgba(64,1,13,0.05);
+  border-color: rgba(64,1,13,0.16);
+  transform: translateY(-1px);
+}
+
+.reports-btn:active{
+  transform: translateY(0px);
+}
+
+.reports-btn:disabled{
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.reports-btn.primary{
+  background: rgba(64, 1, 13, 0.08);
+  color: #40010D;
+  border: 1px solid rgba(64, 1, 13, 0.18);
+}
+
+.reports-btn.primary:hover{
+  background: rgba(64, 1, 13, 0.14);
+  border-color: rgba(64, 1, 13, 0.28);
+}
+
+.reports-btn.primary:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.16);
+}
+
+/* =========================
+   Stats
+========================= */
+.reports-stats{
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 12px auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 980px){
+  .reports-stats{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.report-stat{
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(13, 13, 13, 0.07);
+  border-radius: 18px;
+  padding: 12px 12px;
+
+  box-shadow: 0 10px 26px rgba(13,13,13,0.05);
+}
+
+.report-stat .label{
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(13, 13, 13, 0.70);
+  margin-bottom: 6px;
+}
+
+.report-stat .value{
+  font-size: 22px;
+  font-weight: 900;
+  color: #40010D;
+}
+
+/* =========================
+   Table Wrapper
+========================= */
+.reports-table-wrap{
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto 18px auto;
+
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(13,13,13,0.07);
+  border-radius: 18px;
+
+  overflow: hidden;
+  box-shadow: 0 10px 26px rgba(13,13,13,0.05);
+}
+
+.reports-table-scroll{
+  width: 100%;
+  overflow-x: auto;
+}
+
+.reports-table{
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  min-width: 860px;
+}
+
+.reports-table th,
+.reports-table td{
+  padding: 12px 10px;
+  text-align: right;
+  border-bottom: 1px solid rgba(13,13,13,0.06);
+  white-space: nowrap;
+}
+
+.reports-table th{
+  background: rgba(64, 1, 13, 0.06);
+  border-bottom: 1px solid rgba(64, 1, 13, 0.14);
+  color: rgba(13, 13, 13, 0.90);
+  font-weight: 900;
+  position: sticky;
+  top: 0;
+}
+
+.reports-table tbody tr:hover td{
+  background: rgba(64, 1, 13, 0.03);
+}
+
+/* Empty state */
+.reports-empty{
+  padding: 22px 14px;
+  text-align: center;
+  color: rgba(13, 13, 13, 0.65);
+  font-weight: 800;
+}
+
+/* =========================
+   ✅ Mobile: Table -> Cards (No horizontal scroll)
+   يعتمد على data-label في td
+========================= */
+@media (max-width: 640px){
+
+  .reports-table-wrap{
+    overflow: visible;
+    background: transparent;
+    border: none;
+    box-shadow: none;
   }
 
-  .reports-btn.primary:hover {
-    background: rgba(139, 92, 246, 0.14);
-    border-color: rgba(139, 92, 246, 0.28);
-  }
-  
-  
-  .reports-btn.primary:active {
-    background: rgba(139, 92, 246, 0.18);
+  .reports-table-scroll{
+    overflow: visible !important;
   }
 
-  .reports-btn.primary:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.22);
+  .reports-table thead{
+    display: none;
   }
 
-  .reports-btn.primary svg {
-    font-size: 13px;
-    opacity: 0.9;
-  }
-  
-  /* Stats */
-  .reports-stats {
-    width: min(1180px, calc(100% - 28px));
-    margin: 0 auto 12px auto;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
-  }
-  
-  @media (max-width: 980px) {
-    .reports-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-  
-  .report-stat {
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 16px;
-    padding: 12px 12px;
-    box-shadow: 0 10px 26px rgba(0,0,0,0.04);
-  }
-  
-  .report-stat .label {
-    font-size: 13px;
-    font-weight: 700;
-    color: rgba(55, 65, 81, 0.85);
-    margin-bottom: 6px;
-  }
-  
-  .report-stat .value {
-    font-size: 22px;
-    font-weight: 900;
-    color: #7c3aed;
-  }
-  
-  /* Table */
-  .reports-table-wrap {
-    width: min(1180px, calc(100% - 28px));
-    margin: 0 auto;
-    background: rgba(255,255,255,0.92);
-    border: 1px solid rgba(0,0,0,0.06);
-    border-radius: 18px;
-    overflow-x: auto;
-    box-shadow: 0 10px 26px rgba(0,0,0,0.04);
-  }
-  
-  .reports-table {
+  .reports-table,
+  .reports-table tbody,
+  .reports-table tr,
+  .reports-table td{
+    display: block;
     width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
   }
-  
-  .reports-table th,
-  .reports-table td {
-    padding: 10px 8px;
-    text-align: center;
-    border-bottom: 1px solid rgba(0,0,0,0.05);
-    white-space: nowrap;
+
+  .reports-table{
+    min-width: 0 !important;
   }
-  
-  .reports-table th {
-    background: rgba(124, 58, 237, 0.06);
-    color: rgba(55, 65, 81, 0.9);
-    font-weight: 800;
+
+  /* كل صف = كرت */
+  .reports-table tbody tr{
+    background: rgba(255,255,255,0.96);
+    border: 1px solid rgba(13, 13, 13, 0.08);
+    border-radius: 18px;
+    padding: 12px 14px;
+    margin: 12px 0;
+
+    box-shadow:
+      0 18px 40px rgba(13, 13, 13, 0.07),
+      0 2px 8px rgba(13, 13, 13, 0.04);
+
+    overflow: hidden;
+    position: relative;
   }
-  
-  .reports-table tbody tr:hover td {
-    background: rgba(124, 58, 237, 0.04);
+
+  .reports-table tbody tr::before{
+    content:"";
+    position:absolute;
+    inset:0 0 auto 0;
+    height:3px;
+    background: linear-gradient(90deg,
+      rgba(64,1,13,0.00),
+      rgba(64,1,13,0.22),
+      rgba(64,1,13,0.00)
+    );
   }
-  
-  /* Empty state */
-  .reports-empty {
-    padding: 22px 14px;
-    text-align: center;
-    color: rgba(55, 65, 81, 0.75);
-    font-weight: 700;
+
+  /* سطرين: عنوان + قيمة */
+  .reports-table tbody td{
+    border: none !important;
+    padding: 10px 0 !important;
+    white-space: normal !important;
+
+    display: grid;
+    grid-template-columns: 98px 1fr;
+    gap: 12px;
+    align-items: center;
   }
-  
+
+  .reports-table tbody td + td{
+    border-top: 1px solid rgba(13, 13, 13, 0.06) !important;
+  }
+
+  .reports-table tbody td::before{
+    content: attr(data-label);
+    display: block;
+
+    font-size: 12px;
+    font-weight: 900;
+    color: rgba(13, 13, 13, 0.62);
+    line-height: 1.25;
+  }
+
+  /* بادج للحالة */
+  .reports-table tbody td[data-label="الحالة"] > span{
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(64, 1, 13, 0.06);
+    border: 1px solid rgba(64, 1, 13, 0.14);
+    color: #40010D;
+    font-weight: 900;
+    font-size: 12px;
+  }
+
+  /* الإجمالي أوضح */
+  .reports-table tbody td[data-label="الإجمالي"]{
+    font-weight: 900;
+    color: #0D0D0D;
+  }
+}
+
+/* =========================
+   🎯 Status Badges (FORCED / IMPORTANT)
+   فخم + ثابت + ما يتأثر بأي ستايل خارجي
+========================= */
+
+.status-badge{
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  padding: 6px 12px !important;
+  border-radius: 999px !important;
+
+  font-size: 12px !important;
+  font-weight: 900 !important;
+
+  border: 1px solid transparent !important;
+  width: fit-content !important;
+  min-width: 78px !important;
+
+  white-space: nowrap !important;
+}
+
+/* 🟢 مؤكد */
+.status-confirmed{
+  background: rgba(22,163,74,0.10) !important;
+  color: #15803d !important;
+  border-color: rgba(22,163,74,0.28) !important;
+}
+
+/* 🟡 انتظار */
+.status-pending{
+  background: rgba(245,158,11,0.12) !important;
+  color: #b45309 !important;
+  border-color: rgba(245,158,11,0.30) !important;
+}
+
+/* 🔴 ملغي */
+.status-cancelled{
+  background: rgba(220,38,38,0.10) !important;
+  color: #b91c1c !important;
+  border-color: rgba(220,38,38,0.28) !important;
+}
+
+/* 👑 مكتمل (خمري ملكات) */
+.status-completed{
+  background: rgba(64,1,13,0.08) !important;
+  color: #40010D !important;
+  border-color: rgba(64,1,13,0.22) !important;
+}
+
+/* لمسة نعومة */
+.status-badge:hover{
+  transform: translateY(-1px) !important;
+}

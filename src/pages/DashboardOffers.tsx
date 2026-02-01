@@ -23,16 +23,8 @@ import "../styles/DashboardModals.css";
 import "../styles/DashboardOffers.css";
 
 // ✅ Firestore
-import {
-  listOffers,
-  upsertOffer,
-  removeOffer,
-} from "../services/firestoreOffers";
-import type {
-  Offer,
-  DiscountType,
-  OfferAppliesTo,
-} from "../services/firestoreOffers";
+import { listOffers, upsertOffer, removeOffer } from "../services/firestoreOffers";
+import type { Offer, DiscountType, OfferAppliesTo } from "../services/firestoreOffers";
 
 type OfferForm = {
   title: string;
@@ -166,8 +158,7 @@ const DashboardOffers: React.FC = () => {
     []
   );
 
-  const discountLabel =
-    discountOptions.find((o) => o.value === form.discountType)?.label || "اختر";
+  const discountLabel = discountOptions.find((o) => o.value === form.discountType)?.label || "اختر";
 
   useEffect(() => {
     if (!discountOpen) return;
@@ -267,13 +258,9 @@ const DashboardOffers: React.FC = () => {
     // ✅ فلترة حسب التبويب
     base = base.filter((o: any) => {
       if (filterMode === "active_now") return isActiveNow(o);
-      if (filterMode === "scheduled")
-        return !isDeleted(o) && Boolean(o.active) && isScheduledByToday(o);
+      if (filterMode === "scheduled") return !isDeleted(o) && Boolean(o.active) && isScheduledByToday(o);
       if (filterMode === "expired")
-        return (
-          !isDeleted(o) &&
-          (isExpiredByToday(o) || (!o.active && !isScheduledByToday(o)))
-        );
+        return !isDeleted(o) && (isExpiredByToday(o) || (!o.active && !isScheduledByToday(o)));
       if (filterMode === "deleted") return isDeleted(o);
       return true;
     });
@@ -288,35 +275,22 @@ const DashboardOffers: React.FC = () => {
     }
 
     // ✅ ترتيب
-    base.sort(
-      (a: any, b: any) => Number(b.createdAt || 0) - Number(a.createdAt || 0)
-    );
+    base.sort((a: any, b: any) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
     return base;
   }, [offers, queryText, filterMode]);
 
   const stats = useMemo(() => {
     const total = offers.filter((o: any) => !isDeleted(o)).length;
     const activeNowCount = offers.filter((o: any) => isActiveNow(o)).length;
-    const scheduledCount = offers.filter(
-      (o: any) => !isDeleted(o) && Boolean(o.active) && isScheduledByToday(o)
-    ).length;
+    const scheduledCount = offers.filter((o: any) => !isDeleted(o) && Boolean(o.active) && isScheduledByToday(o)).length;
     const expiredCount = offers.filter(
-      (o: any) =>
-        !isDeleted(o) &&
-        (isExpiredByToday(o) || (!o.active && !isScheduledByToday(o)))
+      (o: any) => !isDeleted(o) && (isExpiredByToday(o) || (!o.active && !isScheduledByToday(o)))
     ).length;
     const deletedCount = offers.filter((o: any) => isDeleted(o)).length;
 
     const used = offers.filter((o: any) => Number(o.usageCount || 0) > 0).length;
 
-    return {
-      total,
-      activeNowCount,
-      scheduledCount,
-      expiredCount,
-      deletedCount,
-      used,
-    };
+    return { total, activeNowCount, scheduledCount, expiredCount, deletedCount, used };
   }, [offers]);
 
   const openAdd = () => {
@@ -357,9 +331,7 @@ const DashboardOffers: React.FC = () => {
       active: Boolean((o as any).active),
       imageUrl: (o as any).imageUrl || "",
       appliesTo: ((o as any).appliesTo as OfferAppliesTo) || "all",
-      serviceIds: Array.isArray((o as any).serviceIds)
-        ? (o as any).serviceIds
-        : [],
+      serviceIds: Array.isArray((o as any).serviceIds) ? (o as any).serviceIds : [],
     });
 
     setOpen(true);
@@ -375,12 +347,9 @@ const DashboardOffers: React.FC = () => {
   const save = async () => {
     if (!form.title.trim()) return alert("اكتب عنوان العرض");
     if (!form.code.trim()) return alert("اكتب الكود أو اضغط توليد");
-    if (Number(form.value) <= 0)
-      return alert("قيمة الخصم لازم تكون أكبر من صفر");
-    if (form.discountType === "percent" && Number(form.value) > 100)
-      return alert("النسبة المئوية لا تتجاوز 100%");
-    if (form.startDate && form.endDate && form.startDate > form.endDate)
-      return alert("تاريخ البداية لازم يكون قبل النهاية");
+    if (Number(form.value) <= 0) return alert("قيمة الخصم لازم تكون أكبر من صفر");
+    if (form.discountType === "percent" && Number(form.value) > 100) return alert("النسبة المئوية لا تتجاوز 100%");
+    if (form.startDate && form.endDate && form.startDate > form.endDate) return alert("تاريخ البداية لازم يكون قبل النهاية");
 
     if (form.appliesTo === "services" && form.serviceIds.length === 0) {
       return alert("اختر خدمة واحدة على الأقل أو خلّه ينطبق على الجميع");
@@ -424,10 +393,7 @@ const DashboardOffers: React.FC = () => {
   const toggleActive = async (o: Offer) => {
     try {
       const current = Boolean((o as any).active);
-      await upsertOffer(
-        { ...(o as any), id: (o as any).id, active: !current },
-        SALON_ID
-      );
+      await upsertOffer({ ...(o as any), id: (o as any).id, active: !current }, SALON_ID);
       await refresh();
     } catch (e: any) {
       console.error("❌ toggleActive error:", e?.code, e?.message, e);
@@ -437,18 +403,12 @@ const DashboardOffers: React.FC = () => {
 
   // ✅ حذف ناعم (Soft Delete) بدل حذف نهائي
   const softDelete = async (o: Offer) => {
-    if (Number((o as any).usageCount || 0) > 0)
-      return alert("لا يمكن حذف عرض مستخدم");
+    if (Number((o as any).usageCount || 0) > 0) return alert("لا يمكن حذف عرض مستخدم");
     if (!confirm("حذف العرض (نقل للمحذوفات)؟")) return;
 
     try {
       await upsertOffer(
-        {
-          ...(o as any),
-          id: (o as any).id,
-          active: false,
-          deletedAt: Date.now(),
-        } as any,
+        { ...(o as any), id: (o as any).id, active: false, deletedAt: Date.now() } as any,
         SALON_ID
       );
       await refresh();
@@ -462,10 +422,7 @@ const DashboardOffers: React.FC = () => {
     if (!confirm("استرجاع العرض من المحذوفات؟")) return;
 
     try {
-      await upsertOffer(
-        { ...(o as any), id: (o as any).id, deletedAt: null } as any,
-        SALON_ID
-      );
+      await upsertOffer({ ...(o as any), id: (o as any).id, deletedAt: null } as any, SALON_ID);
       await refresh();
       setFilterMode("active_now");
     } catch (e: any) {
@@ -476,8 +433,7 @@ const DashboardOffers: React.FC = () => {
 
   // ✅ حذف نهائي (اختياري فقط من تبويب المحذوفات)
   const hardDelete = async (o: Offer) => {
-    if (Number((o as any).usageCount || 0) > 0)
-      return alert("لا يمكن حذف عرض مستخدم");
+    if (Number((o as any).usageCount || 0) > 0) return alert("لا يمكن حذف عرض مستخدم");
     if (!confirm("⚠️ حذف نهائي؟ لا يمكن التراجع")) return;
 
     try {
@@ -520,9 +476,7 @@ const DashboardOffers: React.FC = () => {
           <h1>
             <FontAwesomeIcon icon={faTag} /> العروض والكوبونات
           </h1>
-          <p className="offers-sub">
-            فلترة: سارية / مجدولة / منتهية / محذوفة + نطاق (الكل/خدمات)
-          </p>
+          <p className="offers-sub">فلترة: سارية / مجدولة / منتهية / محذوفة + نطاق (الكل/خدمات)</p>
         </div>
       </div>
 
@@ -536,9 +490,7 @@ const DashboardOffers: React.FC = () => {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
-              className={`dash-pill dash-pill-sm ${
-                filterMode === "active_now" ? "dash-pill-primary" : "dash-pill-outline"
-              }`}
+              className={`dash-pill dash-pill-sm ${filterMode === "active_now" ? "dash-pill-primary" : "dash-pill-outline"}`}
               onClick={() => setFilterMode("active_now")}
             >
               سارية الآن ({stats.activeNowCount})
@@ -546,9 +498,7 @@ const DashboardOffers: React.FC = () => {
 
             <button
               type="button"
-              className={`dash-pill dash-pill-sm ${
-                filterMode === "scheduled" ? "dash-pill-primary" : "dash-pill-outline"
-              }`}
+              className={`dash-pill dash-pill-sm ${filterMode === "scheduled" ? "dash-pill-primary" : "dash-pill-outline"}`}
               onClick={() => setFilterMode("scheduled")}
             >
               مجدولة ({stats.scheduledCount})
@@ -556,9 +506,7 @@ const DashboardOffers: React.FC = () => {
 
             <button
               type="button"
-              className={`dash-pill dash-pill-sm ${
-                filterMode === "expired" ? "dash-pill-primary" : "dash-pill-outline"
-              }`}
+              className={`dash-pill dash-pill-sm ${filterMode === "expired" ? "dash-pill-primary" : "dash-pill-outline"}`}
               onClick={() => setFilterMode("expired")}
             >
               منتهية/موقوفة ({stats.expiredCount})
@@ -566,9 +514,7 @@ const DashboardOffers: React.FC = () => {
 
             <button
               type="button"
-              className={`dash-pill dash-pill-sm ${
-                filterMode === "deleted" ? "dash-pill-danger" : "dash-pill-outline"
-              }`}
+              className={`dash-pill dash-pill-sm ${filterMode === "deleted" ? "dash-pill-danger" : "dash-pill-outline"}`}
               onClick={() => setFilterMode("deleted")}
             >
               محذوفة ({stats.deletedCount})
@@ -577,11 +523,7 @@ const DashboardOffers: React.FC = () => {
 
           <div className="offers-search" style={{ minWidth: 260, flex: 1 }}>
             <FontAwesomeIcon className="offers-search-ic" icon={faMagnifyingGlass} />
-            <input
-              value={queryText}
-              onChange={(e) => setQueryText(e.target.value)}
-              placeholder="بحث بالعنوان أو الكود..."
-            />
+            <input value={queryText} onChange={(e) => setQueryText(e.target.value)} placeholder="بحث بالعنوان أو الكود..." />
           </div>
 
           <button className="dash-pill dash-pill-primary" type="button" onClick={openAdd}>
@@ -615,55 +557,50 @@ const DashboardOffers: React.FC = () => {
             <tbody>
               {filteredOffers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: "center", padding: 16 }}>
+                  <td colSpan={9} data-label=" " style={{ textAlign: "center", padding: 16 }}>
                     لا توجد عروض مطابقة
                   </td>
                 </tr>
+
               ) : (
                 filteredOffers.map((o: any) => {
                   const deleted = isDeleted(o);
-                  const scheduled =
-                    isScheduledByToday(o) && !isExpiredByToday(o) && !deleted;
+                  const scheduled = isScheduledByToday(o) && !isExpiredByToday(o) && !deleted;
                   const expired = isExpiredByToday(o) && !deleted;
 
-                  const statusLabel = deleted
-                    ? "محذوف"
-                    : scheduled
-                    ? "مجدول"
-                    : expired
-                    ? "منتهي"
-                    : o.active
-                    ? "نشط"
-                    : "موقوف";
+                  const statusLabel = deleted ? "محذوف" : scheduled ? "مجدول" : expired ? "منتهي" : o.active ? "نشط" : "موقوف";
 
                   return (
                     <tr key={o.id} style={{ verticalAlign: "middle" }}>
-                      <td>
+                      <td data-label="صورة">
                         {o.imageUrl ? (
                           <img className="of-img" src={o.imageUrl} alt="offer" />
                         ) : (
                           <span style={{ opacity: 0.6 }}>—</span>
                         )}
                       </td>
-                      <td>{o.title}</td>
-                      <td>{o.code}</td>
-                      <td>
-                        {o.discountType === "percent"
-                          ? `${o.value}%`
-                          : `${o.value} ريال`}
-                      </td>
-                      <td>
-                        {o.startDate || "—"} → {o.endDate || "—"}
-                      </td>
-                      <td>{statusLabel}</td>
-                      <td>{o.usageCount || 0}</td>
-                      <td>
-                        {(o.appliesTo || "all") === "services"
-                          ? "خدمات محددة"
-                          : "الكل"}
+
+                      <td data-label="العنوان">{o.title}</td>
+
+                      <td data-label="الكود">{o.code}</td>
+
+                      <td data-label="الخصم">
+                        {o.discountType === "percent" ? `${o.value}%` : `${o.value} ريال`}
                       </td>
 
-                      <td>
+                      <td data-label="الفترة">
+                        {o.startDate || "—"} → {o.endDate || "—"}
+                      </td>
+
+                      <td data-label="الحالة">{statusLabel}</td>
+
+                      <td data-label="الاستخدام">{o.usageCount || 0}</td>
+
+                      <td data-label="النطاق">
+                        {(o.appliesTo || "all") === "services" ? "خدمات محددة" : "الكل"}
+                      </td>
+
+                      <td data-label="تحكم">
                         <div className="of-actions" style={{ flexWrap: "wrap" }}>
                           {!deleted && (
                             <>
@@ -676,9 +613,8 @@ const DashboardOffers: React.FC = () => {
                               </button>
 
                               <button
-                                className={`dash-pill ${
-                                  o.active ? "dash-pill-warning" : "dash-pill-success"
-                                } dash-pill-sm`}
+                                className={`dash-pill ${o.active ? "dash-pill-warning" : "dash-pill-success"
+                                  } dash-pill-sm`}
                                 type="button"
                                 onClick={() => toggleActive(o)}
                                 title={o.active ? "إيقاف" : "تفعيل"}
@@ -720,6 +656,7 @@ const DashboardOffers: React.FC = () => {
                       </td>
                     </tr>
                   );
+
                 })
               )}
             </tbody>
@@ -730,10 +667,7 @@ const DashboardOffers: React.FC = () => {
       {/* Modal */}
       {open && (
         <div className="dash-modal-overlay offers-modal-overlay" onClick={close}>
-          <div
-            className="dash-modal offers-modal offers-modal--fullscreen"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="dash-modal offers-modal offers-modal--fullscreen" onClick={(e) => e.stopPropagation()}>
             {/* Header (Fixed) */}
             <div className="of-modal-head">
               <div className="of-modal-title">
@@ -741,11 +675,7 @@ const DashboardOffers: React.FC = () => {
                 <span className="of-modal-sub">املأ البيانات ثم اختر النطاق والصورة</span>
               </div>
 
-              <button
-                className="dash-pill dash-pill-outline dash-pill-sm"
-                type="button"
-                onClick={close}
-              >
+              <button className="dash-pill dash-pill-outline dash-pill-sm" type="button" onClick={close}>
                 <FontAwesomeIcon icon={faXmark} /> إغلاق
               </button>
             </div>
@@ -756,21 +686,13 @@ const DashboardOffers: React.FC = () => {
                 <div className="of-grid-2a">
                   <div>
                     <label>العنوان</label>
-                    <input
-                      value={form.title}
-                      onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                      placeholder="مثال: خصم نهاية الأسبوع"
-                    />
+                    <input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="مثال: خصم نهاية الأسبوع" />
                   </div>
 
                   <div className="of-field-inline">
                     <div style={{ flex: 1 }}>
                       <label>الكود</label>
-                      <input
-                        value={form.code}
-                        onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
-                        placeholder="QS123"
-                      />
+                      <input value={form.code} onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))} placeholder="QS123" />
                     </div>
 
                     <button
@@ -790,12 +712,7 @@ const DashboardOffers: React.FC = () => {
 
                     {/* ✅ Custom Dropdown بدل select */}
                     <div className="dash-dd-wrap" ref={discountWrapRef}>
-                      <button
-                        type="button"
-                        className="dash-select"
-                        onClick={() => setDiscountOpen((s) => !s)}
-                        aria-expanded={discountOpen}
-                      >
+                      <button type="button" className="dash-select" onClick={() => setDiscountOpen((s) => !s)} aria-expanded={discountOpen}>
                         {discountLabel}
                       </button>
 
@@ -805,9 +722,7 @@ const DashboardOffers: React.FC = () => {
                             <button
                               key={opt.value}
                               type="button"
-                              className={`dash-dd-item ${
-                                form.discountType === opt.value ? "is-active" : ""
-                              }`}
+                              className={`dash-dd-item ${form.discountType === opt.value ? "is-active" : ""}`}
                               onClick={() => {
                                 setForm((p) => ({ ...p, discountType: opt.value }));
                                 setDiscountOpen(false);
@@ -826,22 +741,14 @@ const DashboardOffers: React.FC = () => {
                     <input
                       type="number"
                       value={form.value}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, value: Number(e.target.value) }))
-                      }
+                      onChange={(e) => setForm((p) => ({ ...p, value: Number(e.target.value) }))}
                       placeholder="مثال: 50"
                     />
                   </div>
 
                   <div className="of-switch">
                     <label className="of-checkline">
-                      <input
-                        type="checkbox"
-                        checked={form.active}
-                        onChange={(e) =>
-                          setForm((p) => ({ ...p, active: e.target.checked }))
-                        }
-                      />
+                      <input type="checkbox" checked={form.active} onChange={(e) => setForm((p) => ({ ...p, active: e.target.checked }))} />
                       <span>العرض نشط</span>
                     </label>
                   </div>
@@ -850,22 +757,12 @@ const DashboardOffers: React.FC = () => {
                 <div className="of-grid-2">
                   <div>
                     <label>تاريخ البداية</label>
-                    <input
-                      type="date"
-                      value={form.startDate}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, startDate: e.target.value }))
-                      }
-                    />
+                    <input type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
                   </div>
 
                   <div>
                     <label>تاريخ النهاية</label>
-                    <input
-                      type="date"
-                      value={form.endDate}
-                      onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))}
-                    />
+                    <input type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
                   </div>
                 </div>
               </div>
@@ -874,9 +771,7 @@ const DashboardOffers: React.FC = () => {
               <div className="of-section of-scope">
                 <div className="of-scope-top">
                   <div className="of-scope-title">نطاق العرض</div>
-                  <div className="of-scope-hint">
-                    اختر “خدمات محددة” إذا تبي العرض على خدمات بعينها.
-                  </div>
+                  <div className="of-scope-hint">اختر “خدمات محددة” إذا تبي العرض على خدمات بعينها.</div>
                 </div>
 
                 <div className="of-scope-pills">
@@ -885,9 +780,7 @@ const DashboardOffers: React.FC = () => {
                       type="radio"
                       name="offerScope"
                       checked={form.appliesTo === "all"}
-                      onChange={() =>
-                        setForm((p) => ({ ...p, appliesTo: "all", serviceIds: [] }))
-                      }
+                      onChange={() => setForm((p) => ({ ...p, appliesTo: "all", serviceIds: [] }))}
                     />
                     <span>ينطبق على جميع الخدمات</span>
                   </label>
@@ -907,11 +800,7 @@ const DashboardOffers: React.FC = () => {
                   <>
                     <div className="of-services-search">
                       <FontAwesomeIcon className="of-services-ic" icon={faMagnifyingGlass} />
-                      <input
-                        value={serviceSearch}
-                        onChange={(e) => setServiceSearch(e.target.value)}
-                        placeholder="بحث داخل الخدمات..."
-                      />
+                      <input value={serviceSearch} onChange={(e) => setServiceSearch(e.target.value)} placeholder="بحث داخل الخدمات..." />
                     </div>
 
                     <div className="of-services-box">
@@ -966,23 +855,16 @@ const DashboardOffers: React.FC = () => {
               {/* صورة العرض */}
               <div className="of-section">
                 <label className="of-label-inline">
-                  <FontAwesomeIcon icon={faImage} /> صورة العرض{" "}
-                  <span className="of-mute">(أقل من {MAX_IMAGE_MB}MB)</span>
+                  <FontAwesomeIcon icon={faImage} /> صورة العرض <span className="of-mute">(أقل من {MAX_IMAGE_MB}MB)</span>
                 </label>
 
                 <div className="of-file-row">
                   <label className="of-file-btn">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => onPickImage(e.target.files?.[0] || null)}
-                    />
+                    <input type="file" accept="image/*" onChange={(e) => onPickImage(e.target.files?.[0] || null)} />
                     اختيار ملف
                   </label>
 
-                  <div className="of-file-name">
-                    {pickedImageName || "لم يتم اختيار أي ملف"}
-                  </div>
+                  <div className="of-file-name">{pickedImageName || "لم يتم اختيار أي ملف"}</div>
                 </div>
 
                 {form.imageUrl ? (

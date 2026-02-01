@@ -4,7 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, getDocs, collection, setDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  getDocs,
+  collection,
+  setDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
 import { auth, db } from "../../services/firebase";
 import { AppSettingsService } from "../../services/AppSettingsService";
@@ -142,18 +149,26 @@ export default function SettingsBookings() {
       // ✅ كاش محلي فوري
       saveLocalSettings(next);
       // ✅ كاش AppSettingsService لو موجود
-// AppSettingsService.setCached?.(next);
+      // AppSettingsService.setCached?.(next);
 
       return next;
     });
   };
 
-  // ✅ Defaults
-  const slotStepMin = useMemo(() => {
-    const raw = bookingSettings?.slotStepMin;
-    const v = safeInt(raw, 10);
-    return [10, 15, 30].includes(v) ? v : 10;
-  }, [bookingSettings?.slotStepMin]);
+// ✅ Defaults
+const slotStepMin = useMemo(() => {
+  const raw = bookingSettings?.slotStepMin;
+  const v = safeInt(raw, 10);
+  return [5, 10, 15, 30].includes(v) ? v : 10;
+}, [bookingSettings?.slotStepMin]);
+
+const bufferMin = useMemo(() => {
+  const raw = bookingSettings?.bufferMin;
+  const v = safeInt(raw, 5);
+  return [0, 5, 10, 15, 20, 30].includes(v) ? v : 5;
+}, [bookingSettings?.bufferMin]);
+
+
 
   const businessHours = useMemo(() => {
     return (bookingSettings as any)?.businessHours || defaultBusinessHoursLocal();
@@ -171,12 +186,7 @@ export default function SettingsBookings() {
 
   // ✅ helper: خذ آخر نسخة مؤكدة (localStorage أولاً)
   function getLatestSettingsSnapshot() {
-    return (
-      loadLocalSettings() ||
-      AppSettingsService.getCached?.() ||
-      settings ||
-      {}
-    );
+    return loadLocalSettings() || AppSettingsService.getCached?.() || settings || {};
   }
 
   const saveAll = async () => {
@@ -187,8 +197,7 @@ export default function SettingsBookings() {
       const latest = getLatestSettingsSnapshot();
       const latestBooking = (latest as any)?.booking || {};
 
-      const bhRaw =
-        latestBooking?.businessHours || defaultBusinessHoursLocal();
+      const bhRaw = latestBooking?.businessHours || defaultBusinessHoursLocal();
 
       const oRaw = bhRaw?.sat?.start;
       const cRaw = bhRaw?.sat?.end;
@@ -206,21 +215,25 @@ export default function SettingsBookings() {
       const bh = { ...(bhRaw || defaultBusinessHoursLocal()) };
       bh.sat = { ...(bh.sat || { enabled: true }), start: oNorm, end: cNorm };
 
+
       const normalizedSettingsToSave = {
         ...(latest || {}),
         booking: {
           ...(latestBooking || {}),
-          slotStepMin, // من UI (مضمون 10/15/30)
+          slotStepMin, // من UI (مضمون 5/10/15/30)
+          bufferMin,   // ✅ جديد: بفر بعد كل حجز
           businessHours: bh,
         },
       };
+
+
 
       // ✅ حفظ ريموت
       await AppSettingsService.saveRemote(normalizedSettingsToSave);
 
       // ✅ حدّث الكاشين فورًا
-// AppSettingsService.setCached?.(normalizedSettingsToSave);
-saveLocalSettings(normalizedSettingsToSave);
+      // AppSettingsService.setCached?.(normalizedSettingsToSave);
+      saveLocalSettings(normalizedSettingsToSave);
       setSettings(normalizedSettingsToSave);
 
       console.log("✅ SAVED booking:", normalizedSettingsToSave.booking);
@@ -234,7 +247,7 @@ saveLocalSettings(normalizedSettingsToSave);
         String(e?.message || e?.code || "")
           .toLowerCase()
           .includes("permission") ||
-        String(e?.code || "").toLowerCase().includes("permission")
+          String(e?.code || "").toLowerCase().includes("permission")
           ? "❌ فشل الحفظ: الصلاحيات (Rules) تمنع الكتابة"
           : "❌ تعذر حفظ الإعدادات";
 
@@ -346,8 +359,8 @@ saveLocalSettings(normalizedSettingsToSave);
       .then((remote) => {
         setSettings(remote || {});
         saveLocalSettings(remote || {});
-// AppSettingsService.setCached?.(remote || {});
-})
+        // AppSettingsService.setCached?.(remote || {});
+      })
       .catch(() => {
         // لو فشل: نعتمد على cached/local
       });
@@ -368,8 +381,8 @@ saveLocalSettings(normalizedSettingsToSave);
         };
 
         saveLocalSettings(merged);
-// AppSettingsService.setCached?.(merged);
-return merged;
+        // AppSettingsService.setCached?.(merged);
+        return merged;
       });
     });
 
@@ -464,16 +477,12 @@ return merged;
               className="settings-input"
               value={String(bookingSettings.maintenanceMessage || "")}
               disabled={!hasAdminPower}
-              onChange={(e) =>
-                setBookingSettings({ maintenanceMessage: e.target.value })
-              }
+              onChange={(e) => setBookingSettings({ maintenanceMessage: e.target.value })}
               placeholder="مثال: الحجز متوقف مؤقتًا للصيانة، نعود قريبًا"
             />
           </div>
 
-          <div className="settings-footnote">
-            * هذه القيم تُحفظ داخل AppSettings.
-          </div>
+          <div className="settings-footnote">* هذه القيم تُحفظ داخل AppSettings.</div>
         </div>
 
         <div className="settings-card">
@@ -496,15 +505,43 @@ return merged;
                 style={{ width: 160 }}
                 value={String(slotStepMin)}
                 disabled={!hasAdminPower}
-                onChange={(e) =>
-                  setBookingSettings({ slotStepMin: Number(e.target.value) })
-                }
+                onChange={(e) => setBookingSettings({ slotStepMin: Number(e.target.value) })}
               >
+                <option value="5">5 دقائق</option>
                 <option value="10">10 دقائق</option>
                 <option value="15">15 دقيقة</option>
                 <option value="30">30 دقيقة</option>
               </select>
             </div>
+
+
+            <div
+              className="settings-row"
+              style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}
+            >
+              <div style={{ minWidth: 220 }}>
+                <div style={{ fontWeight: 900 }}>البفر بعد كل حجز (دقائق)</div>
+                <div style={{ opacity: 0.7, fontSize: 12 }}>
+                // ✅ نعرض أول وقت حجز متاح من بداية الدوام مباشرة
+                </div>
+              </div>
+
+              <select
+                className="form-select dash-select"
+                style={{ width: 160 }}
+                value={String(bufferMin)}
+                disabled={!hasAdminPower}
+                onChange={(e) => setBookingSettings({ bufferMin: Number(e.target.value) })}
+              >
+                <option value="0">بدون بفر</option>
+                <option value="5">5 دقائق</option>
+                <option value="10">10 دقائق</option>
+                <option value="15">15 دقيقة</option>
+                <option value="20">20 دقيقة</option>
+                <option value="30">30 دقيقة</option>
+              </select>
+            </div>
+
 
             <div
               className="settings-row"
@@ -564,7 +601,9 @@ return merged;
           </div>
 
           <div className="settings-footnote">
-            * يتم الحفظ في AppSettings داخل: booking.businessHours.sat.start / booking.businessHours.sat.end / booking.slotStepMin
+            * يتم الحفظ في AppSettings داخل: booking.businessHours.sat.start / booking.businessHours.sat.end /
+            booking.slotStepMin / booking.bufferMin
+
             <br />
             * ربطها بصفحة الحجز: Booking.tsx يقرأ من AppSettingsService.getCached()
           </div>
@@ -628,7 +667,9 @@ return merged;
                         onChange={() =>
                           setStaffAvail((p) =>
                             p.map((x) =>
-                              x.id === s.id ? { ...x, showOnBooking: !(x.showOnBooking !== false) } : x
+                              x.id === s.id
+                                ? { ...x, showOnBooking: !(x.showOnBooking !== false) }
+                                : x
                             )
                           )
                         }
@@ -644,9 +685,7 @@ return merged;
                         disabled={!hasAdminPower}
                         onChange={() =>
                           setStaffAvail((p) =>
-                            p.map((x) =>
-                              x.id === s.id ? { ...x, onLeave: !effectiveOnLeave } : x
-                            )
+                            p.map((x) => (x.id === s.id ? { ...x, onLeave: !effectiveOnLeave } : x))
                           )
                         }
                       />
@@ -695,8 +734,7 @@ return merged;
           </div>
 
           <div className="settings-footnote">
-            * يتم الحفظ في: <b>salons/main/staff_public</b> داخل حقول:{" "}
-            <b>showOnBooking/onLeave/leaveUntil/leaveNote</b>
+            * يتم الحفظ في: <b>salons/main/staff_public</b> داخل حقول: <b>showOnBooking/onLeave/leaveUntil/leaveNote</b>
             <br />
             * ملاحظة: إذا <b>leaveUntil</b> فات، الصفحة تعتبر الإجازة منتهية (حتى لو onLeave كان مفعّل).
           </div>

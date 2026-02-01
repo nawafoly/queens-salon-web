@@ -499,7 +499,7 @@ export default function DashboardIncome() {
                       <td>{x.note || "-"}</td>
                       <td>
                         <button
-                          className="dash-icon-btn"
+                          className="dash-icon-btn qs-black "
                           type="button"
                           title="حذف"
                           onClick={() => removeIncome(String(x.id))}

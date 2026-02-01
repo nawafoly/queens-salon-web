@@ -592,3 +592,80 @@ textarea.form-control {
 .booking-page .booking-summary .small {
   color: rgba(13, 13, 13, 0.62) !important;
 }
+
+/* ✅ Time grid chips (Green available start times) */
+.bk-time-grid{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.bk-time-chip{
+  border: 1px solid rgba(13,13,13,0.14);
+  background: rgba(255,255,255,0.7);
+  color: #0D0D0D;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1;
+  transition: 0.15s ease;
+}
+
+.bk-time-chip:hover{
+  transform: translateY(-1px);
+  border-color: rgba(64,1,13,0.35);
+}
+
+.bk-time-chip.is-green{
+  border-color: rgba(30, 180, 110, 0.55);
+  background: rgba(30, 180, 110, 0.16);
+}
+
+.bk-time-chip.is-selected{
+  border-color: rgba(64,1,13,0.55);
+  box-shadow: 0 0 0 3px rgba(64,1,13,0.10) inset;
+}
+
+.bk-time-chip.is-disabled{
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* =========================
+   Time Label (Queens style)
+========================= */
+.booking-page .bk-time-label{
+  display: block;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 900;
+  color: #40010D; /* qs-wine */
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+
+/* =========================
+   Service Meta (price + duration)
+========================= */
+
+.booking-page .service-meta{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.booking-page .service-price{
+  font-size: 13px;
+  font-weight: 600;
+  color: #6E7372; /* رمادي خفيف */
+}
+
+.booking-page .service-duration{
+  font-size: 16px;
+  font-weight: 900;
+  color: #40010D; /* qs-wine */
+}

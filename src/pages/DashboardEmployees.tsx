@@ -28,6 +28,7 @@ import {
 import { db } from "../services/firebase";
 import "../styles/DashboardModals.css";
 import "../styles/EmployeePortal.css";
+import "../styles/DashboardEmployees.css";
 
 // ✅ Bookings stats (Owner only)
 import {
@@ -752,7 +753,8 @@ export default function DashboardEmployees() {
   ========================= */
   if (!authUser) {
     return (
-      <div className="dashboard-page">
+      <div className="dashboard-page employees-page">
+    
         <div className="container">
           <div className="dash-card">
             <h3>غير مصرح</h3>
@@ -962,40 +964,40 @@ export default function DashboardEmployees() {
                 {authUser?.role === "owner" && (
                   <div style={{ marginTop: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span className="staff-pill" style={{ background: "rgba(0,0,0,0.04)" }}>
-                        الحجوزات:{" "}
-                        <b style={{ marginInlineStart: 6 }}>
-                          {statsLoading ? "..." : (bookingStats[x.id]?.total ?? 0)}
-                        </b>
-                      </span>
+                    <span className="staff-pill stat total">
+  الحجوزات:{" "}
+  <b style={{ marginInlineStart: 6 }}>
+    {statsLoading ? "..." : (bookingStats[x.id]?.total ?? 0)}
+  </b>
+</span>
 
-                      <span className="staff-pill" style={{ background: "rgba(16, 185, 129, 0.10)" }}>
+                      <span className="staff-pill stat confirmed">
                         مؤكد:{" "}
                         <b style={{ marginInlineStart: 6 }}>
                           {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.confirmed ?? 0)}
                         </b>
                       </span>
 
-                      <span className="staff-pill" style={{ background: "rgba(245, 158, 11, 0.12)" }}>
-                        انتظار:{" "}
-                        <b style={{ marginInlineStart: 6 }}>
-                          {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.pending ?? 0)}
-                        </b>
-                      </span>
+                      <span className="staff-pill stat pending">
+  انتظار:{" "}
+  <b style={{ marginInlineStart: 6 }}>
+    {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.pending ?? 0)}
+  </b>
+</span>
 
-                      <span className="staff-pill" style={{ background: "rgba(99, 102, 241, 0.10)" }}>
-                        مكتمل:{" "}
-                        <b style={{ marginInlineStart: 6 }}>
-                          {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.completed ?? 0)}
-                        </b>
-                      </span>
+<span className="staff-pill stat completed">
+  مكتمل:{" "}
+  <b style={{ marginInlineStart: 6 }}>
+    {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.completed ?? 0)}
+  </b>
+</span>
 
-                      <span className="staff-pill" style={{ background: "rgba(239, 68, 68, 0.10)" }}>
-                        ملغي:{" "}
-                        <b style={{ marginInlineStart: 6 }}>
-                          {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.cancelled ?? 0)}
-                        </b>
-                      </span>
+<span className="staff-pill stat cancelled">
+  ملغي:{" "}
+  <b style={{ marginInlineStart: 6 }}>
+    {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.cancelled ?? 0)}
+  </b>
+</span>
                     </div>
 
                     <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>

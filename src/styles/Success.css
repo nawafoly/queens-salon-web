@@ -1,3 +1,4 @@
+/* src/styles/Success.css */
 /* =========================================
    Success.css - Queens Salon
    WHITE / OFF-WHITE VERSION ✅
@@ -14,6 +15,12 @@
   --qs-gray-500: #888C8C;
   --qs-burgundy: #40010D;
   --qs-offwhite: #F5F5F4;
+
+  /* ✅ Alias for your wording */
+  --qs-wine: #40010D;
+
+  /* ✅ Green (confirm) */
+  --qs-green: #22c55e;
 
   /* Text */
   --ink: #0D0D0D;
@@ -137,7 +144,7 @@
   margin: 8px auto 12px;
   color: var(--muted);
   line-height: 1.8;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 15px;
 }
 
@@ -161,6 +168,89 @@
 .mono  {
   font-family: "Courier New", monospace;
   letter-spacing: 1px;
+}
+
+/* ===== CTA Box (Pending) ===== */
+.success-cta-box{
+  width: min(640px, 100%);
+  margin: 14px auto 0;
+  text-align: center;
+
+  background: rgba(87, 5, 5, 0.1);
+  border: 1px solid rgba(197, 53, 34, 0.26);
+  border-radius: 18px;
+  padding: 14px 14px 12px;
+
+  box-shadow: 0 14px 34px rgba(0,0,0,0.10);
+}
+
+.success-cta-title{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  font-weight: 900;
+  font-size: 15px;
+  color: rgba(6, 8, 8, 0.95);
+}
+
+.success-cta-text{
+  margin-top: 6px;
+  font-weight: 800;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.85);
+  line-height: 1.8;
+}
+
+.success-whatsapp-cta{
+  margin-top: 10px;
+  width: 100%;
+  min-height: 46px;
+
+  border-radius: 999px;
+  border: 0;
+
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  font-weight: 900;
+  font-size: 15px;
+  color: #ffffff;
+
+  background: linear-gradient(135deg, rgba(34,197,94,1), rgba(21,128,61,1));
+  box-shadow: 0 14px 34px rgba(34,197,94,0.25);
+
+  transition: transform .18s ease, filter .18s ease, box-shadow .18s ease;
+}
+
+.success-whatsapp-cta:hover{
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+  box-shadow: 0 18px 40px rgba(34,197,94,0.30);
+}
+
+.success-confirmed-note{
+  width: min(640px, 100%);
+  margin: 14px auto 0;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  padding: 12px 14px;
+  border-radius: 16px;
+
+  background: rgba(64, 1, 13, 0.08);
+  border: 1px solid rgba(64, 1, 13, 0.14);
+
+  color: var(--qs-wine);
+  font-weight: 900;
 }
 
 /* ===== Details ===== */
@@ -194,7 +284,6 @@
   align-items: center;
 }
 
-/* ✅ أيقونة السطر */
 .detail-ico {
   width: 18px;
   height: 18px;
@@ -202,7 +291,6 @@
   color: rgba(64, 1, 13, 0.85);
 }
 
-/* ✅ لا نبي خط تحت آخر سطر */
 .success-details .detail-row:last-of-type {
   border-bottom: none;
 }
@@ -213,7 +301,6 @@
   color: var(--qs-gray-700);
 }
 
-/* ✅ FIX: نخلي القيم يمين (مو وسط) */
 .detail-value {
   font-weight: 900;
   color: var(--ink);
@@ -221,7 +308,6 @@
   justify-self: start;
 }
 
-/* ✅ لو فيه سطر كامل */
 .detail-row--full {
   grid-template-columns: 1fr !important;
 }
@@ -267,7 +353,6 @@
   text-align: center !important;
 }
 
-/* ✅ توسيط status فقط داخل السطر الكامل */
 .success-page .detail-row--full .status-pill {
   margin: 0 auto;
 }
@@ -330,7 +415,6 @@
    ✅ Actions Layout (STRONG FIX)
 ========================= */
 
-/* لو الأزرار داخل detail-row--full */
 .success-page .detail-row--full {
   display: grid;
   justify-items: center;
@@ -338,7 +422,6 @@
   padding: 14px 8px;
 }
 
-/* منطقة الأزرار الأساسية */
 .success-page .success-actions {
   width: min(640px, 100%);
   margin: 18px auto 0;
@@ -351,7 +434,6 @@
   align-items: stretch;
 }
 
-/* أي زر داخل actions ياخذ عرض العمود */
 .success-page .success-actions .success-btn {
   width: 100%;
   min-width: 0;
@@ -363,7 +445,6 @@
   white-space: nowrap;
 }
 
-/* على الجوال: كل زر سطر لحاله */
 @media (max-width: 640px) {
   .success-page .success-actions {
     grid-template-columns: 1fr;
@@ -374,7 +455,6 @@
    ✅ Copy / WhatsApp Buttons (STRONG FIX)
 ========================= */
 
-/* ✅ الحاوية اللي لازم تكون موجودة في JSX */
 .success-page .success-copy-actions {
   width: min(640px, 100%);
   margin: 16px auto 0;
@@ -387,7 +467,6 @@
   align-items: stretch;
 }
 
-/* أزرار النسخ */
 .success-page .success-copy-btn {
   width: 100%;
   min-width: 0;
@@ -425,7 +504,7 @@
   transform: translateY(0);
 }
 
-/* WhatsApp accent */
+/* WhatsApp accent base */
 .success-page .success-copy-btn.is-whatsapp {
   border-color: rgba(64, 1, 13, 0.18);
   background: linear-gradient(
@@ -435,7 +514,19 @@
   );
 }
 
-/* على الجوال: زر النسخ وواتساب يصيرون سطر سطر */
+/* ✅ WhatsApp GREEN (main CTA) */
+.success-page .success-copy-btn.is-green{
+  border: 0;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(34,197,94,1), rgba(21,128,61,1));
+  box-shadow: 0 14px 34px rgba(34,197,94,0.25);
+  font-weight: 900;
+}
+
+.success-page .success-copy-btn.is-green:hover{
+  box-shadow: 0 18px 40px rgba(34,197,94,0.30);
+}
+
 @media (max-width: 640px) {
   .success-page .success-copy-actions {
     grid-template-columns: 1fr;
@@ -443,7 +534,72 @@
 }
 
 /* =========================
-   ✅ Alerts / Toast (لو تستخدمها)
+   ✅ Policy Block
+========================= */
+
+.success-policy{
+  width: min(720px, 100%);
+  margin: 18px auto 0;
+
+  background: rgba(245,245,244,0.88);
+  border: 1px solid rgba(13,13,13,0.12);
+  border-radius: 20px;
+  padding: 16px 16px 14px;
+
+  box-shadow: 0 14px 36px rgba(0,0,0,0.10);
+}
+
+.success-policy-top{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.success-policy-title{
+  font-weight: 900;
+  font-size: 15px;
+  color: var(--qs-wine);
+  background: rgba(64, 1, 13, 0.08);
+  border: 1px solid rgba(64, 1, 13, 0.14);
+  border-radius: 999px;
+  padding: 8px 12px;
+}
+
+.success-policy-lead{
+  margin: 0;
+  margin-top: 8px;
+  font-weight: 800;
+  font-size: 13px;
+  color: rgba(13,13,13,0.88);
+  line-height: 1.95;
+  text-align: center;
+}
+
+.success-policy-list{
+  margin: 10px 0 0;
+  padding: 0 18px 0 0;
+  list-style: disc;
+}
+
+.success-policy-list li{
+  margin: 7px 0;
+  font-weight: 800;
+  font-size: 13px;
+  color: rgba(13,13,13,0.82);
+  line-height: 1.9;
+}
+
+.success-policy-footer{
+  margin-top: 12px;
+  text-align: center;
+  font-weight: 900;
+  font-size: 13px;
+  color: rgba(64, 1, 13, 0.90);
+}
+
+/* =========================
+   ✅ Alerts / Toast
 ========================= */
 
 .success-alert {
@@ -484,4 +640,34 @@
 
 .success-toast.error {
   border-color: rgba(239, 68, 68, 0.35);
+}
+
+/* ===== Status ===== */
+
+/* ✅ PENDING: واضح جدًا إنه بالانتظار */
+.status-pill.pending{
+  background: rgba(245, 158, 11, 0.18);          /* amber */
+  color: #92400e;                                 /* deep amber */
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  box-shadow: 0 10px 26px rgba(245, 158, 11, 0.18);
+  position: relative;
+}
+
+/* لمعة خفيفة + أيقونة */
+.status-pill.pending::before{
+  content: "⏳";
+  margin-left: 8px; /* RTL */
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.95;
+}
+
+/* ✅ اختياري: يهتز/ينبض بشكل محترم (خفيف جدًا) */
+.status-pill.pending{
+  animation: qs-pendingPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes qs-pendingPulse{
+  0%, 10% {  filter: brightness(1); }
+  50%      { filter: brightness(0.54); }
 }

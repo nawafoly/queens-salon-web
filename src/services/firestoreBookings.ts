@@ -18,7 +18,7 @@ import {
 } from "firebase/firestore";
 
 // ✅ generate same time slots list used by Booking page
-import { generateSalonTimeSlots } from "../helpers/timeSlots";
+import { generateSalonTimeSlots, slotLabelToMinutes } from "../helpers/timeSlots";
 
 // ✅ read slotStep/buffer from settings/app (source of truth)
 import { AppSettingsService } from "./AppSettingsService";
@@ -39,6 +39,9 @@ export type ServiceSnapshot = {
 
 export type BookingDoc = {
   userId?: string | null;
+
+  slotStepMinAtBooking?: number;
+  bufferMinAtBooking?: number;
 
   createdBy: string;
   channel: BookingChannel;
@@ -252,7 +255,7 @@ function getSlotSettings() {
   const closeTime = safeTimeHHMM(businessHours?.sat?.end, "22:00");
 
   const rawStep = safeInt(booking?.slotStepMin, 10);
-  const slotStepMin = [10, 15, 30].includes(rawStep) ? rawStep : 10;
+  const slotStepMin = [5, 10, 15, 30].includes(rawStep) ? rawStep : 10;
 
   const bufferMin = Math.max(0, safeInt(booking?.bufferMin, 0));
 
@@ -264,19 +267,56 @@ function getSlotSettings() {
  * - Uses same slots list from generateSalonTimeSlots(open, close, step)
  * - If time not found, falls back to locking only the chosen time
  */
-function getTimesToLock(startTime: string, durationMin: number) {
-  const { openTime, closeTime, slotStepMin, bufferMin } = getSlotSettings();
+function getTimesToLock(
+  startTime: string,
+  durationMin: number,
+  overrides?: { slotStepMin?: number; bufferMin?: number }
+) {
+  const base = getSlotSettings();
 
-  const slots = generateSalonTimeSlots(openTime, closeTime, slotStepMin);
-  const idx = slots.indexOf(startTime);
+  const slotStepMin =
+    [5, 10, 15, 30].includes(Number(overrides?.slotStepMin))
+      ? Number(overrides?.slotStepMin)
+      : base.slotStepMin;
 
-  if (idx < 0) return [startTime];
+  const bufferMin = Math.max(
+    0,
+    Number.isFinite(Number(overrides?.bufferMin))
+      ? Number(overrides?.bufferMin)
+      : base.bufferMin
+  );
 
-  const totalMin = Math.max(0, Number(durationMin || 0)) + Math.max(0, bufferMin);
-  const slotsNeeded = Math.max(1, Math.ceil(totalMin / slotStepMin));
+  const allSlots = generateSalonTimeSlots(base.openTime, base.closeTime, slotStepMin);
 
-  return slots.slice(idx, idx + slotsNeeded);
+  const s = String(startTime || "").trim();
+  const startMin = slotLabelToMinutes(s);
+  if (startMin == null) return [s || startTime];
+
+  const totalMin = Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
+  if (totalMin <= 0) return [s || startTime];
+
+  const endMinRaw = startMin + totalMin;
+
+  // ✅ نعرض أول وقت حجز متاح من بداية الدوام مباشرة (بدون منع أول سلوّت)
+  // ✅ round UP to nearest slot boundary (step-based)
+  const endMin =
+    slotStepMin > 0
+      ? Math.ceil(endMinRaw / slotStepMin) * slotStepMin
+      : endMinRaw;
+
+  const locked: string[] = [];
+
+  // ✅ start inclusive, end exclusive
+  for (const t of allSlots) {
+    const m = slotLabelToMinutes(t);
+    if (m == null) continue;
+    if (m >= startMin && m < endMin) locked.push(t);
+  }
+
+
+  return locked.length ? locked : [s || startTime];
 }
+
 
 /* =========================
    ✅ Booking Logs (Audit) - Best Effort
@@ -345,8 +385,15 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const durationMin = Math.max(0, Number(data.durationMin || 0)) || 60;
 
   // ✅ times to lock (start + next slots)
-  const timesToLock = getTimesToLock(String(data.time || "").trim(), durationMin);
-
+  const timesToLock = getTimesToLock(
+    String(data.time || "").trim(),
+    durationMin,
+    {
+      slotStepMin: (data as any).slotStepMinAtBooking,
+      bufferMin: (data as any).bufferMinAtBooking,
+    }
+  );
+  
   // ✅ booking ref
   const bookingRef = doc(collection(db, ...BOOKINGS_COL));
 

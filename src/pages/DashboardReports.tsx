@@ -1,18 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-  faFileCsv,
-  faFilter,
-  faRotate,
-} from "@fortawesome/free-solid-svg-icons";
+import { faFileCsv, faFilter, faRotate } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/DashboardReports.css";
-import "../styles/DashboardModals.css"; // ✅ نفس مودالات الداشبورد
+import "../styles/DashboardModals.css";
 
-import {
-  listAllBookings,
-  type BookingStatus,
-} from "../services/firestoreBookings";
+import { listAllBookings, type BookingStatus } from "../services/firestoreBookings";
 
 type Booking = {
   id?: string;
@@ -71,26 +64,18 @@ export default function DashboardReports() {
           <p>ملخص سريع لحركة الحجوزات حسب الحالة</p>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="reports-actions">
           <button className="reports-btn" disabled={loading}>
             <FontAwesomeIcon icon={faFilter} />
             فلترة
           </button>
 
-          <button
-            className="reports-btn"
-            onClick={load}
-            disabled={loading}
-            title="Excel .xlsx"
-          >
-            <FontAwesomeIcon icon={faFileCsv} /> تصدير Excel
+          <button className="reports-btn" onClick={load} disabled={loading} title="Excel .xlsx">
+            <FontAwesomeIcon icon={faFileCsv} />
+            تصدير Excel
           </button>
 
-          <button
-            className="reports-btn primary"
-            onClick={load}
-            disabled={loading}
-          >
+          <button className="reports-btn primary" onClick={load} disabled={loading}>
             <FontAwesomeIcon icon={faRotate} />
             {loading ? "جارٍ التحديث..." : "تحديث"}
           </button>
@@ -122,28 +107,38 @@ export default function DashboardReports() {
         {bookings.length === 0 ? (
           <div className="reports-empty">لا توجد بيانات لعرضها</div>
         ) : (
-          <table className="reports-table">
-            <thead>
-              <tr>
-                <th>التاريخ</th>
-                <th>الحالة</th>
-                <th>الخدمة</th>
-                <th>الموظفة</th>
-                <th>الإجمالي</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bookings.map((b, i) => (
-                <tr key={b.id || i}>
-                  <td>{b.date}</td>
-                  <td>{statusLabel[b.status]}</td>
-                  <td>{b.serviceName || "-"}</td>
-                  <td>{b.employeeName || "-"}</td>
-                  <td>{b.total ?? "-"}</td>
+          <div className="reports-table-scroll">
+            <table className="reports-table">
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>الحالة</th>
+                  <th>الخدمة</th>
+                  <th>الموظفة</th>
+                  <th>الإجمالي</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {bookings.map((b, i) => (
+                  <tr key={b.id || i}>
+                    <td data-label="التاريخ">{b.date}</td>
+
+                    <td data-label="الحالة">
+                      <span className={`status-badge status-${b.status}`}>
+                        {statusLabel[b.status]}
+                      </span>
+                    </td>
+
+
+                    <td data-label="الخدمة">{b.serviceName || "-"}</td>
+                    <td data-label="الموظفة">{b.employeeName || "-"}</td>
+                    <td data-label="الإجمالي">{b.total ?? "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

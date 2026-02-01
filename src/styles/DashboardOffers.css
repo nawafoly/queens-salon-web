@@ -1,8 +1,9 @@
 /* =========================
-   Dashboard Offers (Polished)
+   Dashboard Offers (Polished) - Queens WHITE
    File: src/styles/DashboardOffers.css
    ✅ NO dash-pill base styles هنا
    ✅ يعتمد على DashboardSkin.css للأزرار
+   ✅ ثيم ملكات الأبيض + الخمري (#40010D) بدون بنفسجي
 ========================= */
 
 .offers-page{
@@ -30,16 +31,15 @@
     );
 }
 
-
 .offers-page * {
   box-sizing: border-box;
 }
 
-/* ✅ أهم إصلاح: تصغير checkbox + منع اللون الأحمر الضخم */
+/* ✅ أهم إصلاح: تصغير checkbox + ثيم ملكات */
 .offers-page input[type="checkbox"] {
   width: 16px !important;
   height: 16px !important;
-  accent-color: #8b5cf6 !important;
+  accent-color: #40010D !important; /* ✅ بدل البنفسجي */
   cursor: pointer;
 }
 
@@ -57,7 +57,7 @@
   margin: 0;
   font-size: 20px;
   font-weight: 900;
-  color: #2b2b2b;
+  color: #0D0D0D;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -65,7 +65,7 @@
 
 .offers-sub {
   margin: 6px 0 0;
-  color: rgba(0, 0, 0, 0.55);
+  color: rgba(13, 13, 13, 0.55);
   font-size: 13px;
 }
 
@@ -74,16 +74,16 @@
   width: min(1180px, calc(100% - 28px));
   margin: 0 auto 14px auto;
   background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(13, 13, 13, 0.07);
   border-radius: 18px;
   padding: 14px;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
 }
 
 .offers-card-title {
   font-size: 13px;
   font-weight: 900;
-  color: rgba(0, 0, 0, 0.75);
+  color: rgba(13, 13, 13, 0.78);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -104,7 +104,7 @@
   align-items: center;
   gap: 10px;
   background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(13, 13, 13, 0.10);
   border-radius: 14px;
   padding: 10px 12px;
   overflow: hidden;
@@ -116,17 +116,20 @@
   width: 100%;
   font-size: 14px;
   background: transparent;
+  color: #0D0D0D;
 }
 
 .offers-search-ic {
   opacity: 0.6;
   font-size: 14px;
+  color: #515659;
 }
 
 .offers-hint {
   margin-top: 10px;
   font-size: 12px;
   opacity: 0.65;
+  color: #515659;
 }
 
 /* ===== Stats ===== */
@@ -140,22 +143,24 @@
 
 .of-stat {
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(13, 13, 13, 0.07);
   border-radius: 18px;
   padding: 14px;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
 }
 
 .of-stat h3 {
   margin: 0 0 6px 0;
   font-size: 20px;
   font-weight: 900;
+  color: #0D0D0D;
 }
 
 .of-stat p {
   margin: 0;
-  opacity: 0.7;
+  opacity: 0.75;
   font-size: 13px;
+  color: #515659;
 }
 
 /* ===== Table Card ===== */
@@ -163,10 +168,10 @@
   width: min(1180px, calc(100% - 28px));
   margin: 0 auto 18px auto;
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(13, 13, 13, 0.07);
   border-radius: 18px;
   padding: 12px;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
   overflow: hidden;
 }
 
@@ -185,27 +190,33 @@
 .offers-table thead th {
   position: sticky;
   top: 0;
-  background: rgba(139, 92, 246, 0.08);
-  border-bottom: 1px solid rgba(139, 92, 246, 0.22);
+
+  /* ✅ هيدر خفيف خمري بدل البنفسجي */
+  background: rgba(64, 1, 13, 0.06);
+  border-bottom: 1px solid rgba(64, 1, 13, 0.14);
+
   font-size: 12px;
   font-weight: 900;
   padding: 12px 10px;
   text-align: right;
   white-space: nowrap;
+  color: #0D0D0D;
 }
 
 .offers-table tbody td {
   background: #fff;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid rgba(13, 13, 13, 0.07);
   font-size: 13px;
   padding: 12px 10px;
   text-align: right;
   vertical-align: middle;
   white-space: nowrap;
+  color: #0D0D0D;
 }
 
 .offers-table tbody tr:hover td {
-  background: rgba(139, 92, 246, 0.05);
+  /* ✅ hover خفيف خمري */
+  background: rgba(64, 1, 13, 0.035);
 }
 
 .of-img {
@@ -213,7 +224,7 @@
   height: 44px;
   border-radius: 12px;
   object-fit: cover;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(13, 13, 13, 0.10);
 }
 
 /* ===== Actions layout ===== */
@@ -224,7 +235,8 @@
   justify-content: flex-start;
 }
 
-/* ✅ لمسة فقط: تصغير أيقونات الأزرار في Offers */
+/* ✅ لمسة فقط: dash-pill داخل Offers (بدون لمس أساس الزر في Skin)
+   ⚠️ كان بنفسجي: صار "خمري ملكات" */
 .dashboard-skin .offers-page .dash-pill {
   display: inline-flex;
   align-items: center;
@@ -234,34 +246,37 @@
   border-radius: 999px;
 
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 700;
 
-  background: rgba(139, 92, 246, 0.08); /* بنفس ثيم البنفسجي */
-  color: #6d28d9;
+  background: rgba(64, 1, 13, 0.06);
+  color: #40010D;
 
-  border: 1px solid rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(64, 1, 13, 0.14);
   cursor: pointer;
 
   transition: all 0.2s ease;
 }
 
 .dashboard-skin .offers-page .dash-pill:hover {
-  background: rgba(139, 92, 246, 0.14);
-  border-color: rgba(139, 92, 246, 0.28);
+  background: rgba(64, 1, 13, 0.10);
+  border-color: rgba(64, 1, 13, 0.22);
+  transform: translateY(-1px);
 }
 
 .dashboard-skin .offers-page .dash-pill:active {
-  background: rgba(139, 92, 246, 0.18);
+  background: rgba(64, 1, 13, 0.12);
+  transform: translateY(0px);
 }
 
 .dashboard-skin .offers-page .dash-pill:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.22);
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.16);
 }
 
 .dashboard-skin .offers-page .dash-pill svg {
   font-size: 13px;
   opacity: 0.9;
+  color: #40010D;
 }
 
 /* ✅ ألوان toggle فقط (بدون لمس أساس الزر) */
@@ -309,7 +324,7 @@
   gap: 12px;
 
   background: rgba(255, 255, 255, 0.94);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid rgba(13, 13, 13, 0.08);
   padding: 14px 14px;
 }
 
@@ -317,6 +332,7 @@
   margin: 0;
   font-size: 16px;
   font-weight: 900;
+  color: #0D0D0D;
 }
 
 .of-modal-sub {
@@ -324,6 +340,7 @@
   margin-top: 4px;
   font-size: 12px;
   opacity: 0.7;
+  color: #515659;
 }
 
 /* Body scroll واحد */
@@ -344,17 +361,17 @@
   justify-content: flex-start;
 
   background: rgba(255, 255, 255, 0.94);
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  border-top: 1px solid rgba(13, 13, 13, 0.08);
   padding: 12px 14px 14px;
 }
 
 /* form sections */
 .of-section {
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(13, 13, 13, 0.07);
   border-radius: 18px;
   padding: 14px;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 10px 26px rgba(13, 13, 13, 0.05);
   margin-bottom: 12px;
 }
 
@@ -363,7 +380,8 @@
   font-size: 12px;
   font-weight: 900;
   margin-bottom: 6px;
-  opacity: 0.8;
+  opacity: 0.9;
+  color: #0D0D0D;
 }
 
 .of-section input,
@@ -371,16 +389,17 @@
   width: 100%;
   border-radius: 14px;
   padding: 10px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.10);
+  border: 1px solid rgba(13, 13, 13, 0.12);
   outline: none;
   font-size: 14px;
   background: #fff;
+  color: #0D0D0D;
 }
 
 .of-section input:focus,
 .of-section select:focus {
-  border-color: rgba(139, 92, 246, 0.35);
-  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.14);
+  border-color: rgba(64, 1, 13, 0.28);
+  box-shadow: 0 0 0 4px rgba(64, 1, 13, 0.10);
 }
 
 /* grids */
@@ -418,11 +437,13 @@
 .of-scope-title {
   font-weight: 900;
   margin-bottom: 2px;
+  color: #0D0D0D;
 }
 
 .of-scope-hint {
   font-size: 12px;
-  opacity: 0.7;
+  opacity: 0.75;
+  color: #515659;
 }
 
 .of-scope-pills {
@@ -437,17 +458,19 @@
   align-items: center;
   gap: 10px;
   background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(13, 13, 13, 0.10);
   border-radius: 999px;
   padding: 10px 12px;
   cursor: pointer;
   user-select: none;
+  color: #0D0D0D;
 }
 
 .of-pill input {
   width: 16px !important;
   height: 16px !important;
   margin: 0;
+  accent-color: #40010D !important;
 }
 
 /* services search */
@@ -457,7 +480,7 @@
   align-items: center;
   gap: 10px;
   background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(13, 13, 13, 0.10);
   border-radius: 14px;
   padding: 10px 12px;
 }
@@ -467,16 +490,18 @@
   outline: none;
   width: 100%;
   background: transparent;
+  color: #0D0D0D;
 }
 
 .of-services-ic {
   opacity: 0.6;
   font-size: 14px;
+  color: #515659;
 }
 
 .of-services-box {
   margin-top: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(13, 13, 13, 0.08);
   border-radius: 16px;
   overflow: hidden;
   background: #fff;
@@ -489,27 +514,29 @@
 }
 
 .of-services-table thead th {
-  background: rgba(139, 92, 246, 0.08);
+  background: rgba(64, 1, 13, 0.06);
   font-size: 12px;
   font-weight: 900;
   padding: 12px 10px;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+  border-bottom: 1px solid rgba(64, 1, 13, 0.14);
   text-align: right;
+  color: #0D0D0D;
 }
 
 .of-services-table tbody td {
   padding: 12px 10px;
   font-size: 13px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid rgba(13, 13, 13, 0.07);
   text-align: right;
+  color: #0D0D0D;
 }
 
 .of-group-row td {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(13, 13, 13, 0.03);
   font-weight: 900;
 }
 
-/* ✅ NEW: توسيط checkbox داخل جدول الخدمات */
+/* ✅ توسيط checkbox داخل جدول الخدمات */
 .of-services-table td:first-child,
 .of-services-table th:first-child {
   text-align: center;
@@ -526,7 +553,7 @@
   margin: 0;
   width: 16px !important;
   height: 16px !important;
-  accent-color: #8b5cf6 !important;
+  accent-color: #40010D !important;
 }
 
 /* file picker */
@@ -543,11 +570,20 @@
   justify-content: center;
   padding: 9px 12px;
   border-radius: 14px;
-  background: rgba(139, 92, 246, 0.08);
-  border: 1px solid rgba(139, 92, 246, 0.22);
+
+  /* ✅ خمري بدل البنفسجي */
+  background: rgba(64, 1, 13, 0.06);
+  border: 1px solid rgba(64, 1, 13, 0.16);
+
   cursor: pointer;
   font-weight: 900;
   font-size: 13px;
+  color: #40010D;
+}
+
+.of-file-btn:hover{
+  background: rgba(64, 1, 13, 0.10);
+  border-color: rgba(64, 1, 13, 0.22);
 }
 
 .of-file-btn input {
@@ -557,6 +593,7 @@
 .of-file-name {
   font-size: 13px;
   opacity: 0.75;
+  color: #515659;
 }
 
 /* preview */
@@ -573,7 +610,7 @@
   height: 90px;
   border-radius: 16px;
   object-fit: cover;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(13, 13, 13, 0.10);
 }
 
 /* ===== Responsive ===== */
@@ -612,11 +649,14 @@
   align-items: center;
   gap: 8px;
   font-size: 14px;
+  color: #0D0D0D;
+  font-weight: 600;
 }
 
 .of-checkline input[type="checkbox"] {
   transform: scale(0.9);
   cursor: pointer;
+  accent-color: #40010D !important;
 }
 
 .of-switch {
@@ -645,41 +685,308 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-
 /* =========================
    FIX: Text contrast inside Offers Modal
 ========================= */
 
 .offers-modal,
 .offers-modal * {
-  color: #1f2937; /* رمادي داكن واضح */
-
+  color: #111827; /* واضح */
 }
 
 .offers-modal label,
 .offers-modal .of-scope-title,
 .offers-modal .offers-card-title {
-  color: #111827;
+  color: #0D0D0D;
   opacity: 1;
 }
 
+/* ✅ كان بنفسجي: صار خمري */
 .dashboard-skin .offers-page .dash-pill {
-  color: #4c1d95;   /* بنفسجي داكن */
-  font-weight: 700;
+  color: #40010D;
+  font-weight: 800;
 }
 
 .dashboard-skin .offers-page .dash-pill svg {
-  color: #5b21b6;
+  color: #40010D;
 }
 
 .offers-modal input::placeholder,
 .offers-modal select::placeholder {
-  color: rgba(31, 41, 55, 0.55);
+  color: rgba(81, 86, 89, 0.55);
 }
 
 .of-pill,
 .of-checkline {
-  color: #111827;
-  font-weight: 600;
+  color: #0D0D0D;
+  font-weight: 700;
 }
 
+
+/* =========================
+   ✅ Mobile: Table -> Cards (No horizontal scroll)
+========================= */
+@media (max-width: 640px) {
+  /* لا نبي أي سحب أفقي */
+  .offers-table-card { overflow: visible; }
+  .table-responsive { overflow: visible !important; }
+
+  /* نخفي header في الجوال */
+  .offers-table thead {
+    display: none;
+  }
+
+  /* نخلي الجدول "كروت" */
+  .offers-table,
+  .offers-table tbody,
+  .offers-table tr,
+  .offers-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .offers-table {
+    min-width: 0 !important;
+  }
+
+  /* كل صف = كرت */
+  .offers-table tbody tr {
+    background: rgba(255,255,255,0.96);
+    border: 1px solid rgba(13, 13, 13, 0.08);
+    border-radius: 16px;
+    padding: 10px 12px;
+    margin: 10px 0;
+    box-shadow: 0 10px 26px rgba(13, 13, 13, 0.05);
+  }
+
+  /* كل خلية تصير "سطرين": عنوان + قيمة */
+  .offers-table tbody td {
+    border: none !important;
+    padding: 8px 0 !important;
+    text-align: right !important;
+    white-space: normal !important;
+  }
+
+  .offers-table tbody td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 12px;
+    font-weight: 900;
+    color: rgba(13, 13, 13, 0.70);
+    margin-bottom: 4px;
+  }
+
+  /* مكان الأزرار */
+  .offers-table tbody td[data-label="تحكم"] {
+    padding-top: 10px !important;
+    border-top: 1px solid rgba(13, 13, 13, 0.08) !important;
+    margin-top: 8px;
+  }
+
+  /* صور أصغر */
+  .of-img {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+  }
+
+  /* زرار التحكم بالجوال تصير تحت بعض */
+  .of-actions {
+    justify-content: stretch;
+  }
+  .of-actions .dash-pill {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+
+/* =========================
+   ✅ Mobile Luxury Cards (DashboardOffers)
+   هدفها: فخامة + راحة عين + ترتيب
+========================= */
+@media (max-width: 640px) {
+
+  /* الكرت نفسه */
+  .offers-table tbody tr{
+    background: rgba(255,255,255,0.96);
+    border: 1px solid rgba(13, 13, 13, 0.08);
+    border-radius: 18px;
+    padding: 12px 14px;
+    margin: 12px 0;
+
+    box-shadow:
+      0 18px 40px rgba(13, 13, 13, 0.07),
+      0 2px 8px rgba(13, 13, 13, 0.04);
+
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* لمسة خمري خفيفة أعلى الكرت */
+  .offers-table tbody tr::before{
+    content:"";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: linear-gradient(
+      90deg,
+      rgba(64,1,13,0.00),
+      rgba(64,1,13,0.22),
+      rgba(64,1,13,0.00)
+    );
+  }
+
+  /* كل سطر: عنوان | قيمة */
+  .offers-table tbody td{
+    border: none !important;
+    padding: 10px 0 !important;
+    white-space: normal !important;
+
+    display: grid;
+    grid-template-columns: 98px 1fr; /* عنوان ثابت */
+    gap: 12px;
+
+    align-items: center;
+  }
+
+  /* فاصل ناعم بين الصفوف */
+  .offers-table tbody td + td{
+    border-top: 1px solid rgba(13, 13, 13, 0.06) !important;
+  }
+
+  /* عنوان الحقل */
+  .offers-table tbody td::before{
+    content: attr(data-label);
+    display: block;
+
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.2px;
+    color: rgba(13, 13, 13, 0.62);
+    line-height: 1.25;
+  }
+
+  /* القيمة */
+  .offers-table tbody td > *{
+    min-width: 0;
+  }
+
+  /* نصوص طويلة (العنوان/الكود) */
+  .offers-table tbody td[data-label="العنوان"],
+  .offers-table tbody td[data-label="الكود"]{
+    word-break: break-word;
+  }
+
+  /* ✅ صورة: صف لطيف */
+  .offers-table tbody td[data-label="صورة"]{
+    grid-template-columns: 98px 1fr;
+    align-items: center;
+  }
+
+  .offers-table tbody td[data-label="صورة"] .of-img{
+    width: 62px;
+    height: 62px;
+    border-radius: 16px;
+    border: 1px solid rgba(13, 13, 13, 0.10);
+    box-shadow: 0 10px 22px rgba(13, 13, 13, 0.08);
+  }
+
+  /* ✅ “الكود” كبادج */
+  .offers-table tbody td[data-label="الكود"]{
+    font-weight: 800;
+    color: #0D0D0D;
+  }
+  .offers-table tbody td[data-label="الكود"]{
+    /* نخلي القيمة كبادج عن طريق لفّها بصريًا */
+  }
+  .offers-table tbody td[data-label="الكود"]{
+    background: transparent;
+  }
+  .offers-table tbody td[data-label="الكود"]{
+    /* نخلي محتوى النص يوحي كبادج بدون ما نغير JSX */
+  }
+  .offers-table tbody td[data-label="الكود"]{
+    /* نطبق على النص مباشرة */
+  }
+  .offers-table tbody td[data-label="الكود"]{
+    /* لا شيء إضافي هنا */
+  }
+  .offers-table tbody td[data-label="الكود"]{
+    /* نستخدم pseudo على الخانة نفسها ما ينفع للقيمة، فبنستخدم span لو موجود.
+       الحل الأفضل: نخلي القيمة تكسب ستايل عام */
+  }
+
+  /* ✅ ستايل “قيمة” موحّد (يلقط النص/سبان/زر) */
+  .offers-table tbody td{
+    color: #0D0D0D;
+    font-weight: 700;
+  }
+
+  /* ✅ بادجات تلقائية لبعض الحقول (نغلف بصريًا القيمة) */
+  .offers-table tbody td[data-label="الخصم"],
+  .offers-table tbody td[data-label="الحالة"],
+  .offers-table tbody td[data-label="النطاق"]{
+    align-items: start;
+  }
+
+  /* نخلي القيمة داخل هالحقول تشبه badge */
+  .offers-table tbody td[data-label="الخصم"] > *,
+  .offers-table tbody td[data-label="الحالة"] > *,
+  .offers-table tbody td[data-label="النطاق"] > *{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: fit-content;
+    max-width: 100%;
+
+    padding: 6px 10px;
+    border-radius: 999px;
+
+    background: rgba(64, 1, 13, 0.06);
+    border: 1px solid rgba(64, 1, 13, 0.14);
+
+    color: #40010D;
+    font-weight: 900;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  /* ✅ “الاستخدام” خليه رقم أوضح */
+  .offers-table tbody td[data-label="الاستخدام"]{
+    font-weight: 900;
+  }
+
+  /* ✅ سطر التحكم: عنوان فوق ثم أزرار */
+  .offers-table tbody td[data-label="تحكم"]{
+    display: block;
+    padding-top: 12px !important;
+    margin-top: 10px;
+    border-top: 1px solid rgba(13, 13, 13, 0.08) !important;
+  }
+
+  .offers-table tbody td[data-label="تحكم"]::before{
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  .offers-table tbody td[data-label="تحكم"] .of-actions{
+    display: grid;
+    gap: 10px;
+  }
+
+  /* أزرار التحكم فخمة بالجوال */
+  .offers-table tbody td[data-label="تحكم"] .dash-pill{
+    width: 100%;
+    justify-content: center;
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-weight: 900;
+  }
+
+  /* لمسة hover لطيفة */
+  .offers-table tbody tr:active{
+    transform: scale(0.997);
+  }
+}

@@ -13,6 +13,8 @@ import {
   faCircleInfo,
   faArrowRight,
   faCopy,
+  faCircleCheck,
+  faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 
@@ -120,7 +122,7 @@ function buildWhatsappMessageAll(bookings: UiBookingView[]) {
 async function resolveServiceName(serviceId: string): Promise<string> {
   if (!serviceId) return "—";
 
-  // إذا واضح إنه اسم مو ID (مثل "قص شعر")
+  // إذا واضح إنه اسم مو ID
   if (serviceId.length < 10) return serviceId;
 
   try {
@@ -172,7 +174,7 @@ function readLocalBookingRefs(): LocalBookingRef[] {
 
 export default function Success() {
   const navigate = useNavigate();
-  const location = useLocation(); // موجود إذا احتجته
+  const location = useLocation();
   void location;
 
   const [loading, setLoading] = useState(true);
@@ -205,7 +207,6 @@ export default function Success() {
           return;
         }
 
-        // ✅ اجلب كل الحجوزات (best-effort)
         const results: UiBookingView[] = [];
 
         for (const ref of bookingRefs) {
@@ -215,7 +216,6 @@ export default function Success() {
           const docData: any = await getBookingById(bookingId);
           if (!docData) continue;
 
-          // ✅ اسم الخدمة: snapshot أولاً (ثابت) ثم احتياط من services
           const serviceId = String(docData.serviceId ?? docData.serviceName ?? "").trim();
           const snapName = String(docData.serviceSnapshot?.serviceNameAtBooking ?? "").trim();
           const serviceName = snapName || (await resolveServiceName(serviceId));
@@ -245,7 +245,6 @@ export default function Success() {
           return;
         }
 
-        // ترتيب بسيط: حسب التاريخ/الوقت (نصياً) ثم MK
         results.sort((a, b) => {
           const ad = `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`);
           if (ad !== 0) return ad;
@@ -345,10 +344,8 @@ export default function Success() {
       ? "تم تأكيد حجزك بنجاح! 🎉"
       : "تم استلام طلب حجزك بنجاح";
 
+  // ✅ هنا النص اللي أرسلته أنت
   const heroDesc = isConfirmed
-    ? "تم تأكيد الموعد. إذا احتجتِ تعديل، تواصلي معنا عبر الواتساب."
-    : "تم استلام طلب حجزك، وسيتم التواصل معك قريبًا لتأكيد الموعد.";
-
   const mkList = views
     .map((v) => String(v.publicId || "").trim())
     .filter(Boolean);
@@ -371,17 +368,27 @@ export default function Success() {
           <h1 className="success-title">{heroTitle}</h1>
           <p className="success-subtitle">{heroDesc}</p>
 
-          {/* ✅ Badge: إذا أكثر من حجز نعرض أول MK + عدد */}
-          <div className="success-badge">
-            <span>{views.length > 1 ? "أرقام الحجوزات" : "رقم الحجز"}</span>
-            <span className="mono">
-              {views.length > 1 ? `${firstMk} (+${views.length - 1})` : firstMk}
-            </span>
-          </div>
 
-          <p className="text-black">
-            احتفظي بالأرقام للتتبع. تقدري تنسخي رقم واحد أو كل الأرقام بضغطة ✨
-          </p>
+          {/* ✅ CTA واضح إذا Pending */}
+          {!isConfirmed && (
+            <div className="success-cta-box" role="note" aria-label="تنبيه تأكيد عبر واتساب">
+              <div className="success-cta-title qs-wine">
+                <FontAwesomeIcon icon={faTriangleExclamation} />
+                <span>مهم: لازم تأكيد عبر واتساب</span>
+              </div>
+              <div className="success-cta-text qs-wine">
+              لتثبيت الموعد، يرجى التواصل عبر واتساب حيث سيتم إرسال رابط الدفع لتأكيد الحجز 🤍              </div>
+
+            </div>
+          )}
+
+          {/* ✅ إذا Confirmed نقدر نعرض رسالة لطيفة */}
+          {isConfirmed && (
+            <div className="success-confirmed-note">
+              <FontAwesomeIcon icon={faCircleCheck} />
+              <span>تم تأكيد الموعد ✅ ننتظرك بكل حب</span>
+            </div>
+          )}
         </div>
 
         {/* ✅ قائمة/بطاقات الحجوزات */}
@@ -393,7 +400,7 @@ export default function Success() {
                 {idx > 0 && <div className="success-sep" style={{ opacity: 0.15 }} />}
 
                 <div className="detail-row detail-row--full" style={{ justifyContent: "space-between" }}>
-                  <span className="mono qs-black " style={{ fontWeight: 800 }}>
+                  <span className="mono qs-black" style={{ fontWeight: 800 }}>
                     {mk}
                   </span>
 
@@ -465,7 +472,6 @@ export default function Success() {
             );
           })}
 
-          {/* ✅ إجمالي الكل إذا متعدد */}
           {views.length > 1 && (
             <div className="total-row" style={{ marginTop: 14 }}>
               <FontAwesomeIcon icon={faMoneyBill} />
@@ -476,14 +482,45 @@ export default function Success() {
           )}
         </div>
 
-        {/* ✅ أزرار النسخ/واتساب */}
-        <button type="button" className="success-copy-btn" onClick={views.length > 1 ? copyAll : () => copyOne(firstMk)}>
-          <FontAwesomeIcon icon={faCopy} /> {views.length > 1 ? "نسخ كل أرقام الحجوزات (MK)" : "نسخ رقم الحجز (MK)"}
-        </button>
+        {/* ✅ أزرار النسخ/واتساب (Grid) */}
+        <div className="success-copy-actions">
+          <button
+            type="button"
+            className="success-copy-btn"
+            onClick={views.length > 1 ? copyAll : () => copyOne(firstMk)}
+          >
+            <FontAwesomeIcon icon={faCopy} /> {views.length > 1 ? "نسخ كل أرقام الحجوزات (MK)" : "نسخ رقم الحجز (MK)"}
+          </button>
 
-        <button type="button" className="success-copy-btn" onClick={openWhatsapp}>
-          <FontAwesomeIcon icon={faWhatsapp} /> تأكيد عبر واتساب
-        </button>
+          <button type="button" className="success-copy-btn is-whatsapp is-green" onClick={openWhatsapp}>
+            <FontAwesomeIcon icon={faWhatsapp} /> تأكيد الحجز عبر واتساب
+          </button>
+        </div>
+
+        {/* ✅ سياسة التأكيد + الملاحظات */}
+        <div className="success-policy">
+          <div className="success-policy-top">
+            <span className="success-policy-title">سياسة التأكيد</span>
+          </div>
+
+          <p className="success-policy-lead">
+            يتطلب تأكيد الحجز دفع المبلغ المستحق خلال مدة أقصاها ساعتان من وقت إنشاء الحجز.
+            في حال عدم إتمام الدفع خلال هذه الفترة، سيتم إلغاء الحجز تلقائيًا.
+            في حال تم تأكيد الحجز المبلغ غير قابل للاسترداد، ويمكن نقل قيمته إلى موعد آخر عند إعادة الجدولة خلال مدة شهر واحد.
+          </p>
+
+          <div className="success-policy-top" style={{ marginTop: 10 }}>
+            <span className="success-policy-title">ملاحظات مهمة</span>
+          </div>
+
+          <ul className="success-policy-list">
+            <li>يرجى الحضور قبل الموعد بـ 10 دقائق.</li>
+            <li>في حال التأخير لأكثر من 10 دقائق قد يتم اعتبار الموعد ملغيًا.</li>
+            <li>يمنع دخول الأطفال حرصًا على راحة جميع العميلات.</li>
+          </ul>
+
+          <div className="success-policy-footer">شكرًا لاختيارك صالون ملكات، نسعد بخدمتك دائمًا ✨</div>
+        </div>
 
         {/* ✅ أكشنز */}
         <div className="success-actions">

@@ -125,13 +125,20 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
         : Number(raw?.discountPrice ?? 0);
 
   const computedPercent =
-    discountType === "percent" ? Math.min(100, Math.max(0, Number(value || 0))) : 0;
+    discountType === "percent"
+      ? Math.min(100, Math.max(0, Number(value || 0)))
+      : 0;
 
   const code = String(raw?.code || "").trim().toUpperCase();
 
-  const img = String(raw?.imageUrl || raw?.imageSrc || "").trim() || pickFallbackImage(discountType);
+  const img =
+    String(raw?.imageUrl || raw?.imageSrc || "").trim() ||
+    pickFallbackImage(discountType);
 
-  const badge = discountType === "percent" ? `خصم ${computedPercent}%` : `خصم ${Number(value || 0)} ريال`;
+  const badge =
+    discountType === "percent"
+      ? `خصم ${computedPercent}%`
+      : `خصم ${Number(value || 0)} ريال`;
 
   const title = String(raw?.title || "عرض");
   const description =
@@ -144,9 +151,15 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
 
   const features: string[] = [
     code ? `الكود: ${code}` : "الكود: —",
-    discountType === "percent" ? `قيمة الخصم: ${computedPercent}%` : `قيمة الخصم: ${Number(value || 0)} ريال`,
-    startDate ? `يبدأ من: ${new Date(startDate).toLocaleDateString("ar-SA")}` : "ساري الآن",
-    endDate ? `ينتهي في: ${new Date(endDate).toLocaleDateString("ar-SA")}` : "بدون تاريخ نهاية",
+    discountType === "percent"
+      ? `قيمة الخصم: ${computedPercent}%`
+      : `قيمة الخصم: ${Number(value || 0)} ريال`,
+    startDate
+      ? `يبدأ من: ${new Date(startDate).toLocaleDateString("ar-SA")}`
+      : "ساري الآن",
+    endDate
+      ? `ينتهي في: ${new Date(endDate).toLocaleDateString("ar-SA")}`
+      : "بدون تاريخ نهاية",
   ];
 
   return {
@@ -183,16 +196,51 @@ const Offers = () => {
     variant: "info" as "info" | "danger" | "success",
   });
 
-  const openModal = (x: { title: string; message: string; variant?: "info" | "danger" | "success" }) => {
-    setModal({ open: true, title: x.title, message: x.message, variant: x.variant || "info" });
+  const openModal = (x: {
+    title: string;
+    message: string;
+    variant?: "info" | "danger" | "success";
+  }) => {
+    setModal({
+      open: true,
+      title: x.title,
+      message: x.message,
+      variant: x.variant || "info",
+    });
   };
   const closeModal = () => setModal((p) => ({ ...p, open: false }));
+
+  // ✅✅ FIX: منع Scroll الخلفية وقت فتح المودال (يحل scroll داخل scroll بالجوال)
+  useEffect(() => {
+    if (!modal.open) return;
+
+    const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
+
+    // (اختياري) تعويض اختفاء scrollbar على الديسكتوب
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = prevOverflow || "";
+      document.body.style.paddingRight = prevPaddingRight || "";
+    };
+  }, [modal.open]);
 
   const copyCode = async (code: string) => {
     if (!code) return;
     try {
       await navigator.clipboard.writeText(code);
-      openModal({ title: "تم النسخ ✅", message: `تم نسخ الكود: ${code}`, variant: "success" });
+      openModal({
+        title: "تم النسخ ✅",
+        message: `تم نسخ الكود: ${code}`,
+        variant: "success",
+      });
     } catch {
       openModal({
         title: "تعذر النسخ",
@@ -203,22 +251,32 @@ const Offers = () => {
   };
 
   useEffect(() => {
-    const q1 = query(collection(db, "salons", SALON_ID, "offers"), orderBy("createdAt", "desc"));
+    const q1 = query(
+      collection(db, "salons", SALON_ID, "offers"),
+      orderBy("createdAt", "desc")
+    );
 
     const unsub1 = onSnapshot(
       q1,
       (snap) => {
-        const mapped = snap.docs.map((d) => normalizeOfferDoc(d.id, d.data()));
+        const mapped = snap.docs.map((d) =>
+          normalizeOfferDoc(d.id, d.data())
+        );
         setOffers(mapped);
       },
       (err) => {
-        console.warn("offers snapshot (orderBy) failed, fallback:", err?.message || err);
+        console.warn(
+          "offers snapshot (orderBy) failed, fallback:",
+          err?.message || err
+        );
 
         const q2 = query(collection(db, "salons", SALON_ID, "offers"));
         const unsub2 = onSnapshot(
           q2,
           (snap) => {
-            const mapped = snap.docs.map((d) => normalizeOfferDoc(d.id, d.data()));
+            const mapped = snap.docs.map((d) =>
+              normalizeOfferDoc(d.id, d.data())
+            );
             mapped.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
             setOffers(mapped);
           },
@@ -251,8 +309,11 @@ const Offers = () => {
         .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0];
     };
 
-    const hero = best(activeNow) ?? best(offers.filter((x) => !x.deletedAt)) ?? offers[0];
-    const rest = hero ? offers.filter((o) => o.id !== hero.id && !o.deletedAt) : offers.filter((x) => !x.deletedAt);
+    const hero =
+      best(activeNow) ?? best(offers.filter((x) => !x.deletedAt)) ?? offers[0];
+    const rest = hero
+      ? offers.filter((o) => o.id !== hero.id && !o.deletedAt)
+      : offers.filter((x) => !x.deletedAt);
 
     const maxP =
       offers.length > 0
@@ -262,10 +323,14 @@ const Offers = () => {
     // ✅ القائمة الأساسية: الساري الآن أولاً، ثم الباقي
     const ordered = [
       ...activeNow.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
-      ...rest.filter((o) => !activeNow.some((x) => x.id === o.id)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
+      ...rest
+        .filter((o) => !activeNow.some((x) => x.id === o.id))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
     ];
 
-    const grid = hero ? [{ ...hero, badge: "الأفضل اليوم" }, ...ordered.filter((o) => o.id !== hero.id)] : ordered;
+    const grid = hero
+      ? [{ ...hero, badge: "الأفضل اليوم" }, ...ordered.filter((o) => o.id !== hero.id)]
+      : ordered;
 
     return {
       activeNow,
@@ -294,13 +359,13 @@ const Offers = () => {
           <div className="row align-items-center justify-content-center">
             <div className="col-lg-10">
               <div className="hero-content animate-fade-in text-center">
-              <h1
-  className="display-4 fw-bold mb-3"
-  style={{ color: "var(--qs-wine)" }}
->
-  <FontAwesomeIcon icon={faGift} className="me-3" />
-  عروضنا الخاصة
-</h1>
+                <h1
+                  className="display-4 fw-bold mb-3"
+                  style={{ color: "var(--qs-wine)" }}
+                >
+                  <FontAwesomeIcon icon={faGift} className="me-3" />
+                  عروضنا الخاصة
+                </h1>
 
                 <p className="lead mb-4">
                   العروض تُدار من لوحة الأونر وتظهر هنا تلقائيًا… اختاري العرض وطبّقي الكود عند الحجز
@@ -385,7 +450,9 @@ const Offers = () => {
 
                       <div className="offer-validity">
                         <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
-                        {offer.startDate ? `يبدأ: ${new Date(offer.startDate).toLocaleDateString("ar-SA")} — ` : ""}
+                        {offer.startDate
+                          ? `يبدأ: ${new Date(offer.startDate).toLocaleDateString("ar-SA")} — `
+                          : ""}
                         ساري حتى: {new Date(offer.validUntil).toLocaleDateString("ar-SA")}
                       </div>
 
@@ -422,7 +489,6 @@ const Offers = () => {
                           </Link>
                         </div>
                       )}
-
                     </div>
                   </div>
                 </div>
@@ -505,7 +571,9 @@ const Offers = () => {
 
                               <div className="offer-validity">
                                 <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
-                                {offer.startDate ? `يبدأ: ${new Date(offer.startDate).toLocaleDateString("ar-SA")} — ` : ""}
+                                {offer.startDate
+                                  ? `يبدأ: ${new Date(offer.startDate).toLocaleDateString("ar-SA")} — `
+                                  : ""}
                                 ينتهي: {new Date(offer.validUntil).toLocaleDateString("ar-SA")}
                               </div>
 
@@ -536,7 +604,7 @@ const Offers = () => {
 
       {/* CTA */}
       <section className="offers-cta is-white py-5">
-      <div className="container">
+        <div className="container">
           <div className="row justify-content-center text-center">
             <div className="col-lg-8">
               <h2 className="h1 fw-bold text-gradient mb-3">لا تفوتي الفرصة!</h2>
@@ -545,7 +613,6 @@ const Offers = () => {
               </p>
 
               <div className="cta-actions">
-
                 <Link to="/contact" className="btn btn-outline btn-lg rounded-pill">
                   <FontAwesomeIcon icon={faTag} className="me-2" />
                   استفسري عن العروض
@@ -556,7 +623,6 @@ const Offers = () => {
         </div>
       </section>
     </div>
-
   );
 };
 

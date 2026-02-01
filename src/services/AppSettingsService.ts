@@ -133,7 +133,7 @@ const defaultSettings: AppSettings = {
 
   // ✅ NEW defaults
   booking: {
-    slotStepMin: 30,
+    slotStepMin: 5,  
     bufferMin: 0,
     businessHours: defaultBusinessHours(),
     holidays: [],
