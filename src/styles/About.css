@@ -325,3 +325,17 @@
   }
 }
 
+/* ✅ تصغير أيقونة الصح وتوازنها مع النص */
+.about-page .feature-icon{
+  font-size: 0.9rem;   /* أصغر من النص شوي */
+  margin-left: 8px;
+  color: #40010D;
+  flex-shrink: 0;
+}
+
+/* ✅ خلّي النص + الأيقونة على نفس الخط تمام */
+.about-page .features-list li{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

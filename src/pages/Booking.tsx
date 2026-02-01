@@ -1,6 +1,6 @@
 // src/pages/Booking.tsx
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import type React from "react"; // ✅ ADD: عشان React.ChangeEvent / React.FormEvent
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -138,6 +138,7 @@ type FlatService = {
   // ✅ حقول تسعير/عرض
   priceText: string;
   basePrice: number;
+  seasonPrice?: number; // ✅ سعر الموسم (اختياري)
 
   // ✅ مدة من Firestore إذا كانت موجودة
   durationMin?: number;
@@ -274,6 +275,22 @@ function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {
   return { ok: true, reason: "" };
 }
 
+function isSeasonActiveForDate(season: any, bookingDateISO: string) {
+  const enabled = !!season?.enabled;
+  if (!enabled) return false;
+
+  const s = String(season?.startDate || "").trim(); // "YYYY-MM-DD"
+  const e = String(season?.endDate || "").trim();   // "YYYY-MM-DD"
+
+  // إذا ما حطيت تواريخ: اعتبره شغال دايم
+  if (!s && !e) return true;
+
+  if (s && bookingDateISO && bookingDateISO < s) return false;
+  if (e && bookingDateISO && bookingDateISO > e) return false;
+  return true;
+}
+
+
 // ✅ نبي UID الحقيقي فقط (إذا مسجل دخول) ونرفض anonymous
 function getSignedInUidOrNull(): string | null {
   const auth = getAuth();
@@ -339,12 +356,18 @@ function safeTimeHHMM(v: any, fallback: string) {
 
 const Booking = () => {
   const navigate = useNavigate();
+  const dateRef = useRef<HTMLInputElement>(null);
 
   // =========================
   // ✅ Settings (live)
   // =========================
   const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
   const booking = (appSettings as any)?.booking || {};
+  const seasonPricing = (appSettings as any)?.catalogSeasonPricing || {};
+
+  const seasonCfg = seasonPricing; // ✅ موسم الأسعار (Catalog)
+
+
   const businessHours = (booking as any)?.businessHours || {};
 
   const openTime = useMemo(
@@ -403,6 +426,10 @@ const Booking = () => {
   const [hairGuideUrl, setHairGuideUrl] = useState<string>(hairGuideImg);
   const [isOwner, setIsOwner] = useState(false);
   const [uploadingGuide, setUploadingGuide] = useState(false);
+
+  // ✅ تاريخ الحجز الأساسي (لازم يختاره قبل الخدمات)
+  const [bookingDate, setBookingDate] = useState<string>("");
+
 
   const [formData, setFormData] = useState<BookingFormData>({
     name: "",
@@ -481,6 +508,52 @@ const Booking = () => {
 
     return taken;
   }
+
+
+
+
+  function isDateInRange(dateISO: string, startISO: string, endISO: string) {
+    if (!dateISO) return false;
+    if (startISO && dateISO < startISO) return false;
+    if (endISO && dateISO > endISO) return false;
+    return true;
+  }
+
+  // ✅ مثال شكل إعدادات الموسم (نربطه مع appSettings لاحقًا لو اسم الحقول مختلف)
+  function isSeasonEnabledForDate(appSettings: any, dateISO: string) {
+    const season = (appSettings as any)?.catalogSeasonPricing || {};
+    const enabled = !!season.enabled;
+
+    const start = String(season.startDate || "").trim();
+    const end = String(season.endDate || "").trim();
+
+    if (!enabled) return { ok: false, start, end };
+    if (!start && !end) return { ok: true, start, end };
+
+    return { ok: isDateInRange(dateISO, start, end), start, end };
+  }
+
+  // ✅ السعر النهائي: إذا الموسم شغال -> استخدم seasonPrice إذا موجود، وإلا استخدم العادي
+  function pickEffectivePrice(args: {
+    basePrice: number;
+    seasonPrice?: number;
+    appSettings: any;
+    dateISO: string;
+  }) {
+    const base = Math.max(0, Number(args.basePrice || 0));
+    const season = Math.max(0, Number(args.seasonPrice || 0));
+
+    const seasonState = isSeasonEnabledForDate(args.appSettings, args.dateISO);
+    const seasonActive = seasonState.ok;
+
+    if (seasonActive && season > 0) {
+      return { price: season, label: "سعر موسم ✅", usedSeason: true };
+    }
+
+    // ✅ إذا الموسم شغال لكن الخدمة ما لها سعر موسم: نرجع للعادي (هذا شرطك)
+    return { price: base, label: seasonActive ? "سعر عادي (لا يوجد سعر موسم)" : "سعر عادي", usedSeason: false };
+  }
+
 
   function findCartOverlap(items: CartItem[]) {
     const list = (items || []).map((x) => ({ ...x }));
@@ -825,6 +898,11 @@ const Booking = () => {
           const catName = String(x.category ?? x.categoryName ?? x.التصنيف ?? "عام").trim() || "عام";
           const name = String(x.الاسم ?? x.name ?? "").trim();
           const priceNum = Number(x.السعر ?? x.price ?? 0);
+
+          const seasonPriceNum = Number((x as any).seasonPrice ?? (x as any).سعر_الموسم ?? 0);
+          const seasonPrice =
+            Number.isFinite(seasonPriceNum) && seasonPriceNum > 0 ? seasonPriceNum : undefined;
+
           const durationMin = Number(x.المدة ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN);
 
           return {
@@ -836,6 +914,7 @@ const Booking = () => {
             name,
             priceText: `${priceNum} ريال`,
             basePrice: priceNum,
+            seasonPrice,
             durationMin,
             source: "firestore" as const,
           };
@@ -850,6 +929,10 @@ const Booking = () => {
         const catName = catId ? catMap.get(catId) || "عام" : "عام";
         const name = String(x.الاسم ?? x.name ?? "").trim();
         const priceNum = Number(x.السعر ?? x.price ?? 0);
+        const seasonPriceNum = Number((x as any).seasonPrice ?? (x as any).سعر_الموسم ?? 0);
+        const seasonPrice =
+          Number.isFinite(seasonPriceNum) && seasonPriceNum > 0 ? seasonPriceNum : undefined;
+
         const durationMin = Number(x.المدة ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN);
 
         return {
@@ -861,9 +944,11 @@ const Booking = () => {
           name,
           priceText: `${priceNum} ريال`,
           basePrice: priceNum,
+          seasonPrice, // ✅ ضيفها هنا
           durationMin,
           source: "firestore" as const,
         };
+
       });
 
       return list;
@@ -1013,6 +1098,20 @@ const Booking = () => {
     const sv = getServiceById(id);
     if (!sv) return;
 
+    const dateISO = String(bookingDate || "").trim();
+
+    const eff = pickEffectivePrice({
+      basePrice: Number(sv.basePrice || 0),
+      seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
+      appSettings,
+      dateISO,
+    });
+
+    const effectiveBasePrice = Number(eff.price || 0);
+    const effectivePriceText = `${effectiveBasePrice} ريال`;
+
+    if (!sv) return;
+
     setFormData((prev) => ({
       ...prev,
       items: [
@@ -1021,13 +1120,14 @@ const Booking = () => {
           id: makeLocalId(),
           serviceId: id,
           serviceName: sv.name,
-          basePrice: Number(sv.basePrice || 0),
-          priceText: sv.priceText,
+          basePrice: effectiveBasePrice,
+          priceText: effectivePriceText,
+
           durationMin: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
           employeeId: "",
           employeeUid: "",
           employeeName: "",
-          date: "",
+          date: bookingDate,
           time: "",
           serviceSectionId: String(sv.sectionId || "").trim(),
           serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
@@ -1563,13 +1663,24 @@ const Booking = () => {
       return;
     }
 
+    if (!String(bookingDate || "").trim()) {
+      openModal({
+        title: "اختيار التاريخ",
+        message: "فضلاً اختاري تاريخ الحجز أولاً.",
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
+
+
     const missing = items.find((it) => {
       if (!String(it.employeeId || "").trim()) return true;
       if (!String(it.employeeName || "").trim()) return true;
-      if (!String(it.date || "").trim()) return true;
       if (!String(it.time || "").trim()) return true;
       return false;
     });
+
 
     if (missing) {
       openModal({
@@ -1943,12 +2054,11 @@ const Booking = () => {
               <form className="booking-form" onSubmit={handleSubmit}>
                 <div className="row">
                   <div className="col-md-6 mb-4">
-                    <label htmlFor="name" className="form-label">
-                      الاسم الكامل
-                    </label>
+                    {/* الاسم */}
+                    <label htmlFor="name" className="form-label">الاسم</label>
 
                     <div className="input-group">
-                      <span className="input-group-text">
+                      <span className="input-group-text" aria-hidden="true">
                         <FontAwesomeIcon icon={faUser} />
                       </span>
 
@@ -1958,23 +2068,23 @@ const Booking = () => {
                         id="name"
                         name="name"
                         value={formData.name}
-                        onChange={handleChange}
-                        placeholder="أدخلي اسمك الكامل"
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, name: e.target.value }))
+                        }
+                        placeholder="اسم العميلة"
                         required
                       />
                     </div>
                   </div>
 
-                  <div className="col-md-6 mb-4">
-                    <label htmlFor="phone" className="form-label">
-                      رقم الجوال
-                    </label>
 
+                  <div className="col-md-6 mb-4">
+                    {/* الجوال */}
+                    <label htmlFor="phone" className="form-label">رقم الجوال</label>
                     <div className="input-group">
                       <span className="input-group-text">
                         <FontAwesomeIcon icon={faPhone} />
                       </span>
-
                       <input
                         type="tel"
                         inputMode="numeric"
@@ -1992,7 +2102,81 @@ const Booking = () => {
                       />
                     </div>
                   </div>
+
+                  {/* ✅ التاريخ (عمود لحاله) */}
+                  <div className="col-12 mb-4">
+                    <label htmlFor="bookingDate" className="form-label">تاريخ الحجز</label>
+
+                    <div
+                      className="input-group"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => dateRef.current?.showPicker?.() || dateRef.current?.focus()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          dateRef.current?.showPicker?.() || dateRef.current?.focus();
+                        }
+                      }}
+                    >
+                      <span className="input-group-text" aria-hidden="true">
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </span>
+
+                      <input
+                        ref={dateRef}
+                        type="date"
+                        className="form-control"
+                        id="bookingDate"
+                        value={bookingDate}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setBookingDate(v);
+
+                          setFormData((prev) => ({
+
+
+                            ...prev,
+                            items: (prev.items || []).map((it) => ({
+                              ...it,
+                              date: v,
+                              time: "",
+                            })),
+                          }));
+
+                          setFormData((prev) => ({
+                            ...prev,
+                            items: (prev.items || []).map((it) => {
+                              const sv = getServiceById(String(it.serviceId || "").trim());
+                              if (!sv) return { ...it, date: v, time: "" };
+
+                              const eff = pickEffectivePrice({
+                                basePrice: Number(sv.basePrice || 0),
+                                seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
+                                appSettings,
+                                dateISO: v,
+                              });
+
+                              const price = Number(eff.price || 0);
+
+                              return {
+                                ...it,
+                                date: v,
+                                time: "",
+                                basePrice: price,
+                                priceText: `${price} ريال`,
+                              };
+                            }),
+                          }));
+
+
+                        }}
+                        min={todayISO()}
+                      />
+                    </div>
+                  </div>
                 </div>
+
 
                 <div className="mb-4 bk-field">
                   <label className="form-label">القسم</label>
@@ -2002,11 +2186,12 @@ const Booking = () => {
                     value={selectedSectionId}
                     onChange={handleSectionChange}
                     required={!formData.items?.length}
-                    disabled={catalogLoading}
+                    disabled={!bookingDate || catalogLoading}
                   >
                     <option value="" disabled>
-                      اختاري القسم
+                      {bookingDate ? "اختاري القسم" : "اختاري التاريخ أولاً"}
                     </option>
+
 
                     {sectionOptions.map((sec) => (
                       <option key={sec.id} value={sec.id}>
@@ -2023,9 +2208,12 @@ const Booking = () => {
                     className="form-select dash-select"
                     value={selectedCategory}
                     onChange={handleCategoryChange}
-                    disabled={!selectedSectionId || catalogLoading}
+                    disabled={!bookingDate || !selectedSectionId || catalogLoading}
                   >
-                    <option value="">الكل</option>
+                    <option value="" disabled>
+                      {bookingDate ? "اختاري التصنيف" : "اختاري القسم أولاً"}
+                    </option>
+
                     {categoryOptions.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -2042,9 +2230,11 @@ const Booking = () => {
                       className="form-select dash-select"
                       value={servicePicker}
                       onChange={(e) => setServicePicker(e.target.value)}
-                      disabled={!selectedSectionId}
+                      disabled={!bookingDate || !selectedSectionId}
                     >
-                      <option value="">اختاري خدمة لإضافتها</option>
+                      <option value="" disabled>
+                        {bookingDate ? "اختاري خدمة لإضافتها" : "اختاري القسم أولاً"}
+                      </option>
 
                       {servicesGrouped.map(([cat, items]) => (
                         <optgroup key={cat} label={cat}>
@@ -2177,6 +2367,26 @@ const Booking = () => {
                                     {it.priceText || `${Number(it.basePrice || 0)} ريال`}
                                   </span>
 
+                                  {(() => {
+                                    const date = String(it.date || "").trim();
+                                    if (!date) return null;
+
+                                    const sv = getServiceById(String(it.serviceId || "").trim());
+                                    const seasonOn = isSeasonActiveForDate(seasonCfg, date);
+
+                                    if (!seasonOn) return null;
+
+                                    const hasSeasonPrice =
+                                      Number.isFinite(Number(sv?.seasonPrice)) && Number(sv?.seasonPrice) > 0;
+
+                                    return (
+                                      <div className={`small mt-1 ${hasSeasonPrice ? "text-success" : "text-muted"}`}>
+                                        {hasSeasonPrice ? "سعر الموسم ✅" : "سعر عادي (لا يوجد سعر موسم لهذه الخدمة)"}
+                                      </div>
+                                    );
+                                  })()}
+
+
                                   <span className="service-duration">
                                     {Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN)} دقيقة
                                   </span>
@@ -2221,7 +2431,6 @@ const Booking = () => {
                                         employeeId: empId,
                                         employeeUid: emp?.uid || "",
                                         employeeName: emp?.name || "",
-                                        date: "",
                                         time: "",
                                       });
                                     }}
@@ -2251,34 +2460,23 @@ const Booking = () => {
                                 {!!staffError && <div className="text-danger small mt-1">{staffError}</div>}
                               </div>
 
-                              <div className="col-md-6 mb-3">
-                                <label htmlFor={`date_${it.id}`} className="form-label">
-                                  التاريخ
-                                </label>
+                              <div className="col-12">
 
-                                <div className="input-group">
-                                  <span className="input-group-text">
+                                <div className="qs-date-chip mt-2">
+                                  <span className="qs-date-icon">
                                     <FontAwesomeIcon icon={faCalendarAlt} />
                                   </span>
 
-                                  <input
-                                    type="date"
-                                    className="form-control"
-                                    id={`date_${it.id}`}
-                                    value={it.date}
-                                    onChange={(e) => updateItem(it.id, { date: e.target.value, time: "" })}
-                                    required
-                                    min={todayISO()}
-                                    disabled={!it.employeeId}
-                                  />
+                                  <span className="qs-date-label">تاريخ الخدمة</span>
+
+                                  <strong className="qs-date-value">
+                                    {it.date || bookingDate || "—"}
+                                  </strong>
                                 </div>
 
-                                {!it.employeeId && (
-                                  <div className="small text-muted mt-1">اختاري الموظفة أولاً عشان يظهر التقويم</div>
-                                )}
-                              </div>
 
-                              <div className="col-12">
+
+
                                 <label className="bk-time-label">الوقت</label>
 
                                 {/* ✅✅✅ NEW: شبكة أوقات ملونة (الأخضر = ينفع كبداية لمدة الخدمة) */}

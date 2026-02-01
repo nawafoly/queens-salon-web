@@ -143,6 +143,11 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
   const [catalogMsg, setCatalogMsg] = useState("");
 
+  // ✅ Autosave timers per service (debounce)
+  const autosaveTimersRef = React.useRef<Record<string, any>>({});
+  const [autosaveMsg, setAutosaveMsg] = useState<Record<string, string>>({});
+
+
   // ✅ Season Pricing (global)
   const [seasonPricingEnabled, setSeasonPricingEnabled] = useState(false);
   const [seasonPricingFrom, setSeasonPricingFrom] = useState("");
@@ -588,11 +593,53 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         { merge: true }
       );
       showCatalogMsg("✅ تم حفظ الخدمة");
+
+      
     } catch (e) {
       console.error("saveServiceRow error:", e);
       showCatalogMsg("❌ تعذر حفظ الخدمة", 2500);
     }
+    
   };
+
+
+  // ✅ Auto-save service after user stops typing (debounce)
+  const scheduleServiceAutosave = (nextRow: ServiceRow) => {
+    if (!hasAdminPower) return;
+
+    const id = String(nextRow.id || "").trim();
+    if (!id) return;
+
+    // امسح مؤقت سابق لنفس الخدمة
+    if (autosaveTimersRef.current[id]) {
+      clearTimeout(autosaveTimersRef.current[id]);
+    }
+
+    // رسالة صغيرة جنب الخدمة
+    setAutosaveMsg((p) => ({ ...p, [id]: "جارٍ الحفظ…" }));
+
+    autosaveTimersRef.current[id] = setTimeout(async () => {
+      try {
+        await saveServiceRow(nextRow);
+        setAutosaveMsg((p) => ({ ...p, [id]: "✅ تم الحفظ" }));
+
+        // نخفي الرسالة بعد شوي
+        setTimeout(() => {
+          setAutosaveMsg((p) => {
+            const copy = { ...p };
+            delete copy[id];
+            return copy;
+          });
+        }, 1200);
+      } catch (e) {
+        console.error("autosave error:", e);
+        setAutosaveMsg((p) => ({ ...p, [id]: "❌ تعذر الحفظ" }));
+      }
+    }, 700);
+  };
+
+
+  
 
   if (!hasAdminPower) {
     return (
@@ -1203,17 +1250,39 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       <input
                         className="settings-input scatalog__numWide"
                         type="number"
+                        inputMode="numeric"
                         min={5}
                         step={5}
-                        value={Number(s.durationMin || 0)}
+                        value={Number(s.durationMin || 0) === 0 ? "" : String(s.durationMin)}
                         onChange={(e) => {
-                          const v = Math.max(5, Number(e.target.value || 0));
-                          setServicesCatalog((prev) =>
-                            prev.map((x) => (x.id === s.id ? { ...x, durationMin: v } : x))
-                          );
+                          const raw = e.target.value; // ممكن يكون "" أثناء المسح
+                          const n = raw === "" ? 0 : Number(raw);
+                        
+                          const nextRow = { ...s, durationMin: Number.isFinite(n) ? n : 0 };
+                        
+                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? nextRow : x)));
+                        
+                          // ✅ حفظ تلقائي بعد 700ms
+                          scheduleServiceAutosave(nextRow);
                         }}
+                        
+                        onBlur={() => {
+                          // نثبت قيمة منطقية بعد ما يطلع من الحقل
+                          const fixed = Math.max(5, Number(s.durationMin || 0));
+                          const snapped = Math.round(fixed / 5) * 5;
+                        
+                          const nextRow = { ...s, durationMin: snapped };
+                        
+                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? nextRow : x)));
+                        
+                          // ✅ حفظ تلقائي (خصوصًا لو عدلناها بالتقريب)
+                          scheduleServiceAutosave(nextRow);
+                        }}
+                        
+                        
                       />
                     </div>
+
 
                     <div className="scatalog__srvField">
                       <div className="scatalog__lbl">السعر</div>

@@ -180,7 +180,7 @@ const About = () => {
               <div className="about-content">
                 <h1 className="about-title mb-4">عن صالون ملكات</h1>
                 <p className="about-text mb-4 lead-strong">
-                  تأسس صالون ملكات للتجميل في عام 2018 بهدف تقديم خدمات تجميلية
+                  تأسس صالون ملكات للتجميل في عام 1996 بهدف تقديم خدمات تجميلية
                   متكاملة وعالية الجودة للسيدات. نسعى دائماً لتوفير تجربة فريدة
                   ومميزة لعميلاتنا في جو من الراحة والخصوصية.
                 </p>
@@ -202,7 +202,7 @@ const About = () => {
         <section className="about-team mb-5">
           <div className="text-center mb-5">
             <h2 className="section-title">فريقنا المتميز</h2>
-            <p className="section-subtitle  lead-strong">تعرفي على فريق الخبيرات المتخصصات</p>
+            <p className="section-subtitle">تعرفي على فريق الخبيرات المتخصصات</p>
 
           </div>
 

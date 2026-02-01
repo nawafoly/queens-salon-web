@@ -669,3 +669,37 @@ textarea.form-control {
   font-weight: 900;
   color: #40010D; /* qs-wine */
 }
+
+/* ===== Queens Date Chip (Luxury version) ===== */
+.qs-date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 8px 14px;
+  border-radius: 14px;
+
+  background: rgba(245, 245, 244, 0.9);
+  border: 1px solid rgba(13, 13, 13, 0.08);
+
+  font-size: 13px;
+  backdrop-filter: blur(6px);
+
+  width: fit-content;
+}
+
+.qs-date-icon {
+  color: #40010D;      /* Burgundy */
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.qs-date-label {
+  color: #6E7372;
+  font-weight: 500;
+}
+
+.qs-date-value {
+  color: #0D0D0D;
+  font-weight: 700;
+}
