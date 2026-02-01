@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../services/firebase";
+import { AppSettingsService } from "../../services/AppSettingsService";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/DashboardSettings.css";
@@ -130,6 +131,7 @@ type ServiceRow = {
   name: string;
   durationMin: number;
   price: number;
+  seasonPrice?: number;
   active: boolean;
   updatedAt?: any;
   createdAt?: any;
@@ -140,6 +142,12 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const { hasAdminPower } = props;
 
   const [catalogMsg, setCatalogMsg] = useState("");
+
+  // ✅ Season Pricing (global)
+  const [seasonPricingEnabled, setSeasonPricingEnabled] = useState(false);
+  const [seasonPricingFrom, setSeasonPricingFrom] = useState("");
+  const [seasonPricingTo, setSeasonPricingTo] = useState("");
+  const [seasonLoading, setSeasonLoading] = useState(false);
 
   const [secLoading, setSecLoading] = useState(false);
   const [catLoading, setCatLoading] = useState(false);
@@ -270,7 +278,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       closeSecModal();
 
       await loadCatalog();
-
       setSelectedSectionIdForCats(id);
     } catch (e) {
       console.error("saveSectionFromModal error:", e);
@@ -338,6 +345,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             name: String(x?.name || ""),
             durationMin: clampInt(x?.durationMin ?? 60, 60),
             price: Math.max(0, Number(x?.price ?? 0) || 0),
+            seasonPrice:
+              x?.seasonPrice == null ? undefined : Math.max(0, Number(x?.seasonPrice ?? 0) || 0),
             active: x?.active !== false,
             updatedAt: x?.updatedAt,
             createdAt: x?.createdAt,
@@ -382,7 +391,21 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
   useEffect(() => {
     if (!hasAdminPower) return;
+
     loadCatalog();
+
+    // ✅ load season pricing settings
+    AppSettingsService.fetchRemote()
+      .then((remote: any) => {
+        const sp = (remote as any)?.catalogSeasonPricing || {};
+        setSeasonPricingEnabled(!!sp.enabled);
+        setSeasonPricingFrom(String(sp.from || ""));
+        setSeasonPricingTo(String(sp.to || ""));
+      })
+      .catch(() => {
+        // ignore
+      });
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasAdminPower]);
 
@@ -512,6 +535,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         name,
         durationMin: 60,
         price: 0,
+        seasonPrice: null,
         active: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -536,6 +560,10 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
     const durationMin = Math.max(5, Number(row.durationMin || 0));
     const price = Math.max(0, Number(row.price || 0));
+    const seasonPrice =
+      row.seasonPrice == null || (row.seasonPrice as any) === ""
+        ? null
+        : Math.max(0, Number(row.seasonPrice || 0));
     const categoryId = String(row.categoryId || "").trim();
 
     if (!categoryId) return showCatalogMsg("❌ الخدمة لازم تكون مرتبطة بتصنيف", 2000);
@@ -553,6 +581,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           name,
           durationMin,
           price,
+          seasonPrice,
           active: row.active !== false,
           updatedAt: serverTimestamp(),
         },
@@ -593,6 +622,41 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     return sectionIdFromName(name);
   }, [secForm.name]);
 
+  // ✅ Save Season Pricing in AppSettings
+  const saveSeasonPricing = async () => {
+    if (!hasAdminPower) return;
+
+    const from = String(seasonPricingFrom || "").trim();
+    const to = String(seasonPricingTo || "").trim();
+
+    if (seasonPricingEnabled) {
+      if (!from || !to) return showCatalogMsg("❌ حدد تاريخ (من/إلى) لموسم الأسعار", 2200);
+      if (from > to) return showCatalogMsg("❌ تاريخ (من) لازم يكون قبل أو يساوي (إلى)", 2200);
+    }
+
+    try {
+      setSeasonLoading(true);
+      const latest = await AppSettingsService.fetchRemote().catch(() => ({} as any));
+
+      const next = {
+        ...(latest || {}),
+        catalogSeasonPricing: {
+          enabled: !!seasonPricingEnabled,
+          from,
+          to,
+        },
+      };
+
+      await AppSettingsService.saveRemote(next);
+      showCatalogMsg("✅ تم حفظ موسم الأسعار", 1800);
+    } catch (e) {
+      console.error(e);
+      showCatalogMsg("❌ تعذر حفظ موسم الأسعار", 2500);
+    } finally {
+      setSeasonLoading(false);
+    }
+  };
+
   // ✅ header style
   const headerRowStyle: React.CSSProperties = {
     padding: "10px 12px",
@@ -611,10 +675,10 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     textOverflow: "ellipsis",
   };
 
-  // ✅ grid templates (نفسها للهيدر وللصف)
+  // ✅ grid templates
   const gridSections = "1.1fr 1.6fr 0.6fr 0.8fr 0.7fr 0.9fr";
   const gridCats = "1.2fr 1.4fr 0.6fr 0.7fr 0.8fr 0.9fr";
-  const gridServices = "1.1fr 1.3fr 0.7fr 0.7fr 1.0fr 0.7fr 0.7fr";
+  const gridServices = "1.1fr 1.3fr 0.7fr 0.7fr 0.7fr 1.0fr 0.7fr 0.7fr";
 
   return (
     <div className="dashboard-section settings-page scatalog">
@@ -647,13 +711,72 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           </div>
         )}
 
+        {/* ✅ Season Pricing (ONE card only) */}
+        <div className="settings-card scatalog__card" style={{ marginTop: 10 }}>
+          <h3 className="settings-title">وضع الموسم للأسعار</h3>
+
+          <div className="settings-list">
+            <label className="settings-row">
+              <span>تفعيل موسم الأسعار</span>
+              <input
+                className="settings-check"
+                type="checkbox"
+                checked={seasonPricingEnabled}
+                disabled={!hasAdminPower}
+                onChange={() => setSeasonPricingEnabled((p) => !p)}
+              />
+            </label>
+          </div>
+
+          <div className="settings-grid" style={{ marginTop: 10 }}>
+            <div className="settings-field">
+              <label>من تاريخ</label>
+              <input
+                className="settings-input"
+                type="date"
+                value={seasonPricingFrom}
+                disabled={!hasAdminPower || !seasonPricingEnabled}
+                onChange={(e) => setSeasonPricingFrom(e.target.value)}
+              />
+            </div>
+
+            <div className="settings-field">
+              <label>إلى تاريخ</label>
+              <input
+                className="settings-input"
+                type="date"
+                value={seasonPricingTo}
+                disabled={!hasAdminPower || !seasonPricingEnabled}
+                onChange={(e) => setSeasonPricingTo(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className={`exp-btn primary ${seasonLoading ? "is-disabled" : ""}`}
+              disabled={!hasAdminPower || seasonLoading}
+              onClick={saveSeasonPricing}
+            >
+              حفظ موسم الأسعار
+            </button>
+          </div>
+
+          <div className="settings-footnote">
+            * يتم الحفظ في AppSettings داخل: <b>catalogSeasonPricing</b>
+          </div>
+        </div>
+
         {/* =========================
             1) Sections
         ========================= */}
-        <div className="settings-card scatalog__card" style={{ marginTop: 0 }}>
+        <div className="settings-card scatalog__card" style={{ marginTop: 10 }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
             <div>
-              <h3 className="settings-title" style={{ marginBottom: 6 }}>١) الأقسام</h3>
+              <h3 className="settings-title" style={{ marginBottom: 6 }}>
+                ١) الأقسام
+              </h3>
               <div className="settings-footnote" style={{ marginTop: 0 }}>
                 * الأقسام: <b>salons/main/service_sections</b> (ID ثابت)
               </div>
@@ -680,7 +803,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             </div>
           </div>
 
-          {/* ✅ توضيح الأعمدة */}
+          {/* ✅ Columns header */}
           <div
             style={{
               ...headerRowStyle,
@@ -719,9 +842,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
                     <div className="settings-input" style={{ opacity: 0.95 }}>
                       {s.name}
-                      <span style={{ opacity: 0.7, marginRight: 8 }}>
-                        (تصنيفات: {cats} | خدمات: {srvs})
-                      </span>
+                      <span style={{ opacity: 0.7, marginRight: 8 }}>(تصنيفات: {cats} | خدمات: {srvs})</span>
                     </div>
 
                     <div className="settings-input scatalog__num" style={{ textAlign: "center" }} title="ترتيب القسم">
@@ -888,7 +1009,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             </div>
           </div>
 
-          {/* ✅ توضيح الأعمدة */}
           <div
             style={{
               ...headerRowStyle,
@@ -1025,25 +1145,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             </div>
           </div>
 
-          {/* ✅ توضيح الأعمدة */}
-          <div
-            style={{
-              ...headerRowStyle,
-              marginTop: 10,
-              display: "grid",
-              gap: 10,
-              alignItems: "center",
-              gridTemplateColumns: gridServices,
-            }}
-          >
-            <div style={headerCellStyle}>ID (ثابت)</div>
-            <div style={headerCellStyle}>اسم الخدمة</div>
-            <div style={headerCellStyle}>المدة</div>
-            <div style={headerCellStyle}>السعر</div>
-            <div style={headerCellStyle}>التصنيف</div>
-            <div style={headerCellStyle}>مفعل؟</div>
-            <div style={headerCellStyle}>حفظ</div>
-          </div>
 
           <div className="settings-list" style={{ marginTop: 10 }}>
             {srvLoading ? (
@@ -1054,84 +1155,120 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               <div className="settings-note">لا توجد خدمات تحت هذا التصنيف.</div>
             ) : (
               servicesInSelectedCategory.map((s) => (
-                <div
-                  key={s.id}
-                  className="settings-row scatalog__listRow"
-                  style={{ display: "grid", gap: 10, alignItems: "center", gridTemplateColumns: gridServices }}
-                >
-                  <input className="settings-input" value={s.id} readOnly title="ID ثابت" />
+                <div key={s.id} className="scatalog__srvCard">
+                  {/* رأس الكرت */}
+                  <div className="scatalog__srvHead">
+                    <div className="scatalog__srvHeadLeft">
+                      <div className="scatalog__srvName">{s.name}</div>
+                      <div className="scatalog__srvId">{s.id}</div>
+                    </div>
 
-                  <input
-                    className="settings-input"
-                    value={s.name}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: v } : x)));
-                    }}
-                    title="اسم الخدمة"
-                  />
+                    <div className="scatalog__srvHeadRight">
+                      <label className="scatalog__check">
+                        <input
+                          className="settings-check"
+                          type="checkbox"
+                          checked={s.active !== false}
+                          onChange={() => {
+                            setServicesCatalog((prev) =>
+                              prev.map((x) => (x.id === s.id ? { ...x, active: !(x.active !== false) } : x))
+                            );
+                          }}
+                        />
+                        مفعل
+                      </label>
 
-                  <input
-                    className="settings-input scatalog__numWide"
-                    type="number"
-                    min={5}
-                    step={5}
-                    value={Number(s.durationMin || 0)}
-                    onChange={(e) => {
-                      const v = Math.max(5, Number(e.target.value || 0));
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, durationMin: v } : x)));
-                    }}
-                    title="المدة (دقيقة)"
-                  />
+                      <button type="button" className="exp-btn primary" onClick={() => saveServiceRow(s)}>
+                        حفظ
+                      </button>
+                    </div>
+                  </div>
 
-                  <input
-                    className="settings-input scatalog__numWide"
-                    type="number"
-                    min={0}
-                    step={5}
-                    value={Number(s.price || 0)}
-                    onChange={(e) => {
-                      const v = Math.max(0, Number(e.target.value || 0));
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, price: v } : x)));
-                    }}
-                    title="السعر"
-                  />
+                  {/* جسم الكرت */}
+                  <div className="scatalog__srvBody">
+                    <div className="scatalog__srvField">
+                      <div className="scatalog__lbl">اسم الخدمة</div>
+                      <input
+                        className="settings-input"
+                        value={s.name}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: v } : x)));
+                        }}
+                      />
+                    </div>
 
-                  <select
-                    className="settings-input scatalog__select"
-                    value={s.categoryId}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, categoryId: v } : x)));
-                    }}
-                    title="التصنيف"
-                  >
-                    <option value="">— اختر التصنيف —</option>
+                    <div className="scatalog__srvField">
+                      <div className="scatalog__lbl">المدة (دقيقة)</div>
+                      <input
+                        className="settings-input scatalog__numWide"
+                        type="number"
+                        min={5}
+                        step={5}
+                        value={Number(s.durationMin || 0)}
+                        onChange={(e) => {
+                          const v = Math.max(5, Number(e.target.value || 0));
+                          setServicesCatalog((prev) =>
+                            prev.map((x) => (x.id === s.id ? { ...x, durationMin: v } : x))
+                          );
+                        }}
+                      />
+                    </div>
 
-                    {categoriesInSelectedSection.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                    <div className="scatalog__srvField">
+                      <div className="scatalog__lbl">السعر</div>
+                      <input
+                        className="settings-input scatalog__numWide"
+                        type="number"
+                        min={0}
+                        step={5}
+                        value={Number(s.price || 0)}
+                        onChange={(e) => {
+                          const v = Math.max(0, Number(e.target.value || 0));
+                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, price: v } : x)));
+                        }}
+                      />
+                    </div>
 
-                  <label className="scatalog__check">
-                    <input
-                      className="settings-check"
-                      type="checkbox"
-                      checked={s.active !== false}
-                      onChange={() => {
-                        setServicesCatalog((prev) =>
-                          prev.map((x) => (x.id === s.id ? { ...x, active: !(x.active !== false) } : x))
-                        );
-                      }}
-                    />
-                    مفعل
-                  </label>
+                    <div className="scatalog__srvField">
+                      <div className="scatalog__lbl">سعر الموسم</div>
+                      <input
+                        className="settings-input scatalog__numWide"
+                        type="number"
+                        min={0}
+                        step={5}
+                        value={s.seasonPrice == null ? "" : Number(s.seasonPrice || 0)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const v = raw === "" ? undefined : Math.max(0, Number(raw || 0));
+                          setServicesCatalog((prev) =>
+                            prev.map((x) => (x.id === s.id ? { ...x, seasonPrice: v } : x))
+                          );
+                        }}
+                      />
+                    </div>
 
-                  <button type="button" className="exp-btn primary" onClick={() => saveServiceRow(s)}>
-                    حفظ
-                  </button>
+                    <div className="scatalog__srvField scatalog__srvFieldWide">
+                      <div className="scatalog__lbl">التصنيف</div>
+                      <select
+                        className="settings-input scatalog__select"
+                        value={s.categoryId}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setServicesCatalog((prev) =>
+                            prev.map((x) => (x.id === s.id ? { ...x, categoryId: v } : x))
+                          );
+                        }}
+                      >
+                        <option value="">— اختر التصنيف —</option>
+                        {categoriesInSelectedSection.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
               ))
             )}
@@ -1140,7 +1277,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           <div className="settings-footnote">
             * الآن صار عندنا 3 مراحل: <b>قسم → تصنيف → خدمة</b>.
             <br />
-            * الخدمات تُحفظ بـ <b>categoryId</b> و <b>sectionId</b> تلقائيًا (من التصنيف) ✅
+            * الخدمات تُحفظ بـ <b>categoryId</b> و <b>sectionId</b> تلقائيًا ✅
             <br />
             * ID ثابت لكل شيء ✅
           </div>

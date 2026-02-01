@@ -129,3 +129,92 @@
     display: none;
   }
 }
+
+
+/* =========================================
+   ✅ Services redesign: Cards (no table, no horizontal scroll)
+========================================= */
+
+.scatalog__srvCard {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
+  padding: 14px;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.scatalog__srvTop {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+}
+
+.scatalog__srvTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 260px;
+}
+
+.scatalog__srvName {
+  font-weight: 900;
+  color: #0d0d0d;
+}
+
+.scatalog__srvId {
+  font-size: 12px;
+  opacity: 0.72;
+  direction: ltr;
+  unicode-bidi: plaintext;
+}
+
+.scatalog__srvActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.scatalog__srvGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.scatalog__cell {
+  min-width: 0;
+}
+
+.scatalog__label {
+  font-size: 12px;
+  font-weight: 900;
+  opacity: 0.75;
+  margin: 0 2px 6px;
+}
+
+/* ✅ نخفي هيدر الجدول القديم للخدمات فقط إذا لسه موجود */
+.scatalog__card .scatalog__thead--services,
+.scatalog__card .scatalog__srvHead {
+  display: none;
+}
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .scatalog__srvGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .scatalog__srvGrid {
+    grid-template-columns: 1fr;
+  }
+}
+

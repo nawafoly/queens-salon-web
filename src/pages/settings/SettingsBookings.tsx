@@ -137,6 +137,11 @@ export default function SettingsBookings() {
 
   const bookingSettings = (settings as any)?.booking || {};
 
+  const seasonFill = (bookingSettings as any)?.seasonFill || {};
+  const seasonFillEnabled = !!seasonFill.enabled;
+  const seasonFillFrom = String(seasonFill.from || "");
+  const seasonFillTo = String(seasonFill.to || "");
+
   const setBookingSettings = (patch: any) => {
     if (!hasAdminPower) return;
 
@@ -155,18 +160,18 @@ export default function SettingsBookings() {
     });
   };
 
-// ✅ Defaults
-const slotStepMin = useMemo(() => {
-  const raw = bookingSettings?.slotStepMin;
-  const v = safeInt(raw, 10);
-  return [5, 10, 15, 30].includes(v) ? v : 10;
-}, [bookingSettings?.slotStepMin]);
+  // ✅ Defaults
+  const slotStepMin = useMemo(() => {
+    const raw = bookingSettings?.slotStepMin;
+    const v = safeInt(raw, 10);
+    return [5, 10, 15, 30].includes(v) ? v : 10;
+  }, [bookingSettings?.slotStepMin]);
 
-const bufferMin = useMemo(() => {
-  const raw = bookingSettings?.bufferMin;
-  const v = safeInt(raw, 5);
-  return [0, 5, 10, 15, 20, 30].includes(v) ? v : 5;
-}, [bookingSettings?.bufferMin]);
+  const bufferMin = useMemo(() => {
+    const raw = bookingSettings?.bufferMin;
+    const v = safeInt(raw, 5);
+    return [0, 5, 10, 15, 20, 30].includes(v) ? v : 5;
+  }, [bookingSettings?.bufferMin]);
 
 
 
@@ -522,7 +527,7 @@ const bufferMin = useMemo(() => {
               <div style={{ minWidth: 220 }}>
                 <div style={{ fontWeight: 900 }}>البفر بعد كل حجز (دقائق)</div>
                 <div style={{ opacity: 0.7, fontSize: 12 }}>
-                // ✅ نعرض أول وقت حجز متاح من بداية الدوام مباشرة
+                  نعرض أول وقت حجز متاح من بداية الدوام مباشرة
                 </div>
               </div>
 
@@ -611,6 +616,68 @@ const bufferMin = useMemo(() => {
 
         <div className="settings-card">
           <h3 className="settings-title">إجازات الموظفات وظهورهن في الحجز</h3>
+
+          <div className="settings-card">
+            <h3 className="settings-title">وضع الموسم لوقت الحجز (تقليل الهدر)</h3>
+
+            <div className="settings-list">
+              <label className="settings-row">
+                <span>تفعيل ترتيب اليوم تلقائيًا خلال الموسم</span>
+                <input
+                  className="settings-check"
+                  type="checkbox"
+                  checked={seasonFillEnabled}
+                  disabled={!hasAdminPower}
+                  onChange={() =>
+                    setBookingSettings({
+                      seasonFill: {
+                        ...(seasonFill || {}),
+                        enabled: !seasonFillEnabled,
+                      },
+                    })
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="settings-grid" style={{ marginTop: 10 }}>
+              <div className="settings-field">
+                <label>من تاريخ</label>
+                <input
+                  className="settings-input"
+                  type="date"
+                  value={seasonFillFrom}
+                  disabled={!hasAdminPower || !seasonFillEnabled}
+                  onChange={(e) =>
+                    setBookingSettings({
+                      seasonFill: { ...(seasonFill || {}), from: e.target.value },
+                    })
+                  }
+                />
+              </div>
+
+              <div className="settings-field">
+                <label>إلى تاريخ</label>
+                <input
+                  className="settings-input"
+                  type="date"
+                  value={seasonFillTo}
+                  disabled={!hasAdminPower || !seasonFillEnabled}
+                  onChange={(e) =>
+                    setBookingSettings({
+                      seasonFill: { ...(seasonFill || {}), to: e.target.value },
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="settings-footnote">
+              * يتم الحفظ في AppSettings داخل: <b>booking.seasonFill</b>
+              <br />
+              * التنفيذ الفعلي لترتيب اليوم بيكون داخل Booking.tsx + timeSlots.ts
+            </div>
+          </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <button

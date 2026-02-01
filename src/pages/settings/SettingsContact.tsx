@@ -13,6 +13,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../../services/firebase";
 
+import { AppSettingsService } from "../../services/AppSettingsService";
+
 const SALON_ID = "main";
 
 type ContactPublic = {
