@@ -337,7 +337,7 @@ export default function DashboardIncome() {
       <div className="income-container">
         {/* Header */}
         <div className="income-header">
-          <div>
+          <div className="qs-black">
             <h2 style={{ margin: 0 }}>الإيرادات</h2>
             <p style={{ margin: "6px 0 0", opacity: 0.75, fontSize: 13 }}>
               إدارة وتسجيل الإيرادات اليومية

@@ -2,10 +2,22 @@
 
 .scatalog .settings-wrap {
   max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.scatalog__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
 }
 
 .scatalog__header h1 {
   margin-bottom: 6px;
+  font-size: 24px;
+  font-weight: 900;
 }
 
 .scatalog__actions {
@@ -16,205 +28,186 @@
 
 .scatalog__msg {
   border-radius: 12px;
+  padding: 12px 16px;
+  background: rgba(13, 13, 13, 0.05);
+  margin-bottom: 16px;
+  font-weight: 600;
 }
 
 .scatalog__card {
   border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  padding: 20px;
+  margin-bottom: 24px;
 }
 
 .scatalog__row {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
 }
 
 .scatalog__row .settings-input {
   flex: 1;
-  min-width: 220px;
+  min-width: 200px;
 }
 
-.scatalog__listRow {
-  align-items: center;
-  gap: 10px;
-}
-
-/* ====== Numbers / Select widths ====== */
-.scatalog__num {
-  width: 110px;
-}
-
-.scatalog__numWide {
-  width: 130px;
-}
-
-.scatalog__select {
-  width: 220px;
-  min-width: 180px;
-}
-
-.scatalog__check {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-/* =========================================
-   ✅ Headers (توضيح الأعمدة فوق القوائم)
-   - نفس روح الـ settings-row
-   - واضح: هذا ايش وهذا ايش
-========================================= */
-.scatalog__thead {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: 16px;
-  border: 1px dashed rgba(13, 13, 13, 0.14);
-  background: rgba(13, 13, 13, 0.03);
-  font-size: 12px;
-  font-weight: 900;
-  opacity: 0.9;
-
+/* ====== Grid System for Desktop ====== */
+.scatalog__grid-header {
   display: grid;
-  gap: 10px;
-  align-items: center;
-}
-
-.scatalog__th {
-  padding-inline: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ✅ 1) Sections header columns */
-.scatalog__thead--sections {
-  grid-template-columns: 1.1fr 1.6fr 0.6fr 0.8fr 0.7fr 0.9fr;
-}
-
-/* ✅ 2) Categories header columns */
-.scatalog__thead--cats {
-  grid-template-columns: 1.2fr 1.4fr 0.6fr 0.7fr 0.8fr 0.9fr;
-}
-
-/* ✅ 3) Services header columns */
-.scatalog__thead--services {
-  grid-template-columns: 1.1fr 1.3fr 0.7fr 0.7fr 1fr 0.7fr 0.7fr;
-}
-
-/* =========================================
-   موبايل
-========================================= */
-@media (max-width: 820px) {
-  .scatalog .settings-wrap {
-    padding: 14px;
-  }
-
-  .scatalog__num,
-  .scatalog__numWide,
-  .scatalog__select {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .scatalog__row .settings-input {
-    min-width: 0;
-  }
-
-  /* ✅ الهيدر يختفي بالموبايل عشان ما يزحم
-     (لأن الصفوف نفسها تحت بتصير عمودية)
-  */
-  .scatalog__thead {
-    display: none;
-  }
-}
-
-
-/* =========================================
-   ✅ Services redesign: Cards (no table, no horizontal scroll)
-========================================= */
-
-.scatalog__srvCard {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 18px;
-  padding: 14px;
-  margin-bottom: 12px;
-  box-sizing: border-box;
-}
-
-.scatalog__srvTop {
-  display: flex;
   gap: 12px;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  padding-bottom: 10px;
-  margin-bottom: 10px;
-  border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
+  font-weight: 900;
+  font-size: 13px;
+  margin-bottom: 8px;
+  border: 1px dashed rgba(0, 0, 0, 0.1);
 }
 
-.scatalog__srvTitle {
+.scatalog__grid-row {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  align-items: center;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  transition: background 0.2s;
+}
+
+.scatalog__grid-row:hover {
+  background: rgba(0, 0, 0, 0.01);
+}
+
+.scatalog__grid-row.is-selected {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
+}
+
+/* Column Templates */
+.scatalog__grid--sections { grid-template-columns: 1fr 2fr 0.8fr 0.6fr 0.8fr 0.8fr 1fr; }
+.scatalog__grid--cats { grid-template-columns: 1fr 2fr 0.8fr 0.6fr 0.8fr 0.8fr 1fr; }
+.scatalog__grid--services { grid-template-columns: 1fr 2.5fr 0.8fr 1fr 1fr 0.6fr 0.8fr 0.8fr; }
+
+/* Mobile Card Styles (Used when grid is hidden) */
+.scatalog__mobile-card {
+  display: none;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.scatalog__mobile-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.1);
+}
+
+.scatalog__mobile-card-title {
+  font-weight: 900;
+  font-size: 16px;
+}
+
+.scatalog__mobile-card-id {
+  font-size: 11px;
+  opacity: 0.6;
+  font-family: monospace;
+}
+
+.scatalog__mobile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.scatalog__mobile-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 260px;
+  gap: 4px;
 }
 
-.scatalog__srvName {
+.scatalog__mobile-label {
+  font-size: 11px;
   font-weight: 900;
-  color: #0d0d0d;
+  opacity: 0.7;
 }
 
-.scatalog__srvId {
-  font-size: 12px;
-  opacity: 0.72;
-  direction: ltr;
-  unicode-bidi: plaintext;
-}
-
-.scatalog__srvActions {
+.scatalog__mobile-actions {
   display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
 }
 
-.scatalog__srvGrid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.scatalog__mobile-actions button {
+  flex: 1;
 }
 
-.scatalog__cell {
-  min-width: 0;
-}
+/* =========================================
+   Responsive Adjustments
+========================================= */
+@media (max-width: 992px) {
+  .scatalog__grid-header {
+    display: none;
+  }
 
-.scatalog__label {
-  font-size: 12px;
-  font-weight: 900;
-  opacity: 0.75;
-  margin: 0 2px 6px;
-}
+  .scatalog__grid-row {
+    display: none;
+  }
 
-/* ✅ نخفي هيدر الجدول القديم للخدمات فقط إذا لسه موجود */
-.scatalog__card .scatalog__thead--services,
-.scatalog__card .scatalog__srvHead {
-  display: none;
-}
+  .scatalog__mobile-card {
+    display: block;
+  }
 
-/* Responsive */
-@media (max-width: 1100px) {
-  .scatalog__srvGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .scatalog__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .scatalog__actions {
+    width: 100%;
+  }
+
+  .scatalog__actions button {
+    flex: 1;
   }
 }
 
-@media (max-width: 640px) {
-  .scatalog__srvGrid {
+@media (max-width: 600px) {
+  .scatalog__mobile-grid {
     grid-template-columns: 1fr;
   }
+  
+  .scatalog__row .settings-input {
+    min-width: 100%;
+  }
 }
+
+/* Helpers */
+.scatalog__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.scatalog__autosave-msg {
+  font-size: 11px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 

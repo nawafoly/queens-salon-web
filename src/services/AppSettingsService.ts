@@ -51,6 +51,10 @@ export type CatalogSeasonPricing = {
   enabled: boolean;
   from: string; // "YYYY-MM-DD"
   to: string;   // "YYYY-MM-DD"
+
+  // ✅ Newer keys (Booking.tsx reads these first). Optional for backward compatibility.
+  startDate?: string; // "YYYY-MM-DD"
+  endDate?: string;   // "YYYY-MM-DD"
 };
 
 
@@ -84,7 +88,7 @@ export type AppSettings = {
   };
 
   // ✅ NEW
-catalogSeasonPricing?: CatalogSeasonPricing;
+  catalogSeasonPricing?: CatalogSeasonPricing;
 
 
   updatedAt?: string;
@@ -145,7 +149,7 @@ const defaultSettings: AppSettings = {
 
   // ✅ NEW defaults
   booking: {
-    slotStepMin: 5,  
+    slotStepMin: 5,
     bufferMin: 0,
     businessHours: defaultBusinessHours(),
     holidays: [],
@@ -161,8 +165,9 @@ const defaultSettings: AppSettings = {
     enabled: false,
     from: "",
     to: "",
+    startDate: "",
+    endDate: "",
   },
-  
 
   updatedAt: new Date().toISOString(),
 };
@@ -278,11 +283,11 @@ function sanitize(input: any): AppSettings {
       reports: safeBool(sectionsRaw.reports, defaultSettings.sections.reports),
       income: safeBool(sectionsRaw.income, defaultSettings.sections.income),
       expenses: safeBool(sectionsRaw.expenses, defaultSettings.sections.expenses),
-    
+
       logs: safeBool((sectionsRaw as any).logs, defaultSettings.sections.logs),
       settings: safeBool((sectionsRaw as any).settings, defaultSettings.sections.settings),
     },
-    
+
 
     policies: {
       allowStaffChangeStatus: safeBool(
@@ -318,6 +323,24 @@ function sanitize(input: any): AppSettings {
 
     services: {
       catalog: sanitizeServicesCatalog(servicesRaw.catalog),
+    },
+
+
+    // ✅ Season pricing (needed by Booking.tsx)
+    catalogSeasonPricing: {
+      enabled: safeBool((s as any)?.catalogSeasonPricing?.enabled, false),
+      from: safeString((s as any)?.catalogSeasonPricing?.from, ""),
+      to: safeString((s as any)?.catalogSeasonPricing?.to, ""),
+
+      // Booking.tsx prefers startDate/endDate, so ensure they exist:
+      startDate: safeString(
+        (s as any)?.catalogSeasonPricing?.startDate,
+        safeString((s as any)?.catalogSeasonPricing?.from, "")
+      ),
+      endDate: safeString(
+        (s as any)?.catalogSeasonPricing?.endDate,
+        safeString((s as any)?.catalogSeasonPricing?.to, "")
+      ),
     },
 
     updatedAt:
@@ -439,9 +462,9 @@ export const AppSettingsService = {
     await setDoc(ref, payload, { merge: true });
     cacheWrite(payload);
     return payload;
-    
+
   },
-  
+
 };
 
 // =========================

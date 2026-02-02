@@ -451,6 +451,13 @@ button,
   color: var(--qs-black);
 }
 
+.qs-black h2,
+.qs-black p,
+.qs-black span,
+.qs-black small {
+  color: var(--qs-black);
+}
+
 .lead-strong {
   font-size: 1.15rem;
   font-weight: 600;

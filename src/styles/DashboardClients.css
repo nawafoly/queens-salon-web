@@ -95,6 +95,7 @@
 }
 
 /* Input (يدعم input مباشرة + يدعم .cl-input) */
+/* Input (يدعم input مباشرة + يدعم .cl-input) */
 .clients-page .cl-form input,
 .clients-page .cl-form .cl-input {
   border: 1px solid #e8e8e8;
@@ -102,7 +103,13 @@
   padding: 10px 10px;
   outline: none;
   font-size: 14px;
+
+  /* ✅ Fix: لا يأخذ لون غامق من ستايل عام */
+  background: #fff;
+  color: #0D0D0D;
+  caret-color: #0D0D0D;
 }
+
 
 .clients-page .cl-form input:focus,
 .clients-page .cl-form .cl-input:focus {
@@ -522,3 +529,5 @@
   border-color: #cdb6ff;
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
 }
+
+

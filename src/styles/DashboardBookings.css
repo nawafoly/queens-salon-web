@@ -149,8 +149,7 @@
   border: 1px solid rgba(13, 13, 13, 0.08);
   border-radius: 22px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
-  border-radius: 22px;
-  overflow: visible; /* خلي الزوايا بالكرت نفسه */
+  overflow: visible;
   position: relative;
   z-index: 1;
 }
@@ -202,6 +201,36 @@
   flex-wrap: wrap;
   justify-content: flex-start;
   align-items: center;
+}
+
+/* =========================
+   Mobile Table Replacement (Cards)
+========================= */
+.bk-mobile-card {
+  display: none;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.bk-mobile-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.bk-mobile-label {
+  font-weight: 800;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.bk-mobile-val {
+  font-weight: 700;
+  color: #0D0D0D;
 }
 
 /* =========================
@@ -322,7 +351,7 @@
 }
 
 /* =========================
-   Dropdown overlay helpers (لو عندك dropdown مو native select)
+   Dropdown overlay helpers
 ========================= */
 .bk-mini .dropdown-menu,
 .bk-mini [role="listbox"],
@@ -334,6 +363,15 @@
 /* =========================
    Responsive
 ========================= */
+@media (max-width: 992px) {
+  .bk-table-wrap {
+    display: none;
+  }
+  .bk-mobile-card {
+    display: block;
+  }
+}
+
 @media (max-width: 768px) {
   .bookings-header,
   .bk-mini,

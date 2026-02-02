@@ -1,3 +1,4 @@
+
 // ✅ src/pages/settings/SettingsCatalog.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -205,9 +206,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     }
 
     for (const s of servicesCatalog) {
-      const sid = String(s.sectionId || "").trim();
-      if (!sid) continue;
-      srvCount.set(sid, (srvCount.get(sid) || 0) + 1);
+      const cid = String(s.categoryId || "").trim();
+      if (!cid) continue;
+      srvCount.set(cid, (srvCount.get(cid) || 0) + 1);
     }
 
     return { catCount, srvCount };
@@ -650,12 +651,12 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         console.error("autosave error:", e);
         setAutosaveMsg((p) => ({ ...p, [id]: "❌ تعذر الحفظ" }));
       }
-    }, 700);
+    }, 1000);
   };
 
   if (!hasAdminPower) {
     return (
-      <div className="dashboard-section settings-page">
+      <div className="dashboard-section settings-page scatalog">
         <div className="settings-wrap">
           <h3>غير مصرح</h3>
           <p>هذه الصفحة مخصصة للإدارة (Owner/Admin).</p>
@@ -711,43 +712,18 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     }
   };
 
-  // ✅ header style
-  const headerRowStyle: React.CSSProperties = {
-    padding: "10px 12px",
-    borderRadius: 16,
-    border: "1px dashed rgba(0,0,0,0.10)",
-    background: "rgba(0,0,0,0.02)",
-    fontSize: 12,
-    fontWeight: 900,
-    opacity: 0.85,
-  };
-
-  const headerCellStyle: React.CSSProperties = {
-    paddingInline: 6,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  };
-
-  // ✅ grid templates
-  const gridSections = "1.1fr 1.6fr 0.6fr 0.6fr 0.6fr 0.6fr 0.8fr";
-  const gridCats = "1.2fr 1.4fr 0.6fr 0.6fr 0.6fr 0.6fr 0.8fr";
-  const gridServices = "1.2fr 2fr 0.8fr 0.8fr 0.8fr 0.5fr 0.8fr 0.8fr";
-
   return (
     <div className="dashboard-section settings-page scatalog" dir="rtl">
       <div className="settings-wrap">
-        <div className="settings-header scatalog__header">
+        <div className="scatalog__header">
           <div>
             <h1>إدارة الكتالوج</h1>
-            <p className="settings-hint">المنطق: قسم → تصنيف → خدمة ✅ (IDs ثابتة)</p>
+            <p className="settings-hint">تنظيم الخدمات: قسم ← تصنيف ← خدمة</p>
           </div>
-
-          <div className="settings-save scatalog__actions">
+          <div className="scatalog__actions">
             <button className="dash-btn" type="button" onClick={() => navigate("/dashboard/settings/advanced")}>
               رجوع
             </button>
-
             <button
               type="button"
               className={`exp-btn ${secLoading || catLoading || srvLoading ? "is-disabled" : ""}`}
@@ -760,18 +736,17 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         </div>
 
         {catalogMsg && (
-          <div className="settings-note scatalog__msg" style={{ marginTop: 10 }}>
+          <div className="scatalog__msg">
             {catalogMsg}
           </div>
         )}
 
         {/* ✅ Season Pricing */}
-        <div className="settings-card scatalog__card" style={{ marginTop: 10 }}>
+        <div className="scatalog__card" style={{ marginTop: 10 }}>
           <h3 className="settings-title">وضع الموسم للأسعار</h3>
 
           <div className="settings-list">
-            <label className="settings-row">
-              <span>تفعيل موسم الأسعار</span>
+            <label className="scatalog__check">
               <input
                 className="settings-check"
                 type="checkbox"
@@ -779,10 +754,11 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 disabled={!hasAdminPower}
                 onChange={() => setSeasonPricingEnabled((p) => !p)}
               />
+              <span>تفعيل موسم الأسعار</span>
             </label>
           </div>
 
-          <div className="settings-grid" style={{ marginTop: 10 }}>
+          <div className="scatalog__row" style={{ marginTop: 15 }}>
             <div className="settings-field">
               <label>من تاريخ</label>
               <input
@@ -804,32 +780,29 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 onChange={(e) => setSeasonPricingTo(e.target.value)}
               />
             </div>
-          </div>
-
-          <div style={{ marginTop: 10, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            
             <button
               type="button"
               className={`exp-btn primary ${seasonLoading ? "is-disabled" : ""}`}
               disabled={!hasAdminPower || seasonLoading}
               onClick={saveSeasonPricing}
+              style={{height: "fit-content"}}
             >
-              حفظ موسم الأسعار
+              حفظ الموسم
             </button>
           </div>
         </div>
 
-        {/* =========================
-            1) Sections
-        ========================= */}
-        <div className="settings-card scatalog__card" style={{ marginTop: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {/* 1) Sections */}
+        <div className="scatalog__card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
             <h3 className="settings-title">١) الأقسام الرئيسية</h3>
             <button type="button" className="exp-btn primary" onClick={openAddSection}>
               + إضافة قسم جديد
             </button>
           </div>
 
-          <div className="settings-field" style={{ marginTop: 10 }}>
+          <div className="settings-field" style={{ marginBottom: 15 }}>
             <input
               className="settings-input"
               placeholder="بحث في الأقسام..."
@@ -838,38 +811,22 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             />
           </div>
 
-          <div
-            style={{
-              ...headerRowStyle,
-              marginTop: 10,
-              display: "grid",
-              gap: 10,
-              alignItems: "center",
-              gridTemplateColumns: gridSections,
-            }}
-          >
-            <div style={headerCellStyle}>ID</div>
-            <div style={headerCellStyle}>اسم القسم</div>
-            <div style={headerCellStyle}>الترتيب</div>
-            <div style={headerCellStyle}>مفعل؟</div>
-            <div style={headerCellStyle}>حفظ</div>
-            <div style={headerCellStyle}>حذف</div>
-            <div style={headerCellStyle}>التصنيفات</div>
+          <div className="scatalog__grid-header scatalog__grid--sections">
+            <div>ID</div>
+            <div>اسم القسم</div>
+            <div>الترتيب</div>
+            <div>مفعل؟</div>
+            <div>حفظ</div>
+            <div>حذف</div>
+            <div>التصنيفات</div>
           </div>
 
-          <div className="settings-list" style={{ marginTop: 10 }}>
-            {secLoading && sectionsCatalog.length === 0 ? (
-              <div className="settings-note">تحميل الأقسام…</div>
-            ) : filteredSections.length === 0 ? (
-              <div className="settings-note">لا توجد أقسام.</div>
-            ) : (
-              filteredSections.map((s) => (
-                <div
-                  key={s.id}
-                  className={`settings-row scatalog__listRow ${selectedSectionIdForCats === s.id ? "is-selected" : ""}`}
-                  style={{ display: "grid", gap: 10, alignItems: "center", gridTemplateColumns: gridSections }}
-                >
-                  <input className="settings-input" value={s.id} readOnly title="ID ثابت" />
+          <div className="settings-list">
+            {filteredSections.map((s) => (
+              <React.Fragment key={s.id}>
+                {/* Desktop View */}
+                <div className={`scatalog__grid-row scatalog__grid--sections ${selectedSectionIdForCats === s.id ? "is-selected" : ""}`}>
+                  <div style={{ fontSize: 10, opacity: 0.6 }}>{s.id}</div>
                   <input
                     className="settings-input"
                     value={s.name}
@@ -879,7 +836,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     }}
                   />
                   <input
-                    className="settings-input scatalog__num"
+                    className="settings-input"
                     type="number"
                     value={s.order}
                     onChange={(e) => {
@@ -887,9 +844,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, order: v } : x)));
                     }}
                   />
-                  <label className="scatalog__check" style={{textAlign: "center"}}>
+                  <div style={{textAlign: "center"}}>
                     <input
-                      className="settings-check"
                       type="checkbox"
                       checked={s.active}
                       onChange={() => {
@@ -898,15 +854,65 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                         );
                       }}
                     />
-                  </label>
+                  </div>
                   <button type="button" className="exp-btn primary" onClick={() => saveSectionRow(s)}>حفظ</button>
                   <button type="button" className="exp-btn danger" onClick={() => deleteSection(s.id)}>حذف</button>
                   <button type="button" className="exp-btn" onClick={() => setSelectedSectionIdForCats(s.id)}>
                     فتح ({countsBySection.catCount.get(s.id) || 0})
                   </button>
                 </div>
-              ))
-            )}
+
+                {/* Mobile View */}
+                <div className="scatalog__mobile-card">
+                  <div className="scatalog__mobile-card-header">
+                    <div className="scatalog__mobile-card-title">{s.name}</div>
+                    <div className="scatalog__mobile-card-id">{s.id}</div>
+                  </div>
+                  <div className="scatalog__mobile-grid">
+                    <div className="scatalog__mobile-field">
+                      <label className="scatalog__mobile-label">الاسم</label>
+                      <input
+                        className="settings-input"
+                        value={s.name}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: v } : x)));
+                        }}
+                      />
+                    </div>
+                    <div className="scatalog__mobile-field">
+                      <label className="scatalog__mobile-label">الترتيب</label>
+                      <input
+                        className="settings-input"
+                        type="number"
+                        value={s.order}
+                        onChange={(e) => {
+                          const v = Number(e.target.value || 0);
+                          setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, order: v } : x)));
+                        }}
+                      />
+                    </div>
+                    <label className="scatalog__check">
+                      <input
+                        type="checkbox"
+                        checked={s.active}
+                        onChange={() => {
+                          setSectionsCatalog((prev) =>
+                            prev.map((x) => (x.id === s.id ? { ...x, active: !x.active } : x))
+                          );
+                        }}
+                      />
+                      <span>مفعل</span>
+                    </label>
+                  </div>
+                  <div className="scatalog__mobile-actions">
+                    <button type="button" className="exp-btn primary" onClick={() => saveSectionRow(s)}>حفظ</button>
+                    <button type="button" className="exp-btn" onClick={() => setSelectedSectionIdForCats(s.id)}>فتح</button>
+                    <button type="button" className="exp-btn danger" onClick={() => deleteSection(s.id)}>حذف</button>
+                  </div>
+                </div>
+              </React.Fragment>
+            ))}
           </div>
         </div>
 
@@ -945,13 +951,11 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           </div>
         )}
 
-        {/* =========================
-            2) Categories
-        ========================= */}
-        <div className="settings-card scatalog__card">
+        {/* 2) Categories */}
+        <div className="scatalog__card">
           <h3 className="settings-title">٢) التصنيفات (تحت القسم المختار)</h3>
 
-          <div className="settings-grid">
+          <div className="scatalog__row" style={{ margin: "15px 0" }}>
             <div className="settings-field">
               <label>اختر القسم</label>
               <select
@@ -961,14 +965,14 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               >
                 <option value="">— اختر القسم —</option>
                 {sectionsCatalog.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
+                  <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
             </div>
 
             <div className="settings-field">
               <label>إضافة تصنيف جديد</label>
-              <div className="scatalog__row">
+              <div style={{display: "flex", gap: 8}}>
                 <input
                   className="settings-input"
                   value={newCategoryName}
@@ -981,38 +985,22 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             </div>
           </div>
 
-          <div
-            style={{
-              ...headerRowStyle,
-              marginTop: 10,
-              display: "grid",
-              gap: 10,
-              alignItems: "center",
-              gridTemplateColumns: gridCats,
-            }}
-          >
-            <div style={headerCellStyle}>ID</div>
-            <div style={headerCellStyle}>اسم التصنيف</div>
-            <div style={headerCellStyle}>الترتيب</div>
-            <div style={headerCellStyle}>مفعل؟</div>
-            <div style={headerCellStyle}>حفظ</div>
-            <div style={headerCellStyle}>حذف</div>
-            <div style={headerCellStyle}>الخدمات</div>
+          <div className="scatalog__grid-header scatalog__grid--cats">
+            <div>ID</div>
+            <div>اسم التصنيف</div>
+            <div>الترتيب</div>
+            <div>مفعل؟</div>
+            <div>حفظ</div>
+            <div>حذف</div>
+            <div>الخدمات</div>
           </div>
 
-          <div className="settings-list" style={{ marginTop: 10 }}>
-            {!selectedSectionIdForCats ? (
-              <div className="settings-note">اختر قسم أولاً.</div>
-            ) : categoriesInSelectedSection.length === 0 ? (
-              <div className="settings-note">لا توجد تصنيفات.</div>
-            ) : (
-              categoriesInSelectedSection.map((c) => (
-                <div
-                  key={c.id}
-                  className="settings-row scatalog__listRow"
-                  style={{ display: "grid", gap: 10, alignItems: "center", gridTemplateColumns: gridCats }}
-                >
-                  <input className="settings-input" value={c.id} readOnly />
+          <div className="settings-list">
+            {categoriesInSelectedSection.map((c) => (
+              <React.Fragment key={c.id}>
+                {/* Desktop */}
+                <div className={`scatalog__grid-row scatalog__grid--cats ${selectedCategoryIdForServices === c.id ? "is-selected" : ""}`}>
+                  <div style={{ fontSize: 10, opacity: 0.6 }}>{c.id}</div>
                   <input
                     className="settings-input"
                     value={c.name}
@@ -1022,7 +1010,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     }}
                   />
                   <input
-                    className="settings-input scatalog__num"
+                    className="settings-input"
                     type="number"
                     value={c.order}
                     onChange={(e) => {
@@ -1030,9 +1018,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       setCategoriesCatalog((prev) => prev.map((x) => (x.id === c.id ? { ...x, order: v } : x)));
                     }}
                   />
-                  <label className="scatalog__check" style={{textAlign: "center"}}>
+                  <div style={{textAlign: "center"}}>
                     <input
-                      className="settings-check"
                       type="checkbox"
                       checked={c.active}
                       onChange={() => {
@@ -1041,25 +1028,61 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                         );
                       }}
                     />
-                  </label>
+                  </div>
                   <button type="button" className="exp-btn primary" onClick={() => saveCategoryRow(c)}>حفظ</button>
                   <button type="button" className="exp-btn danger" onClick={() => deleteCategory(c.id)}>حذف</button>
                   <button type="button" className="exp-btn" onClick={() => setSelectedCategoryIdForServices(c.id)}>
                     فتح ({countsBySection.srvCount.get(c.id) || 0})
                   </button>
                 </div>
-              ))
-            )}
+
+                {/* Mobile */}
+                <div className="scatalog__mobile-card">
+                  <div className="scatalog__mobile-card-header">
+                    <div className="scatalog__mobile-card-title">{c.name}</div>
+                    <div className="scatalog__mobile-card-id">{c.id}</div>
+                  </div>
+                  <div className="scatalog__mobile-grid">
+                    <div className="scatalog__mobile-field">
+                      <label className="scatalog__mobile-label">الاسم</label>
+                      <input
+                        className="settings-input"
+                        value={c.name}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setCategoriesCatalog((prev) => prev.map((x) => (x.id === c.id ? { ...x, name: v } : x)));
+                        }}
+                      />
+                    </div>
+                    <div className="scatalog__mobile-field">
+                      <label className="scatalog__mobile-label">الترتيب</label>
+                      <input
+                        className="settings-input"
+                        type="number"
+                        value={c.order}
+                        onChange={(e) => {
+                          const v = Number(e.target.value || 0);
+                          setCategoriesCatalog((prev) => prev.map((x) => (x.id === c.id ? { ...x, order: v } : x)));
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="scatalog__mobile-actions">
+                    <button type="button" className="exp-btn primary" onClick={() => saveCategoryRow(c)}>حفظ</button>
+                    <button type="button" className="exp-btn" onClick={() => setSelectedCategoryIdForServices(c.id)}>فتح</button>
+                    <button type="button" className="exp-btn danger" onClick={() => deleteCategory(c.id)}>حذف</button>
+                  </div>
+                </div>
+              </React.Fragment>
+            ))}
           </div>
         </div>
 
-        {/* =========================
-            3) Services - TABLE FORMAT
-        ========================= */}
-        <div className="settings-card scatalog__card">
+        {/* 3) Services */}
+        <div className="scatalog__card">
           <h3 className="settings-title">٣) الخدمات (تحت التصنيف المختار)</h3>
 
-          <div className="settings-grid">
+          <div className="scatalog__row" style={{ margin: "15px 0" }}>
             <div className="settings-field">
               <label>اختر التصنيف</label>
               <select
@@ -1069,14 +1092,14 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               >
                 <option value="">— اختر التصنيف —</option>
                 {categoriesInSelectedSection.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
 
             <div className="settings-field">
               <label>إضافة خدمة جديدة</label>
-              <div className="scatalog__row">
+              <div style={{display: "flex", gap: 8}}>
                 <input
                   className="settings-input"
                   value={newServiceName}
@@ -1089,43 +1112,23 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             </div>
           </div>
 
-          <div
-            style={{
-              ...headerRowStyle,
-              marginTop: 15,
-              display: "grid",
-              gap: 10,
-              alignItems: "center",
-              gridTemplateColumns: gridServices,
-            }}
-          >
-            <div style={headerCellStyle}>ID</div>
-            <div style={headerCellStyle}>اسم الخدمة</div>
-            <div style={headerCellStyle}>المدة (د)</div>
-            <div style={headerCellStyle}>السعر</div>
-            <div style={headerCellStyle}>الموسم</div>
-            <div style={headerCellStyle}>مفعل</div>
-            <div style={headerCellStyle}>حفظ</div>
-            <div style={headerCellStyle}>حذف</div>
+          <div className="scatalog__grid-header scatalog__grid--services">
+            <div>ID</div>
+            <div>اسم الخدمة</div>
+            <div>المدة (د)</div>
+            <div>السعر</div>
+            <div>الموسم</div>
+            <div>مفعل</div>
+            <div>حفظ</div>
+            <div>حذف</div>
           </div>
 
-          <div className="settings-list" style={{ marginTop: 10 }}>
-            {!selectedCategoryIdForServices ? (
-              <div className="settings-note">اختر تصنيف أولاً.</div>
-            ) : servicesInSelectedCategory.length === 0 ? (
-              <div className="settings-note">لا توجد خدمات.</div>
-            ) : (
-              servicesInSelectedCategory.map((s) => (
-                <div key={s.id} className="settings-row scatalog__listRow" style={{
-                  display: "grid", 
-                  gridTemplateColumns: gridServices, 
-                  gap: 10, 
-                  alignItems: "center",
-                  padding: "10px 0",
-                  borderBottom: "1px solid #f0f0f0"
-                }}>
-                  <div style={{fontSize: "10px", color: "#888", overflow: "hidden", textOverflow: "ellipsis"}} title={s.id}>{s.id}</div>
-                  
+          <div className="settings-list">
+            {servicesInSelectedCategory.map((s) => (
+              <React.Fragment key={s.id}>
+                {/* Desktop */}
+                <div className="scatalog__grid-row scatalog__grid--services">
+                  <div style={{fontSize: 10, opacity: 0.6}}>{s.id}</div>
                   <input
                     className="settings-input"
                     value={s.name}
@@ -1135,7 +1138,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       scheduleServiceAutosave(next);
                     }}
                   />
-                  
                   <input
                     className="settings-input"
                     type="number"
@@ -1146,7 +1148,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       scheduleServiceAutosave(next);
                     }}
                   />
-                  
                   <input
                     className="settings-input"
                     type="number"
@@ -1157,7 +1158,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       scheduleServiceAutosave(next);
                     }}
                   />
-                  
                   <input
                     className="settings-input"
                     type="number"
@@ -1170,10 +1170,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       scheduleServiceAutosave(next);
                     }}
                   />
-                  
                   <div style={{textAlign: "center"}}>
                     <input
-                      className="settings-check"
                       type="checkbox"
                       checked={s.active}
                       onChange={() => {
@@ -1183,18 +1181,82 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       }}
                     />
                   </div>
-                  
                   <button type="button" className="exp-btn primary" onClick={() => saveServiceRow(s)}>حفظ</button>
                   <button type="button" className="exp-btn danger" onClick={() => deleteService(s.id)}>حذف</button>
-                  
                   {autosaveMsg[s.id] && (
-                    <div style={{gridColumn: "1 / -1", fontSize: "10px", color: "#666", textAlign: "left", marginTop: "-5px"}}>
-                      {autosaveMsg[s.id]}
-                    </div>
+                    <div className="scatalog__autosave-msg" style={{gridColumn: "1 / -1"}}>{autosaveMsg[s.id]}</div>
                   )}
                 </div>
-              ))
-            )}
+
+                {/* Mobile */}
+                <div className="scatalog__mobile-card">
+                  <div className="scatalog__mobile-card-header">
+                    <div className="scatalog__mobile-card-title">{s.name}</div>
+                    <div className="scatalog__mobile-card-id">{s.id}</div>
+                  </div>
+                  <div className="scatalog__mobile-grid">
+                    <div className="scatalog__mobile-field">
+                      <label className="scatalog__mobile-label">الاسم</label>
+                      <input
+                        className="settings-input"
+                        value={s.name}
+                        onChange={(e) => {
+                          const next = { ...s, name: e.target.value };
+                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
+                          scheduleServiceAutosave(next);
+                        }}
+                      />
+                    </div>
+                    <div className="scatalog__mobile-field">
+                      <label className="scatalog__mobile-label">السعر</label>
+                      <input
+                        className="settings-input"
+                        type="number"
+                        value={s.price}
+                        onChange={(e) => {
+                          const next = { ...s, price: Number(e.target.value || 0) };
+                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
+                          scheduleServiceAutosave(next);
+                        }}
+                      />
+                    </div>
+                    <div className="scatalog__mobile-field">
+                      <label className="scatalog__mobile-label">المدة (د)</label>
+                      <input
+                        className="settings-input"
+                        type="number"
+                        value={s.durationMin}
+                        onChange={(e) => {
+                          const next = { ...s, durationMin: Number(e.target.value || 0) };
+                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
+                          scheduleServiceAutosave(next);
+                        }}
+                      />
+                    </div>
+                    <div className="scatalog__mobile-field">
+                      <label className="scatalog__mobile-label">سعر الموسم</label>
+                      <input
+                        className="settings-input"
+                        type="number"
+                        value={s.seasonPrice === null ? "" : s.seasonPrice}
+                        placeholder="-"
+                        onChange={(e) => {
+                          const val = e.target.value === "" ? null : Number(e.target.value);
+                          const next = { ...s, seasonPrice: val };
+                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
+                          scheduleServiceAutosave(next);
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="scatalog__mobile-actions">
+                    <button type="button" className="exp-btn primary" onClick={() => saveServiceRow(s)}>حفظ</button>
+                    <button type="button" className="exp-btn danger" onClick={() => deleteService(s.id)}>حذف</button>
+                  </div>
+                  {autosaveMsg[s.id] && <div className="scatalog__autosave-msg">{autosaveMsg[s.id]}</div>}
+                </div>
+              </React.Fragment>
+            ))}
           </div>
         </div>
       </div>
