@@ -7,7 +7,7 @@ import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase
 import { auth, db } from "../services/firebase";
 
 
-import { collection, onSnapshot,  query, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 
 import { createOrLoadUserProfile, updateUserProfile, type UserProfile } from "../services/userProfile";
 
@@ -235,7 +235,7 @@ const Profile: React.FC = () => {
               birthdate: cached.birthdate || prev.birthdate,
             }));
           }
-        } catch {}
+        } catch { }
 
         setAuthChecked(true);
         return;
@@ -434,10 +434,10 @@ const Profile: React.FC = () => {
         await updateUserProfile(firebaseUid, {
           name: editData.name,
           phone: normalizedPhone,
-          email: editData.email,
           city: editData.city,
           birthdate: editData.birthdate,
         } as any);
+
 
         setUserData({ ...editData, phone: normalizedPhone });
 
@@ -446,15 +446,16 @@ const Profile: React.FC = () => {
           uid: firebaseUid,
           name: editData.name,
           phone: normalizedPhone,
-          email: editData.email,
           city: editData.city,
           birthdate: editData.birthdate,
         };
 
+
         localStorage.setItem("user_profile_v1", JSON.stringify(merged));
         localStorage.setItem("userName", editData.name);
-        localStorage.setItem("userEmail", editData.email);
+        localStorage.setItem("userName", editData.name);
         localStorage.setItem("userPhone", normalizedPhone);
+
         window.dispatchEvent(new Event("authChanged"));
 
         setShowEditModal(false);
@@ -472,8 +473,9 @@ const Profile: React.FC = () => {
         JSON.stringify({ ...(currentUser || {}), ...editData, phone: normalizedPhone })
       );
       localStorage.setItem("userName", editData.name);
-      localStorage.setItem("userEmail", editData.email);
+      localStorage.setItem("userName", editData.name);
       localStorage.setItem("userPhone", normalizedPhone);
+
       window.dispatchEvent(new Event("authChanged"));
 
       setUserData({ ...editData, phone: normalizedPhone });
@@ -490,7 +492,7 @@ const Profile: React.FC = () => {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-    } catch {}
+    } catch { }
 
     localStorage.removeItem("authToken");
     localStorage.removeItem("userRole");
@@ -840,8 +842,12 @@ const Profile: React.FC = () => {
 
               <div className="p-form-group">
                 <label>البريد</label>
-                <input value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} />
+                <input value={editData.email} readOnly disabled />
+                <div className="p-muted" style={{ marginTop: 6 }}>
+                  تعديل البريد يتم من حساب تسجيل الدخول، وليس من هنا ✅
+                </div>
               </div>
+
 
               <div className="p-form-group">
                 <label>المدينة</label>

@@ -798,7 +798,6 @@ const Dashboard: React.FC = () => {
       localStorage.removeItem("showWelcome");
       window.dispatchEvent(new Event("authChanged"));
       navigate("/");
-      alert("تم تسجيل الخروج بنجاح");
     }
   };
 

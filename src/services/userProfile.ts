@@ -93,6 +93,23 @@ function buildDefaultName(role: UiRole) {
   return "مستخدم";
 }
 
+function isPlaceholderName(name: string, role: UiRole) {
+  const n = String(name || "").trim();
+  if (!n) return true;
+
+  const defaults = new Set<string>([
+    "مستخدم",
+    "عميلة",
+    "موظفة",
+    "مدير الصالون",
+    "حساب إداري (بانتظار التفعيل)",
+    buildDefaultName(role),
+  ]);
+
+  return defaults.has(n);
+}
+
+
 function isBootstrapAdminEmail(email: string) {
   const e = String(email || "").toLowerCase().trim();
   return e === "nawafaaa0@gmail.com" || e === "nawafaaa6@gmail.com";
@@ -225,11 +242,20 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     // ✅ Bootstrap يفرض owner دائماً
     if (isBootstrap) role = "owner";
 
+    const dataName = safeStr(data?.name).trim();
+    const dataDisplayName = safeStr(data?.displayName).trim();
+
     let name =
-      safeStr(data?.name).trim() ||
-      safeStr(data?.displayName).trim() ||
+      dataName ||
+      dataDisplayName ||
       authDisplayName ||
       buildDefaultName(role);
+
+    // لو الاسم الموجود في الدوك افتراضي وعندنا displayName من Auth، خذ اسم Auth
+    if (authDisplayName && isPlaceholderName(dataName || dataDisplayName, role)) {
+      name = authDisplayName;
+    }
+
 
     if ((role === "owner" || role === "admin") && (!name || name === "مستخدم")) {
       name = "مدير الصالون";
@@ -254,8 +280,16 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     // ✅ patch خفيف: فقط حقول ناقصة — ولا نغير role إلا bootstrap أو role غير موجود
     const patch: any = {};
     if (!safeStr(data?.email) && authEmail) patch.email = authEmail;
-    if (!safeStr(data?.name) || data?.name === "مستخدم") patch.name = name;
-    if (!safeStr(data?.displayName) || data?.displayName === "مستخدم") patch.displayName = name;
+    const storedName = safeStr(data?.name).trim();
+    const storedDisplayName = safeStr(data?.displayName).trim();
+    
+    if (authDisplayName && isPlaceholderName(storedName, role)) patch.name = name;
+    if (authDisplayName && isPlaceholderName(storedDisplayName, role)) patch.displayName = name;
+    
+    // لو كانت فاضية تمامًا
+    if (!storedName) patch.name = name;
+    if (!storedDisplayName) patch.displayName = name;
+    
 
     // ✅ FIX: لو createdAt ناقص (حساب قديم) نكتبه مرة وحدة فقط
     if (!data?.createdAt) patch.createdAt = serverTimestamp();
@@ -288,7 +322,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
         },
         { merge: true }
       );
-    } catch {}
+    } catch { }
 
     writeLocalCache(profile);
     return profile;
@@ -368,7 +402,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       },
       { merge: true }
     );
-  } catch {}
+  } catch { }
 
   writeLocalCache(profile);
   return profile;
@@ -411,7 +445,7 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
     if (Object.keys(mirror).length) {
       await setDoc(rootUserRef(uid), mirror, { merge: true });
     }
-  } catch {}
+  } catch { }
 
   // ✅ تحديث الكاش المحلي
   try {
@@ -439,7 +473,7 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
     );
 
     window.dispatchEvent(new Event("authChanged"));
-  } catch {}
+  } catch { }
 }
 
 export function canAccessDashboard(role: UiRole): boolean {

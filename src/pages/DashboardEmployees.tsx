@@ -52,12 +52,14 @@ type AuthUser = {
 type StaffPublicDoc = {
   name: string;
   active: boolean;
-  specialties: string[]; // ✅ NOW: serviceIds
+  specialties: string[];
   bio?: string;
   avatarUrl?: string;
+  cvUrl?: string; // ✅ NEW
   createdAt?: any;
   updatedAt?: any;
 };
+
 
 type StaffPublicUi = StaffPublicDoc & { id: string };
 
@@ -160,6 +162,8 @@ export default function DashboardEmployees() {
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [cvUrl, setCvUrl] = useState(""); // ✅ NEW
+
   const [active, setActive] = useState(true);
 
   // ✅ NOW: store serviceIds
@@ -173,9 +177,11 @@ export default function DashboardEmployees() {
     setName("");
     setBio("");
     setAvatarUrl("");
+    setCvUrl(""); // ✅ NEW
     setActive(true);
     setSpecialties([]);
   };
+
 
   const openCreate = () => {
     resetForm();
@@ -187,10 +193,14 @@ export default function DashboardEmployees() {
     setName(x.name ?? "");
     setBio(x.bio ?? "");
     setAvatarUrl(x.avatarUrl ?? "");
+    setCvUrl((x as any).cvUrl ?? ""); // ✅ NEW
     setActive(!!x.active);
     setSpecialties(normalizeSpecialties(x.specialties));
     setIsOpen(true);
   };
+
+
+
 
   const closeModal = () => {
     setIsOpen(false);
@@ -211,9 +221,11 @@ export default function DashboardEmployees() {
           specialties: normalizeSpecialties(data?.specialties),
           bio: data?.bio ?? "",
           avatarUrl: data?.avatarUrl ?? "",
+          cvUrl: data?.cvUrl ?? "", // ✅ NEW
           createdAt: data?.createdAt,
           updatedAt: data?.updatedAt,
         };
+
       });
       rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
       setList(rows);
@@ -675,11 +687,13 @@ export default function DashboardEmployees() {
     const payload: StaffPublicDoc = {
       name: cleanName,
       active: !!active,
-      specialties, // ✅ serviceIds
+      specialties,
       bio: bio.trim(),
       avatarUrl: avatarUrl.trim(),
+      cvUrl: cvUrl.trim(), // ✅ NEW
       updatedAt: serverTimestamp(),
     };
+
 
     try {
       if (!editId) {
@@ -754,7 +768,7 @@ export default function DashboardEmployees() {
   if (!authUser) {
     return (
       <div className="dashboard-page employees-page">
-    
+
         <div className="container">
           <div className="dash-card">
             <h3>غير مصرح</h3>
@@ -964,12 +978,12 @@ export default function DashboardEmployees() {
                 {authUser?.role === "owner" && (
                   <div style={{ marginTop: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <span className="staff-pill stat total">
-  الحجوزات:{" "}
-  <b style={{ marginInlineStart: 6 }}>
-    {statsLoading ? "..." : (bookingStats[x.id]?.total ?? 0)}
-  </b>
-</span>
+                      <span className="staff-pill stat total">
+                        الحجوزات:{" "}
+                        <b style={{ marginInlineStart: 6 }}>
+                          {statsLoading ? "..." : (bookingStats[x.id]?.total ?? 0)}
+                        </b>
+                      </span>
 
                       <span className="staff-pill stat confirmed">
                         مؤكد:{" "}
@@ -979,25 +993,25 @@ export default function DashboardEmployees() {
                       </span>
 
                       <span className="staff-pill stat pending">
-  انتظار:{" "}
-  <b style={{ marginInlineStart: 6 }}>
-    {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.pending ?? 0)}
-  </b>
-</span>
+                        انتظار:{" "}
+                        <b style={{ marginInlineStart: 6 }}>
+                          {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.pending ?? 0)}
+                        </b>
+                      </span>
 
-<span className="staff-pill stat completed">
-  مكتمل:{" "}
-  <b style={{ marginInlineStart: 6 }}>
-    {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.completed ?? 0)}
-  </b>
-</span>
+                      <span className="staff-pill stat completed">
+                        مكتمل:{" "}
+                        <b style={{ marginInlineStart: 6 }}>
+                          {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.completed ?? 0)}
+                        </b>
+                      </span>
 
-<span className="staff-pill stat cancelled">
-  ملغي:{" "}
-  <b style={{ marginInlineStart: 6 }}>
-    {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.cancelled ?? 0)}
-  </b>
-</span>
+                      <span className="staff-pill stat cancelled">
+                        ملغي:{" "}
+                        <b style={{ marginInlineStart: 6 }}>
+                          {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.cancelled ?? 0)}
+                        </b>
+                      </span>
                     </div>
 
                     <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
@@ -1005,6 +1019,19 @@ export default function DashboardEmployees() {
                     </div>
                   </div>
                 )}
+
+                {(x as any).cvUrl ? (
+                  <button
+                    className="exp-btn"
+                    type="button"
+                    onClick={() => window.open((x as any).cvUrl, "_blank")}
+                    title="عرض السيرة الذاتية"
+                    style={{ marginTop: 10 }}
+                  >
+                    📄 عرض السيرة الذاتية
+                  </button>
+                ) : null}
+
 
                 <div className="staff-id">ID: {x.id}</div>
               </div>
@@ -1059,15 +1086,16 @@ export default function DashboardEmployees() {
                 </div>
 
                 <div className="dash-field">
-                  <label>رابط الصورة (اختياري)</label>
+                  <label>رابط السيرة الذاتية PDF (اختياري)</label>
                   <input
                     className="dash-input"
-                    value={avatarUrl}
-                    onChange={(e) => setAvatarUrl(e.target.value)}
-                    placeholder="https://..."
+                    value={cvUrl}
+                    onChange={(e) => setCvUrl(e.target.value)}
+                    placeholder="https://...pdf"
                     dir="ltr"
                   />
                 </div>
+
 
                 <div className="dash-field">
                   <label>الخدمات (اختيار متعدد) ✅</label>

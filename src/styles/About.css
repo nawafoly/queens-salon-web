@@ -108,10 +108,122 @@
 }
 
 /* ================= Team ================= */
+
+.about-page .about-team-slider{
+  position: relative;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 14px 42px 10px;
+
+  overflow: visible; /* ✅ مهم للأسهم */
+}
+
+
+.about-page .about-team-track{
+  width: 100%;
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  padding: 10px 8px 18px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.about-page .about-team-track::-webkit-scrollbar{ display:none; }
+
+.about-page .about-team-slide{
+  flex: 0 0 360px;
+  scroll-snap-align: center;
+}
+
+@media (max-width: 768px){
+  .about-page .about-team-slider{ padding: 10px 14px 10px; }
+  .about-page .about-team-slide{ flex: 0 0 86vw; }
+}
+
+/* الأسهم */
+.about-page .about-team-arrow{
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 20;
+  pointer-events: auto;
+  touch-action: manipulation;
+
+  font-size: 30px;
+  font-weight: 900;
+  color: #40010D;
+  padding: 6px 10px;
+  line-height: 1;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+.about-page .about-team-arrow:hover{
+  color: #2d0109;
+  transform: translateY(-50%) scale(1.08);
+}
+.about-page .about-team-arrow.left{ left: 6px; }
+.about-page .about-team-arrow.right{ right: 6px; }
+
+/* تدرج خفيف يوحي بالسحب */
+.about-page .about-team-slider::before,
+.about-page .about-team-slider::after{
+  content:"";
+  position:absolute;
+  top:0; bottom:0;
+  width: 46px;
+  pointer-events:none;
+  z-index: 5;
+}
+.about-page .about-team-slider::before{
+  left:0;
+  background: linear-gradient(90deg, rgba(245,245,244,0.95), rgba(245,245,244,0));
+}
+.about-page .about-team-slider::after{
+  right:0;
+  background: linear-gradient(-90deg, rgba(245,245,244,0.95), rgba(245,245,244,0));
+}
+
+/* زر CV ستايل Queens */
+.about-page .qs-cv-btn{
+
+  width: fit-content;
+  padding: 10px 16px;
+
+
+  
+  width: 100%;
+  margin-top: 12px;
+
+  padding: 12px 0;
+  border-radius: 16px;
+
+  font-weight: 900;
+  font-size: 0.95rem;
+
+  background: #40010D;
+  color: #fff;
+
+  border: none;
+  cursor: pointer;
+
+  box-shadow: 0 12px 24px rgba(64,1,13,0.18);
+  transition: all .22s ease;
+}
+.about-page .qs-cv-btn:hover{
+  background:#2d0109;
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px rgba(64,1,13,0.28);
+}
+
 .about-page .about-team{
   margin-top: 2.2rem;
 }
 
+/* ⚠️ قديم: team-grid (لا تستخدمه مع السلايدر الجديد) */
 .about-page .team-grid{
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

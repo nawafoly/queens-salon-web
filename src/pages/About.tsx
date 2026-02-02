@@ -32,6 +32,7 @@ type TeamMember = {
   specialties?: string[];
   bio?: string;
   avatarUrl?: string;
+  cvUrl?: string;
 
   // ✅ flags
   active?: boolean;
@@ -82,6 +83,13 @@ const About = () => {
 
   const placeholders = useMemo(() => [ava, emma, sophie], []);
 
+  const scrollTeam = (dir: "left" | "right") => {
+    const el = document.getElementById("qs-about-team-track");
+    if (!el) return;
+    el.scrollBy({ left: dir === "left" ? -420 : 420, behavior: "smooth" });
+  };
+
+
   const whyChooseUs = [
     {
       icon: faStar,
@@ -120,12 +128,13 @@ const About = () => {
           const specialties = normalizeSpecialties(x?.specialties);
           const bio = String(x?.bio || "").trim();
           const avatarUrl = String(x?.avatarUrl || "").trim() || undefined;
+          const cvUrl = String(x?.cvUrl || "").trim() || undefined;
 
           const position = buildPositionFromSpecialties(specialties);
 
- const desc = bio || "خبيرة ضمن فريق صالون ملكات.";
+          const desc = bio || "خبيرة ضمن فريق صالون ملكات.";
 
-        
+
 
           return {
             id: d.id,
@@ -138,6 +147,7 @@ const About = () => {
             position,
             description: desc,
             image: placeholders[idx % placeholders.length], // fallback
+            cvUrl,
           };
         })
         // ✅ فقط اللي active + showOnAbout + عنده اسم
@@ -213,40 +223,75 @@ const About = () => {
               {teamErr}
             </p>
           ) : (
-            <div className="team-grid">
-              {teamMembers.map((member, index) => (
-                <div key={member.id}>
-                  <div
-                    className="team-member-enhanced animate-fade-in"
-                    style={{ animationDelay: `${index * 0.2}s` }}
-                  >
-                    <div className="team-member-image-container">
-                      <img
-                        src={member.avatarUrl || member.image}
-                        alt={member.name}
-                        className="team-member-image-enhanced"
-                      />
-                      <div className="team-member-overlay">
-                        <div className="team-member-social">
-                          <i className="fab fa-instagram"></i>
-                          <i className="fab fa-twitter"></i>
+            <>
+              <div className="about-team-slider">
+                <button
+                  className="about-team-arrow left"
+                  type="button"
+                  onClick={() => scrollTeam("left")}
+                  aria-label="السابق"
+                >
+                  ›
+                </button>
+
+                <button
+                  className="about-team-arrow right"
+                  type="button"
+                  onClick={() => scrollTeam("right")}
+                  aria-label="التالي"
+                >
+                  ‹
+                </button>
+
+                <div className="about-team-track" id="qs-about-team-track">
+                  {teamMembers.map((member, index) => (
+                    <div key={member.id} className="about-team-slide">
+                      <div
+                        className="team-member-enhanced animate-fade-in"
+                        style={{ animationDelay: `${index * 0.12}s` }}
+                      >
+                        <div className="team-member-image-container">
+                          <img
+                            src={member.avatarUrl || member.image}
+                            alt={member.name}
+                            className="team-member-image-enhanced"
+                          />
+                          <div className="team-member-overlay">
+                            <div className="team-member-social">
+                              <i className="fab fa-instagram"></i>
+                              <i className="fab fa-twitter"></i>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="team-member-content">
+                          <h3 className="team-member-name-enhanced">{member.name}</h3>
+
+                          <div className="team-member-skills">
+                            <span className="skill-tag">موظفة معتمدة</span>
+                          </div>
+
+                          {/* زر CV (يظهر فقط إذا موجود) */}
+                          {member.cvUrl ? (
+                            <button
+                              className="qs-cv-btn"
+                              type="button"
+                              onClick={() => window.open(member.cvUrl!, "_blank")}
+                            >
+                              📄 السيرة الذاتية
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     </div>
-                    <div className="team-member-content">
-  <h3 className="team-member-name-enhanced">{member.name}</h3>
-
-
-  <div className="team-member-skills">
-    <span className="skill-tag">موظفة معتمدة</span>
-  </div>
-</div>
-
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+
+              <div className="about-team-hint">اسحبي يمين ويسار لعرض المزيد</div>
+            </>
           )}
+
         </section>
 
         <section className="why-choose-us">

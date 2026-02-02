@@ -257,15 +257,14 @@ const Navbar: React.FC = () => {
           <Link to="/dashboard" onClick={() => setIsDropdownOpen(false)}>
             لوحة التحكم
           </Link>
-          <Link to="/profile" onClick={() => setIsDropdownOpen(false)}>
-            بيانات العميل
-          </Link>
+    
           <button onClick={handleLogout} className="dropdown-logout-btn">
             تسجيل الخروج
           </button>
         </>
       );
     }
+    
 
     return null;
   }, [isLoggedIn, isClient, isDashboardUser]);

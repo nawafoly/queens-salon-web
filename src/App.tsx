@@ -84,7 +84,7 @@ function getNameFromStorage(): string {
     const p = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
     const n = p?.name ? String(p.name).trim() : "";
     if (n) return n;
-  } catch {}
+  } catch { }
   return String(localStorage.getItem("userName") || "").trim();
 }
 
@@ -175,6 +175,23 @@ const App: React.FC = () => {
     return <>{children}</>;
   };
 
+  const PendingGuard = ({ children }: { children: React.ReactNode }) => {
+    const role = getRoleFromStorage();
+
+    // ✅ فقط اللي role حقه pending يدخل صفحة الانتظار
+    if (isPendingRole(role)) return <>{children}</>;
+
+    // ✅ لو داشبورد رول نشط، رجّعه للداشبورد
+    if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+
+    // ✅ لو عميلة، رجّعها للكلينت
+    if (isClientRole(role)) return <Navigate to="/client" replace />;
+
+    // ✅ غير كذا (guest) -> لوجن
+    return <Navigate to="/login" replace />;
+  };
+
+
   return (
     <div className="app">
       {!isInDashboard && <Navbar />}
@@ -201,7 +218,14 @@ const App: React.FC = () => {
           <Route path="/track/:trackId" element={<Track />} />
 
           {/* Pending */}
-          <Route path="/dashboard-pending" element={<DashboardPending />} />
+          <Route
+            path="/dashboard-pending"
+            element={
+              <PendingGuard>
+                <DashboardPending />
+              </PendingGuard>
+            }
+          />
 
           {/* Client (Protected) */}
           <Route
@@ -223,7 +247,7 @@ const App: React.FC = () => {
             }
           />
 
-       
+
 
           {/* Profile (Protected) */}
           <Route

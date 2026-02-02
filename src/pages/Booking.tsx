@@ -68,6 +68,8 @@ import {
 // ✅ Create booking (Firestore)
 import { createBooking } from "../services/firestoreBookings";
 
+import { createOrLoadUserProfile } from "../services/userProfile";
+
 // ✅ Custom modal بدل alert
 import ConfirmModal from "../components/ConfirmModal";
 
@@ -359,6 +361,22 @@ function safeTimeHHMM(v: any, fallback: string) {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
+function normalizeKsaPhone(raw: string) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+
+  if (digits.startsWith("9665") && digits.length === 12) return "0" + digits.slice(3);
+  if (digits.startsWith("5") && digits.length === 9) return "0" + digits;
+  if (digits.startsWith("05") && digits.length === 10) return digits;
+
+  return digits;
+}
+
+function phone10Digits(raw: string) {
+  return normalizeKsaPhone(raw).replace(/\D/g, "").slice(0, 10);
+}
+
+
 const Booking = () => {
   const navigate = useNavigate();
   const dateRef = useRef<HTMLInputElement>(null);
@@ -443,6 +461,77 @@ const Booking = () => {
     note: "",
     items: [],
   });
+
+  // =========================
+  // ✅ Auto-fill client info (name/phone) from Profile
+  // =========================
+  useEffect(() => {
+    let cancelled = false;
+
+    function fillFromLocalStorage() {
+      try {
+        const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
+        const name = String(cached?.name || localStorage.getItem("userName") || "").trim();
+        const phone = phone10Digits(cached?.phone || localStorage.getItem("userPhone") || "");
+
+        if (!cancelled) {
+          setFormData((prev) => ({
+            ...prev,
+            name: prev.name || name,
+            phone: prev.phone || phone,
+          }));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // 1) عبّي من الكاش أولاً
+    fillFromLocalStorage();
+
+    // 2) لو مسجلة دخول: عبّي من Firestore profile
+    const auth = getAuth();
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u || (u as any).isAnonymous) {
+        fillFromLocalStorage();
+        return;
+      }
+
+      try {
+        const p = await createOrLoadUserProfile(u);
+
+        const name = String((p as any)?.name || "").trim();
+        const phone = phone10Digits((p as any)?.phone || "");
+
+        if (!cancelled) {
+          setFormData((prev) => ({
+            ...prev,
+            name: prev.name || name,
+            phone: prev.phone || phone,
+          }));
+        }
+
+        // خزّن محلياً
+        localStorage.setItem("user_profile_v1", JSON.stringify(p));
+        if (name) localStorage.setItem("userName", name);
+        if (phone) localStorage.setItem("userPhone", phone);
+      } catch {
+        fillFromLocalStorage();
+      }
+    });
+
+    // 3) لو عدّل بياناته من Profile
+    const onChanged = () => fillFromLocalStorage();
+    window.addEventListener("authChanged", onChanged);
+
+
+    return () => {
+      cancelled = true;
+      unsub();
+      window.removeEventListener("authChanged", onChanged);
+    };
+  }, []);
+
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -1521,15 +1610,15 @@ const Booking = () => {
           if (currentTime && disabled.has(currentTime)) {
             // في طور الموسم، إذا كان الوقت هو المقترح، لا تصفر
             if (sequentialBooking && currentTime === suggestedSlot) {
-               // مسموح
+              // مسموح
             } else if (!sequentialBooking && !busyByItem[itemId]?.busyTimes.has(currentTime)) {
-               // في الطور العادي، إذا كان الوقت ليس محجوزاً فعلياً (لكنه disabled بسبب المدة)، لا تصفر تلقائياً
-               // اترك المستخدم يقرر أو يضغط "تم" للتحقق النهائي
+              // في الطور العادي، إذا كان الوقت ليس محجوزاً فعلياً (لكنه disabled بسبب المدة)، لا تصفر تلقائياً
+              // اترك المستخدم يقرر أو يضغط "تم" للتحقق النهائي
             } else {
-               // فقط إذا كان محجوزاً فعلياً (Busy) نقوم بالتصفير
-               if (busyByItem[itemId]?.busyTimes.has(currentTime)) {
-                  updateItem(itemId, { time: "" });
-               }
+              // فقط إذا كان محجوزاً فعلياً (Busy) نقوم بالتصفير
+              if (busyByItem[itemId]?.busyTimes.has(currentTime)) {
+                updateItem(itemId, { time: "" });
+              }
             }
           }
 
@@ -1754,7 +1843,7 @@ const Booking = () => {
     if (localConflict) {
       // ✅ FIX: لا تظهر الخطأ ولا تصفر الوقت إذا كان هذا هو الطور المتتابع والوقت صحيح برمجياً
       if (sequentialBooking) {
-         return; 
+        return;
       }
       openModal({
         title: "تعارض في الوقت",
@@ -2222,7 +2311,11 @@ const Booking = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ أضف هذا السطر فقط
+  const isSignedClient = !!getSignedInUidOrNull();
+
   return (
+
     <div className="booking-page py-5">
       <ConfirmModal
         open={uiModal.open}
@@ -2267,6 +2360,8 @@ const Booking = () => {
                         id="name"
                         name="name"
                         value={formData.name}
+                        readOnly={isSignedClient}
+                        disabled={isSignedClient}
                         onChange={(e) =>
                           setFormData((prev) => ({ ...prev, name: e.target.value }))
                         }
@@ -2280,10 +2375,12 @@ const Booking = () => {
                   <div className="col-md-6 mb-4">
                     {/* الجوال */}
                     <label htmlFor="phone" className="form-label">رقم الجوال</label>
+
                     <div className="input-group">
                       <span className="input-group-text">
                         <FontAwesomeIcon icon={faPhone} />
                       </span>
+
                       <input
                         type="tel"
                         inputMode="numeric"
@@ -2291,6 +2388,8 @@ const Booking = () => {
                         id="phone"
                         name="phone"
                         value={formData.phone}
+                        readOnly={isSignedClient}
+                        disabled={isSignedClient}
                         onChange={(e) => {
                           const digitsOnly = e.target.value.replace(/\D/g, "").slice(0, 10);
                           setFormData((prev) => ({ ...prev, phone: digitsOnly }));
@@ -2301,6 +2400,7 @@ const Booking = () => {
                       />
                     </div>
                   </div>
+
 
                   {/* ✅ التاريخ (عمود لحاله) */}
                   <div className="col-12 mb-4">
