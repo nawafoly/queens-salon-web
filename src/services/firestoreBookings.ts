@@ -141,13 +141,13 @@ function normalizeBooking(raw: any): BookingDoc {
     publicId: raw?.publicId ? String(raw.publicId) : undefined,
     serviceSnapshot: raw?.serviceSnapshot
       ? {
-          serviceNameAtBooking: String(raw.serviceSnapshot.serviceNameAtBooking ?? ""),
-          priceAtBooking: Number(raw.serviceSnapshot.priceAtBooking ?? 0),
-          durationAtBooking: Number(raw.serviceSnapshot.durationAtBooking ?? 0),
-          sectionIdAtBooking: raw.serviceSnapshot.sectionIdAtBooking
-            ? String(raw.serviceSnapshot.sectionIdAtBooking)
-            : undefined,
-        }
+        serviceNameAtBooking: String(raw.serviceSnapshot.serviceNameAtBooking ?? ""),
+        priceAtBooking: Number(raw.serviceSnapshot.priceAtBooking ?? 0),
+        durationAtBooking: Number(raw.serviceSnapshot.durationAtBooking ?? 0),
+        sectionIdAtBooking: raw.serviceSnapshot.sectionIdAtBooking
+          ? String(raw.serviceSnapshot.sectionIdAtBooking)
+          : undefined,
+      }
       : undefined,
 
     durationMin: Number(raw?.durationMin ?? 0) || undefined,
@@ -393,7 +393,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
       bufferMin: (data as any).bufferMinAtBooking,
     }
   );
-  
+
   // ✅ booking ref
   const bookingRef = doc(collection(db, ...BOOKINGS_COL));
 
@@ -477,7 +477,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         const sameEmp =
           String(existingBooking.employeeKey || "") === String(employeeKey) ||
           safeKey(String(existingBooking.employeeId ?? "").trim() || existingBooking.employeeName.trim()) ===
-            safeKey(employeeKeyForLock);
+          safeKey(employeeKeyForLock);
 
         if (sameUser && sameDate && sameStart && sameEmp) {
           const existingPublic = String(existingBooking.publicId || "").trim();
@@ -893,6 +893,36 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
       { merge: true }
     );
 
+    // ✅ IMPORTANT: إذا صار الحجز "ملغي" لازم نفك الأقفال من booking_slots
+    // لأن Booking.tsx يعتبر الوقت محجوز إذا وثيقة slot موجودة.
+    if (status === "cancelled") {
+      const employeeIdForLock = String(booking.employeeId ?? "").trim();
+
+      // لو ما عندنا employeeId ما نقدر نحدد أقفال الموظفة (حماية)
+      if (employeeIdForLock) {
+        // ✅ نفس منطق إنشاء الأقفال (مدة + بفر + step)
+        const duration =
+          Number(booking.durationMin ?? booking.serviceSnapshot?.durationAtBooking ?? 0) || 60;
+
+        const timesToUnlock = getTimesToLock(
+          String(booking.time || "").trim(),
+          duration,
+          {
+            slotStepMin: (booking as any).slotStepMinAtBooking,
+            bufferMin: (booking as any).bufferMinAtBooking,
+          }
+        );
+
+        const slotRefsToDelete = timesToUnlock.map((t) =>
+          doc(db, ...SLOTS_COL, buildSlotId(booking.date, t, employeeIdForLock))
+        );
+
+        for (const r of slotRefsToDelete) {
+          tx.delete(r);
+        }
+      }
+    }
+
     return booking;
   });
 
@@ -1141,4 +1171,51 @@ export async function backfillServiceFields(opts?: { dryRun?: boolean; limit?: n
   }
 
   return { scanned: snap.size, patched, dryRun };
+}
+
+/**
+ * ✅ DELETE: حذف الحجز نهائياً من Firebase
+ * يقوم بحذف الحجز، التتبع، الدخل، وفك الأقفال (Slots)
+ */
+export async function deleteBooking(bookingId: string) {
+  const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
+  const trackRef = doc(db, ...TRACKS_COL, bookingId);
+  const incomeRef = doc(db, ...INCOME_COL, bookingId);
+
+  // 1) الحصول على بيانات الحجز قبل الحذف لفك الأقفال
+  const snap = await getDoc(bookingRef);
+  if (!snap.exists()) return; // حُذف مسبقاً
+
+  const booking = normalizeBooking(snap.data());
+
+  // 2) حذف الوثائق الأساسية
+  await deleteDoc(bookingRef);
+  try { await deleteDoc(trackRef); } catch(e) {}
+  try { await deleteDoc(incomeRef); } catch(e) {}
+
+  // 3) فك الأقفال (Slots)
+  const employeeIdForLock = String(booking.employeeId ?? "").trim();
+  if (employeeIdForLock) {
+    const duration = Number(booking.durationMin ?? booking.serviceSnapshot?.durationAtBooking ?? 0) || 60;
+    const timesToUnlock = getTimesToLock(
+      String(booking.time || "").trim(),
+      duration,
+      {
+        slotStepMin: (booking as any).slotStepMinAtBooking,
+        bufferMin: (booking as any).bufferMinAtBooking,
+      }
+    );
+
+    const batch = timesToUnlock.map((t) =>
+      deleteDoc(doc(db, ...SLOTS_COL, buildSlotId(booking.date, t, employeeIdForLock)))
+    );
+    await Promise.all(batch);
+  }
+
+  // 4) تسجيل اللوغ
+  await writeBookingLog({
+    bookingId,
+    type: "status_changed",
+    note: "تم حذف الحجز نهائياً من الداشبورد",
+  });
 }

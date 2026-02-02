@@ -41,7 +41,7 @@ function toArabic12hLabel(totalMin: number) {
 export function slotLabelToMinutes(label: string): number | null {
   const s = String(label || "").trim();
 
-  // نقبل: "04:15 ص" أو "4:15 م"
+  // ✅ التعديل: نقبل الوقت بوجود مسافة أو بدون مسافة قبل "ص/م"
   const m = s.match(/^(\d{1,2}):(\d{2})\s*(ص|م)$/);
   if (!m) return null;
 

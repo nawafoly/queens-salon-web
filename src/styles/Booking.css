@@ -703,3 +703,37 @@ textarea.form-control {
   color: #0D0D0D;
   font-weight: 700;
 }
+
+/* =========================
+   ✅ Sequential Booking Styles
+========================= */
+.bk-time-chip.is-sequential-suggested {
+  background: #e6f4ea !important;
+  border: 2px solid #34a853 !important;
+  color: #137333 !important;
+  font-weight: 900 !important;
+  box-shadow: 0 4px 12px rgba(52, 168, 83, 0.15) !important;
+  animation: pulse-green 2s infinite;
+}
+
+.bk-time-chip.is-sequential-suggested:hover {
+  background: #34a853 !important;
+  color: #fff !important;
+  transform: translateY(-2px);
+}
+
+@keyframes pulse-green {
+  0% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(52, 168, 83, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0); }
+}
+
+.text-warning.small {
+  background: #fff8e1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border-right: 4px solid #ffc107;
+  color: #856404 !important;
+  font-weight: 700;
+}
+

@@ -12,8 +12,9 @@
 /* =========================
    Overlay (both variants)
 ========================= */
-.dashboard-page .modal-overlay,
-.dashboard-page .dash-modal-overlay {
+.modal-overlay,
+.dash-modal-overlay {
+
   position: fixed;
   inset: 0;
   z-index: 10000;
@@ -302,3 +303,190 @@
     font-size: 15px;
   }
 }
+
+
+/* =========================
+   Booking Details Modal (Queens)
+========================= */
+
+.dash-modal.booking-details-modal{
+  width: min(920px, 96vw);
+  max-height: min(86vh, 820px);
+  border-radius: 22px;
+  overflow: hidden;
+
+  background: rgba(245,245,244,0.96);
+  border: 1px solid rgba(13,13,13,0.10);
+  box-shadow: 0 22px 60px rgba(13,13,13,0.25);
+
+  direction: rtl;
+  color: #0D0D0D;
+}
+
+/* نخلي الهيدر أفخم */
+.dash-modal.booking-details-modal .dash-modal-header{
+  background: linear-gradient(180deg, rgba(255,255,255,0.75), rgba(245,245,244,0.55));
+  border-bottom: 1px solid rgba(13,13,13,0.10);
+}
+
+.dash-modal.booking-details-modal .dash-modal-header h3{
+  font-weight: 900;
+  font-size: 15px;
+  margin: 0;
+}
+
+/* جسم المودال scroll داخلي */
+.dash-modal.booking-details-modal .dash-modal-body{
+  padding: 14px;
+  max-height: calc(min(86vh, 820px) - 62px);
+  overflow: auto;
+}
+
+/* صف الأزرار العلوي */
+/* ✅ Top actions inside booking details modal */
+/* ✅ Actions row inside booking details modal */
+.booking-details-modal .bdm-actions-row{
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+
+  /* ✅ يخليه "داخل" المودال ككرت صغير */
+  padding: 10px;
+  margin: 0 0 12px 0;
+
+  background: rgba(255,255,255,0.75);
+  border: 1px solid rgba(13,13,13,0.10);
+  border-radius: 16px;
+
+  /* ✅ يبقى فوق داخل المودال أثناء السكرول */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+
+  backdrop-filter: blur(10px);
+}
+
+/* ✅ نفس قياس وشكل الأزرار */
+.booking-details-modal .bdm-actions-row .reports-btn,
+.booking-details-modal .bdm-actions-row .dash-select{
+  height: 38px;
+  border-radius: 12px;
+  padding: 0 12px;
+  font-weight: 900;
+}
+
+/* ✅ مهم: الدروب داون يتثبت داخل المودال */
+.booking-details-modal .bdm-actions-row .dash-dd-wrap{
+  position: relative;
+}
+
+/* ✅ القائمة لا تطلع برا + تكون يمين */
+.booking-details-modal .bdm-actions-row .dash-dd-menu{
+  right: 0;
+  left: auto;
+  top: calc(100% + 8px);
+  z-index: 20;
+}
+
+/* ✅ موبايل: خلهن يصيرن متساويات */
+@media (max-width: 720px){
+  .booking-details-modal .bdm-actions-row{
+    gap: 8px;
+  }
+
+  .booking-details-modal .bdm-actions-row .reports-btn,
+  .booking-details-modal .bdm-actions-row .dash-select{
+    flex: 1;
+    min-width: 140px;
+  }
+}
+
+
+
+/* بروفايل الميتا: 3 مربعات */
+.booking-details-modal .bdm-meta-row{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.booking-details-modal .bdm-kv{
+  background: rgba(255,255,255,0.78);
+  border: 1px solid rgba(13,13,13,0.10);
+  border-radius: 16px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.booking-details-modal .bdm-kv .k{
+  font-size: 12px;
+  opacity: 0.70;
+  font-weight: 900;
+}
+
+.booking-details-modal .bdm-kv .v{
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 800;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.booking-details-modal .bdm-kv .v.mono{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+  font-size: 12px;
+}
+
+/* قائمة الخدمات */
+.booking-details-modal .bdm-service-pill{
+  padding: 10px 14px;
+  border-radius: 16px;
+
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(13,13,13,0.08);
+
+  font-weight: 800;
+  color: #0D0D0D;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  box-shadow: 0 4px 10px rgba(13,13,13,0.04);
+
+  transition: 0.15s ease;
+}
+
+.booking-details-modal .bdm-service-pill:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(13,13,13,0.08);
+}
+
+/* تحسين كرت الملاحظة */
+.booking-details-modal .bk-note-card{
+  background: rgba(255,255,255,0.82);
+  border: 1px solid rgba(13,13,13,0.10);
+  border-radius: 18px;
+  padding: 12px;
+}
+
+/* تحسين الشبكة اللي عندك bk-details-grid (لو موجودة في CSS) */
+.booking-details-modal .bk-details-grid .bk-item{
+  background: rgba(255,255,255,0.78);
+  border: 1px solid rgba(13,13,13,0.10);
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+
+/* موبايل */
+@media (max-width: 720px){
+  .booking-details-modal .bdm-meta-row{
+    grid-template-columns: 1fr;
+  }
+}
+
+

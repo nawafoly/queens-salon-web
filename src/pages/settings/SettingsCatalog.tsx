@@ -715,9 +715,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   return (
     <div className="dashboard-section settings-page scatalog" dir="rtl">
       <div className="settings-wrap">
-        <div className="scatalog__header">
+        <div className="scatalog__header ">
           <div>
-            <h1>إدارة الكتالوج</h1>
+            <h1 className="qs-black ">إدارة الكتالوج</h1>
             <p className="settings-hint">تنظيم الخدمات: قسم ← تصنيف ← خدمة</p>
           </div>
           <div className="scatalog__actions">

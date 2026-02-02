@@ -32,6 +32,7 @@ import {
   updateBookingStatus,
   createDashboardBooking,
   updateBookingDetails as updateBookingFields,
+  deleteBooking,
   type BookingStatus,
 } from "../services/firestoreBookings";
 
@@ -184,15 +185,16 @@ function normalizeArabicName(input: string) {
   const noDia = stripArabicDiacritics(s);
 
   const unified = noDia
-    .replace(/[إأآٱ]/g, "ا")
+    .replace(/[إأآا]/g, "ا")
     .replace(/ى/g, "ي")
     .replace(/ة/g, "ه")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/[^a-z0-9\u0600-\u06FF\s]/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 
   return unified;
 }
+
 
 function tokenizeName(s: string) {
   return normalizeArabicName(s)
@@ -345,10 +347,10 @@ function getBookingPhone(b: Booking): string {
   const anyB = b as any;
   return String(
     anyB?.phone ??
-      anyB?.customerPhone ??
-      anyB?.customerMobile ??
-      anyB?.mobile ??
-      ""
+    anyB?.customerPhone ??
+    anyB?.customerMobile ??
+    anyB?.mobile ??
+    ""
   ).trim();
 }
 
@@ -467,17 +469,19 @@ function Modal({
   title,
   onClose,
   children,
+  className,
 }: {
   open: boolean;
   title?: string;
   onClose: () => void;
   children: any;
+  className?: string;
 }) {
   if (!open) return null;
 
   return createPortal(
     <div className="dash-modal-overlay" onClick={onClose}>
-      <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`dash-modal ${className || ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="dash-modal-header">
           <h3>{title || "تفاصيل"}</h3>
           <button className="dash-close" type="button" onClick={onClose}>
@@ -490,6 +494,7 @@ function Modal({
     document.body
   );
 }
+
 
 /* =========================
    Staff list (for proper employeeId/uid)
@@ -939,6 +944,27 @@ const DashboardBookings = () => {
     }
   };
 
+  const handleDeleteBooking = async (id: string | undefined | null) => {
+    if (!id) return;
+    if (!canEditStatus) return;
+    if (!window.confirm("هل أنتِ متأكدة من حذف هذا الحجز نهائياً؟ لا يمكن التراجع عن هذه الخطوة.")) return;
+
+    try {
+      setLoading(true);
+      await deleteBooking(id);
+      
+      setBookings((prev) => prev.filter((b) => b.id !== id));
+      if (selected?.id === id) setSelected(null);
+      
+      alert("تم حذف الحجز وفك الأقفال بنجاح ✅");
+    } catch (e) {
+      console.error("Failed to delete booking:", e);
+      alert("فشل حذف الحجز، يرجى المحاولة مرة أخرى.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getAdminNote = (id: string | undefined | null) => {
     if (!id) return "";
     return notesMap[id] ?? "";
@@ -1192,26 +1218,7 @@ const DashboardBookings = () => {
         prev.map((b) =>
           b.id === selected.id
             ? {
-                ...b,
-                customerName,
-                phone,
-                serviceName: serviceKey,
-                employeeName,
-                employeeId,
-                employeeUid,
-                date,
-                time,
-                total,
-                finalPrice: total,
-              }
-            : b
-        )
-      );
-
-      setSelected((prev) =>
-        prev
-          ? {
-              ...prev,
+              ...b,
               customerName,
               phone,
               serviceName: serviceKey,
@@ -1223,6 +1230,25 @@ const DashboardBookings = () => {
               total,
               finalPrice: total,
             }
+            : b
+        )
+      );
+
+      setSelected((prev) =>
+        prev
+          ? {
+            ...prev,
+            customerName,
+            phone,
+            serviceName: serviceKey,
+            employeeName,
+            employeeId,
+            employeeUid,
+            date,
+            time,
+            total,
+            finalPrice: total,
+          }
           : prev
       );
 
@@ -1670,13 +1696,15 @@ const DashboardBookings = () => {
       {/* Details / Edit Modal */}
       <Modal
         open={!!selected}
+        className="booking-details-modal"
         title={selected ? `تفاصيل الحجز — ${selected.publicId || selected.customerName || "—"}` : "تفاصيل"}
         onClose={closeDetails}
       >
+
         {!selected ? null : (
           <div>
             {/* Top actions */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+            <div className="bdm-actions-row">
               <button
                 className="reports-btn"
                 type="button"
@@ -1725,11 +1753,23 @@ const DashboardBookings = () => {
             {editError && <div className="bookings-error">{editError}</div>}
 
             {/* Quick meta */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10, opacity: 0.85 }}>
-              <span style={{ fontWeight: 900 }}>MK:</span> <span>{selected.publicId || "—"}</span>
-              <span style={{ fontWeight: 900 }}>DocId:</span> <span>{selected.id}</span>
-              <span style={{ fontWeight: 900 }}>employeeId:</span> <span>{String(selected.employeeId ?? "—")}</span>
+            <div className="bdm-meta-row">
+              <div className="bdm-kv">
+                <div className="k">MK</div>
+                <div className="v">{selected.publicId || "—"}</div>
+              </div>
+
+              <div className="bdm-kv">
+                <div className="k">DocId</div>
+                <div className="v mono">{selected.id}</div>
+              </div>
+
+              <div className="bdm-kv">
+                <div className="k">employeeId</div>
+                <div className="v mono">{String(selected.employeeId ?? "—")}</div>
+              </div>
             </div>
+
 
             {/* ✅ Services details (show FULL list when available) */}
             {!editMode && (
@@ -1739,17 +1779,10 @@ const DashboardBookings = () => {
                 {servicesFullListText(selected).length ? (
                   <div style={{ display: "grid", gap: 6 }}>
                     {servicesFullListText(selected).map((name, idx) => (
-                      <div
-                        key={`${selected.id}-svc-${idx}`}
-                        style={{
-                          padding: "10px 12px",
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          background: "rgba(255,255,255,0.04)",
-                        }}
-                      >
+                      <div key={`${selected.id}-svc-${idx}`} className="bdm-service-pill">
                         {idx + 1}. {name}
                       </div>
+
                     ))}
                   </div>
                 ) : (
@@ -1880,8 +1913,17 @@ const DashboardBookings = () => {
                 placeholder={canEditNotes ? "اكتب ملاحظة داخلية..." : "لا تملك صلاحية تعديل الملاحظات"}
               />
 
-              {editMode && (
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
+                {editMode && (
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 10 }}>
+                  <button 
+                    className="reports-btn" 
+                    type="button" 
+                    onClick={() => handleDeleteBooking(selected.id)} 
+                    disabled={savingEdit}
+                    style={{ backgroundColor: "#dc3545", color: "white" }}
+                  >
+                    حذف الحجز نهائياً
+                  </button>
                   <button className="reports-btn" type="button" onClick={saveBookingEdits} disabled={savingEdit}>
                     {savingEdit ? "جارٍ الحفظ..." : "حفظ التعديل"}
                   </button>

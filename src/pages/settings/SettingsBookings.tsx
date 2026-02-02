@@ -228,6 +228,8 @@ export default function SettingsBookings() {
           slotStepMin, // من UI (مضمون 5/10/15/30)
           bufferMin,   // ✅ جديد: بفر بعد كل حجز
           businessHours: bh,
+          seasonFill: latestBooking?.seasonFill || { enabled: false, from: "", to: "" },
+          sequentialBooking: !!latestBooking?.sequentialBooking,
         },
       };
 
@@ -676,6 +678,26 @@ export default function SettingsBookings() {
               * يتم الحفظ في AppSettings داخل: <b>booking.seasonFill</b>
               <br />
               * التنفيذ الفعلي لترتيب اليوم بيكون داخل Booking.tsx + timeSlots.ts
+            </div>
+
+            <div className="settings-list" style={{ marginTop: 20 }}>
+              <label className="settings-row">
+                <span>إجبار الحجز المتتابع (منع الفراغات بين المواعيد)</span>
+                <input
+                  className="settings-check"
+                  type="checkbox"
+                  checked={!!bookingSettings?.sequentialBooking}
+                  disabled={!hasAdminPower}
+                  onChange={(e) =>
+                    setBookingSettings({
+                      sequentialBooking: e.target.checked,
+                    })
+                  }
+                />
+              </label>
+              <p className="field-hint" style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+                عند التفعيل، سيتم إجبار العميلات على الحجز مباشرة بعد آخر موعد محجوز في اليوم لمنع هدر الوقت.
+              </p>
             </div>
           </div>
 

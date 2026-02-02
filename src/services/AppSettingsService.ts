@@ -80,6 +80,7 @@ export type AppSettings = {
     holidays: Holiday[];
     closures: Closure[];
     publicClosedMessage: string;
+    sequentialBooking?: boolean;
   };
 
   // ✅ NEW: Services catalog (duration + price)
@@ -155,6 +156,7 @@ const defaultSettings: AppSettings = {
     holidays: [],
     closures: [],
     publicClosedMessage: "",
+    sequentialBooking: false,
   },
 
   services: {
@@ -319,6 +321,10 @@ function sanitize(input: any): AppSettings {
         bookingRaw.publicClosedMessage,
         defaultSettings.booking!.publicClosedMessage
       ),
+      sequentialBooking: safeBool(
+        bookingRaw.sequentialBooking,
+        defaultSettings.booking!.sequentialBooking || false
+      ),
     },
 
     services: {
@@ -471,43 +477,36 @@ export const AppSettingsService = {
 // ✅ Season Pricing helpers (LOCAL DATE)
 // =========================
 
-export function isSeasonActiveNowLocal(sp: any) {
+export function isSeasonActiveForDateLocal(sp: any, bookingDateISO: string) {
   const enabled = !!sp?.enabled;
-  const from = String(sp?.from || "").trim();
-  const to = String(sp?.to || "").trim();
+  const from = String(sp?.from || sp?.startDate || "").trim();
+  const to = String(sp?.to || sp?.endDate || "").trim();
   if (!enabled || !from || !to) return false;
 
-  const m1 = from.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const m2 = to.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m1 || !m2) return false;
+  // bookingDateISO لازم يكون YYYY-MM-DD
+  const d = String(bookingDateISO || "").trim();
+  if (!d) return false;
 
-  // ✅ local midnight (Saudi)
-  const f = new Date(Number(m1[1]), Number(m1[2]) - 1, Number(m1[3]), 0, 0, 0, 0);
-  const t = new Date(Number(m2[1]), Number(m2[2]) - 1, Number(m2[3]), 0, 0, 0, 0);
-
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-
-  return today.getTime() >= f.getTime() && today.getTime() <= t.getTime();
+  return d >= from && d <= to;
 }
+
 
 export function getEffectiveServicePrice(
   service: { price?: any; seasonPrice?: any },
-  settings: any
+  settings: any,
+  bookingDateISO: string
 ) {
   const base = Math.max(0, Number(service?.price ?? 0) || 0);
 
   const rawSP = service?.seasonPrice;
   const hasSeason = rawSP !== null && rawSP !== undefined && String(rawSP) !== "";
-
   const season = Math.max(0, Number(rawSP ?? 0) || 0);
 
   const cfg = (settings as any)?.catalogSeasonPricing || null;
-  const active = isSeasonActiveNowLocal(cfg);
+  const active = isSeasonActiveForDateLocal(cfg, bookingDateISO);
 
-  // ✅ season applies only when active AND seasonPrice exists
   if (active && hasSeason) return season;
-
   return base;
 }
+
 
