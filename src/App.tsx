@@ -26,11 +26,13 @@ import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import Track from "./pages/Track";
+import BookingInternal from "./pages/BookingInternal";
+import SuccessInternal from "./pages/SuccessInternal";
 
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
 
-// ✅ NEW: صفحة انتظار التفعيل
+// Pending Dashboard
 import DashboardPending from "./pages/DashboardPending";
 
 /* ================================
@@ -42,7 +44,7 @@ type UiRole =
   | "reception"
   | "staff"
   | "client"
-  | "pending" // ✅ NEW
+  | "pending"
   | "guest";
 
 const KNOWN_ROLES: UiRole[] = [
@@ -67,7 +69,10 @@ function normalizeRole(role: any): UiRole {
 
 function isDashboardRole(role: UiRole) {
   return (
-    role === "owner" || role === "admin" || role === "reception" || role === "staff"
+    role === "owner" ||
+    role === "admin" ||
+    role === "reception" ||
+    role === "staff"
   );
 }
 
@@ -84,7 +89,7 @@ function getNameFromStorage(): string {
     const p = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
     const n = p?.name ? String(p.name).trim() : "";
     if (n) return n;
-  } catch { }
+  } catch {}
   return String(localStorage.getItem("userName") || "").trim();
 }
 
@@ -111,7 +116,6 @@ const App: React.FC = () => {
 
   const location = useLocation();
 
-  // ✅ FIX: اعتبر pending صفحة من صفحات الداشبورد (عشان ما يظهر Navbar/Footer/ChatBot)
   const isInDashboard =
     location.pathname.startsWith("/dashboard") ||
     location.pathname.startsWith("/dashboard-pending");
@@ -121,7 +125,9 @@ const App: React.FC = () => {
     if (flag === "true") {
       setShowWelcome(true);
       setUserName(getNameFromStorage());
-      setUserRole(normalizeRole(localStorage.getItem("userRole") || "guest"));
+      setUserRole(
+        normalizeRole(localStorage.getItem("userRole") || "guest")
+      );
       localStorage.removeItem("showWelcome");
     }
   };
@@ -142,7 +148,8 @@ const App: React.FC = () => {
     };
 
     window.addEventListener("authChanged", onAuthChanged);
-    return () => window.removeEventListener("authChanged", onAuthChanged);
+    return () =>
+      window.removeEventListener("authChanged", onAuthChanged);
   }, []);
 
   /* ================================
@@ -152,11 +159,12 @@ const App: React.FC = () => {
   const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
     const role = getRoleFromStorage();
 
-    // ✅ لو Pending → صفحة انتظار
-    if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
+    if (isPendingRole(role))
+      return <Navigate to="/dashboard-pending" replace />;
 
     if (isDashboardRole(role)) return <>{children}</>;
-    if (isClientRole(role)) return <Navigate to="/client" replace />;
+    if (isClientRole(role))
+      return <Navigate to="/client" replace />;
     return <Navigate to="/login" replace />;
   };
 
@@ -164,33 +172,30 @@ const App: React.FC = () => {
     const role = getRoleFromStorage();
 
     if (isClientRole(role)) return <>{children}</>;
-    if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
-    if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+    if (isPendingRole(role))
+      return <Navigate to="/dashboard-pending" replace />;
+    if (isDashboardRole(role))
+      return <Navigate to="/dashboard" replace />;
     return <Navigate to="/login" replace />;
   };
 
   const ProfileGuard = ({ children }: { children: React.ReactNode }) => {
     const role = getRoleFromStorage();
-    if (role === "guest") return <Navigate to="/login" replace />;
+    if (role === "guest")
+      return <Navigate to="/login" replace />;
     return <>{children}</>;
   };
 
   const PendingGuard = ({ children }: { children: React.ReactNode }) => {
     const role = getRoleFromStorage();
 
-    // ✅ فقط اللي role حقه pending يدخل صفحة الانتظار
     if (isPendingRole(role)) return <>{children}</>;
-
-    // ✅ لو داشبورد رول نشط، رجّعه للداشبورد
-    if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
-
-    // ✅ لو عميلة، رجّعها للكلينت
-    if (isClientRole(role)) return <Navigate to="/client" replace />;
-
-    // ✅ غير كذا (guest) -> لوجن
+    if (isDashboardRole(role))
+      return <Navigate to="/dashboard" replace />;
+    if (isClientRole(role))
+      return <Navigate to="/client" replace />;
     return <Navigate to="/login" replace />;
   };
-
 
   return (
     <div className="app">
@@ -198,15 +203,28 @@ const App: React.FC = () => {
 
       <main className="main-content">
         <ScrollToTop />
+
         <Routes>
           {/* Public */}
           <Route path="/" element={<Home />} />
           <Route path="/services" element={<Services />} />
           <Route path="/about" element={<About />} />
           <Route path="/booking" element={<Booking />} />
+          <Route path="/booking/internal" element={<BookingInternal />} />
 
-          <Route path="/checkout" element={<Navigate to="/success" replace />} />
+          {/* Checkout */}
+          <Route
+            path="/checkout"
+            element={<Navigate to="/success" replace />}
+          />
+
+          {/* Success */}
           <Route path="/success" element={<Success />} />
+          <Route
+            path="/success-internal"
+            element={<SuccessInternal />}
+          />
+
           <Route path="/offers" element={<Offers />} />
           <Route path="/reviews" element={<Reviews />} />
           <Route path="/contact" element={<Contact />} />
@@ -227,7 +245,7 @@ const App: React.FC = () => {
             }
           />
 
-          {/* Client (Protected) */}
+          {/* Client */}
           <Route
             path="/client"
             element={
@@ -237,7 +255,7 @@ const App: React.FC = () => {
             }
           />
 
-          {/* Dashboard (Protected) */}
+          {/* Dashboard */}
           <Route
             path="/dashboard/*"
             element={
@@ -247,9 +265,7 @@ const App: React.FC = () => {
             }
           />
 
-
-
-          {/* Profile (Protected) */}
+          {/* Profile */}
           <Route
             path="/profile"
             element={
@@ -259,17 +275,26 @@ const App: React.FC = () => {
             }
           />
 
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
+          <Route
+            path="/forgot-password"
+            element={<ForgotPassword />}
+          />
+
+          <Route
+            path="/settings"
+            element={<Navigate to="/dashboard/settings" replace />}
+          />
 
           {/* Payments */}
           <Route path="/pay" element={<Pay />} />
-          <Route path="/payment-callback" element={<PaymentCallback />} />
+          <Route
+            path="/payment-callback"
+            element={<PaymentCallback />}
+          />
 
-          {/* ✅ Fallback لازم يكون آخر شيء */}
+          {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-
       </main>
 
       {!isInDashboard && <Footer />}

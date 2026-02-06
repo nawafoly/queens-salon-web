@@ -59,6 +59,9 @@ import {
   countMonthlyExpensesMissingNotesFS,
 } from "../services/firestoreExpenses";
 
+import { listAllIncomeFS } from "../services/firestoreIncome";
+
+
 import {
   canAccessDashboard,
   createOrLoadUserProfile,
@@ -142,17 +145,6 @@ function loadSettings(): AppSettings {
   }
 }
 
-function readIncomeTotal(): number {
-  try {
-    const raw = localStorage.getItem("dashboard_income_v1");
-    if (!raw) return 0;
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return 0;
-    return arr.reduce((sum, x) => sum + (Number(x?.amount) || 0), 0);
-  } catch {
-    return 0;
-  }
-}
 
 /** ✅ تحويل حجز Firestore لشكل Booking اللي تستخدمه الواجهة */
 async function mapFirestoreToUiBooking(b: BookingDocWithId): Promise<Booking> {
@@ -284,7 +276,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
             <div className="ov-info">
               <h3 className="value">{financial.income.toLocaleString()}</h3>
               <p>الدخل (يدوي)</p>
-            </div>
+              </div>
           </div>
 
           <div className="ov-stat-card">
@@ -458,13 +450,15 @@ const Dashboard: React.FC = () => {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const [expensesTotalFS, setExpensesTotalFS] = useState(0);
+  const [incomeTotalFS, setIncomeTotalFS] = useState(0);
+
   const [missingExpenseNotesCount, setMissingExpenseNotesCount] = useState(0);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navigate = useNavigate();
 
-  const totalIncome = readIncomeTotal();
+  const totalIncome = incomeTotalFS;
   const totalExpenses = expensesTotalFS;
   const netProfit = totalIncome - totalExpenses;
 
@@ -517,8 +511,10 @@ const Dashboard: React.FC = () => {
       }));
       setLatestBookings([]);
       setExpensesTotalFS(0);
+      setIncomeTotalFS(0);
       return;
     }
+    
 
     let step = "start";
 
@@ -569,11 +565,30 @@ const Dashboard: React.FC = () => {
       }
 
       if (canReadExpensesNow) {
+        // ✅ income
+        step = "income:listAllIncomeFS";
+        console.log("REFRESH -> listAllIncomeFS()");
+        const incomes = await listAllIncomeFS("main");
+        console.log("REFRESH -> income OK:", incomes.length);
+      
+        step = "income:sum";
+        const incomeTotal = incomes
+        .filter((x: any) => {
+          const source = String(x?.source || "");
+          const st = String(x?.status || "");
+          // نحسب فقط دخل الحجوزات المؤكدة/المكتملة
+          return source === "booking" && (st === "confirmed" || st === "completed");
+        })
+        .reduce((sum: number, x: any) => sum + (Number(x?.amount) || 0), 0);
+      
+        setIncomeTotalFS(incomeTotal);
+      
+        // ✅ expenses
         step = "expenses:listAllExpensesFS";
         console.log("REFRESH -> listAllExpensesFS()");
         const expenses = await listAllExpensesFS();
         console.log("REFRESH -> expenses OK:", expenses.length);
-
+      
         step = "expenses:sum";
         const expensesTotal = expenses.reduce(
           (sum, e) => sum + (Number((e as any).amount) || 0),
@@ -581,8 +596,10 @@ const Dashboard: React.FC = () => {
         );
         setExpensesTotalFS(expensesTotal);
       } else {
+        setIncomeTotalFS(0);
         setExpensesTotalFS(0);
       }
+      
 
       step = "ui:setStats/setLatestBookings";
       setStats({

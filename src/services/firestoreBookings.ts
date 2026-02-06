@@ -944,28 +944,32 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     if (shouldCreateIncome) {
       const method = parsePaymentMethod(bookingForIncome.note);
 
-      await setDoc(
-        incomeRef,
-        stripUndefined({
-          bookingId,
-          amount,
-          date: bookingForIncome.date,
-          method,
-          source: "booking",
-          clientName: bookingForIncome.clientName,
-          clientPhone: bookingForIncome.clientPhone,
+      // ✅ لا تغيّر createdAt إذا الوثيقة موجودة (مهم لـ orderBy)
+      const existingIncomeSnap = await getDoc(incomeRef);
 
-          // ✅ prefer snapshot name when available
-          serviceName:
-            bookingForIncome.serviceSnapshot?.serviceNameAtBooking || bookingForIncome.serviceName,
+      const payload = stripUndefined({
+        bookingId,
+        amount,
+        date: bookingForIncome.date,
+        method,
+        source: "booking",
+        clientName: bookingForIncome.clientName,
+        clientPhone: bookingForIncome.clientPhone,
 
-          employeeName: bookingForIncome.employeeName,
-          status,
-          updatedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-        }) as any,
-        { merge: true }
-      );
+        serviceName:
+          bookingForIncome.serviceSnapshot?.serviceNameAtBooking ||
+          bookingForIncome.serviceName,
+
+        employeeName: bookingForIncome.employeeName,
+        status,
+
+        updatedAt: serverTimestamp(),
+
+        // ✅ createdAt مرة وحدة فقط
+        createdAt: existingIncomeSnap.exists() ? undefined : serverTimestamp(),
+      });
+
+      await setDoc(incomeRef, payload as any, { merge: true });
     } else if (shouldDeleteIncome) {
       try {
         const s = await getDoc(incomeRef);
@@ -974,6 +978,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         // ignore
       }
     }
+
   } catch {
     // ✅ مهم: لا نرمي خطأ هنا عشان ما نكسر تعديل الحجز
   }
