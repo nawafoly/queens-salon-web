@@ -613,7 +613,3 @@ export default function DashboardIncome() {
 void loadBookings;
 void isRevenueStatus;
 
-// 🔕 silence unused helpers
-void loadBookings;
-void isRevenueStatus;
-

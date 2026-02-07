@@ -38,6 +38,9 @@ import DashboardLogs from "../pages/DashboardLogs";
 
 import DashboardStaff from "../pages/DashboardStaff";
 
+// ✅ NEW: الحجز الداخلي داخل الداشبورد
+import BookingInternal from "../pages/BookingInternal";
+
 import logo1 from "../assets/images/ssunnamed3.png";
 
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -189,12 +192,12 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 }) => {
   const statusLabel = useMemo(
     () =>
-    ({
-      confirmed: "مؤكد",
-      pending: "في الانتظار",
-      cancelled: "ملغي",
-      completed: "مكتمل",
-    } as Record<BookingStatus, string>),
+      ({
+        confirmed: "مؤكد",
+        pending: "في الانتظار",
+        cancelled: "ملغي",
+        completed: "مكتمل",
+      } as Record<BookingStatus, string>),
     []
   );
 
@@ -536,8 +539,17 @@ const Dashboard: React.FC = () => {
       const dd = String(today.getDate()).padStart(2, "0");
       const todayStr = `${yyyy}-${mm}-${dd}`;
 
-      const todayList = uiBookings.filter((b) => String(b.date) === todayStr);
-      const todayRevenue = todayList.reduce((sum, b) => sum + (Number((b as any).total) || 0), 0);
+      const todayListAll = uiBookings.filter((b) => String(b.date) === todayStr);
+
+      const todayList = todayListAll.filter(
+        (b) => b.status === "confirmed" || b.status === "completed"
+      );
+      
+      const todayRevenue = todayList.reduce(
+        (sum, b) => sum + (Number((b as any).total) || 0),
+        0
+      );
+      
 
       let employeesCount = 0;
       try {
@@ -576,7 +588,10 @@ const Dashboard: React.FC = () => {
         console.log("REFRESH -> expenses OK:", expenses.length);
 
         step = "expenses:sum";
-        const expensesTotal = expenses.reduce((sum, e) => sum + (Number((e as any).amount) || 0), 0);
+        const expensesTotal = expenses.reduce(
+          (sum, e) => sum + (Number((e as any).amount) || 0),
+          0
+        );
         setExpensesTotalFS(expensesTotal);
       } else {
         setIncomeTotalFS(0);
@@ -657,7 +672,7 @@ const Dashboard: React.FC = () => {
         sections: { ...prev.sections, ...(cached?.sections || {}) },
         policies: { ...prev.policies, ...(cached?.policies || {}) },
       }));
-    } catch { }
+    } catch {}
 
     const unsub = AppSettingsService.subscribe((remote: any) => {
       setSettings((prev) => ({
@@ -714,9 +729,9 @@ const Dashboard: React.FC = () => {
 
           const fallbackRole: UiRole =
             cachedRole === "owner" ||
-              cachedRole === "admin" ||
-              cachedRole === "reception" ||
-              cachedRole === "staff"
+            cachedRole === "admin" ||
+            cachedRole === "reception" ||
+            cachedRole === "staff"
               ? (cachedRole as UiRole)
               : "staff";
 
@@ -771,9 +786,6 @@ const Dashboard: React.FC = () => {
     return () => unsub();
   }, [navigate]);
 
-  // - pending  -> cancelled (يفك slots)
-  // - confirmed -> completed (لا يفك slots)
-  // ✅ حماية: يشتغل Owner/Admin فقط
   // ✅ Auto Job (Client-side): كل 5 دقائق
   // - pending  -> cancelled (يفك slots)
   // - confirmed -> completed (لا يفك slots)
@@ -876,7 +888,6 @@ const Dashboard: React.FC = () => {
     };
   }, [userInfo?.role]);
 
-
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -936,12 +947,14 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  // ✅ QUICK ACTIONS (تم تعديل newBooking)
   const handleQuickAction = (key: "newBooking" | "bookings" | "reports") => {
-    if (key === "newBooking") navigate("/booking");
+    if (key === "newBooking") navigate("/dashboard/booking-internal");
     if (key === "bookings") navigate("/dashboard/bookings");
     if (key === "reports") navigate("/dashboard/reports");
     setIsSidebarOpen(false);
   };
+  
 
   const handleOpenBooking = (booking: Booking) => setSelectedBooking(booking);
 
@@ -954,7 +967,9 @@ const Dashboard: React.FC = () => {
         await updateBookingStatusFS(id, status);
         const roleNow = userInfo?.role;
         await refreshDashboard(roleNow);
-        setSelectedBooking((prev) => (prev && prev.id === id ? { ...prev, status } : prev));
+        setSelectedBooking((prev) =>
+          prev && prev.id === id ? { ...prev, status } : prev
+        );
       } catch (e) {
         console.error(e);
         alert("تعذر تحديث الحالة. تأكد من الصلاحيات/Rules.");
@@ -1056,8 +1071,7 @@ const Dashboard: React.FC = () => {
         <div className="row">
           {/* Sidebar */}
           <div
-            className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""
-              }`}
+            className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""}`}
           >
             <button
               type="button"
@@ -1338,12 +1352,22 @@ const Dashboard: React.FC = () => {
                   />
                 )}
 
+                // ✅ NEW: Route للحجز الداخلي داخل الداشبورد (Owner/Admin/Reception فقط)
+                {(hasAdminPower || isReception) && (
+                  <Route
+                    path="booking-internal"
+                    element={<BookingInternal internalMode />}
+                  />
+                )}
+
                 {(hasAdminPower || isReception) && canSeeSection("bookings") && (
                   <Route path="bookings" element={<DashboardBookings />} />
                 )}
 
                 {(hasAdminPower || (isReception && allowStaffViewClients)) &&
-                  canSeeSection("clients") && <Route path="clients" element={<DashboardClients />} />}
+                  canSeeSection("clients") && (
+                    <Route path="clients" element={<DashboardClients />} />
+                  )}
 
                 {hasAdminPower && canSeeSection("employees") && (
                   <Route path="employees" element={<DashboardEmployees />} />
@@ -1399,7 +1423,11 @@ const Dashboard: React.FC = () => {
                 <small>عرض تفاصيل الحجز بشكل مرتب وواضح</small>
               </div>
 
-              <button className="exp-btn ghost" type="button" onClick={() => setSelectedBooking(null)}>
+              <button
+                className="exp-btn ghost"
+                type="button"
+                onClick={() => setSelectedBooking(null)}
+              >
                 <FontAwesomeIcon icon={faXmark} /> إغلاق
               </button>
             </div>
@@ -1449,8 +1477,8 @@ const Dashboard: React.FC = () => {
 
                 <div className="dash-status-row">
                   {hasAdminPower ||
-                    (isReception && allowReceptionChangeStatus) ||
-                    (isStaff && allowStaffChangeStatus) ? (
+                  (isReception && allowReceptionChangeStatus) ||
+                  (isStaff && allowStaffChangeStatus) ? (
                     <select
                       className="dash-select"
                       value={selectedBooking.status}
@@ -1481,10 +1509,18 @@ const Dashboard: React.FC = () => {
             </div>
 
             <div className="dash-modal-actions">
-              <button className="exp-btn ghost" onClick={() => navigate("/dashboard/bookings")} type="button">
+              <button
+                className="exp-btn ghost"
+                onClick={() => navigate("/dashboard/bookings")}
+                type="button"
+              >
                 فتح صفحة الحجوزات
               </button>
-              <button className="exp-btn primary" onClick={() => setSelectedBooking(null)} type="button">
+              <button
+                className="exp-btn primary"
+                onClick={() => setSelectedBooking(null)}
+                type="button"
+              >
                 تم
               </button>
             </div>

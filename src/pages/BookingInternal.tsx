@@ -605,7 +605,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     // doc id
     return { kind: "id" as const, value: s };
-  }
+  } 
 
   async function searchBookingsForReception(raw: string) {
     const q0 = normalizeSearchKey(raw);

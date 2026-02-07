@@ -346,10 +346,6 @@ export default function Success() {
 
   // ✅ هنا النص اللي أرسلته أنت
   const heroDesc = isConfirmed
-  const mkList = views
-    .map((v) => String(v.publicId || "").trim())
-    .filter(Boolean);
-
   const firstMk = String(first?.publicId || "").trim() || "—";
   const canTrack = firstMk !== "—";
 

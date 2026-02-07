@@ -9,7 +9,6 @@ const hairGuideImg = "/hair-length-guide.png";
 
 import {
   faCalendarAlt,
-  faClock,
   faUser,
   faPhone,
   faSpinner,
@@ -1991,7 +1990,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const signedUid = getSignedInUidOrNull();
 
     // ✅ في الحجز الداخلي: ما نطلب تسجيل دخول عميلة
-    if (!internalMode && !signedUid) {
+    if (!signedUid) {
       openModal(
         {
           title: "لازم تسجّلين دخول",
@@ -2176,8 +2175,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
         const res = await createBooking({
           userId: uid,
-          createdBy: internalMode ? "staff" : "client",
-          channel: internalMode ? "internal" : "client",
+          createdBy: "client",
+          channel: "client",
+
 
 
           clientName: String(formData.name || "").trim(),
@@ -2352,29 +2352,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         <div className="row justify-content-center">
           <div className="col-lg-8">
             <div className="booking-card">
-              <div className="booking-header">
-                <div className="booking-logo">
-                  <img src={logo} alt="Queens Salon Logo" />
-                </div>
 
-                <h1 className="booking-title">احجزي موعدك الآن</h1>
-
-                {/* ✅ زر الحجز الداخلي */}
-                {internalMode === false && (
-                  <div className="mt-3 d-flex justify-content-center">
-                    <button
-                      type="button"
-                      className="btn btn-outline-dark"
-                      onClick={() => navigate("/booking/internal")}
-                    >
-                      حجز داخلي (Walk-in)
-                    </button>
-                  </div>
-                )}
-
+              {/* ✅ Logo */}
+              <div className="text-center mb-3">
+                <img
+                  src={logo}
+                  alt="Queens Salon"
+                  style={{ height: 80, objectFit: "contain" }}
+                />
               </div>
 
               <form className="booking-form" onSubmit={handleSubmit}>
+
                 <div className="row">
                   <div className="col-md-6 mb-4">
                     {/* الاسم */}

@@ -27,7 +27,7 @@ import { AppSettingsService } from "./AppSettingsService";
 import { getAuth } from "firebase/auth";
 
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
-export type BookingChannel = "client" | "dashboard";
+export type BookingChannel = "client" | "dashboard" | "internal";
 
 // ✅ NEW: Snapshot ثابت للعرض وعدم تأثر الحجوزات بتغيير الأسعار لاحقًا
 export type ServiceSnapshot = {
@@ -132,8 +132,13 @@ function normalizeBooking(raw: any): BookingDoc {
     bufferMinAtBooking: Number(raw?.bufferMinAtBooking ?? 0) || undefined,
 
     createdBy: String(raw?.createdBy ?? ""),
-    channel: raw?.channel === "dashboard" ? "dashboard" : "client",
-
+    channel:
+    raw?.channel === "internal"
+      ? "internal"
+      : raw?.channel === "dashboard"
+      ? "dashboard"
+      : "client",
+  
     clientName: String(raw?.clientName ?? ""),
     clientPhone: String(raw?.clientPhone ?? ""),
 
@@ -145,13 +150,13 @@ function normalizeBooking(raw: any): BookingDoc {
     publicId: raw?.publicId ? String(raw.publicId) : undefined,
     serviceSnapshot: raw?.serviceSnapshot
       ? {
-        serviceNameAtBooking: String(raw.serviceSnapshot.serviceNameAtBooking ?? ""),
-        priceAtBooking: Number(raw.serviceSnapshot.priceAtBooking ?? 0),
-        durationAtBooking: Number(raw.serviceSnapshot.durationAtBooking ?? 0),
-        sectionIdAtBooking: raw.serviceSnapshot.sectionIdAtBooking
-          ? String(raw.serviceSnapshot.sectionIdAtBooking)
-          : undefined,
-      }
+          serviceNameAtBooking: String(raw.serviceSnapshot.serviceNameAtBooking ?? ""),
+          priceAtBooking: Number(raw.serviceSnapshot.priceAtBooking ?? 0),
+          durationAtBooking: Number(raw.serviceSnapshot.durationAtBooking ?? 0),
+          sectionIdAtBooking: raw.serviceSnapshot.sectionIdAtBooking
+            ? String(raw.serviceSnapshot.sectionIdAtBooking)
+            : undefined,
+        }
       : undefined,
 
     durationMin: Number(raw?.durationMin ?? 0) || undefined,
@@ -301,12 +306,9 @@ function getTimesToLock(
 
   const endMinRaw = startMin + totalMin;
 
-  // ✅ نعرض أول وقت حجز متاح من بداية الدوام مباشرة (بدون منع أول سلوّت)
   // ✅ round UP to nearest slot boundary (step-based)
   const endMin =
-    slotStepMin > 0
-      ? Math.ceil(endMinRaw / slotStepMin) * slotStepMin
-      : endMinRaw;
+    slotStepMin > 0 ? Math.ceil(endMinRaw / slotStepMin) * slotStepMin : endMinRaw;
 
   const locked: string[] = [];
 
@@ -317,10 +319,8 @@ function getTimesToLock(
     if (m >= startMin && m < endMin) locked.push(t);
   }
 
-
   return locked.length ? locked : [s || startTime];
 }
-
 
 /* =========================
    ✅ Booking Logs (Audit) - Best Effort
@@ -365,6 +365,21 @@ async function writeBookingLog(args: {
 }
 
 /* =========================
+   ✅ Slots Unlock (Best Effort) — Guaranteed
+   - Deletes booking_slots by bookingId (works even لو employeeId/Key اختلف)
+========================= */
+async function unlockSlotsByBookingId(bookingId: string) {
+  try {
+    const q = query(collection(db, ...SLOTS_COL), where("bookingId", "==", bookingId));
+    const snap = await getDocs(q);
+    if (snap.empty) return;
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+  } catch {
+    // best-effort: لا نكسر تعديل الحالة
+  }
+}
+
+/* =========================
    CREATE
 ========================= */
 
@@ -389,14 +404,10 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const durationMin = Math.max(0, Number(data.durationMin || 0)) || 60;
 
   // ✅ times to lock (start + next slots)
-  const timesToLock = getTimesToLock(
-    String(data.time || "").trim(),
-    durationMin,
-    {
-      slotStepMin: (data as any).slotStepMinAtBooking,
-      bufferMin: (data as any).bufferMinAtBooking,
-    }
-  );
+  const timesToLock = getTimesToLock(String(data.time || "").trim(), durationMin, {
+    slotStepMin: (data as any).slotStepMinAtBooking,
+    bufferMin: (data as any).bufferMinAtBooking,
+  });
 
   // ✅ booking ref
   const bookingRef = doc(collection(db, ...BOOKINGS_COL));
@@ -442,7 +453,6 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     slotStepMinAtBooking: (data as any).slotStepMinAtBooking ?? getSlotSettings().slotStepMin,
     bufferMinAtBooking: (data as any).bufferMinAtBooking ?? getSlotSettings().bufferMin,
 
-
     createdAt: serverTimestamp(),
   });
 
@@ -485,7 +495,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         const sameEmp =
           String(existingBooking.employeeKey || "") === String(employeeKey) ||
           safeKey(String(existingBooking.employeeId ?? "").trim() || existingBooking.employeeName.trim()) ===
-          safeKey(employeeKeyForLock);
+            safeKey(employeeKeyForLock);
 
         if (sameUser && sameDate && sameStart && sameEmp) {
           const existingPublic = String(existingBooking.publicId || "").trim();
@@ -586,7 +596,6 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
       }) as any,
       { merge: true }
     );
-
   } catch (e) {
     console.warn("[createBooking] track write failed (ignored):", e);
   }
@@ -605,6 +614,46 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
       total: Number(data.finalPrice ?? data.total ?? 0),
     },
   });
+
+    // ✅ NEW: create income on CREATE when booking is created as confirmed/completed (Dashboard internal)
+  // - prevents "income=0" when booking is created directly as confirmed
+  // - uniqueness: income docId = bookingId
+  try {
+    const shouldCreateIncome = data.status === "confirmed" || data.status === "completed";
+    if (shouldCreateIncome) {
+      const incomeRef = doc(db, ...INCOME_COL, bookingId);
+      const existing = await getDoc(incomeRef);
+
+      if (!existing.exists()) {
+        const amount = Number(data.finalPrice ?? data.total ?? serviceSnapshot.priceAtBooking ?? 0) || 0;
+        const method = parsePaymentMethod(data.note);
+
+        await setDoc(
+          incomeRef,
+          stripUndefined({
+            source: "booking",
+            bookingId,
+            amount,
+            status: data.status === "completed" ? "completed" : "confirmed",
+            method,
+
+            date: data.date,
+            clientName: data.clientName,
+            clientPhone: data.clientPhone,
+
+            serviceName: serviceSnapshot?.serviceNameAtBooking || data.serviceName,
+            employeeName: data.employeeName,
+
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }) as any
+        );
+      }
+    }
+  } catch (e) {
+    console.error("[createBooking] income create failed (ignored):", e);
+  }
+
 
   return { id: bookingId, publicId };
 }
@@ -853,10 +902,14 @@ export function watchEmployeeBookings(
  * ✅ FIX:
  * 1) تحديث الحالة لازم ينجح حتى لو income ممنوع بالـ rules
  * 2) نخلي income "best-effort" خارج الترانزاكشن (ما يكسّر تعديل الحجز)
+ * 3) ✅ إلغاء الحجز يفتح الوقت (يفك booking_slots) بطريقة مضمونة by bookingId
+ * 4) ✅ الدخل ما يتكرر: ننشئ income مرة وحدة فقط عند confirmed (وإذا موجود لا نعيد إنشاء)
  */
 export async function updateBookingStatus(bookingId: string, status: BookingStatus) {
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const trackRef = doc(db, ...TRACKS_COL, bookingId);
+
+  // ✅ ثابت: نخلي income docId = bookingId (يعطيك uniqueness تلقائي)
   const incomeRef = doc(db, ...INCOME_COL, bookingId);
 
   // ✅ 1) Transaction: booking + track فقط
@@ -906,38 +959,6 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
       { merge: true }
     );
 
-    // ✅ IMPORTANT: إذا صار الحجز "ملغي" لازم نفك الأقفال من booking_slots
-    // لأن Booking.tsx يعتبر الوقت محجوز إذا وثيقة slot موجودة.
-    if (status === "cancelled") {
-      const employeeIdForLock =
-        String(booking.employeeId ?? "").trim() ||
-        String(booking.employeeKey ?? "").trim(); // fallback
-
-      // لو ما عندنا employeeId ما نقدر نحدد أقفال الموظفة (حماية)
-      if (employeeIdForLock) {
-        // ✅ نفس منطق إنشاء الأقفال (مدة + بفر + step)
-        const duration =
-          Number(booking.durationMin ?? booking.serviceSnapshot?.durationAtBooking ?? 0) || 60;
-
-        const timesToUnlock = getTimesToLock(
-          String(booking.time || "").trim(),
-          duration,
-          {
-            slotStepMin: (booking as any).slotStepMinAtBooking,
-            bufferMin: (booking as any).bufferMinAtBooking,
-          }
-        );
-
-        const slotRefsToDelete = timesToUnlock.map((t) =>
-          doc(db, ...SLOTS_COL, buildSlotId(booking.date, t, employeeIdForLock))
-        );
-
-        for (const r of slotRefsToDelete) {
-          tx.delete(r);
-        }
-      }
-    }
-
     return booking;
   });
 
@@ -949,53 +970,98 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     patch: { status },
   });
 
+  // ✅ 1.5) ✅ إذا صار الحجز ملغي: فك الأقفال by bookingId (مضمون)
+  if (status === "cancelled") {
+    await unlockSlotsByBookingId(bookingId);
+  }
+
   // ✅ 2) Best-effort: income خارج الترانزاكشن (ما يمنع تعديل الحجز)
   try {
     const amount = getAmount(bookingForIncome);
 
-    const shouldCreateIncome = status === "confirmed" || status === "completed";
-    const shouldDeleteIncome = status === "pending" || status === "cancelled";
+    // ✅ المطلوب منك: الدخل يننشأ مرة وحدة فقط عند confirmed
+    if (status === "confirmed") {
+      // ✅ check: إذا income موجود مسبقًا لنفس bookingId → لا نعيد إنشاء (ما يتكرر)
+      const existing = await getDoc(incomeRef);
+      if (!existing.exists()) {
+        const method = parsePaymentMethod(bookingForIncome.note);
 
-    if (shouldCreateIncome) {
-      const method = parsePaymentMethod(bookingForIncome.note);
+        await setDoc(
+          incomeRef,
+          stripUndefined({
+            source: "booking",
+            bookingId,
+            amount: Number(amount || 0),
+            status: "confirmed",
+            method,
 
-      // ✅ لا تغيّر createdAt إذا الوثيقة موجودة (مهم لـ orderBy)
-      const existingIncomeSnap = await getDoc(incomeRef);
+            date: bookingForIncome.date,
+            clientName: bookingForIncome.clientName,
+            clientPhone: bookingForIncome.clientPhone,
 
-      const payload = stripUndefined({
-        bookingId,
-        amount,
-        date: bookingForIncome.date,
-        method,
-        source: "booking",
-        clientName: bookingForIncome.clientName,
-        clientPhone: bookingForIncome.clientPhone,
+            serviceName:
+              bookingForIncome.serviceSnapshot?.serviceNameAtBooking ||
+              bookingForIncome.serviceName,
 
-        serviceName:
-          bookingForIncome.serviceSnapshot?.serviceNameAtBooking ||
-          bookingForIncome.serviceName,
+            employeeName: bookingForIncome.employeeName,
 
-        employeeName: bookingForIncome.employeeName,
-        status,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }) as any
+        );
+      } else {
+        // ✅ موجود: فقط حدّث updatedAt/status لو تحب (بدون تكرار)
+        try {
+          await setDoc(
+            incomeRef,
+            stripUndefined({
+              status: "confirmed",
+              updatedAt: serverTimestamp(),
+            }) as any,
+            { merge: true }
+          );
+        } catch {
+          // ignore
+        }
+      }
 
-        updatedAt: serverTimestamp(),
+      return;
+    }
 
-        // ✅ createdAt مرة وحدة فقط
-        createdAt: existingIncomeSnap.exists() ? undefined : serverTimestamp(),
-      });
-
-      await setDoc(incomeRef, payload as any, { merge: true });
-    } else if (shouldDeleteIncome) {
+    // ✅ إذا رجع pending أو cancelled: احذف income (best-effort)
+    if (status === "pending" || status === "cancelled") {
       try {
         const s = await getDoc(incomeRef);
         if (s.exists()) await deleteDoc(incomeRef);
       } catch {
         // ignore
       }
+      return;
     }
 
-  } catch {
+    // ✅ completed: ما ننشئ income جديد (عشان شرطك "confirmed مرة وحدة")،
+    // لكن نقدر نحدّث status فقط إذا الدخل موجود.
+    if (status === "completed") {
+      try {
+        const s = await getDoc(incomeRef);
+        if (s.exists()) {
+          await setDoc(
+            incomeRef,
+            stripUndefined({
+              status: "completed",
+              updatedAt: serverTimestamp(),
+            }) as any,
+            { merge: true }
+          );
+        }
+      } catch {
+        // ignore
+      }
+      return;
+    }
+  } catch (e) {
     // ✅ مهم: لا نرمي خطأ هنا عشان ما نكسر تعديل الحجز
+    console.error("income update failed (ignored):", e);
   }
 }
 
@@ -1148,7 +1214,8 @@ export async function backfillServiceFields(opts?: { dryRun?: boolean; limit?: n
 
     const legacy = String(b.serviceName || "").trim();
 
-    const looksLikeId = legacy.length >= 15 && !legacy.includes(" ") && /^[A-Za-z0-9_-]+$/.test(legacy);
+    const looksLikeId =
+      legacy.length >= 15 && !legacy.includes(" ") && /^[A-Za-z0-9_-]+$/.test(legacy);
 
     const nextServiceId = hasServiceId ? b.serviceId : looksLikeId ? legacy : undefined;
 
@@ -1206,32 +1273,17 @@ export async function deleteBooking(bookingId: string) {
   const snap = await getDoc(bookingRef);
   if (!snap.exists()) return; // حُذف مسبقاً
 
-  const booking = normalizeBooking(snap.data());
-
   // 2) حذف الوثائق الأساسية
   await deleteDoc(bookingRef);
-  try { await deleteDoc(trackRef); } catch (e) { }
-  try { await deleteDoc(incomeRef); } catch (e) { }
+  try {
+    await deleteDoc(trackRef);
+  } catch {}
+  try {
+    await deleteDoc(incomeRef);
+  } catch {}
 
-  // 3) فك الأقفال (Slots)
-  const employeeIdForLock = String(booking.employeeId ?? "").trim();
-
-  if (employeeIdForLock) {
-    const duration = Number(booking.durationMin ?? booking.serviceSnapshot?.durationAtBooking ?? 0) || 60;
-    const timesToUnlock = getTimesToLock(
-      String(booking.time || "").trim(),
-      duration,
-      {
-        slotStepMin: (booking as any).slotStepMinAtBooking,
-        bufferMin: (booking as any).bufferMinAtBooking,
-      }
-    );
-
-    const batch = timesToUnlock.map((t) =>
-      deleteDoc(doc(db, ...SLOTS_COL, buildSlotId(booking.date, t, employeeIdForLock)))
-    );
-    await Promise.all(batch);
-  }
+  // 3) ✅ فك الأقفال (Slots) — مضمونة by bookingId
+  await unlockSlotsByBookingId(bookingId);
 
   // 4) تسجيل اللوغ
   await writeBookingLog({

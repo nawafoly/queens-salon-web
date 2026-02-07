@@ -125,9 +125,7 @@ const App: React.FC = () => {
     if (flag === "true") {
       setShowWelcome(true);
       setUserName(getNameFromStorage());
-      setUserRole(
-        normalizeRole(localStorage.getItem("userRole") || "guest")
-      );
+      setUserRole(normalizeRole(localStorage.getItem("userRole") || "guest"));
       localStorage.removeItem("showWelcome");
     }
   };
@@ -148,8 +146,7 @@ const App: React.FC = () => {
     };
 
     window.addEventListener("authChanged", onAuthChanged);
-    return () =>
-      window.removeEventListener("authChanged", onAuthChanged);
+    return () => window.removeEventListener("authChanged", onAuthChanged);
   }, []);
 
   /* ================================
@@ -163,8 +160,7 @@ const App: React.FC = () => {
       return <Navigate to="/dashboard-pending" replace />;
 
     if (isDashboardRole(role)) return <>{children}</>;
-    if (isClientRole(role))
-      return <Navigate to="/client" replace />;
+    if (isClientRole(role)) return <Navigate to="/client" replace />;
     return <Navigate to="/login" replace />;
   };
 
@@ -174,15 +170,13 @@ const App: React.FC = () => {
     if (isClientRole(role)) return <>{children}</>;
     if (isPendingRole(role))
       return <Navigate to="/dashboard-pending" replace />;
-    if (isDashboardRole(role))
-      return <Navigate to="/dashboard" replace />;
+    if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
     return <Navigate to="/login" replace />;
   };
 
   const ProfileGuard = ({ children }: { children: React.ReactNode }) => {
     const role = getRoleFromStorage();
-    if (role === "guest")
-      return <Navigate to="/login" replace />;
+    if (role === "guest") return <Navigate to="/login" replace />;
     return <>{children}</>;
   };
 
@@ -190,10 +184,8 @@ const App: React.FC = () => {
     const role = getRoleFromStorage();
 
     if (isPendingRole(role)) return <>{children}</>;
-    if (isDashboardRole(role))
-      return <Navigate to="/dashboard" replace />;
-    if (isClientRole(role))
-      return <Navigate to="/client" replace />;
+    if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+    if (isClientRole(role)) return <Navigate to="/client" replace />;
     return <Navigate to="/login" replace />;
   };
 
@@ -209,21 +201,19 @@ const App: React.FC = () => {
           <Route path="/" element={<Home />} />
           <Route path="/services" element={<Services />} />
           <Route path="/about" element={<About />} />
+
+          {/* ✅ Client Booking (Public) */}
           <Route path="/booking" element={<Booking />} />
-          <Route path="/booking/internal" element={<BookingInternal />} />
+
+          {/* ✅ OLD path (keep for backward compatibility) -> redirect into dashboard route */}
+          <Route path="/booking/internal" element={<Navigate to="/dashboard/booking-internal" replace />} />
 
           {/* Checkout */}
-          <Route
-            path="/checkout"
-            element={<Navigate to="/success" replace />}
-          />
+          <Route path="/checkout" element={<Navigate to="/success" replace />} />
 
           {/* Success */}
           <Route path="/success" element={<Success />} />
-          <Route
-            path="/success-internal"
-            element={<SuccessInternal />}
-          />
+          <Route path="/success-internal" element={<SuccessInternal />} />
 
           <Route path="/offers" element={<Offers />} />
           <Route path="/reviews" element={<Reviews />} />
@@ -255,6 +245,16 @@ const App: React.FC = () => {
             }
           />
 
+          {/* ✅ Dashboard Booking Internal (Protected) */}
+          <Route
+            path="/dashboard/booking-internal"
+            element={
+              <DashboardGuard>
+                <BookingInternal />
+              </DashboardGuard>
+            }
+          />
+
           {/* Dashboard */}
           <Route
             path="/dashboard/*"
@@ -275,22 +275,13 @@ const App: React.FC = () => {
             }
           />
 
-          <Route
-            path="/forgot-password"
-            element={<ForgotPassword />}
-          />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
 
-          <Route
-            path="/settings"
-            element={<Navigate to="/dashboard/settings" replace />}
-          />
+          <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
           {/* Payments */}
           <Route path="/pay" element={<Pay />} />
-          <Route
-            path="/payment-callback"
-            element={<PaymentCallback />}
-          />
+          <Route path="/payment-callback" element={<PaymentCallback />} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
