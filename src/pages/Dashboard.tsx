@@ -1,5 +1,3 @@
-
-
 // ✅ src/pages/Dashboard.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Routes, Route, NavLink, useNavigate, Navigate } from "react-router-dom";
@@ -49,7 +47,7 @@ import type { Booking, BookingStatus } from "../helpers/dashboardService";
 import { DashboardService } from "../helpers/dashboardService";
 
 import {
-  listAllBookings,
+  listAllBookings as listAllBookingsFS,
   updateBookingStatus as updateBookingStatusFS,
   type BookingDocWithId,
 } from "../services/firestoreBookings";
@@ -60,7 +58,6 @@ import {
 } from "../services/firestoreExpenses";
 
 import { listAllIncomeFS } from "../services/firestoreIncome";
-
 
 import {
   canAccessDashboard,
@@ -86,7 +83,6 @@ type SectionKey =
   | "expenses"
   | "logs"
   | "settings";
-
 
 type AppSettings = {
   salonName: string;
@@ -119,7 +115,6 @@ const defaultSettings: AppSettings = {
     logs: true,
     settings: true,
   },
-
   policies: {
     allowStaffChangeStatus: true,
     allowReceptionChangeStatus: true,
@@ -144,7 +139,6 @@ function loadSettings(): AppSettings {
     return defaultSettings;
   }
 }
-
 
 /** ✅ تحويل حجز Firestore لشكل Booking اللي تستخدمه الواجهة */
 async function mapFirestoreToUiBooking(b: BookingDocWithId): Promise<Booking> {
@@ -275,8 +269,8 @@ const DashboardOverview: React.FC<OverviewProps> = ({
             </div>
             <div className="ov-info">
               <h3 className="value">{financial.income.toLocaleString()}</h3>
-              <p>الدخل (يدوي)</p>
-              </div>
+              <p>الدخل (من الحجوزات)</p>
+            </div>
           </div>
 
           <div className="ov-stat-card">
@@ -434,9 +428,8 @@ function mapProfileRoleToDashboardRole(role: ProfileRole): UiRole | null {
 
 const Dashboard: React.FC = () => {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const [dashError, setDashError] = useState<string>(""); // ✅ NEW
+  const [dashError, setDashError] = useState<string>("");
 
-  // ✅ يبدأ من localStorage fallback
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
 
   const [stats, setStats] = useState({
@@ -475,8 +468,7 @@ const Dashboard: React.FC = () => {
     const prevWidth = body.style.width;
     const prevPaddingRight = body.style.paddingRight;
 
-    const scrollBarWidth =
-      window.innerWidth - document.documentElement.clientWidth;
+    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
 
     body.style.overflow = "hidden";
     body.style.position = "fixed";
@@ -514,12 +506,10 @@ const Dashboard: React.FC = () => {
       setIncomeTotalFS(0);
       return;
     }
-    
 
     let step = "start";
 
-    const canReadExpensesNow =
-      roleForRefresh === "owner" || roleForRefresh === "admin";
+    const canReadExpensesNow = roleForRefresh === "owner" || roleForRefresh === "admin";
 
     try {
       step = "migrateBookingsIfNeeded";
@@ -533,7 +523,7 @@ const Dashboard: React.FC = () => {
 
       step = "bookings:listAllBookings";
       console.log("REFRESH -> listAllBookings()");
-      const docs = await listAllBookings();
+      const docs = await listAllBookingsFS();
       console.log("REFRESH -> bookings OK:", docs.length);
 
       step = "bookings:mapFirestoreToUiBooking";
@@ -547,10 +537,7 @@ const Dashboard: React.FC = () => {
       const todayStr = `${yyyy}-${mm}-${dd}`;
 
       const todayList = uiBookings.filter((b) => String(b.date) === todayStr);
-      const todayRevenue = todayList.reduce(
-        (sum, b) => sum + (Number((b as any).total) || 0),
-        0
-      );
+      const todayRevenue = todayList.reduce((sum, b) => sum + (Number((b as any).total) || 0), 0);
 
       let employeesCount = 0;
       try {
@@ -570,36 +557,31 @@ const Dashboard: React.FC = () => {
         console.log("REFRESH -> listAllIncomeFS()");
         const incomes = await listAllIncomeFS("main");
         console.log("REFRESH -> income OK:", incomes.length);
-      
+
         step = "income:sum";
         const incomeTotal = incomes
-        .filter((x: any) => {
-          const source = String(x?.source || "");
-          const st = String(x?.status || "");
-          // نحسب فقط دخل الحجوزات المؤكدة/المكتملة
-          return source === "booking" && (st === "confirmed" || st === "completed");
-        })
-        .reduce((sum: number, x: any) => sum + (Number(x?.amount) || 0), 0);
-      
+          .filter((x: any) => {
+            const source = String(x?.source || "");
+            const st = String(x?.status || "");
+            return source === "booking" && (st === "confirmed" || st === "completed");
+          })
+          .reduce((sum: number, x: any) => sum + (Number(x?.amount) || 0), 0);
+
         setIncomeTotalFS(incomeTotal);
-      
+
         // ✅ expenses
         step = "expenses:listAllExpensesFS";
         console.log("REFRESH -> listAllExpensesFS()");
         const expenses = await listAllExpensesFS();
         console.log("REFRESH -> expenses OK:", expenses.length);
-      
+
         step = "expenses:sum";
-        const expensesTotal = expenses.reduce(
-          (sum, e) => sum + (Number((e as any).amount) || 0),
-          0
-        );
+        const expensesTotal = expenses.reduce((sum, e) => sum + (Number((e as any).amount) || 0), 0);
         setExpensesTotalFS(expensesTotal);
       } else {
         setIncomeTotalFS(0);
         setExpensesTotalFS(0);
       }
-      
 
       step = "ui:setStats/setLatestBookings";
       setStats({
@@ -618,9 +600,7 @@ const Dashboard: React.FC = () => {
       const code = (e as any)?.code || (e as any)?.name || "-";
       const msg = String((e as any)?.message || "");
 
-      alert(
-        `❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`
-      );
+      alert(`❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`);
 
       setStats((prev) => ({
         ...prev,
@@ -630,6 +610,7 @@ const Dashboard: React.FC = () => {
       }));
       setLatestBookings([]);
       setExpensesTotalFS(0);
+      setIncomeTotalFS(0); // ✅ FIX (كان ناقص)
     }
   };
 
@@ -637,8 +618,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     if (!userInfo) return;
 
-    const isAdminPowerNow =
-      userInfo.role === "owner" || userInfo.role === "admin";
+    const isAdminPowerNow = userInfo.role === "owner" || userInfo.role === "admin";
 
     if (!isAdminPowerNow) {
       setMissingExpenseNotesCount(0);
@@ -696,9 +676,6 @@ const Dashboard: React.FC = () => {
 
   /**
    * ✅ FIX تعليق الموظف:
-   * - نحاول نقرأ البروفايل من Firestore
-   * - إذا Rules منعت (Missing permissions) نسوي fallback من localStorage/auth
-   * - staff يروح مباشرة لـ /dashboard/staff
    */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -712,7 +689,6 @@ const Dashboard: React.FC = () => {
           return;
         }
 
-        // ✅ نحاول نجيب البروفايل من Firestore
         step = "profile:createOrLoadUserProfile";
         let profile: UserProfile | null = null;
 
@@ -723,13 +699,12 @@ const Dashboard: React.FC = () => {
           console.warn("createOrLoadUserProfile failed:", msg);
 
           if (msg.includes("Missing or insufficient permissions")) {
-            profile = null; // ✅ fallback
+            profile = null;
           } else {
             throw e;
           }
         }
 
-        // ✅ fallback إذا ما قدرنا نقرأ من Firestore بسبب Rules
         if (!profile) {
           step = "profile:fallback";
 
@@ -756,8 +731,6 @@ const Dashboard: React.FC = () => {
             role: fallbackRole,
             email: user.email || "",
           });
-
-
 
           await refreshDashboard(fallbackRole);
           return;
@@ -787,8 +760,6 @@ const Dashboard: React.FC = () => {
           email: profile.email || user.email || "",
         });
 
-
-
         await refreshDashboard(dashRole);
       } catch (err: any) {
         const msg = String(err?.message || err || "");
@@ -799,6 +770,112 @@ const Dashboard: React.FC = () => {
 
     return () => unsub();
   }, [navigate]);
+
+  // - pending  -> cancelled (يفك slots)
+  // - confirmed -> completed (لا يفك slots)
+  // ✅ حماية: يشتغل Owner/Admin فقط
+  // ✅ Auto Job (Client-side): كل 5 دقائق
+  // - pending  -> cancelled (يفك slots)
+  // - confirmed -> completed (لا يفك slots)
+  // ✅ حماية: يشتغل Owner/Admin فقط
+  useEffect(() => {
+    if (!userInfo) return;
+
+    const canRun = userInfo.role === "owner" || userInfo.role === "admin";
+    if (!canRun) return;
+
+    const role = userInfo.role; // ✅ ثبت الدور هنا عشان TS ما يقول userInfo ممكن null
+
+    let alive = true;
+    let running = false;
+
+    const parseHHMM = (time: string) => {
+      const m = String(time || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+      if (!m) return null;
+      const hh = Number(m[1]);
+      const mm = Number(m[2]);
+      if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+      return { hh, mm };
+    };
+
+    const toDateStart = (dateStr: string, timeStr: string) => {
+      const parts = String(dateStr || "").split("-").map(Number);
+      if (parts.length !== 3) return null;
+      const [y, mo, d] = parts;
+
+      const t = parseHHMM(timeStr);
+      if (!t) return null;
+
+      return new Date(y, (mo || 1) - 1, d || 1, t.hh, t.mm, 0, 0);
+    };
+
+    const isPastOrToday = (dateStr: string) => {
+      const parts = String(dateStr || "").split("-").map(Number);
+      if (parts.length !== 3) return false;
+      const [y, mo, d] = parts;
+
+      const day = new Date(y, (mo || 1) - 1, d || 1, 23, 59, 59, 999);
+      return day.getTime() <= Date.now();
+    };
+
+    async function tick() {
+      if (!alive) return;
+      if (running) return;
+      running = true;
+
+      try {
+        const rows = await listAllBookingsFS();
+
+        const filtered = rows.filter((b: any) => {
+          if (!b?.date) return false;
+          return isPastOrToday(b.date);
+        });
+
+        const now = new Date();
+
+        for (const b of filtered) {
+          if (!b?.date || !b?.time) continue;
+
+          const st = String(b.status || "pending");
+          if (st !== "pending" && st !== "confirmed") continue;
+
+          const start = toDateStart(b.date, b.time);
+          if (!start) continue;
+
+          // ✅ SAFE duration (بدون كراش)
+          const duration =
+            Number(b?.serviceSnapshot?.durationAtBooking ?? b?.durationMin ?? 0) || 60;
+
+          const end = new Date(start.getTime() + duration * 60_000);
+
+          if (now < end) continue;
+
+          if (st === "pending") {
+            console.log("[AUTO] pending -> cancelled", b.id);
+            await updateBookingStatusFS(b.id, "cancelled"); // يفك slots من داخل firestoreBookings
+          } else if (st === "confirmed") {
+            console.log("[AUTO] confirmed -> completed", b.id);
+            await updateBookingStatusFS(b.id, "completed");
+          }
+        }
+
+        await refreshDashboard(role); // ✅ بدل userInfo.role
+      } catch (e) {
+        console.error("[AUTO] tick error:", e);
+      } finally {
+        running = false;
+      }
+    }
+
+    tick();
+    const id = window.setInterval(tick, 5 * 60_000);
+
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [userInfo?.role]);
+
 
   const handleLogout = async () => {
     try {
@@ -875,10 +952,9 @@ const Dashboard: React.FC = () => {
     if (hasAdminPower || canReceptionChange || canStaffChange) {
       try {
         await updateBookingStatusFS(id, status);
-        await refreshDashboard(userInfo?.role);
-        setSelectedBooking((prev) =>
-          prev && prev.id === id ? { ...prev, status } : prev
-        );
+        const roleNow = userInfo?.role;
+        await refreshDashboard(roleNow);
+        setSelectedBooking((prev) => (prev && prev.id === id ? { ...prev, status } : prev));
       } catch (e) {
         console.error(e);
         alert("تعذر تحديث الحالة. تأكد من الصلاحيات/Rules.");
@@ -892,7 +968,6 @@ const Dashboard: React.FC = () => {
     return () => window.removeEventListener("popstate", close);
   }, []);
 
-  // ✅ لو صار خطأ واضح بدلاً من التعليق
   if (dashError) {
     return (
       <div className="dashboard-loading" style={{ direction: "ltr", textAlign: "left" }}>
@@ -974,10 +1049,7 @@ const Dashboard: React.FC = () => {
       </style>
 
       {isSidebarOpen && (
-        <div
-          className="dash-side-overlay"
-          onClick={() => setIsSidebarOpen(false)}
-        />
+        <div className="dash-side-overlay" onClick={() => setIsSidebarOpen(false)} />
       )}
 
       <div className="container-fluid">
@@ -1271,9 +1343,7 @@ const Dashboard: React.FC = () => {
                 )}
 
                 {(hasAdminPower || (isReception && allowStaffViewClients)) &&
-                  canSeeSection("clients") && (
-                    <Route path="clients" element={<DashboardClients />} />
-                  )}
+                  canSeeSection("clients") && <Route path="clients" element={<DashboardClients />} />}
 
                 {hasAdminPower && canSeeSection("employees") && (
                   <Route path="employees" element={<DashboardEmployees />} />
@@ -1303,7 +1373,6 @@ const Dashboard: React.FC = () => {
                   <Route path="logs" element={<DashboardLogs />} />
                 )}
 
-
                 <Route
                   path="*"
                   element={
@@ -1322,25 +1391,15 @@ const Dashboard: React.FC = () => {
 
       {/* ✅ Modal تفاصيل الحجز */}
       {selectedBooking && (
-        <div
-          className="dash-modal-overlay"
-          onClick={() => setSelectedBooking(null)}
-        >
-          <div
-            className="dash-modal dash-booking-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="dash-modal-overlay" onClick={() => setSelectedBooking(null)}>
+          <div className="dash-modal dash-booking-modal" onClick={(e) => e.stopPropagation()}>
             <div className="dash-modal-head">
               <div className="dash-modal-title">
                 <h3>تفاصيل الحجز</h3>
                 <small>عرض تفاصيل الحجز بشكل مرتب وواضح</small>
               </div>
 
-              <button
-                className="exp-btn ghost"
-                type="button"
-                onClick={() => setSelectedBooking(null)}
-              >
+              <button className="exp-btn ghost" type="button" onClick={() => setSelectedBooking(null)}>
                 <FontAwesomeIcon icon={faXmark} /> إغلاق
               </button>
             </div>
@@ -1396,10 +1455,7 @@ const Dashboard: React.FC = () => {
                       className="dash-select"
                       value={selectedBooking.status}
                       onChange={(e) =>
-                        handleChangeStatus(
-                          selectedBooking.id,
-                          e.target.value as BookingStatus
-                        )
+                        handleChangeStatus(selectedBooking.id, e.target.value as BookingStatus)
                       }
                     >
                       <option value="confirmed">مؤكد</option>
@@ -1425,18 +1481,10 @@ const Dashboard: React.FC = () => {
             </div>
 
             <div className="dash-modal-actions">
-              <button
-                className="exp-btn ghost"
-                onClick={() => navigate("/dashboard/bookings")}
-                type="button"
-              >
+              <button className="exp-btn ghost" onClick={() => navigate("/dashboard/bookings")} type="button">
                 فتح صفحة الحجوزات
               </button>
-              <button
-                className="exp-btn primary"
-                onClick={() => setSelectedBooking(null)}
-                type="button"
-              >
+              <button className="exp-btn primary" onClick={() => setSelectedBooking(null)} type="button">
                 تم
               </button>
             </div>
@@ -1448,4 +1496,3 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-

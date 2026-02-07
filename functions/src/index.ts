@@ -2,7 +2,11 @@
 
 import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
-import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
+import {
+  onDocumentCreated,
+  onDocumentUpdated,
+} from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -41,6 +45,140 @@ function authHeaderBasic(secret: string) {
   const token = Buffer.from(`${secret}:`).toString("base64");
   return `Basic ${token}`;
 }
+
+/* =========================================================
+   ✅ AUTO JOB: كل 5 دقائق
+   - pending انتهى وقتها → cancelled + فك الأقفال
+   - confirmed انتهى وقتها → completed
+========================================================= */
+
+export const autoCloseBookings = onSchedule(
+  {
+    region: "us-central1",
+    schedule: "every 5 minutes",
+    timeZone: "Asia/Riyadh",
+  },
+  async () => {
+    const salonId = SALON_ID;
+
+    const bookingsCol = db
+      .collection("salons")
+      .doc(salonId)
+      .collection("bookings");
+
+    const slotsCol = db
+      .collection("salons")
+      .doc(salonId)
+      .collection("booking_slots");
+
+    const now = new Date();
+
+    const [pendingSnap, confirmedSnap] = await Promise.all([
+      bookingsCol.where("status", "==", "pending").limit(500).get(),
+      bookingsCol.where("status", "==", "confirmed").limit(500).get(),
+    ]);
+
+    const parseHHMM = (time: string) => {
+      const m = String(time || "")
+        .trim()
+        .match(/^(\d{1,2}):(\d{2})$/);
+      if (!m) return null;
+      const hh = Number(m[1]);
+      const mm = Number(m[2]);
+      if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+      return { hh, mm };
+    };
+
+    const toLocalDate = (dateYMD: string, timeHHMM: string) => {
+      const [y, mo, d] = String(dateYMD || "").split("-").map(Number);
+      const t = parseHHMM(timeHHMM);
+      if (!y || !mo || !d || !t) return null;
+      return new Date(y, mo - 1, d, t.hh, t.mm, 0, 0);
+    };
+
+    const getDurationMin = (b: any) => {
+      const d1 = Number(b?.durationMin ?? 0);
+      const d2 = Number(b?.serviceSnapshot?.durationAtBooking ?? 0);
+      const d =
+        Number.isFinite(d1) && d1 > 0
+          ? d1
+          : Number.isFinite(d2) && d2 > 0
+          ? d2
+          : 60;
+      return Math.max(0, Math.trunc(d));
+    };
+
+    const getBufferMin = (b: any) => {
+      const v = Number(b?.bufferMinAtBooking ?? 0);
+      return Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : 0;
+    };
+
+    const toCancel: string[] = [];
+    const toComplete: string[] = [];
+
+    const scan = (docs: FirebaseFirestore.QueryDocumentSnapshot[]) => {
+      for (const docSnap of docs) {
+        const b = docSnap.data() || {};
+        const start = toLocalDate(String(b.date || ""), String(b.time || ""));
+        if (!start) continue;
+
+        const end = new Date(
+          start.getTime() +
+            (getDurationMin(b) + getBufferMin(b)) * 60 * 1000
+        );
+
+        if (now < end) continue;
+
+        const st = String(b.status || "");
+        if (st === "pending") toCancel.push(docSnap.id);
+        if (st === "confirmed") toComplete.push(docSnap.id);
+      }
+    };
+
+    scan(pendingSnap.docs);
+    scan(confirmedSnap.docs);
+
+    if (!toCancel.length && !toComplete.length) return;
+
+    // 1) تحديث الحالات
+    const batch = db.batch();
+
+    for (const id of toCancel) {
+      batch.update(bookingsCol.doc(id), {
+        status: "cancelled",
+        updatedAt: FieldValue.serverTimestamp(),
+        autoClosedAt: FieldValue.serverTimestamp(),
+        autoCloseReason: "pending_expired",
+      });
+    }
+
+    for (const id of toComplete) {
+      batch.update(bookingsCol.doc(id), {
+        status: "completed",
+        updatedAt: FieldValue.serverTimestamp(),
+        autoClosedAt: FieldValue.serverTimestamp(),
+        autoCloseReason: "confirmed_finished",
+      });
+    }
+
+    await batch.commit();
+
+    // 2) فك الأقفال للملغي فقط (cancelled)
+    for (const id of toCancel) {
+      const q = await slotsCol.where("bookingId", "==", id).get();
+      if (q.empty) continue;
+
+      const b2 = db.batch();
+      q.docs.forEach((d) => b2.delete(d.ref));
+      await b2.commit();
+    }
+
+    logger.info("[autoCloseBookings] done", {
+      cancelled: toCancel.length,
+      completed: toComplete.length,
+    });
+  }
+);
 
 /**
  * ===========================
@@ -150,6 +288,7 @@ export const whoAmI = onCall({ region: "us-central1" }, async (request) => {
 
 /**
  * ✅ Webhook: Moyasar → Firebase (HTTP)
+ * ✅ تم توحيد المسار على salons/main/bookings
  */
 export const moyasarWebhook = onRequest({ region: "us-central1" }, async (req, res) => {
   try {
@@ -173,6 +312,8 @@ export const moyasarWebhook = onRequest({ region: "us-central1" }, async (req, r
       eventType === "payment_paid" || status === "paid" || status === "captured";
 
     await db
+      .collection("salons")
+      .doc(SALON_ID)
       .collection("bookings")
       .doc(bookingId)
       .set(
@@ -204,9 +345,7 @@ export const verifyMoyasarPayment = onRequest({ region: "us-central1" }, async (
     }
 
     const r = await fetch(`https://api.moyasar.com/v1/payments/${paymentId}`, {
-      headers: {
-        Authorization: authHeaderBasic(MOYASAR_SECRET_KEY),
-      },
+      headers: { Authorization: authHeaderBasic(MOYASAR_SECRET_KEY) },
     });
 
     const data = await r.json();
@@ -214,6 +353,8 @@ export const verifyMoyasarPayment = onRequest({ region: "us-central1" }, async (
     const paid = status === "paid" || status === "captured";
 
     await db
+      .collection("salons")
+      .doc(SALON_ID)
       .collection("bookings")
       .doc(bookingId)
       .set(
@@ -237,12 +378,15 @@ export const verifyMoyasarPayment = onRequest({ region: "us-central1" }, async (
 /**
  * ===========================
  * ✅ Booking Tracking (booking_tracks)
+ * ✅ تم توحيد المسار على salons/main/booking_tracks
  * ===========================
  */
 async function upsertTrack(bookingId: string, bookingData: any) {
   if (!bookingId) return;
 
   await db
+    .collection("salons")
+    .doc(SALON_ID)
     .collection("booking_tracks")
     .doc(bookingId)
     .set(
@@ -260,28 +404,28 @@ async function upsertTrack(bookingId: string, bookingData: any) {
     );
 }
 
-// (A) root bookings
-export const onBookingCreateTrack = onDocumentCreated(
-  { document: "bookings/{bookingId}", region: "us-central1" },
-  async (event) => {
-    const bookingId = event.params.bookingId;
-    const snap = event.data;
-    if (!snap) return;
-    await upsertTrack(bookingId, snap.data());
-  }
-);
+// ✅ نلغّي root bookings tracking لأن النظام صار رسميًا على salons/main/bookings فقط
+// export const onBookingCreateTrack = onDocumentCreated(
+//   { document: "bookings/{bookingId}", region: "us-central1" },
+//   async (event) => {
+//     const bookingId = event.params.bookingId;
+//     const snap = event.data;
+//     if (!snap) return;
+//     await upsertTrack(bookingId, snap.data());
+//   }
+// );
 
-export const onBookingUpdateTrack = onDocumentUpdated(
-  { document: "bookings/{bookingId}", region: "us-central1" },
-  async (event) => {
-    const bookingId = event.params.bookingId;
-    const after = event.data?.after;
-    if (!after) return;
-    await upsertTrack(bookingId, after.data());
-  }
-);
+// export const onBookingUpdateTrack = onDocumentUpdated(
+//   { document: "bookings/{bookingId}", region: "us-central1" },
+//   async (event) => {
+//     const bookingId = event.params.bookingId;
+//     const after = event.data?.after;
+//     if (!after) return;
+//     await upsertTrack(bookingId, after.data());
+//   }
+// );
 
-// (B) salons bookings
+// ✅ salons bookings
 export const onSalonBookingCreateTrack = onDocumentCreated(
   { document: "salons/{salonId}/bookings/{bookingId}", region: "us-central1" },
   async (event) => {
@@ -336,7 +480,8 @@ export const adminCreateStaffUser = onCall({ region: "us-central1" }, async (req
     : "staff";
 
   if (!email || !email.includes("@")) throw new HttpsError("invalid-argument", "البريد غير صحيح.");
-  if (!password || password.length < 6) throw new HttpsError("invalid-argument", "كلمة المرور 6 أحرف على الأقل.");
+  if (!password || password.length < 6)
+    throw new HttpsError("invalid-argument", "كلمة المرور 6 أحرف على الأقل.");
   if (!displayName) throw new HttpsError("invalid-argument", "الاسم مطلوب.");
 
   // 1) create auth user

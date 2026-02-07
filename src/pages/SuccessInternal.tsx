@@ -1,14 +1,15 @@
 import { useEffect, useMemo } from "react";
 
-// --- Types ---
+// --- Types (مطابقة للأنواع في صفحة الحجز) ---
 type BookingItem = {
   serviceName?: string;
   employeeName?: string;
   date?: string;
   time?: string;
-  finalPrice?: number;
+  finalPrice?: number; // السعر النهائي للخدمة بعد الخصم
 };
 
+// هذا النوع يمثل أول حجز في القائمة لتفاصيل العميل العامة
 type CurrentBooking = {
   publicId?: string;
   clientName?: string;
@@ -27,12 +28,8 @@ function safeParse<T>(key: string, fallback: T): T {
   }
 }
 
-function normalizePhone(v: any): string {
-  const s = String(v ?? "").trim();
-  return s || "-";
-}
-
 function formatCurrency(num: number): string {
+  // تنسيق الرقم ليكون دائماً بمنزلتين عشريتين
   return new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -41,75 +38,65 @@ function formatCurrency(num: number): string {
 
 // --- Component ---
 export default function SuccessInternal() {
-  const booking = useMemo<CurrentBooking | null>(
+  // --- 1. قراءة بيانات الحجوزات من LocalStorage ---
+
+  // `currentBooking` يحتوي على بيانات أول حجز (للحصول على اسم العميل ورقم الجوال)
+  const bookingInfo = useMemo<CurrentBooking | null>(
     () => safeParse<CurrentBooking | null>("currentBooking", null),
     []
   );
 
+  // `allBookings` يحتوي على **جميع** الخدمات التي تم حجزها
   const allBookings = useMemo<BookingItem[]>(
     () => safeParse<BookingItem[]>("allBookings", []),
     []
   );
 
-  const profile = useMemo(
-    () => safeParse<any>("userProfile", null) || safeParse<any>("profile", null),
-    []
+  // --- 2. تجهيز البيانات للعرض ---
+  const publicId = bookingInfo?.publicId || "-";
+  const clientName = (bookingInfo?.clientName || "-").trim();
+  const clientPhone = (bookingInfo?.clientPhone || "-").trim();
+
+  // تاريخ ووقت أول خدمة كمرجع عام للفاتورة
+  const mainDate = (bookingInfo?.date || "-").trim();
+  const mainTime = (bookingInfo?.time || "-").trim();
+
+  // حساب الإجمالي النهائي بجمع أسعار كل الخدمات
+  const totalFinalPrice = allBookings.reduce(
+    (sum, item) => sum + Number(item.finalPrice || 0),
+    0
   );
 
-  const lastClientName =
-    profile?.name || profile?.fullName || profile?.displayName || "";
-  const lastClientPhone =
-    profile?.phone || profile?.phoneNumber || profile?.mobile || "";
-
-  const publicId = booking?.publicId || "-";
-  const clientName =
-    (booking?.clientName || lastClientName || "-").trim() || "-";
-  const clientPhone = normalizePhone(booking?.clientPhone || lastClientPhone);
-  const date = (booking?.date || "-").trim() || "-";
-  const time = (booking?.time || "-").trim() || "-";
-
-  const total = allBookings.reduce((sum, b) => sum + Number(b.finalPrice || 0), 0);
-
+  // --- 3. تشغيل الطباعة تلقائياً ---
   useEffect(() => {
-    if (!booking) return;
-  
-    const timer = setTimeout(() => {
-      // Using requestAnimationFrame for better rendering before print
-      requestAnimationFrame(() => {
-        window.print();
-      });
-    }, 800);
-  
-    return () => clearTimeout(timer);
-  }, [booking]);
-  
+    // لا تطبع إذا لم تكن هناك بيانات
+    if (!bookingInfo || allBookings.length === 0) return;
 
-  if (!booking) {
+    const timer = setTimeout(() => {
+      window.print();
+    }, 800); // تأخير بسيط لضمان عرض كل شيء قبل الطباعة
+
+    return () => clearTimeout(timer);
+  }, [bookingInfo, allBookings]);
+
+  // --- 4. رسالة في حال عدم وجود بيانات ---
+  if (!bookingInfo || allBookings.length === 0) {
     return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-          fontFamily: "sans-serif",
-          color: "#555",
-        }}
-      >
-        لا توجد بيانات لعرض الفاتورة.
+      <div style={{ padding: 40, textAlign: 'center', fontFamily: 'sans-serif' }}>
+        <h2>لا توجد بيانات فاتورة للطباعة.</h2>
       </div>
     );
   }
 
+  // --- 5. عرض الفاتورة للطباعة ---
   return (
     <div id="print-area">
       <style>
         {`
 :root {
   --receipt-width: 72mm;
-  /* Using a clearer, slightly wider monospace font */
   --font-family: 'Lucida Console', 'Courier New', monospace;
-  --font-size-normal: 13px; /* Increased for clarity */
+  --font-size-normal: 13px;
   --font-size-small: 11px;
   --font-size-large: 17px;
 }
@@ -117,14 +104,14 @@ export default function SuccessInternal() {
 .receipt-container {
   width: var(--receipt-width);
   margin: 0 auto;
-  padding: 15px 5px; /* Added horizontal padding for better spacing */
+  padding: 15px 5px;
   background: #fff;
   color: #000;
   font-family: var(--font-family);
   font-size: var(--font-size-normal);
-  line-height: 1.5; /* Increased for readability */
+  line-height: 1.5;
   direction: rtl;
-  font-weight: 600; /* Make all text bolder by default */
+  font-weight: 600;
 }
 
 .header {
@@ -132,8 +119,8 @@ export default function SuccessInternal() {
   margin-bottom: 15px;
 }
 .header .brand-logo {
-  font-size: 24px; /* Larger brand name */
-  font-weight: 700; /* Bolder */
+  font-size: 24px;
+  font-weight: 700;
   margin: 0;
   letter-spacing: 1px;
   color: #000;
@@ -146,53 +133,50 @@ export default function SuccessInternal() {
 }
 
 .line {
-  border-top: 1px dashed #000; /* Darker line */
+  border-top: 1px dashed #000;
   margin: 12px 0;
 }
 
-/* Centered Key-Value Section */
 .info-section {
-  text-align: center; /* Center all text within this section */
+  text-align: center;
   margin-bottom: 10px;
 }
 .info-item {
   margin-bottom: 5px;
 }
 .info-item .key {
-  font-weight: 700; /* Extra bold key */
+  font-weight: 700;
 }
 .info-item .value {
   direction: ltr;
   unicode-bidi: plaintext;
   font-weight: 600;
-  display: block; /* Make value appear on a new line */
-  font-size: 14px; /* Larger value text */
+  display: block;
+  font-size: 14px;
 }
 .info-item .value-rtl {
-  direction: rtl; /* For Arabic values like client name */
+  direction: rtl;
 }
 
-
-/* Centered Items Table */
 .items-table {
   width: 100%;
   border-collapse: collapse;
   margin: 15px 0;
   font-size: var(--font-size-normal);
-  text-align: center; /* Center all table content */
+  text-align: center;
 }
 .items-table th {
   padding-bottom: 6px;
   border-bottom: 1px solid #000;
-  font-weight: 700; /* Bolder headers */
+  font-weight: 700;
 }
 .items-table td {
-  padding: 8px 2px; /* More vertical padding */
+  padding: 8px 2px;
   vertical-align: top;
-  border-bottom: 1px dotted #888; /* Dotted line between items */
+  border-bottom: 1px dotted #888;
 }
 .items-table tr:last-child td {
-  border-bottom: none; /* No line for the last item */
+  border-bottom: none;
 }
 .items-table .service-name {
   white-space: normal;
@@ -207,21 +191,20 @@ export default function SuccessInternal() {
 .items-table .price {
   direction: ltr;
   white-space: nowrap;
-  font-weight: 700; /* Bolder price */
+  font-weight: 700;
 }
 
-/* Centered Totals Section */
 .totals-section {
   margin-top: 15px;
   text-align: center;
 }
 .totals-section .total-row {
   font-size: var(--font-size-large);
-  font-weight: 700; /* BOLD TOTAL */
+  font-weight: 700;
   padding: 8px;
   background: #eee;
   border-radius: 4px;
-  display: inline-block; /* To make it fit the content */
+  display: inline-block;
 }
 .totals-section .total-row .value {
   direction: ltr;
@@ -235,33 +218,23 @@ export default function SuccessInternal() {
   font-weight: 600;
 }
 
-/* --- PRINT LOGIC (UNCHANGED) --- */
+/* --- منطق الطباعة (بدون تغيير) --- */
 @media print {
   @page { size: 80mm auto; margin: 0; }
-
-  html, body {
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #fff !important;
-  }
-
-  body > * { visibility: hidden !important; }
-
+@media print {
+  body * { visibility: hidden !important; }
   #print-area, #print-area * { visibility: visible !important; }
-
-  #print-area {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-  }
-
+  #print-area { position: fixed !important; top: 0 !important; left: 0 !important; width: 80mm !important; }
+}
+  #print-area { position: absolute; top: 0; left: 0; width: 100%; }
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  #print-area, #print-area * { visibility: visible !important; }
   * {
     -webkit-print-color-adjust: economy !important;
     print-color-adjust: economy !important;
     box-shadow: none !important;
     text-shadow: none !important;
   }
-
   .receipt-container { padding: 0 !important; }
 }
         `}
@@ -277,7 +250,7 @@ export default function SuccessInternal() {
 
         <section className="info-section">
           <div className="info-item">
-            <span className="key">رقم الحجز</span>
+            <span className="key">رقم الحجز المرجعي</span>
             <span className="value">{publicId}</span>
           </div>
           <div className="info-item">
@@ -285,8 +258,12 @@ export default function SuccessInternal() {
             <span className="value value-rtl">{clientName}</span>
           </div>
           <div className="info-item">
-            <span className="key">التاريخ والوقت</span>
-            <span className="value">{date} - {time}</span>
+            <span className="key">الجوال</span>
+            <span className="value">{clientPhone}</span>
+          </div>
+          <div className="info-item">
+            <span className="key">تاريخ الحجز</span>
+            <span className="value">{mainDate}</span>
           </div>
         </section>
 
@@ -295,18 +272,24 @@ export default function SuccessInternal() {
         <table className="items-table">
           <thead>
             <tr>
-              <th>الخدمة</th>
+              <th>الخدمة / الموظفة / الوقت</th>
               <th>السعر</th>
             </tr>
           </thead>
           <tbody>
+            {/* ✅ الكود المصحح لعرض تفاصيل الخدمة */}
             {allBookings.map((item, index) => (
               <tr key={index}>
                 <td>
                   <div className="service-name">{item.serviceName || "-"}</div>
-                  {item.employeeName && (
-                    <div className="employee-name">({item.employeeName})</div>
-                  )}
+                  <div className="employee-name">
+                    {/* 
+              الإصلاح: 
+              - القوسين يظهران فقط إذا كان اسم الموظفة موجوداً.
+              - تم إزالة "غير محدد" من الوقت ليكون أنظف.
+            */}
+                    {item.employeeName && `(${item.employeeName})`}{' - '}{item.time || ''}
+                  </div>
                 </td>
                 <td className="price">{formatCurrency(item.finalPrice || 0)}</td>
               </tr>
@@ -314,12 +297,13 @@ export default function SuccessInternal() {
           </tbody>
         </table>
 
+
         <div className="line" />
 
         <section className="totals-section">
           <div className="total-row">
             <span>الإجمالي:</span>
-            <span className="value">{formatCurrency(total)} ر.س</span>
+            <span className="value">{formatCurrency(totalFinalPrice)} ر.س</span>
           </div>
         </section>
 

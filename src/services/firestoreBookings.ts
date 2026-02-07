@@ -127,6 +127,10 @@ function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
 function normalizeBooking(raw: any): BookingDoc {
   return {
     userId: raw?.userId ?? null,
+
+    slotStepMinAtBooking: Number(raw?.slotStepMinAtBooking ?? 0) || undefined,
+    bufferMinAtBooking: Number(raw?.bufferMinAtBooking ?? 0) || undefined,
+
     createdBy: String(raw?.createdBy ?? ""),
     channel: raw?.channel === "dashboard" ? "dashboard" : "client",
 
@@ -435,6 +439,10 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     serviceId: data.serviceId ?? undefined,
     serviceSnapshot,
 
+    slotStepMinAtBooking: (data as any).slotStepMinAtBooking ?? getSlotSettings().slotStepMin,
+    bufferMinAtBooking: (data as any).bufferMinAtBooking ?? getSlotSettings().bufferMin,
+
+
     createdAt: serverTimestamp(),
   });
 
@@ -566,6 +574,10 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         time: data.time,
         durationMin,
 
+        // ✅ NEW: خزن إعدادات السلوّت وقت الحجز
+        slotStepMinAtBooking: (payloadBase as any).slotStepMinAtBooking,
+        bufferMinAtBooking: (payloadBase as any).bufferMinAtBooking,
+
         status: data.status,
         slotId: startSlotId,
 
@@ -574,6 +586,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
       }) as any,
       { merge: true }
     );
+
   } catch (e) {
     console.warn("[createBooking] track write failed (ignored):", e);
   }
@@ -896,7 +909,9 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     // ✅ IMPORTANT: إذا صار الحجز "ملغي" لازم نفك الأقفال من booking_slots
     // لأن Booking.tsx يعتبر الوقت محجوز إذا وثيقة slot موجودة.
     if (status === "cancelled") {
-      const employeeIdForLock = String(booking.employeeId ?? "").trim();
+      const employeeIdForLock =
+        String(booking.employeeId ?? "").trim() ||
+        String(booking.employeeKey ?? "").trim(); // fallback
 
       // لو ما عندنا employeeId ما نقدر نحدد أقفال الموظفة (حماية)
       if (employeeIdForLock) {
@@ -1195,11 +1210,12 @@ export async function deleteBooking(bookingId: string) {
 
   // 2) حذف الوثائق الأساسية
   await deleteDoc(bookingRef);
-  try { await deleteDoc(trackRef); } catch(e) {}
-  try { await deleteDoc(incomeRef); } catch(e) {}
+  try { await deleteDoc(trackRef); } catch (e) { }
+  try { await deleteDoc(incomeRef); } catch (e) { }
 
   // 3) فك الأقفال (Slots)
   const employeeIdForLock = String(booking.employeeId ?? "").trim();
+
   if (employeeIdForLock) {
     const duration = Number(booking.durationMin ?? booking.serviceSnapshot?.durationAtBooking ?? 0) || 60;
     const timesToUnlock = getTimesToLock(
