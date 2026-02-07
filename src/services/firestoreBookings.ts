@@ -133,12 +133,12 @@ function normalizeBooking(raw: any): BookingDoc {
 
     createdBy: String(raw?.createdBy ?? ""),
     channel:
-    raw?.channel === "internal"
-      ? "internal"
-      : raw?.channel === "dashboard"
-      ? "dashboard"
-      : "client",
-  
+      raw?.channel === "internal"
+        ? "internal"
+        : raw?.channel === "dashboard"
+          ? "dashboard"
+          : "client",
+
     clientName: String(raw?.clientName ?? ""),
     clientPhone: String(raw?.clientPhone ?? ""),
 
@@ -150,13 +150,13 @@ function normalizeBooking(raw: any): BookingDoc {
     publicId: raw?.publicId ? String(raw.publicId) : undefined,
     serviceSnapshot: raw?.serviceSnapshot
       ? {
-          serviceNameAtBooking: String(raw.serviceSnapshot.serviceNameAtBooking ?? ""),
-          priceAtBooking: Number(raw.serviceSnapshot.priceAtBooking ?? 0),
-          durationAtBooking: Number(raw.serviceSnapshot.durationAtBooking ?? 0),
-          sectionIdAtBooking: raw.serviceSnapshot.sectionIdAtBooking
-            ? String(raw.serviceSnapshot.sectionIdAtBooking)
-            : undefined,
-        }
+        serviceNameAtBooking: String(raw.serviceSnapshot.serviceNameAtBooking ?? ""),
+        priceAtBooking: Number(raw.serviceSnapshot.priceAtBooking ?? 0),
+        durationAtBooking: Number(raw.serviceSnapshot.durationAtBooking ?? 0),
+        sectionIdAtBooking: raw.serviceSnapshot.sectionIdAtBooking
+          ? String(raw.serviceSnapshot.sectionIdAtBooking)
+          : undefined,
+      }
       : undefined,
 
     durationMin: Number(raw?.durationMin ?? 0) || undefined,
@@ -495,7 +495,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         const sameEmp =
           String(existingBooking.employeeKey || "") === String(employeeKey) ||
           safeKey(String(existingBooking.employeeId ?? "").trim() || existingBooking.employeeName.trim()) ===
-            safeKey(employeeKeyForLock);
+          safeKey(employeeKeyForLock);
 
         if (sameUser && sameDate && sameStart && sameEmp) {
           const existingPublic = String(existingBooking.publicId || "").trim();
@@ -615,7 +615,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     },
   });
 
-    // ✅ NEW: create income on CREATE when booking is created as confirmed/completed (Dashboard internal)
+  // ✅ NEW: create income on CREATE when booking is created as confirmed/completed (Dashboard internal)
   // - prevents "income=0" when booking is created directly as confirmed
   // - uniqueness: income docId = bookingId
   try {
@@ -639,6 +639,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
             date: data.date,
             clientName: data.clientName,
+            clientNameLower: String(data.clientName || "").toLowerCase(),
             clientPhone: data.clientPhone,
 
             serviceName: serviceSnapshot?.serviceNameAtBooking || data.serviceName,
@@ -1277,10 +1278,10 @@ export async function deleteBooking(bookingId: string) {
   await deleteDoc(bookingRef);
   try {
     await deleteDoc(trackRef);
-  } catch {}
+  } catch { }
   try {
     await deleteDoc(incomeRef);
-  } catch {}
+  } catch { }
 
   // 3) ✅ فك الأقفال (Slots) — مضمونة by bookingId
   await unlockSlotsByBookingId(bookingId);

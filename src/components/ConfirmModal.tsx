@@ -1,6 +1,6 @@
 // src/components/ConfirmModal.tsx
 import React, { useEffect } from "react";
-import { createPortal } from "react-dom";
+import Modal from "./Modal";
 import "../styles/ConfirmModal.css";
 
 type Variant = "info" | "danger" | "success";
@@ -33,15 +33,12 @@ const ConfirmModal: React.FC<Props> = ({
     if (!open) return;
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
       if (e.key === "Enter") onConfirm();
     };
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onCancel, onConfirm]);
-
-  if (!open) return null;
+  }, [open, onConfirm]);
 
   const boxClass =
     variant === "danger"
@@ -52,44 +49,47 @@ const ConfirmModal: React.FC<Props> = ({
 
   const icon = variant === "danger" ? "!" : variant === "success" ? "✓" : "i";
 
-  return createPortal(
-    <div className="qm-modal-overlay" onClick={onCancel}>
-      <div className={boxClass} onClick={(e) => e.stopPropagation()} dir="rtl">
-        <div className="qm-modal-head">
-          <div className="qm-modal-title-wrap">
-            <div className="qm-modal-icon">{icon}</div>
-            <h3 className="qm-modal-title">{title}</h3>
-          </div>
-
-          <button
-            className="qm-modal-close"
-            type="button"
-            onClick={onCancel}
-            aria-label="close"
-            title="إغلاق"
-          >
-            ×
-          </button>
+  return (
+    <Modal
+      open={open}
+      onClose={onCancel}
+      ariaLabel={title || "تأكيد"}
+      panelClassName={boxClass}
+      size="sm"
+    >
+      <div className="qm-modal-head">
+        <div className="qm-modal-title-wrap">
+          <div className="qm-modal-icon">{icon}</div>
+          <h3 className="qm-modal-title">{title}</h3>
         </div>
 
-        <div className="qm-modal-body">
-          <p className="qm-modal-text">{message || ""}</p>
-        </div>
-
-        <div className="qm-modal-actions">
-          <button className="qm-btn-confirm" type="button" onClick={onConfirm}>
-            {confirmText}
-          </button>
-
-          {showCancel && (
-            <button className="qm-btn-cancel" type="button" onClick={onCancel}>
-              {cancelText}
-            </button>
-          )}
-        </div>
+        <button
+          className="qm-modal-close"
+          type="button"
+          onClick={onCancel}
+          aria-label="close"
+          title="إغلاق"
+        >
+          ×
+        </button>
       </div>
-    </div>,
-    document.body
+
+      <div className="qm-modal-body">
+        <p className="qm-modal-text">{message || ""}</p>
+      </div>
+
+      <div className="qm-modal-actions">
+        <button className="qm-btn-confirm" type="button" onClick={onConfirm}>
+          {confirmText}
+        </button>
+
+        {showCancel && (
+          <button className="qm-btn-cancel" type="button" onClick={onCancel}>
+            {cancelText}
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 };
 

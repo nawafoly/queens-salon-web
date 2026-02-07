@@ -29,6 +29,7 @@ import { db } from "../services/firebase";
 import "../styles/DashboardModals.css";
 import "../styles/EmployeePortal.css";
 import "../styles/DashboardEmployees.css";
+import Modal from "../components/Modal";
 
 // ✅ Bookings stats (Owner only)
 import {
@@ -1040,9 +1041,14 @@ export default function DashboardEmployees() {
 
         {/* Modal */}
         {isOpen && (
-          <div className="modal-overlay" onClick={closeModal}>
-            <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-head">
+          <Modal
+            open={isOpen}
+            onClose={closeModal}
+            ariaLabel={editId ? "تعديل موظفة" : "إضافة موظفة"}
+            panelClassName="modal-box"
+            size="lg"
+          >
+            <div className="modal-head">
                 <b>{editId ? "تعديل موظفة" : "إضافة موظفة"}</b>
                 <button className="exp-btn ghost" onClick={closeModal} type="button">
                   <FontAwesomeIcon icon={faXmark} /> إغلاق
@@ -1128,8 +1134,7 @@ export default function DashboardEmployees() {
                   حفظ
                 </button>
               </div>
-            </div>
-          </div>
+          </Modal>
         )}
       </div>
     </div>

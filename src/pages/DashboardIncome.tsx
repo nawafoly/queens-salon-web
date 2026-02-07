@@ -14,6 +14,7 @@ import {
 
 import "../styles/DashboardIncome.css";
 import "../styles/DashboardModals.css";
+import Modal from "../components/Modal";
 
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../services/firebase";
@@ -522,12 +523,13 @@ export default function DashboardIncome() {
 
       {/* ✅ Modal (Scoped to Income CSS) */}
       {addOpen && (
-        <div className="income-page-modal">
-          <div
-            className="income-page-modal__overlay"
-            onClick={() => setAddOpen(false)}
-          />
-          <div className="income-page-modal__card">
+        <Modal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          ariaLabel="إضافة دخل"
+          panelClassName="income-page-modal__card"
+          size="sm"
+        >
             <div className="income-page-modal__head">
               <div className="income-page-modal__title">إضافة دخل</div>
               <button
@@ -602,8 +604,7 @@ export default function DashboardIncome() {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -612,4 +613,3 @@ export default function DashboardIncome() {
 // 🔕 silence unused helpers
 void loadBookings;
 void isRevenueStatus;
-

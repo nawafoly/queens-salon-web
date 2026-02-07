@@ -593,20 +593,38 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const s = normalizeSearchKey(q);
     if (!s) return { kind: "empty" as const, value: "" };
 
-    const digits = phone10Digits(s);
-    if (/^05\d{8}$/.test(digits)) return { kind: "phone" as const, value: digits };
+    // 1) phone
+    const digits10 = phone10Digits(s);
+    if (/^05\d{8}$/.test(digits10)) return { kind: "phone" as const, value: digits10 };
 
-    // MK-xxxxx (publicId)
-    if (/^mk[\-_ ]?/i.test(s)) {
-      return {
-        kind: "publicId" as const,
-        value: s.replace(/\s+/g, "").toUpperCase(),
-      };
+    // 2) MK / QS / any prefixed publicId
+    // Examples: MK-10052, mk10052, MK 10052
+    if (/^(mk|qs)\b/i.test(s) || /^mk[\-_ ]?/i.test(s)) {
+      const cleaned = s.replace(/\s+/g, "").replace(/_/g, "-").toUpperCase();
+      // ensure MK- format if starts with MK and has numbers after
+      const m = cleaned.match(/^MK-?\d+$/);
+      if (m) {
+        const num = cleaned.replace(/^MK-?/i, "");
+        return { kind: "publicId" as const, value: `MK-${num}` };
+      }
+      return { kind: "publicId" as const, value: cleaned };
     }
 
-    // doc id
+    // 3) digits only => treat as MK number (10052 => MK-10052)
+    const onlyDigits = s.replace(/\D/g, "");
+    if (onlyDigits && onlyDigits.length >= 3 && onlyDigits.length <= 12) {
+      return { kind: "publicId" as const, value: `MK-${onlyDigits}` };
+    }
+
+    // 4) otherwise treat as name (for booking search)
+    // if it has letters (Arabic/English)
+    const hasLetters = /[A-Za-z\u0600-\u06FF]/.test(s);
+    if (hasLetters) return { kind: "name" as const, value: s.trim() };
+
+    // 5) fallback: doc id
     return { kind: "id" as const, value: s };
   }
+
 
   async function searchBookingsForReception(raw: string) {
     const q0 = normalizeSearchKey(raw);
@@ -637,14 +655,66 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return out;
     }
 
-    // 2) by MK (publicId)
-    if (q.kind === "publicId") {
+// 2.5) by name (partial prefix on clientNameLower / nameLower)
+if (q.kind === "name") {
+  const nameRaw = String(q.value || "").trim();
+  const nameLower = nameRaw.toLowerCase();
+
+  if (nameLower) {
+    // A) clientNameLower prefix
+    try {
       const snap = await getDocs(
-        query(colBookings, where("publicId", "==", q.value), limit(10))
+        query(
+          colBookings,
+          where("clientNameLower", ">=", nameLower),
+          where("clientNameLower", "<=", nameLower + "\uf8ff"),
+          orderBy("clientNameLower", "asc"),
+          limit(25)
+        )
       );
       snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
       if (out.length) return out;
+    } catch {
+      // ignore (maybe missing index / field)
     }
+
+    // B) nameLower prefix (legacy)
+    try {
+      const snap = await getDocs(
+        query(
+          colBookings,
+          where("nameLower", ">=", nameLower),
+          where("nameLower", "<=", nameLower + "\uf8ff"),
+          orderBy("nameLower", "asc"),
+          limit(25)
+        )
+      );
+      snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
+      if (out.length) return out;
+    } catch {
+      // ignore
+    }
+
+    // C) fallback: exact (لو ما عندك lower fields)
+    try {
+      const snap = await getDocs(
+        query(colBookings, where("clientName", "==", nameRaw), limit(25))
+      );
+      snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
+      if (out.length) return out;
+    } catch {}
+
+    try {
+      const snap = await getDocs(
+        query(colBookings, where("name", "==", nameRaw), limit(25))
+      );
+      snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
+      if (out.length) return out;
+    } catch {}
+  }
+}
+
+
 
     // 3) by doc id direct
     try {
@@ -2380,7 +2450,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       className="form-control"
                       value={bookingSearch}
                       onChange={(e) => setBookingSearch(e.target.value)}
-                      placeholder="مثال: 055xxxxxxx أو MK-12345"
+                      placeholder="مثال: 055xxxxxxx أو 10052 أو MK-10052 أو اسم العميلة"
                       disabled={bookingSearching || isLoading}
                     />
 

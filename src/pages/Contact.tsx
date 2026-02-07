@@ -11,6 +11,7 @@ import {
 
 import "../styles/contact.css";
 import "../styles/DashboardModals.css";
+import Modal from "../components/Modal";
 
 // ✅ Firebase
 import { db } from "../services/firebase";
@@ -76,10 +77,10 @@ const Contact: React.FC = () => {
   const [sending, setSending] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
-const [modalType, setModalType] = useState<"success" | "error">("success");
-const [modalMsg, setModalMsg] = useState("");
+  const [modalType, setModalType] = useState<"success" | "error">("success");
+  const [modalMsg, setModalMsg] = useState("");
 
-  
+
   // ✅ اسحب بيانات التواصل من Firestore (Live)
   useEffect(() => {
     const ref = doc(db, "salons", SALON_ID, "settings", "public");
@@ -137,44 +138,44 @@ const [modalMsg, setModalMsg] = useState("");
     }));
   };
 
- // ✅ إرسال الرسالة إلى Firestore
-const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  if (sending) return;
+  // ✅ إرسال الرسالة إلى Firestore
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (sending) return;
 
-  try {
-    setSending(true);
+    try {
+      setSending(true);
 
-    await addDoc(collection(db, "salons", SALON_ID, "contact_messages"), {
-      ...formData,
-      status: "new",
-      createdAt: serverTimestamp(),
-      source: "contact_page",
-    });
+      await addDoc(collection(db, "salons", SALON_ID, "contact_messages"), {
+        ...formData,
+        status: "new",
+        createdAt: serverTimestamp(),
+        source: "contact_page",
+      });
 
-    // ✅ مودال نجاح
-    setModalType("success");
-    setModalMsg("تم إرسال رسالتك بنجاح 🌸\nبنرد عليك في أقرب وقت بإذن الله.");
-    setModalOpen(true);
+      // ✅ مودال نجاح
+      setModalType("success");
+      setModalMsg("تم إرسال رسالتك بنجاح 🌸\nبنرد عليك في أقرب وقت بإذن الله.");
+      setModalOpen(true);
 
-    setFormData({
-      name: "",
-      email: "",
-      phone: "",
-      subject: "",
-      message: "",
-    });
-  } catch (err) {
-    console.error("contact submit error:", err);
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        subject: "",
+        message: "",
+      });
+    } catch (err) {
+      console.error("contact submit error:", err);
 
-    // ✅ مودال خطأ
-    setModalType("error");
-    setModalMsg("صار خطأ أثناء الإرسال.\nجرّبي مرة ثانية أو تواصلي معنا واتساب 💬");
-    setModalOpen(true);
-  } finally {
-    setSending(false);
-  }
-};
+      // ✅ مودال خطأ
+      setModalType("error");
+      setModalMsg("صار خطأ أثناء الإرسال.\nجرّبي مرة ثانية أو تواصلي معنا واتساب 💬");
+      setModalOpen(true);
+    } finally {
+      setSending(false);
+    }
+  };
 
 
   // ✅ بيانات العرض (مع fallback واضح)
@@ -190,47 +191,46 @@ const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     <div className="contact-page py-5">
 
 
-{/* ✅ مودال بدل Alert المتصفح */}
-{modalOpen ? (
-  <div
-    className="modal-overlay"
-    role="dialog"
-    aria-modal="true"
-    onClick={() => setModalOpen(false)}
-  >
-    <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-      <div className="modal-head">
-        <div className="modal-title-wrap">
-          <div className="modal-icon">
-            {modalType === "success" ? "✅" : "⚠️"}
-          </div>
-          <h3 className="modal-title">
-            {modalType === "success" ? "تم الإرسال" : "تعذر الإرسال"}
-          </h3>
-        </div>
+      {/* ✅ مودال بدل Alert المتصفح */}
+      {modalOpen ? (
+        <Modal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          ariaLabel={modalType === "success" ? "تم الإرسال" : "تعذر الإرسال"}
+          panelClassName="modal-box"
+          size="sm"
+        >
+            <div className="modal-head">
+              <div className="modal-title-wrap">
+                <div className="modal-icon">
+                  {modalType === "success" ? "✅" : "⚠️"}
+                </div>
+                <h3 className="modal-title">
+                  {modalType === "success" ? "تم الإرسال" : "تعذر الإرسال"}
+                </h3>
+              </div>
 
-        <button className="modal-close" onClick={() => setModalOpen(false)} aria-label="إغلاق">
-          ✕
-        </button>
-      </div>
+              <button className="modal-close" onClick={() => setModalOpen(false)} aria-label="إغلاق">
+                ✕
+              </button>
+            </div>
 
-      <div className="modal-body">
-        <p className="modal-text">{modalMsg}</p>
-      </div>
+            <div className="modal-body">
+              <p className="modal-text">{modalMsg}</p>
+            </div>
 
-      <div className="modal-actions">
-        <button className="btn-confirm" onClick={() => setModalOpen(false)}>
-          حسناً
-        </button>
-      </div>
-    </div>
-  </div>
-) : null}
+            <div className="modal-actions">
+              <button className="btn-confirm" onClick={() => setModalOpen(false)}>
+                حسناً
+              </button>
+            </div>
+        </Modal>
+      ) : null}
 
 
 
       <div className="container">
-        <h1 className="contact-title contact-title-gradient text-center mb-2">
+        <h1 className="contact-title contact-title-gradient text-center mb-2 qs-wine">
           تواصلي معنا
         </h1>
 

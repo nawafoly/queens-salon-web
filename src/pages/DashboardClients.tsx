@@ -18,6 +18,7 @@ import * as XLSX from "xlsx";
  */
 import "../styles/DashboardModals.css"; // ✅ مودالات موحّدة للداشبورد
 import "../styles/DashboardClients.css";
+import Modal from "../components/Modal";
 
 // ✅ Firestore Bookings
 import {
@@ -992,8 +993,13 @@ const DashboardClients: React.FC = () => {
 
       {/* Client Bookings Modal (Unified) */}
       {selectedClient && (
-        <div className="dash-modal-overlay" onClick={() => setSelectedClient(null)}>
-          <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
+        <Modal
+          open={!!selectedClient}
+          onClose={() => setSelectedClient(null)}
+          ariaLabel="سجل العميل"
+          panelClassName="dash-modal"
+          size="lg"
+        >
             <div className="cl-modalHeader">
               <h3 className="cl-modalTitle">
                 سجل: {selectedClient.name}{" "}
@@ -1129,14 +1135,18 @@ const DashboardClients: React.FC = () => {
                 * السجل من الحجوزات + بيانات Excel محفوظة في Firestore (clients).
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </Modal>
+        )}
 
       {/* Import Modal (Unified style using same overlay pattern) */}
       {importOpen && (
-        <div className="dash-modal-overlay" onClick={closeImport}>
-          <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
+        <Modal
+          open={importOpen}
+          onClose={closeImport}
+          ariaLabel="استيراد عميلات من Excel"
+          panelClassName="dash-modal"
+          size="lg"
+        >
             <div className="dash-modal-header">
               <h3>استيراد عميلات من Excel (دمج آمن)</h3>
               <button className="dash-close" type="button" onClick={closeImport} disabled={importing}>
@@ -1222,12 +1232,10 @@ const DashboardClients: React.FC = () => {
                 )}
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </Modal>
+        )}
     </div>
   );
 };
 
 export default DashboardClients;
-

@@ -102,7 +102,7 @@ export default function HomeServices() {
   }, [rows, imageBySectionId]);
 
   return (
-    <section className="home-services-section" aria-label="خدماتنا">
+    <section className="home-services-section qs-wine" aria-label="خدماتنا">
       <div className="container">
         <div className="home-services-head">
           <h2 className="home-services-title">خدماتنا المميزة</h2>

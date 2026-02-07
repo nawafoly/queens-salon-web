@@ -1,6 +1,6 @@
 // src/pages/DashboardBookings.tsx
 import { useEffect, useMemo, useState, useRef } from "react";
-import { createPortal } from "react-dom";
+import Modal from "../components/Modal";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -466,37 +466,7 @@ function StatusDot({ status }: { status: BookingStatus }) {
   return <span className={`status-badge ${status}`}>{label}</span>;
 }
 
-function Modal({
-  open,
-  title,
-  onClose,
-  children,
-  className,
-}: {
-  open: boolean;
-  title?: string;
-  onClose: () => void;
-  children: any;
-  className?: string;
-}) {
-  if (!open) return null;
-
-  return createPortal(
-    <div className="dash-modal-overlay" onClick={onClose}>
-      <div className={`dash-modal ${className || ""}`} onClick={(e) => e.stopPropagation()}>
-        <div className="dash-modal-header">
-          <h3>{title || "تفاصيل"}</h3>
-          <button className="dash-close" type="button" onClick={onClose}>
-            <FontAwesomeIcon icon={faXmark} />
-          </button>
-        </div>
-        <div className="dash-modal-body">{children}</div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
+ 
 
 /* =========================
    Staff list (for proper employeeId/uid)
@@ -1599,8 +1569,21 @@ const DashboardBookings = () => {
       </div>
 
       {/* Create Booking Modal */}
-      <Modal open={createOpen} title="إنشاء حجز (Dashboard)" onClose={closeCreate}>
-        <div style={{ display: "grid", gap: 10 }}>
+      <Modal
+        open={createOpen}
+        onClose={closeCreate}
+        ariaLabel="إنشاء حجز (Dashboard)"
+        panelClassName="dash-modal"
+        size="lg"
+      >
+        <div className="dash-modal-header">
+          <h3>إنشاء حجز (Dashboard)</h3>
+          <button className="dash-close" type="button" onClick={closeCreate}>
+            <FontAwesomeIcon icon={faXmark} />
+          </button>
+        </div>
+        <div className="dash-modal-body">
+          <div style={{ display: "grid", gap: 10 }}>
           {createError && <div className="bookings-error">{createError}</div>}
 
           <div style={{ display: "grid", gap: 8 }}>
@@ -1717,16 +1700,24 @@ const DashboardBookings = () => {
             </button>
           </div>
         </div>
+      </div>
       </Modal>
 
       {/* Details / Edit Modal */}
       <Modal
         open={!!selected}
-        className="booking-details-modal"
-        title={selected ? `تفاصيل الحجز — ${selected.publicId || selected.customerName || "—"}` : "تفاصيل"}
         onClose={closeDetails}
+        ariaLabel={selected ? `تفاصيل الحجز — ${selected.publicId || selected.customerName || "—"}` : "تفاصيل"}
+        panelClassName="dash-modal booking-details-modal"
+        size="lg"
       >
-
+        <div className="dash-modal-header">
+          <h3>{selected ? `تفاصيل الحجز — ${selected.publicId || selected.customerName || "—"}` : "تفاصيل"}</h3>
+          <button className="dash-close" type="button" onClick={closeDetails}>
+            <FontAwesomeIcon icon={faXmark} />
+          </button>
+        </div>
+        <div className="dash-modal-body">
         {!selected ? null : (
           <div>
             {/* Top actions */}
@@ -1965,6 +1956,7 @@ const DashboardBookings = () => {
             </div>
           </div>
         )}
+        </div>
       </Modal>
     </div>
   );

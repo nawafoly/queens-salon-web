@@ -32,6 +32,7 @@ const Navbar: React.FC = () => {
   const [hasScrolled, setHasScrolled] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
   const lastScrollY = useRef(0);
+  const lastScrollTarget = useRef<EventTarget | "page" | null>(null);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -105,22 +106,54 @@ const Navbar: React.FC = () => {
   // ✅ track scroll for "scrolled" styling + hide/show on direction
   useEffect(() => {
     let ticking = false;
-    lastScrollY.current = window.scrollY;
 
-    const onScroll = () => {
+    const getScrollTop = (target?: EventTarget | null) => {
+      if (target instanceof Element) {
+        const el = target as HTMLElement;
+        const style = window.getComputedStyle(el);
+        const overflowY = style.overflowY;
+        const isScrollable =
+          (overflowY === "auto" || overflowY === "scroll") &&
+          el.scrollHeight > el.clientHeight;
+        if (isScrollable) return el.scrollTop;
+      }
+
+      const scroller = document.scrollingElement || document.documentElement;
+      return scroller?.scrollTop ?? window.scrollY;
+    };
+
+    const normalizeTarget = (target?: EventTarget | null) => {
+      if (!target) return "page";
+      if (target === window) return "page";
+      if (target === document || target === document.documentElement || target === document.body) {
+        return "page";
+      }
+      return target;
+    };
+
+    const onScroll = (e?: Event) => {
       if (ticking) return;
       ticking = true;
 
       requestAnimationFrame(() => {
-        const y = window.scrollY;
+        const target = normalizeTarget(e?.target ?? null);
+        const y = target === "page" ? getScrollTop(null) : getScrollTop(target);
         setHasScrolled(y > 10);
+
+        if (target !== lastScrollTarget.current) {
+          lastScrollTarget.current = target;
+          lastScrollY.current = y;
+          ticking = false;
+          return;
+        }
+
         const delta = y - lastScrollY.current;
 
         if (y <= 20) {
           setIsHidden(false);
-        } else if (delta > 8) {
+        } else if (delta > 1) {
           setIsHidden(true);
-        } else if (delta < -8) {
+        } else if (delta < -1) {
           setIsHidden(false);
         }
 
@@ -129,8 +162,14 @@ const Navbar: React.FC = () => {
       });
     };
 
+    lastScrollY.current = getScrollTop(null);
+    lastScrollTarget.current = null;
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    document.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("scroll", onScroll, true);
+    };
   }, []);
 
   useEffect(() => {

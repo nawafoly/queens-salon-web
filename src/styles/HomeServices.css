@@ -10,6 +10,8 @@
   position: relative;
   overflow: hidden;
 
+
+
   background:
     radial-gradient(900px 520px at 15% 20%, rgba(64, 1, 13, 0.06), transparent 60%),
     radial-gradient(800px 450px at 85% 25%, rgba(136, 140, 140, 0.10), transparent 55%),
@@ -288,3 +290,4 @@
     border-radius: 20px;
   }
 }
+

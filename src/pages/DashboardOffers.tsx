@@ -21,6 +21,7 @@ import { pricingSections } from "./Pricing";
 
 import "../styles/DashboardModals.css";
 import "../styles/DashboardOffers.css";
+import Modal from "../components/Modal";
 
 // ✅ Firestore
 import { listOffers, upsertOffer, removeOffer } from "../services/firestoreOffers";
@@ -665,9 +666,13 @@ const DashboardOffers: React.FC = () => {
       </div>
 
       {/* Modal */}
-      {open && (
-        <div className="dash-modal-overlay offers-modal-overlay" onClick={close}>
-          <div className="dash-modal offers-modal offers-modal--fullscreen" onClick={(e) => e.stopPropagation()}>
+      <Modal
+        open={open}
+        onClose={close}
+        ariaLabel={editing ? "Edit offer" : "Add offer"}
+        overlayClassName="dash-modal-overlay offers-modal-overlay"
+        panelClassName="dash-modal offers-modal offers-modal--fullscreen"
+      >
             {/* Header (Fixed) */}
             <div className="of-modal-head">
               <div className="of-modal-title">
@@ -894,9 +899,7 @@ const DashboardOffers: React.FC = () => {
                 إلغاء
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 };

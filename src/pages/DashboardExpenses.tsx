@@ -3,7 +3,7 @@
 // ✅ src/pages/DashboardExpenses.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFileCsv } from "@fortawesome/free-solid-svg-icons";
+import { faFileCsv, faXmark } from "@fortawesome/free-solid-svg-icons";
 /**
  * ✅ قاعدة الاستيراد:
  * - المشترك/العام أولاً
@@ -11,6 +11,7 @@ import { faFileCsv } from "@fortawesome/free-solid-svg-icons";
  */
 import "../styles/DashboardModals.css";
 import "../styles/DashboardExpenses.css";
+import Modal from "../components/Modal";
 
 import type { Expense, PaymentMethod } from "../types/finance";
 import { FinanceSettingsService } from "../services/FinanceSettingsService";
@@ -1248,43 +1249,14 @@ const DashboardExpenses: React.FC = () => {
 
       {/* ===== سجل المصروفات (Modal كبير) ===== */}
       {recordOpen ? (
-        <div
-          className="dash-modal-overlay"
-          onClick={() => setRecordOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 999999,
-            padding: 16,
-          }}
+        <Modal
+          open={recordOpen}
+          onClose={() => setRecordOpen(false)}
+          ariaLabel="سجل المصروفات"
+          panelClassName="dash-modal"
+          size="lg"
         >
-          <div
-            className="dash-modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(1180px, 96vw)",
-              maxHeight: "86vh",
-              overflow: "auto",
-              background: "#fff",
-              borderRadius: 18,
-              padding: 16,
-              boxShadow: "0 14px 40px rgba(0,0,0,0.22)",
-              direction: "rtl",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 10,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
+            <div className="dash-modal-header">
               <div>
                 <h3 style={{ margin: 0 }}>سجل المصروفات</h3>
                 <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
@@ -1292,6 +1264,17 @@ const DashboardExpenses: React.FC = () => {
                 </div>
               </div>
 
+              <button
+                className="dash-close"
+                type="button"
+                onClick={() => setRecordOpen(false)}
+                aria-label="إغلاق"
+              >
+                <FontAwesomeIcon icon={faXmark} />
+              </button>
+            </div>
+
+            <div className="dash-modal-body">
               <div className="ep-filter-row">
                 <button
                   className="exp-btn"
@@ -1311,16 +1294,7 @@ const DashboardExpenses: React.FC = () => {
                 >
                   <FontAwesomeIcon icon={faFileCsv} /> تصدير
                 </button>
-
-                <button
-                  className="exp-btn primary"
-                  onClick={() => setRecordOpen(false)}
-                  type="button"
-                >
-                  إغلاق
-                </button>
               </div>
-            </div>
 
             <div style={{ marginTop: 14 }}>
               <div className="exp-filters">
@@ -1647,16 +1621,18 @@ const DashboardExpenses: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       ) : null}
 
       {/* ✅ Alert Modal */}
       {modalMsg ? (
-        <div className="modal-overlay" onClick={() => setModalMsg("")}>
-          <div
-            className="modal-box is-info"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <Modal
+          open={!!modalMsg}
+          onClose={() => setModalMsg("")}
+          ariaLabel="تنبيه"
+          panelClassName="modal-box is-info"
+          size="sm"
+        >
             <div className="modal-head">
               <div className="modal-title-wrap">
                 <div className="modal-icon">ℹ️</div>
@@ -1685,20 +1661,18 @@ const DashboardExpenses: React.FC = () => {
                 حسناً
               </button>
             </div>
-          </div>
-        </div>
+          </Modal>
       ) : null}
 
       {/* ✅ Confirm Modal */}
       {confirmState.open ? (
-        <div
-          className="modal-overlay"
-          onClick={() => setConfirmState({ open: false })}
+        <Modal
+          open={confirmState.open}
+          onClose={() => setConfirmState({ open: false })}
+          ariaLabel={confirmState.title || "تأكيد"}
+          panelClassName="modal-box is-danger"
+          size="sm"
         >
-          <div
-            className="modal-box is-danger"
-            onClick={(e) => e.stopPropagation()}
-          >
             <div className="modal-head">
               <div className="modal-title-wrap">
                 <div className="modal-icon">⚠️</div>
@@ -1740,12 +1714,10 @@ const DashboardExpenses: React.FC = () => {
                 إلغاء
               </button>
             </div>
-          </div>
-        </div>
+          </Modal>
       ) : null}
     </div>
   );
 };
 
 export default DashboardExpenses;
-

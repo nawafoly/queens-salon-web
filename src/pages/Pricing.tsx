@@ -14,6 +14,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/Pricing.css";
+import Modal from "../components/Modal";
 
 // ✅ Firestore
 import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
@@ -398,8 +399,13 @@ const Pricing: FC = () => {
       </div>
 
       {active && (
-        <div className="pricing-modal-overlay" role="presentation" onClick={() => setOpenSectionId(null)}>
-          <div className="pricing-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <Modal
+          open={!!active}
+          onClose={() => setOpenSectionId(null)}
+          ariaLabel={active?.title || "تفاصيل الأسعار"}
+          panelClassName="pricing-modal"
+          size="lg"
+        >
             <div className="modal-header">
               <div className="modal-header-left">
                 <div className={`modal-icon card-icon-${active.color}`}>
@@ -443,8 +449,7 @@ const Pricing: FC = () => {
                 تم
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

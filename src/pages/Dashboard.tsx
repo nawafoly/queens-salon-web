@@ -25,6 +25,7 @@ import "../styles/DashboardSkin.css";
 import "../styles/DashboardModals.css";
 import "../styles/DashboardOverview.css";
 import LoadingBrand from "../components/LoadingBrand";
+import Modal from "../components/Modal";
 
 import DashboardBookings from "../pages/DashboardBookings";
 import DashboardEmployees from "../pages/DashboardEmployees";
@@ -1427,8 +1428,13 @@ const Dashboard: React.FC = () => {
 
       {/* ✅ Modal تفاصيل الحجز */}
       {selectedBooking && (
-        <div className="dash-modal-overlay" onClick={() => setSelectedBooking(null)}>
-          <div className="dash-modal dash-booking-modal" onClick={(e) => e.stopPropagation()}>
+        <Modal
+          open={!!selectedBooking}
+          onClose={() => setSelectedBooking(null)}
+          ariaLabel="تفاصيل الحجز"
+          panelClassName="dash-modal dash-booking-modal"
+          size="lg"
+        >
             <div className="dash-modal-head">
               <div className="dash-modal-title">
                 <h3>تفاصيل الحجز</h3>
@@ -1444,6 +1450,7 @@ const Dashboard: React.FC = () => {
               </button>
             </div>
 
+            <div className="dash-modal-body">
             <div className="dash-details-grid">
               <div className="dash-detail">
                 <b>رقم الحجز</b>
@@ -1537,7 +1544,7 @@ const Dashboard: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

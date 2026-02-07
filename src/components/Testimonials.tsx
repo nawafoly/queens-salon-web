@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import Modal from "./Modal";
 import "../styles/Testimonials.css";
 
 import { getAuth } from "firebase/auth";
@@ -459,8 +460,13 @@ const Testimonials: React.FC = () => {
       </div>
 
       {showSuccess && (
-        <div className="modal-overlay" onClick={() => setShowSuccess(false)}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+        <Modal
+          open={showSuccess}
+          onClose={() => setShowSuccess(false)}
+          ariaLabel="تم نشر تعليقك"
+          panelClassName="modal-box"
+          size="sm"
+        >
             <div className="modal-head">
               <button className="modal-close modal-close-wine" onClick={() => setShowSuccess(false)}>
                 ✕
@@ -485,8 +491,7 @@ const Testimonials: React.FC = () => {
                 حسنًا
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </section>
   );

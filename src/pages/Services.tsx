@@ -262,9 +262,9 @@ export default function Services() {
                 faList);
         const image = ui?.image || packagesImg;
         const description =
-        ui?.description ||
-        `اكتشفي أفضل خدمات ${sec.name} المتوفرة لدينا بجودة عالية.`;
-      
+          ui?.description ||
+          `اكتشفي أفضل خدمات ${sec.name} المتوفرة لدينا بجودة عالية.`;
+
         const cats = (catsBySection.get(sec.id) || []).sort(
           (a, b) => (a.order ?? 0) - (b.order ?? 0)
         );
@@ -310,9 +310,9 @@ export default function Services() {
       <section className="bg-gradient-primary py-5">
         <div className="container">
           <div className="text-center">
-            <h1 className="display-5 fw-bold text-gradient mb-2">خدماتنا</h1>
-<p className="lead text-gray fw-semibold mb-0">
-            اختاري القسم ثم افتحي التصنيف وشوفي الخدمات والأسعار
+            <h1 className="display-5 fw-bold text-gradient mb-2 qs-wine">خدماتنا</h1>
+            <p className="lead text-gray fw-semibold mb-0">
+              اختاري القسم ثم افتحي التصنيف وشوفي الخدمات والأسعار
             </p>
           </div>
         </div>
