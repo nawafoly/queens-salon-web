@@ -31,6 +31,7 @@ const Navbar: React.FC = () => {
   // ✅ scroll states
   const [hasScrolled, setHasScrolled] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
+  const lastScrollY = useRef(0);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -94,16 +95,17 @@ const Navbar: React.FC = () => {
   useEffect(() => {
     setIsDropdownOpen(false);
     setIsMenuOpen(false);
+    setIsHidden(false);
   }, [location.pathname]);
 
   useEffect(() => {
     if (isInDashboard) setIsMenuOpen(false);
   }, [isInDashboard]);
 
-  // ✅ hide on scroll down, show on scroll up
+  // ✅ track scroll for "scrolled" styling + hide/show on direction
   useEffect(() => {
-    let lastY = window.scrollY;
     let ticking = false;
+    lastScrollY.current = window.scrollY;
 
     const onScroll = () => {
       if (ticking) return;
@@ -111,23 +113,18 @@ const Navbar: React.FC = () => {
 
       requestAnimationFrame(() => {
         const y = window.scrollY;
-
         setHasScrolled(y > 10);
+        const delta = y - lastScrollY.current;
 
-        const goingDown = y > lastY + 6;
-        const goingUp = y < lastY - 6;
-
-        if (y < 30) {
+        if (y <= 20) {
           setIsHidden(false);
-        } else if (goingDown) {
+        } else if (delta > 8) {
           setIsHidden(true);
-          setIsMenuOpen(false);
-          setIsDropdownOpen(false);
-        } else if (goingUp) {
+        } else if (delta < -8) {
           setIsHidden(false);
         }
 
-        lastY = y;
+        lastScrollY.current = y;
         ticking = false;
       });
     };

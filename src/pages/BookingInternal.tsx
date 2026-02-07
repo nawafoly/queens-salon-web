@@ -22,6 +22,7 @@ import {
   slotLabelToMinutes,
   toMinutes,
 } from "../helpers/timeSlots";
+import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 import { AppSettingsService } from "../services/AppSettingsService";
 
 import "../styles/Booking.css";
@@ -410,7 +411,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [uploadingGuide, setUploadingGuide] = useState(false);
 
   // ✅ الاستقبال يختار التاريخ أول
-  const [bookingDate, setBookingDate] = useState<string>("");
+  const [bookingDate, setBookingDate] = useState<string>(() => todayISO());
 
   const [formData, setFormData] = useState<BookingFormData>({
     name: "",
@@ -605,7 +606,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     // doc id
     return { kind: "id" as const, value: s };
-  } 
+  }
 
   async function searchBookingsForReception(raw: string) {
     const q0 = normalizeSearchKey(raw);
@@ -1492,20 +1493,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
           if (cancelled) return;
 
-          const today = todayISO();
-
-          const filtered = (res || []).filter((st: any) => {
+          const normalized = (res || []).filter((st: any) => {
             const name = String(st?.name || "").trim();
             if (!name) return false;
-            if (st?.showOnBooking === false) return false;
-            if (st?.active === false) return false;
-
-            const onLeave = !!st?.onLeave;
-            const leaveUntil = String(st?.leaveUntil || "").trim();
-            if (onLeave) {
-              if (!leaveUntil) return false;
-              if (leaveUntil >= today) return false;
-            }
 
             const specs = Array.isArray(st?.specialties)
               ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
@@ -1514,9 +1504,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             return specs.includes(sid);
           });
 
-          setStaffByService((p) => ({ ...p, [sid]: filtered }));
+          setStaffByService((p) => ({ ...p, [sid]: normalized }));
 
-          if (!filtered.length) {
+          if (!normalized.length) {
             setStaffErrorByService((p) => ({
               ...p,
               [sid]: `ما فيه موظفات لهذه الخدمة حالياً.`,
@@ -2154,9 +2144,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
       const applicableIdx: number[] = offerObj
         ? items
-            .map((it, idx) => ({ it, idx }))
-            .filter(({ it }) => offerAppliesToService(offerObj, String(it.serviceId || "").trim()))
-            .map(({ idx }) => idx)
+          .map((it, idx) => ({ it, idx }))
+          .filter(({ it }) => offerAppliesToService(offerObj, String(it.serviceId || "").trim()))
+          .map(({ idx }) => idx)
         : [];
 
       const perItemDiscounts = items.map(() => 0);
@@ -2246,6 +2236,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           trackId: res.id,
           publicId: (res as any).publicId,
 
+          // ✅ خلي الاثنين موجودين (عشان SuccessInternal يقرأ + عشان ما نكسر القديم)
+          clientName: String(formData.name || "").trim(),
+          clientPhone: phone,
+
           name: String(formData.name || "").trim(),
           phone,
 
@@ -2272,6 +2266,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           createdAt: Date.now(),
           channel: "internal",
         });
+
       }
 
       localStorage.setItem("allBookings", JSON.stringify(createdBookings));
@@ -2438,9 +2433,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                             <button
                               key={b.id}
                               type="button"
-                              className={`list-group-item list-group-item-action ${
-                                selectedExistingBooking?.id === b.id ? "active" : ""
-                              }`}
+                              className={`list-group-item list-group-item-action ${selectedExistingBooking?.id === b.id ? "active" : ""
+                                }`}
                               onClick={() => setSelectedExistingBooking(b)}
                             >
                               <div className="d-flex justify-content-between align-items-center">
@@ -2459,13 +2453,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 </div>
 
                                 <span
-                                  className={`badge ${
-                                    isPending
-                                      ? "bg-warning text-dark"
-                                      : isConfirmed
+                                  className={`badge ${isPending
+                                    ? "bg-warning text-dark"
+                                    : isConfirmed
                                       ? "bg-success"
                                       : "bg-secondary"
-                                  }`}
+                                    }`}
                                 >
                                   {status || "—"}
                                 </span>
@@ -2601,13 +2594,35 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         value={bookingDate}
                         onChange={(e) => {
                           const v = e.target.value;
+                          const minDate = todayISO();
+
+                          if (v && v < minDate) {
+                            setBookingDate(minDate);
+                            openModal({
+                              title: "تاريخ غير صالح",
+                              message: "لا يمكن الحجز على يوم سابق. تم ضبط التاريخ على اليوم.",
+                              variant: "danger",
+                              confirmText: "تمام",
+                            });
+                            return;
+                          }
+
                           setBookingDate(v);
+
 
                           setFormData((prev) => ({
                             ...prev,
                             items: (prev.items || []).map((it) => {
                               const sv = getServiceById(String(it.serviceId || "").trim());
-                              const basePatch = { ...it, date: v, time: "" };
+                              const basePatch = {
+                                ...it,
+                                date: v,
+                                time: "",
+                                employeeId: "",
+                                employeeUid: "",
+                                employeeName: "",
+                                locked: false,
+                              };
 
                               if (sv) {
                                 const eff = pickEffectivePrice({
@@ -2813,8 +2828,16 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         });
 
                         const serviceStaff = staffByService[it.serviceId] || [];
+                        const dateISO = String(it.date || "").trim();
+                        const availableStaff = serviceStaff.filter((st) =>
+                          isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true })
+                        );
                         const staffLoading = !!staffLoadingByService[it.serviceId];
                         const staffError = staffErrorByService[it.serviceId] || "";
+                        const staffUnavailableMsg =
+                          !staffLoading && !staffError && serviceStaff.length && !availableStaff.length
+                            ? "لا توجد موظفات متاحات لهذا التاريخ."
+                            : "";
 
                         if (isLocked) {
                           return (
@@ -2959,7 +2982,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                       value={it.employeeId}
                                       onChange={(e) => {
                                         const empId = e.target.value;
-                                        const emp = serviceStaff.find((x) => x.id === empId);
+                                        const emp = availableStaff.find((x) => x.id === empId);
                                         updateItem(it.id, {
                                           employeeId: empId,
                                           employeeUid: emp?.linkedUid || "",
@@ -2969,7 +2992,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                       }}
                                     >
                                       <option value="">اختاري الموظفة</option>
-                                      {serviceStaff.map((emp) => (
+                                      {availableStaff.map((emp) => (
                                         <option key={emp.id} value={emp.id}>
                                           {emp.name}
                                         </option>
@@ -2984,6 +3007,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                   )}
                                   {staffError && (
                                     <div className="text-danger small mt-1">{staffError}</div>
+                                  )}
+                                  {staffUnavailableMsg && (
+                                    <div className="text-warning small mt-1">
+                                      {staffUnavailableMsg}
+                                    </div>
                                   )}
                                 </div>
 
@@ -3006,8 +3034,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                         const title = bookedLabel
                                           ? bookedLabel
                                           : disabled
-                                          ? "غير متاح"
-                                          : "متاح";
+                                            ? "غير متاح"
+                                            : "متاح";
 
                                         return (
                                           <button
@@ -3128,9 +3156,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
                   {offerMsg && (
                     <div
-                      className={`small mt-2 ${
-                        offerMsg.includes("✅") ? "text-success" : "text-danger"
-                      }`}
+                      className={`small mt-2 ${offerMsg.includes("✅") ? "text-success" : "text-danger"
+                        }`}
                     >
                       {offerMsg}
                     </div>

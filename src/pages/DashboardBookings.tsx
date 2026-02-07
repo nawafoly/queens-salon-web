@@ -44,6 +44,8 @@ import { resolveServiceName } from "../services/serviceResolver";
 // ✅ NEW: AppSettings from Firestore (source of truth)
 import { AppSettingsService, type AppSettings } from "../services/AppSettingsService";
 
+import { isStaffAvailableForDate } from "../helpers/staffAvailability";
+
 // ✅ Styles
 import "../styles/DashboardModals.css";
 import "../styles/DashboardBookings.css";
@@ -507,6 +509,7 @@ type StaffRow = {
   active: boolean;
   showOnBooking?: boolean;
   onLeave?: boolean;
+  leaveUntil?: string; // YYYY-MM-DD
 };
 
 const SALON_ID = "main";
@@ -702,6 +705,7 @@ const DashboardBookings = () => {
             active: x?.active !== false,
             showOnBooking: x?.showOnBooking !== false,
             onLeave: !!x?.onLeave,
+            leaveUntil: String(x?.leaveUntil || "").trim(),
           };
         });
 
@@ -901,6 +905,30 @@ const DashboardBookings = () => {
 
     return { totalBookings, totalRevenue, dist };
   }, [filtered]);
+
+  const availableStaffForCreate = useMemo(() => {
+    return staff.filter((s) =>
+      isStaffAvailableForDate(s, form.date, { requireShowOnBooking: true })
+    );
+  }, [staff, form.date]);
+
+  const availableStaffForEdit = useMemo(() => {
+    return staff.filter((s) =>
+      isStaffAvailableForDate(s, editForm.date, { requireShowOnBooking: true })
+    );
+  }, [staff, editForm.date]);
+
+  const editStaffOptions = useMemo(() => {
+    const selected = staff.find((s) => s.id === editForm.staffId);
+    if (
+      selected &&
+      !isStaffAvailableForDate(selected, editForm.date, { requireShowOnBooking: true })
+    ) {
+      const rest = availableStaffForEdit.filter((s) => s.id !== selected.id);
+      return [selected, ...rest];
+    }
+    return availableStaffForEdit;
+  }, [staff, editForm.staffId, editForm.date, availableStaffForEdit]);
 
   /* =========================
      Actions
@@ -1624,9 +1652,7 @@ const DashboardBookings = () => {
               }}
             >
               <option value="">{staffLoading ? "جاري تحميل الموظفات..." : "اختر موظفة (يعبي employeeId تلقائيًا)"}</option>
-              {staff
-                .filter((s) => s.active !== false)
-                .map((s) => (
+              {availableStaffForCreate.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name || s.id}
                   </option>
@@ -1845,13 +1871,20 @@ const DashboardBookings = () => {
                       }}
                     >
                       <option value="">{staffLoading ? "جاري تحميل..." : "اختر موظفة (يعبي employeeId)"}</option>
-                      {staff
-                        .filter((s) => s.active !== false)
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name || s.id}
+                      {editStaffOptions.map((s) => {
+                        const isAvailable = isStaffAvailableForDate(s, editForm.date, {
+                          requireShowOnBooking: true,
+                        });
+                        const label = isAvailable
+                          ? s.name || s.id
+                          : `${s.name || s.id} (غير متاحة)`;
+
+                        return (
+                          <option key={s.id} value={s.id} disabled={!isAvailable}>
+                            {label}
                           </option>
-                        ))}
+                        );
+                      })}
                     </select>
 
                     <input

@@ -1005,3 +1005,17 @@
 .dashboard-skin .dashboard-sidebar{
   z-index: 9999 !important;
 }
+
+.dashboard-skin .dash-topbar-user {
+  display: flex;
+  flex-direction: row;   /* ✅ نفس السطر */
+  align-items: center;
+  gap: 8px;              /* ✅ المسافة بين الاسم والوظيفة */
+  direction: rtl;
+}
+
+.dashboard-skin .dash-topbar-name,
+.dashboard-skin .dash-topbar-role {
+  white-space: nowrap;
+}
+  

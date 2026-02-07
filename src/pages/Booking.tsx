@@ -16,6 +16,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { generateSalonTimeSlots, slotLabelToMinutes, toMinutes } from "../helpers/timeSlots";
+import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 import { AppSettingsService } from "../services/AppSettingsService";
 
 import "../styles/Booking.css";
@@ -1372,20 +1373,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
           if (cancelled) return;
 
-          const today = todayISO();
-
-          const filtered = (res || []).filter((st: any) => {
+          const normalized = (res || []).filter((st: any) => {
             const name = String(st?.name || "").trim();
             if (!name) return false;
-            if (st?.showOnBooking === false) return false;
-            if (st?.active === false) return false;
-
-            const onLeave = !!st?.onLeave;
-            const leaveUntil = String(st?.leaveUntil || "").trim();
-            if (onLeave) {
-              if (!leaveUntil) return false;
-              if (leaveUntil >= today) return false;
-            }
 
             const specs = Array.isArray(st?.specialties)
               ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
@@ -1394,9 +1384,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             return specs.includes(sid);
           });
 
-          setStaffByService((p) => ({ ...p, [sid]: filtered }));
+          setStaffByService((p) => ({ ...p, [sid]: normalized }));
 
-          if (!filtered.length) {
+          if (!normalized.length) {
             setStaffErrorByService((p) => ({
               ...p,
               [sid]: `ما فيه موظفات لهذه الخدمة حالياً.`,
@@ -2457,8 +2447,16 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             items: (prev.items || []).map((it) => {
                               const sv = getServiceById(String(it.serviceId || "").trim());
 
-                              // default: صفّر الوقت وحدّث التاريخ
-                              const basePatch = { ...it, date: v, time: "" };
+                              // default: صفّر الوقت + الموظفة وحدّث التاريخ (حتى نمنع أي تعارض في التوفر)
+                              const basePatch = {
+                                ...it,
+                                date: v,
+                                time: "",
+                                employeeId: "",
+                                employeeUid: "",
+                                employeeName: "",
+                                locked: false,
+                              };
 
                               // لو الخدمة موجودة: حدّث سعرها حسب الموسم/العادي
                               if (sv) {
@@ -2597,8 +2595,16 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                         });
 
                         const serviceStaff = staffByService[it.serviceId] || [];
+                        const dateISO = String(it.date || "").trim();
+                        const availableStaff = serviceStaff.filter((st) =>
+                          isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true })
+                        );
                         const staffLoading = !!staffLoadingByService[it.serviceId];
                         const staffError = staffErrorByService[it.serviceId] || "";
+                        const staffUnavailableMsg =
+                          !staffLoading && !staffError && serviceStaff.length && !availableStaff.length
+                            ? "لا توجد موظفات متاحات لهذا التاريخ."
+                            : "";
 
                         // ✅ التصميم الجديد للكرت عند التأكيد (الملخص الأخضر)
                         if (isLocked) {
@@ -2664,18 +2670,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                       value={it.employeeId}
                                       onChange={(e) => {
                                         const empId = e.target.value;
-                                        const emp = serviceStaff.find((x) => x.id === empId);
+                                        const emp = availableStaff.find((x) => x.id === empId);
                                         updateItem(it.id, { employeeId: empId, employeeUid: emp?.linkedUid || "", employeeName: emp?.name || "", time: "" });
                                       }}
                                     >
                                       <option value="">اختاري الموظفة</option>
-                                      {serviceStaff.map((emp) => (
+                                      {availableStaff.map((emp) => (
                                         <option key={emp.id} value={emp.id}>{emp.name}</option>
                                       ))}
                                     </select>
                                   </div>
                                   {staffLoading && <div className="small text-muted mt-1"><FontAwesomeIcon icon={faSpinner} spin /> جاري التحميل...</div>}
                                   {staffError && <div className="text-danger small mt-1">{staffError}</div>}
+                                  {staffUnavailableMsg && <div className="text-warning small mt-1">{staffUnavailableMsg}</div>}
                                 </div>
 
                                 {it.employeeId && (

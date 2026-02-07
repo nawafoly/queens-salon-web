@@ -192,12 +192,12 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 }) => {
   const statusLabel = useMemo(
     () =>
-      ({
-        confirmed: "مؤكد",
-        pending: "في الانتظار",
-        cancelled: "ملغي",
-        completed: "مكتمل",
-      } as Record<BookingStatus, string>),
+    ({
+      confirmed: "مؤكد",
+      pending: "في الانتظار",
+      cancelled: "ملغي",
+      completed: "مكتمل",
+    } as Record<BookingStatus, string>),
     []
   );
 
@@ -544,12 +544,12 @@ const Dashboard: React.FC = () => {
       const todayList = todayListAll.filter(
         (b) => b.status === "confirmed" || b.status === "completed"
       );
-      
+
       const todayRevenue = todayList.reduce(
         (sum, b) => sum + (Number((b as any).total) || 0),
         0
       );
-      
+
 
       let employeesCount = 0;
       try {
@@ -672,7 +672,7 @@ const Dashboard: React.FC = () => {
         sections: { ...prev.sections, ...(cached?.sections || {}) },
         policies: { ...prev.policies, ...(cached?.policies || {}) },
       }));
-    } catch {}
+    } catch { }
 
     const unsub = AppSettingsService.subscribe((remote: any) => {
       setSettings((prev) => ({
@@ -729,9 +729,9 @@ const Dashboard: React.FC = () => {
 
           const fallbackRole: UiRole =
             cachedRole === "owner" ||
-            cachedRole === "admin" ||
-            cachedRole === "reception" ||
-            cachedRole === "staff"
+              cachedRole === "admin" ||
+              cachedRole === "reception" ||
+              cachedRole === "staff"
               ? (cachedRole as UiRole)
               : "staff";
 
@@ -954,7 +954,7 @@ const Dashboard: React.FC = () => {
     if (key === "reports") navigate("/dashboard/reports");
     setIsSidebarOpen(false);
   };
-  
+
 
   const handleOpenBooking = (booking: Booking) => setSelectedBooking(booking);
 
@@ -994,6 +994,12 @@ const Dashboard: React.FC = () => {
   if (!userInfo) {
     return <LoadingBrand text="جاري تحميل لوحة التحكم..." />;
   }
+
+  const topbarName = String(userInfo?.name ?? "")
+    .replace(/[\u200B-\u200F\u202A-\u202E]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 
   return (
     <div className="dashboard-skin dashboard-page dashboard-skin-page">
@@ -1291,7 +1297,13 @@ const Dashboard: React.FC = () => {
 
               <div className="dash-topbar-right">
                 <div className="dash-topbar-user">
-                  <span className="dash-topbar-name">{userInfo.name}</span>
+                  <span
+                    className="dash-topbar-name"
+                    dir="rtl"
+                    style={{ unicodeBidi: "plaintext" }}
+                  >
+                    {topbarName || "-"}
+                  </span>
                   <span className="dash-topbar-role">{getRoleTitle(userInfo.role)}</span>
                 </div>
               </div>
@@ -1477,8 +1489,8 @@ const Dashboard: React.FC = () => {
 
                 <div className="dash-status-row">
                   {hasAdminPower ||
-                  (isReception && allowReceptionChangeStatus) ||
-                  (isStaff && allowStaffChangeStatus) ? (
+                    (isReception && allowReceptionChangeStatus) ||
+                    (isStaff && allowStaffChangeStatus) ? (
                     <select
                       className="dash-select"
                       value={selectedBooking.status}

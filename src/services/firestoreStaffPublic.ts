@@ -1,12 +1,16 @@
 // src/services/firestoreStaffPublic.ts
 import { db } from "./firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 
 export type StaffPublicDoc = {
   name: string;
   specialties: string[]; // ✅ مفاتيح واضحة (مثل hair / skin / nails ... لازم تطابق IDs الأقسام)
-  active: boolean;
+  active?: boolean;
   linkedUid?: string;
+  showOnBooking?: boolean;
+  onLeave?: boolean;
+  leaveUntil?: string;
+  leaveNote?: string;
 };
 
 export type StaffPublicWithId = StaffPublicDoc & { id: string };
@@ -27,8 +31,7 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
 
   try {
     const colRef = collection(db, "salons", sid, "staff_public");
-    const q1 = query(colRef, where("active", "==", true));
-    const snaps = await getDocs(q1);
+    const snaps = await getDocs(colRef);
 
     const all = snaps.docs.map((d) => {
       const data = d.data() as any;
@@ -36,13 +39,18 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
         id: d.id,
         name: String(data?.name ?? "").trim(),
         specialties: normalizeArray(data?.specialties),
-        active: Boolean(data?.active),
+        active: data?.active !== false,
         linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
+        showOnBooking: data?.showOnBooking !== false,
+        onLeave: !!data?.onLeave,
+        leaveUntil: String(data?.leaveUntil ?? "").trim(),
+        leaveNote: String(data?.leaveNote ?? "").trim(),
       } as StaffPublicWithId;
     });
 
-    console.log("[staff_public] listActiveStaffAll active =", all.length);
-    return all;
+    const activeOnly = all.filter((x) => x.active);
+    console.log("[staff_public] listActiveStaffAll active =", activeOnly.length);
+    return activeOnly;
   } catch (e: any) {
     console.error("[staff_public] listActiveStaffAll ERROR:", e?.code, e?.message, e);
     return [];
@@ -60,10 +68,8 @@ export async function listActiveStaffBySpecialty(args: {
   const wanted = norm(wantedRaw);
 
   try {
-    // ✅ نجيب النشطات فقط (بدون array-contains عشان ما نحتاج index)
     const colRef = collection(db, "salons", salonId, "staff_public");
-    const q1 = query(colRef, where("active", "==", true));
-    const snaps = await getDocs(q1);
+    const snaps = await getDocs(colRef);
 
     const all = snaps.docs.map((d) => {
       const data = d.data() as any;
@@ -71,13 +77,18 @@ export async function listActiveStaffBySpecialty(args: {
         id: d.id,
         name: String(data?.name ?? "").trim(),
         specialties: normalizeArray(data?.specialties),
-        active: Boolean(data?.active),
+        active: data?.active !== false,
         linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
+        showOnBooking: data?.showOnBooking !== false,
+        onLeave: !!data?.onLeave,
+        leaveUntil: String(data?.leaveUntil ?? "").trim(),
+        leaveNote: String(data?.leaveNote ?? "").trim(),
       } as StaffPublicWithId;
     });
 
-    // ✅ فلترة محلية حسب specialties
+    // ✅ فلترة محلية حسب specialties + active
     const filtered = all.filter((staff) => {
+      if (!staff.active) return false;
       const specs = normalizeArray(staff.specialties);
       return specs.some((sp) => norm(sp) === wanted);
     });
