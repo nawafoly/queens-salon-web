@@ -9,7 +9,9 @@ import {
   query,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
+
 
 export type BookingStatus = "confirmed" | "pending" | "cancelled" | "completed";
 
@@ -191,4 +193,42 @@ export const DashboardService = {
     const snaps = await getDocs(qy);
     return snaps.size;
   },
+
+
+  async finalizeClosedDate(closeDate: string): Promise<{ updated: number }> {
+    if (!closeDate) return { updated: 0 };
+
+    // ✅ نجيب حجوزات اليوم المحدد فقط
+    const qy = query(
+      bookingsCol(),
+      where("date", "==", closeDate),
+      where("status", "in", ["confirmed", "pending"])
+    );
+
+    const snaps = await getDocs(qy);
+
+    if (snaps.empty) return { updated: 0 };
+
+    const batch = writeBatch(db);
+    let updated = 0;
+
+    snaps.docs.forEach((d) => {
+      const s = normalizeStatus(d.data()?.status);
+
+      if (s === "confirmed") {
+        batch.update(d.ref, { status: "completed" });
+        updated++;
+      } else if (s === "pending") {
+        batch.update(d.ref, { status: "cancelled" });
+        updated++;
+      }
+    });
+
+    if (updated > 0) {
+      await batch.commit();
+    }
+
+    return { updated };
+  },
+
 };

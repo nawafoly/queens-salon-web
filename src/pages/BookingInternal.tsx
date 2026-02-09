@@ -19,9 +19,10 @@ import {
 
 import {
   generateSalonTimeSlots,
+  filterSlotsByServiceEnd,
   slotLabelToMinutes,
-  toMinutes,
 } from "../helpers/timeSlots";
+
 import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 import { AppSettingsService } from "../services/AppSettingsService";
 
@@ -276,6 +277,16 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function addDaysISO(startISO: string, addDays: number) {
+  const d = new Date(startISO + "T00:00:00");
+  d.setDate(d.getDate() + addDays);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+
 function safeInt(v: any, fallback: number) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
@@ -432,6 +443,21 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [manualOverride, setManualOverride] = useState(false);
 
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
+
+  // =========================
+  // ✅ NEW: Future availability (للأيام القادمة)
+  // =========================
+  const [futureDays, setFutureDays] = useState(14);
+  const [futureAnyStaff, setFutureAnyStaff] = useState(true);
+  const [futureSelectedEmployeeKey, setFutureSelectedEmployeeKey] = useState<string>("");
+  const [futureLoading, setFutureLoading] = useState(false);
+  const [futureResult, setFutureResult] = useState<
+    { date: string; times: string[]; note?: string }[]
+  >([]);
+  const [futureModalOpen, setFutureModalOpen] = useState(false);
+
+  const [futureMsg, setFutureMsg] = useState("");
+
 
   const [staffByService, setStaffByService] = useState<
     Record<string, StaffPublicWithId[]>
@@ -655,64 +681,64 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return out;
     }
 
-// 2.5) by name (partial prefix on clientNameLower / nameLower)
-if (q.kind === "name") {
-  const nameRaw = String(q.value || "").trim();
-  const nameLower = nameRaw.toLowerCase();
+    // 2.5) by name (partial prefix on clientNameLower / nameLower)
+    if (q.kind === "name") {
+      const nameRaw = String(q.value || "").trim();
+      const nameLower = nameRaw.toLowerCase();
 
-  if (nameLower) {
-    // A) clientNameLower prefix
-    try {
-      const snap = await getDocs(
-        query(
-          colBookings,
-          where("clientNameLower", ">=", nameLower),
-          where("clientNameLower", "<=", nameLower + "\uf8ff"),
-          orderBy("clientNameLower", "asc"),
-          limit(25)
-        )
-      );
-      snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
-      if (out.length) return out;
-    } catch {
-      // ignore (maybe missing index / field)
+      if (nameLower) {
+        // A) clientNameLower prefix
+        try {
+          const snap = await getDocs(
+            query(
+              colBookings,
+              where("clientNameLower", ">=", nameLower),
+              where("clientNameLower", "<=", nameLower + "\uf8ff"),
+              orderBy("clientNameLower", "asc"),
+              limit(25)
+            )
+          );
+          snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
+          if (out.length) return out;
+        } catch {
+          // ignore (maybe missing index / field)
+        }
+
+        // B) nameLower prefix (legacy)
+        try {
+          const snap = await getDocs(
+            query(
+              colBookings,
+              where("nameLower", ">=", nameLower),
+              where("nameLower", "<=", nameLower + "\uf8ff"),
+              orderBy("nameLower", "asc"),
+              limit(25)
+            )
+          );
+          snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
+          if (out.length) return out;
+        } catch {
+          // ignore
+        }
+
+        // C) fallback: exact (لو ما عندك lower fields)
+        try {
+          const snap = await getDocs(
+            query(colBookings, where("clientName", "==", nameRaw), limit(25))
+          );
+          snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
+          if (out.length) return out;
+        } catch { }
+
+        try {
+          const snap = await getDocs(
+            query(colBookings, where("name", "==", nameRaw), limit(25))
+          );
+          snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
+          if (out.length) return out;
+        } catch { }
+      }
     }
-
-    // B) nameLower prefix (legacy)
-    try {
-      const snap = await getDocs(
-        query(
-          colBookings,
-          where("nameLower", ">=", nameLower),
-          where("nameLower", "<=", nameLower + "\uf8ff"),
-          orderBy("nameLower", "asc"),
-          limit(25)
-        )
-      );
-      snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
-      if (out.length) return out;
-    } catch {
-      // ignore
-    }
-
-    // C) fallback: exact (لو ما عندك lower fields)
-    try {
-      const snap = await getDocs(
-        query(colBookings, where("clientName", "==", nameRaw), limit(25))
-      );
-      snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
-      if (out.length) return out;
-    } catch {}
-
-    try {
-      const snap = await getDocs(
-        query(colBookings, where("name", "==", nameRaw), limit(25))
-      );
-      snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
-      if (out.length) return out;
-    } catch {}
-  }
-}
 
 
 
@@ -726,6 +752,137 @@ if (q.kind === "name") {
 
     return out;
   }
+
+  async function runFutureAvailabilitySearch() {
+    setFutureMsg("");
+    setFutureResult([]);
+
+    const serviceId = String(servicePicker || "").trim();
+    if (!serviceId) {
+      setFutureMsg("اختاري خدمة أولاً.");
+      return;
+    }
+
+    const sv = getServiceById(serviceId);
+    if (!sv) {
+      setFutureMsg("الخدمة غير موجودة.");
+      return;
+    }
+
+    const durationMin = Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+    if (!durationMin || durationMin <= 0) {
+      setFutureMsg("مدة الخدمة غير صحيحة.");
+      return;
+    }
+
+    // الموظفات للخدمة (موجود عندك staffByService) :contentReference[oaicite:8]{index=8}
+    let staffList = staffByService[serviceId] || [];
+
+    if (!staffList.length) {
+      // ✅ حمّل الموظفات مباشرة لأننا نبحث قبل إضافة الخدمة للسلة
+      const res = await listActiveStaffBySpecialty({
+        salonId: SALON_ID,
+        specialty: serviceId,
+      });
+
+      staffList = (res || []).filter((st: any) => {
+        const name = String(st?.name || "").trim();
+        if (!name) return false;
+
+        const specs = Array.isArray(st?.specialties)
+          ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
+          : [];
+
+        return specs.includes(serviceId);
+      });
+
+      // اختياري: خزّنها عشان ما يعيد تحميلها كل مرة
+      setStaffByService((p) => ({ ...p, [serviceId]: staffList as any }));
+    }
+
+
+    // اليوم كبداية (وتقدر تخليها من bookingDate)
+    const startISO = todayISO();
+    const days = Math.max(1, Math.min(60, Number(futureDays || 14))); // سقف 60 يوم عشان ما نجلد Firestore
+
+    setFutureLoading(true);
+    try {
+      const results: { date: string; times: string[]; note?: string }[] = [];
+
+      // لو محدد موظفة بعينها
+      const fixedEmployeeKey = String(futureSelectedEmployeeKey || "").trim();
+
+      for (let i = 0; i < days; i++) {
+        const dateISO = addDaysISO(startISO, i);
+
+        // اجمع “أفضل الأوقات” لليوم
+        let dayTimes: string[] = [];
+
+        if (!futureAnyStaff && fixedEmployeeKey) {
+          // نحتاج employeeIdFallback (نستخرجه من staffList)
+          const staff = staffList.find((s: any) => String(s.linkedUid || s.uid || s.id || "") === fixedEmployeeKey)
+            || staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
+
+          const employeeIdFallback = String(staff?.id || "").trim();
+
+          dayTimes = await getAvailableStartsForDay({
+            salonId: SALON_ID,
+            employeeKey: fixedEmployeeKey,
+            employeeIdFallback,
+            dateISO,
+            durationMin,
+            take: 5,
+          });
+        } else {
+          // أي موظفة: نجرب كل الموظفات ونأخذ “أقرب” أوقات مجتمعة
+          const merged = new Set<string>();
+
+          // ملاحظة: هذا استعلام لكل موظفة لكل يوم (مقبول لو الأيام قليلة)
+          for (const st of staffList) {
+            const empKey = String(st?.linkedUid || "").trim() || String(st?.id || "").trim();
+            const empIdFallback = String(st?.id || "").trim();
+            if (!empKey) continue;
+
+            const times = await getAvailableStartsForDay({
+              salonId: SALON_ID,
+              employeeKey: empKey,
+              employeeIdFallback: empIdFallback,
+              dateISO,
+              durationMin,
+              take: 5,
+            });
+
+            times.forEach((t) => merged.add(t));
+          }
+
+          dayTimes = Array.from(merged.values()).sort((a, b) => {
+            const am = slotLabelToMinutes(a) ?? 999999;
+            const bm = slotLabelToMinutes(b) ?? 999999;
+            return am - bm;
+          }).slice(0, 5);
+        }
+
+        if (dayTimes.length) results.push({ date: dateISO, times: dayTimes });
+
+        // اختياري: إذا لقيت أيام كفاية وقف بدري
+        if (results.length >= 14) break;
+      }
+
+      if (!results.length) {
+        setFutureMsg("ما لقينا أوقات متاحة ضمن الفترة.");
+        return;
+      }
+
+      setFutureResult(results);
+      setFutureModalOpen(true);
+
+    } catch (e: any) {
+      setFutureMsg(`صار خطأ أثناء البحث: ${String(e?.message || e)}`);
+    } finally {
+      setFutureLoading(false);
+    }
+  }
+
 
   const handleSearchBooking = async () => {
     const q = String(bookingSearch || "").trim();
@@ -1395,6 +1552,24 @@ if (q.kind === "name") {
     return Array.from(map.entries());
   }, [servicesInSection]);
 
+  // ✅ عرض السعر في الـ dropdown حسب (طور الموسم/العادي) + تاريخ الحجز المختار
+  function servicePickerPriceText(sv: FlatService) {
+    const dateISO = String(bookingDate || "").trim();
+    if (!dateISO) return sv.priceText; // احتياط
+
+    const eff = pickEffectivePrice({
+      basePrice: Number(sv.basePrice || 0),
+      seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
+      appSettings,
+      dateISO,
+    });
+
+    const price = Number(eff.price || 0);
+    return `${price} ريال`;
+  }
+
+
+
   const isHairSection = useMemo(() => {
     const id = String(selectedSectionId || "").trim().toLowerCase();
     if (HAIR_SECTION_IDS.has(id)) return true;
@@ -1606,6 +1781,55 @@ if (q.kind === "name") {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.items]);
 
+
+  async function getAvailableStartsForDay(args: {
+    salonId: string;
+    employeeKey: string;
+    employeeIdFallback: string; // لو ما لقى بالـ employeeKey
+    dateISO: string;
+    durationMin: number;
+    take: number; // كم وقت نعرض في اليوم
+  }) {
+    const { salonId, employeeKey, employeeIdFallback, dateISO, durationMin, take } = args;
+
+    const takenFs = new Set<string>();
+    const colSlots = collection(db, "salons", salonId, "booking_slots");
+
+    // نفس منطقك الحالي: جرّب employeeKey ثم employeeId :contentReference[oaicite:6]{index=6}
+    let snap = await getDocs(
+      query(colSlots, where("employeeKey", "==", employeeKey), where("date", "==", dateISO))
+    );
+
+    if (!snap.docs.length && employeeIdFallback) {
+      snap = await getDocs(
+        query(colSlots, where("employeeId", "==", employeeIdFallback), where("date", "==", dateISO))
+      );
+    }
+
+    snap.docs.forEach((d) => {
+      const t = String((d.data() as any)?.time || "").trim();
+      if (t) takenFs.add(t);
+    });
+
+    // ✅ الأوقات الخضراء = أي start يركّب مدة+بافر بدون تعارض :contentReference[oaicite:7]{index=7}
+    const greens = getGreenStartTimes({
+      allSlots: timeSlots,
+      slotStepMin,
+      durationMin: Number(durationMin || DEFAULT_SERVICE_DURATION_MIN),
+      bufferMin,
+      takenAll: takenFs,
+    });
+
+    const list = Array.from(greens.values()).sort((a, b) => {
+      const am = slotLabelToMinutes(a) ?? 999999;
+      const bm = slotLabelToMinutes(b) ?? 999999;
+      return am - bm;
+    });
+
+    // خذ أول N فقط
+    return list.slice(0, Math.max(1, take));
+  }
+
   // =========================
   // ✅ Busy slots per item + تحميل معلومات الحجز الموجود
   // =========================
@@ -1702,6 +1926,14 @@ if (q.kind === "name") {
           let suggestedSlot = "";
 
           if (sequentialBooking) {
+            // ✅ طور الموسم (متتابع) — لا نقفل اليوم على وقت واحد
+            // القاعدة:
+            // - قبل أول حجز مسموح
+            // - بين الحجوزات مسموح إذا فيه مساحة كافية (مدة + بافر)
+            // - بعد آخر حجز مسموح
+            // مع "وقت مقترح" فقط لتقليل الهدر (بدون منع باقي الأوقات المتاحة)
+
+            // احسب آخر نهاية (للاقتراح فقط)
             let lastEndMin = -1;
             let lastTakenMinFs = -1;
 
@@ -1731,6 +1963,7 @@ if (q.kind === "name") {
                 Number(other.durationMin || 0),
                 bufferMin
               );
+
               locked.forEach((label) => {
                 const mm = slotLabelToMinutes(label);
                 if (mm !== null) lastTakenMinLocal = Math.max(lastTakenMinLocal, mm);
@@ -1739,39 +1972,44 @@ if (q.kind === "name") {
 
             if (lastTakenMinLocal !== -1) lastEndMin = Math.max(lastEndMin, lastTakenMinLocal + slotStepMin);
 
-            const openMin = toMinutes(openTime);
+            // ✅ الأوقات المتاحة فعليًا = أي start يقدر يركّب مدة+بافر بدون تعارض
+            const greens = getGreenStartTimes({
+              allSlots: timeSlots,
+              slotStepMin,
+              durationMin: Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+              bufferMin,
+              takenAll,
+            });
 
-            if (lastEndMin === -1) {
+            // ✅ نخلي disabled = كل شيء غير أخضر (عشان ما يطلع للعميلة بالـ grid)
+            for (const start of timeSlots) {
+              const isCurrentTime = String(it.time || "").trim() === start;
+              if (!greens.has(start) && !isCurrentTime) disabled.add(start);
+            }
+
+            // ✅ suggestedSlot = أفضل وقت (أقرب شيء بعد آخر نهاية) لكن بدون ما نقفل باقي الأوقات
+            let targetSlot = "";
+            if (lastEndMin !== -1) {
               for (const start of timeSlots) {
                 const m = slotLabelToMinutes(start);
-                if (m !== null && m !== openMin) disabled.add(start);
-              }
-
-              const firstSlot = timeSlots.find((s) => slotLabelToMinutes(s) === openMin) || "";
-              suggestedSlot = firstSlot;
-              sequentialHint = "هذا اليوم متاح بالكامل، يرجى الحجز من بداية اليوم.";
-            } else {
-              let targetSlot = "";
-              for (const start of timeSlots) {
-                const m = slotLabelToMinutes(start);
-                if (m !== null && m >= lastEndMin) {
+                if (m !== null && m >= lastEndMin && greens.has(start)) {
                   targetSlot = start;
                   break;
                 }
               }
-
-              for (const start of timeSlots) {
-                if (start !== targetSlot) disabled.add(start);
-              }
-
-              suggestedSlot = targetSlot || "";
-              if (targetSlot) {
-                sequentialHint = `لتقليل هدر الوقت، يرجى الحجز في الوقت المتاح التالي: ${targetSlot}`;
-              } else {
-                sequentialHint = "لا يوجد وقت متاح كافٍ لهذا اليوم مع هذه الموظفة.";
-              }
             }
+
+            // لو ما فيه “آخر نهاية” أو ما لقينا بعده، خذ أول وقت متاح
+            if (!targetSlot) {
+              targetSlot = Array.from(greens.values())[0] || "";
+            }
+
+            suggestedSlot = targetSlot;
+            sequentialHint = targetSlot
+              ? `الأوقات المتاحة تظهر فقط. الوقت المقترح لتقليل الهدر: ${targetSlot}`
+              : "لا يوجد وقت متاح كافٍ لهذا اليوم مع هذه الموظفة.";
           } else {
+
             for (const start of timeSlots) {
               const isCurrentTime = String(it.time || "").trim() === start;
               if (takenAll.has(start) && !isCurrentTime) disabled.add(start);
@@ -2781,12 +3019,73 @@ if (q.kind === "name") {
                             <optgroup key={cat} label={cat}>
                               {items.map((sv) => (
                                 <option key={sv.id} value={sv.id}>
-                                  {sv.name} — {sv.priceText}
+                                  {sv.name} — {servicePickerPriceText(sv)}
                                 </option>
                               ))}
                             </optgroup>
                           ))}
                         </select>
+                        {/* =========================
+    ✅ Future availability UI
+========================= */}
+                        <div style={{ marginTop: 12, padding: 12, border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12 }}>
+                          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                            <strong className="qs-black">الأوقات المتاحة للأيام القادمة</strong>
+
+                            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <span>{"الأيام:"}</span>
+                              <input
+                                type="number"
+                                min={1}
+                                max={60}
+                                value={futureDays}
+                                onChange={(e) => setFutureDays(Number((e.target as any).value || 14))}
+                                style={{ width: 80 }}
+                              />
+                            </label>
+
+                            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <input
+                                type="checkbox"
+                                checked={futureAnyStaff}
+                                onChange={(e) => setFutureAnyStaff((e.target as any).checked)}
+                              />
+                              <span>أي موظفة</span>
+                            </label>
+
+                            {!futureAnyStaff && (
+                              <select
+                                value={futureSelectedEmployeeKey}
+                                onChange={(e) => setFutureSelectedEmployeeKey(String((e.target as any).value || ""))}
+                              >
+                                <option value="">اختر موظفة</option>
+                                {(staffByService[String(servicePicker || "").trim()] || []).map((st: any) => {
+                                  const key = String(st?.linkedUid || st?.uid || "").trim() || String(st?.id || "").trim();
+                                  const name = String(st?.name || "موظفة");
+                                  return (
+                                    <option key={key} value={key}>
+                                      {name}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            )}
+
+                            <button
+                              type="button"
+                              className="qs-btn"
+                              onClick={runFutureAvailabilitySearch}
+                              disabled={futureLoading}
+                              title="يعرض أقرب أوقات متاحة حسب مدة الخدمة"
+                            >
+
+                              {futureLoading ? "جاري البحث..." : "عرض المتاح"}
+                            </button>
+
+                            {futureMsg ? <span style={{ opacity: 0.85 }}>{futureMsg}</span> : null}
+                          </div>
+
+                        </div>
 
                         <button
                           type="button"
@@ -3091,58 +3390,68 @@ if (q.kind === "name") {
                                       2. اختاري الوقت المتاح
                                     </label>
 
+
+
                                     <div className="bk-time-grid">
-                                      {timeSlots.map((t) => {
-                                        const suggested = String(busy.suggestedSlot || "").trim();
-                                        const disabled = busy.disabledStartTimes.has(t);
-                                        const isGreen = greenStarts.has(t) && !disabled;
-                                        const isSelected = it.time === t;
-                                        const isSequentialSuggested =
-                                          sequentialBooking && suggested === t && !disabled;
+                                      {filterSlotsByServiceEnd(
+                                        timeSlots,
+                                        closeTime,
+                                        Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                                        bufferMin,
+                                        20
+                                      )
+                                        .filter((t) => !busy.disabledStartTimes.has(t) || it.time === t)
+                                        .map((t) => {
+                                          const suggested = String(busy.suggestedSlot || "").trim();
+                                          const disabled = busy.disabledStartTimes.has(t);
+                                          const isGreen = greenStarts.has(t) && !disabled;
+                                          const isSelected = it.time === t;
+                                          const isSequentialSuggested =
+                                            sequentialBooking && suggested === t && !disabled;
 
-                                        const bookedLabel = busy.bookedMetaByTime[t] || "";
-                                        const title = bookedLabel
-                                          ? bookedLabel
-                                          : disabled
-                                            ? "غير متاح"
-                                            : "متاح";
+                                          const bookedLabel = busy.bookedMetaByTime[t] || "";
+                                          const title = bookedLabel
+                                            ? bookedLabel
+                                            : disabled
+                                              ? "غير متاح"
+                                              : "متاح";
 
-                                        return (
-                                          <button
-                                            key={t}
-                                            type="button"
-                                            className={[
-                                              "bk-time-chip",
-                                              isGreen && !sequentialBooking ? "is-green" : "",
-                                              isSequentialSuggested
-                                                ? "is-sequential-suggested"
-                                                : "",
-                                              disabled ? "is-disabled" : "",
-                                              isSelected ? "is-selected" : "",
-                                            ].join(" ")}
-                                            disabled={disabled || busy.loading}
-                                            title={title}
-                                            onClick={() => {
-                                              updateItem(it.id, { time: t });
-                                              validatePickedTime(it.id, t);
-                                            }}
-                                          >
-                                            {t}
-                                            {bookedLabel && (
-                                              <span
-                                                style={{
-                                                  display: "block",
-                                                  fontSize: 10,
-                                                  opacity: 0.85,
-                                                  marginTop: 3,
-                                                }}
-                                              >
-                                                محجوز
-                                              </span>
-                                            )}
-                                          </button>
-                                        );
-                                      })}
+                                          return (
+                                            <button
+                                              key={t}
+                                              type="button"
+                                              className={[
+                                                "bk-time-chip",
+                                                isGreen && !sequentialBooking ? "is-green" : "",
+                                                isSequentialSuggested
+                                                  ? "is-sequential-suggested"
+                                                  : "",
+                                                disabled ? "is-disabled" : "",
+                                                isSelected ? "is-selected" : "",
+                                              ].join(" ")}
+                                              disabled={disabled || busy.loading}
+                                              title={title}
+                                              onClick={() => {
+                                                updateItem(it.id, { time: t });
+                                                validatePickedTime(it.id, t);
+                                              }}
+                                            >
+                                              {t}
+                                              {bookedLabel && (
+                                                <span
+                                                  style={{
+                                                    display: "block",
+                                                    fontSize: 10,
+                                                    opacity: 0.85,
+                                                    marginTop: 3,
+                                                  }}
+                                                >
+                                                  محجوز
+                                                </span>
+                                              )}
+                                            </button>
+                                          );
+                                        })}
                                     </div>
 
                                     {busy.loading && (
@@ -3279,6 +3588,84 @@ if (q.kind === "name") {
           </div>
         </div>
       </div>
+
+      {/* =========================
+    ✅ Future Availability Modal
+========================= */}
+      {futureModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => setFutureModalOpen(false)}
+        >
+          <div
+            style={{
+              width: "min(700px, 95vw)",
+              maxHeight: "80vh",
+              overflowY: "auto",
+              background: "white",
+              borderRadius: 16,
+              padding: 20,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+              <h3 style={{ margin: 0 }}>الأوقات المتاحة</h3>
+
+              <button onClick={() => setFutureModalOpen(false)}>
+                إغلاق
+              </button>
+            </div>
+
+            {futureResult.map((d) => (
+              <div
+                key={d.date}
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  background: "rgba(0,0,0,0.04)",
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>
+                  {d.date}
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {d.times.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        setBookingDate(d.date);
+                        setFutureModalOpen(false);
+                      }}
+
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(0,0,0,0.1)",
+                        background: "white",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

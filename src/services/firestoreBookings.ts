@@ -379,6 +379,68 @@ async function unlockSlotsByBookingId(bookingId: string) {
   }
 }
 
+async function lockSlotsFromBooking(bookingId: string) {
+  // ✅ نقرأ الحجز ونرجع نقفل كل السلوّتات بناءً على وقت/مدة الحجز
+  const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
+  const snap = await getDoc(bookingRef);
+  if (!snap.exists()) throw new Error("BOOKING_NOT_FOUND");
+
+  const b = normalizeBooking(snap.data());
+
+  // لازم يكون فيه موظفة
+  const employeeIdTrimmed = String(b.employeeId ?? "").trim();
+  if (!employeeIdTrimmed) throw employeeRequiredError();
+
+  // ✅ lock key لازم يطابق Booking.tsx (employeeId = staff_public doc id)
+  const employeeKeyForLock = employeeIdTrimmed;
+
+  const durationMin = Math.max(0, Number(b.durationMin || 0)) || 60;
+
+  const timesToLock = getTimesToLock(String(b.time || "").trim(), durationMin, {
+    slotStepMin: (b as any).slotStepMinAtBooking,
+    bufferMin: (b as any).bufferMinAtBooking,
+  });
+
+  const employeeKey =
+    String(b.employeeKey || "").trim() ||
+    String(b.employeeUid || "").trim() ||
+    employeeIdTrimmed ||
+    safeKey(String(b.employeeName || "unknown_employee"));
+
+  // ✅ نكتب (setDoc) على نفس docIds المعتادة
+  await Promise.all(
+    timesToLock.map((t) => {
+      const slotId = buildSlotId(b.date, t, employeeKeyForLock);
+      const slotRef = doc(db, ...SLOTS_COL, slotId);
+
+      return setDoc(
+        slotRef,
+        stripUndefined({
+          bookingId,
+
+          employeeId: b.employeeId ?? null,
+          employeeUid: b.employeeUid ?? null,
+          employeeName: b.employeeName,
+          employeeKey,
+
+          date: b.date,
+          time: t,
+
+          startTime: b.time,
+          durationMin,
+
+          userId: b.userId ?? null,
+          clientPhone: b.clientPhone,
+
+          createdAt: serverTimestamp(),
+        }) as any,
+        { merge: true } as any
+      );
+    })
+  );
+}
+
+
 /* =========================
    CREATE
 ========================= */
@@ -971,10 +1033,25 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     patch: { status },
   });
 
-  // ✅ 1.5) ✅ إذا صار الحجز ملغي: فك الأقفال by bookingId (مضمون)
-  if (status === "cancelled") {
+// ✅ إذا صار الحجز ملغي: فك الأقفال
+if (status === "cancelled") {
+  await unlockSlotsByBookingId(bookingId);
+}
+
+// ✅ إذا رجع confirmed أو completed: لازم نقفل الأقفال من جديد
+if (status === "confirmed" || status === "completed") {
+  // (best-effort) لا نخليها تكسر تغيير الحالة لو صار خطأ
+  try {
+    // أولاً فك أي بقايا قديمة غلط (اختياري لكنه يحمي من تضارب الموظفة/المفتاح)
     await unlockSlotsByBookingId(bookingId);
+
+    // ثم اقفلها حسب بيانات الحجز الحالية
+    await lockSlotsFromBooking(bookingId);
+  } catch (e) {
+    console.warn("[updateBookingStatus] re-lock slots failed (ignored):", e);
   }
+}
+
 
   // ✅ 2) Best-effort: income خارج الترانزاكشن (ما يمنع تعديل الحجز)
   try {
@@ -1293,3 +1370,5 @@ export async function deleteBooking(bookingId: string) {
     note: "تم حذف الحجز نهائياً من الداشبورد",
   });
 }
+
+

@@ -370,3 +370,183 @@
 .status-badge:hover{
   transform: translateY(-1px) !important;
 }
+
+/* =========================
+   Daily Audit Print (Receipt)
+========================= */
+
+.print-area {
+  display: none;
+}
+
+/* مقاس بسيط لطابعة فواتير */
+.receipt {
+  width: 80mm;
+  padding: 8px;
+  font-family: Arial, "Tajawal", sans-serif;
+  font-size: 12px;
+}
+
+.receipt-title {
+  text-align: center;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.receipt-sub {
+  text-align: center;
+  margin-top: 2px;
+  margin-bottom: 6px;
+}
+
+.receipt-line {
+  border-top: 1px dashed #000;
+  margin: 8px 0;
+}
+
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  margin: 4px 0;
+}
+
+.receipt-items {
+  margin-top: 6px;
+}
+
+.receipt-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dotted #999;
+}
+
+.receipt-item .left .top {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.receipt-item .time {
+  font-weight: 700;
+}
+
+.receipt-item .name {
+  font-weight: 700;
+}
+
+.receipt-item .emp {
+  opacity: 0.8;
+  font-size: 11px;
+}
+
+.receipt-item .right {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.st {
+  font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid #000;
+  border-radius: 999px;
+}
+
+.receipt-footer {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* =========================
+   🎯 إعدادات الطباعة المحكمة (Receipt)
+   تم دمجها لضمان ورقة واحدة ووضوح الخط
+========================= */
+@media print {
+  /* 1. إخفاء كل شيء غير ضروري */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* 2. إظهار منطقة الطباعة فقط وضبطها بدقة */
+  .print-area,
+  .print-area * {
+    visibility: visible !important;
+    color: #000 !important; /* أسود غامق جداً للوضوح */
+    box-sizing: border-box !important; /* يضمن أن الحواف لا تزيد من العرض */
+  }
+
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 72mm !important; /* تقليل العرض قليلاً (من 80 إلى 72) لضمان الأمان */
+    margin: 0 !important;
+    padding: 0 2mm !important; /* هامش داخلي بسيط جداً */
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important; /* السماح بالتمدد الطولي لورقة واحدة */
+    
+    /* تحسين الخط ليكون واضحاً جداً */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    font-weight: 900 !important; /* أقصى درجة سماكة للخط */
+    font-size: 11pt !important;
+    line-height: 1.2;
+    text-align: right; /* التأكد من المحاذاة لليمين للعربي */
+  }
+
+  /* 3. إجبار الجداول أو العناصر الداخلية على عدم تجاوز العرض */
+  .print-area table, 
+  .print-area div, 
+  .print-area p {
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    word-wrap: break-word !important; /* كسر الكلمات الطويلة إذا لزم الأمر */
+  }
+
+  /* 4. إعدادات الصفحة */
+  @page {
+    margin: 0;
+    size: 80mm auto; /* عرض الورقة 80 ملم، لكن المحتوى داخلها 72 ملم للأمان */
+  }
+
+  html, body {
+    width: 80mm !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: #fff !important;
+    overflow: visible !important;
+  }
+
+  /* ✅ تقسيم الأقسام داخل الطباعة بدون لمس البادينق/المارجن */
+  .receipt-section-title {
+    font-weight: 900 !important;
+    text-align: center !important;
+    margin: 4mm 0 1mm !important; /* بسيط */
+    background: #eee !important;
+    padding: 1mm !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* ✅ فاصل بسيط بين الأقسام */
+  .receipt-section-sep {
+    border-top: 1px dashed #000 !important;
+    margin: 2mm 0 !important;
+  }
+}
+
+.qs-black {
+  color: var(--qs-black);
+}
+
+.today-inventory-title {
+  font-size: 18px;
+  font-weight: 900;
+  margin: 0 0 6px 0;
+}

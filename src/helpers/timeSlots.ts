@@ -93,3 +93,32 @@ export function generateSalonTimeSlots(
 
   return slots;
 }
+
+// ✅ فلترة الأوقات مع سماح تأخير (Overtime) محدود بعد الإغلاق
+// القاعدة:
+// - بداية الحجز لازم تكون قبل closeTime
+// - نهاية الخدمة (مدة + بافر) مسموح تتجاوز الإغلاق بحد allowOvertimeMin فقط
+export function filterSlotsByServiceEnd(
+  slots: string[],
+  closeTimeHHMM: string,
+  durationMin: number,
+  bufferMin: number,
+  allowOvertimeMin: number // ✅ جديد (مثلاً 20)
+) {
+  const closeMin = toMinutes(closeTimeHHMM);
+  const maxEndMin = closeMin + Math.max(0, Number(allowOvertimeMin || 0));
+  const need = Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
+
+  if (!need) return slots;
+
+  return slots.filter((label) => {
+    const startMin = slotLabelToMinutes(label);
+    if (startMin === null) return false;
+
+    // ✅ لا نسمح تبدأ بعد الإغلاق
+    if (startMin >= closeMin) return false;
+
+    // ✅ لكن نسمح بالنهاية تتأخر بحد (allowOvertimeMin)
+    return startMin + need <= maxEndMin;
+  });
+}
