@@ -32,6 +32,7 @@ import DashboardEmployees from "../pages/DashboardEmployees";
 import DashboardOffers from "../pages/DashboardOffers";
 import DashboardReports from "./DashboardReports";
 import DashboardClients from "./DashboardClients";
+import DashboardLoyalty from "./DashboardLoyalty";
 import DashboardSettings from "../pages/DashboardSettings";
 import DashboardExpenses from "../pages/DashboardExpenses";
 import DashboardIncome from "../pages/DashboardIncome";
@@ -1242,6 +1243,21 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
+                {hasAdminPower && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/loyalty"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faChartPie} />
+                      الولاء (VIP)
+                    </NavLink>
+                  </li>
+                )}
+
+
+
                 {hasAdminPower && canSeeSection("settings") && (
                   <li>
                     <NavLink
@@ -1382,6 +1398,11 @@ const Dashboard: React.FC = () => {
                     <Route path="clients" element={<DashboardClients />} />
                   )}
 
+                {hasAdminPower && (
+                  <Route path="loyalty" element={<DashboardLoyalty />} />
+                )}
+
+
                 {hasAdminPower && canSeeSection("employees") && (
                   <Route path="employees" element={<DashboardEmployees />} />
                 )}
@@ -1435,22 +1456,22 @@ const Dashboard: React.FC = () => {
           panelClassName="dash-modal dash-booking-modal"
           size="lg"
         >
-            <div className="dash-modal-head">
-              <div className="dash-modal-title">
-                <h3>تفاصيل الحجز</h3>
-                <small>عرض تفاصيل الحجز بشكل مرتب وواضح</small>
-              </div>
-
-              <button
-                className="exp-btn ghost"
-                type="button"
-                onClick={() => setSelectedBooking(null)}
-              >
-                <FontAwesomeIcon icon={faXmark} /> إغلاق
-              </button>
+          <div className="dash-modal-head">
+            <div className="dash-modal-title">
+              <h3>تفاصيل الحجز</h3>
+              <small>عرض تفاصيل الحجز بشكل مرتب وواضح</small>
             </div>
 
-            <div className="dash-modal-body">
+            <button
+              className="exp-btn ghost"
+              type="button"
+              onClick={() => setSelectedBooking(null)}
+            >
+              <FontAwesomeIcon icon={faXmark} /> إغلاق
+            </button>
+          </div>
+
+          <div className="dash-modal-body">
             <div className="dash-details-grid">
               <div className="dash-detail">
                 <b>رقم الحجز</b>

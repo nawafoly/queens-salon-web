@@ -1,0 +1,296 @@
+/* =========================
+   DashboardLoyalty.css
+   Queens Salon
+   ✅ Scoped to .loyalty-page (NO global dashboard overrides)
+   - Works with DashboardSkin.css
+   - Responsive + modern
+========================= */
+
+.loyalty-page {
+    direction: rtl;
+    padding: 24px 16px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+    font-family: inherit;
+  }
+  
+  /* Cards */
+  .loyalty-page .dashboard-card {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    margin-bottom: 20px;
+    box-sizing: border-box;
+    transition: all 0.3s ease;
+  }
+  
+  .loyalty-page .dashboard-card:hover {
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+  }
+  
+  .loyalty-page .dashboard-card h3 {
+    margin: 0 0 20px 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  /* ===== Grid for settings ===== */
+  .loyalty-page .dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .loyalty-page .dash-grid > div {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .loyalty-page .dash-grid label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #4a4a4a;
+  }
+  
+  /* Inputs */
+  .loyalty-page .dash-grid input,
+  .loyalty-page .dash-grid select {
+    width: 100%;
+    height: 48px;
+    border-radius: 12px;
+    padding: 0 16px;
+    border: 1.5px solid #eee;
+    background: #fcfcfc;
+    font-weight: 600;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+  }
+  
+  .loyalty-page .dash-grid input:focus,
+  .loyalty-page .dash-grid select:focus {
+    border-color: #40010d;
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(64, 1, 13, 0.05);
+  }
+  
+  /* Checkbox align */
+  .loyalty-page .dash-grid .checkbox-container {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+  }
+
+  .loyalty-page .dash-grid input[type="checkbox"] {
+    height: 22px;
+    width: 22px;
+    accent-color: #40010d;
+    cursor: pointer;
+    margin: 0;
+  }
+  
+  /* ===== Buttons ===== */
+  .loyalty-page .dash-btn-primary,
+  .loyalty-page .dash-btn,
+  .loyalty-page .dash-btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 48px;
+    padding: 0 24px;
+    border-radius: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    font-size: 14px;
+  }
+  
+  .loyalty-page .dash-btn-primary {
+    background: #40010d;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(64, 1, 13, 0.2);
+  }
+  
+  .loyalty-page .dash-btn-primary:hover {
+    background: #5a0212;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(64, 1, 13, 0.25);
+  }
+
+  .loyalty-page .dash-btn-primary:active {
+    transform: translateY(0);
+  }
+  
+  .loyalty-page .dash-btn {
+    background: #f5f5f5;
+    color: #333;
+  }
+  
+  .loyalty-page .dash-btn:hover {
+    background: #eeeeee;
+    transform: translateY(-2px);
+  }
+  
+  .loyalty-page .dash-btn-danger {
+    background: #fff0f1;
+    color: #d32f2f;
+    border: 1px solid #ffcdd2;
+  }
+  
+  .loyalty-page .dash-btn-danger:hover {
+    background: #ffebee;
+    transform: translateY(-2px);
+  }
+  
+  /* ===== Search input ===== */
+  .loyalty-page .search-box {
+    position: relative;
+    margin-bottom: 24px;
+  }
+
+  .loyalty-page .search-box input {
+    width: 100%;
+    height: 50px;
+    border-radius: 15px;
+    padding: 0 20px;
+    border: 1.5px solid #eee;
+    background: #fff;
+    font-weight: 600;
+    outline: none;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+    font-size: 15px;
+  }
+  
+  .loyalty-page .search-box input:focus {
+    border-color: #40010d;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  }
+  
+  /* ===== Table ===== */
+  .loyalty-page .table-wrapper {
+    overflow-x: auto;
+    border-radius: 15px;
+    border: 1px solid #eee;
+  }
+
+  .loyalty-page .dash-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+  }
+  
+  .loyalty-page .dash-table th,
+  .loyalty-page .dash-table td {
+    padding: 16px;
+    text-align: right;
+    border-bottom: 1px solid #f5f5f5;
+    font-weight: 600;
+  }
+  
+  .loyalty-page .dash-table th {
+    background: #fafafa;
+    color: #777;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  .loyalty-page .dash-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .loyalty-page .dash-table tr:hover td {
+    background: #fffcfd;
+  }
+  
+  .loyalty-page .dash-table td {
+    font-size: 14px;
+    color: #333;
+  }
+  
+  .loyalty-page .dash-table .points-badge {
+    background: #fff8e1;
+    color: #f57c00;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 800;
+    font-size: 12px;
+  }
+
+  .loyalty-page .dash-table .score-badge {
+    background: #e8f5e9;
+    color: #2e7d32;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 800;
+    font-size: 12px;
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 768px) {
+    .loyalty-page {
+      padding: 16px 12px;
+    }
+  
+    .loyalty-page .dash-grid {
+      grid-template-columns: 1fr;
+    }
+  
+    /* Table -> Cards on mobile */
+    .loyalty-page .dash-table, 
+    .loyalty-page .dash-table thead, 
+    .loyalty-page .dash-table tbody, 
+    .loyalty-page .dash-table th, 
+    .loyalty-page .dash-table td, 
+    .loyalty-page .dash-table tr {
+      display: block;
+    }
+
+    .loyalty-page .dash-table thead {
+      display: none;
+    }
+
+    .loyalty-page .dash-table tr {
+      margin-bottom: 15px;
+      border: 1px solid #eee;
+      border-radius: 15px;
+      padding: 10px;
+    }
+
+    .loyalty-page .dash-table td {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      text-align: left;
+      border-bottom: 1px solid #f9f9f9;
+      padding: 10px 5px;
+    }
+
+    .loyalty-page .dash-table td:last-child {
+      border-bottom: none;
+    }
+
+    .loyalty-page .dash-table td::before {
+      content: attr(data-label);
+      font-weight: 800;
+      color: #777;
+      font-size: 12px;
+      text-align: right;
+    }
+  }
