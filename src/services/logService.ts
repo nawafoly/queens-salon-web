@@ -175,8 +175,8 @@ export async function writeAuditLog(input: AuditLogInput) {
     const ref = await addDoc(logsCol(salonId), payload as Record<string, unknown>);
     return ref.id;
   } catch (e) {
-    console.warn("writeAuditLog failed:", e, payload);
-    throw e;
+    console.warn("writeAuditLog failed (ignored):", e, payload);
+    return null; // ✅ لا تكسر الفلو
   }
 }
 

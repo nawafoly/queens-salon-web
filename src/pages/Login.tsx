@@ -1,5 +1,5 @@
 // src/pages/Login.tsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import logoBelak from "../assets/images/ssunnamed3.png";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -220,6 +220,37 @@ const Login: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const navigate = useNavigate();
+
+  // ✅ لو الجلسة موجودة بالفعل: وجّه حسب الدور
+  useEffect(() => {
+    const redirectIfLoggedIn = () => {
+      const role = String(localStorage.getItem("userRole") || "")
+        .toLowerCase()
+        .trim() as UiRole;
+      const token = localStorage.getItem("authToken");
+
+      if (!token || !role || role === "guest") return;
+
+      if (role === "pending") {
+        navigate("/dashboard-pending", { replace: true });
+        return;
+      }
+
+      if (canAccessDashboard(role)) {
+        navigate("/dashboard/overview", { replace: true });
+        return;
+      }
+
+      if (role === "client") {
+        navigate("/profile", { replace: true });
+      }
+    };
+
+    redirectIfLoggedIn();
+    const onAuthChanged = () => redirectIfLoggedIn();
+    window.addEventListener("authChanged", onAuthChanged);
+    return () => window.removeEventListener("authChanged", onAuthChanged);
+  }, [navigate]);
 
   // مساعدة: التحقق من الجوال والإيميل
   const isEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -450,7 +481,9 @@ const Login: React.FC = () => {
           return;
         }
 
-        setErrorMsg("الجوال أو كلمة المرور غير صحيحة.");
+        setErrorMsg(
+          "الجوال أو كلمة المرور غير صحيحة. إذا كان حسابك جديدًا استخدمي البريد الإلكتروني للدخول."
+        );
         return;
       }
 
@@ -576,8 +609,52 @@ const Login: React.FC = () => {
           "Email/Password غير مفعّل في Firebase. فعّله من Authentication → Sign-in method."
         );
       } else if (code.includes("auth/email-already-in-use")) {
-        setErrorMsg("هذا البريد مسجل مسبقًا. جرّب تسجيل الدخول بدل التسجيل.");
-      } else if (code.includes("auth/weak-password")) {
+        // ✅ لو الإيميل موجود، جرّب تسجيل دخول بنفس الباسورد ثم وده للملف الشخصي
+        try {
+          await loginWithEmail(registerData.email.trim(), registerData.password);
+
+          const u = auth.currentUser;
+          if (u) {
+            const email = cleanEmail(u.email || registerData.email);
+
+            // لو إداري @malikat.com
+            if (isMalikatAdminEmail(email)) {
+              const sp = await ensureAdminSessionFromUsers({
+                uid: u.uid,
+                email,
+                displayName: u.displayName || registerData.name.trim() || "",
+              });
+
+              const role: AdminRole = sp.active ? (sp.role as any) : "pending";
+
+              storeFirebaseSession({
+                uid: u.uid,
+                role,
+                name: sp.name || registerData.name.trim() || defaultNameByRole(role),
+                email: sp.email || email,
+                phone: sp.phone || registerData.phone.trim() || "",
+                staffDocId: sp.staffDocId,
+              } as any);
+
+              navigate(role === "pending" ? "/dashboard-pending" : "/dashboard/overview", {
+                replace: true,
+              });
+              return;
+            }
+
+            // عميلة
+            const profile = await createOrLoadUserProfile(u);
+            storeFirebaseSession(profile);
+            navigate("/profile", { replace: true });
+            return;
+          }
+
+          setErrorMsg("هذا البريد مسجل مسبقًا. جرّب تسجيل الدخول.");
+        } catch {
+          setErrorMsg("هذا البريد مسجل مسبقًا. كلمة المرور غير صحيحة أو جرّب (نسيت كلمة المرور).");
+        }
+      }
+      else if (code.includes("auth/weak-password")) {
         setErrorMsg("كلمة المرور ضعيفة. استخدم 6 أحرف على الأقل.");
       } else {
         setErrorMsg(err?.message || "فشل إنشاء الحساب");
@@ -819,7 +896,7 @@ const Login: React.FC = () => {
                 <>
                   ليس لديك حساب؟
                   <button
-                    className="register-link" 
+                    className="register-link"
                     style={{
                       background: "none",
                       border: "none",
