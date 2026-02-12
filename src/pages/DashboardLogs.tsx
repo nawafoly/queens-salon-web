@@ -1,9 +1,16 @@
-// ✅ src/pages/DashboardLogs.tsx
 import { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faClockRotateLeft, faFilter, faMagnifyingGlass, faRotateRight } from "@fortawesome/free-solid-svg-icons";
+import {
+  faClockRotateLeft,
+  faFilter,
+  faMagnifyingGlass,
+  faRotateRight,
+  faTriangleExclamation,
+  faChevronDown,
+  faChevronUp,
+} from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
 import "../styles/Dashboard.css";
@@ -30,17 +37,21 @@ function getAuthUser(): AuthUser | null {
 
 type LogRow = {
   id: string;
-  type?: string;
-  entity?: string;
+  logId?: string;
+  action?: string;
+  entityType?: string;
   entityId?: string;
-  note?: string;
-
-  byUid?: string;
-  byEmail?: string;
-  byRole?: string;
-
-  at?: any;
+  description?: string;
+  userName?: string;
+  userUid?: string;
+  userRole?: string;
+  userEmail?: string;
+  source?: string;
+  createdAt?: any;
+  before?: any;
+  after?: any;
   meta?: any;
+  sensitive?: boolean;
 
   atMs: number;
 };
@@ -68,6 +79,30 @@ function fmtDateTime(ms: number) {
   });
 }
 
+function dayKey(ms: number) {
+  if (!ms) return "";
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function detectSensitiveLocal(row: LogRow) {
+  if (row.sensitive === true) return true;
+  const text = `${row.action || ""} ${row.description || ""} ${JSON.stringify(row.meta || {})}`.toLowerCase();
+  return (
+    text.includes("delete") ||
+    text.includes("حذف") ||
+    text.includes("price") ||
+    text.includes("سعر") ||
+    text.includes("amount") ||
+    text.includes("مالي") ||
+    text.includes("role") ||
+    text.includes("صلاح")
+  );
+}
+
 const SALON_ID = "main";
 
 export default function DashboardLogs() {
@@ -77,10 +112,16 @@ export default function DashboardLogs() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<LogRow[]>([]);
   const [errMsg, setErrMsg] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const [qText, setQText] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [actionFilter, setActionFilter] = useState("all");
   const [entityFilter, setEntityFilter] = useState("all");
+  const [userFilter, setUserFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [onlySensitive, setOnlySensitive] = useState(false);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [maxRows, setMaxRows] = useState<number>(300);
 
   const load = async () => {
@@ -89,15 +130,29 @@ export default function DashboardLogs() {
 
     try {
       const colRef = collection(db, "salons", SALON_ID, "logs");
-      const q = query(colRef, orderBy("at", "desc"), limit(Math.max(50, Math.min(800, maxRows))));
+      const q = query(colRef, orderBy("createdAt", "desc"), limit(Math.max(50, Math.min(1000, maxRows))));
       const snap = await getDocs(q);
 
       const list: LogRow[] = snap.docs.map((d) => {
         const x: any = d.data();
-        const atMs = safeMs(x?.at);
+        const atMs = safeMs(x?.createdAt);
         return {
           id: d.id,
-          ...x,
+          logId: String(x?.logId || d.id),
+          action: String(x?.action || x?.type || ""),
+          entityType: String(x?.entityType || x?.entity || ""),
+          entityId: String(x?.entityId || ""),
+          description: String(x?.description || x?.note || ""),
+          userName: String(x?.userName || ""),
+          userUid: String(x?.userUid || x?.byUid || ""),
+          userRole: String(x?.userRole || x?.byRole || ""),
+          userEmail: String(x?.userEmail || x?.byEmail || ""),
+          source: String(x?.source || ""),
+          createdAt: x?.createdAt || x?.at,
+          before: x?.before,
+          after: x?.after,
+          meta: x?.meta,
+          sensitive: Boolean(x?.sensitive),
           atMs,
         };
       });
@@ -109,8 +164,8 @@ export default function DashboardLogs() {
       const msg = String(e?.message || e);
       setErrMsg(
         msg.includes("Missing or insufficient permissions")
-          ? "⚠️ الصلاحيات تمنع قراءة السجل. لازم Rules تسمح للأونر/الأدمن بقراءة salons/main/logs."
-          : "❌ تعذر تحميل السجل:\n" + msg
+          ? "⚠️ الصلاحيات تمنع قراءة السجل. لازم Rules تسمح فقط للأونر/الأدمن بقراءة salons/main/logs."
+          : "❌ تعذر تحميل سجل العمليات:\n" + msg
       );
       setRows([]);
     } finally {
@@ -121,14 +176,12 @@ export default function DashboardLogs() {
   useEffect(() => {
     if (!canManage) return;
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManage, maxRows]);
-  
 
-  const typeOptions = useMemo(() => {
+  const actionOptions = useMemo(() => {
     const s = new Set<string>();
     rows.forEach((r) => {
-      const t = String(r.type || "").trim();
+      const t = String(r.action || "").trim();
       if (t) s.add(t);
     });
     return Array.from(s).sort((a, b) => a.localeCompare(b));
@@ -137,8 +190,17 @@ export default function DashboardLogs() {
   const entityOptions = useMemo(() => {
     const s = new Set<string>();
     rows.forEach((r) => {
-      const t = String(r.entity || "").trim();
+      const t = String(r.entityType || "").trim();
       if (t) s.add(t);
+    });
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const userOptions = useMemo(() => {
+    const s = new Set<string>();
+    rows.forEach((r) => {
+      const u = String(r.userName || r.userEmail || r.userUid || "").trim();
+      if (u) s.add(u);
     });
     return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [rows]);
@@ -147,18 +209,29 @@ export default function DashboardLogs() {
     const t = qText.trim().toLowerCase();
 
     return rows.filter((r) => {
-      if (typeFilter !== "all" && String(r.type || "") !== typeFilter) return false;
-      if (entityFilter !== "all" && String(r.entity || "") !== entityFilter) return false;
+      if (actionFilter !== "all" && String(r.action || "") !== actionFilter) return false;
+      if (entityFilter !== "all" && String(r.entityType || "") !== entityFilter) return false;
+      if (sourceFilter !== "all" && String(r.source || "") !== sourceFilter) return false;
+
+      const userToken = String(r.userName || r.userEmail || r.userUid || "");
+      if (userFilter !== "all" && userToken !== userFilter) return false;
+
+      const isSensitive = detectSensitiveLocal(r);
+      if (onlySensitive && !isSensitive) return false;
+
+      const dk = dayKey(r.atMs);
+      if (fromDate && dk && dk < fromDate) return false;
+      if (toDate && dk && dk > toDate) return false;
 
       if (!t) return true;
 
       const hay = String(
-        `${r.type || ""} ${r.entity || ""} ${r.entityId || ""} ${r.byEmail || ""} ${r.byUid || ""} ${r.byRole || ""} ${r.note || ""}`
+        `${r.logId || ""} ${r.action || ""} ${r.entityType || ""} ${r.entityId || ""} ${r.userName || ""} ${r.userEmail || ""} ${r.userUid || ""} ${r.userRole || ""} ${r.description || ""} ${r.source || ""}`
       ).toLowerCase();
 
       return hay.includes(t);
     });
-  }, [rows, qText, typeFilter, entityFilter]);
+  }, [rows, qText, actionFilter, entityFilter, userFilter, sourceFilter, fromDate, toDate, onlySensitive]);
 
   if (!authUser) {
     return (
@@ -179,7 +252,7 @@ export default function DashboardLogs() {
         <div className="container">
           <div className="dash-card">
             <h3>صلاحيات غير كافية</h3>
-            <p>سجل الحركات للأونر/الأدمن فقط.</p>
+            <p>سجل العمليات للأونر/الأدمن فقط.</p>
           </div>
         </div>
       </div>
@@ -192,11 +265,8 @@ export default function DashboardLogs() {
         <div className="dash-topbar dash-topbar--sticky">
           <div className="dash-topbar-title">
             <h2>
-              <FontAwesomeIcon icon={faClockRotateLeft} /> سجل الحركات
+              <FontAwesomeIcon icon={faClockRotateLeft} /> سجل العمليات التشغيلي
             </h2>
-            <p className="dash-sub">
-              المصدر: <b>salons/main/logs</b>
-            </p>
           </div>
 
           <div className="dash-topbar-actions">
@@ -216,15 +286,15 @@ export default function DashboardLogs() {
                 className="dash-input"
                 value={qText}
                 onChange={(e) => setQText(e.target.value)}
-                placeholder="بحث: نوع / كيان / رقم / ايميل / ملاحظة..."
+                placeholder="بحث بالنص داخل الوصف / المستخدم / نوع العملية ..."
               />
             </div>
 
             <div className="logs-select">
               <FontAwesomeIcon icon={faFilter} />
-              <select className="dash-select" value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)}>
-                <option value="all">كل الكيانات</option>
-                {entityOptions.map((x) => (
+              <select className="dash-select" value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}>
+                <option value="all">كل العمليات</option>
+                {actionOptions.map((x) => (
                   <option key={x} value={x}>
                     {x}
                   </option>
@@ -232,20 +302,46 @@ export default function DashboardLogs() {
               </select>
             </div>
 
-            <select className="dash-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-              <option value="all">كل الأنواع</option>
-              {typeOptions.map((x) => (
+            <select className="dash-select" value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)}>
+              <option value="all">كل العناصر</option>
+              {entityOptions.map((x) => (
                 <option key={x} value={x}>
                   {x}
                 </option>
               ))}
             </select>
 
+            <select className="dash-select" value={userFilter} onChange={(e) => setUserFilter(e.target.value)}>
+              <option value="all">كل المستخدمين</option>
+              {userOptions.map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
+              ))}
+            </select>
+
+            <select className="dash-select" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+              <option value="all">كل المصادر</option>
+              <option value="dashboard">dashboard</option>
+              <option value="internal_booking">internal_booking</option>
+              <option value="client_app">client_app</option>
+              <option value="system">system</option>
+            </select>
+
+            <input className="dash-input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+            <input className="dash-input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+
+            <label className="logs-sensitive-filter">
+              <input type="checkbox" checked={onlySensitive} onChange={(e) => setOnlySensitive(e.target.checked)} />
+              العمليات الحساسة فقط
+            </label>
+
             <select className="dash-select" value={String(maxRows)} onChange={(e) => setMaxRows(Number(e.target.value))}>
               <option value="100">100</option>
               <option value="300">300</option>
               <option value="500">500</option>
               <option value="800">800</option>
+              <option value="1000">1000</option>
             </select>
 
             <div className="logs-meta">
@@ -255,28 +351,66 @@ export default function DashboardLogs() {
           </div>
 
           {filtered.length === 0 && !loading ? (
-            <div className="logs-empty">ما فيه حركات مسجلة حتى الآن.</div>
+            <div className="logs-empty">ما فيه عمليات مسجلة ضمن الفلاتر الحالية.</div>
           ) : (
             <div className="logs-table">
               <div className="logs-head">
                 <div>الوقت</div>
-                <div>النوع</div>
-                <div>الكيان</div>
-                <div>الرقم</div>
+                <div>العملية</div>
+                <div>العنصر</div>
                 <div>المستخدم</div>
-                <div>الملاحظة</div>
+                <div>المصدر</div>
+                <div>الوصف</div>
+                <div>تفاصيل</div>
               </div>
 
-              {filtered.map((r) => (
-                <div key={r.id} className="logs-row">
-                  <div className="logs-time">{fmtDateTime(r.atMs)}</div>
-                  <div className="logs-type">{r.type || "-"}</div>
-                  <div className="logs-entity">{r.entity || "-"}</div>
-                  <div className="logs-id">{r.entityId || "-"}</div>
-                  <div className="logs-user">{r.byEmail || (r.byUid ? String(r.byUid).slice(0, 8) : "-")}</div>
-                  <div className="logs-note">{r.note || "-"}</div>
-                </div>
-              ))}
+              {filtered.map((r) => {
+                const sensitive = detectSensitiveLocal(r);
+                const expanded = expandedId === r.id;
+
+                return (
+                  <div key={r.id} className={`logs-row ${sensitive ? "logs-row--sensitive" : ""}`}>
+                    <div className="logs-time">{fmtDateTime(r.atMs)}</div>
+                    <div className="logs-type">
+                      {sensitive ? <FontAwesomeIcon className="logs-sensitive-icon" icon={faTriangleExclamation} /> : null}
+                      {r.action || "-"}
+                    </div>
+                    <div className="logs-entity">{r.entityType || "-"}</div>
+                    <div className="logs-user">{r.userName || r.userEmail || (r.userUid ? String(r.userUid).slice(0, 8) : "-")}</div>
+                    <div className="logs-source">{r.source || "-"}</div>
+                    <div className="logs-note">{r.description || "-"}</div>
+                    <div>
+                      <button
+                        className="logs-expand-btn"
+                        type="button"
+                        onClick={() => setExpandedId(expanded ? null : r.id)}
+                      >
+                        {expanded ? <FontAwesomeIcon icon={faChevronUp} /> : <FontAwesomeIcon icon={faChevronDown} />}
+                        {expanded ? "إخفاء" : "عرض"}
+                      </button>
+                    </div>
+
+                    {expanded ? (
+                      <div className="logs-details" role="region" aria-label="تفاصيل السجل">
+                        <div className="logs-detail-grid">
+                          <div>
+                            <h4>before</h4>
+                            <pre>{JSON.stringify(r.before ?? null, null, 2)}</pre>
+                          </div>
+                          <div>
+                            <h4>after</h4>
+                            <pre>{JSON.stringify(r.after ?? null, null, 2)}</pre>
+                          </div>
+                        </div>
+                        <div className="logs-meta-json">
+                          <h4>meta</h4>
+                          <pre>{JSON.stringify(r.meta ?? null, null, 2)}</pre>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

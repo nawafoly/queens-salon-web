@@ -451,6 +451,31 @@ service cloud.firestore {
       );
     }
 
+
+        /* =========================
+       ✅ logs (Audit Log)
+       /salons/{salonId}/logs/{logId}
+       - Immutable: create only
+       - Read: owner/admin only
+    ========================= */
+    match /salons/{salonId}/logs/{logId} {
+
+      // Read-only for owner/admin only
+      allow read: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner", "admin"]
+      );
+
+      // Create from operation logic only (service-layer / trusted app flow)
+      // disallow update/delete to keep immutable audit trail
+      allow create: if signedIn() && !isAnonymous() && (
+        isBootstrapAdmin()
+        || roleForSalon(salonId) in ["owner", "admin", "reception", "staff", "client"]
+      );
+
+      allow update, delete: if false;
+    }
+
+
     /* =========================
        ✅ testimonials
        /salons/{salonId}/testimonials/{tid}
@@ -486,4 +511,5 @@ service cloud.firestore {
       );
     }
   }
+  
 }

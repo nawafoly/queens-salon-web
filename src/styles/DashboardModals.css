@@ -493,3 +493,18 @@
 .qs-wine {
   color: #40010D !important;
 }
+
+
+.emp-modal .emp-picks-toolbar{
+  display: grid;
+  grid-template-columns: 1fr 240px;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 768px){
+  .emp-modal .emp-picks-toolbar{
+    grid-template-columns: 1fr;
+  }
+}
+

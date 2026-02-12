@@ -38,6 +38,7 @@
 .dash-input,
 .dash-select,
 .dash-textarea {
+  color: #0D0D0D;
   width: 100%;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 12px;
@@ -108,48 +109,3 @@
   font-size: 0.85rem;
   background: rgba(255, 255, 255, 0.75);
 }
-
-/* =================================================
-   ⭐⭐⭐ الحل الحقيقي هنا ⭐⭐⭐
-   Service Picks (الأزرار اللي تعبتنا)
-================================================= */
-
-.staff-picks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-/* غير مختار */
-.staff-picks .pick {
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: #ffffff;
-  color: #0D0D0D;
-  border-radius: 999px;
-  padding: 1px 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-/* hover خفيف */
-.staff-picks .pick:hover {
-  background: #f2f2f2;
-}
-
-/* ✅ المختار (Queens Black) */
-.staff-picks .pick.on {
-  background: #0D0D0D;
-  color: #ffffff;
-  border-color: #0D0D0D;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
-  transform: scale(1.05);
-}
-
-/* Responsive */
-@media (max-width: 20px) {
-  .dash-row {
-    grid-template-columns: 1fr;
-  }
-}
-

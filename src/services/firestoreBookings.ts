@@ -26,6 +26,9 @@ import { AppSettingsService } from "./AppSettingsService";
 // ✅ for logging who did the action (best effort)
 import { getAuth } from "firebase/auth";
 
+import { writeAuditLog } from "./logService";
+
+
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 export type BookingChannel = "client" | "dashboard" | "internal";
 
@@ -359,10 +362,33 @@ async function writeBookingLog(args: {
         at: serverTimestamp(),
       }) as any
     );
+
+    // ✅ map booking log types -> audit actions
+    const actionMap: Record<BookingLogType, string> = {
+      created: "booking_created",
+      status_changed: "booking_status_changed",
+      details_updated: "booking_updated",
+      staff_acknowledged: "booking_reassigned",
+    };
+
+    // ✅ write audit log (best effort)
+    await writeAuditLog({
+      salonId: SALON_ID,
+      action: actionMap[args.type] || "booking_updated",
+      entityType: "booking",
+      entityId: args.bookingId,
+      description: args.note || "تم تحديث الحجز",
+      after: args.patch || null,
+      source: "dashboard",
+      meta: {
+        bookingLogType: args.type,
+      },
+    });
   } catch {
     // best-effort: اللوق ما يكسر شغل الحجز
   }
 }
+
 
 /* =========================
    ✅ Slots Unlock (Best Effort) — Guaranteed

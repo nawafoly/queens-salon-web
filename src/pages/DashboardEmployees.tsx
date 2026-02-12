@@ -26,8 +26,6 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
-import "../styles/DashboardModals.css";
-import "../styles/EmployeePortal.css";
 import "../styles/DashboardEmployees.css";
 import Modal from "../components/Modal";
 
@@ -172,6 +170,9 @@ export default function DashboardEmployees() {
 
   // ✅ services options (instead of sections)
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
+
+  const [srvQ, setSrvQ] = useState("");
+  const [srvSection, setSrvSection] = useState<string>("all");
 
   const resetForm = () => {
     setEditId(null);
@@ -371,6 +372,10 @@ export default function DashboardEmployees() {
       const uidByDocId = new Map<string, string>();       // docId -> linkedUid
       const uidByName = new Map<string, string>();        // normalizedName -> linkedUid
       const uidByEmail = new Map<string, string>();       // emailLower -> linkedUid
+
+
+
+      // ... تكملة من داخل دالة diagnoseMissingLinkedUid
 
       staffSnap.docs.forEach((d) => {
         const data: any = d.data();
@@ -661,6 +666,39 @@ export default function DashboardEmployees() {
     };
   }, [authUser?.role, list]);
 
+
+
+  const sectionOptions = useMemo(() => {
+    const m = new Map<string, { id: string; label: string }>();
+    for (const s of serviceOptions) {
+      const sid = String(s.sectionId || "").trim();
+      if (!sid) continue;
+      // مؤقتًا نخلي الاسم = sectionId (بعدها نجيب اسم القسم من service_sections)
+      if (!m.has(sid)) m.set(sid, { id: sid, label: sid });
+    }
+    return Array.from(m.values()).sort((a, b) => a.label.localeCompare(b.label, "ar"));
+  }, [serviceOptions]);
+
+  const filteredServicesForPicks = useMemo(() => {
+    let rows = [...serviceOptions];
+
+    if (srvSection !== "all") {
+      rows = rows.filter(s => String(s.sectionId || "").trim() === srvSection);
+    }
+
+    const q = srvQ.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter(s => String(s.label || "").toLowerCase().includes(q));
+    }
+
+    rows.sort((a, b) => String(a.label).localeCompare(String(b.label), "ar"));
+    return rows;
+  }, [serviceOptions, srvSection, srvQ]);
+
+
+
+
+
   const toggleSpecialty = (serviceId: string) => {
     setSpecialties((prev) =>
       prev.includes(serviceId)
@@ -895,6 +933,7 @@ export default function DashboardEmployees() {
                   {o.label}
                 </option>
               ))}
+
             </select>
           </div>
 
@@ -1039,26 +1078,31 @@ export default function DashboardEmployees() {
             ))}
         </div>
 
-        {/* Modal */}
+        {/* =================================
+            ✅ MODAL - REFACTORED
+            ================================= */}
         {isOpen && (
           <Modal
             open={isOpen}
             onClose={closeModal}
             ariaLabel={editId ? "تعديل موظفة" : "إضافة موظفة"}
-            panelClassName="modal-box"
+            panelClassName="modal-box emp-modal"
             size="lg"
           >
             <div className="modal-head">
-                <b>{editId ? "تعديل موظفة" : "إضافة موظفة"}</b>
-                <button className="exp-btn ghost" onClick={closeModal} type="button">
-                  <FontAwesomeIcon icon={faXmark} /> إغلاق
-                </button>
-              </div>
+              <b>{editId ? "تعديل موظفة" : "إضافة موظفة"}</b>
+              <button className="exp-btn ghost" onClick={closeModal} type="button">
+                <FontAwesomeIcon icon={faXmark} /> إغلاق
+              </button>
+            </div>
 
-              <div className="modal-body">
-                <div className="dash-row">
+            <div className="modal-body emp-modal-grid">
+              {/* Section 1: Basic Info */}
+              <div className="emp-modal-section">
+                <b className="emp-modal-section-title">المعلومات الأساسية</b>
+                <div className="emp-modal-fields two-cols">
                   <div className="dash-field">
-                    <label>اسم الموظفة</label>
+                    <label className="emp-label">اسم الموظفة</label>
                     <input
                       className="dash-input"
                       value={name}
@@ -1066,9 +1110,8 @@ export default function DashboardEmployees() {
                       placeholder="مثال: حنان"
                     />
                   </div>
-
                   <div className="dash-field">
-                    <label>الحالة</label>
+                    <label className="emp-label">الحالة</label>
                     <select
                       className="dash-select"
                       value={active ? "1" : "0"}
@@ -1079,61 +1122,99 @@ export default function DashboardEmployees() {
                     </select>
                   </div>
                 </div>
+              </div>
 
-                <div className="dash-field">
-                  <label>نبذة تظهر للزبائن</label>
-                  <textarea
-                    className="dash-textarea"
-                    rows={3}
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
-                    placeholder="مثال: خبيرة شعر وصبغات بخبرة 8 سنوات..."
-                  />
-                </div>
-
-                <div className="dash-field">
-                  <label>رابط السيرة الذاتية PDF (اختياري)</label>
-                  <input
-                    className="dash-input"
-                    value={cvUrl}
-                    onChange={(e) => setCvUrl(e.target.value)}
-                    placeholder="https://...pdf"
-                    dir="ltr"
-                  />
-                </div>
-
-
-                <div className="dash-field">
-                  <label>الخدمات (اختيار متعدد) ✅</label>
-                  <div className="staff-picks">
-                    {serviceOptions.map((o) => (
-                      <button
-                        key={o.id}
-                        type="button"
-                        className={`pick ${specialties.includes(o.id) ? "on" : ""}`}
-                        onClick={() => toggleSpecialty(o.id)}
-                        title={o.id}
-                      >
-                        {o.label}
-                      </button>
-                    ))}
-                    {serviceOptions.length === 0 && (
-                      <div style={{ padding: 10, opacity: 0.8 }}>
-                        لا توجد خدمات مفعلة. أضف خدمات من الإعدادات → إدارة الكتالوج.
-                      </div>
-                    )}
+              {/* Section 2: Profile Details */}
+              <div className="emp-modal-section">
+                <b className="emp-modal-section-title">ملف الموظفة (يظهر للزبائن)</b>
+                <div className="emp-modal-fields">
+                  <div className="dash-field">
+                    <label className="emp-label">نبذة تعريفية</label>
+                    <textarea
+                      className="dash-textarea"
+                      rows={3}
+                      value={bio}
+                      onChange={(e) => setBio(e.target.value)}
+                      placeholder="مثال: خبيرة شعر وصبغات بخبرة 8 سنوات..."
+                    />
+                  </div>
+                  <div className="dash-field">
+                    <label className="emp-label">رابط السيرة الذاتية PDF (اختياري)</label>
+                    <input
+                      className="dash-input"
+                      value={cvUrl}
+                      onChange={(e) => setCvUrl(e.target.value)}
+                      placeholder="https://.../cv.pdf"
+                      dir="ltr"
+                    />
                   </div>
                 </div>
               </div>
 
-              <div className="modal-foot">
-                <button className="exp-btn" onClick={closeModal} type="button">
-                  إلغاء
-                </button>
-                <button className="exp-btn primary" onClick={save} disabled={loading} type="button">
-                  حفظ
-                </button>
+              {/* Section 3: Services */}
+              <div className="emp-modal-section">
+                <b className="emp-modal-section-title">الخدمات التي تقدمها الموظفة (اختيار متعدد) ✅</b>
+
+                <div className="emp-picks-toolbar">
+                  <input
+                    className="dash-input"
+                    placeholder="بحث بالخدمات..."
+                    value={srvQ}
+                    onChange={(e) => setSrvQ(e.target.value)}
+                  />
+
+                  <select
+                    className="dash-select"
+                    value={srvSection}
+                    onChange={(e) => setSrvSection(e.target.value)}
+                  >
+                    <option value="all">كل الأقسام</option>
+                    {sectionOptions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="staff-picks staff-picks--scroll">
+                  {filteredServicesForPicks.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className={`pick ${specialties.includes(o.id) ? "on" : ""}`}
+                      aria-pressed={specialties.includes(o.id)}
+                      onClick={() => toggleSpecialty(o.id)}
+                      title={o.id}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+
+                  {serviceOptions.length === 0 && (
+                    <div style={{ padding: 10, opacity: 0.8 }}>
+                      لا توجد خدمات مفعلة. أضف خدمات من الإعدادات → إدارة الكتالوج.
+                    </div>
+                  )}
+
+                  {serviceOptions.length > 0 && filteredServicesForPicks.length === 0 && (
+                    <div style={{ padding: 10, opacity: 0.8 }}>
+                      لا توجد نتائج حسب البحث/القسم الحالي.
+                    </div>
+                  )}
+                </div>
               </div>
+
+            </div>
+
+            <div className="modal-foot">
+              <button className="exp-btn" onClick={closeModal} type="button">
+                إلغاء
+              </button>
+              <button className="exp-btn primary" onClick={save} disabled={loading} type="button">
+                {loading ? "جاري الحفظ..." : "حفظ التغييرات"}
+              </button>
+            </div>
           </Modal>
         )}
       </div>

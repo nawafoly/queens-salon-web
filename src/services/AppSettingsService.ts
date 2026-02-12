@@ -1,7 +1,9 @@
 // src/services/AppSettingsService.ts
 import { db } from "./firebase";
+import { writeAuditLog } from "./logService";
 import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { STRICT_FIREBASE } from "../config/strictFirebase";
+
 
 export type SectionKey =
   | "overview"
@@ -460,6 +462,10 @@ export const AppSettingsService = {
   async saveRemote(settings: AppSettings) {
     const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
 
+    // ✅ NEW: before snapshot (للتتبع)
+    const beforeSnap = await getDoc(ref);
+    const before = beforeSnap.exists() ? beforeSnap.data() : null;
+
     const payload: AppSettings = sanitize({
       ...settings,
       updatedAt: new Date().toISOString(),
@@ -467,9 +473,22 @@ export const AppSettingsService = {
 
     await setDoc(ref, payload, { merge: true });
     cacheWrite(payload);
-    return payload;
 
+    // ✅ NEW: audit log
+    await writeAuditLog({
+      salonId: SALON_ID,
+      action: "settings_updated",
+      entityType: "settings",
+      entityId: DOC_PATH.id,
+      description: "تم تعديل الإعدادات العامة للنظام",
+      before,
+      after: payload,
+      source: "dashboard",
+    });
+
+    return payload;
   },
+
 
 };
 

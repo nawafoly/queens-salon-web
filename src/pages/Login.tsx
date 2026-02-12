@@ -24,6 +24,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 // ✅ Firebase login (يدخل كل اللي عنده ايميل: إدارة + عميلات)
 import { loginWithEmail } from "../services/authService";
+import { writeAuditLog } from "../services/logService";
 
 // ✅ User profile/roles (Firestore SoT) - للعميلات
 import {
@@ -187,7 +188,6 @@ async function ensureAdminSessionFromUsers(params: {
     staffDocId: uid,
   };
 }
-
 const Login: React.FC = () => {
   const [isRegister, setIsRegister] = useState(false);
 
@@ -370,6 +370,14 @@ const Login: React.FC = () => {
           storeFirebaseSession(profileForSession);
 
           setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
+          await writeAuditLog({
+            action: "user_login",
+            entityType: "user",
+            entityId: authUser.uid,
+            description: "تم تسجيل الدخول كمستخدم إداري",
+            source: "dashboard",
+            after: { role, email },
+          });
 
           // ✅ توجيه
           if (role === "pending") {
@@ -399,6 +407,14 @@ const Login: React.FC = () => {
         storeFirebaseSession(profile);
 
         setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
+        await writeAuditLog({
+          action: "user_login",
+          entityType: "user",
+          entityId: authUser.uid,
+          description: "تم تسجيل الدخول كعميلة",
+          source: "client_app",
+          after: { role: profile.role, email: profile.email },
+        });
 
         // توجيه حسب الدور
         if (canAccessDashboard(profile.role)) {
@@ -422,6 +438,14 @@ const Login: React.FC = () => {
         if (user) {
           storeClientSessionLegacy(user);
           setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
+          await writeAuditLog({
+            action: "user_login",
+            entityType: "user",
+            entityId: String(user.phone),
+            description: "تم تسجيل الدخول (Legacy) عبر رقم الجوال",
+            source: "client_app",
+            after: { phone: user.phone, email: user.email },
+          });
           navigate("/profile", { replace: true });
           return;
         }
@@ -437,7 +461,6 @@ const Login: React.FC = () => {
       setIsLoading(false);
     }
   };
-
   // ✅ التسجيل (Firebase + إنشاء profile role=client تلقائيًا)
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -467,7 +490,7 @@ const Login: React.FC = () => {
         registerData.password
       );
 
-      // ✅ 2) لو الإيميل إداري @malikat.com → أنشئه Pending من users + staff_public (مو عميلة)
+      // ✅ 2) لو اليميل إداري @malikat.com → أنشئه Pending من users + staff_public (مو عميلة)
       const email = cleanEmail(registerData.email);
 
       if (isMalikatAdminEmail(email)) {
@@ -491,6 +514,14 @@ const Login: React.FC = () => {
         storeFirebaseSession(profileForSession);
 
         setSuccessMsg("تم إنشاء الحساب الإداري بنجاح ✅");
+        await writeAuditLog({
+          action: "user_created",
+          entityType: "user",
+          entityId: cred.user.uid,
+          description: "تم إنشاء حساب إداري جديد",
+          source: "dashboard",
+          after: { role, email },
+        });
 
         // ✅ توجيه الإداريات
         navigate("/dashboard-pending", { replace: true });
@@ -518,6 +549,14 @@ const Login: React.FC = () => {
 
       // ✅ 6) خزّن الجلسة
       storeFirebaseSession(latest);
+      await writeAuditLog({
+        action: "client_created",
+        entityType: "client",
+        entityId: latest.uid,
+        description: "تم إنشاء حساب عميلة جديد",
+        source: "client_app",
+        after: { name: latest.name, email: latest.email, phone: latest.phone },
+      });
 
       setSuccessMsg("تم إنشاء الحساب بنجاح ✅");
 
@@ -530,7 +569,6 @@ const Login: React.FC = () => {
         name: err?.name,
         stack: err?.stack,
       });
-
 
       const code = String(err?.code || "");
       if (code.includes("auth/operation-not-allowed")) {

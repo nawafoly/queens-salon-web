@@ -1,214 +1,122 @@
-/* =========================
-   Dashboard Employees ✅ Scoped + Self-contained
-   File: src/styles/DashboardEmployees.css
-   يعتمد فقط على:
-   - DashboardSkin.css (للكروت/الأزرار العامة)
-   - DashboardModals.css (للمودال)
-   ========================= */
+/* ===================================================================
+   ✅✅✅ FINAL & UNIFIED DashboardEmployees.css (NO DUPLICATION) ✅✅✅
+   - Removed: dash-card, dash-input/select/textarea base, staff-pill/chip base
+   - Kept: employees layout + staff specifics + modal specifics + modifiers
+   =================================================================== */
 
-/* ✅ Scope root */
+/* =========================
+   1. Base Page & Layout
+   ========================= */
 .dashboard-skin .employees-page {
   direction: rtl;
   font-family: "Tajawal", sans-serif;
   width: 100%;
-  max-width: 100%;
-  min-width: 0;
 }
 
-/* ✅ تأكيد أن المحتوى ما يصير نحيف بسبب flex/container خارجي */
 .dashboard-skin .employees-page * {
   box-sizing: border-box;
 }
 
-/* ✅ Card wrapper (لو dashboard-card من برا مضبوط، نخليه - بس نضمن full width) */
-.dashboard-skin .employees-page .dashboard-card {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-}
-
-/* =========================
-   ✅ Filters
-========================= */
-
-.dashboard-skin .employees-page .emp-filters {
-  margin-top: 14px;
+/* Grid cards */
+.dashboard-skin .employees-page .dash-grid {
   display: grid;
-  grid-template-columns: 1.3fr 1fr 0.8fr 0.8fr;
   gap: 12px;
-  align-items: stretch;
-  width: 100%;
-  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
-/* كل input/select داخل الفلاتر */
-.dashboard-skin .employees-page .emp-input {
-  width: 100%;
-  min-width: 0;
-}
-
-/* نعطي input/select ستايل ثابت داخل الصفحة (بدون الاعتماد على برا إلا الضرورة) */
-.dashboard-skin .employees-page .dashboard-input.emp-input {
-  border-radius: 14px;
-  padding: 10px 12px;
-  line-height: 1.2;
+/* Filters row */
+.dashboard-skin .employees-page .dash-row {
+  display: grid;
+  grid-template-columns: 1fr 220px 220px;
+  gap: 10px;
 }
 
 /* =========================
-   ✅ Table (Responsive)
-========================= */
-
-.dashboard-skin .employees-page .table-responsive {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  border-radius: 16px;
+   2. Staff Card Styles (Page specific)
+   ========================= */
+.dashboard-skin .employees-page .staff-card {
+  margin: 0; /* Override if any */
 }
 
-/* الجدول */
-.dashboard-skin .employees-page .ov-table {
-  width: 100%;
-  min-width: 980px; /* يحافظ على الأعمدة */
-  border-collapse: collapse;
-  overflow: hidden;
-  border-radius: 16px;
-}
-
-/* رأس الجدول */
-.dashboard-skin .employees-page .ov-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(6px);
-  font-weight: 900;
-  font-size: 13px;
-  padding: 12px 12px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-/* خلايا الجدول */
-.dashboard-skin .employees-page .ov-table td {
-  padding: 12px 12px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  font-size: 13px;
-  vertical-align: middle;
-}
-
-/* آخر صف بدون خط */
-.dashboard-skin .employees-page .ov-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-/* ✅ تمييز صف الموظفة إذا عليها حجوزات */
-.dashboard-skin .employees-page .emp-row-linked {
-  background: rgba(124, 58, 237, 0.05);
-}
-
-/* محاذاة أعمدة معينة */
-.dashboard-skin .employees-page .emp-center {
-  text-align: center;
-  white-space: nowrap;
-}
-
-.dashboard-skin .employees-page .emp-name {
-  font-weight: 900;
-  overflow-wrap: anywhere;
-}
-
-/* =========================
-   ✅ Actions inside table
-========================= */
-
-.dashboard-skin .employees-page .emp-actions {
+.dashboard-skin .employees-page .staff-top {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
-/* نخلي الأزرار داخل الجدول ثابتة الحجم وما تكسر */
-.dashboard-skin .employees-page .emp-actions .dash-btn {
-  padding: 8px 10px;
-  border-radius: 12px;
-  line-height: 1.1;
-  white-space: nowrap;
-}
-
-/* =========================
-   ✅ Pills / Chips
-========================= */
-
-/* Badge للحالة */
-.dashboard-skin .employees-page .emp-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.dashboard-skin .employees-page .emp-pill.ok {
-  background: rgba(34, 197, 94, 0.12);
-  color: #166534;
-  border-color: rgba(34, 197, 94, 0.22);
-}
-
-.dashboard-skin .employees-page .emp-pill.off {
-  background: rgba(239, 68, 68, 0.10);
-  color: #991b1b;
-  border-color: rgba(239, 68, 68, 0.18);
-}
-
-/* رقم الحجوزات */
-.dashboard-skin .employees-page .emp-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 34px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-weight: 900;
-  font-size: 12px;
-  background: rgba(124, 58, 237, 0.10);
-  color: #5b21b6;
-  border: 1px solid rgba(124, 58, 237, 0.18);
-}
-
-.dashboard-skin .employees-page .emp-chip.warn {
-  background: rgba(245, 158, 11, 0.12);
-  color: #92400e;
-  border-color: rgba(245, 158, 11, 0.22);
-}
-
-/* Footer note */
-.dashboard-skin .employees-page .emp-footnote {
-  font-size: 12px;
-  opacity: 0.75;
+.dashboard-skin .employees-page .staff-bio {
   margin-top: 10px;
   line-height: 1.7;
+  font-size: 0.9rem;
+  color: rgba(13, 13, 13, 0.8);
+}
+
+.dashboard-skin .employees-page .staff-bio.muted {
+  opacity: 0.6;
 }
 
 /* =========================
-   ✅ Modals (Employees)
-   نعتمد DashboardModals.css للـ overlay/box
-   ونضبط تخطيط الفورم هنا فقط
-========================= */
-
-.dashboard-skin .employees-page .emp-modal-grid {
-  display: grid;
-  gap: 12px;
-  margin-top: 14px;
+   3. Pills & Chips (Only modifiers هنا)
+   - Base moved to DashboardSkin.css
+   ========================= */
+.dashboard-skin .employees-page .staff-pill.on {
+  background: rgba(34, 197, 94, 0.12) !important;
+  border-color: rgba(34, 197, 94, 0.22) !important;
+  color: #166534 !important;
 }
 
-.dashboard-skin .employees-page .emp-label {
+.dashboard-skin .employees-page .staff-pill.off {
+  background: rgba(239, 68, 68, 0.10) !important;
+  border-color: rgba(239, 68, 68, 0.18) !important;
+  color: #991b1b !important;
+}
+
+.dashboard-skin .employees-page .staff-chips {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ===================================================================
+   4. ⭐⭐⭐ MODAL STYLES & OVERRIDES ⭐⭐⭐
+   ✅ FIX: Modal is rendered via Portal (outside .employees-page)
+   So we style via .emp-modal (panelClassName)
+   =================================================================== */
+
+.emp-modal .modal-body.emp-modal-grid {
+  padding: 16px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.emp-modal .emp-modal-section {
+  padding: 16px;
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 14px;
+  background: rgba(245, 245, 244, 0.7);
+}
+
+.emp-modal .emp-modal-section-title {
+  font-weight: 900;
+  font-size: 14px;
+  margin-bottom: 12px;
+  display: block;
+  color: #0D0D0D;
+}
+
+.emp-modal .emp-modal-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.emp-modal .emp-modal-fields.two-cols {
+  grid-template-columns: 1fr 1fr;
+}
+
+.emp-modal .emp-label {
   display: block;
   font-size: 12px;
   margin-bottom: 6px;
@@ -216,258 +124,88 @@
   font-weight: 900;
 }
 
-.dashboard-skin .employees-page .emp-two {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.dashboard-skin .employees-page .emp-modal-actions {
+/* ✅ Picks = Toggle Chips (NOT buttons look) */
+.emp-modal .staff-picks {
   display: flex;
-  gap: 10px;
-  margin-top: 16px;
-  justify-content: flex-start;
   flex-wrap: wrap;
+  gap: 10px;
 }
 
-.dashboard-skin .employees-page .emp-modal-hint {
-  font-size: 12px;
-  opacity: 0.78;
-  margin-top: 10px;
-  line-height: 1.7;
-}
+.emp-modal .staff-picks .pick {
+  appearance: none;
+  -webkit-appearance: none;
 
-/* =========================
-   ✅ Bookings Modal (Last 5)
-========================= */
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(245, 245, 244, 0.92);
+  color: #0D0D0D;
 
-.dashboard-skin .employees-page .emp-bookings-modal {
-  width: min(860px, 96vw);
-}
+  border-radius: 999px;
+  padding: 8px 14px;
 
-.dashboard-skin .employees-page .emp-bookings-sub {
-  font-size: 12px;
-  opacity: 0.75;
-  margin-top: 6px;
-}
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
 
-.dashboard-skin .employees-page .emp-bookings-wrap {
-  margin-top: 12px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Table inside bookings modal */
-.dashboard-skin .employees-page .emp-bookings-table {
-  width: 100%;
-  min-width: 720px;
-  border-collapse: collapse;
-  overflow: hidden;
-  border-radius: 14px;
-  border: 1px solid rgba(124, 58, 237, 0.12);
-  background: rgba(255, 255, 255, 0.88);
-}
-
-.dashboard-skin .employees-page .emp-bookings-table th,
-.dashboard-skin .employees-page .emp-bookings-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid rgba(124, 58, 237, 0.10);
-  font-size: 13px;
-}
-
-.dashboard-skin .employees-page .emp-bookings-table th {
-  font-weight: 900;
-  background: rgba(124, 58, 237, 0.06);
-}
-
-.dashboard-skin .employees-page .emp-bookings-table tr:last-child td {
-  border-bottom: none;
-}
-
-.dashboard-skin .employees-page .emp-bk-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  background: rgba(140, 110, 209, 0.10);
-  color: #4a236a;
-  border: 1px solid rgba(124, 58, 237, 0.18);
-  white-space: nowrap;
+
+  box-shadow: none;
+  outline: none;
+
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
 }
 
-/* =========================
-   ✅ Responsive
-========================= */
-
-@media (max-width: 980px) {
-  .dashboard-skin .employees-page .emp-filters {
-    grid-template-columns: 1fr 1fr;
-  }
+.emp-modal .staff-picks .pick:hover {
+  background: rgba(245, 245, 244, 1);
+  border-color: rgba(64, 1, 13, 0.22);
+  transform: translateY(-1px);
 }
 
-@media (max-width: 640px) {
-  .dashboard-skin .employees-page .emp-filters {
+.emp-modal .staff-picks .pick.on {
+  background: #0D0D0D;
+  color: #ffffff;
+  border-color: #0D0D0D;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+  transform: scale(1.03);
+}
+
+/* Toolbar فوق خيارات الخدمات داخل المودال */
+.emp-modal .emp-picks-toolbar{
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 10px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+/* على الجوال خليها عمودين تحت بعض */
+@media (max-width: 640px){
+  .emp-modal .emp-picks-toolbar{
     grid-template-columns: 1fr;
   }
-
-  .dashboard-skin .employees-page .ov-table {
-    min-width: 920px;
-  }
-
-  .dashboard-skin .employees-page .emp-two {
-    grid-template-columns: 1fr;
-  }
 }
 
-@media (max-width: 520px) {
-  .dashboard-skin .employees-page .emp-pill,
-  .dashboard-skin .employees-page .emp-bk-pill {
-    padding: 5px 8px;
-    font-size: 11px;
-  }
-
-  .dashboard-skin .employees-page .emp-actions .dash-btn {
-    padding: 8px 10px;
-  }
+/* خلي قائمة الخدمات داخل المودال قابلة للتمرير */
+.emp-modal .staff-picks--scroll{
+  max-height: 340px;      /* عدلها لو تبغى */
+  overflow: auto;
+  padding: 10px;
+  border: 1px dashed rgba(0,0,0,0.12);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.65);
+  -webkit-overflow-scrolling: touch;
 }
 
-/* =========================
-   FIX: Modal text visibility (Dashboard)
-   Put at END of DashboardModals.css
-========================= */
 
-.dashboard-skin .dashboard-modal,
-.dashboard-skin .dashboard-modal * {
-  color: #0D0D0D; /* ✅ نص واضح داخل المودال */
-}
 
-/* Inputs inside modal */
-.dashboard-skin .dashboard-modal input,
-.dashboard-skin .dashboard-modal select,
-.dashboard-skin .dashboard-modal textarea {
-  color: #0D0D0D !important;
-  background: #fff !important;
-  border-color: rgba(13, 13, 13, 0.14) !important;
-}
 
-/* Placeholder */
-.dashboard-skin .dashboard-modal input::placeholder,
-.dashboard-skin .dashboard-modal textarea::placeholder {
-  color: rgba(13, 13, 13, 0.35) !important;
-  opacity: 1;
-}
-
-/* Labels */
-.dashboard-skin .dashboard-modal label {
-  color: rgba(13, 13, 13, 0.80) !important;
-}
-
-/* Buttons/pills text inside modal (لو عندك أزرار شكل pill) */
-.dashboard-skin .dashboard-modal .dash-pill,
-.dashboard-skin .dashboard-modal .dash-btn,
-.dashboard-skin .dashboard-modal button {
-  color: #0D0D0D;
-}
-
-/* =========================
-   ✅ Employees Pills Colors (Queens) - IMPORTANT
-========================= */
-
-/* Pill base */
-.dashboard-skin .employees-page .staff-pill{
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 8px !important;
-  padding: 7px 11px !important;
-  border-radius: 999px !important;
-  font-size: 12px !important;
-  font-weight: 900 !important;
-  line-height: 1 !important;
-  border: 1px solid rgba(13,13,13,0.10) !important;
-  background: rgba(13,13,13,0.04) !important;
-  color: #0D0D0D !important;
-  white-space: nowrap !important;
-}
-
-/* Active / Inactive (اللي جنب اسم الموظفة) */
-.dashboard-skin .employees-page .staff-pill.on{
-  background: rgba(34,197,94,0.12) !important;
-  border-color: rgba(34,197,94,0.22) !important;
-  color: #166534 !important;
-}
-
-.dashboard-skin .employees-page .staff-pill.off{
-  background: rgba(239,68,68,0.10) !important;
-  border-color: rgba(239,68,68,0.18) !important;
-  color: #991b1b !important;
-}
-
-/* ===== Stats Pills ===== */
-.dashboard-skin .employees-page .staff-pill.stat{
-  border-width: 1px !important;
-}
-
-/* Total */
-.dashboard-skin .employees-page .staff-pill.stat.total{
-  background: rgba(13,13,13,0.05) !important;
-  border-color: rgba(13,13,13,0.10) !important;
-  color: #0D0D0D !important;
-}
-
-/* Confirmed */
-.dashboard-skin .employees-page .staff-pill.stat.confirmed{
-  background: rgba(34,197,94,0.12) !important;
-  border-color: rgba(34,197,94,0.22) !important;
-  color: #166534 !important;
-}
-
-/* Pending */
-.dashboard-skin .employees-page .staff-pill.stat.pending{
-  background: rgba(245,158,11,0.14) !important;
-  border-color: rgba(245,158,11,0.26) !important;
-  color: #92400e !important;
-}
-
-/* Completed */
-.dashboard-skin .employees-page .staff-pill.stat.completed{
-  background: rgba(59,130,246,0.12) !important;
-  border-color: rgba(59,130,246,0.22) !important;
-  color: #1d4ed8 !important;
-}
-
-/* Cancelled */
-.dashboard-skin .employees-page .staff-pill.stat.cancelled{
-  background: rgba(239,68,68,0.12) !important;
-  border-color: rgba(239,68,68,0.22) !important;
-  color: #991b1b !important;
-}
-
-/* b داخل pill */
-.dashboard-skin .employees-page .staff-pill b{
-  font-weight: 900 !important;
-}
-
-/* =========================
-   ✅ Service chips (اللي تحت: شعر اطراف... الخ)
-   لو كانت عندك staff-chip / staff-chips
-========================= */
-.dashboard-skin .employees-page .staff-chips{
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 8px !important;
-  margin-top: 10px !important;
-}
-
-.dashboard-skin .employees-page .staff-chip{
+.employees-page  {
   padding: 7px 10px !important;
   border-radius: 999px !important;
   font-size: 12px !important;
   font-weight: 800 !important;
-  background: rgba(245,245,244,0.9) !important;
-  border: 1px dashed rgba(13,13,13,0.18) !important;
+  background: rgba(245, 245, 244, 0.90) !important;
+  border: 1px dashed rgba(13, 13, 13, 0.18) !important;
   color: #0D0D0D !important;
 }
-

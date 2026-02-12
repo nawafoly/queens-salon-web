@@ -1,5 +1,5 @@
 /* =========================================
-   Dashboard Skin (Queens / Glass) ✅ CLEAN
+   Dashboard Skin (Queens / Glass) ✅ CLEAN + UNIFIED
    File: src/styles/DashboardSkin.css
    ✅ Scoped داخل .dashboard-skin فقط
    ✅ بدون تكرار/تضارب (قدر الإمكان)
@@ -126,9 +126,7 @@
 }
 
 @keyframes dashspin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
 /* =========================
@@ -141,7 +139,7 @@
   max-width: 100%;
 }
 
-/* ✅ FIX: remove centering + max-width clamp (كان يوسّط الداشبورد ويخليه ينحّف)
+/* ✅ FIX: remove centering + max-width clamp
    + نخلي Desktop layout flex (Sidebar + Content جنب بعض)
 */
 .dashboard-skin .dashboard-inner {
@@ -163,19 +161,12 @@
 
 /* ✅ Sidebar width on desktop */
 @media (min-width: 992px) {
-  .dashboard-skin .dashboard-sidebar {
-    flex: 0 0 320px;
-  }
-
-  .dashboard-skin .dashboard-main {
-    flex: 1;
-    min-width: 0;
-  }
+  .dashboard-skin .dashboard-sidebar { flex: 0 0 320px; }
+  .dashboard-skin .dashboard-main { flex: 1; min-width: 0; }
 }
 
 /* =========================
    ✅ Bootstrap Row/Col Overflow Fix (Dashboard only)
-   - يمنع negative margins اللي تسوي سكرول أفقي
 ========================= */
 .dashboard-skin .row {
   margin-left: 0 !important;
@@ -270,9 +261,7 @@
 }
 
 @media (max-width: 767px) {
-  .dashboard-skin .dash-topbar-toggle {
-    display: inline-flex;
-  }
+  .dashboard-skin .dash-topbar-toggle { display: inline-flex; }
 }
 
 /* =========================
@@ -447,10 +436,7 @@
 }
 
 @media (max-width: 991px) {
-  /* ✅ في الموبايل: inner يرجع عمودي (سايدبار drawer) */
-  .dashboard-skin .dashboard-inner {
-    display: block;
-  }
+  .dashboard-skin .dashboard-inner { display: block; }
 
   .dashboard-skin .dashboard-sidebar {
     position: fixed !important;
@@ -468,9 +454,7 @@
     overflow-y: auto;
   }
 
-  .dashboard-skin .dashboard-sidebar.is-open {
-    transform: translateX(0);
-  }
+  .dashboard-skin .dashboard-sidebar.is-open { transform: translateX(0); }
 
   .dashboard-skin .dash-mobile-close {
     display: inline-flex;
@@ -489,19 +473,96 @@
     z-index: 2;
   }
 
-  .dashboard-skin .dashboard-main {
-    padding: 14px;
-  }
+  .dashboard-skin .dashboard-main { padding: 14px; }
 }
 
 /* =========================
-   ✅ Forms inside dashboard
+   ✅ Forms inside dashboard (Bootstrap inputs)
 ========================= */
 .dashboard-skin .form-control,
 .dashboard-skin .form-select {
   background: rgba(245, 245, 244, 0.86);
   border: 1px solid rgba(13, 13, 13, 0.12);
   color: #0D0D0D;
+}
+
+/* =========================================================
+   ✅✅ UNIFIED Dashboard Components (NO DUPLICATION)
+   - dash-card
+   - dash-field label
+   - dash-input / dash-textarea (base)
+   - pills / chips base (includes staff-pill/staff-chip)
+========================================================= */
+
+/* ✅ Card base (used everywhere) */
+.dashboard-skin .dash-card {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
+  padding: 14px;
+  margin: 12px 0;
+}
+
+/* ✅ Field label base */
+.dashboard-skin .dash-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 900;
+  color: rgba(13, 13, 13, 0.92);
+}
+
+/* ✅ Unified Input / Textarea base */
+.dashboard-skin .dash-input,
+.dashboard-skin .dash-textarea {
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #0D0D0D;
+  font-family: "Tajawal", sans-serif;
+  outline: none;
+}
+
+.dashboard-skin .dash-textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.dashboard-skin .dash-input:focus,
+.dashboard-skin .dash-textarea:focus {
+  border-color: rgba(64, 1, 13, 0.28);
+  box-shadow: 0 0 0 2px rgba(64, 1, 13, 0.12);
+}
+
+/* ✅ Pills base (global) + support existing staff-pill without touching TSX */
+.dashboard-skin .dashboard-pill,
+.dashboard-skin  .staff-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 7px 11px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  border: 1px solid rgba(13, 13, 13, 0.10) !important;
+  background: rgba(13, 13, 13, 0.04) !important;
+  color: #0D0D0D !important;
+  white-space: nowrap !important;
+}
+
+/* ✅ Chips base (global) + support existing staff-chip without touching TSX */
+.dashboard-skin .dashboard-chip,
+.dashboard-skin  .staff-chip {
+  padding: 7px 10px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  background: rgba(245, 245, 244, 0.90) !important;
+  border: 1px dashed rgba(13, 13, 13, 0.18) !important;
+  color: #0D0D0D !important;
 }
 
 /* =========================================
@@ -551,7 +612,7 @@
 .dashboard-skin .dash-btn,
 .dashboard-skin .exp-btn {
   border: 1px solid rgba(13, 13, 13, 0.12);
-  background: rgba(245, 245, 244, 0.86);
+background: rgba(245, 245, 244, 0.83);
   color: rgba(13, 13, 13, 0.92);
   border-radius: 12px;
 
@@ -733,14 +794,6 @@
   box-shadow: none !important;
 }
 
-/* سهم بسيط */
-.dashboard-skin .dash-select::after {
-  content: "▾";
-  font-size: 14px;
-  opacity: 0.75;
-  line-height: 1;
-}
-
 /* arrow helper (اختياري) */
 .dashboard-skin .bk-field {
   position: relative;
@@ -870,32 +923,23 @@
   position: relative;
 }
 
-.dashboard-skin .clients-page .cl-form .cl-sort-wrap .dash-select {
-  width: 100%;
-}
-
-.dashboard-skin .clients-page .cl-form .cl-sort-wrap .dash-dd-menu {
-  width: 100%;
-}
+.dashboard-skin .clients-page .cl-form .cl-sort-wrap .dash-select { width: 100%; }
+.dashboard-skin .clients-page .cl-form .cl-sort-wrap .dash-dd-menu { width: 100%; }
 
 /* =========================
    ✅ REMOVE Scrollbars (Dashboard only) - FINAL
 ========================= */
-
-/* ✅ امنع السكرول الأفقي على الصفحة فقط (بدون خنق المحتوى) */
 .dashboard-skin.dashboard-page {
   overflow-x: hidden !important;
 }
 
-
-/* 2) Sidebar drawer (على الموبايل) خليها تسكرول بس بدون شريط */
 @media (max-width: 991px) {
   .dashboard-skin .dashboard-sidebar {
     overflow-y: auto !important;
     overflow-x: hidden !important;
 
-    scrollbar-width: none !important;     /* Firefox */
-    -ms-overflow-style: none !important;  /* old Edge */
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
   }
 
   .dashboard-skin .dashboard-sidebar::-webkit-scrollbar {
@@ -904,7 +948,6 @@
   }
 }
 
-/* 3) اي شيء داخلي يسوي scroll نخفي الشريط */
 .dashboard-skin .dash-dd-menu,
 .dashboard-skin select,
 .dashboard-skin .dashboard-inner,
@@ -925,9 +968,7 @@
    ✅ Topbar: اجعل زر القائمة ثابت يمين (Mobile)
 ========================= */
 @media (max-width: 767px) {
-  .dashboard-skin .dash-topbar {
-    padding-right: 60px;
-  }
+  .dashboard-skin .dash-topbar { padding-right: 60px; }
 
   .dashboard-skin .dash-topbar-toggle {
     display: inline-flex;
@@ -996,21 +1037,21 @@
 }
 
 /* overlay تحت */
-.dashboard-skin .dash-side-overlay{
+.dashboard-skin .dash-side-overlay {
   z-index: 9998;
-  pointer-events: auto; /* يمسك الضغط للإغلاق */
+  pointer-events: auto;
 }
 
 /* sidebar فوق */
-.dashboard-skin .dashboard-sidebar{
+.dashboard-skin .dashboard-sidebar {
   z-index: 9999 !important;
 }
 
 .dashboard-skin .dash-topbar-user {
   display: flex;
-  flex-direction: row;   /* ✅ نفس السطر */
+  flex-direction: row;
   align-items: center;
-  gap: 8px;              /* ✅ المسافة بين الاسم والوظيفة */
+  gap: 8px;
   direction: rtl;
 }
 
@@ -1018,4 +1059,4 @@
 .dashboard-skin .dash-topbar-role {
   white-space: nowrap;
 }
-  
+
