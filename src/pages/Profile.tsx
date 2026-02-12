@@ -324,19 +324,28 @@ const Profile: React.FC = () => {
     setBookingsErr("");
 
     const colRef = collection(db, "salons", SALON_ID, "bookings");
-    const qy = query(colRef, where("userId", "==", firebaseUid));
+    const q = query(colRef, where("userId", "==", firebaseUid));
 
     const unsub = onSnapshot(
-      qy,
+      q,
       (snap) => {
-        const rows: BookingData[] = [];
-        snap.forEach((d) => rows.push(mapFsBookingToUi(d.id, d.data() as any)));
-        rows.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setBookings(rows);
+        const arr: BookingData[] = [];
+        snap.forEach((d) => {
+          arr.push(mapFsBookingToUi(d.id, d.data() as FsBooking));
+        });
+
+        arr.sort((a, b) => {
+          const tsA = toTs(a.date, a.time);
+          const tsB = toTs(b.date, b.time);
+          return tsB - tsA;
+        });
+
+        setBookings(arr);
+        setBookingsErr("");
       },
       (err) => {
         console.error("Bookings snapshot error:", err);
-        setBookingsErr("تعذر تحميل الحجوزات (صلاحيات/اتصال)");
+        setBookingsErr(`خطأ في تحميل الحجوزات: ${err.message}`);
         setBookings([]);
       }
     );
@@ -344,73 +353,68 @@ const Profile: React.FC = () => {
     return () => unsub();
   }, [profileMode, firebaseUid]);
 
-  const nowTs = Date.now();
-
-  const upcomingBooking = useMemo(() => {
-    const list = bookings
-      .filter((b) => {
-        const k = statusKey(b.status);
-        if (k === "cancelled" || k === "completed") return false;
-        return toTs(b.date, b.time) >= nowTs;
-      })
-      .sort((a, b) => toTs(a.date, a.time) - toTs(b.date, b.time));
-
-    return list[0] || null;
-  }, [bookings, nowTs]);
-
-  const lastBooking = useMemo(() => {
-    const list = bookings
-      .filter((b) => toTs(b.date, b.time) < nowTs)
-      .sort((a, b) => toTs(b.date, b.time) - toTs(a.date, a.time));
-
-    return list[0] || null;
-  }, [bookings, nowTs]);
-
+  // =======================
+  // KPIs
+  // =======================
   const kpis = useMemo(() => {
     const total = bookings.length;
-    const countBy = (key: "confirmed" | "pending" | "completed" | "cancelled") =>
-      bookings.filter((b) => statusKey(b.status) === key).length;
+    const confirmed = bookings.filter((b) => statusKey(b.status) === "confirmed").length;
+    const pending = bookings.filter((b) => statusKey(b.status) === "pending").length;
+    const completed = bookings.filter((b) => statusKey(b.status) === "completed").length;
 
-    return {
-      total,
-      confirmed: countBy("confirmed"),
-      pending: countBy("pending"),
-      completed: countBy("completed"),
-      cancelled: countBy("cancelled"),
-    };
+    return { total, confirmed, pending, completed };
   }, [bookings]);
 
   // =======================
-  // عضوية / رقم عضوية
+  // Upcoming booking
   // =======================
-  const membershipPercent =
-    typeof (profileDoc as any)?.membershipPercent === "number" ? (profileDoc as any).membershipPercent : 0;
+  const upcomingBooking = useMemo(() => {
+    const now = Date.now();
 
-  const membershipId =
-    (profileDoc as any)?.membershipId ||
-    (profileMode === "firebase" && firebaseUid
-      ? `client-${new Date().getFullYear()}-${firebaseUid.slice(0, 6)}`
-      : "client-0000");
+    const future = bookings.filter((b) => {
+      const st = statusKey(b.status);
+      if (st === "cancelled" || st === "completed") return false;
+      const ts = toTs(b.date, b.time);
+      return ts > now;
+    });
 
-  const progress = Math.min(Math.max(Number(membershipPercent) || 0, 0), 100);
+    if (!future.length) return null;
 
-  const copyMembershipId = async () => {
-    try {
-      await navigator.clipboard.writeText(String(membershipId));
-      alert("تم نسخ رقم العضوية ✅");
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = String(membershipId);
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      ta.remove();
-      alert("تم نسخ رقم العضوية ✅");
-    }
-  };
+    future.sort((a, b) => toTs(a.date, a.time) - toTs(b.date, b.time));
+    return future[0];
+  }, [bookings]);
 
   // =======================
-  // Avatar (محلي حالياً)
+  // Last booking
+  // =======================
+  const lastBooking = useMemo(() => {
+    const completed = bookings.filter((b) => statusKey(b.status) === "completed");
+    if (!completed.length) return null;
+
+    completed.sort((a, b) => {
+      const tsA = toTs(a.date, a.time);
+      const tsB = toTs(b.date, b.time);
+      return tsB - tsA;
+    });
+
+    return completed[0];
+  }, [bookings]);
+
+  // =======================
+  // Loyalty
+  // =======================
+  const membershipId = useMemo(() => {
+    const raw = firebaseUid || userData.phone || "0000";
+    return raw.slice(-6).toUpperCase();
+  }, [firebaseUid, userData.phone]);
+
+  const progress = useMemo(() => {
+    const base = kpis.completed * 10;
+    return Math.min(base, 100);
+  }, [kpis.completed]);
+
+  // =======================
+  // Avatar
   // =======================
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -420,80 +424,85 @@ const Profile: React.FC = () => {
 
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const img = ev.target?.result as string;
-      setUserData((prev) => ({ ...prev, avatar: img }));
-      localStorage.setItem("userAvatar", img);
+      const dataUrl = String(ev.target?.result || "");
+      setUserData((prev) => ({ ...prev, avatar: dataUrl }));
+      localStorage.setItem("userAvatar", dataUrl);
     };
     reader.readAsDataURL(file);
   };
 
+  const copyMembershipId = () => {
+    navigator.clipboard.writeText(membershipId).then(() => {
+      alert(`تم نسخ رقم العضوية: ${membershipId}`);
+    });
+  };
+
   // =======================
-  // Modal تعديل البيانات
+  // Edit Modal
   // =======================
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editData, setEditData] = useState({ ...userData });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    city: "",
+    birthdate: "",
+  });
 
-  useEffect(() => setEditData({ ...userData }), [userData]);
+  useEffect(() => {
+    if (showEditModal) {
+      setEditForm({
+        name: userData.name,
+        phone: userData.phone,
+        email: userData.email,
+        city: userData.city,
+        birthdate: userData.birthdate,
+      });
+    }
+  }, [showEditModal, userData]);
 
-  const handleSaveEdit = async () => {
+  const handleSaveProfile = async () => {
+    const trimmedName = editForm.name.trim();
+    const trimmedEmail = editForm.email.trim();
+    const trimmedCity = editForm.city.trim();
+    const trimmedBd = editForm.birthdate.trim();
+
+    if (!trimmedName) {
+      alert("الاسم مطلوب.");
+      return;
+    }
+
+    if (trimmedBd && !isValidISODate(trimmedBd)) {
+      alert("تاريخ الميلاد يجب أن يكون بصيغة YYYY-MM-DD (مثال: 1995-07-20).");
+      return;
+    }
+
+    const updated = {
+      name: trimmedName,
+      phone: normalizeKsaPhone(editForm.phone),
+      email: trimmedEmail,
+      city: trimmedCity,
+      birthdate: trimmedBd,
+    };
+
     try {
-      const normalizedPhone = normalizeKsaPhone(editData.phone);
-      const birthdate = String(editData.birthdate || "").trim();
-
-      if (birthdate && !isValidISODate(birthdate)) {
-        alert("تاريخ الميلاد غير صالح. الصيغة المطلوبة: YYYY-MM-DD");
-        return;
+      if (profileMode === "firebase" && firebaseUid && profileDoc) {
+        await updateUserProfile(firebaseUid, updated);
       }
 
-      if (profileMode === "firebase" && firebaseUid) {
-        await updateUserProfile(firebaseUid, {
-          name: editData.name,
-          phone: normalizedPhone,
-          city: editData.city,
-          birthdate: birthdate,
-        } as any);
+      setUserData((prev) => ({ ...prev, ...updated }));
 
+      const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "{}");
+      const merged = { ...cached, ...updated };
+      localStorage.setItem("user_profile_v1", JSON.stringify(merged));
 
-        setUserData({ ...editData, phone: normalizedPhone });
-
-        const merged = {
-          ...(profileDoc || {}),
-          uid: firebaseUid,
-          name: editData.name,
-          phone: normalizedPhone,
-          city: editData.city,
-          birthdate: birthdate,
-        };
-
-
-        localStorage.setItem("user_profile_v1", JSON.stringify(merged));
-        localStorage.setItem("userName", editData.name);
-        localStorage.setItem("userName", editData.name);
-        localStorage.setItem("userPhone", normalizedPhone);
-
-        window.dispatchEvent(new Event("authChanged"));
-
-        setShowEditModal(false);
-        return;
-      }
-
-      // Local mode
-      let clients = JSON.parse(localStorage.getItem("clients") || "[]");
-      clients = clients.map((u: any) =>
-        u.phone === userData.phone ? { ...u, ...editData, phone: normalizedPhone } : u
-      );
-      localStorage.setItem("clients", JSON.stringify(clients));
-      localStorage.setItem(
-        "currentUser",
-        JSON.stringify({ ...(currentUser || {}), ...editData, phone: normalizedPhone })
-      );
-      localStorage.setItem("userName", editData.name);
-      localStorage.setItem("userName", editData.name);
-      localStorage.setItem("userPhone", normalizedPhone);
+      if (updated.name) localStorage.setItem("userName", updated.name);
+      if (updated.email) localStorage.setItem("userEmail", updated.email);
+      if (updated.phone) localStorage.setItem("userPhone", updated.phone);
 
       window.dispatchEvent(new Event("authChanged"));
 
-      setUserData({ ...editData, phone: normalizedPhone });
+      alert("تم حفظ البيانات بنجاح ✅");
       setShowEditModal(false);
     } catch (e) {
       console.error("Save profile error:", e);
@@ -572,326 +581,202 @@ const Profile: React.FC = () => {
   return (
     <div className="p-root">
       <div className="p-wrapper">
+
+        {/* Top Navigation / Header */}
+        <div className="p-nav-header">
+          <button className="p-icon-btn" onClick={() => navigate("/", { replace: true })}>
+            <span className="p-icon-back"></span>
+          </button>
+          <h1 className="p-nav-title">الملف الشخصي</h1>
+          <button className="p-icon-btn" onClick={() => setShowEditModal(true)}>
+            <span className="p-icon-settings"></span>
+          </button>
+        </div>
+
         {/* ✅ تنبيه لو Permission Denied */}
         {bookingsErr ? (
           <div className="p-alert">
             {bookingsErr}
             <div className="p-alert-sub">
-              * إذا طلع Permission Denied: تأكد أن الحجز يحتوي userId = UID حق العميلة، والـ rules تسمح read للعميلة على حجوزاتها.
+              * تأكد من صلاحيات الوصول لحجوزاتك.
             </div>
           </div>
         ) : null}
 
-        {/* ===== Header Card ===== */}
-        <div className="p-card">
-          <div className="p-main-info">
-            <div className="p-user-section">
-              <div className="p-avatar-box">
-                <div className="p-avatar-circle">
-                  {userData.avatar ? <img src={userData.avatar} alt="avatar" /> : <span>👩‍🦰</span>}
-                </div>
-
-                <button
-                  className="p-avatar-plus"
-                  type="button"
-                  title="تغيير الصورة"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  +
-                </button>
-
-                <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
-              </div>
-
-              <div>
-                <h2 className="p-user-name">{userData.name || "عميلة"}</h2>
-
-                <div className="p-user-sub">
-                  {userData.phone ? <span>📱 {normalizeKsaPhone(userData.phone)}</span> : null}
-                  {userData.email ? <span>✉️ {userData.email}</span> : null}
-                  {userData.city ? <span>📍 {userData.city}</span> : null}
-                </div>
-
-                <div className="p-user-badges">
-                  <span className="p-badge-id" title="رقم العضوية" role="button" tabIndex={0} onClick={copyMembershipId}>
-                    {membershipId} <span style={{ marginInlineStart: 6 }}>📋</span>
-                  </span>
-
-                  <span className="p-badge-level">نسبة العضوية: {progress}%</span>
-                </div>
-              </div>
+        {/* ===== User Profile Section ===== */}
+        <div className="p-profile-hero">
+          <div className="p-avatar-wrapper">
+            <div className="p-avatar-main">
+              {userData.avatar ? <img src={userData.avatar} alt="avatar" /> : <span>👩‍🦰</span>}
             </div>
+            <button className="p-avatar-edit" onClick={() => fileInputRef.current?.click()}>+</button>
+            <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
+          </div>
+          <h2 className="p-user-name-hero">{userData.name || "عميلة"}</h2>
+          <div className="p-user-info-chips">
+            {userData.city && <span className="p-info-chip">📍 {userData.city}</span>}
+            {userData.phone && <span className="p-info-chip">📱 {normalizeKsaPhone(userData.phone)}</span>}
+          </div>
+        </div>
 
-            <div className="p-action-group">
-              <button className="p-btn p-btn-ghost" type="button" onClick={() => setShowEditModal(true)}>
-                ✏️ تعديل
-              </button>
-
-              <a className="p-btn p-btn-wa" href={getWhatsAppLink(SUPPORT_PHONE, SUPPORT_MSG)} target="_blank" rel="noreferrer">
-                💬 واتساب
-              </a>
-
-              <button className="p-btn p-btn-out" type="button" onClick={handleLogout}>
-                🚪 خروج
-              </button>
+        {/* ===== Stats Grid (Inspired by image) ===== */}
+        <div className="p-stats-grid">
+          <div className="p-stat-card">
+            <div className="p-stat-icon p-icon-total">⚡</div>
+            <div className="p-stat-content">
+              <span className="p-stat-value">{kpis.total}</span>
+              <span className="p-stat-label">الحجوزات</span>
+            </div>
+          </div>
+          <div className="p-stat-card">
+            <div className="p-stat-icon p-icon-confirmed">✅</div>
+            <div className="p-stat-content">
+              <span className="p-stat-value">{kpis.confirmed}</span>
+              <span className="p-stat-label">مؤكدة</span>
+            </div>
+          </div>
+          <div className="p-stat-card">
+            <div className="p-stat-icon p-icon-pending">⏳</div>
+            <div className="p-stat-content">
+              <span className="p-stat-value">{kpis.pending}</span>
+              <span className="p-stat-label">انتظار</span>
+            </div>
+          </div>
+          <div className="p-stat-card">
+            <div className="p-stat-icon p-icon-completed">⭐</div>
+            <div className="p-stat-content">
+              <span className="p-stat-value">{kpis.completed}</span>
+              <span className="p-stat-label">مكتملة</span>
             </div>
           </div>
         </div>
 
-        {/* ===== Stats Row ===== */}
-        <div className="p-stats-row">
-          <div className="p-stat-item">
-            <div className="p-stat-val">{kpis.total}</div>
-            <div className="p-stat-lbl">إجمالي الحجوزات</div>
+        {/* ===== Achievement / Loyalty Section (Inspired by image) ===== */}
+        <div className="p-section-container">
+          <div className="p-section-header">
+            <h3>مستوى العضوية</h3>
+            <span className="p-badge-id-hero" onClick={copyMembershipId}>ID: {membershipId} 📋</span>
           </div>
-
-          <div className="p-stat-item">
-            <div className="p-stat-val p-c-green">{kpis.confirmed}</div>
-            <div className="p-stat-lbl">مؤكدة</div>
-          </div>
-
-          <div className="p-stat-item">
-            <div className="p-stat-val p-c-gold">{kpis.pending}</div>
-            <div className="p-stat-lbl">انتظار</div>
-          </div>
-
-          <div className="p-stat-item">
-            <div className="p-stat-val">{kpis.completed}</div>
-            <div className="p-stat-lbl">مكتملة</div>
-          </div>
-        </div>
-
-        {/* ===== Content Grid ===== */}
-        <div className="p-content-grid">
-          {/* Main column */}
-          <div className="p-col-main">
-            {/* Next booking */}
-            <div className="p-card">
-              <div className="p-card-header">
-                <h3>الحجز القادم</h3>
-                <button className="p-link" type="button" onClick={() => navigate("/booking")}>
-                  حجز جديد ↩︎
-                </button>
-              </div>
-
-              {!upcomingBooking ? (
-                <div className="p-empty">ما عندك حجز قادم حالياً. ✨ احجزي موعدك الآن.</div>
-              ) : (
-                <div className="p-booking-card">
-                  <div className="p-booking-top">
-                    <div className="p-booking-title">{upcomingBooking.service}</div>
-                    <span className={`p-status-tag p-status-${statusKey(upcomingBooking.status)}`}>
-                      {statusLabelAr(upcomingBooking.status)}
-                    </span>
-                  </div>
-
-                  <div className="p-booking-meta">
-                    <span>👩‍💼 {upcomingBooking.employee || "-"}</span>
-                    <span>📅 {formatDateAr(upcomingBooking.date)}</span>
-                    <span>⏰ {upcomingBooking.time}</span>
-                    {upcomingBooking.publicId ? <span>🧾 {upcomingBooking.publicId}</span> : null}
-                  </div>
-
-                  <div className="p-booking-actions">
-                    <button className="p-btn p-btn-primary" type="button" onClick={() => navigate("/track")}>
-                      تتبع الحجز
-                    </button>
-
-                    <a
-                      className="p-btn p-btn-ghost"
-                      href={getWhatsAppLink(
-                        SUPPORT_PHONE,
-                        `مرحباً، عندي حجز بتاريخ ${upcomingBooking.date} الساعة ${upcomingBooking.time}.`
-                      )}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      تواصل بخصوص الحجز
-                    </a>
-                  </div>
-                </div>
-              )}
+          <div className="p-loyalty-card-new">
+            <div className="p-loyalty-info-new">
+              <div className="p-level-badge">Lv. {Math.floor(kpis.completed / 5) + 1}</div>
+              <div className="p-progress-text">{progress}% نحو المستوى التالي</div>
             </div>
-
-            {/* Bookings table */}
-            <div className="p-card">
-              <div className="p-card-header">
-                <h3>حجوزاتي</h3>
-
-                <div className="p-tools">
-                  <div className="p-table-filter">
-                    <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحثي (خدمة، موظفة، تاريخ...)" />
-                  </div>
-
-                  <select className="p-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                    <option value="all">كل الحالات</option>
-                    <option value="confirmed">مؤكد</option>
-                    <option value="pending">انتظار</option>
-                    <option value="completed">مكتمل</option>
-                    <option value="cancelled">ملغي</option>
-                  </select>
-                </div>
-              </div>
-
-              {bookingsFiltered.length === 0 ? (
-                <div className="p-empty">لا يوجد نتائج مطابقة.</div>
-              ) : (
-                <div className="p-table-wrap">
-                  <table className="p-table">
-                    <thead>
-                      <tr>
-                        <th>الخدمة</th>
-                        <th>الموظفة</th>
-                        <th>التاريخ</th>
-                        <th>الوقت</th>
-                        <th>الحالة</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bookingsFiltered.map((b) => (
-                        <tr key={b.id}>
-                          <td className="p-td-strong">{b.service}</td>
-                          <td>{b.employee || "-"}</td>
-                          <td>{formatDateAr(b.date)}</td>
-                          <td>{b.time}</td>
-                          <td>
-                            <span className={`p-status-tag p-status-${statusKey(b.status)}`}>
-                              {statusLabelAr(b.status)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Side column */}
-          <div className="p-col-side">
-            {/* Loyalty */}
-            <div className="p-card">
-              <div className="p-card-header">
-                <h3>العضوية</h3>
-                <span className="p-hint">ولاء العميلة</span>
-              </div>
-
-              <div className="p-loyalty-box">
-                <div className="p-loyalty-circle">
-                  <div className="p-loyalty-percent">{progress}%</div>
-                </div>
-                <div className="p-muted">
-                  رقم العضوية: <b>{membershipId}</b>
-                </div>
-              </div>
-            </div>
-
-            {/* Last booking */}
-            <div className="p-card">
-              <div className="p-card-header">
-                <h3>آخر حجز</h3>
-                <span className="p-hint">آخر نشاط لك عندنا 💗</span>
-              </div>
-
-              {!lastBooking ? (
-                <div className="p-empty">ما عندك حجوزات سابقة مرتبطة بهذا الحساب.</div>
-              ) : (
-                <div className="p-booking-card p-booking-last">
-                  <div className="p-booking-top">
-                    <div className="p-booking-title">{lastBooking.service}</div>
-                    <span className={`p-status-tag p-status-${statusKey(lastBooking.status)}`}>
-                      {statusLabelAr(lastBooking.status)}
-                    </span>
-                  </div>
-
-                  <div className="p-booking-meta">
-                    <span>👩‍💼 {lastBooking.employee || "-"}</span>
-                    <span>📅 {formatDateAr(lastBooking.date)}</span>
-                    <span>⏰ {lastBooking.time}</span>
-                    {lastBooking.publicId ? <span>🧾 {lastBooking.publicId}</span> : null}
-                  </div>
-
-                  <div className="p-booking-actions">
-                    <button className="p-btn p-btn-ghost" type="button" onClick={() => navigate("/booking")}>
-                      إعادة حجز مشابه
-                    </button>
-                    <button className="p-btn p-btn-primary" type="button" onClick={() => alert("قريباً: تقييم الخدمة ✨")}>
-                      تقييم الخدمة
-                    </button>
-                  </div>
-                </div>
-              )}
+            <div className="p-progress-bar-container">
+              <div className="p-progress-bar-fill" style={{ width: `${progress}%` }}></div>
             </div>
           </div>
         </div>
 
-        {/* ===== Edit Modal ===== */}
-        {showEditModal && (
-          <div className="p-modal-overlay" onClick={() => setShowEditModal(false)}>
-            <div className="p-modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="p-modal-head">
-                <h3 style={{ margin: 0 }}>تعديل بيانات العميلة</h3>
-                <button className="p-modal-x" type="button" onClick={() => setShowEditModal(false)} aria-label="close">
-                  ✕
-                </button>
-              </div>
-
-              <div className="p-form-group">
-                <label>الاسم</label>
-                <input value={editData.name} onChange={(e) => setEditData({ ...editData, name: e.target.value })} />
-              </div>
-
-              <div className="p-form-group">
-                <label>الجوال</label>
-                <input
-                  value={editData.phone}
-                  onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
-                  onBlur={() => setEditData((prev) => ({ ...prev, phone: normalizeKsaPhone(prev.phone) }))}
-                  placeholder="05xxxxxxxx"
-                />
-                <div className="p-muted" style={{ marginTop: 6 }}>
-                  سيتم حفظ الجوال بصيغة سعودية (مثال: 05xxxxxxxx) ✅
+        {/* ===== Next Booking Card (Inspired by image) ===== */}
+        <div className="p-section-container">
+          <div className="p-section-header">
+            <h3>الحجز القادم</h3>
+            <button className="p-link-action" onClick={() => navigate("/booking")}>حجز جديد +</button>
+          </div>
+          {!upcomingBooking ? (
+            <div className="p-empty-state">لا يوجد حجز قادم حالياً ✨</div>
+          ) : (
+            <div className="p-modern-booking-card">
+              <div className="p-booking-main-info">
+                <div className="p-booking-service-icon">✂️</div>
+                <div className="p-booking-details">
+                  <span className="p-booking-service-name">{upcomingBooking.service}</span>
+                  <span className="p-booking-employee-name">مع {upcomingBooking.employee || "موظفة ملكات"}</span>
+                </div>
+                <div className={`p-status-pill status-${statusKey(upcomingBooking.status)}`}>
+                  {statusLabelAr(upcomingBooking.status)}
                 </div>
               </div>
-
-              <div className="p-form-group">
-                <label>البريد</label>
-                <input value={editData.email} readOnly disabled />
-                <div className="p-muted" style={{ marginTop: 6 }}>
-                  تعديل البريد يتم من حساب تسجيل الدخول، وليس من هنا ✅
-                </div>
+              <div className="p-booking-footer-info">
+                <div className="p-footer-item">📅 {formatDateAr(upcomingBooking.date)}</div>
+                <div className="p-footer-item">⏰ {upcomingBooking.time}</div>
               </div>
-
-
-              <div className="p-form-group">
-                <label>المدينة</label>
-                <input value={editData.city} onChange={(e) => setEditData({ ...editData, city: e.target.value })} />
+              <div className="p-booking-actions-modern">
+                <button className="p-btn-modern primary" onClick={() => navigate("/track")}>تتبع الحجز</button>
+                <a className="p-btn-modern ghost" href={getWhatsAppLink(SUPPORT_PHONE, `مرحباً، استفسار عن حجز ${upcomingBooking.service}`)} target="_blank" rel="noreferrer">واتساب</a>
               </div>
+            </div>
+          )}
+        </div>
 
-              <div className="p-form-group">
-                <label>تاريخ الميلاد</label>
-                <input
-                  type="date"
-                  value={editData.birthdate}
-                  onChange={(e) => setEditData({ ...editData, birthdate: e.target.value })}
-                />
-              </div>
-
-              <div className="p-modal-actions">
-                <button className="p-btn p-btn-primary" type="button" onClick={handleSaveEdit}>
-                  حفظ
-                </button>
-                <button className="p-btn p-btn-ghost" type="button" onClick={() => setShowEditModal(false)}>
-                  إلغاء
-                </button>
-              </div>
-
-              <div className="p-note">ملاحظة: قريباً نضيف (نقاط، مكافآت، سجل خدمات مفصل، وفواتير) 😌✨</div>
+        {/* ===== My Bookings (List view for mobile) ===== */}
+        <div className="p-section-container">
+          <div className="p-section-header">
+            <h3>سجل الحجوزات</h3>
+            <div className="p-filter-tools">
+              <select className="p-modern-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">الكل</option>
+                <option value="confirmed">مؤكد</option>
+                <option value="pending">انتظار</option>
+                <option value="completed">مكتمل</option>
+                <option value="cancelled">ملغي</option>
+              </select>
             </div>
           </div>
-        )}
+
+          <div className="p-bookings-list-modern">
+            {bookingsFiltered.length === 0 ? (
+              <div className="p-empty-state">لا توجد حجوزات تطابق البحث</div>
+            ) : (
+              bookingsFiltered.map((b) => (
+                <div key={b.id} className="p-list-item-modern">
+                  <div className="p-list-icon">✨</div>
+                  <div className="p-list-content">
+                    <div className="p-list-row-top">
+                      <span className="p-list-service">{b.service}</span>
+                      <span className={`p-list-status status-${statusKey(b.status)}`}>{statusLabelAr(b.status)}</span>
+                    </div>
+                    <div className="p-list-row-bottom">
+                      <span>📅 {formatDateAr(b.date)}</span>
+                      <span>⏰ {b.time}</span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Logout Button */}
+        <div className="p-logout-container">
+          <button className="p-btn-logout" onClick={handleLogout}>تسجيل الخروج</button>
+        </div>
+
       </div>
+
+      {/* ===== Edit Modal (Modernized) ===== */}
+      {showEditModal ? (
+        <div className="p-modal-overlay-modern" onClick={() => setShowEditModal(false)}>
+          <div className="p-modal-content-modern" onClick={(e) => e.stopPropagation()}>
+            <div className="p-modal-header-modern">
+              <h3>تعديل الملف الشخصي</h3>
+              <button className="p-close-modal" onClick={() => setShowEditModal(false)}>✕</button>
+            </div>
+            <div className="p-modal-body-modern">
+              <div className="p-input-group-modern">
+                <label>الاسم</label>
+                <input value={editForm.name} onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div className="p-input-group-modern">
+                <label>الجوال</label>
+                <input value={editForm.phone} onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))} />
+              </div>
+              <div className="p-input-group-modern">
+                <label>المدينة</label>
+                <input value={editForm.city} onChange={(e) => setEditForm((p) => ({ ...p, city: e.target.value }))} />
+              </div>
+              <div className="p-input-group-modern">
+                <label>تاريخ الميلاد</label>
+                <input type="date" value={editForm.birthdate} onChange={(e) => setEditForm((p) => ({ ...p, birthdate: e.target.value }))} />
+              </div>
+            </div>
+            <div className="p-modal-footer-modern">
+              <button className="p-btn-save-modern" onClick={handleSaveProfile}>حفظ التغييرات</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
