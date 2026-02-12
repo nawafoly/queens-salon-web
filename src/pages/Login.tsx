@@ -105,7 +105,8 @@ async function ensureAdminSessionFromUsers(params: {
   if (userSnap.exists()) {
     const data: any = userSnap.data();
 
-    const active = data?.active !== false; // الافتراضي true
+    // ✅ التفعيل لازم يكون صريح active=true فقط
+    const active = data?.active === true;
     const role = active ? normalizeAdminRole(data?.role) : "pending";
 
     // ✅ ضمان وجود staff_public doc (اختياري لكنه مفيد للربط)
@@ -118,22 +119,30 @@ async function ensureAdminSessionFromUsers(params: {
         data?.displayName || data?.name || displayName || ""
       ).trim();
 
-      await setDoc(
-        spRef,
-        {
-          email,
-          linkedUid: uid,
-          role: role === "pending" ? "pending" : role,
-          active: role === "pending" ? false : true,
-          name: safeName || (role === "pending" ? "حساب إداري (بانتظار التفعيل)" : "موظفة"),
-          phone: String(data?.phone || "").trim(),
-          showOnAbout: false,
-          showOnBooking: false,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      try {
+        await setDoc(
+          spRef,
+          {
+            email,
+            linkedUid: uid,
+            role: role === "pending" ? "pending" : role,
+            active: role === "pending" ? false : true,
+            name:
+              safeName ||
+              (role === "pending"
+                ? "حساب إداري (بانتظار التفعيل)"
+                : "موظفة"),
+            phone: String(data?.phone || "").trim(),
+            showOnAbout: false,
+            showOnBooking: false,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (e) {
+        console.warn("ensureAdminSessionFromUsers staff_public create failed:", e);
+      }
     }
 
     return {
@@ -162,22 +171,26 @@ async function ensureAdminSessionFromUsers(params: {
 
   // 🔥 نكتب فقط المفاتيح المسموحة في rules
   const spRef = doc(db, ...STAFF_PUBLIC_COL, uid);
-  await setDoc(
-    spRef,
-    {
-      email,
-      linkedUid: uid,
-      role: "pending",
-      active: false,
-      name: displayName || "حساب إداري (بانتظار التفعيل)",
-      phone: "",
-      showOnAbout: false,
-      showOnBooking: false,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  try {
+    await setDoc(
+      spRef,
+      {
+        email,
+        linkedUid: uid,
+        role: "pending",
+        active: false,
+        name: displayName || "حساب إداري (بانتظار التفعيل)",
+        phone: "",
+        showOnAbout: false,
+        showOnBooking: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (e) {
+    console.warn("ensureAdminSessionFromUsers staff_public create failed:", e);
+  }
 
   return {
     role: "pending" as const,
@@ -188,6 +201,7 @@ async function ensureAdminSessionFromUsers(params: {
     staffDocId: uid,
   };
 }
+
 const Login: React.FC = () => {
   const [isRegister, setIsRegister] = useState(false);
 
@@ -236,6 +250,7 @@ const Login: React.FC = () => {
         return;
       }
 
+
       if (canAccessDashboard(role)) {
         navigate("/dashboard/overview", { replace: true });
         return;
@@ -281,14 +296,17 @@ const Login: React.FC = () => {
   const storeFirebaseSession = (
     profile: UserProfile | (Omit<UserProfile, "role"> & { role: any })
   ) => {
-    const uiRole = String((profile as any).role || "").toLowerCase().trim() as UiRole;
+    const uiRole = String((profile as any).role || "")
+      .toLowerCase()
+      .trim() as UiRole;
 
     // تنظيف أي جلسة local قديمة
     localStorage.removeItem("currentUser");
 
     // ✅ دايم نخزن الأساسيات (جلسة)
     const finalName =
-      String((profile as any).name || "").trim() || defaultNameByRole(String(uiRole));
+      String((profile as any).name || "").trim() ||
+      defaultNameByRole(String(uiRole));
 
     localStorage.setItem("authToken", "firebase");
     localStorage.setItem("userUid", String((profile as any).uid || ""));
@@ -296,8 +314,10 @@ const Login: React.FC = () => {
     localStorage.setItem("userName", finalName);
     localStorage.setItem("showWelcome", "true");
 
-    if ((profile as any).email) localStorage.setItem("userEmail", String((profile as any).email));
-    if ((profile as any).phone) localStorage.setItem("userPhone", String((profile as any).phone));
+    if ((profile as any).email)
+      localStorage.setItem("userEmail", String((profile as any).email));
+    if ((profile as any).phone)
+      localStorage.setItem("userPhone", String((profile as any).phone));
 
     // ✅ auth_user للجميع (لأن الداشبورد يحتاجه)
     localStorage.setItem(
@@ -333,7 +353,6 @@ const Login: React.FC = () => {
     localStorage.removeItem("userUid");
     localStorage.removeItem("user_profile_v1");
     localStorage.removeItem("userEmail");
-
     localStorage.setItem("authToken", "client-token-" + user.phone);
     localStorage.setItem("userRole", "client");
     localStorage.setItem("userName", user.name);
@@ -381,17 +400,38 @@ const Login: React.FC = () => {
 
         // ✅ A) إذا إداري @malikat.com → SoT = users/{uid}
         if (isMalikatAdminEmail(email)) {
-          const sp = await ensureAdminSessionFromUsers({
-            uid: authUser.uid,
-            email,
-            displayName: authUser.displayName || "",
-          });
+          let sp: {
+            role: AdminRole;
+            active: boolean;
+            name: string;
+            email: string;
+            phone: string;
+            staffDocId: string;
+          };
+
+          try {
+            sp = await ensureAdminSessionFromUsers({
+              uid: authUser.uid,
+              email,
+              displayName: authUser.displayName || "",
+            });
+          } catch (e) {
+            console.warn("ensureAdminSessionFromUsers failed:", e);
+            sp = {
+              role: "pending",
+              active: false,
+              name: authUser.displayName || "",
+              email,
+              phone: "",
+              staffDocId: authUser.uid,
+            };
+          }
 
           const role: AdminRole = sp.active ? (sp.role as any) : "pending";
 
           const profileForSession: any = {
             uid: authUser.uid,
-            role, // owner/admin/reception/staff/pending
+            role,
             name: sp.name || defaultNameByRole(role),
             email: sp.email,
             phone: sp.phone,
@@ -401,7 +441,7 @@ const Login: React.FC = () => {
           storeFirebaseSession(profileForSession);
 
           setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
-          await writeAuditLog({
+          void writeAuditLog({
             action: "user_login",
             entityType: "user",
             entityId: authUser.uid,
@@ -417,6 +457,7 @@ const Login: React.FC = () => {
             navigate("/dashboard/overview", { replace: true });
           }
           return;
+
         }
 
         // ✅ B) غير الإداري: عميلة (source of truth userProfile)
@@ -438,7 +479,7 @@ const Login: React.FC = () => {
         storeFirebaseSession(profile);
 
         setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
-        await writeAuditLog({
+        void writeAuditLog({
           action: "user_login",
           entityType: "user",
           entityId: authUser.uid,
@@ -469,7 +510,7 @@ const Login: React.FC = () => {
         if (user) {
           storeClientSessionLegacy(user);
           setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
-          await writeAuditLog({
+          void writeAuditLog({
             action: "user_login",
             entityType: "user",
             entityId: String(user.phone),
@@ -494,6 +535,7 @@ const Login: React.FC = () => {
       setIsLoading(false);
     }
   };
+
   // ✅ التسجيل (Firebase + إنشاء profile role=client تلقائيًا)
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -527,17 +569,38 @@ const Login: React.FC = () => {
       const email = cleanEmail(registerData.email);
 
       if (isMalikatAdminEmail(email)) {
-        const sp = await ensureAdminSessionFromUsers({
-          uid: cred.user.uid,
-          email,
-          displayName: registerData.name.trim() || "",
-        });
+        let sp: {
+          role: AdminRole;
+          active: boolean;
+          name: string;
+          email: string;
+          phone: string;
+          staffDocId: string;
+        };
 
-        const role: AdminRole = sp.active ? (sp.role as any) : "pending";
+        try {
+          sp = await ensureAdminSessionFromUsers({
+            uid: cred.user.uid,
+            email,
+            displayName: registerData.name.trim() || "",
+          });
+        } catch (e) {
+          console.warn("ensureAdminSessionFromUsers failed:", e);
+          sp = {
+            role: "pending",
+            active: false,
+            name: registerData.name.trim() || "",
+            email,
+            phone: registerData.phone.trim() || "",
+            staffDocId: cred.user.uid,
+          };
+        }
+
+        const role: AdminRole = "pending";
 
         const profileForSession: any = {
           uid: cred.user.uid,
-          role, // pending غالبًا
+          role,
           name: sp.name || registerData.name.trim() || defaultNameByRole(role),
           email: sp.email || email,
           phone: sp.phone || registerData.phone.trim() || "",
@@ -546,8 +609,14 @@ const Login: React.FC = () => {
 
         storeFirebaseSession(profileForSession);
 
+        // ✅ FORCE: ثبّت جلسة pending 100% قبل التحويل
+        localStorage.setItem("authToken", "firebase");
+        localStorage.setItem("userUid", cred.user.uid);
+        localStorage.setItem("userRole", "pending");
+        window.dispatchEvent(new Event("authChanged"));
+
         setSuccessMsg("تم إنشاء الحساب الإداري بنجاح ✅");
-        await writeAuditLog({
+        void writeAuditLog({
           action: "user_created",
           entityType: "user",
           entityId: cred.user.uid,
@@ -582,7 +651,7 @@ const Login: React.FC = () => {
 
       // ✅ 6) خزّن الجلسة
       storeFirebaseSession(latest);
-      await writeAuditLog({
+      void writeAuditLog({
         action: "client_created",
         entityType: "client",
         entityId: latest.uid,
@@ -622,7 +691,8 @@ const Login: React.FC = () => {
               const sp = await ensureAdminSessionFromUsers({
                 uid: u.uid,
                 email,
-                displayName: u.displayName || registerData.name.trim() || "",
+                displayName:
+                  u.displayName || registerData.name.trim() || "",
               });
 
               const role: AdminRole = sp.active ? (sp.role as any) : "pending";
@@ -630,15 +700,21 @@ const Login: React.FC = () => {
               storeFirebaseSession({
                 uid: u.uid,
                 role,
-                name: sp.name || registerData.name.trim() || defaultNameByRole(role),
+                name:
+                  sp.name ||
+                  registerData.name.trim() ||
+                  defaultNameByRole(role),
                 email: sp.email || email,
                 phone: sp.phone || registerData.phone.trim() || "",
                 staffDocId: sp.staffDocId,
               } as any);
 
-              navigate(role === "pending" ? "/dashboard-pending" : "/dashboard/overview", {
-                replace: true,
-              });
+              navigate(
+                role === "pending"
+                  ? "/dashboard-pending"
+                  : "/dashboard/overview",
+                { replace: true }
+              );
               return;
             }
 
@@ -651,10 +727,11 @@ const Login: React.FC = () => {
 
           setErrorMsg("هذا البريد مسجل مسبقًا. جرّب تسجيل الدخول.");
         } catch {
-          setErrorMsg("هذا البريد مسجل مسبقًا. كلمة المرور غير صحيحة أو جرّب (نسيت كلمة المرور).");
+          setErrorMsg(
+            "هذا البريد مسجل مسبقًا. كلمة المرور غير صحيحة أو جرّب (نسيت كلمة المرور)."
+          );
         }
-      }
-      else if (code.includes("auth/weak-password")) {
+      } else if (code.includes("auth/weak-password")) {
         setErrorMsg("كلمة المرور ضعيفة. استخدم 6 أحرف على الأقل.");
       } else {
         setErrorMsg(err?.message || "فشل إنشاء الحساب");
@@ -670,7 +747,11 @@ const Login: React.FC = () => {
         <div className="login-card">
           <div className="login-header">
             <div className="login-logo">
-              <img src={logoBelak} alt="Body Salon Logo" className="login-logo-img" />
+              <img
+                src={logoBelak}
+                alt="Body Salon Logo"
+                className="login-logo-img"
+              />
             </div>
             <h1 className="login-title">
               {isRegister ? "تسجيل حساب جديد" : "تسجيل الدخول"}
@@ -716,13 +797,21 @@ const Login: React.FC = () => {
                     className="password-toggle"
                     onClick={() => setShowPassword((prev) => !prev)}
                   >
-                    <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} />
+                    <FontAwesomeIcon
+                      icon={showPassword ? faEyeSlash : faEye}
+                    />
                   </button>
                 </div>
               </div>
 
-              {errorMsg && <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>}
-              {successMsg && <div style={{ color: "green", marginBottom: 8 }}>{successMsg}</div>}
+              {errorMsg && (
+                <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>
+              )}
+              {successMsg && (
+                <div style={{ color: "green", marginBottom: 8 }}>
+                  {successMsg}
+                </div>
+              )}
 
               <button
                 type="submit"
@@ -816,7 +905,9 @@ const Login: React.FC = () => {
                     className="password-toggle"
                     onClick={() => setShowRegisterPassword((prev) => !prev)}
                   >
-                    <FontAwesomeIcon icon={showRegisterPassword ? faEyeSlash : faEye} />
+                    <FontAwesomeIcon
+                      icon={showRegisterPassword ? faEyeSlash : faEye}
+                    />
                   </button>
                 </div>
               </div>
@@ -867,8 +958,14 @@ const Login: React.FC = () => {
                 />
               </div>
 
-              {errorMsg && <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>}
-              {successMsg && <div style={{ color: "green", marginBottom: 8 }}>{successMsg}</div>}
+              {errorMsg && (
+                <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>
+              )}
+              {successMsg && (
+                <div style={{ color: "green", marginBottom: 8 }}>
+                  {successMsg}
+                </div>
+              )}
 
               <button
                 type="submit"
