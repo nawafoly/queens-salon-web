@@ -1,211 +1,265 @@
 /* ===================================================================
-   ✅✅✅ FINAL & UNIFIED DashboardEmployees.css (NO DUPLICATION) ✅✅✅
-   - Removed: dash-card, dash-input/select/textarea base, staff-pill/chip base
-   - Kept: employees layout + staff specifics + modal specifics + modifiers
+   ✅ DashboardEmployees.css - Scoped & Refined
+   - Scoped to .emp-page-wrapper and .emp-modal
+   - Prevent affecting other pages
    =================================================================== */
 
-/* =========================
-   1. Base Page & Layout
-   ========================= */
-.dashboard-skin .employees-page {
+/* --- Page Wrapper --- */
+.emp-page-wrapper {
   direction: rtl;
   font-family: "Tajawal", sans-serif;
   width: 100%;
 }
 
-.dashboard-skin .employees-page * {
+.emp-page-wrapper * {
   box-sizing: border-box;
 }
 
-/* Grid cards */
-.dashboard-skin .employees-page .dash-grid {
+/* Grid Layout */
+.emp-page-wrapper .dash-grid {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  margin-top: 20px;
 }
 
-/* Filters row */
-.dashboard-skin .employees-page .dash-row {
+/* Filters Row */
+.emp-page-wrapper .dash-row {
   display: grid;
   grid-template-columns: 1fr 220px 220px;
-  gap: 10px;
+  gap: 12px;
+  align-items: end;
 }
 
-/* =========================
-   2. Staff Card Styles (Page specific)
-   ========================= */
-.dashboard-skin .employees-page .staff-card {
-  margin: 0; /* Override if any */
+@media (max-width: 768px) {
+  .emp-page-wrapper .dash-row {
+    grid-template-columns: 1fr;
+  }
 }
 
-.dashboard-skin .employees-page .staff-top {
+/* Staff Card Specifics */
+.emp-page-wrapper .staff-card {
+  padding: 20px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.emp-page-wrapper .staff-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.06);
+}
+
+.emp-page-wrapper .staff-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  margin-bottom: 12px;
 }
 
-.dashboard-skin .employees-page .staff-bio {
+.emp-page-wrapper .staff-bio {
   margin-top: 10px;
-  line-height: 1.7;
-  font-size: 0.9rem;
-  color: rgba(13, 13, 13, 0.8);
+  line-height: 1.6;
+  font-size: 0.95rem;
+  color: #444;
 }
 
-.dashboard-skin .employees-page .staff-bio.muted {
-  opacity: 0.6;
+.emp-page-wrapper .staff-bio.muted {
+  opacity: 0.5;
+  font-style: italic;
 }
 
-/* =========================
-   3. Pills & Chips (Only modifiers هنا)
-   - Base moved to DashboardSkin.css
-   ========================= */
-.dashboard-skin .employees-page .staff-pill.on {
-  background: rgba(34, 197, 94, 0.12) !important;
-  border-color: rgba(34, 197, 94, 0.22) !important;
-  color: #166534 !important;
+/* Status Pills */
+.emp-page-wrapper .staff-pill {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.dashboard-skin .employees-page .staff-pill.off {
-  background: rgba(239, 68, 68, 0.10) !important;
-  border-color: rgba(239, 68, 68, 0.18) !important;
-  color: #991b1b !important;
+.emp-page-wrapper .staff-pill.on {
+  background: rgba(34, 197, 94, 0.1);
+  color: #166534;
+  border: 1px solid rgba(34, 197, 94, 0.2);
 }
 
-.dashboard-skin .employees-page .staff-chips {
-  margin-top: 10px;
+.emp-page-wrapper .staff-pill.off {
+  background: rgba(239, 68, 68, 0.1);
+  color: #991b1b;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.emp-page-wrapper .staff-chips {
+  margin-top: 12px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
+}
+
+.emp-page-wrapper .staff-chip {
+  background: #f3f4f6;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #374151;
 }
 
 /* ===================================================================
-   4. ⭐⭐⭐ MODAL STYLES & OVERRIDES ⭐⭐⭐
-   ✅ FIX: Modal is rendered via Portal (outside .employees-page)
-   So we style via .emp-modal (panelClassName)
+   ⭐⭐⭐ MODAL STYLES (Scoped to .emp-modal) ⭐⭐⭐
    =================================================================== */
 
+.emp-modal .modal-head {
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .emp-modal .modal-body.emp-modal-grid {
-  padding: 16px !important;
+  padding: 24px !important;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .emp-modal .emp-modal-section {
-  padding: 16px;
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 14px;
-  background: rgba(245, 245, 244, 0.7);
+  padding: 20px;
+  border: 1px solid rgba(13, 13, 13, 0.06);
+  border-radius: 16px;
+  background: #fafafa;
 }
 
 .emp-modal .emp-modal-section-title {
-  font-weight: 900;
-  font-size: 14px;
-  margin-bottom: 12px;
+  font-weight: 800;
+  font-size: 15px;
+  margin-bottom: 16px;
   display: block;
-  color: #0D0D0D;
+  color: #111;
+  border-right: 4px solid #40010D;
+  padding-right: 10px;
 }
 
 .emp-modal .emp-modal-fields {
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 
 .emp-modal .emp-modal-fields.two-cols {
   grid-template-columns: 1fr 1fr;
 }
 
-.emp-modal .emp-label {
-  display: block;
-  font-size: 12px;
-  margin-bottom: 6px;
-  opacity: 0.85;
-  font-weight: 900;
-}
-
-/* ✅ Picks = Toggle Chips (NOT buttons look) */
-.emp-modal .staff-picks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.emp-modal .staff-picks .pick {
-  appearance: none;
-  -webkit-appearance: none;
-
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: rgba(245, 245, 244, 0.92);
-  color: #0D0D0D;
-
-  border-radius: 999px;
-  padding: 8px 14px;
-
-  font: inherit;
-  line-height: 1;
-  cursor: pointer;
-
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  box-shadow: none;
-  outline: none;
-
-  transition: transform .15s ease, background .15s ease, border-color .15s ease;
-}
-
-.emp-modal .staff-picks .pick:hover {
-  background: rgba(245, 245, 244, 1);
-  border-color: rgba(64, 1, 13, 0.22);
-  transform: translateY(-1px);
-}
-
-.emp-modal .staff-picks .pick.on {
-  background: #0D0D0D;
-  color: #ffffff;
-  border-color: #0D0D0D;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
-  transform: scale(1.03);
-}
-
-/* Toolbar فوق خيارات الخدمات داخل المودال */
-.emp-modal .emp-picks-toolbar{
-  display: grid;
-  grid-template-columns: 1fr 220px;
-  gap: 10px;
-  margin-bottom: 12px;
-  align-items: center;
-}
-
-/* على الجوال خليها عمودين تحت بعض */
-@media (max-width: 640px){
-  .emp-modal .emp-picks-toolbar{
+@media (max-width: 600px) {
+  .emp-modal .emp-modal-fields.two-cols {
     grid-template-columns: 1fr;
   }
 }
 
-/* خلي قائمة الخدمات داخل المودال قابلة للتمرير */
-.emp-modal .staff-picks--scroll{
-  max-height: 340px;      /* عدلها لو تبغى */
-  overflow: auto;
-  padding: 10px;
-  border: 1px dashed rgba(0,0,0,0.12);
-  border-radius: 14px;
-  background: rgba(255,255,255,0.65);
-  -webkit-overflow-scrolling: touch;
+.emp-modal .emp-label {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: #555;
 }
 
+/* Custom Input/Select/Textarea for Modal to ensure consistency */
+.emp-modal .dash-input,
+.emp-modal .dash-select,
+.emp-modal .dash-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  color: #111;
+  transition: border-color 0.2s;
+}
 
+.emp-modal .dash-input:focus,
+.emp-modal .dash-select:focus,
+.emp-modal .dash-textarea:focus {
+  outline: none;
+  border-color: #40010D;
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.05);
+}
 
+/* Service Selection Chips */
+.emp-modal .staff-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
-.employees-page  {
-  padding: 7px 10px !important;
-  border-radius: 999px !important;
-  font-size: 12px !important;
-  font-weight: 800 !important;
-  background: rgba(245, 245, 244, 0.90) !important;
-  border: 1px dashed rgba(13, 13, 13, 0.18) !important;
-  color: #0D0D0D !important;
+.emp-modal .staff-picks .pick {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fff;
+  color: #444;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.emp-modal .staff-picks .pick:hover {
+  background: #f3f4f6;
+  border-color: #ccc;
+}
+
+.emp-modal .staff-picks .pick.on {
+  background: #40010D;
+  color: #fff;
+  border-color: #40010D;
+  font-weight: 600;
+}
+
+.emp-modal .emp-picks-toolbar {
+  display: grid;
+  grid-template-columns: 1fr 200px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 500px) {
+  .emp-modal .emp-picks-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+.emp-modal .staff-picks--scroll {
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid rgba(0,0,0,0.05);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.emp-modal .modal-foot {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(0,0,0,0.05);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: #111;
+  margin: 0;
+}
+
+.exp-btn {
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  background: rgba(245, 245, 244, 0.83);
+  color: rgba(13, 13, 13, 0.92);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-weight: 700;
 }

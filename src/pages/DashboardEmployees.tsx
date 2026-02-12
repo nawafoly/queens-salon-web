@@ -19,10 +19,10 @@ import {
   faPen,
   faTrash,
   faRotateRight,
-  faToggleOn,
-  faToggleOff,
   faUserTie,
   faXmark,
+  faToggleOn,
+  faToggleOff,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
@@ -54,11 +54,10 @@ type StaffPublicDoc = {
   specialties: string[];
   bio?: string;
   avatarUrl?: string;
-  cvUrl?: string; // ✅ NEW
+  cvUrl?: string; 
   createdAt?: any;
   updatedAt?: any;
 };
-
 
 type StaffPublicUi = StaffPublicDoc & { id: string };
 
@@ -152,7 +151,6 @@ export default function DashboardEmployees() {
   const [onlyActive, setOnlyActive] =
     useState<"all" | "active" | "inactive">("all");
 
-  // ✅ NOW: filter by serviceId
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
 
   const [isOpen, setIsOpen] = useState(false);
@@ -161,14 +159,11 @@ export default function DashboardEmployees() {
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
-  const [cvUrl, setCvUrl] = useState(""); // ✅ NEW
+  const [cvUrl, setCvUrl] = useState(""); 
 
   const [active, setActive] = useState(true);
 
-  // ✅ NOW: store serviceIds
   const [specialties, setSpecialties] = useState<string[]>([]);
-
-  // ✅ services options (instead of sections)
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
 
   const [srvQ, setSrvQ] = useState("");
@@ -179,11 +174,10 @@ export default function DashboardEmployees() {
     setName("");
     setBio("");
     setAvatarUrl("");
-    setCvUrl(""); // ✅ NEW
+    setCvUrl(""); 
     setActive(true);
     setSpecialties([]);
   };
-
 
   const openCreate = () => {
     resetForm();
@@ -195,14 +189,11 @@ export default function DashboardEmployees() {
     setName(x.name ?? "");
     setBio(x.bio ?? "");
     setAvatarUrl(x.avatarUrl ?? "");
-    setCvUrl((x as any).cvUrl ?? ""); // ✅ NEW
+    setCvUrl((x as any).cvUrl ?? ""); 
     setActive(!!x.active);
     setSpecialties(normalizeSpecialties(x.specialties));
     setIsOpen(true);
   };
-
-
-
 
   const closeModal = () => {
     setIsOpen(false);
@@ -223,11 +214,10 @@ export default function DashboardEmployees() {
           specialties: normalizeSpecialties(data?.specialties),
           bio: data?.bio ?? "",
           avatarUrl: data?.avatarUrl ?? "",
-          cvUrl: data?.cvUrl ?? "", // ✅ NEW
+          cvUrl: data?.cvUrl ?? "", 
           createdAt: data?.createdAt,
           updatedAt: data?.updatedAt,
         };
-
       });
       rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
       setList(rows);
@@ -239,10 +229,8 @@ export default function DashboardEmployees() {
     }
   };
 
-  // ✅ Load services (catalog options for specialties)
   const loadServiceOptions = async () => {
     try {
-      // ملاحظة: نخليها orderBy فقط بدون where عشان ما نعلق على index
       const qSrv = query(servicesCol(), orderBy("name", "asc"));
       const snap = await getDocs(qSrv);
 
@@ -258,7 +246,6 @@ export default function DashboardEmployees() {
           };
         })
         .filter((s) => s.label.trim())
-        // ✅ نعرض فقط الخدمات المفعلة
         .filter((s) => s.active !== false);
 
       setServiceOptions(opts);
@@ -268,342 +255,71 @@ export default function DashboardEmployees() {
     }
   };
 
-
-  // ✅ FIX: migrate old bookings to include employeeUid/employeeKey
+  // ✅ Original logic for fixing bookings
   const fixBookingsEmployeeUid = async () => {
     if (!canManage) return;
-
-    const ok = confirm(
-      "سيتم إصلاح الحجوزات القديمة بإضافة employeeUid/employeeKey حسب staff_public.linkedUid.\nهل تريد المتابعة؟"
-    );
+    const ok = confirm("سيتم إصلاح الحجوزات القديمة بإضافة employeeUid/employeeKey. هل تريد المتابعة؟");
     if (!ok) return;
-
     setLoading(true);
-    setErrorMsg("");
-
     try {
-      // 1) load staff_public map: employeeId -> linkedUid
       const staffSnap = await getDocs(staffPublicCol());
       const uidByEmployeeId = new Map<string, string>();
-
       staffSnap.docs.forEach((d) => {
         const data: any = d.data();
         const linkedUid = String(data?.linkedUid || "").trim();
         if (linkedUid) uidByEmployeeId.set(d.id, linkedUid);
       });
-
-      // 2) read all bookings (or you can filter if you want)
       const bookingsRef = collection(db, "salons", SALON_ID, "bookings");
       const bSnap = await getDocs(bookingsRef);
-
-      let changed = 0;
-      let missingStaff = 0;
-
-      // batch limit: 500 writes
       let batch = writeBatch(db);
       let batchCount = 0;
-
-      const commitBatch = async () => {
-        if (batchCount === 0) return;
-        await batch.commit();
-        batch = writeBatch(db);
-        batchCount = 0;
-      };
-
       for (const d of bSnap.docs) {
         const b: any = d.data();
-
         const employeeUid = String(b?.employeeUid || "").trim();
         const employeeId = String(b?.employeeId || "").trim();
-
-        // ✅ fix only if employeeUid is missing but employeeId exists
         if (employeeUid || !employeeId) continue;
-
         const linkedUid = uidByEmployeeId.get(employeeId) || "";
-        if (!linkedUid) {
-          missingStaff += 1;
-          continue;
-        }
-
-        const ref = doc(db, "salons", SALON_ID, "bookings", d.id);
-
-        batch.update(ref, {
+        if (!linkedUid) continue;
+        batch.update(doc(db, "salons", SALON_ID, "bookings", d.id), {
           employeeUid: linkedUid,
           employeeKey: linkedUid,
           updatedAt: serverTimestamp(),
         });
-
-        batchCount += 1;
-        changed += 1;
-
+        batchCount++;
         if (batchCount >= 450) {
-          // safe buffer under 500
-          await commitBatch();
+          await batch.commit();
+          batch = writeBatch(db);
+          batchCount = 0;
         }
       }
-
-      await commitBatch();
-
-      alert(
-        `✅ تم الإصلاح بنجاح\n` +
-        `تم تحديث: ${changed} حجز\n` +
-        `حجوزات لم نجد لها linkedUid: ${missingStaff}\n\n` +
-        `ملاحظة: الحجوزات التي لم تُصلح معناها الموظفة غير مرتبطة (linkedUid ناقص) داخل staff_public.`
-      );
+      await batch.commit();
+      alert("✅ تم إصلاح الحجوزات");
     } catch (e) {
-      console.warn("fixBookingsEmployeeUid error:", e);
-      setErrorMsg("تعذر إصلاح الحجوزات (راجع Console)");
+      console.warn(e);
+      setErrorMsg("خطأ في الإصلاح");
     } finally {
       setLoading(false);
     }
   };
-
-  // 🔎 DIAG: show which employeeIds/names are missing linkedUid mapping
-  const diagnoseMissingLinkedUid = async () => {
-    if (!canManage) return;
-
-    setLoading(true);
-    setErrorMsg("");
-
-    try {
-      const staffSnap = await getDocs(staffPublicCol());
-
-      // maps for matching
-      const uidByDocId = new Map<string, string>();       // docId -> linkedUid
-      const uidByName = new Map<string, string>();        // normalizedName -> linkedUid
-      const uidByEmail = new Map<string, string>();       // emailLower -> linkedUid
-
-
-
-      // ... تكملة من داخل دالة diagnoseMissingLinkedUid
-
-      staffSnap.docs.forEach((d) => {
-        const data: any = d.data();
-        const linkedUid = String(data?.linkedUid || data?.uid || "").trim();
-        const name = String(data?.name || "").trim();
-        const email = String(data?.email || "").trim().toLowerCase();
-
-        if (linkedUid) uidByDocId.set(d.id, linkedUid);
-
-        const nk = normalizeArabicName(name);
-        if (nk && linkedUid) uidByName.set(nk, linkedUid);
-
-        if (email && linkedUid) uidByEmail.set(email, linkedUid);
-      });
-
-      const bookingsRef = collection(db, "salons", SALON_ID, "bookings");
-      const bSnap = await getDocs(bookingsRef);
-
-      // count missing by employeeId / employeeName
-      const byEmployeeId: Record<string, number> = {};
-      const byEmployeeName: Record<string, number> = {};
-      const examples: any[] = [];
-
-      for (const d of bSnap.docs) {
-        const b: any = d.data();
-        const employeeUid = String(b?.employeeUid || "").trim();
-        const employeeId = String(b?.employeeId || "").trim();
-        const employeeName = String(b?.employeeName || "").trim();
-        const employeeEmail = String(b?.employeeEmail || "").trim().toLowerCase();
-
-        // only those missing employeeUid
-        if (employeeUid) continue;
-
-        // try to see if we could match
-        const docMatch = employeeId && uidByDocId.get(employeeId);
-        const nameMatch = employeeName && uidByName.get(normalizeArabicName(employeeName));
-        const emailMatch = employeeEmail && uidByEmail.get(employeeEmail);
-
-        if (!docMatch && !nameMatch && !emailMatch) {
-          if (employeeId) byEmployeeId[employeeId] = (byEmployeeId[employeeId] || 0) + 1;
-          if (employeeName) byEmployeeName[employeeName] = (byEmployeeName[employeeName] || 0) + 1;
-
-          if (examples.length < 15) {
-            examples.push({
-              bookingId: d.id,
-              employeeId,
-              employeeName,
-              employeeEmail,
-              date: b?.date,
-              time: b?.time,
-            });
-          }
-        }
-      }
-
-      console.log("❗ Missing mapping by employeeId:", byEmployeeId);
-      console.log("❗ Missing mapping by employeeName:", byEmployeeName);
-      console.log("🧾 Examples (first 15):", examples);
-
-      alert(
-        "تم طباعة التشخيص في Console ✅\n\n" +
-        "افتح DevTools (F12) → Console وشوف:\n" +
-        "- Missing mapping by employeeId\n" +
-        "- Missing mapping by employeeName\n" +
-        "- Examples"
-      );
-    } catch (e) {
-      console.warn("diagnoseMissingLinkedUid error:", e);
-      setErrorMsg("تعذر التشخيص (راجع Console)");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ✅ SMART FIX: fill employeeUid/employeeKey even if staff_public docId is not employeeId
-  const smartFixBookingsEmployeeUid = async () => {
-    if (!canManage) return;
-
-    const ok = confirm(
-      "إصلاح ذكي: سيتم محاولة إصلاح الحجوزات القديمة عبر مطابقة staff_public بالـ docId أو الاسم أو الإيميل + aliases.\nهل تريد المتابعة؟"
-    );
-    if (!ok) return;
-
-    setLoading(true);
-    setErrorMsg("");
-
-    try {
-      const staffSnap = await getDocs(staffPublicCol());
-
-      const uidByDocId = new Map<string, string>();
-      const uidByName = new Map<string, string>();
-      const uidByEmail = new Map<string, string>();
-
-      staffSnap.docs.forEach((d) => {
-        const data: any = d.data();
-
-        // ✅ linkedUid is the source of truth (fallback to uid if present)
-        const linkedUid = String(data?.linkedUid || data?.uid || "").trim();
-        if (!linkedUid) return;
-
-        const name = String(data?.name || "").trim();
-        const email = String(data?.email || "").trim().toLowerCase();
-
-        // 1) docId
-        uidByDocId.set(d.id, linkedUid);
-
-        // 2) name
-        const nk = normalizeArabicName(name);
-        if (nk) uidByName.set(nk, linkedUid);
-
-        // 3) email
-        if (email) uidByEmail.set(email, linkedUid);
-
-        // ✅ 4) aliases (NEW)
-        const aliases: string[] = Array.isArray(data?.aliases) ? data.aliases : [];
-        for (const a of aliases) {
-          const s = String(a || "").trim();
-          if (!s) continue;
-
-          // alias as "employeeId style"
-          uidByDocId.set(s, linkedUid);
-
-          // alias as "name style"
-          uidByName.set(normalizeArabicName(s), linkedUid);
-        }
-      });
-
-      const bookingsRef = collection(db, "salons", SALON_ID, "bookings");
-      const bSnap = await getDocs(bookingsRef);
-
-      let changed = 0;
-      let stillMissing = 0;
-
-      let batch = writeBatch(db);
-      let batchCount = 0;
-
-      const commitBatch = async () => {
-        if (batchCount === 0) return;
-        await batch.commit();
-        batch = writeBatch(db);
-        batchCount = 0;
-      };
-
-      for (const d of bSnap.docs) {
-        const b: any = d.data();
-        const employeeUid = String(b?.employeeUid || "").trim();
-        if (employeeUid) continue;
-
-        const employeeId = String(b?.employeeId || "").trim();
-        const employeeName = String(b?.employeeName || "").trim();
-        const employeeEmail = String(b?.employeeEmail || "").trim().toLowerCase();
-
-        // try matches in order: docId/employeeId -> name -> email
-        let linkedUid =
-          (employeeId && uidByDocId.get(employeeId)) ||
-          (employeeName && uidByName.get(normalizeArabicName(employeeName))) ||
-          (employeeEmail && uidByEmail.get(employeeEmail)) ||
-          "";
-
-        linkedUid = String(linkedUid || "").trim();
-
-        if (!linkedUid) {
-          stillMissing += 1;
-          continue;
-        }
-
-        const ref = doc(db, "salons", SALON_ID, "bookings", d.id);
-        batch.update(ref, {
-          employeeUid: linkedUid,
-          employeeKey: linkedUid,
-          updatedAt: serverTimestamp(),
-        });
-
-        batchCount += 1;
-        changed += 1;
-
-        if (batchCount >= 450) await commitBatch();
-      }
-
-      await commitBatch();
-
-      alert(
-        `✅ تم الإصلاح الذكي\n` +
-        `تم تحديث: ${changed} حجز\n` +
-        `المتبقي بدون تطابق: ${stillMissing} حجز\n\n` +
-        `ملاحظة: هذا الإصلاح يعتمد على linkedUid/uid داخل staff_public، ويدعم aliases لو كانت موجودة.`
-      );
-    } catch (e) {
-      console.warn("smartFixBookingsEmployeeUid error:", e);
-      setErrorMsg("تعذر الإصلاح الذكي (راجع Console)");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
 
   useEffect(() => {
     load();
-  }, []);
-
-  useEffect(() => {
     loadServiceOptions();
   }, []);
 
-  // ✅ Owner-only: compute booking counts per staff_public doc
   useEffect(() => {
     let alive = true;
-
     const compute = async () => {
-      if (authUser?.role !== "owner") {
+      if (authUser?.role !== "owner" || !list.length) {
         setBookingStats({});
         return;
       }
-
-      if (!list.length) {
-        setBookingStats({});
-        return;
-      }
-
       setStatsLoading(true);
-
       try {
         const initStats = (): StaffBookingStats => ({
           total: 0,
           byStatus: { pending: 0, confirmed: 0, completed: 0, cancelled: 0 },
         });
-
         const staffById = new Set(list.map((s) => s.id));
         const staffByKey = new Map<string, string>();
         const staffByName = new Map<string, string>();
@@ -611,17 +327,13 @@ export default function DashboardEmployees() {
         for (const s of list) {
           const sid = String(s.id || "").trim();
           if (sid) staffByKey.set(sid, sid);
-
           const nKey = normalizeArabicName(s.name);
           if (nKey) staffByName.set(nKey, sid);
-
           const nk2 = safeKey(String(s.name || "").trim());
           if (nk2) staffByKey.set(nk2, sid);
         }
 
         const rows: BookingDocWithId[] = await listAllBookings();
-        console.log("[EmployeesStats] bookings=", rows.length, "staff=", list.length);
-
         const m: Record<string, StaffBookingStats> = {};
 
         for (const b of rows) {
@@ -631,25 +343,19 @@ export default function DashboardEmployees() {
           const ename = String((b as any).employeeName || "").trim();
 
           let staffId: string | null = null;
-
           if (ekey && staffByKey.has(ekey)) staffId = staffByKey.get(ekey) || null;
           if (!staffId && euid && staffByKey.has(euid)) staffId = staffByKey.get(euid) || null;
           if (!staffId && eid && staffById.has(eid)) staffId = eid;
-
           if (!staffId && ename) {
             const k = normalizeArabicName(ename);
             staffId = staffByName.get(k) || null;
           }
-
           if (!staffId) continue;
-
           if (!m[staffId]) m[staffId] = initStats();
-
           const st = (b.status || "pending") as BookingStatus;
           m[staffId].total += 1;
           m[staffId].byStatus[st] = (m[staffId].byStatus[st] || 0) + 1;
         }
-
         if (alive) setBookingStats(m);
       } catch (e) {
         console.warn("booking stats error:", e);
@@ -658,22 +364,15 @@ export default function DashboardEmployees() {
         if (alive) setStatsLoading(false);
       }
     };
-
     compute();
-
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [authUser?.role, list]);
-
-
 
   const sectionOptions = useMemo(() => {
     const m = new Map<string, { id: string; label: string }>();
     for (const s of serviceOptions) {
       const sid = String(s.sectionId || "").trim();
       if (!sid) continue;
-      // مؤقتًا نخلي الاسم = sectionId (بعدها نجيب اسم القسم من service_sections)
       if (!m.has(sid)) m.set(sid, { id: sid, label: sid });
     }
     return Array.from(m.values()).sort((a, b) => a.label.localeCompare(b.label, "ar"));
@@ -681,23 +380,16 @@ export default function DashboardEmployees() {
 
   const filteredServicesForPicks = useMemo(() => {
     let rows = [...serviceOptions];
-
     if (srvSection !== "all") {
       rows = rows.filter(s => String(s.sectionId || "").trim() === srvSection);
     }
-
     const q = srvQ.trim().toLowerCase();
     if (q) {
       rows = rows.filter(s => String(s.label || "").toLowerCase().includes(q));
     }
-
     rows.sort((a, b) => String(a.label).localeCompare(String(b.label), "ar"));
     return rows;
   }, [serviceOptions, srvSection, srvQ]);
-
-
-
-
 
   const toggleSpecialty = (serviceId: string) => {
     setSpecialties((prev) =>
@@ -709,7 +401,6 @@ export default function DashboardEmployees() {
 
   const save = async () => {
     if (!canManage) return;
-
     const cleanName = name.trim();
     if (!cleanName) {
       setErrorMsg("اكتب اسم الموظفة");
@@ -729,10 +420,9 @@ export default function DashboardEmployees() {
       specialties,
       bio: bio.trim(),
       avatarUrl: avatarUrl.trim(),
-      cvUrl: cvUrl.trim(), // ✅ NEW
+      cvUrl: cvUrl.trim(), 
       updatedAt: serverTimestamp(),
     };
-
 
     try {
       if (!editId) {
@@ -740,7 +430,6 @@ export default function DashboardEmployees() {
           .replace(/\s+/g, "_")
           .replace(/[^\w\u0600-\u06FF_]/g, "")
           .slice(0, 40);
-
         await setDoc(staffPublicDoc(id || crypto.randomUUID()), {
           ...payload,
           createdAt: serverTimestamp(),
@@ -748,7 +437,6 @@ export default function DashboardEmployees() {
       } else {
         await updateDoc(staffPublicDoc(editId), payload as any);
       }
-
       closeModal();
       await load();
     } catch (e) {
@@ -762,10 +450,8 @@ export default function DashboardEmployees() {
   const remove = async (id: string) => {
     if (!canManage) return;
     if (!confirm("متأكد حذف الموظفة؟")) return;
-
     setLoading(true);
     setErrorMsg("");
-
     try {
       await deleteDoc(staffPublicDoc(id));
       await load();
@@ -779,16 +465,13 @@ export default function DashboardEmployees() {
 
   const filtered = useMemo(() => {
     let rows = [...list];
-
     if (onlyActive === "active") rows = rows.filter((x) => x.active);
     if (onlyActive === "inactive") rows = rows.filter((x) => !x.active);
-
     if (specialtyFilter !== "all") {
       rows = rows.filter((x) =>
         normalizeSpecialties(x.specialties).includes(specialtyFilter)
       );
     }
-
     const t = qText.trim().toLowerCase();
     if (t) {
       rows = rows.filter((x) => {
@@ -797,17 +480,12 @@ export default function DashboardEmployees() {
         return n.includes(t) || b.includes(t);
       });
     }
-
     return rows;
   }, [list, onlyActive, specialtyFilter, qText]);
 
-  /* =========================
-     Guards
-  ========================= */
   if (!authUser) {
     return (
-      <div className="dashboard-page employees-page">
-
+      <div className="emp-page-wrapper">
         <div className="container">
           <div className="dash-card">
             <h3>غير مصرح</h3>
@@ -820,7 +498,7 @@ export default function DashboardEmployees() {
 
   if (!canManage) {
     return (
-      <div className="dashboard-page">
+      <div className="emp-page-wrapper">
         <div className="container">
           <div className="dash-card">
             <h3>صلاحيات غير كافية</h3>
@@ -831,11 +509,8 @@ export default function DashboardEmployees() {
     );
   }
 
-  /* =========================
-     Render
-  ========================= */
   return (
-    <div className="dashboard-page">
+    <div className="emp-page-wrapper">
       <div className="container">
         <div className="dash-topbar dash-topbar--sticky">
           <div className="dash-topbar-title">
@@ -848,6 +523,11 @@ export default function DashboardEmployees() {
           </div>
 
           <div className="dash-topbar-actions">
+            {authUser?.role === "owner" && (
+              <button className="exp-btn ghost" onClick={fixBookingsEmployeeUid} title="إصلاح الحجوزات">
+                🔧 إصلاح
+              </button>
+            )}
             <button
               className="exp-btn"
               onClick={async () => {
@@ -859,245 +539,150 @@ export default function DashboardEmployees() {
             >
               <FontAwesomeIcon icon={faRotateRight} /> تحديث
             </button>
-            <button
-              className="exp-btn"
-              onClick={fixBookingsEmployeeUid}
-              disabled={loading}
-              type="button"
-              title="إضافة employeeUid/employeeKey للحجوزات القديمة"
-            >
-              إصلاح الحجوزات القديمة
-            </button>
-
-            <button
-              className="exp-btn primary"
-              onClick={openCreate}
-              disabled={loading}
-              type="button"
-            >
+            <button className="exp-btn primary" onClick={openCreate} type="button">
               <FontAwesomeIcon icon={faPlus} /> إضافة موظفة
             </button>
-
-            <button
-              className="exp-btn"
-              onClick={diagnoseMissingLinkedUid}
-              disabled={loading}
-              type="button"
-              title="يعرض سبب الحجوزات اللي ما تنصلح"
-            >
-              تشخيص الحجوزات
-            </button>
-
-            <button
-              className="exp-btn"
-              onClick={smartFixBookingsEmployeeUid}
-              disabled={loading}
-              type="button"
-              title="يحاول الإصلاح بمطابقة docId أو الاسم أو الإيميل"
-            >
-              إصلاح ذكي للحجوزات
-            </button>
           </div>
         </div>
 
-        {errorMsg && <div className="dash-alert">{errorMsg}</div>}
+        {errorMsg && (
+          <div className="alert alert-danger mt-3" style={{ borderRadius: 14 }}>
+            {errorMsg}
+          </div>
+        )}
 
-        {/* Filters */}
-        <div className="dash-card">
+        <div className="dash-card mt-3">
           <div className="dash-row">
-            <input
-              className="dash-input"
-              placeholder="بحث بالاسم أو النبذة..."
-              value={qText}
-              onChange={(e) => setQText(e.target.value)}
-            />
-
-            <select
-              className="dash-select"
-              value={onlyActive}
-              onChange={(e) => setOnlyActive(e.target.value as any)}
-            >
-              <option value="all">كل الحالات</option>
-              <option value="active">نشطة</option>
-              <option value="inactive">غير نشطة</option>
-            </select>
-
-            <select
-              className="dash-select"
-              value={specialtyFilter}
-              onChange={(e) => setSpecialtyFilter(e.target.value)}
-            >
-              <option value="all">كل الخدمات</option>
-              {serviceOptions.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-
-            </select>
-          </div>
-
-          <div className="dash-meta">
-            المعروض: <b>{filtered.length}</b> • الإجمالي: <b>{list.length}</b>
-            {authUser.role === "owner" && (
-              <>
-                {" "}
-                • إحصائيات الحجوزات: <b>{statsLoading ? "..." : "جاهزة"}</b>
-              </>
-            )}
-          </div>
-
-          {serviceOptions.length === 0 && (
-            <div className="dash-meta" style={{ marginTop: 8, opacity: 0.8 }}>
-              * ملاحظة: لا توجد خدمات مفعلة في الكتالوج. ادخل الإعدادات → إدارة الكتالوج وأضف خدمات.
+            <div className="dash-field">
+              <label className="emp-label">بحث بالاسم أو النبذة</label>
+              <input
+                className="dash-input"
+                placeholder="ابحث هنا..."
+                value={qText}
+                onChange={(e) => setQText(e.target.value)}
+              />
             </div>
-          )}
+
+            <div className="dash-field">
+              <label className="emp-label">تصفية بالخدمة</label>
+              <select
+                className="dash-select"
+                value={specialtyFilter}
+                onChange={(e) => setSpecialtyFilter(e.target.value)}
+              >
+                <option value="all">كل الخدمات</option>
+                {serviceOptions.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="dash-field">
+              <label className="emp-label">الحالة</label>
+              <select
+                className="dash-select"
+                value={onlyActive}
+                onChange={(e) => setOnlyActive(e.target.value as any)}
+              >
+                <option value="all">الكل</option>
+                <option value="active">نشطة فقط</option>
+                <option value="inactive">غير نشطة</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        {/* List */}
         <div className="dash-grid">
-          {loading && <div className="dash-card">جاري التحميل…</div>}
-
-          {!loading && filtered.length === 0 && (
-            <div className="dash-card">لا توجد موظفات حسب الفلاتر الحالية.</div>
-          )}
-
-          {!loading &&
-            filtered.map((x) => (
-              <div className="dash-card staff-card" key={x.id}>
-                <div className="staff-top">
-                  <div className="staff-name">
-                    <b>{x.name}</b>
+          {filtered.map((x) => (
+            <div key={x.id} className="staff-card">
+              <div className="staff-top">
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 12,
+                      background: "rgba(64, 1, 13, 0.05)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 20,
+                      color: "#40010D",
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faUserTie} />
+                  </div>
+                  <div>
+                    <h4 style={{ margin: 0, fontWeight: 900 }}>{x.name}</h4>
                     <span className={`staff-pill ${x.active ? "on" : "off"}`}>
-                      <FontAwesomeIcon icon={x.active ? faToggleOn : faToggleOff} />{" "}
                       {x.active ? "نشطة" : "غير نشطة"}
                     </span>
                   </div>
-
-                  <div className="staff-actions">
-                    <button className="exp-btn ghost" onClick={() => openEdit(x)} type="button">
-                      <FontAwesomeIcon icon={faPen} /> تعديل
-                    </button>
-                    <button className="exp-btn danger" onClick={() => remove(x.id)} type="button">
-                      <FontAwesomeIcon icon={faTrash} /> حذف
-                    </button>
-                  </div>
                 </div>
-
-                {x.avatarUrl ? (
-                  <div className="staff-avatar">
-                    <img
-                      src={x.avatarUrl}
-                      alt={x.name}
-                      loading="lazy"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = "none";
-                      }}
-                    />
-                  </div>
-                ) : null}
-
-                {x.bio ? (
-                  <div className="staff-bio">{x.bio}</div>
-                ) : (
-                  <div className="staff-bio muted">بدون نبذة</div>
-                )}
-
-                <div className="staff-chips">
-                  {normalizeSpecialties(x.specialties).map((sid) => {
-                    const label = serviceOptions.find((o) => o.id === sid)?.label ?? sid;
-                    return (
-                      <span className="staff-chip" key={sid}>
-                        {label}
-                      </span>
-                    );
-                  })}
-                </div>
-
-                {/* ✅ Owner-only booking stats */}
-                {authUser?.role === "owner" && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span className="staff-pill stat total">
-                        الحجوزات:{" "}
-                        <b style={{ marginInlineStart: 6 }}>
-                          {statsLoading ? "..." : (bookingStats[x.id]?.total ?? 0)}
-                        </b>
-                      </span>
-
-                      <span className="staff-pill stat confirmed">
-                        مؤكد:{" "}
-                        <b style={{ marginInlineStart: 6 }}>
-                          {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.confirmed ?? 0)}
-                        </b>
-                      </span>
-
-                      <span className="staff-pill stat pending">
-                        انتظار:{" "}
-                        <b style={{ marginInlineStart: 6 }}>
-                          {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.pending ?? 0)}
-                        </b>
-                      </span>
-
-                      <span className="staff-pill stat completed">
-                        مكتمل:{" "}
-                        <b style={{ marginInlineStart: 6 }}>
-                          {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.completed ?? 0)}
-                        </b>
-                      </span>
-
-                      <span className="staff-pill stat cancelled">
-                        ملغي:{" "}
-                        <b style={{ marginInlineStart: 6 }}>
-                          {statsLoading ? "..." : (bookingStats[x.id]?.byStatus.cancelled ?? 0)}
-                        </b>
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
-                      * تُحسب الإحصائيات عبر employeeKey/employeeUid ثم employeeId، وإلا مطابقة الاسم كت fallback.
-                    </div>
-                  </div>
-                )}
-
-                {(x as any).cvUrl ? (
-                  <button
-                    className="exp-btn"
-                    type="button"
-                    onClick={() => window.open((x as any).cvUrl, "_blank")}
-                    title="عرض السيرة الذاتية"
-                    style={{ marginTop: 10 }}
-                  >
-                    📄 عرض السيرة الذاتية
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button className="exp-btn ghost sm" onClick={() => openEdit(x)}>
+                    <FontAwesomeIcon icon={faPen} />
                   </button>
-                ) : null}
-
-
-                <div className="staff-id">ID: {x.id}</div>
+                  <button className="exp-btn ghost sm text-danger" onClick={() => remove(x.id)}>
+                    <FontAwesomeIcon icon={faTrash} />
+                  </button>
+                </div>
               </div>
-            ))}
+
+              {x.bio ? (
+                <div className="staff-bio">{x.bio}</div>
+              ) : (
+                <div className="staff-bio muted">بدون نبذة</div>
+              )}
+
+              <div className="staff-chips">
+                {normalizeSpecialties(x.specialties).map((sid) => {
+                  const label = serviceOptions.find((o) => o.id === sid)?.label ?? sid;
+                  return (
+                    <span className="staff-chip" key={sid}>
+                      {label}
+                    </span>
+                  );
+                })}
+              </div>
+
+              {authUser?.role === "owner" && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span className="staff-pill stat total">
+                      الحجوزات: <b>{statsLoading ? "..." : (bookingStats[x.id]?.total ?? 0)}</b>
+                    </span>
+                    <span className="staff-pill stat confirmed">
+                      مؤكد: <b>{statsLoading ? "..." : (bookingStats[x.id]?.byStatus.confirmed ?? 0)}</b>
+                    </span>
+                    <span className="staff-pill stat pending">
+                      انتظار: <b>{statsLoading ? "..." : (bookingStats[x.id]?.byStatus.pending ?? 0)}</b>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
 
-        {/* =================================
-            ✅ MODAL - REFACTORED
-            ================================= */}
         {isOpen && (
           <Modal
             open={isOpen}
             onClose={closeModal}
             ariaLabel={editId ? "تعديل موظفة" : "إضافة موظفة"}
-            panelClassName="modal-box emp-modal"
+            panelClassName="emp-modal"
             size="lg"
           >
             <div className="modal-head">
-              <b>{editId ? "تعديل موظفة" : "إضافة موظفة"}</b>
+              <b style={{fontSize: '1.2rem'}}>{editId ? "تعديل موظفة" : "إضافة موظفة"}</b>
               <button className="exp-btn ghost" onClick={closeModal} type="button">
-                <FontAwesomeIcon icon={faXmark} /> إغلاق
+                <FontAwesomeIcon icon={faXmark} />
               </button>
             </div>
 
             <div className="modal-body emp-modal-grid">
-              {/* Section 1: Basic Info */}
               <div className="emp-modal-section">
                 <b className="emp-modal-section-title">المعلومات الأساسية</b>
                 <div className="emp-modal-fields two-cols">
@@ -1124,9 +709,8 @@ export default function DashboardEmployees() {
                 </div>
               </div>
 
-              {/* Section 2: Profile Details */}
               <div className="emp-modal-section">
-                <b className="emp-modal-section-title">ملف الموظفة (يظهر للزبائن)</b>
+                <b className="emp-modal-section-title">ملف الموظفة</b>
                 <div className="emp-modal-fields">
                   <div className="dash-field">
                     <label className="emp-label">نبذة تعريفية</label>
@@ -1151,10 +735,8 @@ export default function DashboardEmployees() {
                 </div>
               </div>
 
-              {/* Section 3: Services */}
               <div className="emp-modal-section">
-                <b className="emp-modal-section-title">الخدمات التي تقدمها الموظفة (اختيار متعدد) ✅</b>
-
+                <b className="emp-modal-section-title">الخدمات التي تقدمها الموظفة</b>
                 <div className="emp-picks-toolbar">
                   <input
                     className="dash-input"
@@ -1162,7 +744,6 @@ export default function DashboardEmployees() {
                     value={srvQ}
                     onChange={(e) => setSrvQ(e.target.value)}
                   />
-
                   <select
                     className="dash-select"
                     value={srvSection}
@@ -1183,34 +764,17 @@ export default function DashboardEmployees() {
                       key={o.id}
                       type="button"
                       className={`pick ${specialties.includes(o.id) ? "on" : ""}`}
-                      aria-pressed={specialties.includes(o.id)}
                       onClick={() => toggleSpecialty(o.id)}
-                      title={o.id}
                     >
                       {o.label}
                     </button>
                   ))}
-
-                  {serviceOptions.length === 0 && (
-                    <div style={{ padding: 10, opacity: 0.8 }}>
-                      لا توجد خدمات مفعلة. أضف خدمات من الإعدادات → إدارة الكتالوج.
-                    </div>
-                  )}
-
-                  {serviceOptions.length > 0 && filteredServicesForPicks.length === 0 && (
-                    <div style={{ padding: 10, opacity: 0.8 }}>
-                      لا توجد نتائج حسب البحث/القسم الحالي.
-                    </div>
-                  )}
                 </div>
               </div>
-
             </div>
 
             <div className="modal-foot">
-              <button className="exp-btn" onClick={closeModal} type="button">
-                إلغاء
-              </button>
+              <button className="exp-btn" onClick={closeModal} type="button">إلغاء</button>
               <button className="exp-btn primary" onClick={save} disabled={loading} type="button">
                 {loading ? "جاري الحفظ..." : "حفظ التغييرات"}
               </button>

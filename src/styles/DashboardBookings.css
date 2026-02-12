@@ -1,401 +1,279 @@
-/* =========================
-   Dashboard Bookings (Polished like Clients)
-   File: src/styles/DashboardBookings.css
-   ✅ Scoped داخل .bookings-page فقط
-========================= */
+/* ===================================================================
+   ✅ DashboardBookings.css - Scoped & Refined
+   - Scoped to .bk-page-wrapper and .bk-modal
+   - Optimized for all screen sizes (Mobile, Tablet, Desktop)
+   =================================================================== */
 
-/* ✅ مهم: لا نعمل خلفية هنا لأن DashboardSkin هو اللي يتحكم */
-.bookings-page {
-  background: transparent;
-  min-height: auto;
-  padding: 0;
-  overflow-x: hidden;
+.bk-page-wrapper {
+  direction: rtl;
   font-family: "Tajawal", sans-serif;
+  width: 100%;
+  padding-bottom: 40px;
 }
 
-.bookings-page * { box-sizing: border-box; }
-
-/* =========================
-   Header
-========================= */
-.bookings-header {
-  width: min(1180px, calc(100% - 28px));
-  margin: 0 auto 12px auto;
-
-  background: rgba(255, 255, 255, 0.70);
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 18px;
-  padding: 14px 16px;
-
-  backdrop-filter: blur(8px);
-
-  /* ✅ فوق أي عناصر تحتها */
-  position: relative;
-  z-index: 30;
-  overflow: visible;
+.bk-page-wrapper * {
+  box-sizing: border-box;
 }
 
-.bookings-header h1 {
-  margin: 0 0 6px 0;
-  font-size: 22px;
+/* --- Header Section --- */
+.bk-page-wrapper .bookings-header {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(10px);
+}
+
+.bk-page-wrapper .bookings-header h1 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 900;
   color: #0D0D0D;
 }
 
-.bookings-header p {
+.bk-page-wrapper .bookings-header p {
   margin: 0;
-  font-size: 13px;
-  color: rgba(81, 86, 89, 0.85);
+  font-size: 14px;
+  color: #666;
 }
 
-.bookings-error {
-  margin-top: 10px;
-  color: #b00020;
-  font-size: 13px;
+/* --- Filters Section --- */
+.bk-page-wrapper .bk-mini {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.03);
 }
 
-/* =========================
-   Mini filter card
-========================= */
-.bk-mini {
-  width: min(1180px, calc(100% - 28px));
-  margin: 0 auto 12px auto;
-
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 18px;
-  padding: 14px 16px;
-
-  backdrop-filter: blur(8px);
-
-  /* ✅ أهم سطرين للـ dropdown */
-  position: relative;
-  z-index: 60;
-  overflow: visible;
-}
-
-/* ✅ Responsive layout للفلاتر */
-.bk-filters {
+.bk-page-wrapper .bk-filters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
   align-items: end;
 }
 
-/* حقول */
-.bk-field { min-width: 0 !important; }
-.bk-field.w-180 { min-width: 0 !important; }
-.bk-field.w-200 { min-width: 0 !important; }
-
-.bk-field label {
+.bk-page-wrapper .bk-field label {
   display: block;
-  font-size: 12px;
-  margin-bottom: 6px;
-  color: rgba(13, 13, 13, 0.85);
-}
-
-/* البحث */
-.bk-search { min-width: 0 !important; }
-
-.bk-search-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-/* الأزرار */
-.bk-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-/* ✅ لا نلمس .row داخل bookings-page عشان Bootstrap ما ينكسر */
-
-/* =========================
-   Stat card fallback
-========================= */
-.bookings-page .stat-card {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 18px;
-  padding: 14px 16px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
-  height: 100%;
-
-  position: relative;
-  z-index: 1;
-}
-
-.bookings-page .stat-info h3 {
-  margin: 0 0 6px 0;
-  font-size: 22px;
-  color: #0D0D0D;
-}
-
-.bookings-page .stat-info p {
-  margin: 0;
   font-size: 13px;
-  color: rgba(81, 86, 89, 0.85);
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: #444;
 }
 
-/* =========================
-   Table Card
-========================= */
-.bookings-table-card {
-  width: min(1180px, calc(100% - 28px));
-  margin: 0 auto 18px auto;
-  background: #fff;
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 22px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
-  overflow: visible;
-  position: relative;
-  z-index: 1;
-}
-
-.bk-table-wrap { padding: 10px 12px 12px 12px; }
-
-.bookings-table {
+.bk-page-wrapper .bk-input,
+.bk-page-wrapper .bk-select {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  direction: rtl;
-}
-
-/* thead */
-.bookings-table thead th {
-  background: rgba(64, 1, 13, 0.06);
   color: #0D0D0D;
-  font-size: 13px;
-  font-weight: 800;
-  padding: 12px 12px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  white-space: nowrap;
-  text-align: center;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #fdfdfd;
+  font-size: 14px;
+  transition: all 0.2s;
 }
 
-/* tbody */
-.bookings-table tbody td {
-  padding: 12px 12px;
-  font-size: 13px;
-  color: #0D0D0D;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-  vertical-align: middle;
-  text-align: center;
+.bk-page-wrapper .bk-input:focus,
+.bk-page-wrapper .bk-select:focus {
+  outline: none;
+  border-color: #40010D;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.05);
 }
 
-.bookings-table tbody td:first-child {
-  text-align: right;
-  font-weight: 800;
-}
-
-.bookings-table tbody tr:nth-child(even) td { background: rgba(250, 250, 250, 0.70); }
-.bookings-table tbody tr:hover td { background: rgba(64, 1, 13, 0.05); }
-
-.bookings-table td:last-child { white-space: nowrap; }
-
-.bk-actions-cell {
+.bk-page-wrapper .bk-actions {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
-  justify-content: flex-start;
-  align-items: center;
+  margin-top: 16px;
 }
 
-/* =========================
-   Mobile Table Replacement (Cards)
-========================= */
-.bk-mobile-card {
+/* --- Table Section --- */
+.bk-page-wrapper .bookings-table-card {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+}
+
+.bk-page-wrapper .bk-table-wrap {
+  overflow-x: auto;
+}
+
+.bk-page-wrapper .bookings-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.bk-page-wrapper .bookings-table th {
+  background: #f8f9fa;
+  padding: 16px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #333;
+  text-align: center;
+  border-bottom: 2px solid #eee;
+}
+
+.bk-page-wrapper .bookings-table td {
+  padding: 14px 16px;
+  font-size: 14px;
+  color: #444;
+  border-bottom: 1px solid #f0f0f0;
+  text-align: center;
+}
+
+.bk-page-wrapper .bookings-table tr:hover td {
+  background: #fafafa;
+}
+
+/* --- Status Badges --- */
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-badge.confirmed { background: rgba(34, 197, 94, 0.1); color: #166534; }
+.status-badge.pending { background: rgba(234, 179, 8, 0.1); color: #854d0e; }
+.status-badge.cancelled { background: rgba(239, 68, 68, 0.1); color: #991b1b; }
+.status-badge.completed { background: rgba(59, 130, 246, 0.1); color: #1e40af; }
+
+/* --- Mobile View (Cards) --- */
+.bk-page-wrapper .bk-mobile-grid {
   display: none;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.bk-page-wrapper .bk-mobile-card {
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 18px;
   padding: 16px;
-  margin-bottom: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
-.bk-mobile-row {
+.bk-page-wrapper .bk-mobile-row {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 8px;
+  padding: 8px 0;
+  border-bottom: 1px dashed #eee;
+}
+
+.bk-page-wrapper .bk-mobile-row:last-child {
+  border-bottom: none;
+}
+
+.bk-page-wrapper .bk-mobile-label {
+  font-weight: 800;
+  color: #888;
   font-size: 13px;
 }
 
-.bk-mobile-label {
-  font-weight: 800;
-  color: rgba(0, 0, 0, 0.6);
-}
-
-.bk-mobile-val {
+.bk-page-wrapper .bk-mobile-val {
   font-weight: 700;
-  color: #0D0D0D;
+  color: #111;
+  font-size: 13px;
 }
 
-/* =========================
-   form-control داخل الصفحة فقط
-========================= */
-.bookings-page .form-control {
-  border-radius: 12px !important;
-  border: 1px solid rgba(0, 0, 0, 0.10) !important;
-  padding: 10px 12px !important;
-  font-size: 13px !important;
-  background: #fff !important;
-  box-shadow: none !important;
-}
-
-.dashboard-skin .bookings-page .form-control:focus {
-  outline: none !important;
-  border-color: rgba(64, 1, 13, 0.45) !important;
-  box-shadow: 0 0 0 4px rgba(64, 1, 13, 0.10) !important;
-}
-
-/* Status badge compact inside bookings */
-.bookings-page .status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  min-width: 88px;
-}
-
-/* =========================
-   مودال محتوى الحجوزات (مقيد داخل .dash-modal فقط)
-========================= */
-.dash-modal .bk-details-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 14px;
-  font-size: 14px;
-
-  border: 1px solid rgba(0,0,0,0.10);
-  border-radius: 18px;
-  padding: 12px;
-  background: #fafafa;
-}
-
-.dash-modal .bk-item {
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 14px;
-  padding: 10px 12px;
-  background: #fff;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 44px;
-}
-
-.dash-modal .bk-item.stack {
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  min-height: 74px;
-  gap: 6px;
-}
-
-.dash-modal .bk-note-card {
-  margin-top: 14px;
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 14px;
-  padding: 12px;
-  background: #fff;
-}
-
-/* =========================
-   Status Select – Dashboard Style
-========================= */
-.bk-field .bk-select {
-  width: 100%;
-  height: 42px;
-  padding: 0 12px;
-  border-radius: 12px;
-
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(13, 13, 13, 0.12);
-
-  font-size: 14px;
-  font-family: "Tajawal", sans-serif;
-  color: #0D0D0D;
-
-  outline: none;
-  cursor: pointer;
-}
-
-.bk-field .bk-select:focus {
-  border-color: rgba(64, 1, 13, 0.55);
-  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.12);
-}
-
-/* =========================
-   Values (optional)
-========================= */
-.value {
-  font-size: 22px;
-  font-weight: 900;
-  color: #40010D !important;
-}
-
-.value1 {
-  font-size: 22px;
-  font-weight: 900;
-  color: #0D0D0D !important;
-}
-
-/* =========================
-   Dropdown overlay helpers
-========================= */
-.bk-mini .dropdown-menu,
-.bk-mini [role="listbox"],
-.bk-mini .menu,
-.bk-mini .select-menu {
-  z-index: 9999;
-}
-
-/* =========================
-   Responsive
-========================= */
+/* --- Responsive Media Queries --- */
 @media (max-width: 992px) {
-  .bk-table-wrap {
+  .bk-page-wrapper .bk-table-wrap {
     display: none;
   }
-  .bk-mobile-card {
-    display: block;
+  .bk-page-wrapper .bk-mobile-grid {
+    display: grid;
   }
 }
 
 @media (max-width: 768px) {
-  .bookings-header,
-  .bk-mini,
-  .bookings-table-card {
-    width: calc(100% - 20px);
-  }
-
-  .bk-filters {
+  .bk-page-wrapper .bk-filters {
     grid-template-columns: 1fr;
   }
-
-  .bk-search-row {
-    flex-direction: column;
-    align-items: stretch;
+  
+  .bk-page-wrapper .bookings-header h1 {
+    font-size: 20px;
   }
-
-  .bk-actions {
-    justify-content: stretch;
+  
+  .bk-page-wrapper .bk-actions button {
+    flex: 1;
+    justify-content: center;
   }
+}
 
-  .bk-actions > * {
-    width: 100%;
+/* ===================================================================
+   ⭐⭐⭐ MODAL STYLES (Scoped to .bk-modal) ⭐⭐⭐
+   =================================================================== */
+
+.bk-modal .modal-head {
+  padding: 20px 24px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bk-modal .modal-body {
+  padding: 24px !important;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+.bk-modal .bk-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 600px) {
+  .bk-modal .bk-details-grid {
+    grid-template-columns: 1fr;
   }
+}
 
-  .dash-modal .bk-details-grid { grid-template-columns: 1fr; }
-  .bk-actions-cell { justify-content: flex-start; }
+.bk-modal .bk-item {
+  background: #f9f9f9;
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+.bk-modal .bk-item-label {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+.bk-modal .bk-item-val {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  color: #111;
+}
+
+.bk-modal .bk-note-area {
+  margin-top: 20px;
+  background: #ffffff;
+  border: 1px solid #000000;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.bk-modal .modal-foot {
+  padding: 16px 24px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
