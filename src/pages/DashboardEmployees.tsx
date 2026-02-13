@@ -51,10 +51,14 @@ type AuthUser = {
 type StaffPublicDoc = {
   name: string;
   active: boolean;
+
+  // ✅ جديد: هل تظهر في صفحة About؟
+  showOnAbout: boolean;
+
   specialties: string[];
   bio?: string;
   avatarUrl?: string;
-  cvUrl?: string; 
+  cvUrl?: string;
   createdAt?: any;
   updatedAt?: any;
 };
@@ -159,9 +163,12 @@ export default function DashboardEmployees() {
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
-  const [cvUrl, setCvUrl] = useState(""); 
+  const [cvUrl, setCvUrl] = useState("");
 
   const [active, setActive] = useState(true);
+
+  // ✅ جديد
+  const [showOnAbout, setShowOnAbout] = useState(true);
 
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
@@ -174,8 +181,12 @@ export default function DashboardEmployees() {
     setName("");
     setBio("");
     setAvatarUrl("");
-    setCvUrl(""); 
+    setCvUrl("");
     setActive(true);
+
+    // ✅ جديد
+    setShowOnAbout(true);
+
     setSpecialties([]);
   };
 
@@ -189,8 +200,12 @@ export default function DashboardEmployees() {
     setName(x.name ?? "");
     setBio(x.bio ?? "");
     setAvatarUrl(x.avatarUrl ?? "");
-    setCvUrl((x as any).cvUrl ?? ""); 
+    setCvUrl((x as any).cvUrl ?? "");
     setActive(!!x.active);
+
+    // ✅ جديد
+    setShowOnAbout((x as any).showOnAbout !== false);
+
     setSpecialties(normalizeSpecialties(x.specialties));
     setIsOpen(true);
   };
@@ -211,13 +226,17 @@ export default function DashboardEmployees() {
           id: d.id,
           name: data?.name ?? "",
           active: !!data?.active,
+
+          // ✅ جديد (افتراضي: تظهر إذا ما كان الحقل موجود)
+          showOnAbout: data?.showOnAbout !== false,
+
           specialties: normalizeSpecialties(data?.specialties),
           bio: data?.bio ?? "",
           avatarUrl: data?.avatarUrl ?? "",
-          cvUrl: data?.cvUrl ?? "", 
+          cvUrl: data?.cvUrl ?? "",
           createdAt: data?.createdAt,
           updatedAt: data?.updatedAt,
-        };
+        } as StaffPublicUi;
       });
       rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
       setList(rows);
@@ -258,7 +277,9 @@ export default function DashboardEmployees() {
   // ✅ Original logic for fixing bookings
   const fixBookingsEmployeeUid = async () => {
     if (!canManage) return;
-    const ok = confirm("سيتم إصلاح الحجوزات القديمة بإضافة employeeUid/employeeKey. هل تريد المتابعة؟");
+    const ok = confirm(
+      "سيتم إصلاح الحجوزات القديمة بإضافة employeeUid/employeeKey. هل تريد المتابعة؟"
+    );
     if (!ok) return;
     setLoading(true);
     try {
@@ -297,6 +318,49 @@ export default function DashboardEmployees() {
     } catch (e) {
       console.warn(e);
       setErrorMsg("خطأ في الإصلاح");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Toggle Active (نشط/غير نشط)
+  const toggleActiveQuick = async (x: StaffPublicUi) => {
+    if (!canManage) return;
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const next = !x.active;
+      await updateDoc(staffPublicDoc(x.id), {
+        active: next,
+        updatedAt: serverTimestamp(),
+      } as any);
+      setList((prev) => prev.map((r) => (r.id === x.id ? { ...r, active: next } : r)));
+    } catch (e) {
+      console.warn("toggleActiveQuick error:", e);
+      setErrorMsg("تعذر تغيير حالة الموظفة");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Toggle ShowOnAbout (يظهر في About أو لا)
+  const toggleShowOnAboutQuick = async (x: StaffPublicUi) => {
+    if (!canManage) return;
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const cur = (x as any).showOnAbout !== false;
+      const next = !cur;
+      await updateDoc(staffPublicDoc(x.id), {
+        showOnAbout: next,
+        updatedAt: serverTimestamp(),
+      } as any);
+      setList((prev) =>
+        prev.map((r) => (r.id === x.id ? { ...r, showOnAbout: next } : r))
+      );
+    } catch (e) {
+      console.warn("toggleShowOnAboutQuick error:", e);
+      setErrorMsg("تعذر تغيير ظهور الموظفة في صفحة من نحن");
     } finally {
       setLoading(false);
     }
@@ -344,13 +408,15 @@ export default function DashboardEmployees() {
 
           let staffId: string | null = null;
           if (ekey && staffByKey.has(ekey)) staffId = staffByKey.get(ekey) || null;
-          if (!staffId && euid && staffByKey.has(euid)) staffId = staffByKey.get(euid) || null;
+          if (!staffId && euid && staffByKey.has(euid))
+            staffId = staffByKey.get(euid) || null;
           if (!staffId && eid && staffById.has(eid)) staffId = eid;
           if (!staffId && ename) {
             const k = normalizeArabicName(ename);
             staffId = staffByName.get(k) || null;
           }
           if (!staffId) continue;
+
           if (!m[staffId]) m[staffId] = initStats();
           const st = (b.status || "pending") as BookingStatus;
           m[staffId].total += 1;
@@ -365,7 +431,9 @@ export default function DashboardEmployees() {
       }
     };
     compute();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [authUser?.role, list]);
 
   const sectionOptions = useMemo(() => {
@@ -375,17 +443,19 @@ export default function DashboardEmployees() {
       if (!sid) continue;
       if (!m.has(sid)) m.set(sid, { id: sid, label: sid });
     }
-    return Array.from(m.values()).sort((a, b) => a.label.localeCompare(b.label, "ar"));
+    return Array.from(m.values()).sort((a, b) =>
+      a.label.localeCompare(b.label, "ar")
+    );
   }, [serviceOptions]);
 
   const filteredServicesForPicks = useMemo(() => {
     let rows = [...serviceOptions];
     if (srvSection !== "all") {
-      rows = rows.filter(s => String(s.sectionId || "").trim() === srvSection);
+      rows = rows.filter((s) => String(s.sectionId || "").trim() === srvSection);
     }
     const q = srvQ.trim().toLowerCase();
     if (q) {
-      rows = rows.filter(s => String(s.label || "").toLowerCase().includes(q));
+      rows = rows.filter((s) => String(s.label || "").toLowerCase().includes(q));
     }
     rows.sort((a, b) => String(a.label).localeCompare(String(b.label), "ar"));
     return rows;
@@ -393,9 +463,7 @@ export default function DashboardEmployees() {
 
   const toggleSpecialty = (serviceId: string) => {
     setSpecialties((prev) =>
-      prev.includes(serviceId)
-        ? prev.filter((x) => x !== serviceId)
-        : [...prev, serviceId]
+      prev.includes(serviceId) ? prev.filter((x) => x !== serviceId) : [...prev, serviceId]
     );
   };
 
@@ -417,10 +485,14 @@ export default function DashboardEmployees() {
     const payload: StaffPublicDoc = {
       name: cleanName,
       active: !!active,
+
+      // ✅ جديد
+      showOnAbout: !!showOnAbout,
+
       specialties,
       bio: bio.trim(),
       avatarUrl: avatarUrl.trim(),
-      cvUrl: cvUrl.trim(), 
+      cvUrl: cvUrl.trim(),
       updatedAt: serverTimestamp(),
     };
 
@@ -468,9 +540,7 @@ export default function DashboardEmployees() {
     if (onlyActive === "active") rows = rows.filter((x) => x.active);
     if (onlyActive === "inactive") rows = rows.filter((x) => !x.active);
     if (specialtyFilter !== "all") {
-      rows = rows.filter((x) =>
-        normalizeSpecialties(x.specialties).includes(specialtyFilter)
-      );
+      rows = rows.filter((x) => normalizeSpecialties(x.specialties).includes(specialtyFilter));
     }
     const t = qText.trim().toLowerCase();
     if (t) {
@@ -524,7 +594,11 @@ export default function DashboardEmployees() {
 
           <div className="dash-topbar-actions">
             {authUser?.role === "owner" && (
-              <button className="exp-btn ghost" onClick={fixBookingsEmployeeUid} title="إصلاح الحجوزات">
+              <button
+                className="exp-btn ghost"
+                onClick={fixBookingsEmployeeUid}
+                title="إصلاح الحجوزات"
+              >
                 🔧 إصلاح
               </button>
             )}
@@ -616,26 +690,57 @@ export default function DashboardEmployees() {
                   </div>
                   <div>
                     <h4 style={{ margin: 0, fontWeight: 900 }}>{x.name}</h4>
-                    <span className={`staff-pill ${x.active ? "on" : "off"}`}>
-                      {x.active ? "نشطة" : "غير نشطة"}
-                    </span>
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                      <span className={`staff-pill ${x.active ? "on" : "off"}`}>
+                        {x.active ? "نشطة" : "غير نشطة"}
+                      </span>
+
+                      <span className={`staff-pill ${x.showOnAbout ? "on" : "off"}`}>
+                        {x.showOnAbout ? "تظهر في من نحن" : "مخفية من من نحن"}
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button className="exp-btn ghost sm" onClick={() => openEdit(x)}>
+
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {/* ✅ تبديل سريع: نشط/غير نشط */}
+                  <button
+                    className="exp-btn ghost sm"
+                    title={x.active ? "تعطيل الموظفة" : "تفعيل الموظفة"}
+                    onClick={() => toggleActiveQuick(x)}
+                    disabled={loading}
+                    type="button"
+                  >
+                    <FontAwesomeIcon icon={x.active ? faToggleOn : faToggleOff} />
+                  </button>
+
+                  {/* ✅ تبديل سريع: يظهر في About أو لا */}
+                  <button
+                    className="exp-btn ghost sm"
+                    title={x.showOnAbout ? "إخفاء من صفحة من نحن" : "إظهار في صفحة من نحن"}
+                    onClick={() => toggleShowOnAboutQuick(x)}
+                    disabled={loading}
+                    type="button"
+                  >
+                    <FontAwesomeIcon icon={x.showOnAbout ? faToggleOn : faToggleOff} />
+                  </button>
+
+                  <button className="exp-btn ghost sm" onClick={() => openEdit(x)} type="button">
                     <FontAwesomeIcon icon={faPen} />
                   </button>
-                  <button className="exp-btn ghost sm text-danger" onClick={() => remove(x.id)}>
+
+                  <button
+                    className="exp-btn ghost sm text-danger"
+                    onClick={() => remove(x.id)}
+                    type="button"
+                  >
                     <FontAwesomeIcon icon={faTrash} />
                   </button>
                 </div>
               </div>
 
-              {x.bio ? (
-                <div className="staff-bio">{x.bio}</div>
-              ) : (
-                <div className="staff-bio muted">بدون نبذة</div>
-              )}
+              {x.bio ? <div className="staff-bio">{x.bio}</div> : <div className="staff-bio muted">بدون نبذة</div>}
 
               <div className="staff-chips">
                 {normalizeSpecialties(x.specialties).map((sid) => {
@@ -652,13 +757,13 @@ export default function DashboardEmployees() {
                 <div style={{ marginTop: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <span className="staff-pill stat total">
-                      الحجوزات: <b>{statsLoading ? "..." : (bookingStats[x.id]?.total ?? 0)}</b>
+                      الحجوزات: <b>{statsLoading ? "..." : bookingStats[x.id]?.total ?? 0}</b>
                     </span>
                     <span className="staff-pill stat confirmed">
-                      مؤكد: <b>{statsLoading ? "..." : (bookingStats[x.id]?.byStatus.confirmed ?? 0)}</b>
+                      مؤكد: <b>{statsLoading ? "..." : bookingStats[x.id]?.byStatus.confirmed ?? 0}</b>
                     </span>
                     <span className="staff-pill stat pending">
-                      انتظار: <b>{statsLoading ? "..." : (bookingStats[x.id]?.byStatus.pending ?? 0)}</b>
+                      انتظار: <b>{statsLoading ? "..." : bookingStats[x.id]?.byStatus.pending ?? 0}</b>
                     </span>
                   </div>
                 </div>
@@ -676,7 +781,7 @@ export default function DashboardEmployees() {
             size="lg"
           >
             <div className="modal-head">
-              <b style={{fontSize: '1.2rem'}}>{editId ? "تعديل موظفة" : "إضافة موظفة"}</b>
+              <b style={{ fontSize: "1.2rem" }}>{editId ? "تعديل موظفة" : "إضافة موظفة"}</b>
               <button className="exp-btn ghost" onClick={closeModal} type="button">
                 <FontAwesomeIcon icon={faXmark} />
               </button>
@@ -685,6 +790,7 @@ export default function DashboardEmployees() {
             <div className="modal-body emp-modal-grid">
               <div className="emp-modal-section">
                 <b className="emp-modal-section-title">المعلومات الأساسية</b>
+
                 <div className="emp-modal-fields two-cols">
                   <div className="dash-field">
                     <label className="emp-label">اسم الموظفة</label>
@@ -695,6 +801,7 @@ export default function DashboardEmployees() {
                       placeholder="مثال: حنان"
                     />
                   </div>
+
                   <div className="dash-field">
                     <label className="emp-label">الحالة</label>
                     <select
@@ -704,6 +811,19 @@ export default function DashboardEmployees() {
                     >
                       <option value="1">نشطة</option>
                       <option value="0">غير نشطة</option>
+                    </select>
+                  </div>
+
+                  {/* ✅ جديد: يظهر في صفحة About */}
+                  <div className="dash-field">
+                    <label className="emp-label">يظهر في صفحة "من نحن"؟</label>
+                    <select
+                      className="dash-select"
+                      value={showOnAbout ? "1" : "0"}
+                      onChange={(e) => setShowOnAbout(e.target.value === "1")}
+                    >
+                      <option value="1">نعم (يظهر)</option>
+                      <option value="0">لا (مخفي)</option>
                     </select>
                   </div>
                 </div>
@@ -722,6 +842,7 @@ export default function DashboardEmployees() {
                       placeholder="مثال: خبيرة شعر وصبغات بخبرة 8 سنوات..."
                     />
                   </div>
+
                   <div className="dash-field">
                     <label className="emp-label">رابط السيرة الذاتية PDF (اختياري)</label>
                     <input
@@ -774,7 +895,9 @@ export default function DashboardEmployees() {
             </div>
 
             <div className="modal-foot">
-              <button className="exp-btn" onClick={closeModal} type="button">إلغاء</button>
+              <button className="exp-btn" onClick={closeModal} type="button">
+                إلغاء
+              </button>
               <button className="exp-btn primary" onClick={save} disabled={loading} type="button">
                 {loading ? "جاري الحفظ..." : "حفظ التغييرات"}
               </button>
