@@ -54,6 +54,8 @@ type StaffPublicDoc = {
 
   // ✅ جديد: هل تظهر في صفحة About؟
   showOnAbout: boolean;
+  // ✅ جديد: هل تظهر في الحجز؟
+  showOnBooking: boolean;
 
   specialties: string[];
   bio?: string;
@@ -169,6 +171,7 @@ export default function DashboardEmployees() {
 
   // ✅ جديد
   const [showOnAbout, setShowOnAbout] = useState(true);
+  const [showOnBooking, setShowOnBooking] = useState(true);
 
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
@@ -186,6 +189,7 @@ export default function DashboardEmployees() {
 
     // ✅ جديد
     setShowOnAbout(true);
+    setShowOnBooking(true);
 
     setSpecialties([]);
   };
@@ -202,6 +206,7 @@ export default function DashboardEmployees() {
     setAvatarUrl(x.avatarUrl ?? "");
     setCvUrl((x as any).cvUrl ?? "");
     setActive(!!x.active);
+    setShowOnBooking((x as any).showOnBooking !== false);
 
     // ✅ جديد
     setShowOnAbout((x as any).showOnAbout !== false);
@@ -229,6 +234,7 @@ export default function DashboardEmployees() {
 
           // ✅ جديد (افتراضي: تظهر إذا ما كان الحقل موجود)
           showOnAbout: data?.showOnAbout !== false,
+          showOnBooking: data?.showOnBooking !== false,
 
           specialties: normalizeSpecialties(data?.specialties),
           bio: data?.bio ?? "",
@@ -478,6 +484,14 @@ export default function DashboardEmployees() {
       setErrorMsg("اختَر خدمة واحدة على الأقل");
       return;
     }
+    // ✅ منع "النسيان": موظفة نشطة لكن مخفية من الحجز
+    if (active && !showOnBooking) {
+      const ok = confirm(
+        "⚠️ تنبيه: الموظفة (نشطة) لكن (مخفية من الحجز).\nهل تريد الحفظ بهذا الشكل؟"
+      );
+      if (!ok) return;
+    }
+
 
     setLoading(true);
     setErrorMsg("");
@@ -485,9 +499,9 @@ export default function DashboardEmployees() {
     const payload: StaffPublicDoc = {
       name: cleanName,
       active: !!active,
-
-      // ✅ جديد
       showOnAbout: !!showOnAbout,
+      showOnBooking: !!showOnBooking,
+      
 
       specialties,
       bio: bio.trim(),
@@ -699,6 +713,18 @@ export default function DashboardEmployees() {
                       <span className={`staff-pill ${x.showOnAbout ? "on" : "off"}`}>
                         {x.showOnAbout ? "تظهر في من نحن" : "مخفية من من نحن"}
                       </span>
+
+                      <span className={`staff-pill ${x.showOnBooking ? "on" : "off"}`}>
+                        {x.showOnBooking ? "تظهر في الحجز" : "مخفية من الحجز"}
+                      </span>
+
+                      {/* ✅ تحذير إضافي إذا نشطة ومخفية */}
+                      {(x.active && !x.showOnBooking) && (
+                        <span className="staff-pill off" title="لن تظهر للعميلات في صفحة الحجز">
+                          ⚠️ نشطة لكنها مخفية
+                        </span>
+                      )}
+
                     </div>
                   </div>
                 </div>
@@ -792,41 +818,54 @@ export default function DashboardEmployees() {
                 <b className="emp-modal-section-title">المعلومات الأساسية</b>
 
                 <div className="emp-modal-fields two-cols">
-                  <div className="dash-field">
-                    <label className="emp-label">اسم الموظفة</label>
-                    <input
-                      className="dash-input"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="مثال: حنان"
-                    />
-                  </div>
+  <div className="dash-field">
+    <label className="emp-label">اسم الموظفة</label>
+    <input
+      className="dash-input"
+      value={name}
+      onChange={(e) => setName(e.target.value)}
+      placeholder="مثال: حنان"
+    />
+  </div>
 
-                  <div className="dash-field">
-                    <label className="emp-label">الحالة</label>
-                    <select
-                      className="dash-select"
-                      value={active ? "1" : "0"}
-                      onChange={(e) => setActive(e.target.value === "1")}
-                    >
-                      <option value="1">نشطة</option>
-                      <option value="0">غير نشطة</option>
-                    </select>
-                  </div>
+  <div className="dash-field">
+    <label className="emp-label">الحالة</label>
+    <select
+      className="dash-select"
+      value={active ? "1" : "0"}
+      onChange={(e) => setActive(e.target.value === "1")}
+    >
+      <option value="1">نشطة</option>
+      <option value="0">غير نشطة</option>
+    </select>
+  </div>
 
-                  {/* ✅ جديد: يظهر في صفحة About */}
-                  <div className="dash-field">
-                    <label className="emp-label">يظهر في صفحة "من نحن"؟</label>
-                    <select
-                      className="dash-select"
-                      value={showOnAbout ? "1" : "0"}
-                      onChange={(e) => setShowOnAbout(e.target.value === "1")}
-                    >
-                      <option value="1">نعم (يظهر)</option>
-                      <option value="0">لا (مخفي)</option>
-                    </select>
-                  </div>
-                </div>
+  {/* ✅ يظهر في صفحة "من نحن" */}
+  <div className="dash-field">
+    <label className="emp-label">يظهر في صفحة "من نحن"؟</label>
+    <select
+      className="dash-select"
+      value={showOnAbout ? "1" : "0"}
+      onChange={(e) => setShowOnAbout(e.target.value === "1")}
+    >
+      <option value="1">نعم (يظهر)</option>
+      <option value="0">لا (مخفي)</option>
+    </select>
+  </div>
+
+  {/* ✅ يظهر في صفحة "الحجز" */}
+  <div className="dash-field">
+    <label className="emp-label">تظهر في صفحة "الحجز"؟</label>
+    <select
+      className="dash-select"
+      value={showOnBooking ? "1" : "0"}
+      onChange={(e) => setShowOnBooking(e.target.value === "1")}
+    >
+      <option value="1">نعم (تظهر)</option>
+      <option value="0">لا (مخفية)</option>
+    </select>
+  </div>
+</div>
               </div>
 
               <div className="emp-modal-section">
