@@ -41,6 +41,16 @@ type TeamMember = {
 
 const SALON_ID = "main";
 const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
+const STAFF_IMAGE_MODULES = import.meta.glob("../assets/images/*.{png,jpg,jpeg,webp,avif,svg}", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+const STAFF_IMAGE_BY_FILE = new Map(
+  Object.entries(STAFF_IMAGE_MODULES).map(([path, url]) => [
+    String(path.split("/").pop() || "").toLowerCase(),
+    String(url || ""),
+  ])
+);
 
 // ✅ ترجمة مفاتيح التخصصات لأسماء عربية (بدل ما يطلع skin-care للعميلات)
 const SPECIALTY_LABELS: Record<string, string> = {
@@ -74,6 +84,41 @@ function readActiveFlag(x: any) {
   if (typeof x?.active === "boolean") return x.active;
   // default true
   return true;
+}
+
+function pickAvatarUrl(data: any): string {
+  const candidates = [
+    data?.avatarUrl,
+    data?.avatarURL,
+    data?.photoURL,
+    data?.photoUrl,
+    data?.imageUrl,
+    data?.imageURL,
+    data?.image,
+    data?.imgUrl,
+    data?.profileImage,
+    data?.profileImageUrl,
+    data?.picture,
+    data?.avatar,
+  ];
+
+  for (const c of candidates) {
+    const s = String(c ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+function resolveAvatarFromAssets(raw: string): string {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+
+  const file = v.split("/").pop()?.split("?")[0]?.trim().toLowerCase() || "";
+  if (file && STAFF_IMAGE_BY_FILE.has(file)) {
+    return String(STAFF_IMAGE_BY_FILE.get(file) || "");
+  }
+
+  return v;
 }
 
 const About = () => {
@@ -127,7 +172,7 @@ const About = () => {
 
           const specialties = normalizeSpecialties(x?.specialties);
           const bio = String(x?.bio || "").trim();
-          const avatarUrl = String(x?.avatarUrl || "").trim() || undefined;
+          const avatarUrl = resolveAvatarFromAssets(pickAvatarUrl(x)) || undefined;
           const cvUrl = String(x?.cvUrl || "").trim() || undefined;
 
           const position = buildPositionFromSpecialties(specialties);
@@ -255,6 +300,10 @@ const About = () => {
                             src={member.avatarUrl || member.image}
                             alt={member.name}
                             className="team-member-image-enhanced"
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = member.image;
+                            }}
                           />
                           <div className="team-member-overlay">
                             <div className="team-member-social">
@@ -362,4 +411,3 @@ const About = () => {
 };
 
 export default About;
-
