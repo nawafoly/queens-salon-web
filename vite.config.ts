@@ -7,9 +7,17 @@ export default defineConfig({
     host: true,        // ✅ يفتح على الشبكة
     port: 5173,
     strictPort: true,
+
+    // ✅ مهم: خلي /api تروح لـ Vercel بدل localhost
+    proxy: {
+      "/api": {
+        target: "https://queens-salon-web-gnxk.vercel.app",
+        changeOrigin: true,
+        secure: true,
+      },
+    },
   },
   build: {
     chunkSizeWarningLimit: 2000,
   },
 });
-

@@ -242,9 +242,13 @@ const Profile: React.FC = () => {
               email: cached.email || prev.email,
               city: cached.city || prev.city,
               birthdate: cached.birthdate || prev.birthdate,
+              avatar: cached.avatarUrl || prev.avatar || "",
             }));
+            if (cached.avatarUrl) localStorage.setItem("userAvatar", String(cached.avatarUrl));
           }
-        } catch { }
+        } catch (e) {
+          console.error("Error restoring cached profile:", e);
+        }
 
         setAuthChecked(true);
         return;
@@ -418,18 +422,101 @@ const Profile: React.FC = () => {
   // =======================
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const dataUrl = String(ev.target?.result || "");
-      setUserData((prev) => ({ ...prev, avatar: dataUrl }));
-      localStorage.setItem("userAvatar", dataUrl);
-    };
-    reader.readAsDataURL(file);
+    try {
+      // 1) تجهيز اسم الملف
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const safeExt = ext.replace(/[^a-z0-9]/g, "") || "jpg";
+
+      const ownerId =
+        (firebaseUid || userData.phone || "unknown")
+          .replace(/\D/g, "") || "unknown";
+
+      const fileName = `avatar-${Date.now()}.${safeExt}`;
+
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
+      const ym = `${yyyy}-${mm}`;
+
+      const key = `misc/${ym}/${ownerId}/${fileName}`;
+
+      // ✅ مهم: مسار نسبي (proxy)
+      const presignRes = await fetch("/api/r2-presign", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          key,
+          contentType: file.type || "image/jpeg",
+        }),
+      });
+
+      if (!presignRes.ok) {
+        const t = await presignRes.text();
+        throw new Error(`presign failed: ${presignRes.status} ${t}`);
+      }
+
+      const { url } = await presignRes.json();
+      if (!url) throw new Error("presign missing url");
+
+      // 3) رفع الملف مباشرة إلى R2
+      const putRes = await fetch(url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type || "image/jpeg",
+        },
+        body: file,
+      });
+
+      if (!putRes.ok) {
+        const t = await putRes.text();
+        throw new Error(`upload failed: ${putRes.status} ${t}`);
+      }
+
+      // 4) رابط العرض
+      const publicBase =
+        (import.meta as any).env?.VITE_R2_PUBLIC_BASE || "";
+
+      if (!publicBase) {
+        throw new Error(
+          "Missing VITE_R2_PUBLIC_BASE (public base url for R2)"
+        );
+      }
+
+      const publicUrl = `${publicBase.replace(/\/+$/, "")}/${key}`;
+
+      // 5) تحديث UI
+      setUserData((prev) => ({
+        ...prev,
+        avatar: publicUrl,
+      }));
+
+      localStorage.setItem("userAvatar", publicUrl);
+
+      // 6) حفظ في Firestore
+      if (profileMode === "firebase" && firebaseUid) {
+        await updateUserProfile(firebaseUid, {
+          avatarUrl: publicUrl,
+        } as any);
+      }
+
+      alert("تم رفع الصورة وحفظها ✅");
+    } catch (err: any) {
+      console.error(err);
+      alert(`فشل رفع الصورة: ${err?.message || err}`);
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   };
+
+
 
   const copyMembershipId = () => {
     navigator.clipboard.writeText(membershipId).then(() => {
