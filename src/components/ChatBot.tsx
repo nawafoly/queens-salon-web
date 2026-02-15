@@ -464,7 +464,9 @@ const ChatBot: React.FC = () => {
 
   const calcAvailableTimes = (bookedTimes: string[]) => {
     const taken = new Set(bookedTimes.map((t) => String(t).trim()));
-    return hours.filter((t) => !taken.has(String(t).trim()));
+    return hours
+      .filter((slot) => !taken.has(slot.value24))
+      .map((slot) => slot.label12);
   };
 
   const pushBot = (payload: { text: string; actions?: Action[]; showAllPricesBtn?: boolean }) => {
@@ -605,16 +607,7 @@ const ChatBot: React.FC = () => {
       const available = calcAvailableTimes(booked);
 
       const svcName = flow.serviceName || "الخدمة";
-      pushBot({
-        text:
-          `✅ خدمة: **${svcName}**\n📅 تاريخ: **${date}**\n\n` +
-          formatAvailableTimes(available) +
-          "\n\nتبغين نفتح لك صفحة الحجز وتكمّلين؟",
-        actions: [
-          { type: "route", label: "افتحي الحجز", value: "/booking" },
-          { type: "send", label: "غيري الخدمة", value: "أبي أحجز" },
-        ],
-      });
+
 
       // ✅ نرجع الحالة idle بعد ما عرضنا الأوقات
       setFlow(defaultFlow);

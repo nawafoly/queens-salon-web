@@ -171,6 +171,13 @@ textarea.form-control {
   position: relative;
 }
 
+.booking-page .bk-service-adder {
+  border: 1px solid #eee;
+  padding: 15px;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
 .booking-page .dash-select {
   width: 100%;
   min-height: 46px;
@@ -221,6 +228,12 @@ textarea.form-control {
 
 .booking-page .bk-field .dash-select {
   padding-left: 44px;
+}
+
+.booking-page .booking-service-add-btn {
+  border-radius: 12px;
+  min-height: 44px;
+  margin-top: 4px;
 }
 
 .booking-page .bk-field::after {
@@ -525,6 +538,14 @@ textarea.form-control {
   .booking-page .dash-select {
     font-size: 0.93rem;
   }
+
+  .booking-page .bk-service-adder {
+    padding: 12px;
+  }
+
+  .booking-page .booking-service-add-btn {
+    width: 100%;
+  }
 }
 
 /* زر رمادي (نسخ / حجز جديد) */
@@ -692,6 +713,54 @@ textarea.form-control {
 .bk-time-chip.is-disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.booking-page .bk-nearest-btn {
+  border-radius: 10px;
+  font-weight: 800;
+  padding: 6px 12px;
+}
+
+.booking-page .bk-future-inline {
+  margin-top: 0.4rem;
+  border: 1px solid rgba(13, 13, 13, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.7rem;
+}
+
+.booking-page .bk-future-table {
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.booking-page .bk-future-table thead th {
+  background: rgba(245, 245, 244, 0.95);
+  color: #2f2f2f;
+  border-bottom: 1px solid rgba(13, 13, 13, 0.1);
+  font-weight: 800;
+}
+
+.booking-page .bk-future-table tbody td {
+  background: #fff;
+  color: #0d0d0d;
+  border-top: 1px solid rgba(13, 13, 13, 0.08);
+}
+
+.booking-page .bk-future-pill {
+  border: 1px solid rgba(64, 1, 13, 0.35);
+  color: #40010d;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.booking-page .bk-future-pill:hover,
+.booking-page .bk-future-pill:focus {
+  border-color: rgba(64, 1, 13, 0.6);
+  color: #fff;
+  background: #40010d;
 }
 
 /* =========================

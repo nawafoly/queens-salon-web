@@ -1146,6 +1146,19 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
+                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/booking-internal"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faUserShield} />
+                      الحجز الإداري
+                    </NavLink>
+                  </li>
+                )}
+
                 {(hasAdminPower || (isReception && allowStaffViewClients)) &&
                   canSeeSection("clients") && (
                     <li>

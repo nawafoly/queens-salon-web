@@ -18,8 +18,12 @@ import {
 import {
   generateSalonTimeSlots,
   filterSlotsByServiceEnd,
-  slotLabelToMinutes,
+  toMinutes,
+  type TimeSlot,
 } from "../helpers/timeSlots";
+
+
+
 
 import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 import { AppSettingsService } from "../services/AppSettingsService";
@@ -99,7 +103,8 @@ type CartItem = {
   employeeName?: string;
 
   date: string; // YYYY-MM-DD
-  time: string; // slot string
+  time: string; // slot time: string; // ✅ نخزن 24h "HH:MM" (value24)
+
   locked?: boolean; // ✅ جديد: هل الكرت تم تأكيده؟
 };
 
@@ -183,54 +188,50 @@ function buildSlotId(
 }
 
 function getTimesToLock(
-  allSlots: string[],
+  allSlots: TimeSlot[],
   slotStepMin: number,
-  startTime: string,
+  startTime24: string, // ✅ "HH:MM"
   durationMin: number,
   bufferMin: number
 ) {
-  const startMin = slotLabelToMinutes(startTime);
-  if (startMin == null) return [startTime];
-
+  const startMin = toMinutes(startTime24);
   const step = Math.max(1, Number(slotStepMin || 0));
 
   const totalMin =
     Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
 
-  // إذا مدته صفر: أقفل السلوّت نفسه فقط
-  if (totalMin <= 0) return [startTime];
+  if (totalMin <= 0) return [startTime24];
 
-  // ✅ القانون الذهبي: اقفل عدد خانات كامل
-  // slotsToLock = ceil((duration + buffer) / step)
   const slotsToLock = Math.max(1, Math.ceil(totalMin / step));
 
   const locked: string[] = [];
   for (let i = 0; i < slotsToLock; i++) {
     const targetMin = startMin + i * step;
-
-    // نلقط السلوّت المطابق من allSlots
-    const t = allSlots.find((label) => slotLabelToMinutes(label) === targetMin);
-    if (t) locked.push(t);
+    const hit = allSlots.find((s) => s.minutes === targetMin);
+    if (hit) locked.push(hit.value24);
   }
 
-  return locked.length ? locked : [startTime];
+  return locked.length ? locked : [startTime24];
 }
+
 
 // ✅✅✅ NEW: تحديد الأوقات اللي "تنفع كبداية" حسب مدة الخدمة (تطلع أخضر)
 function getGreenStartTimes(args: {
-  allSlots: string[];
+  allSlots: TimeSlot[];
   slotStepMin: number;
   durationMin: number;
   bufferMin: number;
-  takenAll: Set<string>;
+  takenAll: Set<string>; // ✅ times 24h
 }) {
-  const greens = new Set<string>();
+  const greens = new Set<string>(); // ✅ نخزن value24
 
-  for (const start of args.allSlots) {
+  for (const slot of args.allSlots) {
+    const start24 = slot.value24;
+
     const needed = getTimesToLock(
       args.allSlots,
       args.slotStepMin,
-      start,
+      start24,
       args.durationMin,
       args.bufferMin
     );
@@ -243,13 +244,7 @@ function getGreenStartTimes(args: {
       }
     }
 
-    // ✅ تأكد من أن الوقت المتاح يكفي فعلياً للمدة + البفر
-    const totalNeeded = args.durationMin + args.bufferMin;
-    if (needed.length * args.slotStepMin < totalNeeded) {
-      ok = false;
-    }
-
-    if (ok) greens.add(start);
+    if (ok) greens.add(start24);
   }
 
   return greens;
@@ -352,6 +347,15 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function addDaysISO(startISO: string, addDays: number) {
+  const d = new Date(startISO + "T00:00:00");
+  d.setDate(d.getDate() + addDays);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function safeInt(v: any, fallback: number) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
@@ -428,9 +432,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   console.log("[Booking] slotStepMin, bufferMin from settings:", slotStepMin, bufferMin, booking);
 
-  const timeSlots = useMemo(() => {
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+
+  useEffect(() => {
     // ✅ بداية اليوم لازم تفتح طبيعي 100%
-    return generateSalonTimeSlots(openTime, closeTime, slotStepMin);
+    setTimeSlots(generateSalonTimeSlots(openTime, closeTime, slotStepMin));
   }, [openTime, closeTime, slotStepMin]);
 
   useEffect(() => {
@@ -562,6 +568,16 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   // ✅ busy/disabled per item
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
+
+  // ✅ Future availability (clients)
+  const [futureAnyStaff, setFutureAnyStaff] = useState(true);
+  const [futureSelectedEmployeeKey, setFutureSelectedEmployeeKey] = useState<string>("");
+  const [futureStaffNameQuery, setFutureStaffNameQuery] = useState("");
+  const [futureLoading, setFutureLoading] = useState(false);
+  const [futureResult, setFutureResult] = useState<
+    { date: string; times: string[]; note?: string }[]
+  >([]);
+  const [futureMsg, setFutureMsg] = useState("");
 
   // ✅ Staff per serviceId
   const [staffByService, setStaffByService] = useState<Record<string, StaffPublicWithId[]>>({});
@@ -1438,6 +1454,244 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.items]);
 
+  // ✅ تحميل موظفات الخدمة المختارة في الـ picker (حتى قبل الإضافة للسلة)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStaffForFuturePicker() {
+      const sid = String(servicePicker || "").trim();
+      if (!sid) return;
+      if (staffByService[sid] && Array.isArray(staffByService[sid])) return;
+
+      try {
+        setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
+        setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
+
+        const res = await listActiveStaffBySpecialty({
+          salonId: SALON_ID,
+          specialty: sid,
+        });
+
+        if (cancelled) return;
+
+        const norm = (v: any) => String(v ?? "").trim().toLowerCase();
+        const normalized = (res || []).filter((st: any) => {
+          const name = String(st?.name || "").trim();
+          if (!name) return false;
+
+          const specs = Array.isArray(st?.specialties)
+            ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
+            : [];
+
+          return specs.some((sp: string) => norm(sp) === norm(sid));
+        });
+
+        setStaffByService((p) => ({ ...p, [sid]: normalized as any }));
+      } catch (e: any) {
+        if (cancelled) return;
+        const msg = String(e?.message || "");
+        let err = "تعذر تحميل قائمة الموظفات.";
+        if (msg.toLowerCase().includes("requires an index")) {
+          err = "Firestore يحتاج Index للاستعلام. افتح Console واضغط Create index.";
+        }
+        if (msg.toLowerCase().includes("missing or insufficient permissions")) {
+          err = "صلاحيات قراءة الموظفات غير كافية (staff_public).";
+        }
+        setStaffByService((p) => ({ ...p, [sid]: [] }));
+        setStaffErrorByService((p) => ({ ...p, [sid]: err }));
+      } finally {
+        if (!cancelled) {
+          setStaffLoadingByService((p) => ({ ...p, [sid]: false }));
+        }
+      }
+    }
+
+    loadStaffForFuturePicker();
+    return () => {
+      cancelled = true;
+    };
+  }, [servicePicker, staffByService]);
+
+  const futureStaffOptions = useMemo(() => {
+    const sid = String(servicePicker || "").trim();
+    if (!sid) return [] as { key: string; name: string; id: string }[];
+
+    return ((staffByService[sid] || []) as StaffPublicWithId[])
+      .map((st: any) => {
+        const key = String(st?.linkedUid || st?.id || "").trim();
+        const id = String(st?.id || "").trim();
+        const name = String(st?.name || "").trim();
+        if (!key || !name) return null;
+        return { key, id, name };
+      })
+      .filter(Boolean) as { key: string; name: string; id: string }[];
+  }, [servicePicker, staffByService]);
+
+  const filteredFutureStaffOptions = useMemo(() => {
+    const q = String(futureStaffNameQuery || "").trim().toLowerCase();
+    if (!q) return futureStaffOptions;
+    return futureStaffOptions.filter((x) =>
+      String(x.name || "").toLowerCase().includes(q)
+    );
+  }, [futureStaffOptions, futureStaffNameQuery]);
+
+  async function getAvailableStartsForDay(args: {
+    salonId: string;
+    employeeKey: string;
+    employeeIdFallback: string;
+    dateISO: string;
+    durationMin: number;
+    take: number;
+  }) {
+    const { salonId, employeeKey, employeeIdFallback, dateISO, durationMin, take } = args;
+
+    const takenFs = new Set<string>();
+    const colSlots = collection(db, "salons", salonId, "booking_slots");
+
+    let snap = await getDocs(
+      query(colSlots, where("employeeKey", "==", employeeKey), where("date", "==", dateISO))
+    );
+
+    if (!snap.docs.length && employeeIdFallback) {
+      snap = await getDocs(
+        query(colSlots, where("employeeId", "==", employeeIdFallback), where("date", "==", dateISO))
+      );
+    }
+
+    snap.docs.forEach((d) => {
+      const t = String((d.data() as any)?.time || "").trim();
+      if (t) takenFs.add(t);
+    });
+
+    const greens = getGreenStartTimes({
+      allSlots: timeSlots,
+      slotStepMin,
+      durationMin: Number(durationMin || DEFAULT_SERVICE_DURATION_MIN),
+      bufferMin,
+      takenAll: takenFs,
+    });
+
+    const list = Array.from(greens.values()).sort((a, b) => toMinutes(a) - toMinutes(b));
+    return list.slice(0, Math.max(1, take));
+  }
+
+  async function runFutureAvailabilitySearch() {
+    setFutureMsg("");
+    setFutureResult([]);
+
+    const serviceId = String(servicePicker || "").trim();
+    if (!serviceId) {
+      setFutureMsg("اختاري الخدمة أولاً.");
+      return;
+    }
+
+    const sv = getServiceById(serviceId);
+    if (!sv) {
+      setFutureMsg("الخدمة غير موجودة.");
+      return;
+    }
+
+    const durationMin = Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+    if (!durationMin || durationMin <= 0) {
+      setFutureMsg("مدة الخدمة غير صحيحة.");
+      return;
+    }
+
+    let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
+    if (!staffList.length) {
+      const res = await listActiveStaffBySpecialty({
+        salonId: SALON_ID,
+        specialty: serviceId,
+      });
+
+      staffList = (res || []).filter((st: any) => {
+        const name = String(st?.name || "").trim();
+        if (!name) return false;
+        const specs = Array.isArray(st?.specialties)
+          ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
+          : [];
+        return specs.includes(serviceId);
+      }) as any;
+
+      setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
+    }
+
+    const resolvedByName =
+      futureStaffOptions.find(
+        (x) => String(x.name || "").trim() === String(futureStaffNameQuery || "").trim()
+      )?.key || "";
+
+    const fixedEmployeeKey = String(futureSelectedEmployeeKey || resolvedByName || "").trim();
+    if (!futureAnyStaff && !fixedEmployeeKey) {
+      setFutureMsg("اختاري موظفة محددة أو اختاري (أي موظفة للخدمة).");
+      return;
+    }
+
+    const startISO = todayISO();
+    const scanDays = 60;
+
+    setFutureLoading(true);
+    try {
+      const results: { date: string; times: string[]; note?: string }[] = [];
+
+      for (let i = 0; i < scanDays; i++) {
+        const dateISO = addDaysISO(startISO, i);
+        let dayTimes: string[] = [];
+
+        if (!futureAnyStaff && fixedEmployeeKey) {
+          const staff =
+            staffList.find((s: any) => String(s.linkedUid || s.id || "") === fixedEmployeeKey) ||
+            staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
+          const employeeIdFallback = String(staff?.id || "").trim();
+
+          dayTimes = await getAvailableStartsForDay({
+            salonId: SALON_ID,
+            employeeKey: fixedEmployeeKey,
+            employeeIdFallback,
+            dateISO,
+            durationMin,
+            take: 5,
+          });
+        } else {
+          const merged = new Set<string>();
+          for (const st of staffList) {
+            const empKey = String((st as any)?.linkedUid || "").trim() || String((st as any)?.id || "").trim();
+            const empIdFallback = String((st as any)?.id || "").trim();
+            if (!empKey) continue;
+
+            const times = await getAvailableStartsForDay({
+              salonId: SALON_ID,
+              employeeKey: empKey,
+              employeeIdFallback: empIdFallback,
+              dateISO,
+              durationMin,
+              take: 5,
+            });
+            times.forEach((t) => merged.add(t));
+          }
+
+          dayTimes = Array.from(merged.values())
+            .sort((a, b) => toMinutes(a) - toMinutes(b))
+            .slice(0, 5);
+        }
+
+        if (dayTimes.length) results.push({ date: dateISO, times: dayTimes });
+        if (results.length >= 5) break;
+      }
+
+      if (!results.length) {
+        setFutureMsg("ما لقينا أوقات متاحة ضمن الفترة.");
+        return;
+      }
+
+      setFutureResult(results);
+    } catch (e: any) {
+      setFutureMsg(`صار خطأ أثناء البحث: ${String(e?.message || e)}`);
+    } finally {
+      setFutureLoading(false);
+    }
+  }
+
   // =========================
   // ✅ Busy slots per item
   // =========================
@@ -1495,36 +1749,60 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           takenFs.forEach((x) => takenAll.add(x));
           takenLocal.forEach((x) => takenAll.add(x));
 
-          // 3) حساب الـ Disabled (بناءً على طور الموسم أو العادي)
+          // ✅ currentTime مرة وحدة فقط
+          const currentTime = String(it.time || "").trim();
+
+          // 3) حساب الـ Disabled بشكل صحيح (duration + buffer)
           const disabled = new Set<string>();
           let sequentialHint = "";
           let suggestedSlot = "";
 
-          // ✅ طور الموسم (الجديد)
-          // لا نقفل اليوم ولا نفرض وقت واحد
-          // المنطق يعتمد فقط على التعارض الحقيقي (Firestore + cart + duration + buffer)
+          // ✅ أوقات ممكن تبدأ منها (حسب نهاية الخدمة + سماح)
+          const ALLOW_OVERTIME_MIN = 20;
+          const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
-          for (const start of timeSlots) {
-            const isCurrentTime = String(it.time || "").trim() === start;
+          // فقط الأوقات اللي ما تتجاوز نهاية الدوام
+          const slotsForThisService = filterSlotsByServiceEnd(
+            timeSlots,
+            closeTime,
+            durationMin,
+            bufferMin,
+            ALLOW_OVERTIME_MIN
+          );
 
-            // إذا الوقت محجوز فعلياً فقط نمنعه
-            if (takenAll.has(start) && !isCurrentTime) {
-              disabled.add(start);
+          // ✅ هذه هي “البدايات الصحيحة” فعلياً (تضمن أن كل قطع الوقت المطلوبة فاضية)
+          const greens = getGreenStartTimes({
+            allSlots: timeSlots,
+            slotStepMin,
+            durationMin,
+            bufferMin,
+            takenAll, // Firestore + cart
+          });
+
+          // disabled = كل وقت داخل slotsForThisService لكنه مو أخضر
+          for (const s of slotsForThisService) {
+            const t = s.value24;
+
+            if (!greens.has(t) && t !== currentTime) {
+              disabled.add(t);
             }
           }
 
-          // suggestedSlot يصبح اقتراح فقط (أول وقت متاح)
-          for (const start of timeSlots) {
-            if (!disabled.has(start)) {
-              suggestedSlot = start;
+
+          // suggested = أول وقت أخضر
+          for (const s of slotsForThisService) {
+            const t = s.value24;
+
+            if (!disabled.has(t)) {
+              suggestedSlot = t;
               break;
             }
           }
 
+
           sequentialHint = suggestedSlot
             ? `الوقت المقترح: ${suggestedSlot}`
             : "لا يوجد وقت متاح كافٍ لهذا اليوم.";
-
 
           setBusyByItem((p) => ({
             ...p,
@@ -1537,24 +1815,22 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             },
           }));
 
-
-          const currentTime = String(it.time || "").trim();
-          // ✅ FIX الجوهري: منع تصفير الوقت التلقائي إلا في حالات التعارض الحقيقي مع قاعدة البيانات
+          // ✅ FIX الجوهري: منع تصفير الوقت التلقائي إلا في حالات التعارض الحقيقي
           if (currentTime && disabled.has(currentTime)) {
+            const isActuallyTaken = takenAll.has(currentTime);
+
             // في طور الموسم، إذا كان الوقت هو المقترح، لا تصفر
             if (sequentialBooking && currentTime === suggestedSlot) {
               // مسموح
-            } else if (!sequentialBooking && !busyByItem[itemId]?.busyTimes.has(currentTime)) {
-              // في الطور العادي، إذا كان الوقت ليس محجوزاً فعلياً (لكنه disabled بسبب المدة)، لا تصفر تلقائياً
-              // اترك المستخدم يقرر أو يضغط "تم" للتحقق النهائي
+            } else if (!sequentialBooking && !isActuallyTaken) {
+              // في الطور العادي: لو الوقت مو محجوز فعلياً (بس disabled بسبب المدة/البفر) لا تصفر تلقائياً
             } else {
               // فقط إذا كان محجوزاً فعلياً (Busy) نقوم بالتصفير
-              if (busyByItem[itemId]?.busyTimes.has(currentTime)) {
+              if (isActuallyTaken) {
                 updateItem(itemId, { time: "" });
               }
             }
           }
-
         } catch (e: any) {
           console.error(e);
           setBusyByItem((p) => ({
@@ -1564,6 +1840,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         }
       }
     }
+
 
     loadBusyForItems();
     return () => {
@@ -1575,6 +1852,41 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // =========================
   // Handlers
   // =========================
+  const applyBookingDate = (v: string) => {
+    setBookingDate(v);
+
+    setFormData((prev) => ({
+      ...prev,
+      items: (prev.items || []).map((it) => {
+        const sv = getServiceById(String(it.serviceId || "").trim());
+
+        const basePatch = {
+          ...it,
+          date: v,
+          time: "",
+          employeeId: "",
+          employeeUid: "",
+          employeeName: "",
+          locked: false,
+        };
+
+        if (sv) {
+          const eff = pickEffectivePrice({
+            basePrice: Number(sv.basePrice || 0),
+            seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
+            appSettings,
+            dateISO: v,
+          });
+
+          const price = Number(eff.price || 0);
+          return { ...basePatch, basePrice: price, priceText: `${price} ريال` };
+        }
+
+        return basePatch;
+      }),
+    }));
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -1919,37 +2231,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         setManualOverride(true);
       }
 
-      for (const it of items) {
-        const busyState = busyByItem[it.id];
-        const disabled = busyState?.disabledStartTimes;
-        const currentTime = String(it.time || "").trim();
-
-        // ✅ FIX: في التحقق النهائي، نتجاهل الـ disabled إذا كان هو نفس الوقت المختار للخدمة حالياً
-        // لأن الـ disabled قد يحتوي على وقت الخدمة نفسها بسبب منطق الحجز المتتابع
-        if (disabled && disabled.has(currentTime)) {
-          const isActuallyBusy = busyState?.busyTimes.has(currentTime);
-          if (isActuallyBusy) {
-            openModal({
-              title: "الوقت غير متاح",
-              message: `خدمة "${it.serviceName}" الوقت المختار محجوز بالفعل. اختاري وقتًا آخر.`,
-              variant: "danger",
-              confirmText: "حسنًا",
-            });
-            return;
-          }
-        }
-
-        const check = await checkOneItemSlot(it);
-        if (!check.ok) {
-          openModal({
-            title: "الوقت غير متاح",
-            message: `خدمة "${it.serviceName}": ${check.msg}`,
-            variant: "danger",
-            confirmText: "حسنًا",
-          });
-          return;
-        }
-      }
 
       const discountTotal = Number(finalApplied.discountAmount || 0);
 
@@ -2166,7 +2447,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   }, []);
 
   // ✅ أضف هذا السطر فقط
-  const isSignedClient = !!getSignedInUidOrNull();
+  const isSignedClient = !!signedUid;
 
   return (
 
@@ -2267,13 +2548,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                       className="input-group"
                       role="button"
                       tabIndex={0}
-                      onClick={() => dateRef.current?.showPicker?.() || dateRef.current?.focus()}
+                      onClick={() => {
+                        (dateRef.current as any)?.showPicker?.();
+                        dateRef.current?.focus();
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          dateRef.current?.showPicker?.() || dateRef.current?.focus();
+                          (dateRef.current as any)?.showPicker?.();
+                          dateRef.current?.focus();
                         }
                       }}
+
                     >
                       <span className="input-group-text" aria-hidden="true">
                         <FontAwesomeIcon icon={faCalendarAlt} />
@@ -2285,43 +2571,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                         className="form-control"
                         id="bookingDate"
                         value={bookingDate}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setBookingDate(v);
-
-                          setFormData((prev) => ({
-                            ...prev,
-                            items: (prev.items || []).map((it) => {
-                              const sv = getServiceById(String(it.serviceId || "").trim());
-
-                              // default: صفّر الوقت + الموظفة وحدّث التاريخ (حتى نمنع أي تعارض في التوفر)
-                              const basePatch = {
-                                ...it,
-                                date: v,
-                                time: "",
-                                employeeId: "",
-                                employeeUid: "",
-                                employeeName: "",
-                                locked: false,
-                              };
-
-                              // لو الخدمة موجودة: حدّث سعرها حسب الموسم/العادي
-                              if (sv) {
-                                const eff = pickEffectivePrice({
-                                  basePrice: Number(sv.basePrice || 0),
-                                  seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
-                                  appSettings,
-                                  dateISO: v,
-                                });
-
-                                const price = Number(eff.price || 0);
-                                return { ...basePatch, basePrice: price, priceText: `${price} ريال` };
-                              }
-
-                              return basePatch;
-                            }),
-                          }));
-                        }}
+                        onChange={(e) => applyBookingDate(String(e.target.value || "").trim())}
 
                         min={todayISO()}
                       />
@@ -2330,37 +2580,41 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 </div>
 
 
-                <div className="mb-4 bk-field" style={{ border: '1px solid #eee', padding: '15px', borderRadius: '12px', background: '#fafafa' }}>
+                <div className="mb-4 bk-service-adder" style={{ border: '1px solid #eee', padding: '15px', borderRadius: '12px', background: '#fafafa' }}>
                   <label className="form-label" style={{ fontWeight: 'bold' }}>أضيفي خدمة جديدة</label>
                   <div className="row g-2">
                     <div className="col-md-4">
-                      <select
-                        className="form-select dash-select"
-                        value={selectedSectionId}
-                        onChange={handleSectionChange}
-                        disabled={!bookingDate || catalogLoading}
-                      >
-                        <option value="">اختاري القسم</option>
-                        {sectionOptions.map((sec) => (
-                          <option key={sec.id} value={sec.id}>{sec.title}</option>
-                        ))}
-                      </select>
+                      <div className="bk-field">
+                        <select
+                          className="form-select dash-select"
+                          value={selectedSectionId}
+                          onChange={handleSectionChange}
+                          disabled={!bookingDate || catalogLoading}
+                        >
+                          <option value="">اختاري القسم</option>
+                          {sectionOptions.map((sec) => (
+                            <option key={sec.id} value={sec.id}>{sec.title}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                     <div className="col-md-4">
-                      <select
-                        className="form-select dash-select"
-                        value={selectedCategory}
-                        onChange={handleCategoryChange}
-                        disabled={!bookingDate || !selectedSectionId || catalogLoading}
-                      >
-                        <option value="">اختاري التصنيف</option>
-                        {categoryOptions.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
+                      <div className="bk-field">
+                        <select
+                          className="form-select dash-select"
+                          value={selectedCategory}
+                          onChange={handleCategoryChange}
+                          disabled={!bookingDate || !selectedSectionId || catalogLoading}
+                        >
+                          <option value="">اختاري التصنيف</option>
+                          {categoryOptions.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                     <div className="col-md-4">
-                      <div className="input-group">
+                      <div className="bk-field">
                         <select
                           className="form-select dash-select"
                           value={servicePicker}
@@ -2378,15 +2632,165 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             </optgroup>
                           ))}
                         </select>
-                        <button
-                          type="button"
-                          className="btn btn-dark"
-                          disabled={!servicePicker}
-                          onClick={() => addServiceToCart(servicePicker)}
-                        >
-                          إضافة
-                        </button>
                       </div>
+                    </div>
+                  </div>
+
+                  <hr className="my-3" />
+                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                    <div style={{ fontWeight: 800, color: "#0d0d0d" }}>بحث أوقات للأيام القادمة</div>
+                    <span className="text-muted" style={{ fontSize: 12 }}>يعرض أول 5 أيام متاحة</span>
+                  </div>
+
+                  <div className="row g-2 align-items-end">
+                    <div className="col-12">
+                      <select
+                        className="form-select"
+                        value={futureAnyStaff ? "any" : "one"}
+                        onChange={(e) => {
+                          const any = e.target.value === "any";
+                          setFutureAnyStaff(any);
+                          if (any) {
+                            setFutureSelectedEmployeeKey("");
+                            setFutureStaffNameQuery("");
+                          }
+                        }}
+                      >
+                        <option value="any">أي موظفة للخدمة</option>
+                        <option value="one">موظفة محددة</option>
+                      </select>
+                    </div>
+
+                    {!futureAnyStaff ? (
+                      <div className="col-12">
+                        <label className="form-label">اختاري الموظفة</label>
+                        {!servicePicker ? (
+                          <div className="alert alert-danger mb-2 py-2">
+                            اختاري الخدمة أولاً ثم ابحثي باسم الموظفة.
+                          </div>
+                        ) : null}
+                        <input
+                          className="form-control"
+                          value={futureStaffNameQuery}
+                          onChange={(e) => {
+                            const v = String(e.target.value || "");
+                            setFutureStaffNameQuery(v);
+                            setFutureSelectedEmployeeKey("");
+                          }}
+                          placeholder="ابحثي باسم الموظفة..."
+                          disabled={!servicePicker}
+                        />
+                        {servicePicker && staffLoadingByService[String(servicePicker || "").trim()] ? (
+                          <div className="small text-muted mt-1">
+                            <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الموظفات...
+                          </div>
+                        ) : null}
+                        {servicePicker && staffErrorByService[String(servicePicker || "").trim()] ? (
+                          <div className="small text-danger mt-1">
+                            {staffErrorByService[String(servicePicker || "").trim()]}
+                          </div>
+                        ) : null}
+                        {futureStaffNameQuery && filteredFutureStaffOptions.length ? (
+                          <div className="mt-2 d-flex flex-wrap gap-2">
+                            {filteredFutureStaffOptions.slice(0, 8).map((st) => (
+                              <button
+                                key={st.key}
+                                type="button"
+                                className="btn btn-outline-dark btn-sm"
+                                onClick={() => {
+                                  setFutureStaffNameQuery(st.name);
+                                  setFutureSelectedEmployeeKey(st.key);
+                                }}
+                              >
+                                {st.name}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <div className="col-12 d-grid">
+                      <button
+                        type="button"
+                        className="btn btn-outline-dark"
+                        onClick={runFutureAvailabilitySearch}
+                        disabled={futureLoading}
+                      >
+                        {futureLoading ? "جاري البحث..." : "بحث"}
+                      </button>
+                    </div>
+
+                    {futureMsg ? (
+                      <div className="col-12">
+                        <div className="alert alert-secondary mb-0 py-2">
+                          {futureMsg}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {futureResult.length ? (
+                      <div className="col-12">
+                        <div className="bk-future-inline">
+                          <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                            <div style={{ fontWeight: 800 }}>نتائج البحث</div>
+                            <button
+                              type="button"
+                              className="btn btn-sm bk-future-pill"
+                              onClick={() => {
+                                const nearestDate = String(futureResult[0]?.date || "").trim();
+                                if (!nearestDate) return;
+                                applyBookingDate(nearestDate);
+                              }}
+                            >
+                              اختيار أقرب موعد
+                            </button>
+                          </div>
+
+                          <div className="table-responsive">
+                            <table className="table align-middle mb-0 bk-future-table">
+                              <thead>
+                                <tr>
+                                  <th>التاريخ</th>
+                                  <th>أوقات متاحة</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {futureResult.map((r) => (
+                                  <tr key={r.date}>
+                                    <td>{r.date}</td>
+                                    <td>
+                                      <div className="d-flex gap-2 flex-wrap">
+                                        {(r.times || []).map((t) => (
+                                          <button
+                                            key={t}
+                                            type="button"
+                                            className="btn btn-sm bk-future-pill"
+                                            onClick={() => applyBookingDate(r.date)}
+                                          >
+                                            {t}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="col-12 d-grid mt-2">
+                      <button
+                        type="button"
+                        className="btn btn-dark booking-service-add-btn"
+                        disabled={!servicePicker}
+                        onClick={() => addServiceToCart(servicePicker)}
+                      >
+                        إضافة
+                      </button>
                     </div>
                   </div>
 
@@ -2478,6 +2882,23 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           ? "لا توجد موظفات متاحات لهذا التاريخ."
                           : "";
 
+                        const suggested = String(busy.suggestedSlot || "").trim();
+                        const ALLOW_OVERTIME_MIN = 20;
+                        const slotsForThisService = filterSlotsByServiceEnd(
+                          timeSlots,
+                          closeTime,
+                          Number(it.durationMin || 0),
+                          bufferMin,
+                          ALLOW_OVERTIME_MIN
+                        );
+                        const availableSlotsForItem = slotsForThisService.filter(
+                          (s) => !busy.disabledStartTimes.has(s.value24)
+                        );
+                        const nearestAvailableStart =
+                          suggested && availableSlotsForItem.some((s) => s.value24 === suggested)
+                            ? suggested
+                            : (availableSlotsForItem[0]?.value24 || "");
+
                         // ✅ شكل الكرت وهو مقفول (تم التأكيد)
                         if (isLocked) {
                           return (
@@ -2560,42 +2981,32 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                 {it.employeeId && (
                                   <div className="col-12">
                                     <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
+                                    {nearestAvailableStart ? (
+                                      <div className="mb-2">
+                                        <button
+                                          type="button"
+                                          className="btn btn-outline-dark btn-sm bk-nearest-btn"
+                                          onClick={() => updateItem(it.id, { time: nearestAvailableStart })}
+                                        >
+                                          أقرب موعد متاح: {nearestAvailableStart}
+                                        </button>
+                                      </div>
+                                    ) : null}
                                     <div className="bk-time-grid">
-                                      {(() => {
-                                        const suggested = String(busy.suggestedSlot || "").trim();
-
-                                        const ALLOW_OVERTIME_MIN = 20;
-
-                                        const slotsForThisService = filterSlotsByServiceEnd(
-                                          timeSlots,
-                                          closeTime, // HH:MM مثل "22:00"
-                                          Number(it.durationMin || 0),
-                                          bufferMin,
-                                          ALLOW_OVERTIME_MIN
-                                        );
-
-
-                                        // ✅ نعرض المتاح فقط: نخفي كل وقت Disabled بدل ما نرسمه رمادي
-                                        const availableSlots = slotsForThisService.filter(
-                                          (t) => !busy.disabledStartTimes.has(t)
-                                        );
-
-                                        if (availableSlots.length === 0) {
-                                          return (
-                                            <div className="text-muted small" style={{ padding: 8 }}>
-                                              لا توجد أوقات متاحة لهذا اليوم. جرّبي يومًا آخر أو موظفة أخرى.
-                                            </div>
-                                          );
-                                        }
-
-                                        return availableSlots.map((t) => {
-                                          const isGreen = greenStarts.has(t); // بما أن المتاح فقط هو المعروض، ما نحتاج !disabled
-                                          const isSelected = it.time === t;
-                                          const isSequentialSuggested = sequentialBooking && suggested === t; // ✅ اقتراح فقط
+                                      {availableSlotsForItem.length === 0 ? (
+                                        <div className="text-muted small" style={{ padding: 8 }}>
+                                          لا توجد أوقات متاحة لهذا اليوم. جرّبي يومًا آخر أو موظفة أخرى.
+                                        </div>
+                                      ) : (
+                                        availableSlotsForItem.map((slot) => {
+                                          const value24 = slot.value24;
+                                          const isGreen = greenStarts.has(value24);
+                                          const isSelected = it.time === value24;
+                                          const isSequentialSuggested = sequentialBooking && suggested === value24;
 
                                           return (
                                             <button
-                                              key={t}
+                                              key={value24}
                                               type="button"
                                               className={[
                                                 "bk-time-chip",
@@ -2603,13 +3014,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                                 isSequentialSuggested ? "is-sequential-suggested" : "",
                                                 isSelected ? "is-selected" : ""
                                               ].join(" ")}
-                                              onClick={() => updateItem(it.id, { time: t })}
+                                              onClick={() => updateItem(it.id, { time: value24 })}
                                             >
-                                              {t}
+                                              {slot.label12}
                                             </button>
                                           );
-                                        });
-                                      })()}
+                                        })
+                                      )}
                                     </div>
 
                                     {busy.loading && <div className="small text-muted mt-2"><FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات...</div>}

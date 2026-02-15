@@ -18,7 +18,7 @@ import {
 } from "firebase/firestore";
 
 // ✅ generate same time slots list used by Booking page
-import { generateSalonTimeSlots, slotLabelToMinutes } from "../helpers/timeSlots";
+import { generateSalonTimeSlots } from "../helpers/timeSlots";
 
 // ✅ read slotStep/buffer from settings/app (source of truth)
 import { AppSettingsService } from "./AppSettingsService";
@@ -301,8 +301,9 @@ function getTimesToLock(
   const allSlots = generateSalonTimeSlots(base.openTime, base.closeTime, slotStepMin);
 
   const s = String(startTime || "").trim();
-  const startMin = slotLabelToMinutes(s);
-  if (startMin == null) return [s || startTime];
+  const startSlot = allSlots.find((slot) => slot.value24 === s);
+  if (!startSlot) return [s || startTime];
+  const startMin = Number(startSlot.minutes);
 
   const totalMin = Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
   if (totalMin <= 0) return [s || startTime];
@@ -317,9 +318,9 @@ function getTimesToLock(
 
   // ✅ start inclusive, end exclusive
   for (const t of allSlots) {
-    const m = slotLabelToMinutes(t);
-    if (m == null) continue;
-    if (m >= startMin && m < endMin) locked.push(t);
+    const m = Number(t.minutes);
+    if (!Number.isFinite(m)) continue;
+    if (m >= startMin && m < endMin) locked.push(t.value24);
   }
 
   return locked.length ? locked : [s || startTime];
@@ -1396,5 +1397,3 @@ export async function deleteBooking(bookingId: string) {
     note: "تم حذف الحجز نهائياً من الداشبورد",
   });
 }
-
-

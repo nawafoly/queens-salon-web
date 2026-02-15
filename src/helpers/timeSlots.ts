@@ -1,5 +1,3 @@
-// ✅ src/helpers/timeSlots.ts
-
 function safeTimeHHMM(v: any, fallback: string) {
   const s = String(v || "").trim();
   const m = s.match(/^(\d{1,2}):(\d{2})$/);
@@ -14,6 +12,12 @@ function safeTimeHHMM(v: any, fallback: string) {
 
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
+
+export type TimeSlot = {
+  value24: string; // HH:MM for storage and booking_slots key
+  label12: string; // display only
+  minutes: number; // calculations only
+};
 
 export function toMinutes(hhmm: string) {
   const [h, m] = hhmm.split(":").map((x) => Number(x));
@@ -34,91 +38,90 @@ function toArabic12hLabel(totalMin: number) {
   return `${hh}:${mm} ${suffix}`;
 }
 
-/**
- * ✅ NEW: تحويل "HH:MM ص/م" إلى دقائق (0..1439)
- * مثال: "04:15 م" -> 16*60+15
- */
 export function slotLabelToMinutes(label: string): number | null {
   const s = String(label || "").trim();
 
-  // ✅ التعديل: نقبل الوقت بوجود مسافة أو بدون مسافة قبل "ص/م"
+  const hhmm = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (hhmm) {
+    const hh = Number(hhmm[1]);
+    const mm = Number(hhmm[2]);
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+    return hh * 60 + mm;
+  }
+
   const m = s.match(/^(\d{1,2}):(\d{2})\s*(ص|م)$/);
   if (!m) return null;
 
   let hh = Number(m[1]);
   const mm = Number(m[2]);
-  const ap = m[3]; // ص / م
+  const ap = m[3];
 
   if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
   if (hh < 1 || hh > 12) return null;
   if (mm < 0 || mm > 59) return null;
 
-  // تحويل 12h -> 24h
-  // 12 ص = 00
-  // 12 م = 12
   if (ap === "ص") {
     if (hh === 12) hh = 0;
-  } else {
-    if (hh !== 12) hh = hh + 12;
+  } else if (hh !== 12) {
+    hh = hh + 12;
   }
 
   return hh * 60 + mm;
 }
 
-// ✅ توليد الأوقات حسب إعدادات الصالون
 export function generateSalonTimeSlots(
   openTime?: string,
   closeTime?: string,
   stepMinutes?: number
-) {
+): TimeSlot[] {
   const open = safeTimeHHMM(openTime, "09:00");
   const close = safeTimeHHMM(closeTime, "22:00");
-
-  // ✅ الاتفاق: الافتراضي = 5
   const step = Math.max(1, Number(stepMinutes || 5));
 
   const startMin = toMinutes(open);
   const endMin = toMinutes(close);
 
-  // حماية: إذا صار شيء غلط
-  if (startMin >= endMin) return [toArabic12hLabel(startMin)];
+  if (startMin >= endMin) {
+    return [
+      {
+        value24: open,
+        label12: toArabic12hLabel(startMin),
+        minutes: startMin,
+      },
+    ];
+  }
 
-  const slots: string[] = [];
-
-  // ✅ مهم: لا نضيف slot عند نهاية الدوام نفسها
-  // لأن النهاية "وقت إغلاق" وليست بداية حجز
+  const slots: TimeSlot[] = [];
   for (let t = startMin; t < endMin; t += step) {
-    slots.push(toArabic12hLabel(t));
+    const hh = String(Math.floor(t / 60)).padStart(2, "0");
+    const mm = String(t % 60).padStart(2, "0");
+    slots.push({
+      value24: `${hh}:${mm}`,
+      label12: toArabic12hLabel(t),
+      minutes: t,
+    });
   }
 
   return slots;
 }
 
-// ✅ فلترة الأوقات مع سماح تأخير (Overtime) محدود بعد الإغلاق
-// القاعدة:
-// - بداية الحجز لازم تكون قبل closeTime
-// - نهاية الخدمة (مدة + بافر) مسموح تتجاوز الإغلاق بحد allowOvertimeMin فقط
 export function filterSlotsByServiceEnd(
-  slots: string[],
+  slots: TimeSlot[],
   closeTimeHHMM: string,
   durationMin: number,
   bufferMin: number,
-  allowOvertimeMin: number // ✅ جديد (مثلاً 20)
-) {
+  allowOvertimeMin: number
+): TimeSlot[] {
   const closeMin = toMinutes(closeTimeHHMM);
   const maxEndMin = closeMin + Math.max(0, Number(allowOvertimeMin || 0));
   const need = Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
 
   if (!need) return slots;
 
-  return slots.filter((label) => {
-    const startMin = slotLabelToMinutes(label);
-    if (startMin === null) return false;
-
-    // ✅ لا نسمح تبدأ بعد الإغلاق
+  return slots.filter((slot) => {
+    const startMin = Number(slot.minutes);
+    if (!Number.isFinite(startMin)) return false;
     if (startMin >= closeMin) return false;
-
-    // ✅ لكن نسمح بالنهاية تتأخر بحد (allowOvertimeMin)
     return startMin + need <= maxEndMin;
   });
 }

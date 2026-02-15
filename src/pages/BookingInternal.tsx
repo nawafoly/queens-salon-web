@@ -1,10 +1,9 @@
-// src/pages/BookingInternal.tsx
-
 import { useEffect, useMemo, useState, useRef } from "react";
 import type React from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import logo from "../assets/images/ssunnamed2.png";
+
 const hairGuideImg = "/hair-length-guide.png";
 
 import {
@@ -19,14 +18,11 @@ import {
 
 import {
   generateSalonTimeSlots,
-  filterSlotsByServiceEnd,
-  slotLabelToMinutes,
+  toMinutes,
+  type TimeSlot,
 } from "../helpers/timeSlots";
 
-import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 import { AppSettingsService } from "../services/AppSettingsService";
-
-import "../styles/Booking.css";
 
 // Firestore
 import {
@@ -76,10 +72,13 @@ import {
 import { createBooking } from "../services/firestoreBookings";
 
 // Profile loader (للعميلة لما تكون مسجلة دخول بالصفحات العامة)
-import { createOrLoadUserProfile } from "../services/userProfile";
+// ✅ ملاحظة: intentionally unused هنا (الاستقبال)
+// import { createOrLoadUserProfile } from "../services/userProfile";
 
 // Modal
 import ConfirmModal from "../components/ConfirmModal";
+import "../styles/BookingInternal.css";
+
 
 /* =========================
    Types
@@ -102,7 +101,7 @@ type CartItem = {
   employeeName?: string;
 
   date: string; // YYYY-MM-DD
-  time: string; // slot string
+  time: string; // ✅ نخزن 24h "HH:MM" (value24)
   locked?: boolean;
 };
 
@@ -180,47 +179,48 @@ function buildSlotId(
 }
 
 function getTimesToLock(
-  allSlots: string[],
+  allSlots: TimeSlot[],
   slotStepMin: number,
-  startTime: string,
+  startTime24: string, // ✅ "HH:MM"
   durationMin: number,
   bufferMin: number
 ) {
-  const startMin = slotLabelToMinutes(startTime);
-  if (startMin == null) return [startTime];
-
+  const startMin = toMinutes(startTime24);
   const step = Math.max(1, Number(slotStepMin || 0));
+
   const totalMin =
     Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
 
-  if (totalMin <= 0) return [startTime];
+  if (totalMin <= 0) return [startTime24];
 
   const slotsToLock = Math.max(1, Math.ceil(totalMin / step));
 
   const locked: string[] = [];
   for (let i = 0; i < slotsToLock; i++) {
     const targetMin = startMin + i * step;
-    const t = allSlots.find((label) => slotLabelToMinutes(label) === targetMin);
-    if (t) locked.push(t);
+    const hit = allSlots.find((s) => s.minutes === targetMin);
+    if (hit) locked.push(hit.value24);
   }
 
-  return locked.length ? locked : [startTime];
+  return locked.length ? locked : [startTime24];
 }
 
 function getGreenStartTimes(args: {
-  allSlots: string[];
+  allSlots: TimeSlot[];
   slotStepMin: number;
   durationMin: number;
   bufferMin: number;
-  takenAll: Set<string>;
+  takenAll: Set<string>; // ✅ times 24h
 }) {
-  const greens = new Set<string>();
+  const greens = new Set<string>(); // ✅ نخزن value24
 
-  for (const start of args.allSlots) {
+  for (const slot of args.allSlots) {
+    const start24 = slot.value24;
+
     const needed = getTimesToLock(
       args.allSlots,
       args.slotStepMin,
-      start,
+      start24,
       args.durationMin,
       args.bufferMin
     );
@@ -232,7 +232,8 @@ function getGreenStartTimes(args: {
         break;
       }
     }
-    if (ok) greens.add(start);
+
+    if (ok) greens.add(start24);
   }
 
   return greens;
@@ -286,7 +287,6 @@ function addDaysISO(startISO: string, addDays: number) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-
 function safeInt(v: any, fallback: number) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
@@ -320,6 +320,34 @@ function phone10Digits(raw: string) {
   return normalizeKsaPhone(raw).replace(/\D/g, "").slice(0, 10);
 }
 
+function mapBookingStatusAr(raw: any) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (s === "confirmed") return "مؤكد";
+  if (s === "pending") return "بالانتظار";
+  if (s === "cancelled" || s === "canceled") return "ملغي";
+  if (s === "completed") return "مكتمل";
+  return String(raw || "—");
+}
+
+function bookingStatusClass(raw: any) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (s === "confirmed") return "bk-status-confirmed";
+  if (s === "pending") return "bk-status-pending";
+  if (s === "cancelled" || s === "canceled") return "bk-status-cancelled";
+  if (s === "completed") return "bk-status-completed";
+  return "bk-status-default";
+}
+
+function mapBookingChannelAr(raw: any) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return "—";
+  if (s === "client") return "عميلة";
+  if (s === "internal") return "استقبال";
+  if (s === "dashboard") return "إدارة";
+  if (s === "online") return "أونلاين";
+  return String(raw);
+}
+
 type UiModalState = {
   open: boolean;
   title: string;
@@ -339,7 +367,7 @@ type BusyState = {
   hint: string;
   suggestedSlot?: string;
 
-  // ✅ NEW: تفاصيل الحجز الموجود على الوقت (يطلع في الـ UI)
+  // ✅ تفاصيل الحجز الموجود على الوقت (يطلع في الـ UI)
   bookedMetaByTime: Record<string, string>;
 };
 
@@ -388,8 +416,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return Math.max(0, safeInt((booking as any)?.bufferMin, 5));
   }, [(booking as any)?.bufferMin]);
 
-  const timeSlots = useMemo(() => {
-    return generateSalonTimeSlots(openTime, closeTime, slotStepMin);
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+
+  useEffect(() => {
+    setTimeSlots(generateSalonTimeSlots(openTime, closeTime, slotStepMin));
   }, [openTime, closeTime, slotStepMin]);
 
   useEffect(() => {
@@ -447,24 +477,24 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   // =========================
   // ✅ NEW: Future availability (للأيام القادمة)
   // =========================
-  const [futureDays, setFutureDays] = useState(14);
   const [futureAnyStaff, setFutureAnyStaff] = useState(true);
   const [futureSelectedEmployeeKey, setFutureSelectedEmployeeKey] = useState<string>("");
+  const [futureStaffNameQuery, setFutureStaffNameQuery] = useState("");
   const [futureLoading, setFutureLoading] = useState(false);
   const [futureResult, setFutureResult] = useState<
     { date: string; times: string[]; note?: string }[]
   >([]);
-  const [futureModalOpen, setFutureModalOpen] = useState(false);
 
   const [futureMsg, setFutureMsg] = useState("");
-
 
   const [staffByService, setStaffByService] = useState<
     Record<string, StaffPublicWithId[]>
   >({});
+
   const [staffLoadingByService, setStaffLoadingByService] = useState<
     Record<string, boolean>
   >({});
+
   const [staffErrorByService, setStaffErrorByService] = useState<
     Record<string, string>
   >({});
@@ -624,10 +654,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     if (/^05\d{8}$/.test(digits10)) return { kind: "phone" as const, value: digits10 };
 
     // 2) MK / QS / any prefixed publicId
-    // Examples: MK-10052, mk10052, MK 10052
     if (/^(mk|qs)\b/i.test(s) || /^mk[\-_ ]?/i.test(s)) {
       const cleaned = s.replace(/\s+/g, "").replace(/_/g, "-").toUpperCase();
-      // ensure MK- format if starts with MK and has numbers after
       const m = cleaned.match(/^MK-?\d+$/);
       if (m) {
         const num = cleaned.replace(/^MK-?/i, "");
@@ -636,21 +664,19 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return { kind: "publicId" as const, value: cleaned };
     }
 
-    // 3) digits only => treat as MK number (10052 => MK-10052)
+    // 3) digits only => treat as MK number
     const onlyDigits = s.replace(/\D/g, "");
     if (onlyDigits && onlyDigits.length >= 3 && onlyDigits.length <= 12) {
       return { kind: "publicId" as const, value: `MK-${onlyDigits}` };
     }
 
-    // 4) otherwise treat as name (for booking search)
-    // if it has letters (Arabic/English)
+    // 4) otherwise treat as name
     const hasLetters = /[A-Za-z\u0600-\u06FF]/.test(s);
     if (hasLetters) return { kind: "name" as const, value: s.trim() };
 
     // 5) fallback: doc id
     return { kind: "id" as const, value: s };
   }
-
 
   async function searchBookingsForReception(raw: string) {
     const q0 = normalizeSearchKey(raw);
@@ -681,7 +707,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return out;
     }
 
-    // 2.5) by name (partial prefix on clientNameLower / nameLower)
+    // 2) by name (prefix on lower fields)
     if (q.kind === "name") {
       const nameRaw = String(q.value || "").trim();
       const nameLower = nameRaw.toLowerCase();
@@ -700,9 +726,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           );
           snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
           if (out.length) return out;
-        } catch {
-          // ignore (maybe missing index / field)
-        }
+        } catch { }
 
         // B) nameLower prefix (legacy)
         try {
@@ -717,11 +741,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           );
           snap.docs.forEach((d) => out.push({ id: d.id, ...(d.data() as any) }));
           if (out.length) return out;
-        } catch {
-          // ignore
-        }
+        } catch { }
 
-        // C) fallback: exact (لو ما عندك lower fields)
+        // C) fallback exact
         try {
           const snap = await getDocs(
             query(colBookings, where("clientName", "==", nameRaw), limit(25))
@@ -739,8 +761,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         } catch { }
       }
     }
-
-
 
     // 3) by doc id direct
     try {
@@ -775,11 +795,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return;
     }
 
-    // الموظفات للخدمة (موجود عندك staffByService) :contentReference[oaicite:8]{index=8}
+    // الموظفات للخدمة (موجود عندك staffByService)
     let staffList = staffByService[serviceId] || [];
 
     if (!staffList.length) {
-      // ✅ حمّل الموظفات مباشرة لأننا نبحث قبل إضافة الخدمة للسلة
       const res = await listActiveStaffBySpecialty({
         salonId: SALON_ID,
         specialty: serviceId,
@@ -796,32 +815,38 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         return specs.includes(serviceId);
       });
 
-      // اختياري: خزّنها عشان ما يعيد تحميلها كل مرة
       setStaffByService((p) => ({ ...p, [serviceId]: staffList as any }));
     }
 
-
-    // اليوم كبداية (وتقدر تخليها من bookingDate)
     const startISO = todayISO();
-    const days = Math.max(1, Math.min(60, Number(futureDays || 14))); // سقف 60 يوم عشان ما نجلد Firestore
+    const scanDays = 60;
 
     setFutureLoading(true);
     try {
       const results: { date: string; times: string[]; note?: string }[] = [];
 
-      // لو محدد موظفة بعينها
-      const fixedEmployeeKey = String(futureSelectedEmployeeKey || "").trim();
+      const resolvedByName =
+        futureStaffOptions.find(
+          (x) => String(x.name || "").trim() === String(futureStaffNameQuery || "").trim()
+        )?.key || "";
 
-      for (let i = 0; i < days; i++) {
+      const fixedEmployeeKey = String(
+        futureSelectedEmployeeKey || resolvedByName || ""
+      ).trim();
+      if (!futureAnyStaff && !fixedEmployeeKey) {
+        setFutureMsg("اكتبي اسم الموظفة ثم اختاريها من النتائج.");
+        return;
+      }
+
+      for (let i = 0; i < scanDays; i++) {
         const dateISO = addDaysISO(startISO, i);
 
-        // اجمع “أفضل الأوقات” لليوم
         let dayTimes: string[] = [];
 
         if (!futureAnyStaff && fixedEmployeeKey) {
-          // نحتاج employeeIdFallback (نستخرجه من staffList)
-          const staff = staffList.find((s: any) => String(s.linkedUid || s.uid || s.id || "") === fixedEmployeeKey)
-            || staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
+          const staff =
+            staffList.find((s: any) => String(s.linkedUid || s.uid || s.id || "") === fixedEmployeeKey) ||
+            staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
 
           const employeeIdFallback = String(staff?.id || "").trim();
 
@@ -834,10 +859,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             take: 5,
           });
         } else {
-          // أي موظفة: نجرب كل الموظفات ونأخذ “أقرب” أوقات مجتمعة
           const merged = new Set<string>();
 
-          // ملاحظة: هذا استعلام لكل موظفة لكل يوم (مقبول لو الأيام قليلة)
           for (const st of staffList) {
             const empKey = String(st?.linkedUid || "").trim() || String(st?.id || "").trim();
             const empIdFallback = String(st?.id || "").trim();
@@ -855,17 +878,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             times.forEach((t) => merged.add(t));
           }
 
-          dayTimes = Array.from(merged.values()).sort((a, b) => {
-            const am = slotLabelToMinutes(a) ?? 999999;
-            const bm = slotLabelToMinutes(b) ?? 999999;
-            return am - bm;
-          }).slice(0, 5);
+          dayTimes = Array.from(merged.values())
+            .sort((a, b) => toMinutes(a) - toMinutes(b))
+            .slice(0, 5);
         }
 
         if (dayTimes.length) results.push({ date: dateISO, times: dayTimes });
 
-        // اختياري: إذا لقيت أيام كفاية وقف بدري
-        if (results.length >= 14) break;
+        if (results.length >= 5) break;
       }
 
       if (!results.length) {
@@ -874,15 +894,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       }
 
       setFutureResult(results);
-      setFutureModalOpen(true);
-
     } catch (e: any) {
       setFutureMsg(`صار خطأ أثناء البحث: ${String(e?.message || e)}`);
     } finally {
       setFutureLoading(false);
     }
   }
-
 
   const handleSearchBooking = async () => {
     const q = String(bookingSearch || "").trim();
@@ -915,7 +932,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const id = String(b?.id || "").trim();
     if (!id) return;
 
-    // ✅ لازم موظفة الاستقبال مسجلة دخول
     const authNow = getAuth();
     const staffUid = authNow.currentUser?.uid || "";
     if (!staffUid) {
@@ -930,7 +946,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     setIsLoading(true);
     try {
-      // update booking -> confirmed + paid
       await updateDoc(doc(db, "salons", SALON_ID, "bookings", id), {
         status: "confirmed",
         confirmedAt: Date.now(),
@@ -965,12 +980,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     localStorage.setItem("allBookings", JSON.stringify([b]));
     navigate("/success-internal");
   }
-
-  // =========================
-  // ✅ الاستقبال: لا نعمل Autofill من حساب العميلة
-  // =========================
-  // (مقصود) — لا تستخدم createOrLoadUserProfile هنا للعميلة
-  // لأن المستخدم المسجل هو موظفة الاستقبال.
 
   // =========================
   // Helper: تعارض داخل السلة
@@ -1292,7 +1301,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         if (cancelled) return;
 
         const merged: any[] = [];
-        snaps.forEach((sn) => sn.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) })));
+        snaps.forEach((sn) =>
+          sn.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }))
+        );
         secSnap.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
 
         const uniq = new Map<string, any>();
@@ -1552,10 +1563,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return Array.from(map.entries());
   }, [servicesInSection]);
 
-  // ✅ عرض السعر في الـ dropdown حسب (طور الموسم/العادي) + تاريخ الحجز المختار
   function servicePickerPriceText(sv: FlatService) {
     const dateISO = String(bookingDate || "").trim();
-    if (!dateISO) return sv.priceText; // احتياط
+    if (!dateISO) return sv.priceText;
 
     const eff = pickEffectivePrice({
       basePrice: Number(sv.basePrice || 0),
@@ -1567,8 +1577,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const price = Number(eff.price || 0);
     return `${price} ريال`;
   }
-
-
 
   const isHairSection = useMemo(() => {
     const id = String(selectedSectionId || "").trim().toLowerCase();
@@ -1585,6 +1593,102 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       title.includes("تساريح")
     );
   }, [selectedSectionId, sectionOptions]);
+
+  const futureStaffOptions = useMemo(() => {
+    const sid = String(servicePicker || "").trim();
+    if (!sid) return [] as { key: string; name: string }[];
+
+    const base = (staffByService[sid] || []) as StaffPublicWithId[];
+    const seen = new Set<string>();
+
+    return base
+      .map((st: any) => {
+        const key = String(st?.linkedUid || st?.uid || st?.id || "").trim();
+        const name = String(st?.name || st?.displayName || st?.id || "").trim();
+        return { key, name };
+      })
+      .filter((x) => x.key && x.name)
+      .filter((x) => (seen.has(x.key) ? false : (seen.add(x.key), true)));
+  }, [servicePicker, staffByService]);
+
+  const filteredFutureStaffOptions = useMemo(() => {
+    const q = String(futureStaffNameQuery || "").trim().toLowerCase();
+    if (!q) return futureStaffOptions;
+    return futureStaffOptions.filter((x) =>
+      String(x.name || "").toLowerCase().includes(q)
+    );
+  }, [futureStaffOptions, futureStaffNameQuery]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFutureStaffForPickedService() {
+      const sid = String(servicePicker || "").trim();
+      if (!sid) return;
+      if ((staffByService[sid] || []).length > 0) return;
+
+      try {
+        setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
+        setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
+
+        const res = await listActiveStaffBySpecialty({
+          salonId: SALON_ID,
+          specialty: sid,
+        });
+
+        if (cancelled) return;
+
+        const norm = (v: any) => String(v ?? "").trim().toLowerCase();
+        const normalized = (res || []).filter((st: any) => {
+          const name = String(st?.name || "").trim();
+          if (!name) return false;
+
+          const specs = Array.isArray(st?.specialties)
+            ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
+            : [];
+
+          return specs.some((sp: string) => norm(sp) === norm(sid));
+        });
+
+        setStaffByService((p) => ({ ...p, [sid]: normalized as any }));
+      } catch {
+        if (!cancelled) {
+          setStaffByService((p) => ({ ...p, [sid]: [] }));
+          setStaffErrorByService((p) => ({
+            ...p,
+            [sid]: "تعذر تحميل الموظفات لهذه الخدمة.",
+          }));
+        }
+      } finally {
+        if (!cancelled) {
+          setStaffLoadingByService((p) => ({ ...p, [sid]: false }));
+        }
+      }
+    }
+
+    loadFutureStaffForPickedService();
+    return () => {
+      cancelled = true;
+    };
+  }, [servicePicker, staffByService]);
+
+  useEffect(() => {
+    if (futureAnyStaff) return;
+    if (!futureSelectedEmployeeKey) return;
+
+    const exists = futureStaffOptions.some((x) => x.key === futureSelectedEmployeeKey);
+    if (!exists) {
+      setFutureSelectedEmployeeKey("");
+      setFutureStaffNameQuery("");
+    }
+  }, [futureAnyStaff, futureSelectedEmployeeKey, futureStaffOptions]);
+
+  useEffect(() => {
+    if (!futureAnyStaff) return;
+    if (!futureSelectedEmployeeKey && !futureStaffNameQuery) return;
+    setFutureSelectedEmployeeKey("");
+    setFutureStaffNameQuery("");
+  }, [futureAnyStaff, futureSelectedEmployeeKey, futureStaffNameQuery]);
 
   const getServiceById = (id: string) => servicesFlat.find((sv) => sv.id === id) || null;
 
@@ -1738,6 +1842,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
           if (cancelled) return;
 
+          const norm = (v: any) => String(v ?? "").trim().toLowerCase();
+
           const normalized = (res || []).filter((st: any) => {
             const name = String(st?.name || "").trim();
             if (!name) return false;
@@ -1746,7 +1852,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
               : [];
 
-            return specs.includes(sid);
+            return specs.some((sp: string) => norm(sp) === norm(sid));
           });
 
           setStaffByService((p) => ({ ...p, [sid]: normalized }));
@@ -1760,42 +1866,44 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         } catch (e: any) {
           const msg = String(e?.message || "");
           let err = "تعذر تحميل قائمة الموظفات.";
-          if (msg.toLowerCase().includes("requires an index"))
+          if (msg.toLowerCase().includes("requires an index")) {
             err = "Firestore يحتاج Index للاستعلام. افتح Console واضغط Create index.";
-          if (msg.toLowerCase().includes("missing or insufficient permissions"))
+          }
+          if (msg.toLowerCase().includes("missing or insufficient permissions")) {
             err = "صلاحيات قراءة الموظفات غير كافية (staff_public).";
+          }
 
           setStaffByService((p) => ({ ...p, [sid]: [] }));
           setStaffErrorByService((p) => ({ ...p, [sid]: err }));
         } finally {
-          if (!cancelled)
+          if (!cancelled) {
             setStaffLoadingByService((p) => ({ ...p, [sid]: false }));
+          }
         }
       }
     }
 
     loadNeededStaff();
+
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.items]);
 
-
   async function getAvailableStartsForDay(args: {
     salonId: string;
     employeeKey: string;
-    employeeIdFallback: string; // لو ما لقى بالـ employeeKey
+    employeeIdFallback: string;
     dateISO: string;
     durationMin: number;
-    take: number; // كم وقت نعرض في اليوم
+    take: number;
   }) {
     const { salonId, employeeKey, employeeIdFallback, dateISO, durationMin, take } = args;
 
     const takenFs = new Set<string>();
     const colSlots = collection(db, "salons", salonId, "booking_slots");
 
-    // نفس منطقك الحالي: جرّب employeeKey ثم employeeId :contentReference[oaicite:6]{index=6}
     let snap = await getDocs(
       query(colSlots, where("employeeKey", "==", employeeKey), where("date", "==", dateISO))
     );
@@ -1811,7 +1919,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       if (t) takenFs.add(t);
     });
 
-    // ✅ الأوقات الخضراء = أي start يركّب مدة+بافر بدون تعارض :contentReference[oaicite:7]{index=7}
     const greens = getGreenStartTimes({
       allSlots: timeSlots,
       slotStepMin,
@@ -1821,12 +1928,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     });
 
     const list = Array.from(greens.values()).sort((a, b) => {
-      const am = slotLabelToMinutes(a) ?? 999999;
-      const bm = slotLabelToMinutes(b) ?? 999999;
+      const am = toMinutes(a) ?? 999999;
+      const bm = toMinutes(b) ?? 999999;
       return am - bm;
     });
 
-    // خذ أول N فقط
     return list.slice(0, Math.max(1, take));
   }
 
@@ -1926,25 +2032,22 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           let suggestedSlot = "";
 
           if (sequentialBooking) {
-            // ✅ طور الموسم (متتابع) — لا نقفل اليوم على وقت واحد
-            // القاعدة:
-            // - قبل أول حجز مسموح
-            // - بين الحجوزات مسموح إذا فيه مساحة كافية (مدة + بافر)
-            // - بعد آخر حجز مسموح
-            // مع "وقت مقترح" فقط لتقليل الهدر (بدون منع باقي الأوقات المتاحة)
+            // ✅ طور متتابع: نظهر فقط الأوقات الخضراء (التي تكفي مدة+بافر بدون تعارض)
+            // + نعطي اقتراح "أقرب وقت" بعد آخر نهاية (اقتراح فقط لا يمنع باقي الأخضر)
 
-            // احسب آخر نهاية (للاقتراح فقط)
+            // احسب آخر نهاية (من FS + من السلة) للاقتراح فقط
             let lastEndMin = -1;
-            let lastTakenMinFs = -1;
 
+            // FS last
+            let lastTakenMinFs = -1;
             snap.docs.forEach((d) => {
               const t = String((d.data() as any)?.time || "").trim();
-              const m = slotLabelToMinutes(t);
-              if (m !== null) lastTakenMinFs = Math.max(lastTakenMinFs, m);
+              const m = toMinutes(t);
+              if (Number.isFinite(m)) lastTakenMinFs = Math.max(lastTakenMinFs, m);
             });
-
             if (lastTakenMinFs !== -1) lastEndMin = Math.max(lastEndMin, lastTakenMinFs + slotStepMin);
 
+            // Local cart last (other items same staff/date)
             let lastTakenMinLocal = -1;
             items.forEach((other) => {
               if (other.id === itemId) return;
@@ -1965,14 +2068,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               );
 
               locked.forEach((label) => {
-                const mm = slotLabelToMinutes(label);
-                if (mm !== null) lastTakenMinLocal = Math.max(lastTakenMinLocal, mm);
+                const mm = toMinutes(label);
+                if (Number.isFinite(mm)) lastTakenMinLocal = Math.max(lastTakenMinLocal, mm);
               });
             });
-
             if (lastTakenMinLocal !== -1) lastEndMin = Math.max(lastEndMin, lastTakenMinLocal + slotStepMin);
 
-            // ✅ الأوقات المتاحة فعليًا = أي start يقدر يركّب مدة+بافر بدون تعارض
             const greens = getGreenStartTimes({
               allSlots: timeSlots,
               slotStepMin,
@@ -1981,36 +2082,36 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               takenAll,
             });
 
-            // ✅ نخلي disabled = كل شيء غير أخضر (عشان ما يطلع للعميلة بالـ grid)
-            for (const start of timeSlots) {
+            // disabled = كل شيء غير أخضر (مع السماح بالوقت الحالي لو كان مختار)
+            for (const s of timeSlots) {
+              const start = s.value24;
               const isCurrentTime = String(it.time || "").trim() === start;
               if (!greens.has(start) && !isCurrentTime) disabled.add(start);
             }
 
-            // ✅ suggestedSlot = أفضل وقت (أقرب شيء بعد آخر نهاية) لكن بدون ما نقفل باقي الأوقات
+            // suggestedSlot = أقرب أخضر بعد lastEndMin
             let targetSlot = "";
             if (lastEndMin !== -1) {
-              for (const start of timeSlots) {
-                const m = slotLabelToMinutes(start);
-                if (m !== null && m >= lastEndMin && greens.has(start)) {
+              for (const s of timeSlots) {
+                const start = s.value24;
+                const m = toMinutes(start);
+                if (Number.isFinite(m) && m >= lastEndMin && greens.has(start)) {
                   targetSlot = start;
                   break;
                 }
               }
             }
-
-            // لو ما فيه “آخر نهاية” أو ما لقينا بعده، خذ أول وقت متاح
             if (!targetSlot) {
               targetSlot = Array.from(greens.values())[0] || "";
             }
 
             suggestedSlot = targetSlot;
             sequentialHint = targetSlot
-              ? `الأوقات المتاحة تظهر فقط. الوقت المقترح لتقليل الهدر: ${targetSlot}`
+              ? ""
               : "لا يوجد وقت متاح كافٍ لهذا اليوم مع هذه الموظفة.";
           } else {
-
-            for (const start of timeSlots) {
+            for (const s of timeSlots) {
+              const start = s.value24;
               const isCurrentTime = String(it.time || "").trim() === start;
               if (takenAll.has(start) && !isCurrentTime) disabled.add(start);
             }
@@ -2525,7 +2626,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           employeeName: String(it.employeeName || "").trim() || "-",
 
           date: String(it.date || "").trim(),
-          time: String(it.time || "").trim(),
+          time: String(it.time || "").trim(), // ✅ 24h
 
           total: Number(itemFinal || 0),
           finalPrice: Number(itemFinal || 0),
@@ -2544,7 +2645,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           trackId: res.id,
           publicId: (res as any).publicId,
 
-          // ✅ خلي الاثنين موجودين (عشان SuccessInternal يقرأ + عشان ما نكسر القديم)
           clientName: String(formData.name || "").trim(),
           clientPhone: phone,
 
@@ -2559,7 +2659,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           employeeUid: String(it.employeeUid || "").trim(),
 
           date: String(it.date || "").trim(),
-          time: String(it.time || "").trim(),
+          time: String(it.time || "").trim(), // ✅ 24h
 
           total: Number(itemFinal || 0),
           finalPrice: Number(itemFinal || 0),
@@ -2574,7 +2674,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           createdAt: Date.now(),
           channel: "internal",
         });
-
       }
 
       localStorage.setItem("allBookings", JSON.stringify(createdBookings));
@@ -2649,1025 +2748,964 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }, []);
 
   return (
-    <div className="booking-page py-5">
+    <div className="bk-page-wrapper bk-internal">
+      
+      <div className="booking-page py-5">
       <ConfirmModal
         open={uiModal.open}
         title={uiModal.title}
         message={uiModal.message}
         variant={uiModal.variant}
         confirmText={uiModal.confirmText || "حسنًا"}
+        onCancel={() => closeModal()}
         onConfirm={() => {
           const fn = onUiConfirm;
           closeModal();
           if (fn) fn();
         }}
-        onCancel={closeModal}
       />
 
-      <div className="container">
-        <div className="row justify-content-center">
-          <div className="col-lg-8">
-            <div className="booking-card">
-              <div className="booking-header">
-                <div className="booking-logo">
-                  <img src={logo} alt="Queens Salon Logo" />
+      <div className="container bk-internal-container">
+        <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 bk-page-header">
+          <div className="d-flex align-items-center gap-2">
+            <img src={logo} alt="logo" className="bk-logo" />
+            <div>
+              <div className="bk-title">حجز داخلي (الاستقبال)</div>
+              <div className="bk-subtitle">
+                اختاري الخدمة → الموظفة → الوقت → تأكيد لكل خدمة
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="btn btn-outline-light"
+            onClick={() => navigate("/dashboard")}
+            disabled={isLoading}
+            style={{ borderRadius: 12 }}
+          >
+            <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
+            رجوع
+          </button>
+        </div>
+
+        {/* =========================
+            Date (reception picks first)
+        ========================= */}
+        <div className="card p-3 mb-3 bk-panel">
+          <div className="row g-3 align-items-end">
+            <div className="col-12 col-md-4">
+              <label className="form-label">تاريخ الحجز</label>
+              <input
+                ref={dateRef}
+                type="date"
+                className="form-control"
+                value={bookingDate}
+                min={todayISO()}
+                onChange={(e) => {
+                  const next = String(e.target.value || "").trim();
+                  setBookingDate(next);
+                  // نخلي كل عناصر السلة تتبع تاريخ الصفحة (للاستقبال)
+                  setFormData((p) => ({
+                    ...p,
+                    items: (p.items || []).map((it) => ({
+                      ...it,
+                      date: next,
+                      time: "",
+                      locked: false,
+                      employeeId: "",
+                      employeeUid: "",
+                      employeeName: "",
+                    })),
+                  }));
+                }}
+              />
+              <div className="mt-2" style={{ fontSize: 12, opacity: 0.8 }}>
+                ملاحظة: تغيير التاريخ يصفر اختيار الموظفات/الأوقات داخل السلة.
+              </div>
+            </div>
+
+            <div className="col-12 col-md-8">
+              <div className="d-flex align-items-center gap-2 flex-wrap">
+                <span className="badge text-bg-dark" style={{ borderRadius: 999 }}>
+                  Catalog: {catalogMode === "firestore" ? "Firestore" : "Pricing"}
+                </span>
+                {catalogLoading ? (
+                  <span className="badge text-bg-secondary" style={{ borderRadius: 999 }}>
+                    <FontAwesomeIcon icon={faSpinner} spin className="me-2" />
+                    تحميل الكتالوج...
+                  </span>
+                ) : null}
+
+                {sequentialBooking ? (
+                  <span className="badge text-bg-success" style={{ borderRadius: 999 }}>
+                    ✅ طور متتابع مفعّل (Sequential)
+                  </span>
+                ) : (
+                  <span className="badge text-bg-warning" style={{ borderRadius: 999 }}>
+                    ⚠️ طور متتابع غير مفعّل
+                  </span>
+                )}
+
+                <span className="badge text-bg-info" style={{ borderRadius: 999 }}>
+                  SlotStep: {slotStepMin}m — Buffer: {bufferMin}m
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* =========================
+            Client search
+        ========================= */}
+        <div className="card p-3 mb-3 bk-panel">
+          <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+            <div style={{ fontWeight: 800 }}>بحث عميلة (اختياري)</div>
+            <span className="text-muted" style={{ fontSize: 12 }}>
+              يبحث بالاسم/الجوال من (clients/users)
+            </span>
+          </div>
+
+          <div className="row g-2 align-items-end">
+            <div className="col-12 col-md-6">
+              <label className="form-label">ابحثي باسم أو رقم جوال</label>
+              <input
+                className="form-control"
+                value={clientSearch}
+                onChange={(e) => setClientSearch(String(e.target.value || ""))}
+                placeholder="مثال: 054xxxxxxx أو (نورة)"
+              />
+            </div>
+
+            <div className="col-12 col-md-3 d-grid">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSearchClient}
+                disabled={clientSearching}
+                style={{ borderRadius: 12 }}
+              >
+                <FontAwesomeIcon icon={faSearch} className="me-2" />
+                {clientSearching ? "جاري البحث..." : "بحث"}
+              </button>
+            </div>
+
+            <div className="col-12 col-md-3">
+              {clientSearchMsg ? (
+                <div
+                  className="alert alert-secondary mb-0 py-2"
+                  style={{ borderRadius: 12, fontSize: 13 }}
+                >
+                  {clientSearchMsg}
                 </div>
+              ) : null}
+            </div>
 
-                <h1 className="booking-title">حجز داخلي — الاستقبال</h1>
+            {selectedClient ? (
+  <div className="alert alert-dark mt-2 mb-0 py-2" style={{ borderRadius: 12, fontSize: 13 }}>
+    <b>تم اختيار عميلة:</b>{" "}
+    {String(selectedClient?.name || selectedClient?.fullName || "—")}
+    {" — "}
+    {phone10Digits(selectedClient?.phone || selectedClient?.mobile || "")}
+  </div>
+) : null}
 
-                {/* ✅ NEW: بحث حجز موجود (جوال / MK / bookingId) */}
-                <div className="mt-3" style={{ maxWidth: 560, margin: "0 auto" }}>
-                  <label className="form-label fw-bold small">بحث حجز موجود (جوال / MK / رقم الوثيقة)</label>
+          </div>
 
-                  <div className="input-group">
-                    <span className="input-group-text">
-                      <FontAwesomeIcon icon={faSearch} />
-                    </span>
+          <hr />
 
-                    <input
-                      className="form-control"
-                      value={bookingSearch}
-                      onChange={(e) => setBookingSearch(e.target.value)}
-                      placeholder="مثال: 055xxxxxxx أو 10052 أو MK-10052 أو اسم العميلة"
-                      disabled={bookingSearching || isLoading}
-                    />
+          {/* =========================
+              Booking search
+          ========================= */}
+          <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+            <div style={{ fontWeight: 800 }}>بحث حجز موجود (تأكيد + طباعة)</div>
+            <span className="text-muted" style={{ fontSize: 12 }}>
+              جوال / MK / bookingId
+            </span>
+          </div>
 
-                    <button
-                      type="button"
-                      className="btn btn-dark"
-                      onClick={handleSearchBooking}
-                      disabled={bookingSearching || isLoading}
-                    >
-                      {bookingSearching ? (
-                        <>
-                          <FontAwesomeIcon icon={faSpinner} spin /> بحث...
-                        </>
-                      ) : (
-                        "بحث"
-                      )}
-                    </button>
+          <div className="row g-2 align-items-end">
+            <div className="col-12 col-md-6">
+              <label className="form-label">ابحثي برقم جوال أو MK</label>
+              <input
+                className="form-control"
+                value={bookingSearch}
+                onChange={(e) => setBookingSearch(String(e.target.value || ""))}
+                placeholder="مثال: 054xxxxxxx أو MK-123"
+              />
+            </div>
 
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      disabled={bookingSearching || isLoading}
-                      onClick={() => {
-                        setBookingSearch("");
-                        setBookingSearchMsg("");
-                        setFoundBookings([]);
-                        setSelectedExistingBooking(null);
-                      }}
-                      title="مسح"
-                    >
-                      <FontAwesomeIcon icon={faTimesCircle} />
-                    </button>
-                  </div>
+            <div className="col-12 col-md-3 d-grid">
+              <button
+                type="button"
+                className="btn btn-outline-light"
+                onClick={handleSearchBooking}
+                disabled={bookingSearching}
+                style={{ borderRadius: 12 }}
+              >
+                <FontAwesomeIcon icon={faSearch} className="me-2" />
+                {bookingSearching ? "جاري البحث..." : "بحث الحجوزات"}
+              </button>
+            </div>
 
-                  {bookingSearchMsg ? (
-                    <div className="small mt-2 text-muted">{bookingSearchMsg}</div>
-                  ) : null}
+            <div className="col-12 col-md-3">
+              {bookingSearchMsg ? (
+                <div
+                  className="alert alert-secondary mb-0 py-2"
+                  style={{ borderRadius: 12, fontSize: 13 }}
+                >
+                  {bookingSearchMsg}
+                </div>
+              ) : null}
+            </div>
+          </div>
 
-                  {foundBookings.length ? (
-                    <div className="mt-3">
-                      <div className="small fw-bold mb-2">النتائج:</div>
-
-                      <div className="list-group">
-                        {foundBookings.map((b) => {
-                          const status = String(b?.status || "").toLowerCase();
-                          const isPending = status === "pending";
-                          const isConfirmed = status === "confirmed" || status === "completed";
-
-                          return (
+          {foundBookings.length ? (
+            <div className="mt-3">
+              <div className="table-responsive">
+                <table className="table align-middle mb-0 bk-existing-table">
+                  <thead>
+                    <tr>
+                      <th>MK</th>
+                      <th>العميلة</th>
+                      <th>الخدمة</th>
+                      <th>التاريخ</th>
+                      <th>الوقت</th>
+                      <th>الحالة</th>
+                      <th style={{ width: 260 }}>إجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {foundBookings.map((b) => (
+                      <tr key={String(b.id)}>
+                        <td>{String(b.publicId || b.trackPublicId || b.mk || "—")}</td>
+                        <td>{String(b.clientName || b.name || "—")}</td>
+                        <td>{String(b.serviceName || b.serviceSnapshot?.serviceNameAtBooking || "—")}</td>
+                        <td>{String(b.date || "—")}</td>
+                        <td>{String(b.time || "—")}</td>
+                        <td>
+                          <span className={`bk-status-pill ${bookingStatusClass(b?.status)}`}>
+                            {mapBookingStatusAr(b?.status)}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="d-flex gap-2 flex-wrap">
                             <button
-                              key={b.id}
                               type="button"
-                              className={`list-group-item list-group-item-action ${selectedExistingBooking?.id === b.id ? "active" : ""
-                                }`}
+                              className="btn btn-sm bk-action-confirm"
+                              style={{ borderRadius: 10 }}
+                              onClick={() => confirmAndPrintExistingBooking(b)}
+                              disabled={isLoading}
+                            >
+                              تأكيد + طباعة
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm bk-action-print"
+                              style={{ borderRadius: 10 }}
+                              onClick={() => printExistingBooking(b)}
+                              disabled={isLoading}
+                            >
+                              طباعة فقط
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm bk-action-details"
+                              style={{ borderRadius: 10 }}
                               onClick={() => setSelectedExistingBooking(b)}
                             >
-                              <div className="d-flex justify-content-between align-items-center">
-                                <div>
-                                  <div className="fw-bold">
-                                    {String(b?.publicId || b?.id || "—")}
-                                    {" — "}
-                                    {String(b?.clientName || b?.name || "بدون اسم")}
-                                  </div>
-
-                                  <div className="small opacity-75">
-                                    {String(b?.date || "—")} — {String(b?.time || "—")}
-                                    {" — "}
-                                    الموظفة: {String(b?.employeeName || "-")}
-                                  </div>
-                                </div>
-
-                                <span
-                                  className={`badge ${isPending
-                                    ? "bg-warning text-dark"
-                                    : isConfirmed
-                                      ? "bg-success"
-                                      : "bg-secondary"
-                                    }`}
-                                >
-                                  {status || "—"}
-                                </span>
-                              </div>
+                              تفاصيل
                             </button>
-                          );
-                        })}
-                      </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-                      {selectedExistingBooking ? (
-                        <div className="mt-3 d-flex gap-2 flex-wrap">
-                          {String(selectedExistingBooking?.status || "").toLowerCase() === "pending" ? (
-                            <button
-                              type="button"
-                              className="btn btn-success"
-                              disabled={isLoading}
-                              onClick={() => confirmAndPrintExistingBooking(selectedExistingBooking)}
-                            >
-                              تأكيد الحجز والدفع ثم طباعة
-                            </button>
+              {selectedExistingBooking ? (
+                <div className="bk-booking-details mt-3">
+                  <div className="bk-booking-details-title">تفاصيل الحجز</div>
+                  <div className="bk-booking-details-grid">
+                    {[
+                      ["رقم الحجز", String(selectedExistingBooking?.publicId || selectedExistingBooking?.mk || selectedExistingBooking?.id || "—")],
+                      ["اسم العميلة", String(selectedExistingBooking?.clientName || selectedExistingBooking?.name || "—")],
+                      ["رقم الجوال", String(selectedExistingBooking?.clientPhone || selectedExistingBooking?.phone || "—")],
+                      [
+                        "الخدمة",
+                        String(
+                          selectedExistingBooking?.serviceName ||
+                          selectedExistingBooking?.serviceSnapshot?.serviceNameAtBooking ||
+                          "—"
+                        ),
+                      ],
+                      ["الموظفة", String(selectedExistingBooking?.employeeName || "—")],
+                      ["التاريخ", String(selectedExistingBooking?.date || "—")],
+                      ["الوقت", String(selectedExistingBooking?.time || "—")],
+                      ["الحالة", mapBookingStatusAr(selectedExistingBooking?.status)],
+                      [
+                        "القناة",
+                        mapBookingChannelAr(
+                          selectedExistingBooking?.channel || selectedExistingBooking?.source
+                        ),
+                      ],
+                      [
+                        "المبلغ",
+                        `${Number(
+                          selectedExistingBooking?.finalPrice ??
+                          selectedExistingBooking?.total ??
+                          0
+                        ).toFixed(0)} ريال`,
+                      ],
+                    ].map(([label, value]) => (
+                      <div key={label} className="bk-booking-row">
+                        <div className="bk-booking-label">{label}</div>
+                        <div className="bk-booking-value">
+                          {label === "الحالة" ? (
+                            <span className={`bk-status-pill ${bookingStatusClass(selectedExistingBooking?.status)}`}>
+                              {value}
+                            </span>
                           ) : (
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              disabled={isLoading}
-                              onClick={() => printExistingBooking(selectedExistingBooking)}
-                            >
-                              طباعة الفاتورة
-                            </button>
+                            value
                           )}
-
-                          <button
-                            type="button"
-                            className="btn btn-outline-dark"
-                            disabled={isLoading}
-                            onClick={() => setSelectedExistingBooking(null)}
-                          >
-                            إلغاء التحديد
-                          </button>
                         </div>
-                      ) : null}
-                    </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        {/* =========================
+            Form
+        ========================= */}
+        <form onSubmit={handleSubmit}>
+          <div className="row g-3">
+            {/* left: catalog */}
+            <div className="col-12 col-lg-5">
+              <div className="card p-3 bk-panel">
+                <div className="d-flex align-items-center justify-content-between mb-2">
+                  <div style={{ fontWeight: 800 }}>
+                    <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
+                    اختيار الخدمة
+                  </div>
+                  {isHairSection ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline-light btn-sm"
+                      onClick={() => setShowHairGuide((p) => !p)}
+                      style={{ borderRadius: 12 }}
+                    >
+                      دليل أطوال الشعر
+                    </button>
                   ) : null}
                 </div>
 
-              </div>
-
-              <form className="booking-form" onSubmit={handleSubmit}>
-                <div className="row">
-                  <div className="col-md-6 mb-4">
-                    <label htmlFor="name" className="form-label">
-                      الاسم
-                    </label>
-                    <div className="input-group">
-                      <span className="input-group-text" aria-hidden="true">
-                        <FontAwesomeIcon icon={faUser} />
+                {showHairGuide ? (
+                  <div className="mb-3">
+                    <div className="d-flex gap-2 flex-wrap align-items-center mb-2">
+                      <span className="badge text-bg-secondary" style={{ borderRadius: 999 }}>
+                        Hair Guide
                       </span>
 
-                      {/* ✅ الاستقبال يكتب دائمًا */}
-                      <input
-                        type="text"
-                        className="form-control"
-                        id="name"
-                        name="name"
-                        value={formData.name}
-                        onChange={(e) =>
-                          setFormData((prev) => ({ ...prev, name: e.target.value }))
-                        }
-                        placeholder="اسم العميلة"
-                        required
-                      />
+                      {isOwner ? (
+                        <label
+                          className="btn btn-outline-info btn-sm mb-0"
+                          style={{ borderRadius: 12, cursor: "pointer" }}
+                        >
+                          {uploadingGuide ? "جاري الرفع..." : "رفع صورة جديدة"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) uploadHairGuide(f);
+                            }}
+                            disabled={uploadingGuide}
+                          />
+                        </label>
+                      ) : (
+                        <span className="text-muted" style={{ fontSize: 12 }}>
+                          رفع الصورة للإدارة فقط
+                        </span>
+                      )}
                     </div>
-                  </div>
-
-                  <div className="col-md-6 mb-4">
-                    <label htmlFor="phone" className="form-label">
-                      رقم الجوال
-                    </label>
-                    <div className="input-group">
-                      <span className="input-group-text">
-                        <FontAwesomeIcon icon={faPhone} />
-                      </span>
-
-                      {/* ✅ الاستقبال يكتب دائمًا */}
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        className="form-control"
-                        id="phone"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={(e) => {
-                          const digitsOnly = e.target.value
-                            .replace(/\D/g, "")
-                            .slice(0, 10);
-                          setFormData((prev) => ({ ...prev, phone: digitsOnly }));
-                        }}
-                        placeholder="05xxxxxxxx"
-                        required
-                        maxLength={10}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="col-12 mb-4">
-                    <label htmlFor="bookingDate" className="form-label">
-                      تاريخ الحجز
-                    </label>
 
                     <div
-                      className="input-group"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() =>
-                        dateRef.current?.showPicker?.() || dateRef.current?.focus()
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          dateRef.current?.showPicker?.() || dateRef.current?.focus();
-                        }
+                      className="p-2"
+                      style={{
+                        borderRadius: 14,
+                        background: "rgba(255,255,255,0.06)",
+                        overflow: "hidden",
                       }}
                     >
-                      <span className="input-group-text" aria-hidden="true">
-                        <FontAwesomeIcon icon={faCalendarAlt} />
-                      </span>
-
-                      <input
-                        ref={dateRef}
-                        type="date"
-                        className="form-control"
-                        id="bookingDate"
-                        value={bookingDate}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          const minDate = todayISO();
-
-                          if (v && v < minDate) {
-                            setBookingDate(minDate);
-                            openModal({
-                              title: "تاريخ غير صالح",
-                              message: "لا يمكن الحجز على يوم سابق. تم ضبط التاريخ على اليوم.",
-                              variant: "danger",
-                              confirmText: "تمام",
-                            });
-                            return;
-                          }
-
-                          setBookingDate(v);
-
-
-                          setFormData((prev) => ({
-                            ...prev,
-                            items: (prev.items || []).map((it) => {
-                              const sv = getServiceById(String(it.serviceId || "").trim());
-                              const basePatch = {
-                                ...it,
-                                date: v,
-                                time: "",
-                                employeeId: "",
-                                employeeUid: "",
-                                employeeName: "",
-                                locked: false,
-                              };
-
-                              if (sv) {
-                                const eff = pickEffectivePrice({
-                                  basePrice: Number(sv.basePrice || 0),
-                                  seasonPrice:
-                                    Number((sv as any).seasonPrice || 0) || undefined,
-                                  appSettings,
-                                  dateISO: v,
-                                });
-
-                                const price = Number(eff.price || 0);
-                                return {
-                                  ...basePatch,
-                                  basePrice: price,
-                                  priceText: `${price} ريال`,
-                                };
-                              }
-
-                              return basePatch;
-                            }),
-                          }));
-                        }}
-                        min={todayISO()}
+                      <img
+                        src={hairGuideUrl}
+                        alt="hair guide"
+                        style={{ width: "100%", borderRadius: 12, display: "block" }}
                       />
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="row g-2">
+                  <div className="col-12">
+                    <label className="form-label">القسم</label>
+                    <select
+                      className="form-select"
+                      value={selectedSectionId}
+                      onChange={handleSectionChange}
+                    >
+                      <option value="">اختاري قسم...</option>
+                      {sectionOptions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.title || s.id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-12">
+                    <label className="form-label">التصنيف</label>
+                    <select
+                      className="form-select"
+                      value={selectedCategory}
+                      onChange={handleCategoryChange}
+                      disabled={!selectedSectionId}
+                    >
+                      <option value="">الكل</option>
+                      {categoryOptions.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-12">
+                    <label className="form-label">الخدمة</label>
+                    <select
+                      className="form-select"
+                      value={servicePicker}
+                      onChange={(e) => setServicePicker(String(e.target.value || ""))}
+                      disabled={!selectedSectionId}
+                    >
+                      <option value="">اختاري خدمة...</option>
+                      {servicesGrouped.map(([catName, arr]) => (
+                        <optgroup key={catName} label={catName}>
+                          {arr.map((sv) => (
+                            <option key={sv.id} value={sv.id}>
+                              {sv.name} — {servicePickerPriceText(sv)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-12 d-grid mt-1">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{ borderRadius: 12 }}
+                      disabled={!servicePicker}
+                      onClick={() => addServiceToCart(servicePicker)}
+                    >
+                      + إضافة للسلة
+                    </button>
+                  </div>
+
+                  <div className="col-12 mt-2">
+                    <div className="alert alert-secondary mb-0 py-2" style={{ borderRadius: 12 }}>
+                      <div style={{ fontSize: 12, opacity: 0.9 }}>
+                        السعر يتحدد حسب تاريخ الحجز (سعر موسم/عادي) ✅
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* إضافة خدمة */}
-                <div
-                  className="mb-4 bk-field"
-                  style={{
-                    border: "1px solid #eee",
-                    padding: "15px",
-                    borderRadius: "12px",
-                    background: "#fafafa",
-                  }}
-                >
-                  <label className="form-label" style={{ fontWeight: "bold" }}>
-                    أضيفي خدمة جديدة
-                  </label>
+                {/* Future availability (helper) */}
+                <hr className="my-3" />
+                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                  <div style={{ fontWeight: 800, color: "#0d0d0d" }}>بحث أوقات للأيام القادمة</div>
+                  <span className="text-muted" style={{ fontSize: 12 }}>يُظهر أول 5 أيام متاحة</span>
+                </div>
 
-                  <div className="row g-2">
-                    <div className="col-md-4">
-                      <select
-                        className="form-select dash-select"
-                        value={selectedSectionId}
-                        onChange={(e) => handleSectionChange(e as any)}
-                        disabled={!bookingDate || catalogLoading}
-                      >
-                        <option value="">اختاري القسم</option>
-                        {sectionOptions.map((sec) => (
-                          <option key={sec.id} value={sec.id}>
-                            {sec.title}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                <div className="row g-2 align-items-end">
+                  <div className="col-12">
+                    <select
+                      className="form-select"
+                      value={futureAnyStaff ? "any" : "one"}
+                      onChange={(e) => setFutureAnyStaff(e.target.value === "any")}
+                    >
+                      <option value="any">أي موظفة للخدمة</option>
+                      <option value="one">موظفة محددة</option>
+                    </select>
+                  </div>
 
-                    <div className="col-md-4">
-                      <select
-                        className="form-select dash-select"
-                        value={selectedCategory}
-                        onChange={(e) => handleCategoryChange(e as any)}
-                        disabled={!bookingDate || !selectedSectionId || catalogLoading}
-                      >
-                        <option value="">اختاري التصنيف</option>
-                        {categoryOptions.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="col-md-4">
-                      <div className="input-group">
-                        <select
-                          className="form-select dash-select"
-                          value={servicePicker}
-                          onChange={(e) => setServicePicker(e.target.value)}
-                          disabled={!bookingDate || !selectedSectionId}
-                        >
-                          <option value="">اختاري الخدمة</option>
-                          {servicesGrouped.map(([cat, items]) => (
-                            <optgroup key={cat} label={cat}>
-                              {items.map((sv) => (
-                                <option key={sv.id} value={sv.id}>
-                                  {sv.name} — {servicePickerPriceText(sv)}
-                                </option>
+                  {!futureAnyStaff ? (
+                    <div className="col-12">
+                      <label className="form-label">اختاري الموظفة</label>
+                      {!servicePicker ? (
+                        <div className="alert alert-danger mb-0 py-2" style={{ borderRadius: 12 }}>
+                          اختاري الخدمة أولاً ثم اختاري الموظفة.
+                        </div>
+                      ) : staffLoadingByService[String(servicePicker || "").trim()] ? (
+                        <div className="small text-muted mt-1">
+                          <FontAwesomeIcon icon={faSpinner} spin className="me-2" />
+                          جاري تحميل الموظفات...
+                        </div>
+                      ) : staffErrorByService[String(servicePicker || "").trim()] ? (
+                        <div className="small text-warning mt-1">
+                          {staffErrorByService[String(servicePicker || "").trim()]}
+                        </div>
+                      ) : (
+                        <>
+                          <input
+                            className="form-control"
+                            value={futureStaffNameQuery}
+                            onChange={(e) => {
+                              const v = String(e.target.value || "");
+                              setFutureStaffNameQuery(v);
+                              setFutureSelectedEmployeeKey("");
+                            }}
+                            placeholder="ابحثي باسم الموظفة..."
+                            disabled={!futureStaffOptions.length}
+                          />
+                          {futureStaffNameQuery && filteredFutureStaffOptions.length ? (
+                            <div className="mt-2 d-flex flex-wrap gap-2">
+                              {filteredFutureStaffOptions.slice(0, 8).map((st) => (
+                                <button
+                                  key={st.key}
+                                  type="button"
+                                  className="btn btn-outline-light btn-sm"
+                                  onClick={() => {
+                                    setFutureStaffNameQuery(st.name);
+                                    setFutureSelectedEmployeeKey(st.key);
+                                  }}
+                                >
+                                  {st.name}
+                                </button>
                               ))}
-                            </optgroup>
-                          ))}
-                        </select>
-                        {/* =========================
-    ✅ Future availability UI
-========================= */}
-                        <div style={{ marginTop: 12, padding: 12, border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12 }}>
-                          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                            <strong className="qs-black">الأوقات المتاحة للأيام القادمة</strong>
+                            </div>
+                          ) : null}
+                          <div style={{ fontSize: 12, opacity: 0.75 }} className="mt-1">
+                            ابحثي باسم الموظفة وسيتم ربط EmployeeKey تلقائيًا.
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
 
-                            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                              <span>{"الأيام:"}</span>
-                              <input
-                                type="number"
-                                min={1}
-                                max={60}
-                                value={futureDays}
-                                onChange={(e) => setFutureDays(Number((e.target as any).value || 14))}
-                                style={{ width: 80 }}
-                              />
-                            </label>
+                  <div className="col-12 d-grid">
+                    <button
+                      type="button"
+                      className="btn btn-outline-info"
+                      style={{ borderRadius: 12 }}
+                      onClick={runFutureAvailabilitySearch}
+                      disabled={futureLoading}
+                    >
+                      {futureLoading ? "جاري البحث..." : "بحث"}
+                    </button>
+                  </div>
 
-                            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                              <input
-                                type="checkbox"
-                                checked={futureAnyStaff}
-                                onChange={(e) => setFutureAnyStaff((e.target as any).checked)}
-                              />
-                              <span>أي موظفة</span>
-                            </label>
+                  {futureMsg ? (
+                    <div className="col-12">
+                      <div className="alert alert-secondary mb-0 py-2" style={{ borderRadius: 12 }}>
+                        {futureMsg}
+                      </div>
+                    </div>
+                  ) : null}
 
-                            {!futureAnyStaff && (
+                  {futureResult.length ? (
+                    <div className="col-12">
+                      <div className="bk-future-inline">
+                        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                          <div style={{ fontWeight: 800 }}>نتائج البحث</div>
+                          <button
+                            type="button"
+                            className="btn btn-sm bk-time-pill"
+                            onClick={() => {
+                              const nearestDate = String(futureResult[0]?.date || "").trim();
+                              const nearestTime = String(futureResult[0]?.times?.[0] || "").trim();
+                              if (!nearestDate || !nearestTime) return;
+
+                              setBookingDate(nearestDate);
+                              openModal({
+                                title: "تم اختيار أقرب موعد ✅",
+                                message: `التاريخ: ${nearestDate} - الوقت: ${nearestTime}`,
+                                variant: "info",
+                                confirmText: "تمام",
+                              });
+                            }}
+                          >
+                            اختيار أقرب موعد
+                          </button>
+                        </div>
+
+                        <div className="table-responsive">
+                          <table className="table align-middle mb-0 bk-future-table">
+                            <thead>
+                              <tr>
+                                <th>التاريخ</th>
+                                <th>أوقات متاحة</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {futureResult.map((r) => (
+                                <tr key={r.date}>
+                                  <td>{r.date}</td>
+                                  <td>
+                                    <div className="d-flex gap-2 flex-wrap">
+                                      {(r.times || []).map((t) => (
+                                        <button
+                                          key={t}
+                                          type="button"
+                                          className="btn btn-sm bk-time-pill"
+                                          style={{ borderRadius: 999 }}
+                                          onClick={() => {
+                                            setBookingDate(r.date);
+                                            openModal({
+                                              title: "تم اختيار الموعد ✅",
+                                              message: `التاريخ: ${r.date} - الوقت: ${t}`,
+                                              variant: "info",
+                                              confirmText: "تمام",
+                                            });
+                                          }}
+                                        >
+                                          {t}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {/* right: cart + details */}
+            <div className="col-12 col-lg-7">
+              <div className="card p-3 bk-panel">
+                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                  <div style={{ fontWeight: 800 }}>
+                    <FontAwesomeIcon icon={faUser} className="me-2" />
+                    بيانات العميلة
+                  </div>
+
+                  <span className="badge text-bg-dark" style={{ borderRadius: 999 }}>
+                    عدد الخدمات: {(formData.items || []).length}
+                  </span>
+                </div>
+
+                <div className="row g-2 mb-3">
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">اسم العميلة</label>
+                    <input
+                      name="name"
+                      value={formData.name}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="مثال: نورة"
+                      required
+                    />
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">رقم الجوال</label>
+                    <input
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="05xxxxxxxx"
+                      required
+                    />
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label">ملاحظة (اختياري)</label>
+                    <textarea
+                      name="note"
+                      value={formData.note}
+                      onChange={handleChange}
+                      className="form-control"
+                      rows={2}
+                      placeholder="ملاحظة للصالون..."
+                    />
+                  </div>
+                </div>
+
+                {/* Cart */}
+                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                  <div style={{ fontWeight: 800 }}>
+                    <FontAwesomeIcon icon={faUserTie} className="me-2" />
+                    السلة (اختيار الموظفة والوقت)
+                  </div>
+
+                  <div className="d-flex gap-2 flex-wrap">
+                    <span className="badge text-bg-secondary" style={{ borderRadius: 999 }}>
+                      الإجمالي: {basePrice.toFixed(0)} ريال
+                    </span>
+                    {applied.offer ? (
+                      <span className="badge text-bg-success" style={{ borderRadius: 999 }}>
+                        بعد الخصم: {finalPrice.toFixed(0)} ريال
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                {(formData.items || []).length === 0 ? (
+                  <div className="alert alert-secondary mb-0" style={{ borderRadius: 12 }}>
+                    ما فيه خدمات في السلة. اختاري خدمة من اليسار 👈
+                  </div>
+                ) : (
+                  <div className="bk-cart-list">
+                    {(formData.items || []).map((it, idx) => {
+                      const sid = String(it.serviceId || "").trim();
+                      const staffList = (staffByService[sid] || []) as StaffPublicWithId[];
+                      const busy = busyByItem[it.id] || emptyBusyState();
+
+                      return (
+                        <div key={it.id} className="bk-cart-item">
+                          <div className="bk-cart-item-head">
+                            <div>
+                              <div className="bk-cart-service-title">
+                                <span className="bk-cart-index">{idx + 1}</span>
+                                {it.serviceName}
+                              </div>
+                              <div className="bk-cart-service-meta">
+                                {it.durationMin} دقيقة — {it.date}
+                              </div>
+                            </div>
+                            <div className="bk-cart-price">
+                              {Number(it.basePrice || 0).toFixed(0)} ريال
+                            </div>
+                          </div>
+
+                          <div className="bk-cart-fields">
+                            <div>
+                              <label className="form-label">الموظفة</label>
+                              {staffLoadingByService[sid] ? (
+                                <div className="small text-muted">
+                                  <FontAwesomeIcon icon={faSpinner} spin className="me-2" />
+                                  تحميل الموظفات...
+                                </div>
+                              ) : staffErrorByService[sid] ? (
+                                <div className="small text-warning">{staffErrorByService[sid]}</div>
+                              ) : (
+                                <select
+                                  className="form-select bk-cart-select"
+                                  value={it.employeeId}
+                                  disabled={!canEditByLockedPrev(formData.items || [], it.id)}
+                                  onChange={(e) => {
+                                    const empId = String(e.target.value || "").trim();
+                                    const st = staffList.find((x) => String(x.id) === empId);
+                                    const empUid = String((st as any)?.linkedUid || "").trim();
+                                    const empName = String((st as any)?.name || "").trim();
+
+                                    updateItem(it.id, {
+                                      employeeId: empId,
+                                      employeeUid: empUid,
+                                      employeeName: empName,
+                                      time: "",
+                                      locked: false,
+                                    });
+                                  }}
+                                >
+                                  <option value="">اختاري موظفة...</option>
+                                  {staffList.map((st) => (
+                                    <option key={String(st.id)} value={String(st.id)}>
+                                      {String((st as any)?.name || st.id)}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="form-label">الوقت</label>
                               <select
-                                value={futureSelectedEmployeeKey}
-                                onChange={(e) => setFutureSelectedEmployeeKey(String((e.target as any).value || ""))}
+                                className="form-select bk-cart-select"
+                                value={it.time}
+                                disabled={!it.employeeId || !canEditByLockedPrev(formData.items || [], it.id)}
+                                onChange={(e) => {
+                                  const t = String(e.target.value || "").trim();
+                                  updateItem(it.id, { time: t, locked: false });
+                                  validatePickedTime(it.id, t);
+                                }}
                               >
-                                <option value="">اختر موظفة</option>
-                                {(staffByService[String(servicePicker || "").trim()] || []).map((st: any) => {
-                                  const key = String(st?.linkedUid || st?.uid || "").trim() || String(st?.id || "").trim();
-                                  const name = String(st?.name || "موظفة");
+                                <option value="">اختاري وقت...</option>
+                                {timeSlots.map((s) => {
+                                  const t = s.value24;
+                                  const dis = busy.disabledStartTimes?.has(t);
+                                  const meta = busy.bookedMetaByTime?.[t];
                                   return (
-                                    <option key={key} value={key}>
-                                      {name}
+                                    <option key={t} value={t} disabled={dis}>
+                                      {s.label12}{meta ? ` — ${meta}` : ""}
                                     </option>
                                   );
                                 })}
                               </select>
-                            )}
 
-                            <button
-                              type="button"
-                              className="qs-btn"
-                              onClick={runFutureAvailabilitySearch}
-                              disabled={futureLoading}
-                              title="يعرض أقرب أوقات متاحة حسب مدة الخدمة"
-                            >
-
-                              {futureLoading ? "جاري البحث..." : "عرض المتاح"}
-                            </button>
-
-                            {futureMsg ? <span style={{ opacity: 0.85 }}>{futureMsg}</span> : null}
+                              {busy.loading ? (
+                                <div className="small mt-1 bk-availability-loading">
+                                  <FontAwesomeIcon icon={faSpinner} spin className="me-2" />
+                                  تحميل التوفر...
+                                </div>
+                              ) : busy.hint ? (
+                                <div className="small mt-1 bk-availability-hint">{busy.hint}</div>
+                              ) : null}
+                            </div>
                           </div>
 
-                        </div>
+                          <div className="bk-cart-item-footer">
+                            <div>
+                              {it.locked ? (
+                                <span className="badge text-bg-success" style={{ borderRadius: 999 }}>
+                                  ✅ مؤكد
+                                </span>
+                              ) : null}
+                            </div>
 
-                        <button
-                          type="button"
-                          className="btn btn-dark"
-                          disabled={!servicePicker}
-                          onClick={() => addServiceToCart(servicePicker)}
-                        >
-                          إضافة
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedSectionId && isHairSection && (
-                    <div
-                      className="mt-3"
-                      style={{
-                        border: "1px dashed rgba(13,13,13,0.18)",
-                        borderRadius: 14,
-                        padding: 12,
-                      }}
-                    >
-                      <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                        <div style={{ fontWeight: 900, color: "#0D0D0D" }}>
-                          📏 دليل أطوال الشعر
-                          <div className="small text-muted" style={{ fontWeight: 700 }}>
-                            اختاري طول الشعر من الصورة قبل إكمال الحجز
-                          </div>
-                        </div>
-
-                        <div className="d-flex align-items-center gap-2">
-                          <button
-                            type="button"
-                            className="btn btn-outline-dark btn-sm"
-                            onClick={() => setShowHairGuide((v) => !v)}
-                          >
-                            {showHairGuide ? "إخفاء الصورة" : "عرض الصورة"}
-                          </button>
-
-                          {isOwner && (
-                            <>
-                              <input
-                                id="hairGuideUploadInput"
-                                type="file"
-                                accept="image/*"
-                                style={{ display: "none" }}
-                                onChange={(e) => {
-                                  const f = e.target.files?.[0];
-                                  if (f) uploadHairGuide(f);
-                                  e.currentTarget.value = "";
-                                }}
-                              />
+                            <div className="d-flex gap-2 flex-wrap">
                               <button
                                 type="button"
-                                className="btn btn-dark btn-sm"
-                                disabled={uploadingGuide}
-                                onClick={() =>
-                                  document
-                                    .getElementById("hairGuideUploadInput")
-                                    ?.click()
+                                className="btn btn-success btn-sm"
+                                style={{ borderRadius: 10 }}
+                                disabled={
+                                  !it.employeeId ||
+                                  !it.time ||
+                                  !canEditByLockedPrev(formData.items || [], it.id) ||
+                                  isLoading
                                 }
+                                onClick={async () => {
+                                  const check = await checkOneItemSlot(it);
+                                  if (!check.ok) {
+                                    openModal({
+                                      title: "الوقت غير متاح",
+                                      message: `خدمة "${it.serviceName}": ${check.msg}`,
+                                      variant: "danger",
+                                      confirmText: "تمام",
+                                    });
+                                    updateItem(it.id, { time: "", locked: false });
+                                    return;
+                                  }
+                                  updateItem(it.id, { locked: true });
+                                }}
                               >
-                                {uploadingGuide ? "جاري الرفع..." : "رفع صورة"}
+                                تأكيد الوقت
                               </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
 
-                      {showHairGuide && (
-                        <div className="mt-3 text-center">
-                          <img
-                            src={hairGuideUrl}
-                            alt="دليل أطوال الشعر"
-                            style={{
-                              width: "100%",
-                              maxWidth: 520,
-                              borderRadius: 16,
-                              boxShadow: "0 10px 28px rgba(0,0,0,0.14)",
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* الخدمات المختارة */}
-                <div className="mb-4">
-                  <label className="form-label" style={{ fontWeight: "bold" }}>
-                    الخدمات المختارة
-                  </label>
-
-                  {!!(formData.items || []).length ? (
-                    <div className="mt-2">
-                      {(formData.items || []).map((it) => {
-                        const busy = busyByItem[it.id] || emptyBusyState();
-                        const itemsList = formData.items || [];
-                        const canEditThis = canEditByLockedPrev(itemsList, it.id);
-                        const isLocked = !!it.locked;
-
-                        const dur = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
-                        const greenStarts = getGreenStartTimes({
-                          allSlots: timeSlots,
-                          slotStepMin,
-                          durationMin: dur,
-                          bufferMin,
-                          takenAll: busy.busyTimes,
-                        });
-
-                        const serviceStaff = staffByService[it.serviceId] || [];
-                        const dateISO = String(it.date || "").trim();
-                        const availableStaff = serviceStaff.filter((st) =>
-                          isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true })
-                        );
-                        const staffLoading = !!staffLoadingByService[it.serviceId];
-                        const staffError = staffErrorByService[it.serviceId] || "";
-                        const staffUnavailableMsg =
-                          !staffLoading && !staffError && serviceStaff.length && !availableStaff.length
-                            ? "لا توجد موظفات متاحات لهذا التاريخ."
-                            : "";
-
-                        if (isLocked) {
-                          return (
-                            <div
-                              key={it.id}
-                              className="mb-3"
-                              style={{
-                                background: "#f0fff4",
-                                borderLeft: "4px solid #28a745",
-                                padding: "15px",
-                                borderRadius: "8px",
-                                boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-                              }}
-                            >
-                              <div className="d-flex justify-content-between align-items-start">
-                                <div>
-                                  <p
-                                    style={{
-                                      margin: 0,
-                                      fontWeight: "bold",
-                                      color: "#155724",
-                                      fontSize: "1.1rem",
-                                    }}
-                                  >
-                                    ✓ تم تأكيد هذه الخدمة: {it.serviceName}
-                                  </p>
-                                  <p style={{ margin: "5px 0 0 0", color: "#155724" }}>
-                                    مع الموظفة <strong>{it.employeeName}</strong> الساعة{" "}
-                                    <strong>{it.time}</strong>
-                                  </p>
-                                  <p
-                                    style={{
-                                      margin: "5px 0 0 0",
-                                      fontSize: "0.9rem",
-                                      color: "#155724",
-                                      opacity: 0.8,
-                                    }}
-                                  >
-                                    المدة: {dur} دقيقة | السعر: {it.priceText}
-                                  </p>
-                                </div>
-
+                              {sequentialBooking && busy.suggestedSlot && !it.time ? (
                                 <button
                                   type="button"
-                                  className="btn btn-link p-0"
-                                  style={{
-                                    color: "#155724",
-                                    textDecoration: "underline",
-                                    fontWeight: "bold",
-                                  }}
+                                  className="btn btn-outline-info btn-sm"
+                                  style={{ borderRadius: 10 }}
+                                  disabled={!it.employeeId}
                                   onClick={() => {
-                                    const list = formData.items || [];
-                                    const idx = list.findIndex((x) => x.id === it.id);
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      items: (prev.items || []).map((x, i) => {
-                                        if (i === idx) return { ...x, locked: false };
-                                        if (i > idx)
-                                          return {
-                                            ...x,
-                                            locked: false,
-                                            time: "",
-                                            employeeId: "",
-                                            employeeUid: "",
-                                            employeeName: "",
-                                          };
-                                        return x;
-                                      }),
-                                    }));
+                                    updateItem(it.id, { time: busy.suggestedSlot || "", locked: false });
+                                    validatePickedTime(it.id, busy.suggestedSlot || "");
                                   }}
                                 >
-                                  تعديل
+                                  أقرب وقت: {busy.suggestedSlot}
                                 </button>
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div
-                            key={it.id}
-                            className="mb-3 p-3"
-                            style={{
-                              border: "1px solid rgba(13,13,13,0.12)",
-                              borderRadius: 12,
-                              background: canEditThis ? "#fff" : "rgba(245,245,244,0.75)",
-                              opacity: canEditThis ? 1 : 0.7,
-                            }}
-                          >
-                            <div className="d-flex justify-content-between align-items-center mb-3">
-                              <h5 style={{ margin: 0, fontWeight: "bold" }}>
-                                {it.serviceName}{" "}
-                                <span
-                                  className="badge bg-secondary ms-2"
-                                  style={{ fontSize: "0.7rem" }}
-                                >
-                                  {it.priceText}
-                                </span>
-                              </h5>
+                              ) : null}
 
                               <button
                                 type="button"
                                 className="btn btn-outline-danger btn-sm"
+                                style={{ borderRadius: 10 }}
                                 onClick={() => removeServiceFromCart(it.id)}
+                                disabled={isLoading}
                               >
                                 حذف
                               </button>
                             </div>
-
-                            {!canEditThis ? (
-                              <div
-                                className="p-3 text-center"
-                                style={{
-                                  background: "#fff9db",
-                                  borderRadius: "8px",
-                                  border: "1px solid #ffe066",
-                                }}
-                              >
-                                <p
-                                  style={{
-                                    margin: 0,
-                                    fontWeight: "bold",
-                                    color: "#856404",
-                                  }}
-                                >
-                                  ⚠️ كمّلي الخدمة اللي قبلها عشان يفتح هذا الكرت ✅
-                                </p>
-                              </div>
-                            ) : (
-                              <div className="row g-3">
-                                <div className="col-md-6">
-                                  <label className="form-label small fw-bold">
-                                    1. اختاري الموظفة
-                                  </label>
-                                  <div className="input-group">
-                                    <span className="input-group-text">
-                                      <FontAwesomeIcon icon={faUserTie} />
-                                    </span>
-
-                                    <select
-                                      className="form-select"
-                                      value={it.employeeId}
-                                      onChange={(e) => {
-                                        const empId = e.target.value;
-                                        const emp = availableStaff.find((x) => x.id === empId);
-                                        updateItem(it.id, {
-                                          employeeId: empId,
-                                          employeeUid: emp?.linkedUid || "",
-                                          employeeName: emp?.name || "",
-                                          time: "",
-                                        });
-                                      }}
-                                    >
-                                      <option value="">اختاري الموظفة</option>
-                                      {availableStaff.map((emp) => (
-                                        <option key={emp.id} value={emp.id}>
-                                          {emp.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
-                                  {staffLoading && (
-                                    <div className="small text-muted mt-1">
-                                      <FontAwesomeIcon icon={faSpinner} spin /> جاري التحميل...
-                                    </div>
-                                  )}
-                                  {staffError && (
-                                    <div className="text-danger small mt-1">{staffError}</div>
-                                  )}
-                                  {staffUnavailableMsg && (
-                                    <div className="text-warning small mt-1">
-                                      {staffUnavailableMsg}
-                                    </div>
-                                  )}
-                                </div>
-
-                                {it.employeeId && (
-                                  <div className="col-12">
-                                    <label className="form-label small fw-bold">
-                                      2. اختاري الوقت المتاح
-                                    </label>
-
-
-
-                                    <div className="bk-time-grid">
-                                      {filterSlotsByServiceEnd(
-                                        timeSlots,
-                                        closeTime,
-                                        Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-                                        bufferMin,
-                                        20
-                                      )
-                                        .filter((t) => !busy.disabledStartTimes.has(t) || it.time === t)
-                                        .map((t) => {
-                                          const suggested = String(busy.suggestedSlot || "").trim();
-                                          const disabled = busy.disabledStartTimes.has(t);
-                                          const isGreen = greenStarts.has(t) && !disabled;
-                                          const isSelected = it.time === t;
-                                          const isSequentialSuggested =
-                                            sequentialBooking && suggested === t && !disabled;
-
-                                          const bookedLabel = busy.bookedMetaByTime[t] || "";
-                                          const title = bookedLabel
-                                            ? bookedLabel
-                                            : disabled
-                                              ? "غير متاح"
-                                              : "متاح";
-
-                                          return (
-                                            <button
-                                              key={t}
-                                              type="button"
-                                              className={[
-                                                "bk-time-chip",
-                                                isGreen && !sequentialBooking ? "is-green" : "",
-                                                isSequentialSuggested
-                                                  ? "is-sequential-suggested"
-                                                  : "",
-                                                disabled ? "is-disabled" : "",
-                                                isSelected ? "is-selected" : "",
-                                              ].join(" ")}
-                                              disabled={disabled || busy.loading}
-                                              title={title}
-                                              onClick={() => {
-                                                updateItem(it.id, { time: t });
-                                                validatePickedTime(it.id, t);
-                                              }}
-                                            >
-                                              {t}
-                                              {bookedLabel && (
-                                                <span
-                                                  style={{
-                                                    display: "block",
-                                                    fontSize: 10,
-                                                    opacity: 0.85,
-                                                    marginTop: 3,
-                                                  }}
-                                                >
-                                                  محجوز
-                                                </span>
-                                              )}
-                                            </button>
-                                          );
-                                        })}
-                                    </div>
-
-                                    {busy.loading && (
-                                      <div className="small text-muted mt-2">
-                                        <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات...
-                                      </div>
-                                    )}
-
-                                    {busy.hint && (
-                                      <div className="small text-warning mt-2">{busy.hint}</div>
-                                    )}
-
-                                    {it.time && (
-                                      <div className="mt-3 text-center">
-                                        <button
-                                          type="button"
-                                          className="btn btn-success w-100 py-2 fw-bold"
-                                          onClick={() => updateItem(it.id, { locked: true })}
-                                        >
-                                          تأكيد الموظفة والوقت لهذه الخدمة ✅
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div
-                      className="p-4 text-center"
-                      style={{
-                        border: "2px dashed #ddd",
-                        borderRadius: "12px",
-                        background: "#fdfdfd",
-                      }}
-                    >
-                      <p className="text-muted m-0">اختاري خدمة من القائمة أعلاه للبدء ✨</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mb-4">
-                  <label htmlFor="note" className="form-label">
-                    ملاحظة (اختياري)
-                  </label>
-                  <textarea
-                    className="form-control"
-                    id="note"
-                    name="note"
-                    value={formData.note}
-                    onChange={handleChange}
-                    rows={3}
-                    placeholder="أي ملاحظة…"
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label className="form-label">كود الخصم (اختياري)</label>
-                  <div className="input-group">
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={couponCode}
-                      onChange={(e) => setCouponCode(e.target.value)}
-                      placeholder="اكتبي الكود هنا"
-                      disabled={!formData.items?.length || isLoading}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-dark"
-                      onClick={handleApplyCoupon}
-                      disabled={!formData.items?.length || isLoading}
-                    >
-                      تطبيق
-                    </button>
+                        </div>
+                      );
+                    })}
                   </div>
+                )}
 
-                  {offerMsg && (
-                    <div
-                      className={`small mt-2 ${offerMsg.includes("✅") ? "text-success" : "text-danger"
-                        }`}
-                    >
-                      {offerMsg}
+                {/* Coupon */}
+                <div className="mt-2">
+                  <div className="row g-2 align-items-end">
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">كود خصم (اختياري)</label>
+                      <input
+                        className="form-control"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(String(e.target.value || ""))}
+                        placeholder="مثال: SALE10"
+                        disabled={isLoading}
+                      />
                     </div>
-                  )}
-                </div>
 
-                <div className="booking-summary mb-4 qs-black">
-                  <div className="d-flex justify-content-between">
-                    <span>السعر</span>
-                    <strong>{basePrice ? `${basePrice} ريال` : "—"}</strong>
-                  </div>
-
-                  {applied.offer && (
-                    <div className="d-flex justify-content-between mt-1">
-                      <span>الخصم</span>
-                      <strong>-{Number(applied.discountAmount || 0)} ريال</strong>
+                    <div className="col-12 col-md-3 d-grid">
+                      <button
+                        type="button"
+                        className="btn btn-outline-light"
+                        style={{ borderRadius: 12 }}
+                        onClick={handleApplyCoupon}
+                        disabled={isLoading}
+                      >
+                        تطبيق
+                      </button>
                     </div>
-                  )}
 
-                  <div className="d-flex justify-content-between mt-2">
-                    <span>الإجمالي</span>
-                    <strong>{finalPrice ? `${finalPrice} ريال` : "—"}</strong>
-                  </div>
-
-                  <div className="small text-muted mt-2">
-                    الاستقبال يدخل بيانات العميلة يدويًا ✅ — والحجز الأونلاين تقدر تتعامل معه من البحث فوق.
+                    <div className="col-12 col-md-3">
+                      {offerMsg ? (
+                        <div
+                          className="alert alert-secondary mb-0 py-2"
+                          style={{ borderRadius: 12, fontSize: 13 }}
+                        >
+                          {offerMsg}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  className="btn btn-primary w-100 booking-submit-btn"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
-                      <FontAwesomeIcon icon={faSpinner} spin /> جاري تأكيد الحجز…
-                    </>
-                  ) : (
-                    "تأكيد الحجز النهائي (الاستقبال)"
-                  )}
-                </button>
+                {/* Submit */}
+                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+                  <div style={{ fontSize: 13, opacity: 0.85 }}>
+                    عند الحفظ: يتم إنشاء الحجوزات بالحالة <b>pending</b> ثم يتم الطباعة من صفحة النجاح.
+                  </div>
 
-                <div className="small text-muted mt-3 text-center">
-                  هذا الحجز يتم بواسطة الاستقبال ✨
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* =========================
-    ✅ Future Availability Modal
-========================= */}
-      {futureModalOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.45)",
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          onClick={() => setFutureModalOpen(false)}
-        >
-          <div
-            style={{
-              width: "min(700px, 95vw)",
-              maxHeight: "80vh",
-              overflowY: "auto",
-              background: "white",
-              borderRadius: 16,
-              padding: 20,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-              <h3 style={{ margin: 0 }}>الأوقات المتاحة</h3>
-
-              <button onClick={() => setFutureModalOpen(false)}>
-                إغلاق
-              </button>
-            </div>
-
-            {futureResult.map((d) => (
-              <div
-                key={d.date}
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  background: "rgba(0,0,0,0.04)",
-                  marginBottom: 10,
-                }}
-              >
-                <div style={{ fontWeight: 800, marginBottom: 6 }}>
-                  {d.date}
-                </div>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {d.times.map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => {
-                        setBookingDate(d.date);
-                        setFutureModalOpen(false);
-                      }}
-
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: 999,
-                        border: "1px solid rgba(0,0,0,0.1)",
-                        background: "white",
-                        cursor: "pointer",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {t}
-                    </button>
-                  ))}
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ borderRadius: 14, minWidth: 200 }}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <FontAwesomeIcon icon={faSpinner} spin className="me-2" />
+                        جاري الحفظ...
+                      </>
+                    ) : (
+                      "حفظ الحجز الداخلي"
+                    )}
+                  </button>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
-        </div>
-      )}
+        </form>
 
-    </div>
-  );
+        </div>
+      </div>
+    </div>);
 };
 
 export default BookingInternal;
