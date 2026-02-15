@@ -314,7 +314,8 @@ service cloud.firestore {
         || isStaff()
         || (signedIn() && resource.data.userId == request.auth.uid);
 
-      allow update, delete: if canEditBookings();
+      allow update: if canEditBookings();
+      allow delete: if signedIn() && (isBootstrapAdmin() || isOwner());
     }
 
     /* =========================
@@ -349,8 +350,13 @@ service cloud.firestore {
         || isSignedInClientBookingCreate()
         || (signedIn() && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]));
 
-      allow update, delete: if signedIn() && (
+      allow update: if signedIn() && (
         isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
+      );
+
+      // Permanent booking delete is restricted to owner only (and bootstrap admin).
+      allow delete: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) == "owner"
       );
     }
 

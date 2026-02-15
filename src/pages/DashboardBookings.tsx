@@ -312,6 +312,24 @@ export default function DashboardBookings() {
     }
   };
 
+  const handleDeleteBooking = async (b: Booking) => {
+    if (uiRole !== "owner") {
+      alert("الحذف النهائي متاح للمالك فقط");
+      return;
+    }
+
+    const ref = b.publicId || b.id.slice(0, 6);
+    const ok = window.confirm(`تأكيد الحذف النهائي للحجز #${ref}؟ لا يمكن التراجع.`);
+    if (!ok) return;
+
+    try {
+      await deleteBooking(b.id);
+      if (selectedBooking?.id === b.id) setSelectedBooking(null);
+    } catch (e) {
+      alert("تعذر حذف الحجز نهائيًا");
+    }
+  };
+
   const handleExport = () => {
     const rows = [
       ["ID", "الزبون", "الهاتف", "الخدمة", "الموظفة", "التاريخ", "الوقت", "الحالة", "السعر"],
@@ -425,6 +443,15 @@ export default function DashboardBookings() {
                         <button className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
                           <FontAwesomeIcon icon={faCircleInfo} />
                         </button>
+                        {uiRole === "owner" && (
+                          <button
+                            className="exp-btn danger sm"
+                            onClick={() => handleDeleteBooking(b)}
+                            title="حذف نهائي"
+                          >
+                            حذف
+                          </button>
+                        )}
                         <select 
                           className="bk-select sm" 
                           style={{width: 'auto', height: 32, padding: '0 8px', fontSize: 11}}
@@ -465,6 +492,11 @@ export default function DashboardBookings() {
                 </div>
                 <div style={{marginTop: 12, display: 'flex', gap: 8}}>
                    <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
+                   {uiRole === "owner" && (
+                     <button className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
+                       حذف نهائي
+                     </button>
+                   )}
                    <select 
                       className="bk-select sm" 
                       value={b.status}
@@ -535,6 +567,11 @@ export default function DashboardBookings() {
               </div>
             </div>
             <div className="modal-foot">
+              {uiRole === "owner" && (
+                <button className="exp-btn danger" onClick={() => handleDeleteBooking(selectedBooking)}>
+                  حذف نهائي
+                </button>
+              )}
               <button className="exp-btn primary" onClick={() => setSelectedBooking(null)}>إغلاق</button>
             </div>
           </Modal>

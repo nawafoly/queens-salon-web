@@ -15,7 +15,6 @@ import {
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faPlus,
   faPen,
   faTrash,
   faRotateRight,
@@ -79,6 +78,23 @@ type ServiceOption = {
    Const
 ========================= */
 const SALON_ID = "main";
+const STAFF_CHIPS_PREVIEW_COUNT = 8;
+const STAFF_IMAGE_MODULES = import.meta.glob("../assets/images/*.{png,jpg,jpeg,webp,avif,svg}", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const STAFF_IMAGE_OPTIONS = Object.entries(STAFF_IMAGE_MODULES)
+  .map(([path, url]) => {
+    const fileName = path.split("/").pop() || path;
+    return { label: fileName, value: String(url || "") };
+  })
+  .filter((x) => x.value)
+  .sort((a, b) => a.label.localeCompare(b.label));
+
+const STAFF_IMAGE_BY_FILE = new Map(
+  STAFF_IMAGE_OPTIONS.map((x) => [String(x.label || "").toLowerCase(), x.value] as const)
+);
 
 /* =========================
    Helpers
@@ -130,6 +146,40 @@ function normalizeArabicName(s: string) {
     .replace(/ئ/g, "ي");
 }
 
+function pickAvatarUrl(data: any): string {
+  const candidates = [
+    data?.avatarUrl,
+    data?.avatarURL,
+    data?.photoURL,
+    data?.photoUrl,
+    data?.imageUrl,
+    data?.imageURL,
+    data?.image,
+    data?.imgUrl,
+    data?.profileImage,
+    data?.profileImageUrl,
+    data?.picture,
+    data?.avatar,
+  ];
+
+  for (const c of candidates) {
+    const s = String(c ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+function resolveAvatarFromAssets(raw: string): string {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+
+  const file = v.split("/").pop()?.split("?")[0]?.trim().toLowerCase() || "";
+  if (file && STAFF_IMAGE_BY_FILE.has(file)) {
+    return String(STAFF_IMAGE_BY_FILE.get(file) || "");
+  }
+
+  return v;
+}
 type StaffBookingStats = {
   total: number;
   byStatus: Record<BookingStatus, number>;
@@ -175,6 +225,7 @@ export default function DashboardEmployees() {
 
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
+  const [expandedSpecialtiesByStaff, setExpandedSpecialtiesByStaff] = useState<Record<string, boolean>>({});
 
   const [srvQ, setSrvQ] = useState("");
   const [srvSection, setSrvSection] = useState<string>("all");
@@ -194,16 +245,11 @@ export default function DashboardEmployees() {
     setSpecialties([]);
   };
 
-  const openCreate = () => {
-    resetForm();
-    setIsOpen(true);
-  };
-
   const openEdit = (x: StaffPublicUi) => {
     setEditId(x.id);
     setName(x.name ?? "");
     setBio(x.bio ?? "");
-    setAvatarUrl(x.avatarUrl ?? "");
+    setAvatarUrl(resolveAvatarFromAssets(pickAvatarUrl(x as any)));
     setCvUrl((x as any).cvUrl ?? "");
     setActive(!!x.active);
     setShowOnBooking((x as any).showOnBooking !== false);
@@ -238,7 +284,7 @@ export default function DashboardEmployees() {
 
           specialties: normalizeSpecialties(data?.specialties),
           bio: data?.bio ?? "",
-          avatarUrl: data?.avatarUrl ?? "",
+          avatarUrl: resolveAvatarFromAssets(pickAvatarUrl(data)),
           cvUrl: data?.cvUrl ?? "",
           createdAt: data?.createdAt,
           updatedAt: data?.updatedAt,
@@ -627,9 +673,6 @@ export default function DashboardEmployees() {
             >
               <FontAwesomeIcon icon={faRotateRight} /> تحديث
             </button>
-            <button className="exp-btn primary" onClick={openCreate} type="button">
-              <FontAwesomeIcon icon={faPlus} /> إضافة موظفة
-            </button>
           </div>
         </div>
 
@@ -685,22 +728,28 @@ export default function DashboardEmployees() {
         <div className="dash-grid">
           {filtered.map((x) => (
             <div key={x.id} className="staff-card">
+              {(() => {
+                const allSpecialties = normalizeSpecialties(x.specialties);
+                const isExpanded = !!expandedSpecialtiesByStaff[x.id];
+                const visibleSpecialties = isExpanded
+                  ? allSpecialties
+                  : allSpecialties.slice(0, STAFF_CHIPS_PREVIEW_COUNT);
+                const hiddenCount = Math.max(0, allSpecialties.length - visibleSpecialties.length);
+
+                return (
+                  <>
               <div className="staff-top">
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 12,
-                      background: "rgba(64, 1, 13, 0.05)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 20,
-                      color: "#40010D",
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faUserTie} />
+                  <div className="staff-avatar-box">
+                    {String(x.avatarUrl || "").trim() ? (
+                      <img
+                        src={resolveAvatarFromAssets(String(x.avatarUrl))}
+                        alt={x.name || "موظفة"}
+                        className="staff-avatar-img"
+                      />
+                    ) : (
+                      <FontAwesomeIcon icon={faUserTie} />
+                    )}
                   </div>
                   <div>
                     <h4 style={{ margin: 0, fontWeight: 900 }}>{x.name}</h4>
@@ -769,7 +818,7 @@ export default function DashboardEmployees() {
               {x.bio ? <div className="staff-bio">{x.bio}</div> : <div className="staff-bio muted">بدون نبذة</div>}
 
               <div className="staff-chips">
-                {normalizeSpecialties(x.specialties).map((sid) => {
+                {visibleSpecialties.map((sid) => {
                   const label = serviceOptions.find((o) => o.id === sid)?.label ?? sid;
                   return (
                     <span className="staff-chip" key={sid}>
@@ -777,6 +826,28 @@ export default function DashboardEmployees() {
                     </span>
                   );
                 })}
+                {hiddenCount > 0 && !isExpanded && (
+                  <button
+                    type="button"
+                    className="staff-chips-toggle"
+                    onClick={() =>
+                      setExpandedSpecialtiesByStaff((prev) => ({ ...prev, [x.id]: true }))
+                    }
+                  >
+                    +{hiddenCount} أكثر
+                  </button>
+                )}
+                {isExpanded && allSpecialties.length > STAFF_CHIPS_PREVIEW_COUNT && (
+                  <button
+                    type="button"
+                    className="staff-chips-toggle"
+                    onClick={() =>
+                      setExpandedSpecialtiesByStaff((prev) => ({ ...prev, [x.id]: false }))
+                    }
+                  >
+                    عرض أقل
+                  </button>
+                )}
               </div>
 
               {authUser?.role === "owner" && (
@@ -794,6 +865,9 @@ export default function DashboardEmployees() {
                   </div>
                 </div>
               )}
+                  </>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -872,6 +946,37 @@ export default function DashboardEmployees() {
                 <b className="emp-modal-section-title">ملف الموظفة</b>
                 <div className="emp-modal-fields">
                   <div className="dash-field">
+                    <label className="emp-label">صورة الموظفة (من ملفات المشروع)</label>
+                    <select
+                      className="dash-select"
+                      value={resolveAvatarFromAssets(avatarUrl)}
+                      onChange={(e) => setAvatarUrl(e.target.value)}
+                    >
+                      <option value="">بدون صورة</option>
+                      {STAFF_IMAGE_OPTIONS.map((img) => (
+                        <option key={img.value} value={img.value}>
+                          {img.label}
+                        </option>
+                      ))}
+                    </select>
+                    {resolveAvatarFromAssets(avatarUrl) ? (
+                      <div style={{ marginTop: 10 }}>
+                        <img
+                          src={resolveAvatarFromAssets(avatarUrl)}
+                          alt="معاينة صورة الموظفة"
+                          style={{
+                            width: 56,
+                            height: 56,
+                            borderRadius: 12,
+                            objectFit: "cover",
+                            border: "1px solid rgba(13,13,13,0.12)",
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="dash-field">
                     <label className="emp-label">نبذة تعريفية</label>
                     <textarea
                       className="dash-textarea"
@@ -947,3 +1052,4 @@ export default function DashboardEmployees() {
     </div>
   );
 }
+
