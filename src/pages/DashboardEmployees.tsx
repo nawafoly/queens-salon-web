@@ -173,7 +173,13 @@ function resolveAvatarFromAssets(raw: string): string {
   const v = String(raw || "").trim();
   if (!v) return "";
 
-  const file = v.split("/").pop()?.split("?")[0]?.trim().toLowerCase() || "";
+  const normalized = v.replaceAll("\\", "/");
+  const file = normalized
+    .split("/")
+    .pop()
+    ?.split(/[?#]/)[0]
+    ?.trim()
+    .toLowerCase() || "";
   if (file && STAFF_IMAGE_BY_FILE.has(file)) {
     return String(STAFF_IMAGE_BY_FILE.get(file) || "");
   }
