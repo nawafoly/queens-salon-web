@@ -1,10 +1,11 @@
-{
+﻿{
   "functions": {
     "api/**/*.ts": {
       "runtime": "@vercel/node@3"
     }
   },
   "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
