@@ -328,6 +328,108 @@
   padding: 14px 14px;
 }
 
+.of-modal-head .dash-pill,
+.of-modal-actions .dash-pill,
+.of-field-inline .dash-pill {
+  min-height: 40px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  justify-content: center;
+}
+
+/* Modal button system: keep buttons clean and consistent */
+.offers-modal .dash-pill {
+  border: 1px solid rgba(13, 13, 13, 0.16);
+  background: #fff;
+  color: #111827;
+  box-shadow: none;
+}
+
+.offers-modal .dash-pill:hover {
+  background: rgba(64, 1, 13, 0.06);
+  border-color: rgba(64, 1, 13, 0.24);
+}
+
+.offers-modal .dash-pill.dash-pill-primary {
+  background: #40010D;
+  border-color: #40010D;
+  color: #fff;
+}
+
+.offers-modal .dash-pill.dash-pill-primary svg {
+  color: #fff;
+}
+
+.offers-modal .dash-pill.dash-pill-primary:hover {
+  background: #530214;
+  border-color: #530214;
+}
+
+.offers-modal .dash-pill.dash-pill-outline {
+  background: #fff;
+  color: #40010D;
+  border-color: rgba(64, 1, 13, 0.24);
+}
+
+/* Discount type dropdown inside offers modal */
+.offers-modal .dash-select {
+  min-height: 44px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  color: #111827;
+  font-weight: 700;
+}
+
+.offers-modal .dash-select:hover {
+  border-color: rgba(64, 1, 13, 0.24);
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.08);
+}
+
+.offers-modal .dash-dd-menu {
+  margin-top: 6px;
+  padding: 6px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  box-shadow: 0 14px 30px rgba(13, 13, 13, 0.12);
+  z-index: 20;
+}
+
+.offers-modal .dash-dd-item {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #111827;
+  font-weight: 700;
+  padding: 10px 12px;
+  text-align: right;
+}
+
+.offers-modal .dash-dd-item:hover {
+  background: rgba(64, 1, 13, 0.08);
+  color: #40010D;
+}
+
+.offers-modal .dash-dd-item.is-active {
+  background: rgba(64, 1, 13, 0.12);
+  color: #40010D;
+}
+
+/* Date picker icon visibility inside offers modal */
+.offers-modal input[type="date"] {
+  color-scheme: light;
+}
+
+.offers-modal input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0);
+  opacity: 1;
+  cursor: pointer;
+}
+
 .of-modal-title h3 {
   margin: 0;
   font-size: 16px;
@@ -358,7 +460,7 @@
 
   display: flex;
   gap: 10px;
-  justify-content: flex-start;
+  justify-content: flex-end;
 
   background: rgba(255, 255, 255, 0.94);
   border-top: 1px solid rgba(13, 13, 13, 0.08);
@@ -415,6 +517,10 @@
   align-items: end;
 }
 
+.of-field-inline .dash-pill {
+  min-width: 120px;
+}
+
 .of-grid-3 {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -424,6 +530,14 @@
 }
 .of-switch {
   justify-self: start;
+}
+
+.of-switch .of-checkline {
+  min-height: 44px;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  background: #fff;
+  border-radius: 12px;
+  padding: 0 12px;
 }
 
 .of-grid-2 {
@@ -447,23 +561,25 @@
 }
 
 .of-scope-pills {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 10px;
-  flex-wrap: wrap;
   margin-top: 10px;
 }
 
 .of-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   background: #fff;
   border: 1px solid rgba(13, 13, 13, 0.10);
-  border-radius: 999px;
+  border-radius: 12px;
   padding: 10px 12px;
   cursor: pointer;
   user-select: none;
   color: #0D0D0D;
+  min-height: 44px;
 }
 
 .of-pill input {
@@ -579,6 +695,7 @@
   font-weight: 900;
   font-size: 13px;
   color: #40010D;
+  min-height: 42px;
 }
 
 .of-file-btn:hover{
@@ -635,11 +752,58 @@
   .offers-modal {
     width: 96vw;
   }
+
+  .of-scope-pills {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 520px) {
   .offers-header h1 {
     font-size: 17px;
+  }
+
+  .of-modal-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .of-modal-head .dash-pill {
+    width: 100%;
+  }
+
+  .of-scope-pills {
+    grid-template-columns: 1fr;
+  }
+
+  .of-pill {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .of-field-inline > div {
+    min-width: 0;
+  }
+
+  .of-field-inline .dash-pill {
+    width: 100%;
+  }
+
+  .of-file-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .of-file-btn {
+    width: 100%;
+  }
+
+  .of-modal-actions {
+    flex-direction: column;
+  }
+
+  .of-modal-actions .dash-pill {
+    width: 100%;
   }
 }
 
