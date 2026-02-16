@@ -5,7 +5,7 @@ import type React from "react"; // ✅ ADD: عشان React.ChangeEvent / React.F
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import logo from "../assets/images/ssunnamed2.png";
-const hairGuideImg = "/hair-length-guide.png";
+import hairGuideImg from "../assets/images/hair-length-guide.png";
 
 import {
   faCalendarAlt,
@@ -737,27 +737,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   }
 
   // =========================
-  // ✅ Load hair guide URL + role (owner/admin)
+  // ✅ Use local hair guide image + role (owner/admin)
   // ✅ FIX: use onAuthStateChanged so role doesn't stay false
   // =========================
   useEffect(() => {
     let cancelled = false;
-
-    async function loadGuideUrl() {
-      try {
-        const guideRef = doc(db, "salons", SALON_ID, "settings", "booking");
-        const guideSnap = await getDoc(guideRef);
-
-        if (!cancelled) {
-          const url = String((guideSnap.data() as any)?.hairGuideUrl || "").trim();
-          setHairGuideUrl(url ? url : hairGuideImg);
-        }
-      } catch {
-        if (!cancelled) setHairGuideUrl(hairGuideImg);
-      }
-    }
-
-    loadGuideUrl();
+    setHairGuideUrl(hairGuideImg);
 
     const auth = getAuth();
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
