@@ -208,6 +208,29 @@
 }
 
 /* =========================
+   Audit Inputs (force light look)
+========================= */
+.reports-page .reports-audit input[type="date"],
+.reports-page .reports-audit input[type="number"],
+.reports-page .reports-audit .field input {
+  background: #fff !important;
+  color: #0d0d0d !important;
+  border: 1px solid rgba(13, 13, 13, 0.16) !important;
+  border-radius: 10px;
+  color-scheme: light;
+}
+
+.reports-page .reports-audit input::placeholder {
+  color: rgba(13, 13, 13, 0.5) !important;
+}
+
+.reports-page .reports-audit input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.9;
+  cursor: pointer;
+  filter: none;
+}
+
+/* =========================
    ✅ Mobile: Table -> Cards (No horizontal scroll)
    يعتمد على data-label في td
 ========================= */

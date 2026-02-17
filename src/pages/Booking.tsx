@@ -376,6 +376,15 @@ function safeTimeHHMM(v: any, fallback: string) {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
+function formatTime12ForClient(time24: string) {
+  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return String(time24 || "");
+  const h24 = Number(m[1]);
+  const mm = m[2];
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+}
+
 function normalizeKsaPhone(raw: string) {
   const digits = String(raw || "").replace(/\D/g, "");
   if (!digits) return "";
@@ -575,9 +584,41 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [futureStaffNameQuery, setFutureStaffNameQuery] = useState("");
   const [futureLoading, setFutureLoading] = useState(false);
   const [futureResult, setFutureResult] = useState<
-    { date: string; times: string[]; note?: string }[]
+    { date: string; times: string[]; note?: string; contributors?: string[] }[]
   >([]);
   const [futureMsg, setFutureMsg] = useState("");
+  const [futureGateLoading, setFutureGateLoading] = useState(false);
+  const [showFutureSearch, setShowFutureSearch] = useState(false);
+  const [futureGateMsg, setFutureGateMsg] = useState("");
+  const [futureServiceId, setFutureServiceId] = useState("");
+  const [futureTargetItemId, setFutureTargetItemId] = useState("");
+  const autoFutureSearchKeyRef = useRef("");
+
+  function openFutureSearchFromItem(it: CartItem) {
+    const sid = String(it?.serviceId || "").trim();
+    if (!sid) return;
+
+    const employeeKey = String(it?.employeeUid || it?.employeeId || "").trim();
+    const employeeName = String(it?.employeeName || "").trim();
+
+    setFutureServiceId(sid);
+    setFutureTargetItemId(String(it?.id || "").trim());
+    setShowFutureSearch(true);
+    setFutureResult([]);
+    setFutureMsg("");
+
+    if (employeeKey) {
+      setFutureAnyStaff(false);
+      setFutureSelectedEmployeeKey(employeeKey);
+      setFutureStaffNameQuery(employeeName || "");
+      setFutureGateMsg("اليوم ممتلئ لنفس الموظفة. يمكنكِ البحث عن أقرب يوم متاح.");
+    } else {
+      setFutureAnyStaff(true);
+      setFutureSelectedEmployeeKey("");
+      setFutureStaffNameQuery("");
+      setFutureGateMsg("اليوم ممتلئ لهذه الخدمة. يمكنكِ البحث عن أقرب يوم متاح.");
+    }
+  }
 
   // ✅ Staff per serviceId
   const [staffByService, setStaffByService] = useState<Record<string, StaffPublicWithId[]>>({});
@@ -1444,9 +1485,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     let cancelled = false;
 
     async function loadStaffForFuturePicker() {
-      const sid = String(servicePicker || "").trim();
+      const sid = String(futureServiceId || servicePicker || "").trim();
       if (!sid) return;
-      if (staffByService[sid] && Array.isArray(staffByService[sid])) return;
+      const hasCache = Object.prototype.hasOwnProperty.call(staffByService, sid);
+      if (hasCache) return;
 
       try {
         setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
@@ -1495,10 +1537,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     return () => {
       cancelled = true;
     };
-  }, [servicePicker, staffByService]);
+  }, [futureServiceId, servicePicker, staffByService]);
 
   const futureStaffOptions = useMemo(() => {
-    const sid = String(servicePicker || "").trim();
+    const sid = String(futureServiceId || servicePicker || "").trim();
     if (!sid) return [] as { key: string; name: string; id: string }[];
 
     return ((staffByService[sid] || []) as StaffPublicWithId[])
@@ -1519,6 +1561,31 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       String(x.name || "").toLowerCase().includes(q)
     );
   }, [futureStaffOptions, futureStaffNameQuery]);
+
+  // ✅ Auto-run future search once per context when the block becomes visible
+  useEffect(() => {
+    const sid = String(futureServiceId || servicePicker || "").trim();
+    const dateISO = String(bookingDate || "").trim();
+    const employeeKey = String(futureSelectedEmployeeKey || "").trim();
+    const contextKey = `${sid}|${dateISO}|${futureAnyStaff ? "any" : "one"}|${employeeKey}`;
+
+    if (!showFutureSearch || !sid || !dateISO) return;
+    if (futureGateLoading || futureLoading) return;
+    if (!futureAnyStaff && !employeeKey) return;
+
+    if (autoFutureSearchKeyRef.current === contextKey) return;
+    autoFutureSearchKeyRef.current = contextKey;
+    void runFutureAvailabilitySearch();
+  }, [
+    showFutureSearch,
+    futureGateLoading,
+    futureLoading,
+    futureServiceId,
+    servicePicker,
+    bookingDate,
+    futureAnyStaff,
+    futureSelectedEmployeeKey,
+  ]);
 
   async function getAvailableStartsForDay(args: {
     salonId: string;
@@ -1560,30 +1627,142 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     return list.slice(0, Math.max(1, take));
   }
 
+  async function applyFutureTimeSelection(dateISO: string, time24: string) {
+    const serviceId = String(futureServiceId || servicePicker || "").trim();
+    if (!serviceId || !dateISO || !time24) return;
+
+    applyBookingDate(dateISO);
+
+    const target =
+      (formData.items || []).find(
+        (it) =>
+          String(it.id || "").trim() === String(futureTargetItemId || "").trim() &&
+          String(it.serviceId || "").trim() === serviceId
+      ) ||
+      (formData.items || []).find(
+        (it) => String(it.serviceId || "").trim() === serviceId && !it.locked
+      ) ||
+      (formData.items || []).find((it) => String(it.serviceId || "").trim() === serviceId);
+
+    if (!target) return;
+
+    const sv = getServiceById(serviceId);
+    const durationMin = Number(
+      sv?.durationMin ||
+        target?.durationMin ||
+        DEFAULT_SERVICE_DURATION_MIN
+    );
+
+    let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
+    if (!Object.prototype.hasOwnProperty.call(staffByService, serviceId)) {
+      const res = await listActiveStaffBySpecialty({
+        salonId: SALON_ID,
+        specialty: serviceId,
+      });
+      staffList = (res || []) as StaffPublicWithId[];
+      setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
+    }
+
+    const preferredEmployeeKey = String(
+      futureSelectedEmployeeKey ||
+      target.employeeUid ||
+      target.employeeId ||
+      ""
+    ).trim();
+
+    let chosenStaff: StaffPublicWithId | null = null;
+
+    if (!futureAnyStaff) {
+      const fixedKey = String(futureSelectedEmployeeKey || "").trim();
+      if (fixedKey) {
+        chosenStaff =
+          staffList.find((s: any) => String(s.linkedUid || s.id || "").trim() === fixedKey) ||
+          staffList.find((s: any) => String(s.id || "").trim() === fixedKey) ||
+          null;
+      }
+    } else {
+      const availableStaffRaw = staffList.filter((st: any) =>
+        isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true })
+      );
+      const availableStaff = preferredEmployeeKey
+        ? [
+            ...availableStaffRaw.filter(
+              (st: any) =>
+                String(st?.linkedUid || st?.id || "").trim() === preferredEmployeeKey ||
+                String(st?.id || "").trim() === preferredEmployeeKey
+            ),
+            ...availableStaffRaw.filter(
+              (st: any) =>
+                String(st?.linkedUid || st?.id || "").trim() !== preferredEmployeeKey &&
+                String(st?.id || "").trim() !== preferredEmployeeKey
+            ),
+          ]
+        : availableStaffRaw;
+
+      for (const st of availableStaff) {
+        const empKey = String((st as any)?.linkedUid || "").trim() || String((st as any)?.id || "").trim();
+        const empIdFallback = String((st as any)?.id || "").trim();
+        if (!empKey) continue;
+
+        const starts = await getAvailableStartsForDay({
+          salonId: SALON_ID,
+          employeeKey: empKey,
+          employeeIdFallback: empIdFallback,
+          dateISO,
+          durationMin,
+          take: 288,
+        });
+        if (starts.includes(time24)) {
+          chosenStaff = st;
+          break;
+        }
+      }
+    }
+
+    if (!chosenStaff) {
+      setFutureMsg("تم تحديد اليوم والوقت. اختاري الموظفة لإكمال الخدمة.");
+      updateItem(target.id, { time: time24, locked: false });
+      return;
+    }
+
+    updateItem(target.id, {
+      date: dateISO,
+      time: time24,
+      employeeId: String((chosenStaff as any)?.id || "").trim(),
+      employeeUid: String((chosenStaff as any)?.linkedUid || "").trim(),
+      employeeName: String((chosenStaff as any)?.name || "").trim(),
+      locked: false,
+    });
+  }
+
   async function runFutureAvailabilitySearch() {
     setFutureMsg("");
     setFutureResult([]);
 
-    const serviceId = String(servicePicker || "").trim();
+    const serviceId = String(futureServiceId || servicePicker || "").trim();
     if (!serviceId) {
       setFutureMsg("اختاري الخدمة أولاً.");
       return;
     }
 
     const sv = getServiceById(serviceId);
-    if (!sv) {
-      setFutureMsg("الخدمة غير موجودة.");
-      return;
-    }
+    const itemFromCart = (formData.items || []).find(
+      (it) => String(it?.serviceId || "").trim() === serviceId
+    );
 
-    const durationMin = Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+    const durationMin = Number(
+      sv?.durationMin ||
+      itemFromCart?.durationMin ||
+      DEFAULT_SERVICE_DURATION_MIN
+    );
     if (!durationMin || durationMin <= 0) {
       setFutureMsg("مدة الخدمة غير صحيحة.");
       return;
     }
 
     let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
-    if (!staffList.length) {
+    const hasStaffCache = Object.prototype.hasOwnProperty.call(staffByService, serviceId);
+    if (!hasStaffCache) {
       const res = await listActiveStaffBySpecialty({
         salonId: SALON_ID,
         specialty: serviceId,
@@ -1612,34 +1791,57 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
-    const startISO = todayISO();
+    const startISO = String(bookingDate || "").trim() || todayISO();
     const scanDays = 60;
 
     setFutureLoading(true);
     try {
-      const results: { date: string; times: string[]; note?: string }[] = [];
+      const results: { date: string; times: string[]; note?: string; contributors?: string[] }[] = [];
 
       for (let i = 0; i < scanDays; i++) {
         const dateISO = addDaysISO(startISO, i);
         let dayTimes: string[] = [];
+        let dayNote = "";
 
         if (!futureAnyStaff && fixedEmployeeKey) {
           const staff =
             staffList.find((s: any) => String(s.linkedUid || s.id || "") === fixedEmployeeKey) ||
             staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
           const employeeIdFallback = String(staff?.id || "").trim();
+          const fixedName = String((staff as any)?.name || "").trim();
+          const fixedAvailable = staff
+            ? isStaffAvailableForDate(staff as any, dateISO, { requireShowOnBooking: true })
+            : false;
 
-          dayTimes = await getAvailableStartsForDay({
-            salonId: SALON_ID,
-            employeeKey: fixedEmployeeKey,
-            employeeIdFallback,
-            dateISO,
-            durationMin,
-            take: 5,
-          });
+          if (!fixedAvailable) {
+            dayTimes = [];
+            dayNote = "";
+          } else {
+            dayTimes = await getAvailableStartsForDay({
+              salonId: SALON_ID,
+              employeeKey: fixedEmployeeKey,
+              employeeIdFallback,
+              dateISO,
+              durationMin,
+              take: 5,
+            });
+
+            if (dayTimes.length && fixedName) {
+              dayNote = `المتاح لدى: ${fixedName}`;
+            }
+          }
+          const fixedContributors = fixedName ? [fixedName] : [];
+          if (dayTimes.length) {
+            results.push({ date: dateISO, times: dayTimes, note: dayNote, contributors: fixedContributors });
+            if (results.length >= 5) break;
+          }
         } else {
           const merged = new Set<string>();
-          for (const st of staffList) {
+          const timeToStaff = new Map<string, Set<string>>();
+          const availableStaff = staffList.filter((st) =>
+            isStaffAvailableForDate(st as any, dateISO, { requireShowOnBooking: true })
+          );
+          for (const st of availableStaff) {
             const empKey = String((st as any)?.linkedUid || "").trim() || String((st as any)?.id || "").trim();
             const empIdFallback = String((st as any)?.id || "").trim();
             if (!empKey) continue;
@@ -1652,16 +1854,41 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               durationMin,
               take: 5,
             });
-            times.forEach((t) => merged.add(t));
+            if (times.length) {
+              const stName = String((st as any)?.name || "").trim();
+              times.forEach((t) => {
+                merged.add(t);
+                if (!stName) return;
+                const owners = timeToStaff.get(t) || new Set<string>();
+                owners.add(stName);
+                timeToStaff.set(t, owners);
+              });
+            }
           }
 
           dayTimes = Array.from(merged.values())
             .sort((a, b) => toMinutes(a) - toMinutes(b))
             .slice(0, 5);
-        }
 
-        if (dayTimes.length) results.push({ date: dateISO, times: dayTimes });
-        if (results.length >= 5) break;
+          if (dayTimes.length) {
+            const visibleContributors = new Set<string>();
+            dayTimes.forEach((t) => {
+              const owners = timeToStaff.get(t);
+              if (!owners) return;
+              owners.forEach((name) => visibleContributors.add(name));
+            });
+            if (visibleContributors.size) {
+              dayNote = `المتاح لدى: ${Array.from(visibleContributors).slice(0, 3).join("، ")}`;
+            }
+            results.push({
+              date: dateISO,
+              times: dayTimes,
+              note: dayNote,
+              contributors: Array.from(visibleContributors),
+            });
+            if (results.length >= 5) break;
+          }
+        }
       }
 
       if (!results.length) {
@@ -1676,6 +1903,134 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       setFutureLoading(false);
     }
   }
+
+  // ✅ Show "future days search" only when selected day is full for selected service
+  useEffect(() => {
+    let cancelled = false;
+
+    async function detectFullDayForService() {
+      const fallbackFromCart =
+        (formData.items || [])
+          .map((it) => String(it?.serviceId || "").trim())
+          .find(Boolean) || "";
+
+      const serviceId = String(servicePicker || fallbackFromCart).trim();
+      const dateISO = String(bookingDate || "").trim();
+
+      if (!serviceId || !dateISO) {
+        if (!cancelled) {
+          setFutureServiceId("");
+          setShowFutureSearch(false);
+          setFutureGateMsg("");
+          setFutureResult([]);
+          setFutureMsg("");
+        }
+        return;
+      }
+
+      const sv = getServiceById(serviceId);
+      const itemFromCart = (formData.items || []).find(
+        (it) => String(it?.serviceId || "").trim() === serviceId
+      );
+
+      if (!cancelled) {
+        setFutureServiceId(serviceId);
+      }
+
+      const durationMin = Number(
+        sv?.durationMin ||
+        itemFromCart?.durationMin ||
+        DEFAULT_SERVICE_DURATION_MIN
+      );
+      setFutureGateLoading(true);
+
+      try {
+        let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
+        const hasStaffCache = Object.prototype.hasOwnProperty.call(staffByService, serviceId);
+
+        if (!hasStaffCache) {
+          const res = await listActiveStaffBySpecialty({
+            salonId: SALON_ID,
+            specialty: serviceId,
+          });
+
+          staffList = (res || []).filter((st: any) => {
+            const name = String(st?.name || "").trim();
+            if (!name) return false;
+            const specs = Array.isArray(st?.specialties)
+              ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
+              : [];
+            return specs.includes(serviceId);
+          }) as StaffPublicWithId[];
+
+          if (!cancelled) {
+            setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
+          }
+        }
+
+        const availableStaff = staffList.filter((st) =>
+          isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true })
+        );
+
+        if (!availableStaff.length) {
+          if (!cancelled) {
+            setShowFutureSearch(false);
+            setFutureGateMsg("");
+            setFutureResult([]);
+            setFutureMsg("");
+          }
+          return;
+        }
+
+        let hasAnyTime = false;
+        for (const st of availableStaff) {
+          const employeeKey = String((st as any)?.linkedUid || (st as any)?.id || "").trim();
+          const employeeIdFallback = String((st as any)?.id || "").trim();
+          if (!employeeKey) continue;
+
+          const times = await getAvailableStartsForDay({
+            salonId: SALON_ID,
+            employeeKey,
+            employeeIdFallback,
+            dateISO,
+            durationMin,
+            take: 1,
+          });
+
+          if (times.length) {
+            hasAnyTime = true;
+            break;
+          }
+        }
+
+        if (!cancelled) {
+          if (hasAnyTime) {
+            setShowFutureSearch(false);
+            setFutureGateMsg("");
+            setFutureResult([]);
+            setFutureMsg("");
+          } else {
+            setShowFutureSearch(true);
+            setFutureGateMsg("اليوم المختار ممتلئ لهذه الخدمة. اضغطي بحث لعرض أقرب مواعيد متاحة في الأيام القادمة.");
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setShowFutureSearch(false);
+          setFutureGateMsg("");
+          setFutureResult([]);
+          setFutureMsg("");
+        }
+      } finally {
+        if (!cancelled) setFutureGateLoading(false);
+      }
+    }
+
+    detectFullDayForService();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookingDate, servicePicker, formData.items, staffByService, slotStepMin, bufferMin, timeSlots]);
 
   // =========================
   // ✅ Busy slots per item
@@ -1786,7 +2141,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
 
           sequentialHint = suggestedSlot
-            ? `الوقت المقترح: ${suggestedSlot}`
+            ? `الوقت المقترح: ${internalMode ? suggestedSlot : formatTime12ForClient(suggestedSlot)}`
             : "لا يوجد وقت متاح كافٍ لهذا اليوم.";
 
           setBusyByItem((p) => ({
@@ -2621,153 +2976,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                     </div>
                   </div>
 
-                  <hr className="my-3" />
-                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                    <div style={{ fontWeight: 800, color: "#0d0d0d" }}>بحث أوقات للأيام القادمة</div>
-                    <span className="text-muted" style={{ fontSize: 12 }}>يعرض أول 5 أيام متاحة</span>
-                  </div>
-
-                  <div className="row g-2 align-items-end">
-                    <div className="col-12">
-                      <select
-                        className="form-select"
-                        value={futureAnyStaff ? "any" : "one"}
-                        onChange={(e) => {
-                          const any = e.target.value === "any";
-                          setFutureAnyStaff(any);
-                          if (any) {
-                            setFutureSelectedEmployeeKey("");
-                            setFutureStaffNameQuery("");
-                          }
-                        }}
-                      >
-                        <option value="any">أي موظفة للخدمة</option>
-                        <option value="one">موظفة محددة</option>
-                      </select>
-                    </div>
-
-                    {!futureAnyStaff ? (
-                      <div className="col-12">
-                        <label className="form-label">اختاري الموظفة</label>
-                        {!servicePicker ? (
-                          <div className="alert alert-danger mb-2 py-2">
-                            اختاري الخدمة أولاً ثم ابحثي باسم الموظفة.
-                          </div>
-                        ) : null}
-                        <input
-                          className="form-control"
-                          value={futureStaffNameQuery}
-                          onChange={(e) => {
-                            const v = String(e.target.value || "");
-                            setFutureStaffNameQuery(v);
-                            setFutureSelectedEmployeeKey("");
-                          }}
-                          placeholder="ابحثي باسم الموظفة..."
-                          disabled={!servicePicker}
-                        />
-                        {servicePicker && staffLoadingByService[String(servicePicker || "").trim()] ? (
-                          <div className="small text-muted mt-1">
-                            <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الموظفات...
-                          </div>
-                        ) : null}
-                        {servicePicker && staffErrorByService[String(servicePicker || "").trim()] ? (
-                          <div className="small text-danger mt-1">
-                            {staffErrorByService[String(servicePicker || "").trim()]}
-                          </div>
-                        ) : null}
-                        {futureStaffNameQuery && filteredFutureStaffOptions.length ? (
-                          <div className="mt-2 d-flex flex-wrap gap-2">
-                            {filteredFutureStaffOptions.slice(0, 8).map((st) => (
-                              <button
-                                key={st.key}
-                                type="button"
-                                className="btn btn-outline-dark btn-sm"
-                                onClick={() => {
-                                  setFutureStaffNameQuery(st.name);
-                                  setFutureSelectedEmployeeKey(st.key);
-                                }}
-                              >
-                                {st.name}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-
+                  <div className="row g-2 mt-2">
                     <div className="col-12 d-grid">
-                      <button
-                        type="button"
-                        className="btn btn-outline-dark"
-                        onClick={runFutureAvailabilitySearch}
-                        disabled={futureLoading}
-                      >
-                        {futureLoading ? "جاري البحث..." : "بحث"}
-                      </button>
-                    </div>
-
-                    {futureMsg ? (
-                      <div className="col-12">
-                        <div className="alert alert-secondary mb-0 py-2">
-                          {futureMsg}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {futureResult.length ? (
-                      <div className="col-12">
-                        <div className="bk-future-inline">
-                          <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                            <div style={{ fontWeight: 800 }}>نتائج البحث</div>
-                            <button
-                              type="button"
-                              className="btn btn-sm bk-future-pill"
-                              onClick={() => {
-                                const nearestDate = String(futureResult[0]?.date || "").trim();
-                                if (!nearestDate) return;
-                                applyBookingDate(nearestDate);
-                              }}
-                            >
-                              اختيار أقرب موعد
-                            </button>
-                          </div>
-
-                          <div className="table-responsive">
-                            <table className="table align-middle mb-0 bk-future-table">
-                              <thead>
-                                <tr>
-                                  <th>التاريخ</th>
-                                  <th>أوقات متاحة</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {futureResult.map((r) => (
-                                  <tr key={r.date}>
-                                    <td>{r.date}</td>
-                                    <td>
-                                      <div className="d-flex gap-2 flex-wrap">
-                                        {(r.times || []).map((t) => (
-                                          <button
-                                            key={t}
-                                            type="button"
-                                            className="btn btn-sm bk-future-pill"
-                                            onClick={() => applyBookingDate(r.date)}
-                                          >
-                                            {t}
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="col-12 d-grid mt-2">
                       <button
                         type="button"
                         className="btn btn-dark booking-service-add-btn"
@@ -2891,7 +3101,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                               <div className="d-flex justify-content-between align-items-start">
                                 <div>
                                   <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>✓ تم تأكيد هذه الخدمة: {it.serviceName}</p>
-                                  <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{it.time}</strong></p>
+                                  <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{internalMode ? it.time : formatTime12ForClient(it.time)}</strong></p>
                                   <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.8 }}>المدة: {dur} دقيقة | السعر: {it.priceText}</p>
                                 </div>
                                 <button
@@ -2973,7 +3183,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                           className="btn btn-outline-dark btn-sm bk-nearest-btn"
                                           onClick={() => updateItem(it.id, { time: nearestAvailableStart })}
                                         >
-                                          أقرب موعد متاح: {nearestAvailableStart}
+                                          أقرب موعد متاح: {internalMode ? nearestAvailableStart : formatTime12ForClient(nearestAvailableStart)}
                                         </button>
                                       </div>
                                     ) : null}
@@ -3008,6 +3218,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                       )}
                                     </div>
 
+                                    {availableSlotsForItem.length === 0 ? (
+                                      <div className="mt-2 d-grid">
+                                        <button
+                                          type="button"
+                                          className="btn btn-outline-dark btn-sm"
+                                          onClick={() => openFutureSearchFromItem(it)}
+                                        >
+                                          بحث أوقات للأيام القادمة لهذه الخدمة
+                                        </button>
+                                      </div>
+                                    ) : null}
+
                                     {busy.loading && <div className="small text-muted mt-2"><FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات...</div>}
                                     {busy.hint && <div className="small text-warning mt-2">{busy.hint}</div>}
 
@@ -3036,6 +3258,190 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                     </div>
                   )}
                 </div>
+
+                {futureGateLoading ? (
+                  <div className="small text-muted mb-2">
+                    <FontAwesomeIcon icon={faSpinner} spin /> جاري التحقق من توفر اليوم المختار...
+                  </div>
+                ) : null}
+
+                {showFutureSearch ? (
+                  <div className="mb-4" style={{ border: "1px solid #eee", padding: "15px", borderRadius: "12px", background: "#fafafa" }}>
+                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                      <div style={{ fontWeight: 800, color: "#0d0d0d" }}>بحث أوقات للأيام القادمة</div>
+                      <span className="text-muted" style={{ fontSize: 12 }}>يعرض أول 5 أيام متاحة بعد التاريخ المختار</span>
+                    </div>
+
+                    {futureGateMsg ? (
+                      <div className="alert alert-warning py-2 mb-2">{futureGateMsg}</div>
+                    ) : null}
+
+                    <div className="row g-2 align-items-end">
+                      <div className="col-12">
+                        <div className="bk-field">
+                          <select
+                            className="form-select dash-select"
+                            value={futureAnyStaff ? "any" : "one"}
+                            onChange={(e) => {
+                              const any = e.target.value === "any";
+                              setFutureAnyStaff(any);
+                              if (any) {
+                                setFutureSelectedEmployeeKey("");
+                                setFutureStaffNameQuery("");
+                              }
+                            }}
+                          >
+                            <option value="any">أي موظفة للخدمة</option>
+                            <option value="one">موظفة محددة</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {!futureAnyStaff ? (
+                        <div className="col-12">
+                          <label className="form-label">اختاري الموظفة</label>
+                          {!String(futureServiceId || servicePicker || "").trim() ? (
+                            <div className="alert alert-danger mb-2 py-2">
+                              اختاري الخدمة أولاً ثم ابحثي باسم الموظفة.
+                            </div>
+                          ) : null}
+                          <input
+                            className="form-control"
+                            value={futureStaffNameQuery}
+                            onChange={(e) => {
+                              const v = String(e.target.value || "");
+                              setFutureStaffNameQuery(v);
+                              setFutureSelectedEmployeeKey("");
+                            }}
+                            placeholder="ابحثي باسم الموظفة..."
+                            disabled={!String(futureServiceId || servicePicker || "").trim()}
+                          />
+                          {String(futureServiceId || servicePicker || "").trim() &&
+                          staffLoadingByService[String(futureServiceId || servicePicker || "").trim()] ? (
+                            <div className="small text-muted mt-1">
+                              <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الموظفات...
+                            </div>
+                          ) : null}
+                          {String(futureServiceId || servicePicker || "").trim() &&
+                          staffErrorByService[String(futureServiceId || servicePicker || "").trim()] ? (
+                            <div className="small text-danger mt-1">
+                              {staffErrorByService[String(futureServiceId || servicePicker || "").trim()]}
+                            </div>
+                          ) : null}
+                          {futureStaffNameQuery && filteredFutureStaffOptions.length ? (
+                            <div className="mt-2 d-flex flex-wrap gap-2">
+                              {filteredFutureStaffOptions.slice(0, 8).map((st) => (
+                                <button
+                                  key={st.key}
+                                  type="button"
+                                  className="btn btn-outline-dark btn-sm"
+                                  onClick={() => {
+                                    setFutureStaffNameQuery(st.name);
+                                    setFutureSelectedEmployeeKey(st.key);
+                                  }}
+                                >
+                                  {st.name}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <div className="col-12 d-grid">
+                        <button
+                          type="button"
+                          className="btn btn-outline-dark"
+                          onClick={runFutureAvailabilitySearch}
+                          disabled={futureLoading}
+                        >
+                          {futureLoading ? "جاري البحث..." : "بحث"}
+                        </button>
+                      </div>
+
+                      {futureMsg ? (
+                        <div className="col-12">
+                          <div className="alert alert-secondary mb-0 py-2">
+                            {futureMsg}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {futureResult.length ? (
+                        <div className="col-12">
+                          <div className="bk-future-inline">
+                            {futureAnyStaff ? (
+                              <div className="small text-muted mb-2">
+                                الأوقات التالية قد تكون عند موظفات مختلفات، وسيتم تحديد الموظفة بعد اختيار اليوم.
+                              </div>
+                            ) : null}
+                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                              <div className="bk-future-title">نتائج البحث</div>
+                              <button
+                                type="button"
+                                className="btn btn-sm bk-future-pill"
+                                onClick={() => {
+                                  const nearestDate = String(futureResult[0]?.date || "").trim();
+                                  if (!nearestDate) return;
+                                  applyBookingDate(nearestDate);
+                                }}
+                              >
+                                اختيار أقرب موعد
+                              </button>
+                            </div>
+
+                            <div className="table-responsive">
+                              <table className="table align-middle mb-0 bk-future-table">
+                                <thead>
+                                  <tr>
+                                    <th>التاريخ</th>
+                                    <th>أوقات متاحة</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {futureResult.map((r) => (
+                                    <tr key={r.date}>
+                                      <td>{r.date}</td>
+                                      <td>
+                                        {r.note ? (
+                                          <div className="bk-future-note mb-2">
+                                            <span className="bk-future-note-label">المتاح لدى:</span>
+                                            <span className="bk-future-note-names">
+                                              {(r.contributors && r.contributors.length
+                                                ? r.contributors
+                                                : String(r.note || "").replace("المتاح لدى:", "").split("،").map((x) => x.trim()).filter(Boolean)
+                                              ).slice(0, 3).map((name) => (
+                                                <span key={name} className="bk-future-name-chip">{name}</span>
+                                              ))}
+                                            </span>
+                                          </div>
+                                        ) : null}
+                                        <div className="d-flex gap-2 flex-wrap">
+                                          {(r.times || []).map((t) => (
+                                            <button
+                                              key={t}
+                                              type="button"
+                                              className="btn btn-sm bk-future-pill"
+                                              onClick={() => {
+                                                void applyFutureTimeSelection(r.date, t);
+                                              }}
+                                            >
+                                              {internalMode ? t : formatTime12ForClient(t)}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
 
 
                 <div className="mb-4">

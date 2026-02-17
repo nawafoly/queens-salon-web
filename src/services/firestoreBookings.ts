@@ -142,8 +142,26 @@ function normalizeBooking(raw: any): BookingDoc {
           ? "dashboard"
           : "client",
 
-    clientName: String(raw?.clientName ?? ""),
-    clientPhone: String(raw?.clientPhone ?? ""),
+    clientName: String(
+      raw?.clientName ??
+      raw?.customerName ??
+      raw?.name ??
+      raw?.customer ??
+      raw?.client?.name ??
+      raw?.customer?.name ??
+      raw?.userName ??
+      ""
+    ),
+    clientPhone: String(
+      raw?.clientPhone ??
+      raw?.phone ??
+      raw?.customerPhone ??
+      raw?.mobile ??
+      raw?.client?.phone ??
+      raw?.customer?.phone ??
+      raw?.userPhone ??
+      ""
+    ),
 
     // legacy
     serviceName: String(raw?.serviceName ?? ""),

@@ -17,6 +17,7 @@ export type BookingStatus = "confirmed" | "pending" | "cancelled" | "completed";
 
 export type Booking = {
   id: string;
+  publicId?: string;
   customerName: string;
   phone?: string;
   serviceName: string;
@@ -108,6 +109,7 @@ function mapBookingDoc(id: string, b: any): Booking {
 
   return {
     id,
+    publicId: b.publicId ? String(b.publicId) : undefined,
     customerName,
     phone,
     serviceId,

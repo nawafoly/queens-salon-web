@@ -46,6 +46,15 @@ function normalizeMk(raw: string) {
   return `MK-${digits}`;
 }
 
+function formatTime12ForClient(time24: string) {
+  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return String(time24 || "-");
+  const h24 = Number(m[1]);
+  const mm = m[2];
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+}
+
 const Track = () => {
   const { trackId } = useParams();
   const navigate = useNavigate();
@@ -202,7 +211,7 @@ const Track = () => {
                   </div>
                   <div className="track-row">
                     <span>الوقت</span>
-                    <strong>{data.time || "-"}</strong>
+                    <strong>{formatTime12ForClient(data.time || "-")}</strong>
                   </div>
                 </div>
 

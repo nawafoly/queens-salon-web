@@ -759,7 +759,10 @@ const Profile: React.FC = () => {
         <div className="p-section-container">
           <div className="p-section-header">
             <h3>الحجز القادم</h3>
-            <button className="p-link-action" onClick={() => navigate("/booking")}>حجز جديد +</button>
+            <button className="p-link-action" onClick={() => navigate("/booking")} type="button" aria-label="حجز جديد">
+              <span className="p-link-action-plus">+</span>
+              <span>حجز جديد</span>
+            </button>
           </div>
           {!upcomingBooking ? (
             <div className="p-empty-state">لا يوجد حجز قادم حالياً ✨</div>

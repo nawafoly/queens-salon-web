@@ -20,6 +20,7 @@ import {
   toMinutes,
   type TimeSlot,
 } from "../helpers/timeSlots";
+import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 
 import { AppSettingsService } from "../services/AppSettingsService";
 
@@ -839,8 +840,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
       for (let i = 0; i < scanDays; i++) {
         const dateISO = addDaysISO(startISO, i);
-
         let dayTimes: string[] = [];
+        let dayNote = "";
 
         if (!futureAnyStaff && fixedEmployeeKey) {
           const staff =
@@ -848,19 +849,36 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
 
           const employeeIdFallback = String(staff?.id || "").trim();
+          const fixedName = String((staff as any)?.name || "").trim();
+          const fixedAvailable = staff
+            ? isStaffAvailableForDate(staff as any, dateISO, { requireShowOnBooking: true })
+            : false;
 
-          dayTimes = await getAvailableStartsForDay({
-            salonId: SALON_ID,
-            employeeKey: fixedEmployeeKey,
-            employeeIdFallback,
-            dateISO,
-            durationMin,
-            take: 5,
-          });
+          if (!fixedAvailable) {
+            dayTimes = [];
+            dayNote = "";
+          } else {
+            dayTimes = await getAvailableStartsForDay({
+              salonId: SALON_ID,
+              employeeKey: fixedEmployeeKey,
+              employeeIdFallback,
+              dateISO,
+              durationMin,
+              take: 5,
+            });
+
+            if (dayTimes.length && fixedName) {
+              dayNote = `المتاح لدى: ${fixedName}`;
+            }
+          }
         } else {
           const merged = new Set<string>();
+          const contributors = new Set<string>();
+          const availableStaff = staffList.filter((st: any) =>
+            isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true })
+          );
 
-          for (const st of staffList) {
+          for (const st of availableStaff) {
             const empKey = String(st?.linkedUid || "").trim() || String(st?.id || "").trim();
             const empIdFallback = String(st?.id || "").trim();
             if (!empKey) continue;
@@ -874,16 +892,23 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               take: 5,
             });
 
-            times.forEach((t) => merged.add(t));
+            if (times.length) {
+              const stName = String((st as any)?.name || "").trim();
+              if (stName) contributors.add(stName);
+              times.forEach((t) => merged.add(t));
+            }
           }
 
           dayTimes = Array.from(merged.values())
             .sort((a, b) => toMinutes(a) - toMinutes(b))
             .slice(0, 5);
+
+          if (dayTimes.length && contributors.size) {
+            dayNote = `المتاح لدى: ${Array.from(contributors).slice(0, 3).join("، ")}`;
+          }
         }
 
-        if (dayTimes.length) results.push({ date: dateISO, times: dayTimes });
-
+        if (dayTimes.length) results.push({ date: dateISO, times: dayTimes, note: dayNote });
         if (results.length >= 5) break;
       }
 

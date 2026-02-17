@@ -88,6 +88,15 @@ function parseTimeToMinutes(t?: string) {
   return 99999;
 }
 
+function formatTime12(time24?: string) {
+  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return String(time24 || "—");
+  const h24 = Number(m[1]);
+  const mm = m[2];
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+}
+
 type DateQuick = "all" | "today" | "tomorrow" | "week";
 
 function isInQuickRange(iso: string, mode: DateQuick) {
@@ -493,7 +502,7 @@ export default function DashboardStaff() {
 
                         <div className="dashstaff-row">
                           <div className="dashstaff-meta">
-                            الموعد: <b>{b.date || "—"}</b> • <b>{b.time || "—"}</b>
+                            الموعد: <b>{b.date || "—"}</b> • <b>{formatTime12(b.time)}</b>
                           </div>
                         </div>
 

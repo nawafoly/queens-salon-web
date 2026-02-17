@@ -1,5 +1,5 @@
 // src/pages/DashboardClients.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faSearch,
@@ -8,7 +8,9 @@ import {
   faXmark,
   faCircleInfo,
   faFileArrowUp,
+  faCopy,
 } from "@fortawesome/free-solid-svg-icons";
+import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import * as XLSX from "xlsx";
 
 /**
@@ -174,11 +176,69 @@ function normalizeSaudiPhone(raw: any) {
   return { phone: display, digits: keyDigits };
 }
 
+/** ✅ Normalize Arabic text for stable key matching (notes / dedupe) */
+function normalizeArabic(raw: any) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+
+  return s
+    .toLowerCase()
+    // remove Arabic diacritics + tatweel
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    // normalize Alef/Ya/Ha variants
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    // normalize whitespace
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function makeClientKey(name: string, phone: string) {
   // ✅ نحاول نخلي المفتاح دايم بالجوال لو موجود
   const norm = normalizeSaudiPhone(phone);
   const pd = norm.digits;
   return pd ? `p:${pd}` : `n:${name.trim().toLowerCase()}`;
+}
+
+function noteKeyForClient(c: Pick<ClientRow, "key" | "name" | "phone"> | null | undefined) {
+  if (!c) return "";
+  const norm = normalizeSaudiPhone(c.phone);
+  if (norm.digits) return `p:${norm.digits}`;
+  const normalizedName = normalizeArabic(c.name || "");
+  if (normalizedName) return `n:${normalizedName}`;
+  return String(c.key || "").trim();
+}
+
+function formatTime12(time24: string) {
+  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return String(time24 || "-");
+  const h24 = Number(m[1]);
+  const mm = m[2];
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+}
+
+function bookingNoOf(b: any) {
+  const candidates = [
+    b?.publicId,
+    b?.bookingNumber,
+    b?.bookingNo,
+  ];
+  const raw = candidates
+    .map((x) => String(x || "").trim())
+    .find(Boolean) || "";
+
+  if (!raw) return "—";
+
+  const upper = raw.toUpperCase();
+  if (/^MK-\d+$/.test(upper)) return upper;
+
+  // only convert if the source is numeric-only (legacy forms like "10080")
+  if (/^\d+$/.test(upper)) return `MK-${upper}`;
+
+  // any random alphanumeric id (Firestore doc id) is NOT a booking number
+  return "—";
 }
 
 const NOTES_KEY = "dashboard_client_notes_v1";
@@ -245,6 +305,14 @@ const DashboardClients: React.FC = () => {
   const [importErr, setImportErr] = useState("");
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [copyToast, setCopyToast] = useState("");
+  const copyToastTimerRef = useRef<number | null>(null);
+  const [noteSaved, setNoteSaved] = useState(false);
+  const noteSavedTimerRef = useRef<number | null>(null);
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 900px)").matches;
+  });
 
   type ImportPreviewRow = {
     name: string;
@@ -255,6 +323,7 @@ const DashboardClients: React.FC = () => {
   };
 
   const [preview, setPreview] = useState<ImportPreviewRow[]>([]);
+  const closeClientModal = useCallback(() => setSelectedClient(null), []);
 
   const sortOptions = useMemo(
     () => [
@@ -266,6 +335,37 @@ const DashboardClients: React.FC = () => {
 
   const sortLabel =
     sortOptions.find((o) => o.value === sortBy)?.label || "اختر";
+
+  const handleCopyPhone = async (phone: string) => {
+    const value = String(phone || "").trim();
+    if (!value || value === "—") return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyToast("تم نسخ الرقم");
+      if (copyToastTimerRef.current) window.clearTimeout(copyToastTimerRef.current);
+      copyToastTimerRef.current = window.setTimeout(() => setCopyToast(""), 1500);
+    } catch {
+      setCopyToast("تعذر النسخ");
+      if (copyToastTimerRef.current) window.clearTimeout(copyToastTimerRef.current);
+      copyToastTimerRef.current = window.setTimeout(() => setCopyToast(""), 1500);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (copyToastTimerRef.current) window.clearTimeout(copyToastTimerRef.current);
+      if (noteSavedTimerRef.current) window.clearTimeout(noteSavedTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 900px)");
+    const apply = () => setIsMobileViewport(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   const selectSort = (v: "latest" | "most") => {
     setSortBy(v);
@@ -861,7 +961,7 @@ const DashboardClients: React.FC = () => {
         <div className="stat-card stat-3">
           <div className="stat-info">
             <h3 className="value">{stats.totalClients}</h3>
-            <p>عدد العميلات (بعد البحث)</p>
+            <p>عدد العملاء </p>
           </div>
         </div>
 
@@ -928,22 +1028,24 @@ const DashboardClients: React.FC = () => {
                           {c.phone !== "—" && (
                             <div className="cl-miniActions">
                               <button
-                                className="cl-iconBtn"
+                                className="cl-iconBtn is-copy"
                                 type="button"
                                 title="نسخ الجوال"
-                                onClick={() => navigator.clipboard.writeText(c.phone)}
+                                onClick={() => {
+                                  void handleCopyPhone(c.phone);
+                                }}
                               >
-                                📋
+                                <FontAwesomeIcon icon={faCopy} />
                               </button>
 
                               <a
-                                className="cl-iconBtn"
+                                className="cl-iconBtn is-whatsapp"
                                 title="واتساب"
                                 href={`https://wa.me/${c.phone.replace(/^0/, "966")}`}
                                 target="_blank"
                                 rel="noreferrer"
                               >
-                                💬
+                                <FontAwesomeIcon icon={faWhatsapp} />
                               </a>
                             </div>
                           )}
@@ -962,7 +1064,7 @@ const DashboardClients: React.FC = () => {
 
                       <td className="cl-last">
                         {c.lastVisitDate
-                          ? `${c.lastVisitDate} — ${c.lastVisitTime || ""}`
+                          ? `${c.lastVisitDate} — ${formatTime12(c.lastVisitTime || "")}`
                           : "—"}
                       </td>
 
@@ -976,7 +1078,7 @@ const DashboardClients: React.FC = () => {
                           type="button"
                           onClick={() => {
                             setSelectedClient(c);
-                            setNoteText(notesMap[c.key] || "");
+                            setNoteText(notesMap[noteKeyForClient(c)] || "");
                           }}
                         >
                           <FontAwesomeIcon icon={faCircleInfo} /> عرض السجل
@@ -989,27 +1091,100 @@ const DashboardClients: React.FC = () => {
             </table>
           </div>
         </div>
+
+        <div className="cl-mobile-list">
+          {loading ? (
+            <div className="cl-mobile-empty">جاري التحميل...</div>
+          ) : filteredClients.length === 0 ? (
+            <div className="cl-mobile-empty">لا توجد نتائج</div>
+          ) : (
+            filteredClients.map((c) => (
+              <div key={c.key} className="cl-mobile-card">
+                <div className="cl-mobile-head">
+                  <div className="cl-mobile-name">{c.name}</div>
+                  {c.vip ? <span className="dash-pill dash-pill-primary">VIP</span> : null}
+                </div>
+
+                <div className="cl-mobile-row">
+                  <span>الجوال</span>
+                  <b>{c.phone || "—"}</b>
+                </div>
+                <div className="cl-mobile-row">
+                  <span>عدد الحجوزات</span>
+                  <b>{c.bookingsCount}</b>
+                </div>
+                <div className="cl-mobile-row">
+                  <span>آخر زيارة</span>
+                  <b>{c.lastVisitDate ? `${c.lastVisitDate} — ${formatTime12(c.lastVisitTime || "")}` : "—"}</b>
+                </div>
+                <div className="cl-mobile-row">
+                  <span>المصدر</span>
+                  <b>{c.source === "both" ? "حجوزات + Excel" : c.source === "imported" ? "Excel" : "حجوزات"}</b>
+                </div>
+
+                {c.phone !== "—" ? (
+                  <div className="cl-mobile-actions-mini">
+                    <button
+                      className="cl-iconBtn is-copy"
+                      type="button"
+                      title="نسخ الجوال"
+                      onClick={() => {
+                        void handleCopyPhone(c.phone);
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faCopy} />
+                    </button>
+                    <a
+                      className="cl-iconBtn is-whatsapp"
+                      title="واتساب"
+                      href={`https://wa.me/${c.phone.replace(/^0/, "966")}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <FontAwesomeIcon icon={faWhatsapp} />
+                    </a>
+                  </div>
+                ) : null}
+
+                <button
+                  className="cl-btn ghost cl-mobile-open"
+                  type="button"
+                  onClick={() => {
+                    setSelectedClient(c);
+                    setNoteText(notesMap[noteKeyForClient(c)] || "");
+                  }}
+                >
+                  <FontAwesomeIcon icon={faCircleInfo} /> عرض السجل
+                </button>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* Client Bookings Modal (Unified) */}
       {selectedClient && (
         <Modal
           open={!!selectedClient}
-          onClose={() => setSelectedClient(null)}
+          onClose={closeClientModal}
           ariaLabel="سجل العميل"
-          panelClassName="dash-modal"
+          panelClassName="dash-modal cl-record-modal"
           size="lg"
         >
             <div className="cl-modalHeader">
-              <h3 className="cl-modalTitle">
-                سجل: {selectedClient.name}{" "}
-                {selectedClient.phone !== "—" ? `— ${selectedClient.phone}` : ""}
-              </h3>
+              <div className="cl-modalTitleWrap">
+                <div className="cl-modalKicker">سجل العميلة</div>
+                <h3 className="cl-modalTitle">{selectedClient.name || "—"}</h3>
+                <div className="cl-modalPhone">
+                  {selectedClient.phone !== "—" ? selectedClient.phone : "بدون رقم جوال"}
+                </div>
+              </div>
 
               <button
-                className="cl-btn"
+                className="cl-btn ghost cl-modal-closeBtn"
                 type="button"
-                onClick={() => setSelectedClient(null)}
+                onClick={closeClientModal}
+                title="إغلاق"
               >
                 <FontAwesomeIcon icon={faXmark} /> إغلاق
               </button>
@@ -1025,9 +1200,14 @@ const DashboardClients: React.FC = () => {
                 const last = selectedBookings[0];
 
                 const saveNote = () => {
-                  const next = { ...notesMap, [selectedClient.key]: noteText.trim() };
+                  const k = noteKeyForClient(selectedClient);
+                  if (!k) return;
+                  const next = { ...notesMap, [k]: noteText.trim() };
                   setNotesMap(next);
                   localStorage.setItem(NOTES_KEY, JSON.stringify(next));
+                  setNoteSaved(true);
+                  if (noteSavedTimerRef.current) window.clearTimeout(noteSavedTimerRef.current);
+                  noteSavedTimerRef.current = window.setTimeout(() => setNoteSaved(false), 1500);
                 };
 
                 // ✅ imported note (from excel)
@@ -1043,7 +1223,7 @@ const DashboardClients: React.FC = () => {
 
                       <div className="cl-sum-card">
                         <div className="cl-sum-num">
-                          {last?.date ? `${last.date} ${last.time || ""}` : "—"}
+                          {last?.date ? `${last.date} ${formatTime12(last.time || "")}` : "—"}
                         </div>
                         <div className="cl-sum-label">آخر زيارة</div>
                       </div>
@@ -1073,21 +1253,25 @@ const DashboardClients: React.FC = () => {
                         onChange={(e) => setNoteText(e.target.value)}
                         placeholder="مثال: تفضّل موظفة معينة / حساسية / أوقات مناسبة..."
                       />
-                      <button className="cl-btn primary" type="button" onClick={saveNote}>
-                        حفظ الملاحظة
-                      </button>
+                      <div className="cl-note-actions">
+                        <button className="cl-btn primary" type="button" onClick={saveNote}>
+                          حفظ الملاحظة
+                        </button>
+                        {noteSaved ? <span className="cl-note-saved">تم الحفظ</span> : null}
+                      </div>
                     </div>
                   </>
                 );
               })()}
 
               <div className="clients-table-card">
+                {!isMobileViewport ? (
                 <div className="cl-table-wrap">
                   <div className="table-responsive">
                     <table className="clients-table">
                       <thead>
                         <tr>
-                          <th>ID</th>
+                          <th>رقم الحجز</th>
                           <th>الخدمة</th>
                           <th>الموظفة</th>
                           <th>التاريخ</th>
@@ -1106,11 +1290,11 @@ const DashboardClients: React.FC = () => {
                         ) : (
                           selectedBookings.map((b: any) => (
                             <tr key={b.id}>
-                              <td className="cl-id">{b.id}</td>
+                              <td className="cl-id">{bookingNoOf(b)}</td>
                               <td>{(b.serviceName ?? "-").toString()}</td>
                               <td>{(b.employeeName ?? "-").toString()}</td>
                               <td className="cl-date">{b.date}</td>
-                              <td className="cl-time">{b.time}</td>
+                              <td className="cl-time">{formatTime12(b.time)}</td>
                               <td>
                                 <span className={`status-badge ${b.status}`}>
                                   {statusLabel[(b.status as BookingStatus) ?? "pending"] ??
@@ -1129,6 +1313,53 @@ const DashboardClients: React.FC = () => {
                     </table>
                   </div>
                 </div>
+                ) : (
+                <div className="cl-modal-mobile-bookings">
+                  {selectedBookings.length === 0 ? (
+                    <div className="cl-mobile-empty">لا يوجد سجل حجوزات (هذه عميلة Excel فقط)</div>
+                  ) : (
+                    selectedBookings.map((b: any) => (
+                      <div key={b.id} className="cl-mobile-card">
+                        <div className="cl-mobile-row">
+                          <span>رقم الحجز</span>
+                          <b className="cl-id">{bookingNoOf(b)}</b>
+                        </div>
+                        <div className="cl-mobile-row">
+                          <span>الخدمة</span>
+                          <b>{(b.serviceName ?? "-").toString()}</b>
+                        </div>
+                        <div className="cl-mobile-row">
+                          <span>الموظفة</span>
+                          <b>{(b.employeeName ?? "-").toString()}</b>
+                        </div>
+                        <div className="cl-mobile-row">
+                          <span>التاريخ</span>
+                          <b>{b.date || "-"}</b>
+                        </div>
+                        <div className="cl-mobile-row">
+                          <span>الوقت</span>
+                          <b>{formatTime12(b.time)}</b>
+                        </div>
+                        <div className="cl-mobile-row">
+                          <span>الحالة</span>
+                          <span className={`status-badge ${b.status}`}>
+                            {statusLabel[(b.status as BookingStatus) ?? "pending"] ??
+                              ((b.status as any) ?? "pending")}
+                          </span>
+                        </div>
+                        <div className="cl-mobile-row">
+                          <span>الإجمالي</span>
+                          <b>
+                            {Number.isFinite(Number(b.total))
+                              ? `${Number(b.total).toLocaleString()} ريال`
+                              : "-"}
+                          </b>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                )}
               </div>
 
               <div className="cl-modalHint">
@@ -1136,7 +1367,9 @@ const DashboardClients: React.FC = () => {
               </div>
             </div>
           </Modal>
-        )}
+      )}
+
+      {copyToast ? <div className="cl-copy-toast">{copyToast}</div> : null}
 
       {/* Import Modal (Unified style using same overlay pattern) */}
       {importOpen && (

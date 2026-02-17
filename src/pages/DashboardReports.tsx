@@ -33,6 +33,15 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function formatTime12(time24?: string) {
+  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return String(time24 || "--:--");
+  const h24 = Number(m[1]);
+  const mm = m[2];
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+}
+
 export default function DashboardReports() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
@@ -323,7 +332,7 @@ export default function DashboardReports() {
                       <div className="receipt-item" key={b.id || `ok-${idx}`}>
                         <div className="left">
                           <div className="top">
-                            <span className="time">{b.time || "--:--"}</span>
+                            <span className="time">{formatTime12(b.time)}</span>
                             <span className={`st st-${b.status}`}>{statusLabel[b.status]}</span>
                           </div>
                           <div className="name">{b.serviceName || "-"}</div>
@@ -347,7 +356,7 @@ export default function DashboardReports() {
                       <div className="receipt-item" key={b.id || `bad-${idx}`}>
                         <div className="left">
                           <div className="top">
-                            <span className="time">{b.time || "--:--"}</span>
+                            <span className="time">{formatTime12(b.time)}</span>
                             <span className={`st st-${b.status}`}>{statusLabel[b.status]}</span>
                           </div>
                           <div className="name">{b.serviceName || "-"}</div>

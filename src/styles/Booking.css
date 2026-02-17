@@ -729,6 +729,43 @@ textarea.form-control {
   padding: 0.7rem;
 }
 
+.booking-page .bk-future-title {
+  color: #0d0d0d;
+  font-weight: 900;
+}
+
+.booking-page .bk-future-note {
+  color: #222;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.35;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.booking-page .bk-future-note-label {
+  color: #191919;
+  font-weight: 900;
+}
+
+.booking-page .bk-future-note-names {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.booking-page .bk-future-name-chip {
+  background: #f5f5f5;
+  border: 1px solid rgba(13, 13, 13, 0.16);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-weight: 900;
+  color: #111;
+}
+
 .booking-page .bk-future-table {
   border: 1px solid rgba(13, 13, 13, 0.12);
   border-radius: 10px;

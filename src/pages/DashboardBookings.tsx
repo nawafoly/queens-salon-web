@@ -1,5 +1,5 @@
 // src/pages/DashboardBookings.tsx
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Modal from "../components/Modal";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -20,10 +20,13 @@ import { auth, db } from "../services/firebase";
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
   query as fsQuery,
+  limit as fsLimit,
+  where,
 } from "firebase/firestore";
 
 import {
@@ -63,6 +66,8 @@ const statusLabel: Record<BookingStatus, string> = {
   cancelled: "ملغي",
   completed: "مكتمل",
 };
+
+const allStatusOptions: BookingStatus[] = ["pending", "confirmed", "completed", "cancelled"];
 
 /* =========================
    Helpers
@@ -162,6 +167,88 @@ function getAuthUserSafe(): { displayName: string; email: string } {
   return { displayName, email };
 }
 
+function formatTime12(time24: string) {
+  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return String(time24 || "-");
+  const h24 = Number(m[1]);
+  const mm = m[2];
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+}
+
+function bookingRef(b: Partial<Booking> | null | undefined) {
+  const raw = String(b?.publicId || "").trim();
+  if (!raw) return "—";
+  const up = raw.toUpperCase();
+  if (/^MK-\d+$/.test(up)) return up;
+  if (/^\d+$/.test(up)) return `MK-${up}`;
+  return up;
+}
+
+function channelLabel(channel?: string) {
+  if (channel === "client") return "موقع العميلات";
+  if (channel === "dashboard") return "الداشبورد";
+  if (channel === "internal") return "الحجز الداخلي";
+  return "غير محدد";
+}
+
+function formatEventAt(v: any) {
+  try {
+    const ms =
+      typeof v?.toMillis === "function"
+        ? v.toMillis()
+        : typeof v?.seconds === "number"
+          ? Number(v.seconds) * 1000
+          : 0;
+    if (!ms) return "—";
+    const d = new Date(ms);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${formatTime12(`${hh}:${mi}`)}`;
+  } catch {
+    return "—";
+  }
+}
+
+function formatAnyDateTime(v: any) {
+  try {
+    if (!v) return "—";
+    const ms =
+      typeof v?.toMillis === "function"
+        ? v.toMillis()
+        : typeof v?.seconds === "number"
+          ? Number(v.seconds) * 1000
+          : typeof v === "number"
+            ? v
+            : Date.parse(String(v));
+    if (!Number.isFinite(ms) || ms <= 0) return "—";
+    const d = new Date(ms);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${formatTime12(`${hh}:${mi}`)}`;
+  } catch {
+    return "—";
+  }
+}
+
+function digitsOnly(v: string) {
+  return String(v || "").replace(/\D/g, "");
+}
+
+function actorLabelFromEvent(ev: any) {
+  const email = String(ev?.byEmail || "").trim();
+  if (email) return email.split("@")[0];
+  const uid = String(ev?.byUid || "").trim();
+  if (uid) return uid.slice(0, 8);
+  return "غير معروف";
+}
+
 function normalizeArabicName(input: string) {
   const s = String(input || "").trim().toLowerCase();
   return s
@@ -222,11 +309,17 @@ function serviceSummaryForTable(b: Booking): string {
 type Booking = {
   id: string;
   publicId?: string;
+  channel?: "client" | "dashboard" | "internal";
+  createdBy?: string;
   customerName?: string;
   phone?: string;
   serviceName?: string;
   serviceId?: string;
+  note?: string;
   services?: BookingServiceItem[];
+  durationMin?: number;
+  slotStepMinAtBooking?: number;
+  bufferMinAtBooking?: number;
   employeeName?: string;
   employeeId?: string | null;
   employeeUid?: string | null;
@@ -235,6 +328,19 @@ type Booking = {
   status: BookingStatus;
   total?: number;
   finalPrice?: number;
+  createdAt?: any;
+  updatedAt?: any;
+};
+
+type ClientLoyaltyInfo = {
+  points: number;
+  loyaltyScore: number;
+  isVip: boolean;
+};
+
+type BookingLastUpdate = {
+  by: string;
+  at: string;
 };
 
 /* =========================
@@ -252,25 +358,232 @@ export default function DashboardBookings() {
 
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [notesMap, setNotesMap] = useState<Record<string, string>>({});
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [savedNoteId, setSavedNoteId] = useState("");
+  const [clientLoyalty, setClientLoyalty] = useState<ClientLoyaltyInfo | null>(null);
+  const [clientLoyaltyLoading, setClientLoyaltyLoading] = useState(false);
+  const [lastUpdateMap, setLastUpdateMap] = useState<Record<string, BookingLastUpdate>>({});
+  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const saveHintTimerRef = useRef<number | null>(null);
 
-  const uiRole = useMemo(() => getUiRole(), []);
-  const authUser = useMemo(() => getAuthUserSafe(), []);
+  const uiRole = getUiRole();
+  const authUser = getAuthUserSafe();
+  const closeBookingModal = useCallback(() => setSelectedBooking(null), []);
+  const closeCancelModal = useCallback(() => setCancelTarget(null), []);
 
   useEffect(() => {
-    setNotesMap(loadNotesMap());
+    return () => {
+      if (saveHintTimerRef.current) window.clearTimeout(saveHintTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const loaded = loadNotesMap();
+    setNotesMap(loaded);
+    setNoteDrafts(loaded);
     const unsub = watchAllBookings((data) => {
-      const list = data.map((b: any) => ({
+      const baseList = data.map((b: any) => ({
         ...b,
+        customerName: String(b?.customerName || b?.clientName || b?.name || "").trim() || "",
+        phone: String(b?.phone || b?.clientPhone || b?.customerPhone || "").trim() || "",
         services: extractServicesFromAny(b),
       }));
-      setBookings(list);
+      setBookings(
+        baseList.map((x) => ({
+          ...x,
+          customerName: x.customerName || "غير متوفر",
+          phone: x.phone || "غير متوفر",
+        }))
+      );
       setLoading(false);
+
+      // fallback: بعض السجلات القديمة الاسم/الجوال موجودين فقط في booking_tracks
+      const missing = baseList.filter((x) => !String(x.customerName || "").trim() || !String(x.phone || "").trim());
+      if (!missing.length) return;
+
+      Promise.all(
+        missing.map(async (x) => {
+          try {
+            const t = await getDoc(doc(db, "salons", "main", "booking_tracks", x.id));
+            if (!t.exists()) return x;
+            const td: any = t.data() || {};
+            const name = String(td?.clientName || td?.customerName || td?.name || "").trim();
+            const phone = String(td?.clientPhone || td?.phone || td?.customerPhone || "").trim();
+            return {
+              ...x,
+              customerName: x.customerName || name || "غير متوفر",
+              phone: x.phone || phone || "غير متوفر",
+            };
+          } catch {
+            return {
+              ...x,
+              customerName: x.customerName || "غير متوفر",
+              phone: x.phone || "غير متوفر",
+            };
+          }
+        })
+      ).then((patched) => {
+        const patchedMap = new Map(patched.map((p) => [p.id, p]));
+        const finalList = baseList.map((x) => {
+          const p = patchedMap.get(x.id);
+          if (!p) {
+            return {
+              ...x,
+              customerName: x.customerName || "غير متوفر",
+              phone: x.phone || "غير متوفر",
+            };
+          }
+          return p;
+        });
+        setBookings(finalList);
+      });
     }, (err) => {
       setError("خطأ في تحميل الحجوزات");
       setLoading(false);
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadClientLoyalty = async () => {
+      if (!selectedBooking) {
+        setClientLoyalty(null);
+        return;
+      }
+      setClientLoyaltyLoading(true);
+      try {
+        const phoneRaw = String(selectedBooking.phone || "");
+        const phoneDigits = digitsOnly(phoneRaw);
+        const nameNorm = normalizeArabicName(String(selectedBooking.customerName || ""));
+
+        let found: any = null;
+
+        if (phoneDigits) {
+          const q1 = fsQuery(
+            collection(db, "users"),
+            where("role", "==", "client"),
+            where("phone", "==", phoneDigits),
+            fsLimit(1)
+          );
+          const s1 = await getDocs(q1);
+          if (!s1.empty) found = s1.docs[0].data();
+        }
+
+        if (!found && phoneRaw && phoneRaw !== "غير متوفر") {
+          const q2 = fsQuery(
+            collection(db, "users"),
+            where("role", "==", "client"),
+            where("phone", "==", phoneRaw),
+            fsLimit(1)
+          );
+          const s2 = await getDocs(q2);
+          if (!s2.empty) found = s2.docs[0].data();
+        }
+
+        if (!found && nameNorm) {
+          const allClients = await getDocs(fsQuery(collection(db, "users"), where("role", "==", "client")));
+          const match = allClients.docs.find((d) => {
+            const x: any = d.data() || {};
+            return normalizeArabicName(String(x.name || "")) === nameNorm;
+          });
+          if (match) found = match.data();
+        }
+
+        if (cancelled) return;
+
+        if (!found) {
+          setClientLoyalty({ points: 0, loyaltyScore: 0, isVip: false });
+          return;
+        }
+
+        setClientLoyalty({
+          points: Number(found?.loyaltyPoints || 0),
+          loyaltyScore: Number(found?.loyaltyStats?.loyaltyScore || 0),
+          isVip: !!found?.vip?.isVip,
+        });
+      } catch {
+        if (!cancelled) setClientLoyalty({ points: 0, loyaltyScore: 0, isVip: false });
+      } finally {
+        if (!cancelled) setClientLoyaltyLoading(false);
+      }
+    };
+    loadClientLoyalty();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBooking]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLastUpdates = async () => {
+      const rows = bookings.slice(0, 80);
+      if (!rows.length) return;
+      const entries = await Promise.all(
+        rows.map(async (b) => {
+          try {
+            const q = fsQuery(
+              collection(db, "salons", "main", "booking_logs", b.id, "events"),
+              orderBy("at", "desc"),
+              fsLimit(1)
+            );
+            const snap = await getDocs(q);
+            if (snap.empty) {
+              const fallbackAt = formatAnyDateTime((b as any)?.updatedAt || (b as any)?.createdAt);
+              return [b.id, { by: "النظام", at: fallbackAt }] as const;
+            }
+            const ev = snap.docs[0].data();
+            const eventAt = formatEventAt(ev?.at);
+            const fallbackAt = formatAnyDateTime((b as any)?.updatedAt || (b as any)?.createdAt);
+            return [b.id, { by: actorLabelFromEvent(ev), at: eventAt === "—" ? fallbackAt : eventAt }] as const;
+          } catch {
+            const fallbackAt = formatAnyDateTime((b as any)?.updatedAt || (b as any)?.createdAt);
+            return [b.id, { by: "النظام", at: fallbackAt }] as const;
+          }
+        })
+      );
+      if (cancelled) return;
+      setLastUpdateMap((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    };
+    loadLastUpdates();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookings]);
+
+  const previousClientNotes = useMemo(() => {
+    if (!selectedBooking) return [] as Array<{ id: string; ref: string; date: string; time: string; note: string }>;
+
+    const targetPhone = digitsOnly(String(selectedBooking.phone || ""));
+    const targetName = normalizeArabicName(String(selectedBooking.customerName || ""));
+
+    return bookings
+      .filter((b) => b.id !== selectedBooking.id)
+      .map((b) => {
+        const note = String(notesMap[b.id] || "").trim();
+        if (!note) return null;
+
+        const samePhone = !!targetPhone && digitsOnly(String(b.phone || "")) === targetPhone;
+        const sameName =
+          !!targetName &&
+          normalizeArabicName(String(b.customerName || "")) === targetName;
+
+        if (!samePhone && !sameName) return null;
+
+        return {
+          id: b.id,
+          ref: bookingRef(b),
+          date: String(b.date || ""),
+          time: String(b.time || ""),
+          note,
+        };
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)) as Array<{
+      id: string; ref: string; date: string; time: string; note: string
+    }>;
+  }, [selectedBooking, bookings, notesMap]);
 
   const filtered = useMemo(() => {
     let list = [...bookings];
@@ -304,11 +617,44 @@ export default function DashboardBookings() {
     return list.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
   }, [bookings, q, statusFilter, dateFrom, dateTo, uiRole, authUser]);
 
+  const getAllowedStatusOptions = (b: Booking): BookingStatus[] => {
+    if (uiRole === "owner") return allStatusOptions;
+    if (uiRole === "admin" || uiRole === "reception") {
+      if (b.status === "pending") return ["pending", "confirmed", "cancelled"];
+      return [b.status];
+    }
+    return [b.status];
+  };
+
   const handleUpdateStatus = async (id: string, newStatus: BookingStatus) => {
+    const target = bookings.find((x) => x.id === id);
+    if (!target) return;
+    const allowed = getAllowedStatusOptions(target);
+    if (!allowed.includes(newStatus)) {
+      alert("غير مسموح لك بهذا التغيير.");
+      return;
+    }
+    if (newStatus === "cancelled") {
+      setCancelTarget(target);
+      return;
+    }
     try {
       await updateBookingStatus(id, newStatus);
     } catch (e) {
       alert("فشل تحديث الحالة");
+    }
+  };
+
+  const confirmCancelBooking = async () => {
+    if (!cancelTarget?.id) return;
+    setCancelBusy(true);
+    try {
+      await updateBookingStatus(cancelTarget.id, "cancelled");
+      setCancelTarget(null);
+    } catch {
+      alert("فشل إلغاء الحجز");
+    } finally {
+      setCancelBusy(false);
     }
   };
 
@@ -318,7 +664,7 @@ export default function DashboardBookings() {
       return;
     }
 
-    const ref = b.publicId || b.id.slice(0, 6);
+    const ref = bookingRef(b);
     const ok = window.confirm(`تأكيد الحذف النهائي للحجز #${ref}؟ لا يمكن التراجع.`);
     if (!ok) return;
 
@@ -334,7 +680,7 @@ export default function DashboardBookings() {
     const rows = [
       ["ID", "الزبون", "الهاتف", "الخدمة", "الموظفة", "التاريخ", "الوقت", "الحالة", "السعر"],
       ...filtered.map(b => [
-        b.publicId || b.id,
+        bookingRef(b),
         b.customerName || "—",
         b.phone || "—",
         serviceSummaryForTable(b),
@@ -349,9 +695,18 @@ export default function DashboardBookings() {
   };
 
   const updateNote = (id: string, note: string) => {
-    const newMap = { ...notesMap, [id]: note };
+    setNoteDrafts((prev) => ({ ...prev, [id]: note }));
+  };
+
+  const saveNote = (id: string) => {
+    const text = String(noteDrafts[id] ?? "").trim();
+    const newMap = { ...notesMap, [id]: text };
     setNotesMap(newMap);
+    setNoteDrafts(newMap);
     saveNotesMap(newMap);
+    setSavedNoteId(id);
+    if (saveHintTimerRef.current) window.clearTimeout(saveHintTimerRef.current);
+    saveHintTimerRef.current = window.setTimeout(() => setSavedNoteId(""), 1800);
   };
 
   if (loading) return <div className="p-5 text-center">جاري التحميل...</div>;
@@ -370,7 +725,12 @@ export default function DashboardBookings() {
             <div className="bk-field">
               <label>بحث</label>
               <input 
-                className="bk-input" 
+                type="text"
+                className="bk-input bk-search-input" 
+                autoComplete="new-password"
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="none"
                 placeholder="اسم، هاتف، أو موظفة..." 
                 value={q} 
                 onChange={e => setQ(e.target.value)} 
@@ -386,13 +746,35 @@ export default function DashboardBookings() {
                 <option value="cancelled">ملغي</option>
               </select>
             </div>
-            <div className="bk-field">
+            <div className="bk-field bk-field-date">
               <label>من تاريخ</label>
-              <input type="date" className="bk-input" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              <input
+                type="date"
+                className="bk-input bk-date-input"
+                lang="ar-SA"
+                dir="rtl"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                onClick={(e) => {
+                  const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                  if (typeof el.showPicker === "function") el.showPicker();
+                }}
+              />
             </div>
-            <div className="bk-field">
+            <div className="bk-field bk-field-date">
               <label>إلى تاريخ</label>
-              <input type="date" className="bk-input" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              <input
+                type="date"
+                className="bk-input bk-date-input"
+                lang="ar-SA"
+                dir="rtl"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                onClick={(e) => {
+                  const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                  if (typeof el.showPicker === "function") el.showPicker();
+                }}
+              />
             </div>
           </div>
           <div className="bk-actions">
@@ -410,11 +792,12 @@ export default function DashboardBookings() {
             <table className="bookings-table">
               <thead>
                 <tr>
+                  <th>رقم الحجز</th>
                   <th>الزبون</th>
                   <th>الخدمة</th>
                   <th>الموظفة</th>
                   <th>التاريخ والوقت</th>
-                  <th>الحالة</th>
+                  <th>آخر تحديث</th>
                   <th>السعر</th>
                   <th>إجراءات</th>
                 </tr>
@@ -422,20 +805,21 @@ export default function DashboardBookings() {
               <tbody>
                 {filtered.map(b => (
                   <tr key={b.id}>
+                    <td style={{ fontWeight: 900 }}>{bookingRef(b)}</td>
                     <td>
                       <div style={{fontWeight: 800}}>{b.customerName || "—"}</div>
                       <div style={{fontSize: 11, opacity: 0.6}}>{b.phone || "—"}</div>
+                      <div style={{fontSize: 11, opacity: 0.6}}>المصدر: {channelLabel(b.channel)}</div>
                     </td>
                     <td>{serviceSummaryForTable(b)}</td>
                     <td>{b.employeeName || "—"}</td>
                     <td>
                       <div>{b.date}</div>
-                      <div style={{fontSize: 11, opacity: 0.7}}>{b.time}</div>
+                      <div style={{fontSize: 11, opacity: 0.7}}>{formatTime12(b.time)}</div>
                     </td>
                     <td>
-                      <span className={`status-badge ${b.status}`}>
-                        {statusLabel[b.status]}
-                      </span>
+                      <div style={{ fontWeight: 800 }}>{lastUpdateMap[b.id]?.by || "—"}</div>
+                      <div style={{ fontSize: 11, opacity: 0.7 }}>{lastUpdateMap[b.id]?.at || "—"}</div>
                     </td>
                     <td>{b.finalPrice || b.total || 0} ر.س</td>
                     <td>
@@ -444,25 +828,44 @@ export default function DashboardBookings() {
                           <FontAwesomeIcon icon={faCircleInfo} />
                         </button>
                         {uiRole === "owner" && (
-                          <button
-                            className="exp-btn danger sm"
-                            onClick={() => handleDeleteBooking(b)}
-                            title="حذف نهائي"
-                          >
-                            حذف
-                          </button>
+                          <>
+                            <button
+                              className="exp-btn danger sm"
+                              onClick={() => handleDeleteBooking(b)}
+                              title="حذف نهائي"
+                            >
+                              حذف
+                            </button>
+                            <select
+                              className={`bk-select sm bk-owner-status-select bk-owner-status-${b.status}`}
+                              style={{ width: "auto", height: 40, padding: "0 12px", fontSize: 12 }}
+                              value={b.status}
+                              onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
+                            >
+                              {allStatusOptions.map((s) => (
+                                <option key={`desk_${b.id}_${s}`} value={s}>
+                                  {statusLabel[s]}
+                                </option>
+                              ))}
+                            </select>
+                          </>
                         )}
-                        <select 
-                          className="bk-select sm" 
-                          style={{width: 'auto', height: 32, padding: '0 8px', fontSize: 11}}
-                          value={b.status}
-                          onChange={e => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
-                        >
-                          <option value="pending">انتظار</option>
-                          <option value="confirmed">تأكيد</option>
-                          <option value="completed">اكتمل</option>
-                          <option value="cancelled">إلغاء</option>
-                        </select>
+                        {(uiRole === "admin" || uiRole === "reception") && b.status === "pending" && (
+                          <>
+                            <button
+                              className="exp-btn sm"
+                              onClick={() => handleUpdateStatus(b.id, "confirmed")}
+                            >
+                              تأكيد
+                            </button>
+                            <button
+                              className="exp-btn danger sm"
+                              onClick={() => handleUpdateStatus(b.id, "cancelled")}
+                            >
+                              إلغاء
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -475,16 +878,32 @@ export default function DashboardBookings() {
             {filtered.map(b => (
               <div key={b.id} className="bk-mobile-card">
                 <div className="bk-mobile-row">
+                  <span className="bk-mobile-label">رقم الحجز:</span>
+                  <span className="bk-mobile-val" style={{fontWeight: 900}}>{bookingRef(b)}</span>
+                </div>
+                <div className="bk-mobile-row">
                   <span className="bk-mobile-label">الزبون:</span>
-                  <span className="bk-mobile-val">{b.customerName}</span>
+                  <span className="bk-mobile-val">{b.customerName || "—"}</span>
+                </div>
+                <div className="bk-mobile-row">
+                  <span className="bk-mobile-label">الجوال:</span>
+                  <span className="bk-mobile-val">{b.phone || "—"}</span>
                 </div>
                 <div className="bk-mobile-row">
                   <span className="bk-mobile-label">الخدمة:</span>
                   <span className="bk-mobile-val">{serviceSummaryForTable(b)}</span>
                 </div>
                 <div className="bk-mobile-row">
+                  <span className="bk-mobile-label">الموظفة:</span>
+                  <span className="bk-mobile-val">{b.employeeName || "—"}</span>
+                </div>
+                <div className="bk-mobile-row">
                   <span className="bk-mobile-label">التاريخ:</span>
-                  <span className="bk-mobile-val">{b.date} {b.time}</span>
+                  <span className="bk-mobile-val">{b.date} {formatTime12(b.time)}</span>
+                </div>
+                <div className="bk-mobile-row">
+                  <span className="bk-mobile-label">المصدر:</span>
+                  <span className="bk-mobile-val">{channelLabel(b.channel)}</span>
                 </div>
                 <div className="bk-mobile-row">
                   <span className="bk-mobile-label">الحالة:</span>
@@ -493,20 +912,34 @@ export default function DashboardBookings() {
                 <div style={{marginTop: 12, display: 'flex', gap: 8}}>
                    <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
                    {uiRole === "owner" && (
-                     <button className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
-                       حذف نهائي
-                     </button>
+                     <>
+                       <button className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
+                         حذف نهائي
+                       </button>
+                       <select
+                         className={`bk-select sm bk-owner-status-select bk-owner-status-${b.status}`}
+                         style={{ height: 40, padding: "0 12px", fontSize: 12 }}
+                         value={b.status}
+                         onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
+                       >
+                         {allStatusOptions.map((s) => (
+                           <option key={`mob_${b.id}_${s}`} value={s}>
+                             {statusLabel[s]}
+                           </option>
+                         ))}
+                       </select>
+                     </>
                    )}
-                   <select 
-                      className="bk-select sm" 
-                      value={b.status}
-                      onChange={e => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
-                    >
-                      <option value="pending">انتظار</option>
-                      <option value="confirmed">تأكيد</option>
-                      <option value="completed">اكتمل</option>
-                      <option value="cancelled">إلغاء</option>
-                    </select>
+                   {(uiRole === "admin" || uiRole === "reception") && b.status === "pending" && (
+                     <>
+                       <button className="exp-btn sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
+                         تأكيد
+                       </button>
+                       <button className="exp-btn danger sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
+                         إلغاء
+                       </button>
+                     </>
+                   )}
                 </div>
               </div>
             ))}
@@ -516,19 +949,23 @@ export default function DashboardBookings() {
         {selectedBooking && (
           <Modal
             open={!!selectedBooking}
-            onClose={() => setSelectedBooking(null)}
+            onClose={closeBookingModal}
             ariaLabel="تفاصيل الحجز"
             panelClassName="bk-modal"
             size="lg"
           >
             <div className="modal-head">
-              <b>تفاصيل الحجز #{selectedBooking.publicId || selectedBooking.id.slice(0,6)}</b>
-              <button className="exp-btn ghost" onClick={() => setSelectedBooking(null)}>
+              <b>تفاصيل الحجز #{bookingRef(selectedBooking)}</b>
+              <button className="exp-btn ghost" onClick={closeBookingModal}>
                 <FontAwesomeIcon icon={faXmark} />
               </button>
             </div>
             <div className="modal-body">
               <div className="bk-details-grid">
+                <div className="bk-item">
+                  <span className="bk-item-label">رقم الحجز</span>
+                  <span className="bk-item-val">{bookingRef(selectedBooking)}</span>
+                </div>
                 <div className="bk-item">
                   <span className="bk-item-label">اسم الزبون</span>
                   <span className="bk-item-val">{selectedBooking.customerName || "—"}</span>
@@ -538,21 +975,89 @@ export default function DashboardBookings() {
                   <span className="bk-item-val">{selectedBooking.phone || "—"}</span>
                 </div>
                 <div className="bk-item">
+                  <span className="bk-item-label">نقاط العميلة</span>
+                  <span className="bk-item-val">
+                    {clientLoyaltyLoading ? "..." : `${clientLoyalty?.points ?? 0} نقطة`}
+                  </span>
+                </div>
+                <div className="bk-item">
+                  <span className="bk-item-label">ولاء العميلة</span>
+                  <span className="bk-item-val">
+                    {clientLoyaltyLoading
+                      ? "..."
+                      : `${clientLoyalty?.loyaltyScore ?? 0}${(clientLoyalty?.isVip ? " • VIP" : "")}`}
+                  </span>
+                </div>
+                <div className="bk-item">
+                  <span className="bk-item-label">المصدر</span>
+                  <span className="bk-item-val">{channelLabel(selectedBooking.channel)}</span>
+                </div>
+                <div className="bk-item">
                   <span className="bk-item-label">التاريخ</span>
                   <span className="bk-item-val">{selectedBooking.date}</span>
                 </div>
                 <div className="bk-item">
                   <span className="bk-item-label">الوقت</span>
-                  <span className="bk-item-val">{selectedBooking.time}</span>
+                  <span className="bk-item-val">{formatTime12(selectedBooking.time)}</span>
                 </div>
                 <div className="bk-item">
                   <span className="bk-item-label">الموظفة</span>
                   <span className="bk-item-val">{selectedBooking.employeeName || "—"}</span>
                 </div>
                 <div className="bk-item">
+                  <span className="bk-item-label">مدة الخدمة</span>
+                  <span className="bk-item-val">
+                    {Number(selectedBooking.durationMin || 0) > 0
+                      ? `${selectedBooking.durationMin} دقيقة`
+                      : "—"}
+                  </span>
+                </div>
+                <div className="bk-item">
                   <span className="bk-item-label">السعر الإجمالي</span>
                   <span className="bk-item-val">{selectedBooking.finalPrice || selectedBooking.total || 0} ر.س</span>
                 </div>
+                <div className="bk-item">
+                  <span className="bk-item-label">الحالة</span>
+                  <span className="bk-item-val">
+                    <span className={`status-badge ${selectedBooking.status}`}>{statusLabel[selectedBooking.status]}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="bk-note-area">
+                <label className="bk-item-label">الخدمات داخل الحجز</label>
+                <div className="bk-services-list">
+                  {(selectedBooking.services && selectedBooking.services.length > 0
+                    ? selectedBooking.services
+                    : [{ serviceName: selectedBooking.serviceName, serviceId: selectedBooking.serviceId }]
+                  ).map((s, idx) => (
+                    <div key={`${selectedBooking.id}_svc_${idx}`} className="bk-service-row">
+                      <span>{s.serviceName || s.serviceId || "خدمة"}</span>
+                      <span>
+                        {Number(s.durationMin || 0) > 0 ? `${s.durationMin} د` : "—"} · {Number(s.price || 0) > 0 ? `${s.price} ر.س` : "—"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bk-note-area">
+                <label className="bk-item-label">ملاحظات سابقة على العميلة</label>
+                {previousClientNotes.length === 0 ? (
+                  <div className="bk-events-empty">لا توجد ملاحظات سابقة لهذه العميلة.</div>
+                ) : (
+                  <div className="bk-events-list">
+                    {previousClientNotes.map((n) => (
+                      <div key={n.id} className="bk-event-row">
+                        <div className="bk-event-top">
+                          <strong>#{n.ref}</strong>
+                          <span>{n.date} {formatTime12(n.time)}</span>
+                        </div>
+                        <div className="bk-event-note">{n.note}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="bk-note-area">
@@ -561,9 +1066,21 @@ export default function DashboardBookings() {
                   className="bk-input" 
                   rows={3} 
                   placeholder="أضف ملاحظات هنا..."
-                  value={notesMap[selectedBooking.id] || ""}
+                  value={noteDrafts[selectedBooking.id] ?? notesMap[selectedBooking.id] ?? ""}
                   onChange={e => updateNote(selectedBooking.id, e.target.value)}
                 />
+                <div className="bk-note-actions">
+                  <button
+                    type="button"
+                    className="exp-btn"
+                    onClick={() => saveNote(selectedBooking.id)}
+                  >
+                    حفظ الملاحظة
+                  </button>
+                  {savedNoteId === selectedBooking.id ? (
+                    <span className="bk-note-saved">تم الحفظ</span>
+                  ) : null}
+                </div>
               </div>
             </div>
             <div className="modal-foot">
@@ -572,10 +1089,46 @@ export default function DashboardBookings() {
                   حذف نهائي
                 </button>
               )}
-              <button className="exp-btn primary" onClick={() => setSelectedBooking(null)}>إغلاق</button>
+              <button className="exp-btn bk-close-btn" onClick={closeBookingModal}>إغلاق</button>
             </div>
           </Modal>
         )}
+
+        <Modal
+          open={!!cancelTarget}
+          onClose={() => (cancelBusy ? null : closeCancelModal())}
+          ariaLabel="تأكيد إلغاء الحجز"
+          panelClassName="bk-cancel-modal"
+          size="sm"
+        >
+          <div className="bk-cancel-head">تأكيد إلغاء الحجز</div>
+          <div className="bk-cancel-body">
+            <p>هل تريد بالفعل إلغاء هذا الحجز؟</p>
+            <div className="bk-cancel-meta">
+              <span>رقم الحجز: {bookingRef(cancelTarget)}</span>
+              <span>العميلة: {cancelTarget?.customerName || "—"}</span>
+              <span>التاريخ: {cancelTarget?.date || "—"} - {formatTime12(cancelTarget?.time || "")}</span>
+            </div>
+          </div>
+          <div className="bk-cancel-foot">
+            <button
+              type="button"
+              className="exp-btn ghost"
+              onClick={closeCancelModal}
+              disabled={cancelBusy}
+            >
+              رجوع
+            </button>
+            <button
+              type="button"
+              className="exp-btn danger"
+              onClick={confirmCancelBooking}
+              disabled={cancelBusy}
+            >
+              {cancelBusy ? "جاري الإلغاء..." : "تأكيد الإلغاء"}
+            </button>
+          </div>
+        </Modal>
       </div>
     </div>
   );

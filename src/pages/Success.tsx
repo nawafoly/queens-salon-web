@@ -14,7 +14,6 @@ import {
   faArrowRight,
   faCopy,
   faCircleCheck,
-  faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 
@@ -76,6 +75,15 @@ function safeNum(v: any) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function formatTime12ForClient(time24: string) {
+  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return String(time24 || "-");
+  const h24 = Number(m[1]);
+  const mm = m[2];
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+}
+
 function normStatus(s: string) {
   return String(s || "").toLowerCase().trim();
 }
@@ -109,7 +117,7 @@ function buildWhatsappMessageAll(bookings: UiBookingView[]) {
     lines.push(`(${i + 1}) رقم الحجز: ${mk}`);
     lines.push(`الخدمة: ${b.serviceName || "—"}`);
     lines.push(`التاريخ: ${b.date || "—"}`);
-    lines.push(`الوقت: ${b.time || "—"}`);
+    lines.push(`الوقت: ${formatTime12ForClient(b.time) || "—"}`);
     lines.push(`الموظفة: ${b.employeeName || "—"}`);
     lines.push("");
   });
@@ -369,11 +377,11 @@ export default function Success() {
           {!isConfirmed && (
             <div className="success-cta-box" role="note" aria-label="تنبيه تأكيد عبر واتساب">
               <div className="success-cta-title qs-wine">
-                <FontAwesomeIcon icon={faTriangleExclamation} />
-                <span>مهم: لازم تأكيد عبر واتساب</span>
+                <span>تأكيد الحجز عبر واتساب</span>
               </div>
               <div className="success-cta-text qs-wine">
-              لتثبيت الموعد، يرجى التواصل عبر واتساب حيث سيتم إرسال رابط الدفع لتأكيد الحجز 🤍              </div>
+                يرجى التواصل عبر واتساب، وسيتم إرسال رابط الدفع لإتمام التأكيد 🤍
+              </div>
 
             </div>
           )}
@@ -392,37 +400,19 @@ export default function Success() {
           {views.map((v, idx) => {
             const mk = String(v.publicId || "").trim() || "—";
             return (
-              <div key={v.id} style={{ paddingTop: idx ? 14 : 0 }}>
-                {idx > 0 && <div className="success-sep" style={{ opacity: 0.15 }} />}
+              <div key={v.id} className={`success-booking-block ${idx > 0 ? "is-following" : ""}`}>
+                {idx > 0 && <div className="success-sep is-soft" />}
 
-                <div className="detail-row detail-row--full" style={{ justifyContent: "space-between" }}>
-                  <span className="mono qs-black" style={{ fontWeight: 800 }}>
-                    {mk}
-                  </span>
-
-                  <button
-                    type="button"
-                    className="success-mini-copy qs-black"
-                    onClick={() => copyOne(mk)}
-                    title="نسخ رقم الحجز"
-                    style={{
-                      border: "1px solid rgba(13,13,13,0.15)",
-                      background: "#fff",
-                      borderRadius: 10,
-                      padding: "6px 10px",
-                      cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faCopy} /> نسخ
-                  </button>
+                <div className="detail-row detail-row--full success-booking-id-row">
+                  <div className="success-booking-id-pill">
+                    <span className="success-booking-id-label">رقم الحجز:</span>
+                    <span className="success-booking-id-value">{mk}</span>
+                  </div>
                 </div>
 
                 <div className="detail-row">
                   <FontAwesomeIcon icon={faUser} className="detail-ico" />
-                  <span className="detail-label">العميلة</span>
+                  <span className="detail-label">الملكة</span>
                   <span className="detail-value">{v.clientName}</span>
                 </div>
 
@@ -453,7 +443,7 @@ export default function Success() {
                 <div className="detail-row">
                   <FontAwesomeIcon icon={faClock} className="detail-ico" />
                   <span className="detail-label">الوقت</span>
-                  <span className="detail-value">{v.time}</span>
+                  <span className="detail-value">{formatTime12ForClient(v.time)}</span>
                 </div>
 
                 <div className="detail-row detail-row--full">
@@ -469,9 +459,9 @@ export default function Success() {
           })}
 
           {views.length > 1 && (
-            <div className="total-row" style={{ marginTop: 14 }}>
+            <div className="total-row total-row--summary">
               <FontAwesomeIcon icon={faMoneyBill} />
-              <span style={{ fontWeight: 800 }}>
+              <span className="total-row-label">
                 الإجمالي لكل الحجوزات: {totalAll ? `${totalAll.toLocaleString()} ريال` : "—"}
               </span>
             </div>
@@ -505,7 +495,7 @@ export default function Success() {
             في حال تم تأكيد الحجز المبلغ غير قابل للاسترداد، ويمكن نقل قيمته إلى موعد آخر عند إعادة الجدولة خلال مدة شهر واحد.
           </p>
 
-          <div className="success-policy-top" style={{ marginTop: 10 }}>
+          <div className="success-policy-top is-spaced">
             <span className="success-policy-title">ملاحظات مهمة</span>
           </div>
 

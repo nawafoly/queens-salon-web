@@ -145,12 +145,31 @@ function loadSettings(): AppSettings {
   }
 }
 
+function formatTime12(time24: string) {
+  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return String(time24 || "-");
+  const h24 = Number(m[1]);
+  const mm = m[2];
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+}
+
+function bookingNoOf(b: Partial<Booking> | null | undefined) {
+  const raw = String(b?.publicId || "").trim();
+  if (!raw) return "—";
+  const up = raw.toUpperCase();
+  if (/^MK-\d+$/.test(up)) return up;
+  if (/^\d+$/.test(up)) return `MK-${up}`;
+  return up;
+}
+
 /** ✅ تحويل حجز Firestore لشكل Booking اللي تستخدمه الواجهة */
 async function mapFirestoreToUiBooking(b: BookingDocWithId): Promise<Booking> {
   const serviceId = (b as any)?.serviceId || b.serviceName || "";
 
   return {
     id: b.id,
+    publicId: (b as any)?.publicId ? String((b as any).publicId) : undefined,
     customerName: b.clientName || "-",
     phone: b.clientPhone || "",
     serviceId,
@@ -309,6 +328,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
             <table className="ov-table">
               <thead>
                 <tr>
+                  <th>رقم الحجز</th>
                   <th>العميلة</th>
                   <th>الخدمة</th>
                   <th>التاريخ</th>
@@ -320,7 +340,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
               <tbody>
                 {latestBookings.length === 0 ? (
                   <tr>
-                    <td className="ov-empty" colSpan={5}>
+                    <td className="ov-empty" colSpan={6}>
                       لا توجد حجوزات بعد
                     </td>
                   </tr>
@@ -332,10 +352,11 @@ const DashboardOverview: React.FC<OverviewProps> = ({
                       onClick={() => onOpenBooking(b)}
                       title="اضغط لعرض التفاصيل"
                     >
+                      <td>{bookingNoOf(b)}</td>
                       <td>{b.customerName}</td>
                       <td>{b.serviceName || b.serviceId || "-"}</td>
                       <td>{b.date}</td>
-                      <td>{b.time}</td>
+                      <td>{formatTime12(b.time)}</td>
                       <td>
                         <span className={`status-badge ${b.status}`}>
                           {statusLabel[b.status]}
@@ -346,6 +367,32 @@ const DashboardOverview: React.FC<OverviewProps> = ({
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="ov-latest-mobile">
+            {latestBookings.length === 0 ? (
+              <div className="ov-empty">لا توجد حجوزات بعد</div>
+            ) : (
+              latestBookings.map((b) => (
+                <button
+                  key={`m_${b.id}`}
+                  type="button"
+                  className="ov-mobile-booking"
+                  onClick={() => onOpenBooking(b)}
+                >
+                  <div className="ov-mobile-top">
+                    <strong>{bookingNoOf(b)}</strong>
+                    <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
+                  </div>
+                  <div className="ov-mobile-customer">{b.customerName}</div>
+                  <div className="ov-mobile-service">{b.serviceName || b.serviceId || "-"}</div>
+                  <div className="ov-mobile-meta">
+                    <span>{b.date}</span>
+                    <span>{formatTime12(b.time)}</span>
+                  </div>
+                </button>
+              ))
+            )}
           </div>
         </div>
 
@@ -1168,7 +1215,7 @@ const Dashboard: React.FC = () => {
                         onClick={() => setIsSidebarOpen(false)}
                       >
                         <FontAwesomeIcon icon={faUsers} />
-                        العميلات
+                        العملاء
                       </NavLink>
                     </li>
                   )}
@@ -1488,7 +1535,7 @@ const Dashboard: React.FC = () => {
             <div className="dash-details-grid">
               <div className="dash-detail">
                 <b>رقم الحجز</b>
-                <div className="dash-value">{selectedBooking.id}</div>
+                <div className="dash-value">{bookingNoOf(selectedBooking)}</div>
               </div>
 
               <div className="dash-detail">
@@ -1515,7 +1562,7 @@ const Dashboard: React.FC = () => {
 
               <div className="dash-detail">
                 <b>الوقت</b>
-                <div className="dash-value">{selectedBooking.time}</div>
+                <div className="dash-value">{formatTime12(selectedBooking.time)}</div>
               </div>
 
               <div className="dash-detail">

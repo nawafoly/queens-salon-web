@@ -218,6 +218,49 @@
   color: rgba(13, 13, 13, 0.66);
 }
 
+.dashboard-skin .ov-latest-mobile {
+  display: none;
+}
+
+.dashboard-skin .ov-mobile-booking {
+  width: 100%;
+  border: 1px solid rgba(13, 13, 13, 0.1);
+  background: #fff;
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  text-align: right;
+}
+
+.dashboard-skin .ov-mobile-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.dashboard-skin .ov-mobile-service {
+  font-size: 13px;
+  font-weight: 800;
+  color: #111;
+  margin-bottom: 6px;
+}
+
+.dashboard-skin .ov-mobile-customer {
+  font-size: 13px;
+  color: rgba(13, 13, 13, 0.86);
+  margin-bottom: 6px;
+}
+
+.dashboard-skin .ov-mobile-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: rgba(13, 13, 13, 0.72);
+}
+
 /* =========================
    Quick Actions
 ========================= */
@@ -336,5 +379,14 @@
   .dashboard-skin .overview-grid-3,
   .dashboard-skin .ov-actions {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin .ov-card .table-responsive {
+    display: none;
+  }
+
+  .dashboard-skin .ov-latest-mobile {
+    display: block;
+    padding: 8px 10px 12px 10px;
   }
 }

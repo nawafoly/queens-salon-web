@@ -43,6 +43,33 @@ type PublicSettings = {
 
 const SALON_ID = "main";
 
+function parseWorkingHourLine(lineRaw: string) {
+  const line = String(lineRaw || "").trim();
+  if (!line) return { day: "", hours: "" };
+
+  // الحالة الطبيعية: "اليوم: 03:00 مساء - 10:00 مساء"
+  const firstColon = line.indexOf(":");
+  if (firstColon > -1) {
+    const left = line.slice(0, firstColon).trim();
+    const right = line.slice(firstColon + 1).trim();
+    // لو الجهة اليسار فيها أرقام فغالبًا هذا ":" تبع الوقت وليس فاصل اليوم
+    if (left && !/\d/.test(left)) {
+      return { day: left, hours: right };
+    }
+  }
+
+  // fallback: "السبت - الجمعة 03:00 مساء - 10:00 مساء"
+  const timeMatch = line.match(/\d{1,2}:\d{2}/);
+  if (timeMatch?.index !== undefined) {
+    const idx = timeMatch.index;
+    const day = line.slice(0, idx).trim().replace(/[:\-–—\s]+$/, "").trim();
+    const hours = line.slice(idx).trim();
+    return { day: day || line, hours };
+  }
+
+  return { day: line, hours: "" };
+}
+
 function normalizeMapEmbedUrl(input?: string) {
   const raw = String(input || "").trim();
   if (!raw) return "";
@@ -110,14 +137,7 @@ const Contact: React.FC = () => {
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
-      .map((line) => {
-        const idx = line.indexOf(":");
-        if (idx === -1) return { day: line, hours: "" };
-        return {
-          day: line.slice(0, idx).trim(),
-          hours: line.slice(idx + 1).trim(),
-        };
-      });
+      .map((line) => parseWorkingHourLine(line));
   }, [publicSettings?.hoursText]);
 
   const handleChange = (
