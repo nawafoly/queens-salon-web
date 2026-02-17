@@ -1128,7 +1128,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               <React.Fragment key={s.id}>
                 {/* Desktop */}
                 <div className="scatalog__grid-row scatalog__grid--services">
-                  <div style={{fontSize: 10, opacity: 0.6}}>{s.id}</div>
+                  <div className="scatalog__cell-id">{s.id}</div>
                   <input
                     className="settings-input"
                     value={s.name}

@@ -26,6 +26,7 @@ import {
 
 import { getAuth, signInAnonymously } from "firebase/auth";
 import "../styles/Checkout.css";
+import { formatTime12 } from "../helpers/timeDisplay";
 
 import ConfirmModal from "../components/ConfirmModal";
 
@@ -590,7 +591,7 @@ export default function Checkout() {
 
         <div className="checkout-item">
           <FontAwesomeIcon icon={faClock} />
-          <span>{view.time || "—"}</span>
+          <span>{formatTime12(view.time || "", "—")}</span>
         </div>
 
         <div className="checkout-item">
@@ -645,4 +646,3 @@ export default function Checkout() {
     </div>
   );
 }
-

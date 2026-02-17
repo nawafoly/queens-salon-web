@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { formatTime12 } from "../helpers/timeDisplay";
 
 // --- Types (مطابقة للأنواع في صفحة الحجز) ---
 type BookingItem = {
@@ -288,7 +289,7 @@ export default function SuccessInternal() {
               - القوسين يظهران فقط إذا كان اسم الموظفة موجوداً.
               - تم إزالة "غير محدد" من الوقت ليكون أنظف.
             */}
-                    {item.employeeName && `(${item.employeeName})`}{' - '}{item.time || ''}
+                    {item.employeeName && `(${item.employeeName})`}{' - '}{formatTime12(item.time || "", "")}
                   </div>
                 </td>
                 <td className="price">{formatCurrency(item.finalPrice || 0)}</td>

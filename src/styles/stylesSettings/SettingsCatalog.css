@@ -76,6 +76,17 @@
   transition: background 0.2s;
 }
 
+/* Prevent long content (like IDs) from stretching the whole row */
+.scatalog__grid-header > *,
+.scatalog__grid-row > * {
+  min-width: 0;
+}
+
+.scatalog__grid-row .settings-input {
+  width: 100%;
+  min-width: 0;
+}
+
 .scatalog__grid-row:hover {
   background: rgba(0, 0, 0, 0.01);
 }
@@ -86,9 +97,18 @@
 }
 
 /* Column Templates */
-.scatalog__grid--sections { grid-template-columns: 1fr 2fr 0.8fr 0.6fr 0.8fr 0.8fr 1fr; }
-.scatalog__grid--cats { grid-template-columns: 1fr 2fr 0.8fr 0.6fr 0.8fr 0.8fr 1fr; }
-.scatalog__grid--services { grid-template-columns: 1fr 2.5fr 0.8fr 1fr 1fr 0.6fr 0.8fr 0.8fr; }
+.scatalog__grid--sections { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 0.8fr) minmax(0, 0.6fr) minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1fr); }
+.scatalog__grid--cats { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 0.8fr) minmax(0, 0.6fr) minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1fr); }
+.scatalog__grid--services { grid-template-columns: minmax(0, 1fr) minmax(0, 2.5fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.6fr) minmax(0, 0.8fr) minmax(0, 0.8fr); }
+
+.scatalog__cell-id {
+  font-size: 10px;
+  opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: ltr;
+}
 
 /* Mobile Card Styles (Used when grid is hidden) */
 .scatalog__mobile-card {
@@ -209,5 +229,4 @@
   opacity: 0.5;
   pointer-events: none;
 }
-
 

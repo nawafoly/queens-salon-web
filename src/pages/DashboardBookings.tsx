@@ -686,7 +686,7 @@ export default function DashboardBookings() {
         serviceSummaryForTable(b),
         b.employeeName || "—",
         b.date,
-        b.time,
+        formatTime12(b.time),
         statusLabel[b.status],
         String(b.finalPrice || b.total || 0)
       ])

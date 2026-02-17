@@ -10,6 +10,7 @@ import { auth, db } from "../services/firebase";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 
 import { createOrLoadUserProfile, updateUserProfile, type UserProfile } from "../services/userProfile";
+import { formatTime12 } from "../helpers/timeDisplay";
 
 // =======================
 // دعم واتساب
@@ -780,7 +781,7 @@ const Profile: React.FC = () => {
               </div>
               <div className="p-booking-footer-info">
                 <div className="p-footer-item">📅 {formatDateAr(upcomingBooking.date)}</div>
-                <div className="p-footer-item">⏰ {upcomingBooking.time}</div>
+                <div className="p-footer-item">⏰ {formatTime12(upcomingBooking.time, "—")}</div>
               </div>
               <div className="p-booking-actions-modern">
                 <button className="p-btn-modern primary" onClick={() => navigate("/track")}>تتبع الحجز</button>
@@ -819,7 +820,7 @@ const Profile: React.FC = () => {
                     </div>
                     <div className="p-list-row-bottom">
                       <span>📅 {formatDateAr(b.date)}</span>
-                      <span>⏰ {b.time}</span>
+                      <span>⏰ {formatTime12(b.time, "—")}</span>
                     </div>
                   </div>
                 </div>

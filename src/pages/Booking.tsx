@@ -21,6 +21,7 @@ import {
   toMinutes,
   type TimeSlot,
 } from "../helpers/timeSlots";
+import { formatTime12 } from "../helpers/timeDisplay";
 
 
 
@@ -164,6 +165,7 @@ type CategoryOption = { id: string; name: string };
 
 const SALON_ID = "main";
 const DEFAULT_SERVICE_DURATION_MIN = 60;
+const ALLOW_OVERTIME_MIN = 20;
 
 // ✅ نفس منطق slotId الموجود في firestoreBookings.ts
 function safeKey(v: string) {
@@ -377,12 +379,7 @@ function safeTimeHHMM(v: any, fallback: string) {
 }
 
 function formatTime12ForClient(time24: string) {
-  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (!m) return String(time24 || "");
-  const h24 = Number(m[1]);
-  const mm = m[2];
-  const h12 = h24 % 12 || 12;
-  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+  return formatTime12(time24, "");
 }
 
 function normalizeKsaPhone(raw: string) {
@@ -593,6 +590,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [futureServiceId, setFutureServiceId] = useState("");
   const [futureTargetItemId, setFutureTargetItemId] = useState("");
   const autoFutureSearchKeyRef = useRef("");
+  const futureSearchRef = useRef<HTMLDivElement | null>(null);
 
   function openFutureSearchFromItem(it: CartItem) {
     const sid = String(it?.serviceId || "").trim();
@@ -600,12 +598,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
     const employeeKey = String(it?.employeeUid || it?.employeeId || "").trim();
     const employeeName = String(it?.employeeName || "").trim();
+    const dateISO = String(bookingDate || "").trim();
 
     setFutureServiceId(sid);
     setFutureTargetItemId(String(it?.id || "").trim());
     setShowFutureSearch(true);
     setFutureResult([]);
     setFutureMsg("");
+    autoFutureSearchKeyRef.current = `${sid}|${dateISO}|${employeeKey ? "one" : "any"}|${employeeKey}`;
 
     if (employeeKey) {
       setFutureAnyStaff(false);
@@ -618,6 +618,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       setFutureStaffNameQuery("");
       setFutureGateMsg("اليوم ممتلئ لهذه الخدمة. يمكنكِ البحث عن أقرب يوم متاح.");
     }
+
+    setTimeout(() => {
+      futureSearchRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      void runFutureAvailabilitySearch();
+    }, 0);
   }
 
   // ✅ Staff per serviceId
@@ -653,20 +658,29 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     items: CartItem[],
     currentItemId: string,
     employeeKey: string,
-    date: string
+    date: string,
+    employeeIdFallback?: string
   ) {
     const taken = new Set<string>();
+    const targetKey = String(employeeKey || "").trim();
+    const targetEmployeeId = String(employeeIdFallback || "").trim();
 
     for (const other of items) {
       if (!other) continue;
       if (other.id === currentItemId) continue;
 
       const otherKey = resolveEmployeeKey(other); // ✅ FIX: نفس منطق booking_slots
+      const otherEmployeeId = String(other.employeeId || "").trim();
       const d = String(other.date || "").trim();
       const t = String(other.time || "").trim();
 
-      if (!otherKey || !d || !t) continue;
-      if (otherKey !== employeeKey) continue;
+      if ((!otherKey && !otherEmployeeId) || !d || !t) continue;
+      const sameByKey = !!targetKey && otherKey === targetKey;
+      const sameByEmployeeId = !!targetEmployeeId && otherEmployeeId === targetEmployeeId;
+      const crossKeyMatch =
+        (!!targetEmployeeId && otherKey === targetEmployeeId) ||
+        (!!targetKey && otherEmployeeId === targetKey);
+      if (!sameByKey && !sameByEmployeeId && !crossKeyMatch) continue;
       if (d !== date) continue;
 
       const dur = Number(other.durationMin || DEFAULT_SERVICE_DURATION_MIN);
@@ -1587,6 +1601,51 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     futureSelectedEmployeeKey,
   ]);
 
+  async function collectTakenTimesForEmployeeDay(args: {
+    salonId: string;
+    employeeKey: string;
+    employeeIdFallback: string;
+    dateISO: string;
+  }) {
+    const { salonId, employeeKey, employeeIdFallback, dateISO } = args;
+    const takenFs = new Set<string>();
+    const colSlots = collection(db, "salons", salonId, "booking_slots");
+
+    const key = String(employeeKey || "").trim();
+    const fallbackId = String(employeeIdFallback || "").trim();
+
+    const reads: Promise<any>[] = [];
+    if (key) {
+      reads.push(
+        getDocs(query(colSlots, where("employeeKey", "==", key), where("date", "==", dateISO)))
+      );
+    }
+    if (fallbackId && fallbackId !== key) {
+      reads.push(
+        getDocs(
+          query(colSlots, where("employeeId", "==", fallbackId), where("date", "==", dateISO))
+        )
+      );
+    }
+    if (!reads.length && fallbackId) {
+      reads.push(
+        getDocs(
+          query(colSlots, where("employeeId", "==", fallbackId), where("date", "==", dateISO))
+        )
+      );
+    }
+
+    const snaps = await Promise.all(reads);
+    snaps.forEach((snap) => {
+      snap.docs.forEach((d: any) => {
+        const t = String((d.data() as any)?.time || "").trim();
+        if (t) takenFs.add(t);
+      });
+    });
+
+    return takenFs;
+  }
+
   async function getAvailableStartsForDay(args: {
     salonId: string;
     employeeKey: string;
@@ -1594,36 +1653,59 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     dateISO: string;
     durationMin: number;
     take: number;
+    localTakenTimes?: Set<string>;
   }) {
-    const { salonId, employeeKey, employeeIdFallback, dateISO, durationMin, take } = args;
+    const {
+      salonId,
+      employeeKey,
+      employeeIdFallback,
+      dateISO,
+      durationMin,
+      take,
+      localTakenTimes,
+    } = args;
 
-    const takenFs = new Set<string>();
-    const colSlots = collection(db, "salons", salonId, "booking_slots");
+    const baseSlots =
+      timeSlots.length > 0
+        ? timeSlots
+        : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
 
-    let snap = await getDocs(
-      query(colSlots, where("employeeKey", "==", employeeKey), where("date", "==", dateISO))
+    if (!baseSlots.length) return [];
+
+    const takenFs = await collectTakenTimesForEmployeeDay({
+      salonId,
+      employeeKey,
+      employeeIdFallback,
+      dateISO,
+    });
+
+    const takenAll = new Set<string>(takenFs);
+    (localTakenTimes || new Set<string>()).forEach((x) => takenAll.add(x));
+
+    const normalizedDuration = Number(durationMin || DEFAULT_SERVICE_DURATION_MIN);
+    const slotsForThisService = filterSlotsByServiceEnd(
+      baseSlots,
+      closeTime,
+      normalizedDuration,
+      bufferMin,
+      ALLOW_OVERTIME_MIN
     );
 
-    if (!snap.docs.length && employeeIdFallback) {
-      snap = await getDocs(
-        query(colSlots, where("employeeId", "==", employeeIdFallback), where("date", "==", dateISO))
-      );
-    }
-
-    snap.docs.forEach((d) => {
-      const t = String((d.data() as any)?.time || "").trim();
-      if (t) takenFs.add(t);
-    });
+    if (!slotsForThisService.length) return [];
 
     const greens = getGreenStartTimes({
-      allSlots: timeSlots,
+      allSlots: baseSlots,
       slotStepMin,
-      durationMin: Number(durationMin || DEFAULT_SERVICE_DURATION_MIN),
+      durationMin: normalizedDuration,
       bufferMin,
-      takenAll: takenFs,
+      takenAll,
     });
 
-    const list = Array.from(greens.values()).sort((a, b) => toMinutes(a) - toMinutes(b));
+    const list = slotsForThisService
+      .map((s) => s.value24)
+      .filter((t) => greens.has(t))
+      .sort((a, b) => toMinutes(a) - toMinutes(b));
+
     return list.slice(0, Math.max(1, take));
   }
 
@@ -1645,6 +1727,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       (formData.items || []).find((it) => String(it.serviceId || "").trim() === serviceId);
 
     if (!target) return;
+    const targetItemId = String(target.id || "").trim();
 
     const sv = getServiceById(serviceId);
     const durationMin = Number(
@@ -1703,6 +1786,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const empKey = String((st as any)?.linkedUid || "").trim() || String((st as any)?.id || "").trim();
         const empIdFallback = String((st as any)?.id || "").trim();
         if (!empKey) continue;
+        const localTaken = targetItemId
+          ? getLocalTakenTimesForItem(
+              formData.items || [],
+              targetItemId,
+              empKey,
+              dateISO,
+              empIdFallback
+            )
+          : new Set<string>();
 
         const starts = await getAvailableStartsForDay({
           salonId: SALON_ID,
@@ -1711,11 +1803,40 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           dateISO,
           durationMin,
           take: 288,
+          localTakenTimes: localTaken,
         });
         if (starts.includes(time24)) {
           chosenStaff = st;
           break;
         }
+      }
+    }
+
+    if (!futureAnyStaff && chosenStaff) {
+      const chosenKey =
+        String((chosenStaff as any)?.linkedUid || "").trim() ||
+        String((chosenStaff as any)?.id || "").trim();
+      const chosenId = String((chosenStaff as any)?.id || "").trim();
+      const localTaken = targetItemId
+        ? getLocalTakenTimesForItem(
+            formData.items || [],
+            targetItemId,
+            chosenKey,
+            dateISO,
+            chosenId
+          )
+        : new Set<string>();
+      const starts = await getAvailableStartsForDay({
+        salonId: SALON_ID,
+        employeeKey: chosenKey,
+        employeeIdFallback: chosenId,
+        dateISO,
+        durationMin,
+        take: 288,
+        localTakenTimes: localTaken,
+      });
+      if (!starts.includes(time24)) {
+        chosenStaff = null;
       }
     }
 
@@ -1749,6 +1870,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const itemFromCart = (formData.items || []).find(
       (it) => String(it?.serviceId || "").trim() === serviceId
     );
+    const targetItemId = String(
+      futureTargetItemId ||
+        itemFromCart?.id ||
+        ""
+    ).trim();
 
     const durationMin = Number(
       sv?.durationMin ||
@@ -1817,6 +1943,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             dayTimes = [];
             dayNote = "";
           } else {
+            const localTaken = targetItemId
+              ? getLocalTakenTimesForItem(
+                  formData.items || [],
+                  targetItemId,
+                  fixedEmployeeKey,
+                  dateISO,
+                  employeeIdFallback
+                )
+              : new Set<string>();
             dayTimes = await getAvailableStartsForDay({
               salonId: SALON_ID,
               employeeKey: fixedEmployeeKey,
@@ -1824,6 +1959,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               dateISO,
               durationMin,
               take: 5,
+              localTakenTimes: localTaken,
             });
 
             if (dayTimes.length && fixedName) {
@@ -1845,6 +1981,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             const empKey = String((st as any)?.linkedUid || "").trim() || String((st as any)?.id || "").trim();
             const empIdFallback = String((st as any)?.id || "").trim();
             if (!empKey) continue;
+            const localTaken = targetItemId
+              ? getLocalTakenTimesForItem(
+                  formData.items || [],
+                  targetItemId,
+                  empKey,
+                  dateISO,
+                  empIdFallback
+                )
+              : new Set<string>();
 
             const times = await getAvailableStartsForDay({
               salonId: SALON_ID,
@@ -1853,6 +1998,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               dateISO,
               durationMin,
               take: 5,
+              localTakenTimes: localTaken,
             });
             if (times.length) {
               const stName = String((st as any)?.name || "").trim();
@@ -1987,6 +2133,16 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           const employeeKey = String((st as any)?.linkedUid || (st as any)?.id || "").trim();
           const employeeIdFallback = String((st as any)?.id || "").trim();
           if (!employeeKey) continue;
+          const gateTargetItemId = String(itemFromCart?.id || "").trim();
+          const localTaken = gateTargetItemId
+            ? getLocalTakenTimesForItem(
+                formData.items || [],
+                gateTargetItemId,
+                employeeKey,
+                dateISO,
+                employeeIdFallback
+              )
+            : new Set<string>();
 
           const times = await getAvailableStartsForDay({
             salonId: SALON_ID,
@@ -1995,6 +2151,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             dateISO,
             durationMin,
             take: 1,
+            localTakenTimes: localTaken,
           });
 
           if (times.length) {
@@ -2059,31 +2216,25 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         }));
 
         try {
-          const colSlots = collection(db, "salons", SALON_ID, "booking_slots");
           const empKey = resolveEmployeeKey(it);
 
-          // 1) جلب المحجوز من Firestore
-          let snap = await getDocs(
-            query(colSlots, where("employeeKey", "==", empKey), where("date", "==", date))
-          );
-
-          // fallback if no employeeKey field
-          if (!snap.docs.length) {
-            snap = await getDocs(
-              query(colSlots, where("employeeId", "==", employeeId), where("date", "==", date))
-            );
-          }
-
+          // 1) جلب المحجوز من Firestore (employeeKey + employeeId) بدون fallback
+          const takenFs = await collectTakenTimesForEmployeeDay({
+            salonId: SALON_ID,
+            employeeKey: empKey,
+            employeeIdFallback: employeeId,
+            dateISO: date,
+          });
           if (cancelled) return;
 
-          const takenFs = new Set<string>();
-          snap.docs.forEach((d) => {
-            const t = String((d.data() as any)?.time || "").trim();
-            if (t) takenFs.add(t);
-          });
-
           // 2) جلب المحجوز من السلة المحلية (خدمات ثانية لنفس الموظفة)
-          const takenLocal = getLocalTakenTimesForItem(items, itemId, empKey, date);
+          const takenLocal = getLocalTakenTimesForItem(
+            items,
+            itemId,
+            empKey,
+            date,
+            employeeId
+          );
 
           const takenAll = new Set<string>();
           takenFs.forEach((x) => takenAll.add(x));
@@ -2098,7 +2249,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           let suggestedSlot = "";
 
           // ✅ أوقات ممكن تبدأ منها (حسب نهاية الخدمة + سماح)
-          const ALLOW_OVERTIME_MIN = 20;
           const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
           // فقط الأوقات اللي ما تتجاوز نهاية الدوام
@@ -2141,7 +2291,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
 
           sequentialHint = suggestedSlot
-            ? `الوقت المقترح: ${internalMode ? suggestedSlot : formatTime12ForClient(suggestedSlot)}`
+            ? `الوقت المقترح: ${formatTime12ForClient(suggestedSlot)}`
             : "لا يوجد وقت متاح كافٍ لهذا اليوم.";
 
           setBusyByItem((p) => ({
@@ -2371,7 +2521,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     );
 
     // ✅ FIX: التأكد من أننا لا نفحص التعارض مع الخدمة نفسها داخل السلة
-    const localTaken = getLocalTakenTimesForItem(formData.items || [], it.id, employeeKey, date);
+    const localTaken = getLocalTakenTimesForItem(
+      formData.items || [],
+      it.id,
+      employeeKey,
+      date,
+      String(it.employeeId || "").trim()
+    );
     const localConflict = timesToCheck.some((t) => localTaken.has(t));
     if (localConflict) {
       return { ok: false, msg: "هذا الوقت يتعارض مع خدمة ثانية بنفس الموظفة داخل السلة. اختاري وقتًا آخر." };
@@ -2485,8 +2641,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         title: "تعارض في الأوقات",
         message:
           `عندك خدمتين متداخلات بنفس الموظفة ونفس اليوم:\n\n` +
-          `• ${String(overlap.a?.serviceName || "—")} (${String(overlap.a?.time || "—")})\n` +
-          `• ${String(overlap.b?.serviceName || "—")} (${String(overlap.b?.time || "—")})\n\n` +
+          `• ${String(overlap.a?.serviceName || "—")} (${formatTime12ForClient(String(overlap.a?.time || "—"))})\n` +
+          `• ${String(overlap.b?.serviceName || "—")} (${formatTime12ForClient(String(overlap.b?.time || "—"))})\n\n` +
           `عدّلي وقت واحدة منهم ✅`,
         variant: "danger",
         confirmText: "تمام",
@@ -3078,7 +3234,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           : "";
 
                         const suggested = String(busy.suggestedSlot || "").trim();
-                        const ALLOW_OVERTIME_MIN = 20;
                         const slotsForThisService = filterSlotsByServiceEnd(
                           timeSlots,
                           closeTime,
@@ -3101,7 +3256,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                               <div className="d-flex justify-content-between align-items-start">
                                 <div>
                                   <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>✓ تم تأكيد هذه الخدمة: {it.serviceName}</p>
-                                  <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{internalMode ? it.time : formatTime12ForClient(it.time)}</strong></p>
+                                  <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{formatTime12ForClient(it.time)}</strong></p>
                                   <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.8 }}>المدة: {dur} دقيقة | السعر: {it.priceText}</p>
                                 </div>
                                 <button
@@ -3183,7 +3338,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                           className="btn btn-outline-dark btn-sm bk-nearest-btn"
                                           onClick={() => updateItem(it.id, { time: nearestAvailableStart })}
                                         >
-                                          أقرب موعد متاح: {internalMode ? nearestAvailableStart : formatTime12ForClient(nearestAvailableStart)}
+                                          أقرب موعد متاح: {formatTime12ForClient(nearestAvailableStart)}
                                         </button>
                                       </div>
                                     ) : null}
@@ -3266,7 +3421,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 ) : null}
 
                 {showFutureSearch ? (
-                  <div className="mb-4" style={{ border: "1px solid #eee", padding: "15px", borderRadius: "12px", background: "#fafafa" }}>
+                  <div
+                    ref={futureSearchRef}
+                    className="mb-4"
+                    style={{ border: "1px solid #eee", padding: "15px", borderRadius: "12px", background: "#fafafa" }}
+                  >
                     <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                       <div style={{ fontWeight: 800, color: "#0d0d0d" }}>بحث أوقات للأيام القادمة</div>
                       <span className="text-muted" style={{ fontSize: 12 }}>يعرض أول 5 أيام متاحة بعد التاريخ المختار</span>
@@ -3426,7 +3585,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                                 void applyFutureTimeSelection(r.date, t);
                                               }}
                                             >
-                                              {internalMode ? t : formatTime12ForClient(t)}
+                                              {formatTime12ForClient(t)}
                                             </button>
                                           ))}
                                         </div>
@@ -3522,3 +3681,4 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 };
 
 export default Booking;
+

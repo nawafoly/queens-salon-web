@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCommentDots } from "@fortawesome/free-solid-svg-icons";
 
 import { generateSalonTimeSlots } from "../helpers/timeSlots";
+import { formatTime12 } from "../helpers/timeDisplay";
 import "../styles/ChatBot.css";
 
 import { db } from "../services/firebase";
@@ -149,7 +150,7 @@ function formatAvailableTimes(times: string[]) {
   const chunk = times.slice(0, 10);
   return (
     "⏰ **الأوقات المتاحة:**\n" +
-    chunk.map((t) => `• ${t}`).join("\n") +
+    chunk.map((t) => `• ${formatTime12(t, t)}`).join("\n") +
     (times.length > chunk.length ? `\n\n… وفيه ${times.length - chunk.length} وقت إضافي.` : "")
   );
 }

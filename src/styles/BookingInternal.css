@@ -430,6 +430,16 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.bk-internal .bk-cart-field {
+  min-width: 0;
+}
+
+.bk-internal .bk-cart-field-time {
+  grid-column: 1 / -1;
+  border-top: 1px dashed #e2cdbb;
+  padding-top: 0.55rem;
+}
+
 .bk-internal .bk-cart-fields .form-label {
   color: #4a3d34;
 }
@@ -465,6 +475,36 @@
   color: #2b221d;
 }
 
+.bk-internal .bk-time-grid {
+  display: grid;
+  gap: 0.28rem;
+  grid-template-columns: repeat(auto-fill, minmax(82px, 1fr));
+}
+
+.bk-internal .bk-time-grid-btn {
+  min-height: 32px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.74rem;
+  padding: 0.1rem 0.25rem;
+}
+
+.bk-internal .bk-time-grid-btn.is-active {
+  border-color: #8b5e42;
+  background: #8b5e42;
+  color: #fff;
+}
+
+.bk-internal .bk-time-grid-empty {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  border: 1px dashed #dbc8b7;
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  background: #fffaf4;
+}
+
 .bk-internal .bk-cart-item-footer {
   margin-top: 0.75rem;
   display: flex;
@@ -484,6 +524,55 @@
   border: 1px solid #e2c7ad;
   border-radius: 10px;
   padding: 0.35rem 0.5rem;
+}
+
+.bk-internal .bk-time-debug {
+  border: 1px dashed #d9c3b1;
+  border-radius: 10px;
+  background: #fffaf5;
+  padding: 0.35rem 0.45rem;
+}
+
+.bk-internal .bk-time-debug summary {
+  cursor: pointer;
+  color: #654735;
+  font-size: 0.84rem;
+  font-weight: 700;
+  user-select: none;
+}
+
+.bk-internal .bk-time-debug-list {
+  margin-top: 0.45rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.bk-internal .bk-time-debug-row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 0.45rem;
+  align-items: start;
+  font-size: 0.78rem;
+}
+
+.bk-internal .bk-time-debug-time {
+  color: #5a4031;
+  font-weight: 800;
+}
+
+.bk-internal .bk-time-debug-reason {
+  color: #6f5a4b;
+  line-height: 1.35;
+}
+
+.bk-internal .bk-time-debug-meta {
+  color: #826a58;
+}
+
+.bk-internal .bk-time-debug-more {
+  color: #8b6a54;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 @media (max-width: 992px) {
@@ -511,5 +600,10 @@
 
   .bk-internal .bk-cart-fields {
     grid-template-columns: 1fr;
+  }
+
+  .bk-internal .bk-time-debug-row {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
   }
 }
