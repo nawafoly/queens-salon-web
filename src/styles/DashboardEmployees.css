@@ -19,7 +19,7 @@
 .emp-page-wrapper .dash-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   margin-top: 20px;
 }
 
@@ -270,8 +270,8 @@
 }
 
 .emp-modal .staff-picks--scroll {
-  max-height: 250px;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
   padding: 12px;
   border: 1px solid rgba(0,0,0,0.05);
   border-radius: 12px;
@@ -296,6 +296,277 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(245, 245, 244, 0.83);
   color: rgba(13, 13, 13, 0.92);
   border-radius: 12px;
-  padding: 10px 16px;
+  padding: 8px 12px;
+  min-height: 38px;
   font-weight: 700;
+}
+
+/* Card enhancements: monthly performance + leave balance */
+.emp-page-wrapper .staff-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.emp-page-wrapper .staff-metrics,
+.emp-modal .staff-metrics {
+  margin-top: 6px;
+  padding: 12px;
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 14px;
+  background: rgba(245, 245, 244, 0.72);
+}
+
+.emp-page-wrapper .staff-metrics-grid,
+.emp-modal .staff-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.emp-page-wrapper .staff-metric,
+.emp-modal .staff-metric {
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.emp-page-wrapper .staff-metric span,
+.emp-modal .staff-metric span {
+  font-size: 12px;
+  color: rgba(17, 24, 39, 0.72);
+  font-weight: 700;
+}
+
+.emp-page-wrapper .staff-metric b,
+.emp-modal .staff-metric b {
+  font-size: 17px;
+  color: #0f172a;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.emp-page-wrapper .staff-metric.accent,
+.emp-modal .staff-metric.accent {
+  background: rgba(64, 1, 13, 0.08);
+  border-color: rgba(64, 1, 13, 0.16);
+}
+
+.emp-page-wrapper .staff-month-hint,
+.emp-modal .staff-month-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: rgba(17, 24, 39, 0.66);
+  font-weight: 700;
+}
+
+.emp-page-wrapper .staff-leave-box,
+.emp-modal .staff-leave-box {
+  margin-top: 2px;
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.emp-page-wrapper .staff-leave-head,
+.emp-modal .staff-leave-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.emp-page-wrapper .staff-leave-head span,
+.emp-modal .staff-leave-head span {
+  font-size: 13px;
+  color: rgba(17, 24, 39, 0.75);
+  font-weight: 700;
+}
+
+.emp-page-wrapper .staff-leave-head b,
+.emp-modal .staff-leave-head b {
+  font-size: 18px;
+  color: #0f172a;
+  font-weight: 900;
+}
+
+.emp-page-wrapper .staff-leave-controls,
+.emp-modal .staff-leave-controls {
+  display: grid;
+  grid-template-columns: 110px 170px 1fr 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.emp-page-wrapper .staff-leave-input,
+.emp-modal .staff-leave-input {
+  min-height: 40px;
+  text-align: center;
+  font-weight: 800;
+}
+
+@media (max-width: 620px) {
+  .emp-page-wrapper .staff-metrics-grid,
+  .emp-modal .staff-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .emp-page-wrapper .staff-leave-controls,
+  .emp-modal .staff-leave-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .emp-page-wrapper .staff-leave-controls .exp-btn,
+  .emp-modal .staff-leave-controls .exp-btn {
+    width: 100%;
+  }
+}
+
+.emp-modal .leave-log-list {
+  margin-top: 8px;
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.emp-modal .staff-leave-head > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.emp-modal .staff-leave-head .dash-input[type="date"] {
+  min-width: 170px;
+}
+
+.emp-modal .leave-log-title {
+  padding: 10px 12px;
+  font-weight: 800;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(13, 13, 13, 0.07);
+  background: #fafafa;
+}
+
+.emp-modal .leave-log-row {
+  display: grid;
+  grid-template-columns: 84px 80px 120px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(13, 13, 13, 0.06);
+  font-size: 13px;
+}
+
+.emp-modal .leave-log-row:last-child {
+  border-bottom: 0;
+}
+
+.emp-modal .leave-log-type {
+  display: inline-flex;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.emp-modal .leave-log-type.add {
+  background: rgba(22, 163, 74, 0.1);
+  color: #166534;
+  border-color: rgba(22, 163, 74, 0.2);
+}
+
+.emp-modal .leave-log-type.deduct {
+  background: rgba(185, 28, 28, 0.1);
+  color: #991b1b;
+  border-color: rgba(185, 28, 28, 0.2);
+}
+
+.emp-modal .leave-log-days,
+.emp-modal .leave-log-date {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.emp-modal .leave-log-note {
+  color: #334155;
+}
+
+.emp-modal .leave-log-empty {
+  padding: 12px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .emp-modal .leave-log-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Cover card mode: image + name only */
+.emp-page-wrapper .staff-card-cover {
+  cursor: pointer;
+  padding: 10px;
+}
+
+.emp-page-wrapper .staff-card-cover .staff-top {
+  margin: 0 !important;
+}
+
+.emp-page-wrapper .staff-card-cover .staff-top > div:first-child {
+  display: block !important;
+  width: 100%;
+}
+
+.emp-page-wrapper .staff-card-cover .staff-top > div:last-child {
+  display: none !important;
+}
+
+.emp-page-wrapper .staff-card-cover .staff-top > div:first-child > div:last-child > div {
+  display: none !important;
+}
+
+.emp-page-wrapper .staff-card-cover .staff-avatar-box {
+  width: 100% !important;
+  height: 210px !important;
+  border-radius: 14px !important;
+  margin-bottom: 8px;
+  background: rgba(64, 1, 13, 0.08);
+}
+
+.emp-page-wrapper .staff-card-cover .staff-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.emp-page-wrapper .staff-card-cover .staff-top h4 {
+  margin: 0 !important;
+  font-size: 16px;
+  font-weight: 900 !important;
+  line-height: 1.3;
+  color: #111827;
+}
+
+.emp-page-wrapper .staff-card-cover .staff-bio,
+.emp-page-wrapper .staff-card-cover .staff-chips,
+.emp-page-wrapper .staff-card-cover .staff-metrics,
+.emp-page-wrapper .staff-card-cover .staff-leave-box {
+  display: none !important;
+}
+
+@media (max-width: 640px) {
+  .emp-page-wrapper .staff-card-cover .staff-avatar-box {
+    height: 170px !important;
+  }
 }

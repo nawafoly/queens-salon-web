@@ -930,3 +930,151 @@
     justify-content: center !important;
   }
 }
+
+/* =========================
+   Expenses Record Modal (portal-safe)
+========================= */
+.dash-modal.expenses-record-modal {
+  direction: rtl;
+  color-scheme: light;
+}
+
+.dash-modal.expenses-record-modal .dash-modal-header h3,
+.dash-modal.expenses-record-modal .dash-modal-header div,
+.dash-modal.expenses-record-modal label {
+  color: #111827 !important;
+}
+
+.dash-modal.expenses-record-modal .ep-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dash-modal.expenses-record-modal .exp-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dash-modal.expenses-record-modal .exp-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.dash-modal.expenses-record-modal input,
+.dash-modal.expenses-record-modal select,
+.dash-modal.expenses-record-modal textarea {
+  min-height: 44px;
+  border: 1px solid rgba(13, 13, 13, 0.16) !important;
+  border-radius: 14px !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+.dash-modal.expenses-record-modal input::placeholder,
+.dash-modal.expenses-record-modal textarea::placeholder {
+  color: rgba(17, 24, 39, 0.45) !important;
+  opacity: 1;
+}
+
+.dash-modal.expenses-record-modal input:focus,
+.dash-modal.expenses-record-modal select:focus,
+.dash-modal.expenses-record-modal textarea:focus {
+  border-color: rgba(64, 1, 13, 0.28) !important;
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.1) !important;
+}
+
+.dash-modal.expenses-record-modal .dash-dd-wrap {
+  position: relative;
+}
+
+.dash-modal.expenses-record-modal .dash-select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(13, 13, 13, 0.16);
+  border-radius: 14px;
+  background: #ffffff;
+  color: #111827;
+  font-weight: 700;
+  text-align: right;
+  padding: 10px 12px;
+}
+
+.dash-modal.expenses-record-modal .dash-dd-menu {
+  position: absolute;
+  inset-inline: 0 auto;
+  top: calc(100% + 6px);
+  min-width: 180px;
+  max-height: 260px;
+  overflow: auto;
+  z-index: 40;
+  border: 1px solid rgba(13, 13, 13, 0.14);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+}
+
+.dash-modal.expenses-record-modal .dash-dd-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #111827;
+  text-align: right;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.dash-modal.expenses-record-modal .dash-dd-item:hover,
+.dash-modal.expenses-record-modal .dash-dd-item.is-active {
+  background: rgba(64, 1, 13, 0.08);
+}
+
+.dash-modal.expenses-record-modal .exp-btn,
+.dash-modal.expenses-record-modal .reports-btn {
+  min-height: 42px;
+  border-radius: 12px !important;
+}
+
+.dash-modal.expenses-record-modal .exp-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dash-modal.expenses-record-modal .exp-actions > div {
+  margin-inline-start: 0 !important;
+}
+
+.dash-modal.expenses-record-modal .exp-table-wrap {
+  background: #fff;
+}
+
+@media (max-width: 860px) {
+  .dash-modal.expenses-record-modal .exp-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-modal.expenses-record-modal .span-2 {
+    grid-column: auto;
+  }
+
+  .dash-modal.expenses-record-modal .ep-filter-row {
+    justify-content: stretch;
+  }
+
+  .dash-modal.expenses-record-modal .ep-filter-row .exp-btn,
+  .dash-modal.expenses-record-modal .ep-filter-row .reports-btn,
+  .dash-modal.expenses-record-modal .exp-actions .exp-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

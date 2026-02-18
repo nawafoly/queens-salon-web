@@ -98,6 +98,16 @@ export type BookingDoc = {
 
   status: BookingStatus;
   note?: string;
+  pendingAt?: number;
+  pendingByUid?: string;
+  confirmedAt?: number;
+  confirmedByUid?: string;
+  completedAt?: number;
+  completedByUid?: string;
+  cancelledAt?: number;
+  cancelledByUid?: string;
+  paidAt?: number;
+  paidByUid?: string;
 
   createdAt?: Timestamp;
 };
@@ -254,6 +264,26 @@ function getAmount(b: BookingDoc): number {
   return Number.isFinite(v) ? v : 0;
 }
 
+function buildStatusAuditPatch(
+  status: BookingStatus,
+  nowMs: number,
+  actorUid?: string
+): Record<string, any> {
+  const byUid = String(actorUid || "").trim() || undefined;
+
+  if (status === "pending") return { pendingAt: nowMs, pendingByUid: byUid };
+  if (status === "confirmed") return { confirmedAt: nowMs, confirmedByUid: byUid };
+  if (status === "completed") {
+    return {
+      completedAt: nowMs,
+      completedByUid: byUid,
+      paidAt: nowMs,
+      paidByUid: byUid,
+    };
+  }
+  return { cancelledAt: nowMs, cancelledByUid: byUid };
+}
+
 // ====== helpers to mirror Booking.tsx ======
 function safeInt(v: any, fallback: number) {
   const n = Number(v);
@@ -360,40 +390,47 @@ async function writeBookingLog(args: {
   note?: string;
   patch?: any;
 }) {
+  const auth = getAuth();
+  const u = auth.currentUser;
+  const eventAtMs = Date.now();
+
+  const payload = stripUndefined({
+    type: args.type,
+    bookingId: args.bookingId,
+    byUid: u?.uid || null,
+    byEmail: u?.email || null,
+    note: args.note || "",
+    patch: args.patch || null,
+    eventAtMs,
+    at: serverTimestamp(),
+  }) as any;
+
+  // ✅ map booking log types -> audit actions
+  let action: string = "booking_updated";
+  if (args.type === "created") action = "booking_created";
+  if (args.type === "details_updated") action = "booking_updated";
+  if (args.type === "staff_acknowledged") action = "booking_reassigned";
+  if (args.type === "status_changed") {
+    const status = String(args?.patch?.status || "").toLowerCase().trim();
+    if (status === "confirmed") action = "booking_confirmed";
+    else if (status === "completed") action = "booking_completed";
+    else if (status === "cancelled" || status === "canceled") action = "booking_cancelled";
+    else action = "booking_status_changed";
+  }
+
+  // 1) event log under booking (best effort)
   try {
-    const auth = getAuth();
-    const u = auth.currentUser;
-
     const evRef = doc(bookingEventsCol(args.bookingId));
+    await setDoc(evRef, payload);
+  } catch {
+    // ignore
+  }
 
-    await setDoc(
-      evRef,
-      stripUndefined({
-        type: args.type,
-        bookingId: args.bookingId,
-
-        byUid: u?.uid || null,
-        byEmail: u?.email || null,
-
-        note: args.note || "",
-        patch: args.patch || null,
-
-        at: serverTimestamp(),
-      }) as any
-    );
-
-    // ✅ map booking log types -> audit actions
-    const actionMap: Record<BookingLogType, string> = {
-      created: "booking_created",
-      status_changed: "booking_status_changed",
-      details_updated: "booking_updated",
-      staff_acknowledged: "booking_reassigned",
-    };
-
-    // ✅ write audit log (best effort)
+  // 2) global audit log (best effort, مستقل عن event log)
+  try {
     await writeAuditLog({
       salonId: SALON_ID,
-      action: actionMap[args.type] || "booking_updated",
+      action,
       entityType: "booking",
       entityId: args.bookingId,
       description: args.note || "تم تحديث الحجز",
@@ -401,10 +438,11 @@ async function writeBookingLog(args: {
       source: "dashboard",
       meta: {
         bookingLogType: args.type,
+        eventAtMs,
       },
     });
   } catch {
-    // best-effort: اللوق ما يكسر شغل الحجز
+    // ignore
   }
 }
 
@@ -509,6 +547,13 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
   // ✅ duration (default)
   const durationMin = Math.max(0, Number(data.durationMin || 0)) || 60;
+  const nowMs = Date.now();
+  const actorUid = String(data.userId || getAuth().currentUser?.uid || "").trim() || undefined;
+  const statusAuditPatch = buildStatusAuditPatch(
+    (data.status as BookingStatus) || "pending",
+    nowMs,
+    actorUid
+  );
 
   // ✅ times to lock (start + next slots)
   const timesToLock = getTimesToLock(String(data.time || "").trim(), durationMin, {
@@ -559,8 +604,10 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
     slotStepMinAtBooking: (data as any).slotStepMinAtBooking ?? getSlotSettings().slotStepMin,
     bufferMinAtBooking: (data as any).bufferMinAtBooking ?? getSlotSettings().bufferMin,
+    ...statusAuditPatch,
 
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
 
   // ✅✅✅ FIX: reads before writes inside transaction
@@ -697,6 +744,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
         status: data.status,
         slotId: startSlotId,
+        ...statusAuditPatch,
 
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -1016,6 +1064,9 @@ export function watchEmployeeBookings(
 export async function updateBookingStatus(bookingId: string, status: BookingStatus) {
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const trackRef = doc(db, ...TRACKS_COL, bookingId);
+  const actorUid = String(getAuth().currentUser?.uid || "").trim() || undefined;
+  const nowMs = Date.now();
+  const statusAuditPatch = buildStatusAuditPatch(status, nowMs, actorUid);
 
   // ✅ ثابت: نخلي income docId = bookingId (يعطيك uniqueness تلقائي)
   const incomeRef = doc(db, ...INCOME_COL, bookingId);
@@ -1032,6 +1083,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
       bookingRef,
       stripUndefined({
         status,
+        ...statusAuditPatch,
         updatedAt: serverTimestamp(),
       }) as any
     );
@@ -1060,6 +1112,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         durationMin: booking.durationMin ?? undefined,
 
         status,
+        ...statusAuditPatch,
         slotId: booking.slotId ?? undefined,
 
         updatedAt: serverTimestamp(),
@@ -1075,7 +1128,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     bookingId,
     type: "status_changed",
     note: `تغيير الحالة إلى: ${status}`,
-    patch: { status },
+    patch: { status, at: nowMs, byUid: actorUid || null },
   });
 
 // ✅ إذا صار الحجز ملغي: فك الأقفال
