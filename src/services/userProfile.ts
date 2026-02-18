@@ -13,6 +13,7 @@ import {
   limit,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { writeAuditLog } from "./logService";
 
 export type UiRole =
   | "owner"
@@ -415,6 +416,8 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
  */
 export async function updateUserProfile(uid: string, updates: Partial<UserProfile>) {
   const refSalon = salonUserRef(uid);
+  const beforeSnap = await getDoc(refSalon);
+  const before = beforeSnap.exists() ? (beforeSnap.data() as any) : null;
 
   const cleaned: any = {};
   Object.entries(updates).forEach(([k, v]) => {
@@ -431,6 +434,24 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
 
   cleaned.updatedAt = serverTimestamp();
   await setDoc(refSalon, cleaned, { merge: true });
+
+  try {
+    await writeAuditLog({
+      salonId: SALON_ID,
+      action: "client_updated",
+      entityType: "client",
+      entityId: uid,
+      description: "تم تعديل بروفايل العميلة",
+      source: "client_app",
+      before,
+      after: cleaned,
+      meta: {
+        fields: Object.keys(cleaned).filter((k) => k !== "updatedAt"),
+      },
+    });
+  } catch {
+    // ignore
+  }
 
   // ✅ mirror اختياري (بدون role/active/createdAt)
   try {

@@ -22,6 +22,7 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "../../services/firebase";
+import { writeAuditLog } from "../../services/logService";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/SettingsCatalog.css"; // ✅ NEW CSS
@@ -299,6 +300,26 @@ export default function SettingsUsers() {
 
       await signOut(secondary).catch(() => {});
 
+      void writeAuditLog({
+        salonId: SALON_ID,
+        action: "user_created",
+        entityType: "user",
+        entityId: uid,
+        description: "تم إنشاء حساب مستخدم جديد",
+        source: "dashboard",
+        after: {
+          uid,
+          email,
+          displayName,
+          role: toFirestoreRole(role),
+          active: true,
+        },
+        meta: {
+          role: toFirestoreRole(role),
+          createdFrom: "settings_users",
+        },
+      });
+
       toastMsg("✅ تم إنشاء الحساب بنجاح", 1800);
       setCreateForm({ displayName: "", email: "", password: "", role: "staff" });
 
@@ -327,6 +348,10 @@ export default function SettingsUsers() {
     const nextActive = newRole !== "pending";
 
     try {
+      const row = users.find((x) => x.uid === uid);
+      const oldRole = String(row?.role || "").trim();
+      const oldActive = row?.active !== false;
+
       await setDoc(
         doc(db, ...USERS_COLLECTION, uid),
         {
@@ -340,7 +365,6 @@ export default function SettingsUsers() {
       const staffPublicRef = doc(db, ...STAFF_PUBLIC_COLLECTION, uid);
       const employeeRef = doc(db, ...EMPLOYEES_COLLECTION, uid);
 
-      const row = users.find((x) => x.uid === uid);
       const name = row?.displayName || "موظفة";
       const email = row?.email || "";
 
@@ -406,6 +430,27 @@ export default function SettingsUsers() {
         prev.map((u) => (u.uid === uid ? { ...u, role: newRole, active: nextActive } : u))
       );
 
+      void writeAuditLog({
+        salonId: SALON_ID,
+        action: "role_changed",
+        entityType: "user",
+        entityId: uid,
+        description: "تم تعديل صلاحية المستخدم",
+        source: "dashboard",
+        before: {
+          role: oldRole || null,
+          active: oldActive,
+        },
+        after: {
+          role: newRole,
+          active: nextActive,
+        },
+        meta: {
+          oldRole: oldRole || null,
+          newRole,
+        },
+      });
+
       toastMsg("✅ تم تحديث الدور", 1400);
     } catch (e) {
       console.error("updateUserRole error:", e);
@@ -422,6 +467,9 @@ export default function SettingsUsers() {
     }
 
     try {
+      const row = users.find((x) => x.uid === uid);
+      const oldActive = row?.active !== false;
+
       await setDoc(
         doc(db, ...USERS_COLLECTION, uid),
         { active, updatedAt: serverTimestamp() },
@@ -429,7 +477,6 @@ export default function SettingsUsers() {
       );
 
       // ✅ لو هو Staff خله يتزامن مع staff_public/employees
-      const row = users.find((x) => x.uid === uid);
       if (row?.role === "staff") {
         await setDoc(
           doc(db, ...STAFF_PUBLIC_COLLECTION, uid),
@@ -444,6 +491,19 @@ export default function SettingsUsers() {
       }
 
       setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, active } : u)));
+
+      void writeAuditLog({
+        salonId: SALON_ID,
+        action: "user_updated",
+        entityType: "user",
+        entityId: uid,
+        description: active ? "تم تفعيل الحساب" : "تم تعطيل الحساب",
+        source: "dashboard",
+        before: { active: oldActive },
+        after: { active },
+        meta: { field: "active" },
+      });
+
       toastMsg("✅ تم تحديث حالة الحساب", 1200);
     } catch (e) {
       console.error("toggleUserActive error:", e);
@@ -466,13 +526,15 @@ export default function SettingsUsers() {
     }
 
     try {
+      const row = users.find((x) => x.uid === uid);
+      const oldName = String(row?.displayName || "").trim();
+
       await setDoc(
         doc(db, ...USERS_COLLECTION, uid),
         { displayName: name, updatedAt: serverTimestamp() },
         { merge: true }
       );
 
-      const row = users.find((x) => x.uid === uid);
       const roleNow = row?.role;
 
       if (roleNow === "staff") {
@@ -489,6 +551,19 @@ export default function SettingsUsers() {
       }
 
       setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, displayName: name } : u)));
+
+      void writeAuditLog({
+        salonId: SALON_ID,
+        action: "user_updated",
+        entityType: "user",
+        entityId: uid,
+        description: "تم تعديل اسم المستخدم",
+        source: "dashboard",
+        before: { displayName: oldName || null },
+        after: { displayName: name },
+        meta: { field: "displayName" },
+      });
+
       toastMsg("✅ تم تحديث الاسم", 1200);
     } catch (e) {
       console.error("updateUserDisplayName error:", e);

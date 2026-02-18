@@ -344,7 +344,7 @@
   backdrop-filter: blur(2px);
 }
 
-.income-page .income-page-modal__card {
+.income-page-modal__card {
   position: relative;
   width: min(860px, 100%);
   background: #fff;
@@ -354,7 +354,7 @@
   overflow: hidden;
 }
 
-.income-page .income-page-modal__head {
+.income-page-modal__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -364,14 +364,123 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-.income-page .income-page-modal__title {
+.income-page-modal__title {
   font-weight: 900;
   font-size: 16px;
   color: #222;
 }
 
-.income-page .income-page-modal__body {
+.income-page-modal__body {
   padding: 14px 14px 16px;
+}
+
+.income-page-modal__card .income-modal-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.income-page-modal__card .income-modal-field {
+  display: grid;
+  gap: 6px;
+}
+
+.income-page-modal__card .income-modal-field > span {
+  font-size: 12px;
+  font-weight: 800;
+  color: #2f3640;
+}
+
+.income-page-modal__card .income-modal-input {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: #fff;
+  color: #111;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.income-page-modal__card .income-modal-input::placeholder {
+  color: #8a8f98;
+  opacity: 1;
+}
+
+.income-page-modal__card .income-modal-input:focus {
+  border-color: rgba(109, 40, 217, 0.45);
+  box-shadow: 0 0 0 3px rgba(109, 40, 217, 0.14);
+}
+
+.income-page-modal__card .income-modal-actions {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.income-page-modal__card .income-modal-close-btn {
+  min-width: 88px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid rgba(86, 96, 109, 0.35);
+  background: #fff;
+  color: #3a4350;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.income-page-modal__card .income-modal-close-btn:hover {
+  background: #f4f6f8;
+  border-color: rgba(86, 96, 109, 0.55);
+  transform: translateY(-1px);
+}
+
+.income-page-modal__card .income-modal-btn {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.income-page-modal__card .income-modal-btn:disabled,
+.income-page-modal__card .income-modal-close-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.income-page-modal__card .income-modal-btn--primary {
+  background: #5b0015;
+  color: #fff;
+  border-color: #5b0015;
+}
+
+.income-page-modal__card .income-modal-btn--primary:hover {
+  background: #4a0011;
+  border-color: #4a0011;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(91, 0, 21, 0.2);
+}
+
+.income-page-modal__card .income-modal-btn--secondary {
+  background: #fff;
+  color: #4d5663;
+  border-color: rgba(86, 96, 109, 0.42);
+}
+
+.income-page-modal__card .income-modal-btn--secondary:hover {
+  background: #f5f7fa;
+  border-color: rgba(86, 96, 109, 0.58);
+  transform: translateY(-1px);
 }
 
 .income-page .RemoveBot {

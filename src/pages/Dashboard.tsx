@@ -594,7 +594,7 @@ const Dashboard: React.FC = () => {
         (b) => b.status === "confirmed" || b.status === "completed"
       );
 
-      const todayRevenue = todayList.reduce(
+      let todayRevenue = todayList.reduce(
         (sum, b) => sum + (Number((b as any).total) || 0),
         0
       );
@@ -622,9 +622,25 @@ const Dashboard: React.FC = () => {
         step = "income:sum";
         const incomeTotal = incomes
           .filter((x: any) => {
-            const source = String(x?.source || "");
-            const st = String(x?.status || "");
+            const source = String(x?.source || "").toLowerCase().trim();
+            if (source === "invoice") return true;
+            const st = String(x?.status || "").toLowerCase().trim();
             return source === "booking" && (st === "confirmed" || st === "completed");
+          })
+          .reduce((sum: number, x: any) => sum + (Number(x?.amount) || 0), 0);
+
+        todayRevenue = incomes
+          .filter((x: any) => {
+            const source = String(x?.source || "").toLowerCase().trim();
+            if (source === "invoice") {
+              return String(x?.date || "").trim() === todayStr;
+            }
+            const st = String(x?.status || "").toLowerCase().trim();
+            return (
+              source === "booking" &&
+              (st === "confirmed" || st === "completed") &&
+              String(x?.date || "").trim() === todayStr
+            );
           })
           .reduce((sum: number, x: any) => sum + (Number(x?.amount) || 0), 0);
 

@@ -25,6 +25,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
+import { writeAuditLog } from "../services/logService";
 import "../styles/DashboardEmployees.css";
 import Modal from "../components/Modal";
 
@@ -60,8 +61,22 @@ type StaffPublicDoc = {
   bio?: string;
   avatarUrl?: string;
   cvUrl?: string;
+  leaveBalanceDays?: number;
+  leaveEntitlementDate?: string;
+  leaveEntries?: LeaveEntry[];
   createdAt?: any;
   updatedAt?: any;
+};
+
+type LeaveEntry = {
+  id: string;
+  type: "add" | "deduct";
+  days: number;
+  date: string; // YYYY-MM-DD (operation effective date)
+  note?: string;
+  createdAtIso: string;
+  byUid?: string;
+  byName?: string;
 };
 
 type StaffPublicUi = StaffPublicDoc & { id: string };
@@ -189,7 +204,48 @@ function resolveAvatarFromAssets(raw: string): string {
 type StaffBookingStats = {
   total: number;
   byStatus: Record<BookingStatus, number>;
+  month: {
+    key: string;
+    salonTotal: number;
+    staffTotal: number;
+    sharePct: number;
+  };
 };
+
+function monthKey(dateIso: string) {
+  const s = String(dateIso || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s.slice(0, 7);
+  return "";
+}
+
+function currentMonthKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+function todayIso() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function fmtIsoDate(v?: string) {
+  const s = String(v || "").trim();
+  if (!s) return "-";
+  const d = new Date(`${s}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleDateString("ar-SA", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function parsePositiveInt(v: string, fallback = 0) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.floor(n));
+}
 
 /* =========================
    Component
@@ -208,6 +264,10 @@ export default function DashboardEmployees() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [bookingStats, setBookingStats] =
     useState<Record<string, StaffBookingStats>>({});
+  const [leaveAdjustDays, setLeaveAdjustDays] = useState("1");
+  const [leaveAdjustDate, setLeaveAdjustDate] = useState<string>(todayIso());
+  const [leaveAdjustNote, setLeaveAdjustNote] = useState("");
+  const [leaveEntitlementDate, setLeaveEntitlementDate] = useState("");
 
   const [qText, setQText] = useState("");
   const [onlyActive, setOnlyActive] =
@@ -249,6 +309,10 @@ export default function DashboardEmployees() {
     setShowOnBooking(true);
 
     setSpecialties([]);
+    setLeaveAdjustDays("1");
+    setLeaveAdjustDate(todayIso());
+    setLeaveAdjustNote("");
+    setLeaveEntitlementDate("");
   };
 
   const openEdit = (x: StaffPublicUi) => {
@@ -264,6 +328,10 @@ export default function DashboardEmployees() {
     setShowOnAbout((x as any).showOnAbout !== false);
 
     setSpecialties(normalizeSpecialties(x.specialties));
+    setLeaveAdjustDays("1");
+    setLeaveAdjustDate(todayIso());
+    setLeaveAdjustNote("");
+    setLeaveEntitlementDate(String((x as any).leaveEntitlementDate || ""));
     setIsOpen(true);
   };
 
@@ -292,6 +360,9 @@ export default function DashboardEmployees() {
           bio: data?.bio ?? "",
           avatarUrl: resolveAvatarFromAssets(pickAvatarUrl(data)),
           cvUrl: data?.cvUrl ?? "",
+          leaveBalanceDays: Number(data?.leaveBalanceDays || 0),
+          leaveEntitlementDate: String(data?.leaveEntitlementDate || ""),
+          leaveEntries: Array.isArray(data?.leaveEntries) ? data.leaveEntries : [],
           createdAt: data?.createdAt,
           updatedAt: data?.updatedAt,
         } as StaffPublicUi;
@@ -432,19 +503,22 @@ export default function DashboardEmployees() {
   useEffect(() => {
     let alive = true;
     const compute = async () => {
-      if (authUser?.role !== "owner" || !list.length) {
+      if (!(authUser?.role === "owner" || authUser?.role === "admin") || !list.length) {
         setBookingStats({});
         return;
       }
       setStatsLoading(true);
       try {
+        const thisMonth = currentMonthKey();
         const initStats = (): StaffBookingStats => ({
           total: 0,
           byStatus: { pending: 0, confirmed: 0, completed: 0, cancelled: 0 },
+          month: { key: thisMonth, salonTotal: 0, staffTotal: 0, sharePct: 0 },
         });
         const staffById = new Set(list.map((s) => s.id));
         const staffByKey = new Map<string, string>();
         const staffByName = new Map<string, string>();
+        let salonMonthTotal = 0;
 
         for (const s of list) {
           const sid = String(s.id || "").trim();
@@ -459,6 +533,11 @@ export default function DashboardEmployees() {
         const m: Record<string, StaffBookingStats> = {};
 
         for (const b of rows) {
+          const bMonth = monthKey(String((b as any).date || ""));
+          const st = (String((b as any).status || "pending").toLowerCase() ||
+            "pending") as BookingStatus;
+          if (bMonth === thisMonth && st !== "cancelled") salonMonthTotal += 1;
+
           const eid = String((b as any).employeeId || "").trim();
           const euid = String((b as any).employeeUid || "").trim();
           const ekey = String((b as any).employeeKey || "").trim();
@@ -476,10 +555,33 @@ export default function DashboardEmployees() {
           if (!staffId) continue;
 
           if (!m[staffId]) m[staffId] = initStats();
-          const st = (b.status || "pending") as BookingStatus;
           m[staffId].total += 1;
           m[staffId].byStatus[st] = (m[staffId].byStatus[st] || 0) + 1;
+          if (bMonth === thisMonth && st !== "cancelled") {
+            m[staffId].month.staffTotal += 1;
+          }
         }
+
+        Object.keys(m).forEach((sid) => {
+          m[sid].month.salonTotal = salonMonthTotal;
+          m[sid].month.sharePct =
+            salonMonthTotal > 0 ? Math.round((m[sid].month.staffTotal / salonMonthTotal) * 100) : 0;
+        });
+
+        list.forEach((s) => {
+          if (!m[s.id]) {
+            m[s.id] = initStats();
+            m[s.id].month.salonTotal = salonMonthTotal;
+          }
+        });
+
+        Object.keys(m).forEach((sid) => {
+          if (!m[sid].month.sharePct && m[sid].month.salonTotal > 0 && m[sid].month.staffTotal > 0) {
+            m[sid].month.sharePct = Math.round(
+              (m[sid].month.staffTotal / m[sid].month.salonTotal) * 100
+            );
+          }
+        });
         if (alive) setBookingStats(m);
       } catch (e) {
         console.warn("booking stats error:", e);
@@ -570,6 +672,9 @@ export default function DashboardEmployees() {
           .slice(0, 40);
         await setDoc(staffPublicDoc(id || crypto.randomUUID()), {
           ...payload,
+          leaveBalanceDays: 0,
+          leaveEntitlementDate: "",
+          leaveEntries: [],
           createdAt: serverTimestamp(),
         });
       } else {
@@ -618,6 +723,111 @@ export default function DashboardEmployees() {
     }
     return rows;
   }, [list, onlyActive, specialtyFilter, qText]);
+
+  const editingStaff = useMemo(
+    () => (editId ? list.find((x) => x.id === editId) || null : null),
+    [editId, list]
+  );
+
+  const applyLeaveChange = async (mode: "add" | "deduct") => {
+    if (authUser?.role !== "owner" || !editingStaff) return;
+    const days = parsePositiveInt(leaveAdjustDays, 0);
+    if (days <= 0) {
+      setErrorMsg("اكتب عدد أيام صحيح.");
+      return;
+    }
+    const opDate = String(leaveAdjustDate || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(opDate)) {
+      setErrorMsg("اختر تاريخ العملية.");
+      return;
+    }
+
+    const currentBalance = parsePositiveInt(String((editingStaff as any).leaveBalanceDays || 0), 0);
+    const nextBalance = mode === "add" ? currentBalance + days : currentBalance - days;
+    if (mode === "deduct" && nextBalance < 0) {
+      setErrorMsg("لا يمكن خصم أكثر من الرصيد المتبقي.");
+      return;
+    }
+
+    const currentEntries: LeaveEntry[] = Array.isArray((editingStaff as any).leaveEntries)
+      ? ((editingStaff as any).leaveEntries as LeaveEntry[])
+      : [];
+
+    const entry: LeaveEntry = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      type: mode,
+      days,
+      date: opDate,
+      note: leaveAdjustNote.trim(),
+      createdAtIso: new Date().toISOString(),
+      byUid: String(authUser.uid || ""),
+      byName: String(authUser.displayName || authUser.email || ""),
+    };
+
+    const nextEntries = [entry, ...currentEntries].slice(0, 200);
+
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      await updateDoc(staffPublicDoc(editingStaff.id), {
+        leaveBalanceDays: nextBalance,
+        leaveEntries: nextEntries,
+        updatedAt: serverTimestamp(),
+      } as any);
+
+      setList((prev) =>
+        prev.map((r) =>
+          r.id === editingStaff.id
+            ? ({ ...r, leaveBalanceDays: nextBalance, leaveEntries: nextEntries } as StaffPublicUi)
+            : r
+        )
+      );
+
+      setLeaveAdjustDays("1");
+      setLeaveAdjustNote("");
+
+      void writeAuditLog({
+        action: "employee_updated",
+        entityType: "employee",
+        entityId: editingStaff.id,
+        source: "dashboard",
+        description: mode === "add" ? "إضافة رصيد إجازة للموظفة" : "خصم رصيد إجازة من الموظفة",
+        before: { leaveBalanceDays: currentBalance },
+        after: { leaveBalanceDays: nextBalance },
+        meta: { leaveAction: mode, days, opDate, staffName: editingStaff.name },
+      });
+    } catch (e) {
+      console.warn("leave change error:", e);
+      setErrorMsg("تعذر حفظ حركة الإجازة.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveEntitlementDate = async () => {
+    if (authUser?.role !== "owner" || !editingStaff) return;
+    const d = String(leaveEntitlementDate || "").trim();
+    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      setErrorMsg("تاريخ الاستحقاق غير صحيح.");
+      return;
+    }
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      await updateDoc(staffPublicDoc(editingStaff.id), {
+        leaveEntitlementDate: d || "",
+        updatedAt: serverTimestamp(),
+      } as any);
+      setList((prev) =>
+        prev.map((r) => (r.id === editingStaff.id ? ({ ...r, leaveEntitlementDate: d } as StaffPublicUi) : r))
+      );
+    } catch (e) {
+      console.warn("save entitlement date error:", e);
+      setErrorMsg("تعذر حفظ تاريخ الاستحقاق.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!authUser) {
     return (
@@ -733,7 +943,19 @@ export default function DashboardEmployees() {
 
         <div className="dash-grid">
           {filtered.map((x) => (
-            <div key={x.id} className="staff-card">
+            <div
+              key={x.id}
+              className="staff-card staff-card-cover"
+              role="button"
+              tabIndex={0}
+              onClick={() => openEdit(x)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openEdit(x);
+                }
+              }}
+            >
               {(() => {
                 const allSpecialties = normalizeSpecialties(x.specialties);
                 const isExpanded = !!expandedSpecialtiesByStaff[x.id];
@@ -789,7 +1011,10 @@ export default function DashboardEmployees() {
                   <button
                     className="exp-btn ghost sm"
                     title={x.active ? "تعطيل الموظفة" : "تفعيل الموظفة"}
-                    onClick={() => toggleActiveQuick(x)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleActiveQuick(x);
+                    }}
                     disabled={loading}
                     type="button"
                   >
@@ -800,20 +1025,33 @@ export default function DashboardEmployees() {
                   <button
                     className="exp-btn ghost sm"
                     title={x.showOnAbout ? "إخفاء من صفحة من نحن" : "إظهار في صفحة من نحن"}
-                    onClick={() => toggleShowOnAboutQuick(x)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleShowOnAboutQuick(x);
+                    }}
                     disabled={loading}
                     type="button"
                   >
                     <FontAwesomeIcon icon={x.showOnAbout ? faToggleOn : faToggleOff} />
                   </button>
 
-                  <button className="exp-btn ghost sm" onClick={() => openEdit(x)} type="button">
+                  <button
+                    className="exp-btn ghost sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEdit(x);
+                    }}
+                    type="button"
+                  >
                     <FontAwesomeIcon icon={faPen} />
                   </button>
 
                   <button
                     className="exp-btn ghost sm text-danger"
-                    onClick={() => remove(x.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      remove(x.id);
+                    }}
                     type="button"
                   >
                     <FontAwesomeIcon icon={faTrash} />
@@ -894,6 +1132,115 @@ export default function DashboardEmployees() {
             </div>
 
             <div className="modal-body emp-modal-grid">
+              {editingStaff ? (
+                <div className="emp-modal-section">
+                  <b className="emp-modal-section-title">إحصائيات الشهر والإجازات</b>
+
+                  <div className="staff-metrics">
+                    <div className="staff-metrics-grid">
+                      <div className="staff-metric">
+                        <span>حجوزاتها هذا الشهر</span>
+                        <b>{statsLoading ? "..." : bookingStats[editingStaff.id]?.month.staffTotal ?? 0}</b>
+                      </div>
+                      <div className="staff-metric">
+                        <span>إجمالي حجوزات الشهر (الصالون)</span>
+                        <b>{statsLoading ? "..." : bookingStats[editingStaff.id]?.month.salonTotal ?? 0}</b>
+                      </div>
+                      <div className="staff-metric accent">
+                        <span>نسبة الشغل من إجمالي الشهر</span>
+                        <b>{statsLoading ? "..." : `${bookingStats[editingStaff.id]?.month.sharePct ?? 0}%`}</b>
+                      </div>
+                      <div className="staff-metric">
+                        <span>رصيد الإجازات المتبقي</span>
+                        <b>{parsePositiveInt(String((editingStaff as any).leaveBalanceDays || 0), 0)} يوم</b>
+                      </div>
+                    </div>
+                    <div className="staff-month-hint">الشهر الحالي: {currentMonthKey()}</div>
+                  </div>
+
+                  <div className="staff-leave-box">
+                    <div className="staff-leave-head">
+                      <span>تاريخ الاستحقاق القادم</span>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input
+                          className="dash-input"
+                          type="date"
+                          value={leaveEntitlementDate}
+                          onChange={(e) => setLeaveEntitlementDate(e.target.value)}
+                        />
+                        <button className="exp-btn" type="button" onClick={saveEntitlementDate} disabled={loading}>
+                          حفظ الاستحقاق
+                        </button>
+                      </div>
+                    </div>
+
+                    {authUser?.role === "owner" ? (
+                      <div className="staff-leave-controls">
+                        <input
+                          className="dash-input staff-leave-input"
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={leaveAdjustDays}
+                          onChange={(e) => setLeaveAdjustDays(e.target.value)}
+                          placeholder="عدد الأيام"
+                        />
+                        <input
+                          className="dash-input"
+                          type="date"
+                          value={leaveAdjustDate}
+                          onChange={(e) => setLeaveAdjustDate(e.target.value)}
+                        />
+                        <input
+                          className="dash-input"
+                          value={leaveAdjustNote}
+                          onChange={(e) => setLeaveAdjustNote(e.target.value)}
+                          placeholder="ملاحظة (اختياري)"
+                        />
+                        <button
+                          className="exp-btn primary"
+                          type="button"
+                          disabled={loading}
+                          onClick={() => applyLeaveChange("add")}
+                        >
+                          إضافة رصيد
+                        </button>
+                        <button
+                          className="exp-btn ghost"
+                          type="button"
+                          disabled={loading}
+                          onClick={() => applyLeaveChange("deduct")}
+                        >
+                          تسجيل إجازة (خصم)
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <div className="leave-log-list">
+                      <div className="leave-log-title">سجل الإجازات</div>
+                      {(Array.isArray((editingStaff as any).leaveEntries) ? (editingStaff as any).leaveEntries : [])
+                        .slice()
+                        .sort((a: LeaveEntry, b: LeaveEntry) => String(b.createdAtIso || "").localeCompare(String(a.createdAtIso || "")))
+                        .slice(0, 12)
+                        .map((entry: LeaveEntry) => (
+                          <div className="leave-log-row" key={entry.id}>
+                            <span className={`leave-log-type ${entry.type === "deduct" ? "deduct" : "add"}`}>
+                              {entry.type === "deduct" ? "إجازة" : "إضافة"}
+                            </span>
+                            <span className="leave-log-days">{entry.days} يوم</span>
+                            <span className="leave-log-date">{fmtIsoDate(entry.date)}</span>
+                            <span className="leave-log-note">{String(entry.note || "-")}</span>
+                          </div>
+                        ))}
+                      {!Array.isArray((editingStaff as any).leaveEntries) ||
+                      (editingStaff as any).leaveEntries.length === 0 ? (
+                        <div className="leave-log-empty">لا يوجد سجل إجازات حتى الآن.</div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="emp-modal-section">
                 <b className="emp-modal-section-title">المعلومات الأساسية</b>
 

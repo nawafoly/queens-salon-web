@@ -25,6 +25,7 @@ import { formatTime12 } from "../helpers/timeDisplay";
 import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 
 import { AppSettingsService } from "../services/AppSettingsService";
+import Modal from "../components/Modal";
 
 // Firestore
 import {
@@ -42,6 +43,8 @@ import {
 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../services/firebase";
+import { upsertIncomeFS } from "../services/firestoreIncome";
+import { writeAuditLog } from "../services/logService";
 
 // Auth
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -1077,6 +1080,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [bookingSearch, setBookingSearch] = useState("");
   const [bookingSearching, setBookingSearching] = useState(false);
   const [bookingSearchMsg, setBookingSearchMsg] = useState("");
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [confirmTargetBooking, setConfirmTargetBooking] = useState<any | null>(null);
+  const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<"cash" | "transfer">("cash");
   const [foundBookings, setFoundBookings] = useState<any[]>([]);
   const [selectedExistingBooking, setSelectedExistingBooking] = useState<any>(null);
   const [bookingNameChoices, setBookingNameChoices] = useState<
@@ -1804,7 +1810,21 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     }
   };
 
-  async function confirmAndPrintExistingBooking(b: any) {
+  function todayISO() {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${d.getFullYear()}-${m}-${day}`;
+  }
+
+  function openConfirmAndPrintModal(b: any) {
+    setConfirmTargetBooking(b || null);
+    setConfirmPaymentMethod("cash");
+    setPaymentModalOpen(true);
+  }
+
+  async function confirmAndPrintExistingBooking() {
+    const b = confirmTargetBooking;
     const id = String(b?.id || "").trim();
     if (!id) return;
 
@@ -1822,24 +1842,72 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     setIsLoading(true);
     try {
+      const now = Date.now();
+      const amount = Number(b?.finalPrice ?? b?.total ?? 0) || 0;
+
       await updateDoc(doc(db, "salons", SALON_ID, "bookings", id), {
-        status: "confirmed",
-        confirmedAt: Date.now(),
+        status: "completed",
+        confirmedAt: now,
         confirmedByUid: staffUid,
-        paidAt: Date.now(),
+        completedAt: now,
+        completedByUid: staffUid,
+        paidAt: now,
         paidByUid: staffUid,
-        paymentMethod: "cash",
+        paymentMethod: confirmPaymentMethod,
+        invoiceIssuedAt: now,
         channel: b?.channel || b?.source || "online",
       } as any);
 
-      const refreshed = { ...b, status: "confirmed" };
+      await upsertIncomeFS(
+        {
+          id,
+          date: todayISO(),
+          amount,
+          method: confirmPaymentMethod,
+          source: "invoice",
+          bookingId: id,
+          note: `invoice_from_reception:${String(confirmPaymentMethod)}`,
+          createdAt: now,
+        } as any,
+        SALON_ID
+      );
+
+      void writeAuditLog({
+        salonId: SALON_ID,
+        action: "booking_completed",
+        entityType: "booking",
+        entityId: id,
+        description: "تم تأكيد الحجز وإصدار الفاتورة من الاستقبال",
+        source: "internal_booking",
+        after: {
+          status: "completed",
+          paymentMethod: confirmPaymentMethod,
+          amount,
+          paidAt: now,
+          invoiceIssuedAt: now,
+        },
+        meta: {
+          bookingId: id,
+          paymentMethod: confirmPaymentMethod,
+          amount,
+        },
+      });
+
+      const refreshed = {
+        ...b,
+        status: "completed",
+        paymentMethod: confirmPaymentMethod,
+        paidAt: now,
+      };
 
       localStorage.setItem("currentBooking", JSON.stringify(refreshed));
       localStorage.setItem("allBookings", JSON.stringify([refreshed]));
+      setPaymentModalOpen(false);
+      setConfirmTargetBooking(null);
       navigate("/success-internal");
     } catch (e: any) {
       openModal({
-        title: "تعذر تأكيد الحجز",
+        title: "تعذر إصدار الفاتورة",
         message:
           `code: ${String(e?.code || "—")}\n` +
           `message: ${String(e?.message || "—")}`,
@@ -4016,6 +4084,90 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           if (fn) fn();
         }}
       />
+      <Modal
+        open={paymentModalOpen}
+        onClose={() => {
+          if (isLoading) return;
+          setPaymentModalOpen(false);
+          setConfirmTargetBooking(null);
+        }}
+        ariaLabel="اختيار طريقة سداد الفاتورة"
+        size="sm"
+      >
+        <div className="p-3">
+          <h5 className="mb-2" style={{ fontWeight: 800 }}>تأكيد الحجز + إصدار الفاتورة</h5>
+          <p className="mb-3 text-muted" style={{ fontSize: 13 }}>
+            اختاري طريقة سداد الفاتورة. بعد الإصدار والطباعة يتم اعتماد الحجز كمكتمل.
+          </p>
+          <div className="form-label mb-2">طريقة سداد الفاتورة</div>
+          <div
+            className="d-grid gap-2"
+            style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}
+          >
+            <button
+              type="button"
+              className={`btn ${confirmPaymentMethod === "cash" ? "btn-primary" : "btn-outline-primary"}`}
+              onClick={() => setConfirmPaymentMethod("cash")}
+              disabled={isLoading}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 12,
+                borderWidth: 2,
+                fontWeight: 800,
+                minHeight: 50,
+              }}
+            >
+              كاش
+            </button>
+            <button
+              type="button"
+              className={`btn ${confirmPaymentMethod === "transfer" ? "btn-primary" : "btn-outline-primary"}`}
+              onClick={() => setConfirmPaymentMethod("transfer")}
+              disabled={isLoading}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 12,
+                borderWidth: 2,
+                fontWeight: 800,
+                minHeight: 50,
+              }}
+            >
+              تحويل
+            </button>
+          </div>
+          <div className="d-grid gap-2 mt-3">
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ borderRadius: 12, fontWeight: 800, minHeight: 48 }}
+              onClick={() => {
+                void confirmAndPrintExistingBooking();
+              }}
+              disabled={isLoading || !confirmTargetBooking}
+            >
+              {isLoading ? "جاري الإصدار..." : "إصدار الفاتورة + طباعة"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              style={{ borderRadius: 12, minHeight: 44 }}
+              onClick={() => {
+                setPaymentModalOpen(false);
+                setConfirmTargetBooking(null);
+              }}
+              disabled={isLoading}
+            >
+              إلغاء
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <div className="container bk-internal-container">
         <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 bk-page-header">
@@ -4156,7 +4308,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               type="button"
                               className="btn btn-sm bk-action-confirm"
                               style={{ borderRadius: 10 }}
-                              onClick={() => confirmAndPrintExistingBooking(b)}
+                              onClick={() => openConfirmAndPrintModal(b)}
                               disabled={isLoading}
                             >
                               تأكيد + طباعة
