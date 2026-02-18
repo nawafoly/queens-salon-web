@@ -229,7 +229,6 @@ function getTimesToLock(
   durationMin: number,
   bufferMin: number
 ) {
-  const startMin = toMinutes(startTime24);
   const step = Math.max(1, Number(slotStepMin || 0));
 
   const totalMin =
@@ -238,12 +237,17 @@ function getTimesToLock(
   if (totalMin <= 0) return [startTime24];
 
   const slotsToLock = Math.max(1, Math.ceil(totalMin / step));
+  const startIdx = allSlots.findIndex(
+    (s) => String(s.value24 || "").trim() === String(startTime24 || "").trim()
+  );
+
+  if (startIdx < 0) return [startTime24];
 
   const locked: string[] = [];
   for (let i = 0; i < slotsToLock; i++) {
-    const targetMin = startMin + i * step;
-    const hit = allSlots.find((s) => s.minutes === targetMin);
-    if (hit) locked.push(hit.value24);
+    const slot = allSlots[startIdx + i];
+    if (!slot) break;
+    locked.push(slot.value24);
   }
 
   return locked.length ? locked : [startTime24];
@@ -281,6 +285,19 @@ function getGreenStartTimes(args: {
   }
 
   return greens;
+}
+
+function sortTimesBySlotOrder(times: string[], allSlots: TimeSlot[]) {
+  const order = new Map<string, number>();
+  allSlots.forEach((s, idx) => {
+    const k = String(s.value24 || "").trim();
+    if (k && !order.has(k)) order.set(k, idx);
+  });
+  return [...times].sort(
+    (a, b) =>
+      (order.get(String(a || "").trim()) ?? Number.MAX_SAFE_INTEGER) -
+      (order.get(String(b || "").trim()) ?? Number.MAX_SAFE_INTEGER)
+  );
 }
 
 function buildUniformReasonByStarts(starts: string[], reason: string) {
@@ -1608,6 +1625,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setFutureLoading(true);
     try {
       const results: { date: string; times: string[]; note?: string; contributors?: string[] }[] = [];
+      const baseSlots =
+        timeSlots.length > 0
+          ? timeSlots
+          : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
 
       for (let i = 0; i < scanDays; i++) {
         const dateISO = addDaysISO(startISO, i);
@@ -1701,9 +1722,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             }
           }
 
-          dayTimes = Array.from(merged.values())
-            .sort((a, b) => toMinutes(a) - toMinutes(b))
-            .slice(0, 5);
+          dayTimes = sortTimesBySlotOrder(Array.from(merged.values()), baseSlots).slice(0, 5);
 
           if (dayTimes.length) {
             const visibleContributors = new Set<string>();
@@ -2923,14 +2942,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       takenAll: args.takenAll,
     });
 
-    return slotsForThisService
+    return sortTimesBySlotOrder(
+      slotsForThisService
       .map((s) => s.value24)
-      .filter((t) => greens.has(t))
-      .sort((a, b) => {
-        const am = toMinutes(a) ?? 999999;
-        const bm = toMinutes(b) ?? 999999;
-        return am - bm;
-      });
+      .filter((t) => greens.has(t)),
+      args.allSlots
+    );
   }
 
   async function getAvailableStartsForDay(args: {

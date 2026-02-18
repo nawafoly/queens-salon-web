@@ -189,9 +189,9 @@ export default function SettingsBookings() {
 
   const [savedMsg, setSavedMsg] = useState("");
 
-  // ✅ helper: خذ آخر نسخة مؤكدة (localStorage أولاً)
+  // ✅ helper: خذ آخر نسخة مؤكدة (state الحالي أولاً ثم cache)
   function getLatestSettingsSnapshot() {
-    return loadLocalSettings() || AppSettingsService.getCached?.() || settings || {};
+    return settings || loadLocalSettings() || AppSettingsService.getCached?.() || {};
   }
 
   const saveAll = async () => {
@@ -210,8 +210,9 @@ export default function SettingsBookings() {
       const oNorm = safeTimeHHMM(oRaw, "10:00");
       const cNorm = safeTimeHHMM(cRaw, "22:00");
 
-      if (oNorm >= cNorm) {
-        setSavedMsg("❌ بداية الدوام لازم تكون قبل نهاية الدوام");
+      // Allow overnight shifts (e.g. 20:00 -> 02:00). Reject only exact equality.
+      if (oNorm === cNorm) {
+        setSavedMsg("❌ بداية ونهاية الدوام لا يمكن أن تكونا نفس الوقت");
         setTimeout(() => setSavedMsg(""), 2200);
         return;
       }
