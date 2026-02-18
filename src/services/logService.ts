@@ -42,7 +42,6 @@ export type AuditAction =
   | "employee_created"
   | "employee_updated"
   | "employee_disabled"
-  | "employee_leave_balance_updated"
   | "client_created"
   | "client_updated"
   | "income_created"
@@ -130,33 +129,7 @@ function logsCol(salonId: string) {
   return collection(db, "salons", salonId, "logs");
 }
 
-const SENSITIVE_ACTIONS = new Set<string>([
-  "role_changed",
-  "settings_updated",
-  "loyalty_settings_updated",
-  "income_created",
-  "income_updated",
-  "income_deleted",
-  "expense_created",
-  "expense_updated",
-  "expense_deleted",
-  "booking_confirmed",
-  "booking_completed",
-  "booking_cancelled",
-  "booking_reassigned",
-  "employee_leave_balance_updated",
-  "booking_status_changed",
-  "offer_created",
-  "offer_updated",
-  "offer_deleted",
-  "user_created",
-  "user_updated",
-]);
-
 function detectSensitive(action: string, description: string, meta?: Record<string, unknown>) {
-  const actionKey = String(action || "").toLowerCase().trim();
-  if (SENSITIVE_ACTIONS.has(actionKey)) return true;
-
   const text = `${action} ${description} ${JSON.stringify(meta || {})}`.toLowerCase();
   return (
     text.includes("delete") ||

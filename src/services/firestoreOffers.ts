@@ -2,7 +2,6 @@
 import { db } from "./firebase";
 import {
   collection,
-  getDoc,
   doc,
   getDocs,
   limit,
@@ -15,7 +14,6 @@ import {
   runTransaction,
   increment,
 } from "firebase/firestore";
-import { writeAuditLog } from "./logService";
 
 export type DiscountType = "fixed" | "percent";
 export type OfferAppliesTo = "all" | "services";
@@ -143,8 +141,6 @@ export async function listOffers(salonId = DEFAULT_SALON_ID): Promise<Offer[]> {
 /** ✅ إضافة/تحديث */
 export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
   const ref = doc(db, "salons", salonId, "offers", offer.id);
-  const beforeSnap = await getDoc(ref);
-  const before = beforeSnap.exists() ? beforeSnap.data() : null;
 
   const payload = stripUndefined({ ...offer });
 
@@ -177,46 +173,6 @@ export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
     },
     { merge: true }
   );
-
-  try {
-    const wasDeleted = Boolean((before as any)?.deletedAt);
-    const isDeletedNow = Boolean((offer as any)?.deletedAt);
-    const action = !before ? "offer_created" : isDeletedNow && !wasDeleted ? "offer_deleted" : "offer_updated";
-
-    await writeAuditLog({
-      salonId,
-      action,
-      entityType: "offer",
-      entityId: offer.id,
-      description:
-        action === "offer_created"
-          ? "تم إنشاء عرض"
-          : action === "offer_deleted"
-          ? "تم حذف العرض (نقل للمحذوفات)"
-          : "تم تعديل العرض",
-      source: "dashboard",
-      before,
-      after: {
-        id: offer.id,
-        title: offer.title,
-        code: offer.code,
-        discountType: offer.discountType,
-        value: offer.value,
-        active: offer.active,
-        startDate: offer.startDate || "",
-        endDate: offer.endDate || "",
-        appliesTo: offer.appliesTo || "all",
-        serviceIds: Array.isArray(offer.serviceIds) ? offer.serviceIds : [],
-        deletedAt: (offer as any)?.deletedAt ?? null,
-      },
-      meta: {
-        code: offer.code,
-        deletedAt: (offer as any)?.deletedAt ?? null,
-      },
-    });
-  } catch {
-    // ignore
-  }
 }
 
 /**
@@ -225,8 +181,6 @@ export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
  */
 export async function removeOffer(id: string, salonId = DEFAULT_SALON_ID) {
   const ref = doc(db, "salons", salonId, "offers", id);
-  const beforeSnap = await getDoc(ref);
-  const before = beforeSnap.exists() ? beforeSnap.data() : null;
 
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
@@ -242,24 +196,6 @@ export async function removeOffer(id: string, salonId = DEFAULT_SALON_ID) {
 
     tx.delete(ref);
   });
-
-  try {
-    await writeAuditLog({
-      salonId,
-      action: "offer_deleted",
-      entityType: "offer",
-      entityId: id,
-      description: "تم حذف العرض نهائيًا",
-      source: "dashboard",
-      before,
-      after: null,
-      meta: {
-        hardDelete: true,
-      },
-    });
-  } catch {
-    // ignore
-  }
 }
 
 /**

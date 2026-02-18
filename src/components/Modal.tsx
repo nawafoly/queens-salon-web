@@ -75,11 +75,6 @@ const Modal: React.FC<ModalProps> = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
 
   const sizeClass = useMemo(() => {
     if (size === "sm") return "qs-modal-panel--sm";
@@ -113,7 +108,7 @@ const Modal: React.FC<ModalProps> = ({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onCloseRef.current();
+        onClose();
         return;
       }
 
@@ -149,7 +144,7 @@ const Modal: React.FC<ModalProps> = ({
       unlockBodyScroll();
       lastFocusedRef.current?.focus();
     };
-  }, [open, initialFocusRef]);
+  }, [open, onClose, initialFocusRef]);
 
   if (!open) return null;
   if (typeof document === "undefined") return null;

@@ -6,7 +6,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
   getDocs,
   orderBy,
   query,
@@ -16,7 +15,6 @@ import {
 } from "firebase/firestore";
 
 import type { IncomeItem, PaymentMethod } from "../types/finance";
-import { writeAuditLog } from "./logService";
 
 // ✅ ثابت الآن (لاحقًا نخليه ديناميكي)
 const DEFAULT_SALON_ID = "main";
@@ -104,9 +102,6 @@ export async function listAllIncomeFS(salonId?: string): Promise<IncomeItem[]> {
 export async function upsertIncomeFS(item: IncomeItem, salonId?: string) {
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "income", item.id);
-  const prevSnap = await getDoc(ref);
-  const prevData = prevSnap.exists() ? prevSnap.data() : null;
-  const isCreate = !prevSnap.exists();
 
   const payload = stripUndefined({
     date: item.date,
@@ -125,57 +120,12 @@ export async function upsertIncomeFS(item: IncomeItem, salonId?: string) {
   });
 
   await setDoc(ref, payload, { merge: true });
-
-  try {
-    await writeAuditLog({
-      salonId: sid,
-      action: isCreate ? "income_created" : "income_updated",
-      entityType: "income",
-      entityId: item.id,
-      description: isCreate ? "تم إنشاء سجل دخل" : "تم تعديل سجل دخل",
-      source: item.source === "invoice" ? "internal_booking" : "dashboard",
-      before: prevData,
-      after: {
-        date: item.date,
-        amount: item.amount,
-        method: item.method,
-        source: item.source,
-        note: item.note ?? null,
-        bookingId: item.bookingId ?? null,
-      },
-      meta: {
-        paymentMethod: item.method,
-        bookingId: item.bookingId ?? null,
-      },
-    });
-  } catch {
-    // ignore
-  }
 }
 
 /** ✅ حذف */
 export async function removeIncomeFS(id: string, salonId?: string) {
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "income", id);
-  const prevSnap = await getDoc(ref);
-  const prevData = prevSnap.exists() ? prevSnap.data() : null;
   await deleteDoc(ref);
-
-  try {
-    await writeAuditLog({
-      salonId: sid,
-      action: "income_deleted",
-      entityType: "income",
-      entityId: id,
-      description: "تم حذف سجل دخل",
-      source: "dashboard",
-      before: prevData,
-      after: null,
-      meta: {
-        bookingId: (prevData as any)?.bookingId ?? null,
-      },
-    });
-  } catch {
-    // ignore
-  }
 }
+

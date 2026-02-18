@@ -1253,7 +1253,7 @@ const DashboardExpenses: React.FC = () => {
           open={recordOpen}
           onClose={() => setRecordOpen(false)}
           ariaLabel="سجل المصروفات"
-          panelClassName="dash-modal expenses-record-modal"
+          panelClassName="dash-modal"
           size="lg"
         >
             <div className="dash-modal-header">

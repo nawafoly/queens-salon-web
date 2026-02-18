@@ -6,7 +6,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
   getDocs,
   orderBy,
   query,
@@ -16,7 +15,6 @@ import {
 } from "firebase/firestore";
 
 import type { Expense } from "../types/finance";
-import { writeAuditLog } from "./logService";
 
 // ✅ ثابت الآن (لاحقًا نخليه ديناميكي)
 const DEFAULT_SALON_ID = "main";
@@ -90,9 +88,6 @@ export async function listAllExpensesFS(salonId?: string): Promise<Expense[]> {
 export async function upsertExpenseFS(expense: Expense, salonId?: string) {
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "expenses", expense.id);
-  const prevSnap = await getDoc(ref);
-  const prevData = prevSnap.exists() ? prevSnap.data() : null;
-  const isCreate = !prevSnap.exists();
 
   const payload = stripUndefined({
     title: expense.title,
@@ -110,59 +105,13 @@ export async function upsertExpenseFS(expense: Expense, salonId?: string) {
   });
 
   await setDoc(ref, payload, { merge: true });
-
-  try {
-    await writeAuditLog({
-      salonId: sid,
-      action: isCreate ? "expense_created" : "expense_updated",
-      entityType: "expense",
-      entityId: expense.id,
-      description: isCreate ? "تم إنشاء مصروف" : "تم تعديل مصروف",
-      source: "dashboard",
-      before: prevData,
-      after: {
-        title: expense.title,
-        category: expense.category,
-        amount: expense.amount,
-        date: expense.date,
-        paymentMethod: expense.paymentMethod,
-        note: expense.note ?? null,
-      },
-      meta: {
-        paymentMethod: expense.paymentMethod,
-        amount: expense.amount,
-      },
-    });
-  } catch {
-    // ignore
-  }
 }
 
 /** ✅ حذف */
 export async function removeExpenseFS(id: string, salonId?: string) {
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "expenses", id);
-  const prevSnap = await getDoc(ref);
-  const prevData = prevSnap.exists() ? prevSnap.data() : null;
   await deleteDoc(ref);
-
-  try {
-    await writeAuditLog({
-      salonId: sid,
-      action: "expense_deleted",
-      entityType: "expense",
-      entityId: id,
-      description: "تم حذف مصروف",
-      source: "dashboard",
-      before: prevData,
-      after: null,
-      meta: {
-        amount: (prevData as any)?.amount ?? null,
-      },
-    });
-  } catch {
-    // ignore
-  }
 }
 
 /**
@@ -200,3 +149,4 @@ export async function countMonthlyExpensesMissingNotesFS(
 
   return count;
 }
+

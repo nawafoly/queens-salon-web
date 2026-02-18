@@ -25,9 +25,8 @@ export function toMinutes(hhmm: string) {
 }
 
 function toArabic12hLabel(totalMin: number) {
-  const norm = ((Math.floor(totalMin) % 1440) + 1440) % 1440;
-  const h24 = Math.floor(norm / 60);
-  const m = norm % 60;
+  const h24 = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
 
   const isPM = h24 >= 12;
   const hour12 = h24 === 12 ? 12 : h24 % 12 || 12;
@@ -82,11 +81,7 @@ export function generateSalonTimeSlots(
   const startMin = toMinutes(open);
   const endMin = toMinutes(close);
 
-  const slots: TimeSlot[] = [];
-  const isOvernight = startMin > endMin;
-  const endCursor = isOvernight ? endMin + 1440 : endMin;
-
-  if (startMin === endMin) {
+  if (startMin >= endMin) {
     return [
       {
         value24: open,
@@ -96,14 +91,14 @@ export function generateSalonTimeSlots(
     ];
   }
 
-  for (let t = startMin; t < endCursor; t += step) {
-    const norm = t % 1440;
-    const hh = String(Math.floor(norm / 60)).padStart(2, "0");
-    const mm = String(norm % 60).padStart(2, "0");
+  const slots: TimeSlot[] = [];
+  for (let t = startMin; t < endMin; t += step) {
+    const hh = String(Math.floor(t / 60)).padStart(2, "0");
+    const mm = String(t % 60).padStart(2, "0");
     slots.push({
       value24: `${hh}:${mm}`,
-      label12: toArabic12hLabel(norm),
-      minutes: norm,
+      label12: toArabic12hLabel(t),
+      minutes: t,
     });
   }
 
@@ -117,29 +112,11 @@ export function filterSlotsByServiceEnd(
   bufferMin: number,
   allowOvertimeMin: number
 ): TimeSlot[] {
-  if (!Array.isArray(slots) || slots.length === 0) return [];
-
   const closeMin = toMinutes(closeTimeHHMM);
   const maxEndMin = closeMin + Math.max(0, Number(allowOvertimeMin || 0));
   const need = Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
 
   if (!need) return slots;
-
-  // Overnight window if generated slots wrap around midnight (e.g. 20:00 -> 02:00).
-  const hasBeforeClose = slots.some((s) => Number(s.minutes) < closeMin);
-  const hasAfterClose = slots.some((s) => Number(s.minutes) > closeMin);
-  const isOvernight = hasBeforeClose && hasAfterClose;
-
-  if (isOvernight) {
-    const closeNorm = closeMin + 1440;
-    const maxEndNorm = closeNorm + Math.max(0, Number(allowOvertimeMin || 0));
-    return slots.filter((slot) => {
-      const raw = Number(slot.minutes);
-      if (!Number.isFinite(raw)) return false;
-      const startNorm = raw < closeMin ? raw + 1440 : raw;
-      return startNorm < closeNorm && startNorm + need <= maxEndNorm;
-    });
-  }
 
   return slots.filter((slot) => {
     const startMin = Number(slot.minutes);

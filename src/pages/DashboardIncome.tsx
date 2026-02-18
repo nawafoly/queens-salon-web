@@ -533,7 +533,7 @@ export default function DashboardIncome() {
             <div className="income-page-modal__head">
               <div className="income-page-modal__title">إضافة دخل</div>
               <button
-                className="income-modal-close-btn"
+                className="dash-pill dash-pill-sm dash-pill-outline"
                 onClick={() => setAddOpen(false)}
                 type="button"
               >
@@ -542,68 +542,51 @@ export default function DashboardIncome() {
             </div>
 
             <div className="income-page-modal__body">
-              <div className="income-modal-grid">
-                <label className="income-modal-field">
-                  <span>التاريخ</span>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="income-modal-input"
-                  />
-                </label>
+              <div style={{ display: "grid", gap: 10 }}>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="form-control"
+                />
 
-                <label className="income-modal-field">
-                  <span>المبلغ (ر.س)</span>
-                  <input
-                    type="number"
-                    placeholder="أدخلي المبلغ"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="income-modal-input"
-                  />
-                </label>
+                <input
+                  type="number"
+                  placeholder="المبلغ"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="form-control"
+                />
 
-                <label className="income-modal-field">
-                  <span>طريقة السداد</span>
-                  <select
-                    className="income-modal-input"
-                    value={method}
-                    onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-                  >
-                    <option value="cash">كاش</option>
-                    <option value="card">شبكة</option>
-                    <option value="transfer">تحويل</option>
-                    <option value="other">أخرى</option>
-                  </select>
-                </label>
+                <select
+                  className="form-control"
+                  value={method}
+                  onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+                >
+                  <option value="cash">كاش</option>
+                  <option value="card">شبكة</option>
+                  <option value="transfer">تحويل</option>
+                  <option value="other">أخرى</option>
+                </select>
 
-                <label className="income-modal-field">
-                  <span>المصدر</span>
-                  <input
-                    type="text"
-                    placeholder="مثال: فاتورة حجز"
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
-                    className="income-modal-input"
-                  />
-                </label>
+                <input
+                  type="text"
+                  placeholder="المصدر (مثلاً: حجز)"
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
+                  className="form-control"
+                />
 
-                <label className="income-modal-field">
-                  <span>ملاحظة (اختياري)</span>
-                  <input
-                    type="text"
-                    placeholder="أي تفاصيل إضافية"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    className="income-modal-input"
-                  />
-                </label>
-              </div>
+                <input
+                  type="text"
+                  placeholder="ملاحظة (اختياري)"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  className="form-control"
+                />
 
-              <div className="income-modal-actions">
                 <button
-                  className="income-modal-btn income-modal-btn--primary"
+                  className="dash-pill dash-pill-primary"
                   onClick={addIncome}
                   type="button"
                   disabled={loading}
@@ -612,7 +595,7 @@ export default function DashboardIncome() {
                 </button>
 
                 <button
-                  className="income-modal-btn income-modal-btn--secondary"
+                  className="dash-pill dash-pill-outline"
                   onClick={() => setAddOpen(false)}
                   type="button"
                   disabled={loading}

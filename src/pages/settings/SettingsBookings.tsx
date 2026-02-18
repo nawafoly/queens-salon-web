@@ -1,4 +1,4 @@
-﻿// âœ… src/pages/settings/SettingsBookings.tsx
+// ✅ src/pages/settings/SettingsBookings.tsx
 
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -43,7 +43,7 @@ const SALON_ID = "main";
 const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
 const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
 
-// âœ… Local cache key (ط¨ط¯ظٹظ„ setCached)
+// ✅ Local cache key (بديل setCached)
 const APP_SETTINGS_CACHE_KEY = "qs_app_settings_cache_v1";
 
 type StaffAvailRow = {
@@ -72,7 +72,7 @@ function safeInt(v: any, fallback: number) {
 function safeTimeHHMM(v: any, fallback: string) {
   const s = String(v || "").trim();
 
-  // ظ†ظ‚ط¨ظ„ H:MM ط£ظˆ HH:MM
+  // نقبل H:MM أو HH:MM
   const m = s.match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return fallback;
 
@@ -126,7 +126,7 @@ export default function SettingsBookings() {
   const isAdmin = uiRole === "admin";
   const hasAdminPower = isOwner || isAdmin;
 
-  // âœ… ظ†ط¨ط¯ط£ ظ…ظ†: AppSettingsService.getCached() ط«ظ… fallback ط¥ظ„ظ‰ localStorage
+  // ✅ نبدأ من: AppSettingsService.getCached() ثم fallback إلى localStorage
   const [settings, setSettings] = useState<any>(() => {
     const cached = AppSettingsService.getCached?.();
     if (cached) return cached;
@@ -151,16 +151,16 @@ export default function SettingsBookings() {
         booking: { ...(prev?.booking || {}), ...patch },
       };
 
-      // âœ… ظƒط§ط´ ظ…ط­ظ„ظٹ ظپظˆط±ظٹ
+      // ✅ كاش محلي فوري
       saveLocalSettings(next);
-      // âœ… ظƒط§ط´ AppSettingsService ظ„ظˆ ظ…ظˆط¬ظˆط¯
+      // ✅ كاش AppSettingsService لو موجود
       // AppSettingsService.setCached?.(next);
 
       return next;
     });
   };
 
-  // âœ… Defaults
+  // ✅ Defaults
   const slotStepMin = useMemo(() => {
     const raw = bookingSettings?.slotStepMin;
     const v = safeInt(raw, 10);
@@ -189,7 +189,7 @@ export default function SettingsBookings() {
 
   const [savedMsg, setSavedMsg] = useState("");
 
-  // âœ… helper: ط®ط° ط¢ط®ط± ظ†ط³ط®ط© ظ…ط¤ظƒط¯ط© (localStorage ط£ظˆظ„ط§ظ‹)
+  // ✅ helper: خذ آخر نسخة مؤكدة (localStorage أولاً)
   function getLatestSettingsSnapshot() {
     return loadLocalSettings() || AppSettingsService.getCached?.() || settings || {};
   }
@@ -198,7 +198,7 @@ export default function SettingsBookings() {
     if (!hasAdminPower) return;
 
     try {
-      // âœ… ط£ظ‡ظ… ظ†ظ‚ط·ط©: ظ†ظ‚ط±ط£ ط¢ط®ط± ظ†ط³ط®ط© ظ…ظ† localStorage (ط¹ط´ط§ظ† ظ…ط§ ظ†طھط¹ظ„ظ‚ ط¨طھط£ط®ظٹط± setState)
+      // ✅ أهم نقطة: نقرأ آخر نسخة من localStorage (عشان ما نتعلق بتأخير setState)
       const latest = getLatestSettingsSnapshot();
       const latestBooking = (latest as any)?.booking || {};
 
@@ -210,13 +210,13 @@ export default function SettingsBookings() {
       const oNorm = safeTimeHHMM(oRaw, "10:00");
       const cNorm = safeTimeHHMM(cRaw, "22:00");
 
-      if (oNorm === cNorm) {
-        setSavedMsg("❌ بداية ونهاية الدوام لا يمكن تكون نفس الوقت");
+      if (oNorm >= cNorm) {
+        setSavedMsg("❌ بداية الدوام لازم تكون قبل نهاية الدوام");
         setTimeout(() => setSavedMsg(""), 2200);
         return;
       }
 
-      // âœ… ط·ط¨ظ‘ط¹ ظپط¹ظ„ظٹظ‹ط§ ط¯ط§ط®ظ„ businessHours ظ‚ط¨ظ„ ط§ظ„ط­ظپط¸
+      // ✅ طبّع فعليًا داخل businessHours قبل الحفظ
       const bh = { ...(bhRaw || defaultBusinessHoursLocal()) };
       bh.sat = { ...(bh.sat || { enabled: true }), start: oNorm, end: cNorm };
 
@@ -225,8 +225,8 @@ export default function SettingsBookings() {
         ...(latest || {}),
         booking: {
           ...(latestBooking || {}),
-          slotStepMin, // ظ…ظ† UI (ظ…ط¶ظ…ظˆظ† 5/10/15/30)
-          bufferMin,   // âœ… ط¬ط¯ظٹط¯: ط¨ظپط± ط¨ط¹ط¯ ظƒظ„ ط­ط¬ط²
+          slotStepMin, // من UI (مضمون 5/10/15/30)
+          bufferMin,   // ✅ جديد: بفر بعد كل حجز
           businessHours: bh,
           seasonFill: latestBooking?.seasonFill || { enabled: false, from: "", to: "" },
           sequentialBooking: !!latestBooking?.sequentialBooking,
@@ -235,28 +235,28 @@ export default function SettingsBookings() {
 
 
 
-      // âœ… ط­ظپط¸ ط±ظٹظ…ظˆطھ
+      // ✅ حفظ ريموت
       await AppSettingsService.saveRemote(normalizedSettingsToSave);
 
-      // âœ… ط­ط¯ظ‘ط« ط§ظ„ظƒط§ط´ظٹظ† ظپظˆط±ظ‹ط§
+      // ✅ حدّث الكاشين فورًا
       // AppSettingsService.setCached?.(normalizedSettingsToSave);
       saveLocalSettings(normalizedSettingsToSave);
       setSettings(normalizedSettingsToSave);
 
-      console.log("âœ… SAVED booking:", normalizedSettingsToSave.booking);
+      console.log("✅ SAVED booking:", normalizedSettingsToSave.booking);
 
-      setSavedMsg("âœ… طھظ… ط­ظپط¸ ط§ظ„ط¥ط¹ط¯ط§ط¯ط§طھ");
+      setSavedMsg("✅ تم حفظ الإعدادات");
       setTimeout(() => setSavedMsg(""), 1800);
     } catch (e: any) {
-      console.error("â‌Œ saveAll error:", e);
+      console.error("❌ saveAll error:", e);
 
       const msg =
         String(e?.message || e?.code || "")
           .toLowerCase()
           .includes("permission") ||
           String(e?.code || "").toLowerCase().includes("permission")
-          ? "â‌Œ ظپط´ظ„ ط§ظ„ط­ظپط¸: ط§ظ„طµظ„ط§ط­ظٹط§طھ (Rules) طھظ…ظ†ط¹ ط§ظ„ظƒطھط§ط¨ط©"
-          : "â‌Œ طھط¹ط°ط± ط­ظپط¸ ط§ظ„ط¥ط¹ط¯ط§ط¯ط§طھ";
+          ? "❌ فشل الحفظ: الصلاحيات (Rules) تمنع الكتابة"
+          : "❌ تعذر حفظ الإعدادات";
 
       setSavedMsg(msg);
       setTimeout(() => setSavedMsg(""), 2600);
@@ -291,7 +291,7 @@ export default function SettingsBookings() {
     } catch (e) {
       console.error("loadStaffAvailability error:", e);
       setStaffAvail([]);
-      setBookingMsg("â‌Œ طھط¹ط°ط± طھط­ظ…ظٹظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ (Rules?)");
+      setBookingMsg("❌ تعذر تحميل الموظفات (Rules?)");
     } finally {
       setStaffAvailLoading(false);
     }
@@ -320,7 +320,7 @@ export default function SettingsBookings() {
         { merge: true }
       );
 
-      setBookingMsg("âœ… طھظ… ط­ظپط¸ ط­ط§ظ„ط© ط§ظ„ظ…ظˆط¸ظپط©");
+      setBookingMsg("✅ تم حفظ حالة الموظفة");
       setTimeout(() => setBookingMsg(""), 1500);
 
       setStaffAvail((p) =>
@@ -328,7 +328,7 @@ export default function SettingsBookings() {
       );
     } catch (e) {
       console.error("saveStaffAvailability error:", e);
-      setBookingMsg("â‌Œ طھط¹ط°ط± ط­ظپط¸ ط­ط§ظ„ط© ط§ظ„ظ…ظˆط¸ظپط©");
+      setBookingMsg("❌ تعذر حفظ حالة الموظفة");
       setTimeout(() => setBookingMsg(""), 2200);
     }
   };
@@ -361,7 +361,7 @@ export default function SettingsBookings() {
   }, []);
 
   useEffect(() => {
-    // âœ… ط£ظˆظ„ط§ظ‹: ط­ط§ظˆظ„ طھط¬ظٹط¨ ط§ظ„ط±ظٹظ…ظˆطھ
+    // ✅ أولاً: حاول تجيب الريموت
     AppSettingsService.fetchRemote()
       .then((remote) => {
         setSettings(remote || {});
@@ -369,10 +369,10 @@ export default function SettingsBookings() {
         // AppSettingsService.setCached?.(remote || {});
       })
       .catch(() => {
-        // ظ„ظˆ ظپط´ظ„: ظ†ط¹طھظ…ط¯ ط¹ظ„ظ‰ cached/local
+        // لو فشل: نعتمد على cached/local
       });
 
-    // âœ… ط§ط´طھط±ط§ظƒ ط§ظ„طھط­ط¯ظٹط«ط§طھ
+    // ✅ اشتراك التحديثات
     const unsub = AppSettingsService.subscribe((remote: any) => {
       setSettings((prev: any) => {
         const prevB = prev?.booking || {};
@@ -397,8 +397,8 @@ export default function SettingsBookings() {
   }, []);
 
   const hint = useMemo(() => {
-    if (hasAdminPower) return "طھظ‚ط¯ط± طھط¹ط¯ظ‘ظ„ ظˆطھط­ظپط¸.";
-    return "ط¹ط±ط¶ ظپظ‚ط· (طھط­طھط§ط¬ Owner/Admin ظ„ظ„طھط¹ط¯ظٹظ„).";
+    if (hasAdminPower) return "تقدر تعدّل وتحفظ.";
+    return "عرض فقط (تحتاج Owner/Admin للتعديل).";
   }, [hasAdminPower]);
 
   if (authLoading) {
@@ -406,7 +406,7 @@ export default function SettingsBookings() {
       <div className="dashboard-section settings-page">
         <div className="settings-wrap">
           <div className="settings-card">
-            <h3 className="settings-title">ط¬ط§ط±ظٹ ط§ظ„طھط­ظ…ظٹظ„â€¦</h3>
+            <h3 className="settings-title">جاري التحميل…</h3>
           </div>
         </div>
       </div>
@@ -417,8 +417,8 @@ export default function SettingsBookings() {
     return (
       <div className="dashboard-section settings-page">
         <div className="settings-wrap">
-          <h3>ط؛ظٹط± ظ…طµط±ط­</h3>
-          <p>ظ‡ط°ظ‡ ط§ظ„طµظپط­ط© ظ…ط®طµطµط© ظ„ظ„ط¥ط¯ط§ط±ط©.</p>
+          <h3>غير مصرح</h3>
+          <p>هذه الصفحة مخصصة للإدارة.</p>
         </div>
       </div>
     );
@@ -431,7 +431,7 @@ export default function SettingsBookings() {
       <div className="settings-wrap">
         <div className="settings-header">
           <div>
-            <h1>ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط­ط¬ظˆط²ط§طھ</h1>
+            <h1>إعدادات الحجوزات</h1>
             <p className="settings-hint">{hint}</p>
           </div>
 
@@ -443,7 +443,7 @@ export default function SettingsBookings() {
               type="button"
               onClick={() => navigate("/dashboard/settings/advanced")}
             >
-              ط±ط¬ظˆط¹
+              رجوع
             </button>
 
             <button
@@ -451,19 +451,19 @@ export default function SettingsBookings() {
               onClick={saveAll}
               disabled={!hasAdminPower}
               type="button"
-              title={!hasAdminPower ? "طھط­طھط§ط¬ Owner/Admin" : "ط­ظپط¸"}
+              title={!hasAdminPower ? "تحتاج Owner/Admin" : "حفظ"}
             >
-              ط­ظپط¸
+              حفظ
             </button>
           </div>
         </div>
 
         <div className="settings-card" style={{ marginTop: 0 }}>
-          <h3 className="settings-title">ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط­ط¬ط² ط§ظ„ط¹ط§ظ…ط©</h3>
+          <h3 className="settings-title">إعدادات الحجز العامة</h3>
 
           <div className="settings-list">
             <label className="settings-row">
-              <span>ظˆط¶ط¹ ط§ظ„طµظٹط§ظ†ط© (ط¥ظٹظ‚ط§ظپ ط§ظ„ط­ط¬ط² ظ„ظ„ط²ط¨ط§ط¦ظ†)</span>
+              <span>وضع الصيانة (إيقاف الحجز للزبائن)</span>
               <input
                 className="settings-check"
                 type="checkbox"
@@ -479,21 +479,21 @@ export default function SettingsBookings() {
           </div>
 
           <div className="settings-field" style={{ marginTop: 10 }}>
-            <label>ط±ط³ط§ظ„ط© ط§ظ„طµظٹط§ظ†ط© (طھط¸ظ‡ط± ظ„ظ„ط²ط¨ط§ط¦ظ†)</label>
+            <label>رسالة الصيانة (تظهر للزبائن)</label>
             <input
               className="settings-input"
               value={String(bookingSettings.maintenanceMessage || "")}
               disabled={!hasAdminPower}
               onChange={(e) => setBookingSettings({ maintenanceMessage: e.target.value })}
-              placeholder="ظ…ط«ط§ظ„: ط§ظ„ط­ط¬ط² ظ…طھظˆظ‚ظپ ظ…ط¤ظ‚طھظ‹ط§ ظ„ظ„طµظٹط§ظ†ط©طŒ ظ†ط¹ظˆط¯ ظ‚ط±ظٹط¨ظ‹ط§"
+              placeholder="مثال: الحجز متوقف مؤقتًا للصيانة، نعود قريبًا"
             />
           </div>
 
-          <div className="settings-footnote">* ظ‡ط°ظ‡ ط§ظ„ظ‚ظٹظ… طھظڈط­ظپط¸ ط¯ط§ط®ظ„ AppSettings.</div>
+          <div className="settings-footnote">* هذه القيم تُحفظ داخل AppSettings.</div>
         </div>
 
         <div className="settings-card">
-          <h3 className="settings-title">ظ…ظˆط§ط¹ظٹط¯ ط§ظ„ط¯ظˆط§ظ… ظپظٹ ط§ظ„ط­ط¬ط²</h3>
+          <h3 className="settings-title">مواعيد الدوام في الحجز</h3>
 
           <div className="settings-list">
             <div
@@ -501,9 +501,9 @@ export default function SettingsBookings() {
               style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}
             >
               <div style={{ minWidth: 220 }}>
-                <div style={{ fontWeight: 900 }}>ط®ط·ظˆط© ط§ظ„ظˆظ‚طھ (ط§ظ„ط¯ظ‚ط§ط¦ظ‚)</div>
+                <div style={{ fontWeight: 900 }}>خطوة الوقت (الدقائق)</div>
                 <div style={{ opacity: 0.7, fontSize: 12 }}>
-                  10 ط¯ظ‚ط§ط¦ظ‚ = ط¯ظ‚ط© ط£ط¹ظ„ظ‰طŒ 15 ط¯ظ‚ظٹظ‚ط© = ط³ط±ظٹط¹طŒ 30 ط¯ظ‚ظٹظ‚ط© = ط£ط¨ط³ط·
+                  10 دقائق = دقة أعلى، 15 دقيقة = سريع، 30 دقيقة = أبسط
                 </div>
               </div>
 
@@ -514,10 +514,10 @@ export default function SettingsBookings() {
                 disabled={!hasAdminPower}
                 onChange={(e) => setBookingSettings({ slotStepMin: Number(e.target.value) })}
               >
-                <option value="5">5 ط¯ظ‚ط§ط¦ظ‚</option>
-                <option value="10">10 ط¯ظ‚ط§ط¦ظ‚</option>
-                <option value="15">15 ط¯ظ‚ظٹظ‚ط©</option>
-                <option value="30">30 ط¯ظ‚ظٹظ‚ط©</option>
+                <option value="5">5 دقائق</option>
+                <option value="10">10 دقائق</option>
+                <option value="15">15 دقيقة</option>
+                <option value="30">30 دقيقة</option>
               </select>
             </div>
 
@@ -527,9 +527,9 @@ export default function SettingsBookings() {
               style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}
             >
               <div style={{ minWidth: 220 }}>
-                <div style={{ fontWeight: 900 }}>ط§ظ„ط¨ظپط± ط¨ط¹ط¯ ظƒظ„ ط­ط¬ط² (ط¯ظ‚ط§ط¦ظ‚)</div>
+                <div style={{ fontWeight: 900 }}>البفر بعد كل حجز (دقائق)</div>
                 <div style={{ opacity: 0.7, fontSize: 12 }}>
-                  ظ†ط¹ط±ط¶ ط£ظˆظ„ ظˆظ‚طھ ط­ط¬ط² ظ…طھط§ط­ ظ…ظ† ط¨ط¯ط§ظٹط© ط§ظ„ط¯ظˆط§ظ… ظ…ط¨ط§ط´ط±ط©
+                  نعرض أول وقت حجز متاح من بداية الدوام مباشرة
                 </div>
               </div>
 
@@ -540,12 +540,12 @@ export default function SettingsBookings() {
                 disabled={!hasAdminPower}
                 onChange={(e) => setBookingSettings({ bufferMin: Number(e.target.value) })}
               >
-                <option value="0">ط¨ط¯ظˆظ† ط¨ظپط±</option>
-                <option value="5">5 ط¯ظ‚ط§ط¦ظ‚</option>
-                <option value="10">10 ط¯ظ‚ط§ط¦ظ‚</option>
-                <option value="15">15 ط¯ظ‚ظٹظ‚ط©</option>
-                <option value="20">20 ط¯ظ‚ظٹظ‚ط©</option>
-                <option value="30">30 ط¯ظ‚ظٹظ‚ط©</option>
+                <option value="0">بدون بفر</option>
+                <option value="5">5 دقائق</option>
+                <option value="10">10 دقائق</option>
+                <option value="15">15 دقيقة</option>
+                <option value="20">20 دقيقة</option>
+                <option value="30">30 دقيقة</option>
               </select>
             </div>
 
@@ -555,8 +555,8 @@ export default function SettingsBookings() {
               style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}
             >
               <div style={{ minWidth: 220 }}>
-                <div style={{ fontWeight: 900 }}>ط¨ط¯ط§ظٹط© ط§ظ„ط¯ظˆط§ظ…</div>
-                <div style={{ opacity: 0.7, fontSize: 12 }}>طµظٹط؛ط© 24 ط³ط§ط¹ط© (HH:MM)</div>
+                <div style={{ fontWeight: 900 }}>بداية الدوام</div>
+                <div style={{ opacity: 0.7, fontSize: 12 }}>صيغة 24 ساعة (HH:MM)</div>
               </div>
 
               <input
@@ -583,8 +583,8 @@ export default function SettingsBookings() {
               style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}
             >
               <div style={{ minWidth: 220 }}>
-                <div style={{ fontWeight: 900 }}>ظ†ظ‡ط§ظٹط© ط§ظ„ط¯ظˆط§ظ…</div>
-                <div style={{ opacity: 0.7, fontSize: 12 }}>طµظٹط؛ط© 24 ط³ط§ط¹ط© (HH:MM)</div>
+                <div style={{ fontWeight: 900 }}>نهاية الدوام</div>
+                <div style={{ opacity: 0.7, fontSize: 12 }}>صيغة 24 ساعة (HH:MM)</div>
               </div>
 
               <input
@@ -608,23 +608,23 @@ export default function SettingsBookings() {
           </div>
 
           <div className="settings-footnote">
-            * ظٹطھظ… ط§ظ„ط­ظپط¸ ظپظٹ AppSettings ط¯ط§ط®ظ„: booking.businessHours.sat.start / booking.businessHours.sat.end /
+            * يتم الحفظ في AppSettings داخل: booking.businessHours.sat.start / booking.businessHours.sat.end /
             booking.slotStepMin / booking.bufferMin
 
             <br />
-            * ط±ط¨ط·ظ‡ط§ ط¨طµظپط­ط© ط§ظ„ط­ط¬ط²: Booking.tsx ظٹظ‚ط±ط£ ظ…ظ† AppSettingsService.getCached()
+            * ربطها بصفحة الحجز: Booking.tsx يقرأ من AppSettingsService.getCached()
           </div>
         </div>
 
         <div className="settings-card">
-          <h3 className="settings-title">ط¥ط¬ط§ط²ط§طھ ط§ظ„ظ…ظˆط¸ظپط§طھ ظˆط¸ظ‡ظˆط±ظ‡ظ† ظپظٹ ط§ظ„ط­ط¬ط²</h3>
+          <h3 className="settings-title">إجازات الموظفات وظهورهن في الحجز</h3>
 
           <div className="settings-card">
-            <h3 className="settings-title">ظˆط¶ط¹ ط§ظ„ظ…ظˆط³ظ… ظ„ظˆظ‚طھ ط§ظ„ط­ط¬ط² (طھظ‚ظ„ظٹظ„ ط§ظ„ظ‡ط¯ط±)</h3>
+            <h3 className="settings-title">وضع الموسم لوقت الحجز (تقليل الهدر)</h3>
 
             <div className="settings-list">
               <label className="settings-row">
-                <span>طھظپط¹ظٹظ„ طھط±طھظٹط¨ ط§ظ„ظٹظˆظ… طھظ„ظ‚ط§ط¦ظٹظ‹ط§ ط®ظ„ط§ظ„ ط§ظ„ظ…ظˆط³ظ…</span>
+                <span>تفعيل ترتيب اليوم تلقائيًا خلال الموسم</span>
                 <input
                   className="settings-check"
                   type="checkbox"
@@ -644,7 +644,7 @@ export default function SettingsBookings() {
 
             <div className="settings-grid" style={{ marginTop: 10 }}>
               <div className="settings-field">
-                <label>ظ…ظ† طھط§ط±ظٹط®</label>
+                <label>من تاريخ</label>
                 <input
                   className="settings-input"
                   type="date"
@@ -659,7 +659,7 @@ export default function SettingsBookings() {
               </div>
 
               <div className="settings-field">
-                <label>ط¥ظ„ظ‰ طھط§ط±ظٹط®</label>
+                <label>إلى تاريخ</label>
                 <input
                   className="settings-input"
                   type="date"
@@ -675,14 +675,14 @@ export default function SettingsBookings() {
             </div>
 
             <div className="settings-footnote">
-              * ظٹطھظ… ط§ظ„ط­ظپط¸ ظپظٹ AppSettings ط¯ط§ط®ظ„: <b>booking.seasonFill</b>
+              * يتم الحفظ في AppSettings داخل: <b>booking.seasonFill</b>
               <br />
-              * ط§ظ„طھظ†ظپظٹط° ط§ظ„ظپط¹ظ„ظٹ ظ„طھط±طھظٹط¨ ط§ظ„ظٹظˆظ… ط¨ظٹظƒظˆظ† ط¯ط§ط®ظ„ Booking.tsx + timeSlots.ts
+              * التنفيذ الفعلي لترتيب اليوم بيكون داخل Booking.tsx + timeSlots.ts
             </div>
 
             <div className="settings-list" style={{ marginTop: 20 }}>
               <label className="settings-row">
-                <span>ط¥ط¬ط¨ط§ط± ط§ظ„ط­ط¬ط² ط§ظ„ظ…طھطھط§ط¨ط¹ (ظ…ظ†ط¹ ط§ظ„ظپط±ط§ط؛ط§طھ ط¨ظٹظ† ط§ظ„ظ…ظˆط§ط¹ظٹط¯)</span>
+                <span>إجبار الحجز المتتابع (منع الفراغات بين المواعيد)</span>
                 <input
                   className="settings-check"
                   type="checkbox"
@@ -696,7 +696,7 @@ export default function SettingsBookings() {
                 />
               </label>
               <p className="field-hint" style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-                ط¹ظ†ط¯ ط§ظ„طھظپط¹ظٹظ„طŒ ط³ظٹطھظ… ط¥ط¬ط¨ط§ط± ط§ظ„ط¹ظ…ظٹظ„ط§طھ ط¹ظ„ظ‰ ط§ظ„ط­ط¬ط² ظ…ط¨ط§ط´ط±ط© ط¨ط¹ط¯ ط¢ط®ط± ظ…ظˆط¹ط¯ ظ…ط­ط¬ظˆط² ظپظٹ ط§ظ„ظٹظˆظ… ظ„ظ…ظ†ط¹ ظ‡ط¯ط± ط§ظ„ظˆظ‚طھ.
+                عند التفعيل، سيتم إجبار العميلات على الحجز مباشرة بعد آخر موعد محجوز في اليوم لمنع هدر الوقت.
               </p>
             </div>
           </div>
@@ -708,7 +708,7 @@ export default function SettingsBookings() {
               disabled={staffAvailLoading}
               onClick={loadStaffAvailability}
             >
-              {staffAvailLoading ? "طھط­ظ…ظٹظ„..." : "طھط­ظ…ظٹظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ"}
+              {staffAvailLoading ? "تحميل..." : "تحميل الموظفات"}
             </button>
 
             {bookingMsg && (
@@ -720,9 +720,9 @@ export default function SettingsBookings() {
 
           <div className="settings-list" style={{ marginTop: 12 }}>
             {staffAvailLoading ? (
-              <div className="settings-note">ط¬ط§ط±ظٹ طھط­ظ…ظٹظ„ ط§ظ„ظ…ظˆط¸ظپط§طھâ€¦</div>
+              <div className="settings-note">جاري تحميل الموظفات…</div>
             ) : staffAvail.length === 0 ? (
-              <div className="settings-note">ط§ط¶ط؛ط· "طھط­ظ…ظٹظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ" ظ„ط¹ط±ط¶ ط§ظ„ظ‚ط§ط¦ظ…ط©.</div>
+              <div className="settings-note">اضغط "تحميل الموظفات" لعرض القائمة.</div>
             ) : (
               staffAvail.map((s) => {
                 const until = String(s.leaveUntil || "").trim();
@@ -737,10 +737,10 @@ export default function SettingsBookings() {
                   >
                     <div style={{ minWidth: 220, display: "grid" }}>
                       <span style={{ fontWeight: 900 }}>
-                        {s.name || "ط¨ط¯ظˆظ† ط§ط³ظ…"}
+                        {s.name || "بدون اسم"}
                         {leaveExpired && (
                           <span style={{ marginInlineStart: 8, fontSize: 12, opacity: 0.8 }}>
-                            (ط¥ط¬ط§ط²ط© ظ…ظ†طھظ‡ظٹط©)
+                            (إجازة منتهية)
                           </span>
                         )}
                       </span>
@@ -763,7 +763,7 @@ export default function SettingsBookings() {
                           )
                         }
                       />
-                      طھط¸ظ‡ط± ظپظٹ ط§ظ„ط­ط¬ط²
+                      تظهر في الحجز
                     </label>
 
                     <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
@@ -778,7 +778,7 @@ export default function SettingsBookings() {
                           )
                         }
                       />
-                      ظپظٹ ط¥ط¬ط§ط²ط©
+                      في إجازة
                     </label>
 
                     <input
@@ -792,7 +792,7 @@ export default function SettingsBookings() {
                           p.map((x) => (x.id === s.id ? { ...x, leaveUntil: e.target.value } : x))
                         )
                       }
-                      title="طھط§ط±ظٹط® ط§ظ„ط¹ظˆط¯ط©"
+                      title="تاريخ العودة"
                     />
 
                     <input
@@ -805,7 +805,7 @@ export default function SettingsBookings() {
                           p.map((x) => (x.id === s.id ? { ...x, leaveNote: e.target.value } : x))
                         )
                       }
-                      placeholder="ظ…ظ„ط§ط­ط¸ط© ظ„ظ„ط²ط¨ط§ط¦ظ† (ط§ط®طھظٹط§ط±ظٹ)"
+                      placeholder="ملاحظة للزبائن (اختياري)"
                     />
 
                     <button
@@ -814,7 +814,7 @@ export default function SettingsBookings() {
                       disabled={!hasAdminPower}
                       onClick={() => saveStaffAvailability(s)}
                     >
-                      ط­ظپط¸
+                      حفظ
                     </button>
                   </div>
                 );
@@ -823,9 +823,9 @@ export default function SettingsBookings() {
           </div>
 
           <div className="settings-footnote">
-            * ظٹطھظ… ط§ظ„ط­ظپط¸ ظپظٹ: <b>salons/main/staff_public</b> ط¯ط§ط®ظ„ ط­ظ‚ظˆظ„: <b>showOnBooking/onLeave/leaveUntil/leaveNote</b>
+            * يتم الحفظ في: <b>salons/main/staff_public</b> داخل حقول: <b>showOnBooking/onLeave/leaveUntil/leaveNote</b>
             <br />
-            * ظ…ظ„ط§ط­ط¸ط©: ط¥ط°ط§ <b>leaveUntil</b> ظپط§طھطŒ ط§ظ„طµظپط­ط© طھط¹طھط¨ط± ط§ظ„ط¥ط¬ط§ط²ط© ظ…ظ†طھظ‡ظٹط© (ط­طھظ‰ ظ„ظˆ onLeave ظƒط§ظ† ظ…ظپط¹ظ‘ظ„).
+            * ملاحظة: إذا <b>leaveUntil</b> فات، الصفحة تعتبر الإجازة منتهية (حتى لو onLeave كان مفعّل).
           </div>
         </div>
       </div>
