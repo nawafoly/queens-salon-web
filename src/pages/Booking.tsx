@@ -23,9 +23,6 @@ import {
 } from "../helpers/timeSlots";
 import { formatTime12 } from "../helpers/timeDisplay";
 
-
-
-
 import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 import { AppSettingsService } from "../services/AppSettingsService";
 
@@ -92,9 +89,11 @@ type CartItem = {
   serviceId: string;
   serviceName: string;
   serviceSectionId: string; // ✅ القسم الحقيقي للخدمة وقت الإضافة
+  serviceSectionTitle?: string; // ✅ اسم القسم وقت الإضافة (للقواعد المرنة)
   serviceCategoryId?: string; // ✅ للتوافق (اختياري)
   serviceCategoryName?: string; // ✅ لو التصنيف نصي (للـ legacy)
 
+  serviceBasePrice?: number; // ✅ سعر الخدمة الأساسي قبل أي رسوم إضافية
   basePrice: number;
   priceText: string;
   durationMin: number;
@@ -107,6 +106,8 @@ type CartItem = {
   time: string; // slot time: string; // ✅ نخزن 24h "HH:MM" (value24)
 
   locked?: boolean; // ✅ جديد: هل الكرت تم تأكيده؟
+  toolsSource?: "client" | "salon"; // ✅ أدوات الخدمة: من العميلة أو من الصالون
+  toolsFeeApplied?: number; // ✅ الرسوم المضافة بسبب الأدوات (إن وجدت)
 };
 
 interface BookingFormData {
@@ -166,6 +167,32 @@ type CategoryOption = { id: string; name: string };
 const SALON_ID = "main";
 const DEFAULT_SERVICE_DURATION_MIN = 60;
 const ALLOW_OVERTIME_MIN = 20;
+const MANI_PEDI_SECTION_KEYWORDS = [
+  "manicure",
+  "pedicure",
+  "mani",
+  "pedi",
+  "body care",
+  "bodycare",
+  "mni",
+  "مناكير",
+  "منيكير",
+  "بديكير",
+  "بوديكير",
+  "بدكير",
+  "بوديكير",
+];
+type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
+  sat: "السبت",
+  sun: "الأحد",
+  mon: "الإثنين",
+  tue: "الثلاثاء",
+  wed: "الأربعاء",
+  thu: "الخميس",
+  fri: "الجمعة",
+};
 
 // ✅ نفس منطق slotId الموجود في firestoreBookings.ts
 function safeKey(v: string) {
@@ -395,6 +422,69 @@ function safeTimeHHMM(v: any, fallback: string) {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
+function normalizeISODate(v: any) {
+  const s = String(v || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
+function formatISODateAr(v: any) {
+  const iso = normalizeISODate(v);
+  if (!iso) return "";
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("ar-SA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function getStaffLeaveMetaForDate(staff: any, dateISO: string) {
+  const onLeave = !!staff?.onLeave;
+  const leaveUntil = normalizeISODate(staff?.leaveUntil);
+  if (!onLeave) {
+    return { isOnLeave: false, leaveUntil: "", label: "" };
+  }
+
+  const target = normalizeISODate(dateISO) || todayISO();
+  const isOnLeave = !leaveUntil || target <= leaveUntil;
+  if (!isOnLeave) {
+    return { isOnLeave: false, leaveUntil, label: "" };
+  }
+
+  const untilLabel = formatISODateAr(leaveUntil);
+  return {
+    isOnLeave: true,
+    leaveUntil,
+    label: untilLabel ? `في إجازة حتى ${untilLabel}` : "في إجازة",
+  };
+}
+
+function normalizeSearchText(v: string) {
+  return String(v || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function isManiPediSectionByInfo(sectionId: string, sectionTitle?: string) {
+  const hay = normalizeSearchText(`${sectionId || ""} ${sectionTitle || ""}`);
+  if (!hay) return false;
+  return MANI_PEDI_SECTION_KEYWORDS.some((k) => hay.includes(normalizeSearchText(k)));
+}
+
+function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
+  const s = String(dateISO || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return JS_DAY_TO_WEEKDAY[new Date().getDay()] || "sat";
+
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(y, Math.max(0, mo - 1), d);
+  return JS_DAY_TO_WEEKDAY[dt.getDay()] || "sat";
+}
+
 function formatTime12ForClient(time24: string) {
   return formatTime12(time24, "");
 }
@@ -428,19 +518,52 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   const seasonCfg = seasonPricing; // ✅ موسم الأسعار (Catalog)
   const sequentialBooking = !!(booking as any)?.sequentialBooking;
+  // ✅ تاريخ الحجز الأساسي (لازم يختاره قبل الخدمات)
+  const [bookingDate, setBookingDate] = useState<string>("");
 
 
   const businessHours = (booking as any)?.businessHours || {};
+  const selectedDayKey = useMemo(
+    () => resolveWeekdayFromISO(String(bookingDate || "").trim() || todayISO()),
+    [bookingDate]
+  );
+  const selectedDayHours = useMemo(
+    () =>
+      (businessHours as any)?.[selectedDayKey] || {
+        enabled: true,
+        start: "10:00",
+        end: "22:00",
+      },
+    [businessHours, selectedDayKey]
+  );
+  const selectedDayOpen = selectedDayHours?.enabled !== false;
 
   const openTime = useMemo(
-    () => safeTimeHHMM((businessHours as any)?.sat?.start, "10:00"),
-    [(businessHours as any)?.sat?.start]
+    () => safeTimeHHMM((selectedDayHours as any)?.start, "10:00"),
+    [selectedDayHours]
   );
 
   const closeTime = useMemo(
-    () => safeTimeHHMM((businessHours as any)?.sat?.end, "22:00"),
-    [(businessHours as any)?.sat?.end]
+    () => safeTimeHHMM((selectedDayHours as any)?.end, "22:00"),
+    [selectedDayHours]
   );
+
+  const getDaySettingsForDate = (dateISO: string) => {
+    const dayKey = resolveWeekdayFromISO(String(dateISO || "").trim() || todayISO());
+    const dayHours = (businessHours as any)?.[dayKey] || {
+      enabled: true,
+      start: "10:00",
+      end: "22:00",
+    };
+
+    return {
+      dayKey,
+      dayLabel: WEEKDAY_LABEL_AR[dayKey],
+      enabled: dayHours?.enabled !== false,
+      openTime: safeTimeHHMM(dayHours?.start, "10:00"),
+      closeTime: safeTimeHHMM(dayHours?.end, "22:00"),
+    };
+  };
 
   const slotStepMin = useMemo(() => {
     const v = safeInt((booking as any)?.slotStepMin, 10);
@@ -452,15 +575,23 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const bufferMin = useMemo(() => {
     return Math.max(0, safeInt((booking as any)?.bufferMin, 5));
   }, [(booking as any)?.bufferMin]);
+  const maniPediToolsFee = useMemo(() => {
+    return Math.max(0, safeInt((booking as any)?.maniPediToolsFee, 0));
+  }, [(booking as any)?.maniPediToolsFee]);
 
   console.log("[Booking] slotStepMin, bufferMin from settings:", slotStepMin, bufferMin, booking);
 
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
 
   useEffect(() => {
-    // ✅ بداية اليوم لازم تفتح طبيعي 100%
+    if (!selectedDayOpen) {
+      setTimeSlots([]);
+      return;
+    }
+
+    // ✅ فتحة المواعيد حسب اليوم المختار
     setTimeSlots(generateSalonTimeSlots(openTime, closeTime, slotStepMin));
-  }, [openTime, closeTime, slotStepMin]);
+  }, [selectedDayOpen, openTime, closeTime, slotStepMin]);
 
   useEffect(() => {
     const unsub = AppSettingsService.subscribe((remote: any) => {
@@ -474,6 +605,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // =========================
   const [catalogMode, setCatalogMode] = useState<"firestore" | "pricing">("pricing");
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [categoryLoading, setCategoryLoading] = useState(false);
 
   const [fsSections, setFsSections] = useState<SectionDoc[]>([]);
   const [fsCategories, setFsCategories] = useState<CategoryDoc[]>([]);
@@ -490,10 +622,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [hairGuideUrl, setHairGuideUrl] = useState<string>(hairGuideImg);
   const [isOwner, setIsOwner] = useState(false);
   const [uploadingGuide, setUploadingGuide] = useState(false);
-
-  // ✅ تاريخ الحجز الأساسي (لازم يختاره قبل الخدمات)
-  const [bookingDate, setBookingDate] = useState<string>("");
-
 
   const [formData, setFormData] = useState<BookingFormData>({
     name: "",
@@ -732,7 +860,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     return { ok: isDateInRange(dateISO, start, end), start, end };
   }
 
-
   // ✅ السعر النهائي: إذا الموسم شغال -> استخدم seasonPrice إذا موجود، وإلا استخدم العادي
   function pickEffectivePrice(args: {
     basePrice: number;
@@ -753,7 +880,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     // ✅ إذا الموسم شغال لكن الخدمة ما لها سعر موسم: نرجع للعادي (هذا شرطك)
     return { price: base, label: seasonActive ? "سعر عادي (لا يوجد سعر موسم)" : "سعر عادي", usedSeason: false };
   }
-
 
   function findCartOverlap(items: CartItem[]) {
     const list = (items || []).map((x) => ({ ...x }));
@@ -920,11 +1046,16 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       if (!selectedSectionId) {
         setFsCategories([]);
         setFsServices([]);
+        setCategoryLoading(false);
         return;
       }
 
       try {
+        // reset previous section lists so user doesn't see stale options
+        setFsCategories([]);
+        setFsServices([]);
         setCatalogLoading(true);
+        setCategoryLoading(true);
 
         // 1) Categories
         const catsCol = collection(db, "salons", SALON_ID, "service_categories");
@@ -953,6 +1084,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           .filter((c) => c?.active !== false);
 
         setFsCategories(safeCats as any);
+        setCategoryLoading(false);
 
         const catIds = safeCats
           .map((c: any) => String(c.categoryId ?? c.key ?? c.id ?? "").trim())
@@ -1011,9 +1143,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           setFsCategories([]);
           setFsServices([]);
           setCatalogMode("pricing");
+          setCategoryLoading(false);
         }
       } finally {
-        if (!cancelled) setCatalogLoading(false);
+        if (!cancelled) {
+          setCatalogLoading(false);
+          setCategoryLoading(false);
+        }
       }
     }
 
@@ -1310,6 +1446,53 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     return servicesFlat.find((sv) => sv.id === id) || null;
   };
 
+  const isToolsOptionEligibleForService = (sv: FlatService | null) => {
+    if (!sv) return false;
+    return isManiPediSectionByInfo(
+      String(sv.sectionId || "").trim(),
+      String(sv.sectionTitle || "").trim()
+    );
+  };
+
+  const isToolsOptionEligibleForItem = (it: CartItem) => {
+    const byItem = isManiPediSectionByInfo(
+      String(it.serviceSectionId || "").trim(),
+      String(it.serviceSectionTitle || "").trim()
+    );
+    if (byItem) return true;
+
+    const sv = getServiceById(String(it.serviceId || "").trim());
+    return isToolsOptionEligibleForService(sv);
+  };
+
+  const buildItemPriceWithTools = (
+    serviceBasePrice: number,
+    toolsSource: "client" | "salon" | undefined,
+    toolsEligible: boolean
+  ) => {
+    const safeServiceBase = Math.max(0, Number(serviceBasePrice || 0));
+    const toolsFee = toolsEligible && toolsSource === "salon" ? maniPediToolsFee : 0;
+    const total = safeServiceBase + toolsFee;
+
+    return {
+      serviceBasePrice: safeServiceBase,
+      toolsFeeApplied: toolsFee,
+      basePrice: total,
+      priceText: `${total} ريال`,
+    };
+  };
+
+  const buildItemToolsNote = (it: CartItem) => {
+    if (!isToolsOptionEligibleForItem(it)) return "";
+
+    const source = String(it.toolsSource || "").trim() === "salon" ? "salon" : "client";
+    if (source === "salon") {
+      const fee = Math.max(0, Number(it.toolsFeeApplied || maniPediToolsFee || 0));
+      return `الأدوات: من المشغل (+${fee} ريال)`;
+    }
+    return "الأدوات: من العميلة (بدون رسوم)";
+  };
+
   function canEditByLockedPrev(items: CartItem[], itemId: string) {
     const list = items || [];
     const idx = list.findIndex((x) => x.id === itemId);
@@ -1337,8 +1520,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       dateISO,
     });
 
-    const effectiveBasePrice = Number(eff.price || 0);
-    const effectivePriceText = `${effectiveBasePrice} ريال`;
+    const serviceBasePrice = Number(eff.price || 0);
+    const toolsEligible = isToolsOptionEligibleForService(sv);
+    const toolsSource = toolsEligible ? "client" : undefined;
+    const priced = buildItemPriceWithTools(serviceBasePrice, toolsSource, toolsEligible);
 
     setFormData((prev) => ({
       ...prev,
@@ -1348,8 +1533,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           id: makeLocalId(),
           serviceId: id,
           serviceName: sv.name,
-          basePrice: effectiveBasePrice,
-          priceText: effectivePriceText,
+          serviceBasePrice: priced.serviceBasePrice,
+          basePrice: priced.basePrice,
+          priceText: priced.priceText,
           durationMin: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
           employeeId: "",
           employeeUid: "",
@@ -1358,8 +1544,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           time: "",
           locked: false,
           serviceSectionId: String(sv.sectionId || "").trim(),
+          serviceSectionTitle: String(sv.sectionTitle || "").trim() || undefined,
           serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
           serviceCategoryName: String(sv.category || "").trim() || undefined,
+          toolsSource,
+          toolsFeeApplied: priced.toolsFeeApplied,
         },
       ],
     }));
@@ -1430,6 +1619,24 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         setManualOverride(false);
       }
     }
+  };
+
+  const setItemToolsSource = (it: CartItem, nextSource: "client" | "salon") => {
+    const toolsEligible = isToolsOptionEligibleForItem(it);
+    if (!toolsEligible) return;
+
+    const baseFromItem =
+      Number((it as any)?.serviceBasePrice ?? 0) ||
+      Math.max(0, Number(it.basePrice || 0) - Number(it.toolsFeeApplied || 0));
+
+    const priced = buildItemPriceWithTools(baseFromItem, nextSource, true);
+    updateItem(it.id, {
+      toolsSource: nextSource,
+      serviceBasePrice: priced.serviceBasePrice,
+      toolsFeeApplied: priced.toolsFeeApplied,
+      basePrice: priced.basePrice,
+      priceText: priced.priceText,
+    });
   };
 
   // =========================
@@ -2393,8 +2600,25 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             dateISO: v,
           });
 
-          const price = Number(eff.price || 0);
-          return { ...basePatch, basePrice: price, priceText: `${price} ريال` };
+          const serviceBasePrice = Number(eff.price || 0);
+          const toolsEligible = isToolsOptionEligibleForService(sv);
+          const toolsSource = toolsEligible
+            ? (String((it as any)?.toolsSource || "").trim() === "salon" ? "salon" : "client")
+            : undefined;
+          const priced = buildItemPriceWithTools(serviceBasePrice, toolsSource, toolsEligible);
+
+          return {
+            ...basePatch,
+            serviceSectionId: String(sv.sectionId || "").trim(),
+            serviceSectionTitle: String(sv.sectionTitle || "").trim() || undefined,
+            serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
+            serviceCategoryName: String(sv.category || "").trim() || undefined,
+            toolsSource,
+            serviceBasePrice: priced.serviceBasePrice,
+            toolsFeeApplied: priced.toolsFeeApplied,
+            basePrice: priced.basePrice,
+            priceText: priced.priceText,
+          };
         }
 
         return basePatch;
@@ -2617,6 +2841,54 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
+    const bookingDayCfg = getDaySettingsForDate(String(bookingDate || "").trim());
+    if (!bookingDayCfg.enabled) {
+      openModal({
+        title: "اليوم مغلق",
+        message: `يوم ${bookingDayCfg.dayLabel} إجازة في الصالون، لذلك لا يمكن الحجز فيه.`,
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
+
+    const closedItem = items.find((it) => {
+      const d = String(it.date || bookingDate || "").trim();
+      if (!d) return false;
+      return !getDaySettingsForDate(d).enabled;
+    });
+    if (closedItem) {
+      const d = String(closedItem.date || bookingDate || "").trim();
+      const cfg = getDaySettingsForDate(d);
+      openModal({
+        title: "أحد تواريخ الخدمات مغلق",
+        message: `الخدمة "${closedItem.serviceName}" بتاريخ ${d} تقع في يوم ${cfg.dayLabel} وهو مغلق.`,
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
+
+    const outOfHoursItem = items.find((it) => {
+      const d = String(it.date || bookingDate || "").trim();
+      const t = String(it.time || "").trim();
+      if (!d || !t) return false;
+      const cfg = getDaySettingsForDate(d);
+      const slots = generateSalonTimeSlots(cfg.openTime, cfg.closeTime, slotStepMin);
+      return !slots.some((s) => String(s.value24 || "").trim() === t);
+    });
+    if (outOfHoursItem) {
+      const d = String(outOfHoursItem.date || bookingDate || "").trim();
+      const cfg = getDaySettingsForDate(d);
+      openModal({
+        title: "وقت خارج الدوام",
+        message: `وقت "${formatTime12ForClient(String(outOfHoursItem.time || ""))}" للخدمة "${outOfHoursItem.serviceName}" خارج دوام يوم ${cfg.dayLabel}.`,
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
+
     const missing = items.find((it) => {
       if (!String(it.employeeId || "").trim()) return true;
       if (!String(it.employeeName || "").trim()) return true;
@@ -2803,6 +3075,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const it = items[idx];
         const itemDiscount = Number(perItemDiscounts[idx] || 0);
         const itemFinal = Math.max(0, Number(it.basePrice || 0) - itemDiscount);
+        const toolsNote = buildItemToolsNote(it);
+        const itemNote = [noteFinal, toolsNote].filter(Boolean).join(" | ") || undefined;
 
         const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
@@ -2843,7 +3117,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           finalPrice: Number(itemFinal || 0),
 
           status: "pending",
-          note: noteFinal,
+          note: itemNote,
 
           slotStepMinAtBooking: slotStepMin,
           bufferMinAtBooking: bufferMin,
@@ -2878,6 +3152,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           discountAmount: itemDiscount,
 
           durationMin,
+          toolsSource: String(it.toolsSource || "").trim() || null,
+          toolsFeeApplied: Number(it.toolsFeeApplied || 0),
           status: "pending",
           createdAt: Date.now(),
         });
@@ -2895,6 +3171,26 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         openModal({
           title: "الوقت محجوز",
           message: "هذا الوقت محجوز بالفعل. اختاري وقتًا آخر.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
+      if (e?.code === "BOOKING_DAY_CLOSED") {
+        openModal({
+          title: "اليوم مغلق",
+          message: "اليوم المختار إجازة في إعدادات الدوام. اختاري تاريخًا آخر للحجز.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
+      if (e?.code === "BOOKING_TIME_OUT_OF_HOURS") {
+        openModal({
+          title: "وقت خارج الدوام",
+          message: "الوقت المختار خارج ساعات العمل لليوم المحدد. اختاري وقتًا آخر.",
           variant: "danger",
           confirmText: "حسنًا",
         });
@@ -2930,23 +3226,53 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         ...prev,
         ...parsed,
         phone: String(parsed?.phone || "").replace(/\D/g, "").slice(0, 10),
-        items: items.map((it) => ({
-          ...it,
-          id: String(it?.id || makeLocalId()),
-          durationMin: Number(it?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-          basePrice: Number(it?.basePrice || 0),
-          serviceId: String(it?.serviceId || "").trim(),
-          serviceName: String(it?.serviceName || "").trim(),
-          employeeId: String(it?.employeeId || "").trim(),
-          employeeUid: String(it?.employeeUid || "").trim(),
-          employeeName: String(it?.employeeName || "").trim(),
-          date: String(it?.date || "").trim(),
-          time: String(it?.time || "").trim(),
-          priceText: String(it?.priceText || "").trim(),
-          serviceSectionId: String((it as any)?.serviceSectionId || "").trim(),
-          serviceCategoryId: String((it as any)?.serviceCategoryId || "").trim() || undefined,
-          serviceCategoryName: String((it as any)?.serviceCategoryName || "").trim() || undefined,
-        })),
+        items: items.map((it) => {
+          const serviceId = String(it?.serviceId || "").trim();
+          const sv = getServiceById(serviceId);
+
+          const sectionId =
+            String((it as any)?.serviceSectionId || "").trim() ||
+            String(sv?.sectionId || "").trim();
+          const sectionTitle =
+            String((it as any)?.serviceSectionTitle || "").trim() ||
+            String(sv?.sectionTitle || "").trim();
+
+          const toolsEligible = isManiPediSectionByInfo(sectionId, sectionTitle);
+          const toolsSource = toolsEligible
+            ? (String((it as any)?.toolsSource || "").trim() === "salon" ? "salon" : "client")
+            : undefined;
+
+          const rawServiceBase = Number((it as any)?.serviceBasePrice);
+          const serviceBasePrice = Number.isFinite(rawServiceBase)
+            ? Math.max(0, rawServiceBase)
+            : Math.max(
+              0,
+              Number((it as any)?.basePrice ?? 0) - Math.max(0, Number((it as any)?.toolsFeeApplied || 0))
+            );
+          const priced = buildItemPriceWithTools(serviceBasePrice, toolsSource, toolsEligible);
+
+          return {
+            ...it,
+            id: String(it?.id || makeLocalId()),
+            durationMin: Number(it?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+            serviceId,
+            serviceName: String(it?.serviceName || "").trim(),
+            employeeId: String(it?.employeeId || "").trim(),
+            employeeUid: String(it?.employeeUid || "").trim(),
+            employeeName: String(it?.employeeName || "").trim(),
+            date: String(it?.date || "").trim(),
+            time: String(it?.time || "").trim(),
+            serviceSectionId: sectionId,
+            serviceSectionTitle: sectionTitle || undefined,
+            serviceCategoryId: String((it as any)?.serviceCategoryId || "").trim() || undefined,
+            serviceCategoryName: String((it as any)?.serviceCategoryName || "").trim() || undefined,
+            toolsSource,
+            serviceBasePrice: priced.serviceBasePrice,
+            toolsFeeApplied: priced.toolsFeeApplied,
+            basePrice: priced.basePrice,
+            priceText: priced.priceText,
+          };
+        }),
       }));
 
       const firstServiceId = String(items[0]?.serviceId || "").trim();
@@ -3097,6 +3423,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                         min={todayISO()}
                       />
                     </div>
+                    {bookingDate && !selectedDayOpen && (
+                      <div style={{ marginTop: 8, color: "#b42318", fontWeight: 700, fontSize: 13 }}>
+                        يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة في الصالون، اختاري تاريخًا آخر للحجز.
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3110,7 +3441,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           className="form-select dash-select"
                           value={selectedSectionId}
                           onChange={handleSectionChange}
-                          disabled={!bookingDate || catalogLoading}
+                          disabled={!bookingDate || !selectedDayOpen || catalogLoading}
                         >
                           <option value="">اختاري القسم</option>
                           {sectionOptions.map((sec) => (
@@ -3125,7 +3456,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           className="form-select dash-select"
                           value={selectedCategory}
                           onChange={handleCategoryChange}
-                          disabled={!bookingDate || !selectedSectionId || catalogLoading}
+                          disabled={!bookingDate || !selectedDayOpen || !selectedSectionId || categoryLoading}
                         >
                           <option value="">اختاري التصنيف</option>
                           {categoryOptions.map((c) => (
@@ -3140,7 +3471,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           className="form-select dash-select"
                           value={servicePicker}
                           onChange={(e) => setServicePicker(e.target.value)}
-                          disabled={!bookingDate || !selectedSectionId}
+                          disabled={!bookingDate || !selectedDayOpen || !selectedSectionId}
                         >
                           <option value="">اختاري الخدمة</option>
                           {servicesGrouped.map(([cat, items]) => (
@@ -3162,7 +3493,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                       <button
                         type="button"
                         className="btn btn-dark booking-service-add-btn"
-                        disabled={!servicePicker}
+                        disabled={!servicePicker || !selectedDayOpen}
                         onClick={() => addServiceToCart(servicePicker)}
                       >
                         إضافة
@@ -3245,6 +3576,20 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
 
                         const dur = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+                        const toolsEligible = isToolsOptionEligibleForItem(it);
+                        const toolsSource = toolsEligible
+                          ? (String(it.toolsSource || "").trim() === "salon" ? "salon" : "client")
+                          : undefined;
+                        const toolsFeeApplied = toolsEligible && toolsSource === "salon"
+                          ? Math.max(0, Number(it.toolsFeeApplied || maniPediToolsFee || 0))
+                          : 0;
+                        const toolsSummary = toolsEligible
+                          ? (
+                            toolsSource === "salon"
+                              ? `الأدوات: من المشغل (+${toolsFeeApplied} ريال)`
+                              : "الأدوات: من العميلة (بدون رسوم)"
+                          )
+                          : "";
                         const greenStarts = getGreenStartTimes({
                           allSlots: baseSlotsForUi,
                           slotStepMin,
@@ -3255,10 +3600,23 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
                         const serviceStaff = staffByService[it.serviceId] || [];
                         const dateISO = String(it.date || "").trim();
-                        const availableStaff = serviceStaff.filter(st => isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true }));
+                        const bookingVisibleStaff = serviceStaff.filter(
+                          (st) => (st as any)?.showOnBooking !== false
+                        );
+                        const staffWithLeaveMeta = bookingVisibleStaff.map((st) => ({
+                          staff: st,
+                          leave: getStaffLeaveMetaForDate(st, dateISO),
+                        }));
+                        const availableStaff = staffWithLeaveMeta
+                          .filter((x) => !x.leave.isOnLeave)
+                          .map((x) => x.staff);
+                        const leaveBlockedStaff = staffWithLeaveMeta.filter((x) => x.leave.isOnLeave);
                         const staffLoading = !!staffLoadingByService[it.serviceId];
                         const staffError = staffErrorByService[it.serviceId] || "";
-                        const staffUnavailableMsg = (!staffLoading && !staffError && serviceStaff.length && !availableStaff.length)
+                        const selectedEmployeeAvailable = availableStaff.some(
+                          (emp) => String(emp?.id || "").trim() === String(it.employeeId || "").trim()
+                        );
+                        const staffUnavailableMsg = (!staffLoading && !staffError && bookingVisibleStaff.length && !availableStaff.length)
                           ? "لا توجد موظفات متاحات لهذا التاريخ."
                           : "";
 
@@ -3287,6 +3645,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                   <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>✓ تم تأكيد هذه الخدمة: {it.serviceName}</p>
                                   <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{formatTime12ForClient(it.time)}</strong></p>
                                   <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.8 }}>المدة: {dur} دقيقة | السعر: {it.priceText}</p>
+                                  {toolsEligible ? (
+                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.9 }}>
+                                      {toolsSummary}
+                                    </p>
+                                  ) : null}
                                 </div>
                                 <button
                                   type="button"
@@ -3328,16 +3691,50 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                               </div>
                             ) : (
                               <div className="row g-3">
+                                {toolsEligible ? (
+                                  <div className="col-12">
+                                    <label className="form-label small fw-bold">0. الأدوات لهذه الخدمة</label>
+                                    <div className="d-flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        className={`btn btn-sm ${toolsSource === "client" ? "btn-dark" : "btn-outline-dark"}`}
+                                        onClick={() => setItemToolsSource(it, "client")}
+                                      >
+                                        من العميلة (بدون رسوم)
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={`btn btn-sm ${toolsSource === "salon" ? "btn-dark" : "btn-outline-dark"}`}
+                                        onClick={() => setItemToolsSource(it, "salon")}
+                                      >
+                                        من المشغل {maniPediToolsFee > 0 ? `(+${maniPediToolsFee} ريال)` : "(بدون رسوم إضافية)"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : null}
+
                                 <div className="col-md-6">
                                   <label className="form-label small fw-bold">1. اختاري الموظفة</label>
                                   <div className="input-group">
                                     <span className="input-group-text"><FontAwesomeIcon icon={faUserTie} /></span>
                                     <select
                                       className="form-select"
-                                      value={it.employeeId}
+                                      value={selectedEmployeeAvailable ? it.employeeId : ""}
                                       onChange={(e) => {
                                         const empId = e.target.value;
-                                        const emp = availableStaff.find(x => x.id === empId);
+                                        if (!empId) {
+                                          updateItem(it.id, {
+                                            employeeId: "",
+                                            employeeUid: "",
+                                            employeeName: "",
+                                            time: "",
+                                          });
+                                          return;
+                                        }
+                                        const emp = bookingVisibleStaff.find(x => x.id === empId);
+                                        if (!emp) return;
+                                        const leaveMeta = getStaffLeaveMetaForDate(emp, dateISO);
+                                        if (leaveMeta.isOnLeave) return;
                                         updateItem(it.id, {
                                           employeeId: empId,
                                           employeeUid: emp?.linkedUid || "",
@@ -3347,17 +3744,29 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                       }}
                                     >
                                       <option value="">اختاري الموظفة</option>
-                                      {availableStaff.map(emp => (
-                                        <option key={emp.id} value={emp.id}>{emp.name}</option>
+                                      {staffWithLeaveMeta.map(({ staff: emp, leave }) => (
+                                        <option key={emp.id} value={emp.id} disabled={leave.isOnLeave}>
+                                          {leave.isOnLeave ? `${emp.name} (${leave.label})` : emp.name}
+                                        </option>
                                       ))}
                                     </select>
                                   </div>
                                   {staffLoading && <div className="small text-muted mt-1"><FontAwesomeIcon icon={faSpinner} spin /> جاري التحميل...</div>}
                                   {staffError && <div className="text-danger small mt-1">{staffError}</div>}
                                   {staffUnavailableMsg && <div className="text-warning small mt-1">{staffUnavailableMsg}</div>}
+                                  {leaveBlockedStaff.length > 0 && (
+                                    <div className="text-muted small mt-1">
+                                      الموظفات المعلّمات بعبارة "في إجازة" لا يمكن اختيارهن.
+                                    </div>
+                                  )}
+                                  {!selectedEmployeeAvailable && String(it.employeeId || "").trim() && (
+                                    <div className="text-warning small mt-1">
+                                      الموظفة المختارة غير متاحة في هذا التاريخ (إجازة)، اختاري موظفة أخرى.
+                                    </div>
+                                  )}
                                 </div>
 
-                                {it.employeeId && (
+                                {it.employeeId && selectedEmployeeAvailable && (
                                   <div className="col-12">
                                     <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
                                     {nearestAvailableStart ? (
@@ -3710,4 +4119,3 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 };
 
 export default Booking;
-

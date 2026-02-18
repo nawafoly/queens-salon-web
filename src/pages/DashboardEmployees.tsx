@@ -56,6 +56,9 @@ type StaffPublicDoc = {
   showOnAbout: boolean;
   // ✅ جديد: هل تظهر في الحجز؟
   showOnBooking: boolean;
+  onLeave?: boolean;
+  leaveUntil?: string;
+  leaveNote?: string;
 
   specialties: string[];
   bio?: string;
@@ -247,6 +250,11 @@ function parsePositiveInt(v: string, fallback = 0) {
   return Math.max(0, Math.floor(n));
 }
 
+function normalizeLeaveUntil(v: any) {
+  const s = String(v || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
 /* =========================
    Component
 ========================= */
@@ -355,6 +363,9 @@ export default function DashboardEmployees() {
           // ✅ جديد (افتراضي: تظهر إذا ما كان الحقل موجود)
           showOnAbout: data?.showOnAbout !== false,
           showOnBooking: data?.showOnBooking !== false,
+          onLeave: !!data?.onLeave,
+          leaveUntil: normalizeLeaveUntil(data?.leaveUntil),
+          leaveNote: String(data?.leaveNote || ""),
 
           specialties: normalizeSpecialties(data?.specialties),
           bio: data?.bio ?? "",
@@ -490,6 +501,62 @@ export default function DashboardEmployees() {
     } catch (e) {
       console.warn("toggleShowOnAboutQuick error:", e);
       setErrorMsg("تعذر تغيير ظهور الموظفة في صفحة من نحن");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateStaffBookingDraft = (
+    staffId: string,
+    patch: Partial<Pick<StaffPublicUi, "showOnBooking" | "onLeave" | "leaveUntil" | "leaveNote">>
+  ) => {
+    setList((prev) =>
+      prev.map((row) =>
+        row.id === staffId
+          ? ({
+              ...row,
+              ...patch,
+            } as StaffPublicUi)
+          : row
+      )
+    );
+  };
+
+  const saveStaffBookingSettings = async (staff: StaffPublicUi) => {
+    if (!canManage) return;
+
+    const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
+    const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
+    const effectiveOnLeave = !!(staff as any).onLeave && !leaveExpired;
+    const leaveNote = String((staff as any).leaveNote || "").trim();
+
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      await updateDoc(staffPublicDoc(staff.id), {
+        showOnBooking: (staff as any).showOnBooking !== false,
+        onLeave: effectiveOnLeave,
+        leaveUntil,
+        leaveNote,
+        updatedAt: serverTimestamp(),
+      } as any);
+
+      setList((prev) =>
+        prev.map((row) =>
+          row.id === staff.id
+            ? ({
+                ...row,
+                showOnBooking: (staff as any).showOnBooking !== false,
+                onLeave: effectiveOnLeave,
+                leaveUntil,
+                leaveNote,
+              } as StaffPublicUi)
+            : row
+        )
+      );
+    } catch (e) {
+      console.warn("saveStaffBookingSettings error:", e);
+      setErrorMsg("تعذر حفظ إعدادات الحجز للموظفة");
     } finally {
       setLoading(false);
     }
@@ -672,6 +739,9 @@ export default function DashboardEmployees() {
           .slice(0, 40);
         await setDoc(staffPublicDoc(id || crypto.randomUUID()), {
           ...payload,
+          onLeave: false,
+          leaveUntil: "",
+          leaveNote: "",
           leaveBalanceDays: 0,
           leaveEntitlementDate: "",
           leaveEntries: [],
@@ -963,6 +1033,9 @@ export default function DashboardEmployees() {
                   ? allSpecialties
                   : allSpecialties.slice(0, STAFF_CHIPS_PREVIEW_COUNT);
                 const hiddenCount = Math.max(0, allSpecialties.length - visibleSpecialties.length);
+                const leaveUntil = normalizeLeaveUntil((x as any).leaveUntil);
+                const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
+                const effectiveOnLeave = !!(x as any).onLeave && !leaveExpired;
 
                 return (
                   <>
@@ -1057,6 +1130,89 @@ export default function DashboardEmployees() {
                     <FontAwesomeIcon icon={faTrash} />
                   </button>
                 </div>
+              </div>
+
+              <div
+                className="staff-booking-inline"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <div className="staff-booking-inline-title">إعدادات الحجز لهذه الموظفة</div>
+
+                <div className="staff-booking-inline-toggles">
+                  <label className="staff-booking-inline-check">
+                    <input
+                      type="checkbox"
+                      checked={(x as any).showOnBooking !== false}
+                      disabled={loading}
+                      onChange={(e) =>
+                        updateStaffBookingDraft(x.id, {
+                          showOnBooking: e.target.checked,
+                        })
+                      }
+                    />
+                    تظهر في الحجز
+                  </label>
+
+                  <label className="staff-booking-inline-check">
+                    <input
+                      type="checkbox"
+                      checked={effectiveOnLeave}
+                      disabled={loading}
+                      onChange={(e) =>
+                        updateStaffBookingDraft(x.id, {
+                          onLeave: e.target.checked,
+                        })
+                      }
+                    />
+                    في إجازة
+                  </label>
+                </div>
+
+                <div className="staff-booking-inline-field">
+                  <div className="staff-booking-inline-field-label">تاريخ العودة</div>
+                  <input
+                    className="staff-booking-inline-input"
+                    type="date"
+                    value={leaveUntil}
+                    disabled={loading}
+                    onChange={(e) =>
+                      updateStaffBookingDraft(x.id, {
+                        leaveUntil: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="staff-booking-inline-field">
+                  <div className="staff-booking-inline-field-label">ملاحظة للزبائن (اختياري)</div>
+                  <input
+                    className="staff-booking-inline-input"
+                    value={String((x as any).leaveNote || "")}
+                    disabled={loading}
+                    onChange={(e) =>
+                      updateStaffBookingDraft(x.id, {
+                        leaveNote: e.target.value,
+                      })
+                    }
+                    placeholder="مثال: العودة يوم الأحد بإذن الله"
+                  />
+                </div>
+
+                {leaveExpired && (
+                  <div className="staff-booking-inline-hint">
+                    تاريخ الإجازة انتهى؛ بعد الحفظ سيتم اعتبار الموظفة غير مجازة.
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="exp-btn primary staff-booking-inline-save"
+                  disabled={loading}
+                  onClick={() => saveStaffBookingSettings(x)}
+                >
+                  حفظ إعدادات الحجز
+                </button>
               </div>
 
               {x.bio ? <div className="staff-bio">{x.bio}</div> : <div className="staff-bio muted">بدون نبذة</div>}
@@ -1292,6 +1448,7 @@ export default function DashboardEmployees() {
       <option value="0">لا (مخفية)</option>
     </select>
   </div>
+
 </div>
               </div>
 
@@ -1405,4 +1562,3 @@ export default function DashboardEmployees() {
     </div>
   );
 }
-

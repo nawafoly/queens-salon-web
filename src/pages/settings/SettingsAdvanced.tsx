@@ -47,7 +47,7 @@ export default function SettingsAdvanced(props: {
               type="button"
               onClick={() => navigate("/dashboard/settings/advanced/bookings")}
             >
-              إعدادات الحجوزات (الصيانة + إجازات الموظفات)
+              إعدادات الحجوزات
             </button>
 
             <button

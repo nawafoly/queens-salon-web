@@ -142,6 +142,86 @@
   background: #f8fafc;
 }
 
+.emp-page-wrapper .staff-booking-inline {
+  margin-top: 12px;
+  border: 1px solid rgba(64, 1, 13, 0.14);
+  background: rgba(64, 1, 13, 0.03);
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.emp-page-wrapper .staff-booking-inline-title {
+  font-size: 13px;
+  font-weight: 900;
+  color: #40010D;
+}
+
+.emp-page-wrapper .staff-booking-inline-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.emp-page-wrapper .staff-booking-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.emp-page-wrapper .staff-booking-inline .staff-booking-inline-check:first-child {
+  display: none;
+}
+
+.emp-page-wrapper .staff-booking-inline-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: #40010D;
+}
+
+.emp-page-wrapper .staff-booking-inline-field {
+  display: grid;
+  gap: 6px;
+}
+
+.emp-page-wrapper .staff-booking-inline-field-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #475569;
+}
+
+.emp-page-wrapper .staff-booking-inline-input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.emp-page-wrapper .staff-booking-inline-input:focus {
+  outline: none;
+  border-color: #40010D;
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.08);
+}
+
+.emp-page-wrapper .staff-booking-inline-hint {
+  color: #9f1239;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.emp-page-wrapper .staff-booking-inline-save {
+  width: 100%;
+}
+
 /* ===================================================================
    ⭐⭐⭐ MODAL STYLES (Scoped to .emp-modal) ⭐⭐⭐
    =================================================================== */

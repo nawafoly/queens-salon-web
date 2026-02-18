@@ -161,6 +161,17 @@ type CategoryOption = { id: string; name: string };
 const SALON_ID = "main";
 const DEFAULT_SERVICE_DURATION_MIN = 60;
 const ALLOW_OVERTIME_MIN = 20;
+type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
+  sat: "السبت",
+  sun: "الأحد",
+  mon: "الإثنين",
+  tue: "الثلاثاء",
+  wed: "الأربعاء",
+  thu: "الخميس",
+  fri: "الجمعة",
+};
 
 // نفس منطق slotId
 function safeKey(v: string) {
@@ -521,6 +532,18 @@ function safeTimeHHMM(v: any, fallback: string) {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
+function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
+  const s = String(dateISO || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return JS_DAY_TO_WEEKDAY[new Date().getDay()] || "sat";
+
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(y, Math.max(0, mo - 1), d);
+  return JS_DAY_TO_WEEKDAY[dt.getDay()] || "sat";
+}
+
 const ARABIC_DIGIT_MAP: Record<string, string> = {
   "٠": "0",
   "١": "1",
@@ -650,18 +673,48 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const seasonPricing = (appSettings as any)?.catalogSeasonPricing || {};
   const seasonCfg = seasonPricing;
   const sequentialBooking = !!(booking as any)?.sequentialBooking;
+  // ✅ الاستقبال يختار التاريخ أول
+  const [bookingDate, setBookingDate] = useState<string>(() => todayISO());
 
   const businessHours = (booking as any)?.businessHours || {};
+  const selectedDayKey = useMemo(
+    () => resolveWeekdayFromISO(String(bookingDate || "").trim() || todayISO()),
+    [bookingDate]
+  );
+  const selectedDayHours = useMemo(
+    () =>
+      (businessHours as any)?.[selectedDayKey] || {
+        enabled: true,
+        start: "10:00",
+        end: "22:00",
+      },
+    [businessHours, selectedDayKey]
+  );
+  const selectedDayOpen = selectedDayHours?.enabled !== false;
 
   const openTime = useMemo(
-    () => safeTimeHHMM((businessHours as any)?.sat?.start, "10:00"),
-    [(businessHours as any)?.sat?.start]
+    () => safeTimeHHMM((selectedDayHours as any)?.start, "10:00"),
+    [selectedDayHours]
   );
 
   const closeTime = useMemo(
-    () => safeTimeHHMM((businessHours as any)?.sat?.end, "22:00"),
-    [(businessHours as any)?.sat?.end]
+    () => safeTimeHHMM((selectedDayHours as any)?.end, "22:00"),
+    [selectedDayHours]
   );
+
+  const getDaySettingsForDate = (dateISO: string) => {
+    const dayKey = resolveWeekdayFromISO(String(dateISO || "").trim() || todayISO());
+    const dayHours = (businessHours as any)?.[dayKey] || {
+      enabled: true,
+      start: "10:00",
+      end: "22:00",
+    };
+    return {
+      dayKey,
+      dayLabel: WEEKDAY_LABEL_AR[dayKey],
+      enabled: dayHours?.enabled !== false,
+    };
+  };
 
   const slotStepMin = useMemo(() => {
     const v = safeInt((booking as any)?.slotStepMin, 10);
@@ -675,8 +728,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
 
   useEffect(() => {
+    if (!selectedDayOpen) {
+      setTimeSlots([]);
+      return;
+    }
+
     setTimeSlots(generateSalonTimeSlots(openTime, closeTime, slotStepMin));
-  }, [openTime, closeTime, slotStepMin]);
+  }, [selectedDayOpen, openTime, closeTime, slotStepMin]);
 
   useEffect(() => {
     const unsub = AppSettingsService.subscribe((remote: any) => {
@@ -706,9 +764,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [hairGuideUrl, setHairGuideUrl] = useState<string>(hairGuideImg);
   const [isOwner, setIsOwner] = useState(false);
   const [uploadingGuide, setUploadingGuide] = useState(false);
-
-  // ✅ الاستقبال يختار التاريخ أول
-  const [bookingDate, setBookingDate] = useState<string>(() => todayISO());
 
   const [formData, setFormData] = useState<BookingFormData>({
     name: "",
@@ -3750,6 +3805,34 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return;
     }
 
+    const bookingDayCfg = getDaySettingsForDate(String(bookingDate || "").trim());
+    if (!bookingDayCfg.enabled) {
+      openModal({
+        title: "اليوم مغلق",
+        message: `يوم ${bookingDayCfg.dayLabel} إجازة في الصالون، لذلك لا يمكن الحجز فيه.`,
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
+
+    const closedItem = items.find((it) => {
+      const d = String(it.date || bookingDate || "").trim();
+      if (!d) return false;
+      return !getDaySettingsForDate(d).enabled;
+    });
+    if (closedItem) {
+      const d = String(closedItem.date || bookingDate || "").trim();
+      const cfg = getDaySettingsForDate(d);
+      openModal({
+        title: "أحد تواريخ الخدمات مغلق",
+        message: `الخدمة "${closedItem.serviceName}" بتاريخ ${d} تقع في يوم ${cfg.dayLabel} وهو مغلق.`,
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
+
     const missing = items.find((it) => {
       if (!String(it.employeeId || "").trim()) return true;
       if (!String(it.employeeName || "").trim()) return true;
@@ -4025,6 +4108,26 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         openModal({
           title: "الوقت محجوز",
           message: "هذا الوقت محجوز بالفعل. اختاري وقتًا آخر.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
+      if (e?.code === "BOOKING_DAY_CLOSED") {
+        openModal({
+          title: "اليوم مغلق",
+          message: "اليوم المختار إجازة في إعدادات الدوام. اختاري تاريخًا آخر للحجز.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
+      if (e?.code === "BOOKING_TIME_OUT_OF_HOURS") {
+        openModal({
+          title: "وقت خارج الدوام",
+          message: "الوقت المختار خارج ساعات العمل لليوم المحدد. اختاري وقتًا آخر.",
           variant: "danger",
           confirmText: "حسنًا",
         });
@@ -4559,7 +4662,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       type="button"
                       className="btn btn-primary"
                       style={{ borderRadius: 12 }}
-                      disabled={!servicePicker}
+                      disabled={!servicePicker || !selectedDayOpen}
                       onClick={() => addServiceToCart(servicePicker)}
                     >
                       + إضافة للسلة
@@ -4605,6 +4708,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         applyBookingDate(next);
                       }}
                     />
+                    {bookingDate && !selectedDayOpen && (
+                      <div style={{ marginTop: 8, color: "#b42318", fontWeight: 700, fontSize: 13 }}>
+                        يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة في الصالون، اختاري تاريخًا آخر للحجز.
+                      </div>
+                    )}
                     <div className="mt-2" style={{ fontSize: 12, opacity: 0.8 }}>
                       ملاحظة: تغيير التاريخ يصفر اختيار الموظفات/الأوقات داخل السلة.
                     </div>

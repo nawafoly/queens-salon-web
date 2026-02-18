@@ -128,6 +128,8 @@ const BOOKINGS_COUNTER_DOC = "bookings";
 
 // ✅ Booking Logs
 const LOGS_COL = ["salons", SALON_ID, "booking_logs"] as const;
+type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   const cleaned: Record<string, any> = {};
@@ -251,6 +253,30 @@ function employeeRequiredError() {
   return e;
 }
 
+function bookingDayClosedError() {
+  const e: any = new Error("BOOKING_DAY_CLOSED");
+  e.code = "BOOKING_DAY_CLOSED";
+  return e;
+}
+
+function bookingTimeOutOfHoursError() {
+  const e: any = new Error("BOOKING_TIME_OUT_OF_HOURS");
+  e.code = "BOOKING_TIME_OUT_OF_HOURS";
+  return e;
+}
+
+function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
+  const s = String(dateISO || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return JS_DAY_TO_WEEKDAY[new Date().getDay()] || "sat";
+
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(y, Math.max(0, mo - 1), d);
+  return JS_DAY_TO_WEEKDAY[dt.getDay()] || "sat";
+}
+
 // ✅ Helper: parse payment method from note
 function parsePaymentMethod(note?: string): string {
   const s = String(note || "").toLowerCase();
@@ -305,21 +331,24 @@ function safeTimeHHMM(v: any, fallback: string) {
 }
 
 /** ✅ read slot settings safely (fallback to defaults) */
-function getSlotSettings() {
+function getSlotSettings(dateISO?: string) {
   const cached = AppSettingsService.getCached() || {};
   const booking = (cached as any)?.booking || {};
   const businessHours = booking?.businessHours || {};
 
-  // ✅ same defaults as Booking.tsx (sat currently)
-  const openTime = safeTimeHHMM(businessHours?.sat?.start, "10:00");
-  const closeTime = safeTimeHHMM(businessHours?.sat?.end, "22:00");
+  const dayKey = resolveWeekdayFromISO(String(dateISO || "").trim());
+  const dayHours = businessHours?.[dayKey] || {};
+
+  const enabled = dayHours?.enabled !== false;
+  const openTime = safeTimeHHMM(dayHours?.start, "10:00");
+  const closeTime = safeTimeHHMM(dayHours?.end, "22:00");
 
   const rawStep = safeInt(booking?.slotStepMin, 10);
   const slotStepMin = [5, 10, 15, 30].includes(rawStep) ? rawStep : 10;
 
   const bufferMin = Math.max(0, safeInt(booking?.bufferMin, 0));
 
-  return { openTime, closeTime, slotStepMin, bufferMin };
+  return { dayKey, enabled, openTime, closeTime, slotStepMin, bufferMin };
 }
 
 /**
@@ -330,9 +359,10 @@ function getSlotSettings() {
 function getTimesToLock(
   startTime: string,
   durationMin: number,
-  overrides?: { slotStepMin?: number; bufferMin?: number }
+  overrides?: { slotStepMin?: number; bufferMin?: number },
+  dateISO?: string
 ) {
-  const base = getSlotSettings();
+  const base = getSlotSettings(dateISO);
 
   const slotStepMin =
     [5, 10, 15, 30].includes(Number(overrides?.slotStepMin))
@@ -479,10 +509,15 @@ async function lockSlotsFromBooking(bookingId: string) {
 
   const durationMin = Math.max(0, Number(b.durationMin || 0)) || 60;
 
-  const timesToLock = getTimesToLock(String(b.time || "").trim(), durationMin, {
-    slotStepMin: (b as any).slotStepMinAtBooking,
-    bufferMin: (b as any).bufferMinAtBooking,
-  });
+  const timesToLock = getTimesToLock(
+    String(b.time || "").trim(),
+    durationMin,
+    {
+      slotStepMin: (b as any).slotStepMinAtBooking,
+      bufferMin: (b as any).bufferMinAtBooking,
+    },
+    String(b.date || "").trim()
+  );
 
   const employeeKey =
     String(b.employeeKey || "").trim() ||
@@ -556,10 +591,35 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   );
 
   // ✅ times to lock (start + next slots)
-  const timesToLock = getTimesToLock(String(data.time || "").trim(), durationMin, {
-    slotStepMin: (data as any).slotStepMinAtBooking,
-    bufferMin: (data as any).bufferMinAtBooking,
-  });
+  const dateISO = String(data.date || "").trim();
+  const daySlotSettings = getSlotSettings(dateISO);
+  if (!daySlotSettings.enabled) throw bookingDayClosedError();
+
+  const requestedStartTime = String(data.time || "").trim();
+  const requestedStep =
+    [5, 10, 15, 30].includes(Number((data as any).slotStepMinAtBooking))
+      ? Number((data as any).slotStepMinAtBooking)
+      : daySlotSettings.slotStepMin;
+
+  const allSlotsForDay = generateSalonTimeSlots(
+    daySlotSettings.openTime,
+    daySlotSettings.closeTime,
+    requestedStep
+  );
+  const hasRequestedStart = allSlotsForDay.some(
+    (slot) => String(slot.value24 || "").trim() === requestedStartTime
+  );
+  if (!hasRequestedStart) throw bookingTimeOutOfHoursError();
+
+  const timesToLock = getTimesToLock(
+    requestedStartTime,
+    durationMin,
+    {
+      slotStepMin: (data as any).slotStepMinAtBooking,
+      bufferMin: (data as any).bufferMinAtBooking,
+    },
+    dateISO
+  );
 
   // ✅ booking ref
   const bookingRef = doc(collection(db, ...BOOKINGS_COL));
@@ -602,8 +662,8 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     serviceId: data.serviceId ?? undefined,
     serviceSnapshot,
 
-    slotStepMinAtBooking: (data as any).slotStepMinAtBooking ?? getSlotSettings().slotStepMin,
-    bufferMinAtBooking: (data as any).bufferMinAtBooking ?? getSlotSettings().bufferMin,
+    slotStepMinAtBooking: (data as any).slotStepMinAtBooking ?? daySlotSettings.slotStepMin,
+    bufferMinAtBooking: (data as any).bufferMinAtBooking ?? daySlotSettings.bufferMin,
     ...statusAuditPatch,
 
     createdAt: serverTimestamp(),

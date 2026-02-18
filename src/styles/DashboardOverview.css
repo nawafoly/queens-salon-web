@@ -261,6 +261,110 @@
   color: rgba(13, 13, 13, 0.72);
 }
 
+.dashboard-skin .ov-hour-cell {
+  width: 150px;
+  white-space: nowrap;
+  font-weight: 900;
+  color: #40010D !important;
+}
+
+.dashboard-skin .ov-hour-bookings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-skin .ov-hour-empty-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px dashed rgba(13, 13, 13, 0.2);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: rgba(13, 13, 13, 0.66);
+  background: rgba(245, 245, 244, 0.5);
+}
+
+.dashboard-skin .ov-hour-booking-pill {
+  border: 1px solid rgba(64, 1, 13, 0.18);
+  background: rgba(64, 1, 13, 0.06);
+  color: #0D0D0D;
+  border-radius: 999px;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.dashboard-skin .ov-hour-booking-pill:hover {
+  border-color: rgba(64, 1, 13, 0.35);
+  background: rgba(64, 1, 13, 0.12);
+  transform: translateY(-1px);
+}
+
+.dashboard-skin .ov-hour-booking-name {
+  font-weight: 900;
+}
+
+.dashboard-skin .ov-hour-booking-time {
+  color: rgba(13, 13, 13, 0.72);
+}
+
+.dashboard-skin .ov-hour-mobile-row {
+  border: 1px solid rgba(13, 13, 13, 0.09);
+  border-radius: 14px;
+  background: #fff;
+  padding: 10px;
+  margin: 8px 0;
+}
+
+.dashboard-skin .ov-hour-mobile-title {
+  font-size: 13px;
+  font-weight: 900;
+  color: #40010D;
+  margin-bottom: 8px;
+}
+
+.dashboard-skin .ov-hour-mobile-empty {
+  font-size: 12px;
+  color: rgba(13, 13, 13, 0.66);
+}
+
+.dashboard-skin .ov-hour-mobile-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-skin .ov-hour-mobile-booking {
+  width: 100%;
+  border: 1px solid rgba(64, 1, 13, 0.16);
+  border-radius: 12px;
+  background: rgba(64, 1, 13, 0.05);
+  padding: 8px 10px;
+  text-align: right;
+}
+
+.dashboard-skin .ov-hour-mobile-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.dashboard-skin .ov-hour-mobile-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(13, 13, 13, 0.72);
+}
+
 /* =========================
    Quick Actions
 ========================= */

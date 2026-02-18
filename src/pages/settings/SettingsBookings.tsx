@@ -7,10 +7,6 @@ import { onAuthStateChanged } from "firebase/auth";
 import {
   doc,
   getDoc,
-  getDocs,
-  collection,
-  setDoc,
-  serverTimestamp,
 } from "firebase/firestore";
 
 import { auth, db } from "../../services/firebase";
@@ -41,28 +37,9 @@ function mapFirestoreRoleToUi(roleRaw: string): UiRole {
 
 const SALON_ID = "main";
 const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
-const STAFF_PUBLIC_COLLECTION = ["salons", SALON_ID, "staff_public"] as const;
 
 // ✅ Local cache key (بديل setCached)
 const APP_SETTINGS_CACHE_KEY = "qs_app_settings_cache_v1";
-
-type StaffAvailRow = {
-  id: string;
-  name: string;
-  active: boolean;
-  showOnBooking?: boolean;
-  onLeave?: boolean;
-  leaveNote?: string;
-  leaveUntil?: string; // YYYY-MM-DD
-};
-
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 function safeInt(v: any, fallback: number) {
   const n = Number(v);
@@ -116,6 +93,20 @@ function defaultBusinessHoursLocal() {
   };
 }
 
+type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+
+const WEEKDAY_KEYS: WeekdayKey[] = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"];
+
+const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
+  sat: "السبت",
+  sun: "الأحد",
+  mon: "الإثنين",
+  tue: "الثلاثاء",
+  wed: "الأربعاء",
+  thu: "الخميس",
+  fri: "الجمعة",
+};
+
 export default function SettingsBookings() {
   const navigate = useNavigate();
 
@@ -133,6 +124,10 @@ export default function SettingsBookings() {
     const local = loadLocalSettings();
     if (local) return local;
     return {};
+  });
+  const [selectedWeekday, setSelectedWeekday] = useState<WeekdayKey>(() => {
+    const jsToWeekday: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+    return jsToWeekday[new Date().getDay()] || "sat";
   });
 
   const bookingSettings = (settings as any)?.booking || {};
@@ -172,20 +167,37 @@ export default function SettingsBookings() {
     const v = safeInt(raw, 5);
     return [0, 5, 10, 15, 20, 30].includes(v) ? v : 5;
   }, [bookingSettings?.bufferMin]);
+  const maniPediToolsFee = useMemo(() => {
+    const raw = (bookingSettings as any)?.maniPediToolsFee;
+    return Math.max(0, safeInt(raw, 0));
+  }, [bookingSettings?.maniPediToolsFee]);
 
 
 
   const businessHours = useMemo(() => {
-    return (bookingSettings as any)?.businessHours || defaultBusinessHoursLocal();
+    const raw = (bookingSettings as any)?.businessHours || {};
+    const fallback = defaultBusinessHoursLocal();
+
+    return WEEKDAY_KEYS.reduce((acc, day) => {
+      const dayRaw = raw?.[day] || {};
+      acc[day] = {
+        enabled:
+          typeof dayRaw?.enabled === "boolean" ? dayRaw.enabled : fallback[day].enabled,
+        start: safeTimeHHMM(dayRaw?.start, fallback[day].start),
+        end: safeTimeHHMM(dayRaw?.end, fallback[day].end),
+      };
+      return acc;
+    }, {} as Record<WeekdayKey, { enabled: boolean; start: string; end: string }>);
   }, [bookingSettings?.businessHours]);
 
-  const openTime = useMemo(() => {
-    return safeTimeHHMM(businessHours?.sat?.start, "10:00");
-  }, [businessHours?.sat?.start]);
-
-  const closeTime = useMemo(() => {
-    return safeTimeHHMM(businessHours?.sat?.end, "22:00");
-  }, [businessHours?.sat?.end]);
+  const updateBusinessDay = (
+    day: WeekdayKey,
+    patch: Partial<{ enabled: boolean; start: string; end: string }>
+  ) => {
+    const next = { ...businessHours };
+    next[day] = { ...next[day], ...patch };
+    setBookingSettings({ businessHours: next });
+  };
 
   const [savedMsg, setSavedMsg] = useState("");
 
@@ -203,23 +215,26 @@ export default function SettingsBookings() {
       const latestBooking = (latest as any)?.booking || {};
 
       const bhRaw = latestBooking?.businessHours || defaultBusinessHoursLocal();
+      const bhFallback = defaultBusinessHoursLocal();
 
-      const oRaw = bhRaw?.sat?.start;
-      const cRaw = bhRaw?.sat?.end;
+      // ✅ طبّع businessHours لكل أيام الأسبوع بدل يوم واحد فقط
+      const bh = WEEKDAY_KEYS.reduce((acc, day) => {
+        const rawDay = bhRaw?.[day] || {};
+        const fallbackDay = bhFallback[day];
 
-      const oNorm = safeTimeHHMM(oRaw, "10:00");
-      const cNorm = safeTimeHHMM(cRaw, "22:00");
+        const dayStart = safeTimeHHMM(rawDay?.start, fallbackDay.start);
+        const dayEnd = safeTimeHHMM(rawDay?.end, fallbackDay.end);
+        const dayEnabled =
+          typeof rawDay?.enabled === "boolean" ? rawDay.enabled : fallbackDay.enabled;
 
-      // Allow overnight shifts (e.g. 20:00 -> 02:00). Reject only exact equality.
-      if (oNorm === cNorm) {
-        setSavedMsg("❌ بداية ونهاية الدوام لا يمكن أن تكونا نفس الوقت");
-        setTimeout(() => setSavedMsg(""), 2200);
-        return;
-      }
+        // Allow overnight shifts (e.g. 20:00 -> 02:00). Reject only exact equality on enabled days.
+        if (dayEnabled && dayStart === dayEnd) {
+          throw new Error(`INVALID_BUSINESS_HOURS_${day}`);
+        }
 
-      // ✅ طبّع فعليًا داخل businessHours قبل الحفظ
-      const bh = { ...(bhRaw || defaultBusinessHoursLocal()) };
-      bh.sat = { ...(bh.sat || { enabled: true }), start: oNorm, end: cNorm };
+        acc[day] = { enabled: dayEnabled, start: dayStart, end: dayEnd };
+        return acc;
+      }, {} as Record<WeekdayKey, { enabled: boolean; start: string; end: string }>);
 
 
       const normalizedSettingsToSave = {
@@ -228,6 +243,7 @@ export default function SettingsBookings() {
           ...(latestBooking || {}),
           slotStepMin, // من UI (مضمون 5/10/15/30)
           bufferMin,   // ✅ جديد: بفر بعد كل حجز
+          maniPediToolsFee, // ✅ رسوم أدوات المشغل لخدمات البديكير/المناكير
           businessHours: bh,
           seasonFill: latestBooking?.seasonFill || { enabled: false, from: "", to: "" },
           sequentialBooking: !!latestBooking?.sequentialBooking,
@@ -251,6 +267,16 @@ export default function SettingsBookings() {
     } catch (e: any) {
       console.error("❌ saveAll error:", e);
 
+      const errMsg = String(e?.message || "");
+      const invalidDay = WEEKDAY_KEYS.find((d) =>
+        errMsg.includes(`INVALID_BUSINESS_HOURS_${d}`)
+      );
+      if (invalidDay) {
+        setSavedMsg(`❌ اليوم (${WEEKDAY_LABEL_AR[invalidDay]}): البداية والنهاية لا يمكن أن تكونا نفس الوقت`);
+        setTimeout(() => setSavedMsg(""), 2600);
+        return;
+      }
+
       const msg =
         String(e?.message || e?.code || "")
           .toLowerCase()
@@ -264,74 +290,22 @@ export default function SettingsBookings() {
     }
   };
 
-  // staff availability
-  const [bookingMsg, setBookingMsg] = useState<string>("");
-  const [staffAvailLoading, setStaffAvailLoading] = useState(false);
-  const [staffAvail, setStaffAvail] = useState<StaffAvailRow[]>([]);
-
-  const loadStaffAvailability = async () => {
-    try {
-      setStaffAvailLoading(true);
-      const snap = await getDocs(collection(db, ...STAFF_PUBLIC_COLLECTION));
-
-      const rows: StaffAvailRow[] = snap.docs.map((d) => {
-        const x = d.data() as any;
-        return {
-          id: d.id,
-          name: String(x?.name || ""),
-          active: x?.active !== false,
-          showOnBooking: x?.showOnBooking !== false,
-          onLeave: !!x?.onLeave,
-          leaveNote: String(x?.leaveNote || ""),
-          leaveUntil: String(x?.leaveUntil || ""),
-        };
-      });
-
-      rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
-      setStaffAvail(rows);
-    } catch (e) {
-      console.error("loadStaffAvailability error:", e);
-      setStaffAvail([]);
-      setBookingMsg("❌ تعذر تحميل الموظفات (Rules?)");
-    } finally {
-      setStaffAvailLoading(false);
-    }
-  };
-
-  const saveStaffAvailability = async (row: StaffAvailRow) => {
+  const copySelectedDayHoursToAll = () => {
     if (!hasAdminPower) return;
 
-    try {
-      const t = todayISO();
-      const until = String(row.leaveUntil || "").trim();
-      const leaveExpired = !!until && until < t;
+    const source = businessHours[selectedWeekday];
+    const next = WEEKDAY_KEYS.reduce((acc, day) => {
+      acc[day] = {
+        ...businessHours[day],
+        start: source.start,
+        end: source.end,
+      };
+      return acc;
+    }, {} as Record<WeekdayKey, { enabled: boolean; start: string; end: string }>);
 
-      const effectiveOnLeave = leaveExpired ? false : !!row.onLeave;
-
-      await setDoc(
-        doc(db, ...STAFF_PUBLIC_COLLECTION, row.id),
-        {
-          active: row.active !== false,
-          showOnBooking: row.showOnBooking !== false,
-          onLeave: effectiveOnLeave,
-          leaveNote: String(row.leaveNote || ""),
-          leaveUntil: String(row.leaveUntil || ""),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      setBookingMsg("✅ تم حفظ حالة الموظفة");
-      setTimeout(() => setBookingMsg(""), 1500);
-
-      setStaffAvail((p) =>
-        p.map((x) => (x.id === row.id ? { ...x, onLeave: effectiveOnLeave } : x))
-      );
-    } catch (e) {
-      console.error("saveStaffAvailability error:", e);
-      setBookingMsg("❌ تعذر حفظ حالة الموظفة");
-      setTimeout(() => setBookingMsg(""), 2200);
-    }
+    setBookingSettings({ businessHours: next });
+    setSavedMsg(`✅ تم نسخ وقت ${WEEKDAY_LABEL_AR[selectedWeekday]} إلى بقية الأيام`);
+    setTimeout(() => setSavedMsg(""), 1800);
   };
 
   // auth + role
@@ -424,8 +398,6 @@ export default function SettingsBookings() {
       </div>
     );
   }
-
-  const tISO = todayISO();
 
   return (
     <div className="dashboard-section settings-page">
@@ -522,6 +494,35 @@ export default function SettingsBookings() {
               </select>
             </div>
 
+            <div
+              className="settings-row"
+              style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}
+            >
+              <div style={{ minWidth: 220 }}>
+                <div style={{ fontWeight: 900 }}>رسوم أدوات المشغل (البديكير/المناكير)</div>
+                <div style={{ opacity: 0.7, fontSize: 12 }}>
+                  تظهر فقط إذا اختارت العميلة "الأدوات من المشغل" في خدمة ضمن هذا القسم
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  className="settings-input"
+                  style={{ width: 160 }}
+                  value={String(maniPediToolsFee)}
+                  disabled={!hasAdminPower}
+                  onChange={(e) => {
+                    const next = Math.max(0, safeInt(e.target.value, 0));
+                    setBookingSettings({ maniPediToolsFee: next });
+                  }}
+                />
+                <span style={{ opacity: 0.8 }}>ريال</span>
+              </div>
+            </div>
+
 
             <div
               className="settings-row"
@@ -556,61 +557,121 @@ export default function SettingsBookings() {
               style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}
             >
               <div style={{ minWidth: 220 }}>
-                <div style={{ fontWeight: 900 }}>بداية الدوام</div>
-                <div style={{ opacity: 0.7, fontSize: 12 }}>صيغة 24 ساعة (HH:MM)</div>
+                <div style={{ fontWeight: 900 }}>إدارة الدوام الأسبوعي</div>
+                <div style={{ opacity: 0.7, fontSize: 12 }}>
+                  عدّلي الأيام كلها من نفس المكان بدل يوم واحد فقط
+                </div>
               </div>
 
-              <input
-                type="time"
-                className="settings-input"
-                style={{ width: 160 }}
-                value={openTime}
+              <select
+                className="form-select dash-select"
+                style={{ width: 200 }}
+                value={selectedWeekday}
                 disabled={!hasAdminPower}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  const bh = bookingSettings?.businessHours || defaultBusinessHoursLocal();
+                onChange={(e) => setSelectedWeekday(e.target.value as WeekdayKey)}
+              >
+                {WEEKDAY_KEYS.map((d) => (
+                  <option key={d} value={d}>
+                    {WEEKDAY_LABEL_AR[d]}
+                  </option>
+                ))}
+              </select>
 
-                  const next = { ...bh };
-                  next.sat = { ...next.sat, start: v };
-
-                  setBookingSettings({ businessHours: next });
-                }}
-                placeholder="10:00"
-              />
+              <button
+                type="button"
+                className={`dash-btn ${!hasAdminPower ? "is-disabled" : ""}`}
+                disabled={!hasAdminPower}
+                onClick={copySelectedDayHoursToAll}
+                title={`نسخ ساعات ${WEEKDAY_LABEL_AR[selectedWeekday]} لباقي الأيام`}
+              >
+                نسخ وقت اليوم المختار لباقي الأيام
+              </button>
             </div>
 
-            <div
-              className="settings-row"
-              style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}
-            >
-              <div style={{ minWidth: 220 }}>
-                <div style={{ fontWeight: 900 }}>نهاية الدوام</div>
-                <div style={{ opacity: 0.7, fontSize: 12 }}>صيغة 24 ساعة (HH:MM)</div>
-              </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {WEEKDAY_KEYS.map((day) => {
+                const dayHours = businessHours[day];
+                const isSelected = day === selectedWeekday;
 
-              <input
-                type="time"
-                className="settings-input"
-                style={{ width: 160 }}
-                value={closeTime}
-                disabled={!hasAdminPower}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  const bh = bookingSettings?.businessHours || defaultBusinessHoursLocal();
+                return (
+                  <div
+                    key={day}
+                    className="settings-row"
+                    style={{
+                      alignItems: "center",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      border: isSelected ? "1px solid rgba(64,1,13,.25)" : undefined,
+                      background: isSelected ? "rgba(64,1,13,.03)" : undefined,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="dash-btn"
+                      onClick={() => setSelectedWeekday(day)}
+                      style={{
+                        minWidth: 110,
+                        borderColor: isSelected ? "rgba(64,1,13,.35)" : undefined,
+                        color: isSelected ? "#40010D" : undefined,
+                        fontWeight: isSelected ? 900 : undefined,
+                      }}
+                    >
+                      {WEEKDAY_LABEL_AR[day]}
+                    </button>
 
-                  const next = { ...bh };
-                  next.sat = { ...next.sat, end: v };
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
+                      <input
+                        className="settings-check"
+                        type="checkbox"
+                        checked={dayHours.enabled !== false}
+                        disabled={!hasAdminPower}
+                        onChange={(e) => updateBusinessDay(day, { enabled: e.target.checked })}
+                      />
+                      مفتوح
+                    </label>
 
-                  setBookingSettings({ businessHours: next });
-                }}
-                placeholder="22:00"
-              />
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, opacity: 0.75 }}>من</span>
+                      <input
+                        type="time"
+                        className="settings-input"
+                        style={{ width: 140 }}
+                        value={dayHours.start}
+                        disabled={!hasAdminPower || dayHours.enabled === false}
+                        onChange={(e) => updateBusinessDay(day, { start: e.target.value })}
+                        placeholder="10:00"
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, opacity: 0.75 }}>إلى</span>
+                      <input
+                        type="time"
+                        className="settings-input"
+                        style={{ width: 140 }}
+                        value={dayHours.end}
+                        disabled={!hasAdminPower || dayHours.enabled === false}
+                        onChange={(e) => updateBusinessDay(day, { end: e.target.value })}
+                        placeholder="22:00"
+                      />
+                    </div>
+
+                    <span style={{ fontSize: 12, opacity: 0.75 }}>
+                      {dayHours.enabled === false
+                        ? "اليوم مغلق"
+                        : dayHours.start <= dayHours.end
+                          ? "دوام عادي"
+                          : "دوام يتجاوز منتصف الليل"}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           <div className="settings-footnote">
-            * يتم الحفظ في AppSettings داخل: booking.businessHours.sat.start / booking.businessHours.sat.end /
-            booking.slotStepMin / booking.bufferMin
+            * يتم الحفظ في AppSettings داخل: booking.businessHours.[day].start / booking.businessHours.[day].end /
+            booking.businessHours.[day].enabled / booking.slotStepMin / booking.bufferMin / booking.maniPediToolsFee
 
             <br />
             * ربطها بصفحة الحجز: Booking.tsx يقرأ من AppSettingsService.getCached()
@@ -618,10 +679,7 @@ export default function SettingsBookings() {
         </div>
 
         <div className="settings-card">
-          <h3 className="settings-title">إجازات الموظفات وظهورهن في الحجز</h3>
-
-          <div className="settings-card">
-            <h3 className="settings-title">وضع الموسم لوقت الحجز (تقليل الهدر)</h3>
+          <h3 className="settings-title">وضع الموسم لوقت الحجز (تقليل الهدر)</h3>
 
             <div className="settings-list">
               <label className="settings-row">
@@ -701,135 +759,7 @@ export default function SettingsBookings() {
               </p>
             </div>
           </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <button
-              type="button"
-              className={`exp-btn ${staffAvailLoading ? "is-disabled" : ""}`}
-              disabled={staffAvailLoading}
-              onClick={loadStaffAvailability}
-            >
-              {staffAvailLoading ? "تحميل..." : "تحميل الموظفات"}
-            </button>
-
-            {bookingMsg && (
-              <span className="settings-alert success" style={{ marginInlineStart: 6 }}>
-                {bookingMsg}
-              </span>
-            )}
-          </div>
-
-          <div className="settings-list" style={{ marginTop: 12 }}>
-            {staffAvailLoading ? (
-              <div className="settings-note">جاري تحميل الموظفات…</div>
-            ) : staffAvail.length === 0 ? (
-              <div className="settings-note">اضغط "تحميل الموظفات" لعرض القائمة.</div>
-            ) : (
-              staffAvail.map((s) => {
-                const until = String(s.leaveUntil || "").trim();
-                const leaveExpired = !!until && until < tISO;
-                const effectiveOnLeave = !!s.onLeave && !leaveExpired;
-
-                return (
-                  <div
-                    key={s.id}
-                    className="settings-row"
-                    style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}
-                  >
-                    <div style={{ minWidth: 220, display: "grid" }}>
-                      <span style={{ fontWeight: 900 }}>
-                        {s.name || "بدون اسم"}
-                        {leaveExpired && (
-                          <span style={{ marginInlineStart: 8, fontSize: 12, opacity: 0.8 }}>
-                            (إجازة منتهية)
-                          </span>
-                        )}
-                      </span>
-                      <span style={{ opacity: 0.7, fontSize: 12 }}>{s.id}</span>
-                    </div>
-
-                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
-                      <input
-                        className="settings-check"
-                        type="checkbox"
-                        checked={s.showOnBooking !== false}
-                        disabled={!hasAdminPower}
-                        onChange={() =>
-                          setStaffAvail((p) =>
-                            p.map((x) =>
-                              x.id === s.id
-                                ? { ...x, showOnBooking: !(x.showOnBooking !== false) }
-                                : x
-                            )
-                          )
-                        }
-                      />
-                      تظهر في الحجز
-                    </label>
-
-                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
-                      <input
-                        className="settings-check"
-                        type="checkbox"
-                        checked={effectiveOnLeave}
-                        disabled={!hasAdminPower}
-                        onChange={() =>
-                          setStaffAvail((p) =>
-                            p.map((x) => (x.id === s.id ? { ...x, onLeave: !effectiveOnLeave } : x))
-                          )
-                        }
-                      />
-                      في إجازة
-                    </label>
-
-                    <input
-                      className="settings-input"
-                      style={{ width: 160 }}
-                      type="date"
-                      value={s.leaveUntil || ""}
-                      disabled={!hasAdminPower}
-                      onChange={(e) =>
-                        setStaffAvail((p) =>
-                          p.map((x) => (x.id === s.id ? { ...x, leaveUntil: e.target.value } : x))
-                        )
-                      }
-                      title="تاريخ العودة"
-                    />
-
-                    <input
-                      className="settings-input"
-                      style={{ minWidth: 220 }}
-                      value={s.leaveNote || ""}
-                      disabled={!hasAdminPower}
-                      onChange={(e) =>
-                        setStaffAvail((p) =>
-                          p.map((x) => (x.id === s.id ? { ...x, leaveNote: e.target.value } : x))
-                        )
-                      }
-                      placeholder="ملاحظة للزبائن (اختياري)"
-                    />
-
-                    <button
-                      type="button"
-                      className={`exp-btn primary ${!hasAdminPower ? "is-disabled" : ""}`}
-                      disabled={!hasAdminPower}
-                      onClick={() => saveStaffAvailability(s)}
-                    >
-                      حفظ
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <div className="settings-footnote">
-            * يتم الحفظ في: <b>salons/main/staff_public</b> داخل حقول: <b>showOnBooking/onLeave/leaveUntil/leaveNote</b>
-            <br />
-            * ملاحظة: إذا <b>leaveUntil</b> فات، الصفحة تعتبر الإجازة منتهية (حتى لو onLeave كان مفعّل).
-          </div>
         </div>
       </div>
-    </div>
   );
 }

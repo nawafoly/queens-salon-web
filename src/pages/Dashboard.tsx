@@ -89,6 +89,11 @@ type SectionKey =
   | "logs"
   | "settings";
 
+type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+type BusinessHoursDay = { enabled?: boolean; start?: string; end?: string };
+type BusinessHoursMap = Partial<Record<WeekdayKey, BusinessHoursDay>>;
+const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
 type AppSettings = {
   salonName: string;
   phone: string;
@@ -99,6 +104,9 @@ type AppSettings = {
     allowReceptionChangeStatus: boolean;
     allowStaffViewClients: boolean;
     allowAdminManageUsers: boolean;
+  };
+  booking?: {
+    businessHours?: BusinessHoursMap;
   };
 };
 
@@ -154,6 +162,12 @@ function formatTime12(time24: string) {
   return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
 }
 
+function parseTimeToMinutes(time24: string): number | null {
+  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
 function bookingNoOf(b: Partial<Booking> | null | undefined) {
   const raw = String(b?.publicId || "").trim();
   if (!raw) return "—";
@@ -193,7 +207,8 @@ type OverviewProps = {
     totalOperations: number;
     employeesCount: number;
   };
-  latestBookings: Booking[];
+  scheduleBookings: Booking[];
+  businessHours?: BusinessHoursMap;
   onOpenBooking: (booking: Booking) => void;
   onQuickAction: (key: "newBooking" | "bookings" | "reports") => void;
   financial: {
@@ -206,7 +221,8 @@ type OverviewProps = {
 const DashboardOverview: React.FC<OverviewProps> = ({
   userInfo,
   stats,
-  latestBookings,
+  scheduleBookings,
+  businessHours,
   onOpenBooking,
   onQuickAction,
   financial,
@@ -221,6 +237,78 @@ const DashboardOverview: React.FC<OverviewProps> = ({
     } as Record<BookingStatus, string>),
     []
   );
+
+  const hourRows = useMemo(() => {
+    const bookingByHour = new Map<number, Booking[]>();
+
+    const sorted = (scheduleBookings || [])
+      .map((booking) => ({ booking, minute: parseTimeToMinutes(booking.time) }))
+      .filter((x): x is { booking: Booking; minute: number } => x.minute !== null)
+      .sort((a, b) => a.minute - b.minute);
+
+    sorted.forEach(({ booking, minute }) => {
+      const hour = Math.floor(minute / 60);
+      if (!bookingByHour.has(hour)) bookingByHour.set(hour, []);
+      bookingByHour.get(hour)!.push(booking);
+    });
+
+    const todayKey = JS_DAY_TO_WEEKDAY[new Date().getDay()] || "sun";
+    const todayHours = businessHours?.[todayKey];
+
+    const startMin = parseTimeToMinutes(String(todayHours?.start || ""));
+    const endMin = parseTimeToMinutes(String(todayHours?.end || ""));
+    const rows: Array<{ hour: number; bookings: Booking[] }> = [];
+
+    if (
+      todayHours?.enabled !== false &&
+      startMin !== null &&
+      endMin !== null &&
+      endMin > startMin
+    ) {
+      let startHour = Math.floor(startMin / 60);
+      let endHourExclusive = Math.ceil(endMin / 60);
+
+      if (bookingByHour.size > 0) {
+        const hours = Array.from(bookingByHour.keys()).sort((a, b) => a - b);
+        startHour = Math.min(startHour, hours[0]);
+        endHourExclusive = Math.max(endHourExclusive, hours[hours.length - 1] + 1);
+      }
+
+      for (let hour = startHour; hour < endHourExclusive; hour += 1) {
+        rows.push({ hour, bookings: bookingByHour.get(hour) || [] });
+      }
+      return rows;
+    }
+
+    if (bookingByHour.size > 0) {
+      const hours = Array.from(bookingByHour.keys()).sort((a, b) => a - b);
+      const minHour = hours[0];
+      const maxHour = hours[hours.length - 1];
+      for (let hour = minHour; hour <= maxHour; hour += 1) {
+        rows.push({ hour, bookings: bookingByHour.get(hour) || [] });
+      }
+    }
+
+    return rows;
+  }, [scheduleBookings, businessHours]);
+
+  const scheduleHint = useMemo(() => {
+    const todayKey = JS_DAY_TO_WEEKDAY[new Date().getDay()] || "sun";
+    const todayHours = businessHours?.[todayKey];
+
+    if (todayHours?.enabled === false) return "اليوم مغلق حسب إعدادات ساعات العمل";
+
+    const start = String(todayHours?.start || "").trim();
+    const end = String(todayHours?.end || "").trim();
+    if (start && end) return `ساعات العمل اليوم: ${formatTime12(start)} - ${formatTime12(end)}`;
+
+    return "اضغط على أي حجز لعرض التفاصيل";
+  }, [businessHours]);
+
+  const formatHourLabel = (hour: number) => {
+    const normalized = ((hour % 24) + 24) % 24;
+    return formatTime12(`${String(normalized).padStart(2, "0")}:00`);
+  };
 
   return (
     <div className="overview-page">
@@ -320,47 +408,52 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 
         <div className="ov-card">
           <div className="ov-card-head">
-            <h3>الحجوزات الأخيرة</h3>
-            <span className="ov-actions-hint">اضغط على الصف لعرض التفاصيل</span>
+            <h3>جدول حجوزات اليوم حسب الساعة</h3>
+            <span className="ov-actions-hint">{scheduleHint}</span>
           </div>
 
           <div className="table-responsive">
             <table className="ov-table">
               <thead>
                 <tr>
-                  <th>رقم الحجز</th>
-                  <th>العميلة</th>
-                  <th>الخدمة</th>
-                  <th>التاريخ</th>
-                  <th>الوقت</th>
-                  <th>الحالة</th>
+                  <th>الساعة</th>
+                  <th>الحجوزات داخل الساعة</th>
                 </tr>
               </thead>
 
               <tbody>
-                {latestBookings.length === 0 ? (
+                {hourRows.length === 0 ? (
                   <tr>
-                    <td className="ov-empty" colSpan={6}>
-                      لا توجد حجوزات بعد
+                    <td className="ov-empty" colSpan={2}>
+                      لا توجد بيانات ساعات عمل أو حجوزات لليوم
                     </td>
                   </tr>
                 ) : (
-                  latestBookings.map((b) => (
-                    <tr
-                      key={b.id}
-                      className="ov-row-click"
-                      onClick={() => onOpenBooking(b)}
-                      title="اضغط لعرض التفاصيل"
-                    >
-                      <td>{bookingNoOf(b)}</td>
-                      <td>{b.customerName}</td>
-                      <td>{b.serviceName || b.serviceId || "-"}</td>
-                      <td>{b.date}</td>
-                      <td>{formatTime12(b.time)}</td>
+                  hourRows.map((row) => (
+                    <tr key={`h_${row.hour}`}>
+                      <td className="ov-hour-cell">{formatHourLabel(row.hour)}</td>
                       <td>
-                        <span className={`status-badge ${b.status}`}>
-                          {statusLabel[b.status]}
-                        </span>
+                        {row.bookings.length === 0 ? (
+                          <span className="ov-hour-empty-chip">لا يوجد حجز</span>
+                        ) : (
+                          <div className="ov-hour-bookings">
+                            {row.bookings.map((b) => (
+                              <button
+                                key={`${row.hour}_${b.id}`}
+                                type="button"
+                                className="ov-hour-booking-pill"
+                                onClick={() => onOpenBooking(b)}
+                                title="عرض تفاصيل الحجز"
+                              >
+                                <span className="ov-hour-booking-name">{b.customerName}</span>
+                                <span className="ov-hour-booking-time">{formatTime12(b.time)}</span>
+                                <span className={`status-badge ${b.status}`}>
+                                  {statusLabel[b.status]}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -370,27 +463,36 @@ const DashboardOverview: React.FC<OverviewProps> = ({
           </div>
 
           <div className="ov-latest-mobile">
-            {latestBookings.length === 0 ? (
-              <div className="ov-empty">لا توجد حجوزات بعد</div>
+            {hourRows.length === 0 ? (
+              <div className="ov-empty">لا توجد بيانات ساعات عمل أو حجوزات لليوم</div>
             ) : (
-              latestBookings.map((b) => (
-                <button
-                  key={`m_${b.id}`}
-                  type="button"
-                  className="ov-mobile-booking"
-                  onClick={() => onOpenBooking(b)}
-                >
-                  <div className="ov-mobile-top">
-                    <strong>{bookingNoOf(b)}</strong>
-                    <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
-                  </div>
-                  <div className="ov-mobile-customer">{b.customerName}</div>
-                  <div className="ov-mobile-service">{b.serviceName || b.serviceId || "-"}</div>
-                  <div className="ov-mobile-meta">
-                    <span>{b.date}</span>
-                    <span>{formatTime12(b.time)}</span>
-                  </div>
-                </button>
+              hourRows.map((row) => (
+                <div key={`m_h_${row.hour}`} className="ov-hour-mobile-row">
+                  <div className="ov-hour-mobile-title">{formatHourLabel(row.hour)}</div>
+                  {row.bookings.length === 0 ? (
+                    <div className="ov-hour-mobile-empty">لا يوجد حجز</div>
+                  ) : (
+                    <div className="ov-hour-mobile-list">
+                      {row.bookings.map((b) => (
+                        <button
+                          key={`m_${row.hour}_${b.id}`}
+                          type="button"
+                          className="ov-hour-mobile-booking"
+                          onClick={() => onOpenBooking(b)}
+                        >
+                          <div className="ov-hour-mobile-top">
+                            <strong>{b.customerName}</strong>
+                            <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
+                          </div>
+                          <div className="ov-hour-mobile-meta">
+                            <span>{formatTime12(b.time)}</span>
+                            <span>{b.serviceName || b.serviceId || "-"}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))
             )}
           </div>
@@ -491,7 +593,7 @@ const Dashboard: React.FC = () => {
     employeesCount: 0,
   });
 
-  const [latestBookings, setLatestBookings] = useState<Booking[]>([]);
+  const [todayScheduleBookings, setTodayScheduleBookings] = useState<Booking[]>([]);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const [expensesTotalFS, setExpensesTotalFS] = useState(0);
@@ -553,7 +655,7 @@ const Dashboard: React.FC = () => {
         totalRevenue: 0,
         totalOperations: 0,
       }));
-      setLatestBookings([]);
+      setTodayScheduleBookings([]);
       setExpensesTotalFS(0);
       setIncomeTotalFS(0);
       return;
@@ -663,7 +765,7 @@ const Dashboard: React.FC = () => {
         setExpensesTotalFS(0);
       }
 
-      step = "ui:setStats/setLatestBookings";
+      step = "ui:setStats/setTodayScheduleBookings";
       setStats({
         todayBookings: todayList.length,
         totalRevenue: todayRevenue,
@@ -671,7 +773,18 @@ const Dashboard: React.FC = () => {
         employeesCount,
       });
 
-      setLatestBookings(uiBookings.slice(0, 5));
+      const todaySchedule = todayListAll
+        .filter((b) => b.status !== "cancelled")
+        .sort((a, b) => {
+          const aMin = parseTimeToMinutes(a.time);
+          const bMin = parseTimeToMinutes(b.time);
+          if (aMin === null && bMin === null) return 0;
+          if (aMin === null) return 1;
+          if (bMin === null) return -1;
+          return aMin - bMin;
+        });
+
+      setTodayScheduleBookings(todaySchedule);
 
       console.log("REFRESH -> done ✅");
     } catch (e) {
@@ -688,7 +801,7 @@ const Dashboard: React.FC = () => {
         totalRevenue: 0,
         totalOperations: 0,
       }));
-      setLatestBookings([]);
+      setTodayScheduleBookings([]);
       setExpensesTotalFS(0);
       setIncomeTotalFS(0); // ✅ FIX (كان ناقص)
     }
@@ -862,6 +975,7 @@ const Dashboard: React.FC = () => {
     if (!canRun) return;
 
     const role = userInfo.role; // ✅ ثبت الدور هنا عشان TS ما يقول userInfo ممكن null
+    const businessHoursMap = (settings as any)?.booking?.businessHours || {};
 
     let alive = true;
     let running = false;
@@ -875,24 +989,57 @@ const Dashboard: React.FC = () => {
       return { hh, mm };
     };
 
-    const toDateStart = (dateStr: string, timeStr: string) => {
-      const parts = String(dateStr || "").split("-").map(Number);
-      if (parts.length !== 3) return null;
-      const [y, mo, d] = parts;
-
-      const t = parseHHMM(timeStr);
-      if (!t) return null;
-
-      return new Date(y, (mo || 1) - 1, d || 1, t.hh, t.mm, 0, 0);
+    const parseISODate = (dateStr: string) => {
+      const m = String(dateStr || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return null;
+      const y = Number(m[1]);
+      const mo = Number(m[2]);
+      const d = Number(m[3]);
+      if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+      return { y, mo, d };
     };
 
-    const isPastOrToday = (dateStr: string) => {
-      const parts = String(dateStr || "").split("-").map(Number);
-      if (parts.length !== 3) return false;
-      const [y, mo, d] = parts;
+    const resolveWeekdayFromISO = (dateStr: string): WeekdayKey | null => {
+      const p = parseISODate(dateStr);
+      if (!p) return null;
+      const dt = new Date(p.y, Math.max(0, p.mo - 1), p.d);
+      return JS_DAY_TO_WEEKDAY[dt.getDay()] || null;
+    };
 
-      const day = new Date(y, (mo || 1) - 1, d || 1, 23, 59, 59, 999);
-      return day.getTime() <= Date.now();
+    const toMinutesFromHHMM = (timeStr: string): number | null => {
+      const t = parseHHMM(timeStr);
+      if (!t) return null;
+      return t.hh * 60 + t.mm;
+    };
+
+    // ✅ ليلية-aware:
+    // - الحجز يظل business-date كما هو
+    // - لكن لو اليوم Overnight (start > end) والوقت بعد منتصف الليل (< end) نحسبه اليوم التالي فعليًا
+    const toEffectiveDateStart = (dateStr: string, timeStr: string) => {
+      const p = parseISODate(dateStr);
+      const t = parseHHMM(timeStr);
+      if (!p || !t) return null;
+
+      const start = new Date(p.y, Math.max(0, p.mo - 1), p.d, t.hh, t.mm, 0, 0);
+
+      const dayKey = resolveWeekdayFromISO(dateStr);
+      if (!dayKey) return start;
+
+      const dayCfg = (businessHoursMap as any)?.[dayKey] || {};
+      const openMin = toMinutesFromHHMM(String(dayCfg?.start || ""));
+      const closeMin = toMinutesFromHHMM(String(dayCfg?.end || ""));
+      const slotMin = t.hh * 60 + t.mm;
+
+      const isOvernight =
+        openMin !== null &&
+        closeMin !== null &&
+        openMin > closeMin;
+
+      if (isOvernight && closeMin !== null && slotMin < closeMin) {
+        start.setDate(start.getDate() + 1);
+      }
+
+      return start;
     };
 
     async function tick() {
@@ -902,21 +1049,15 @@ const Dashboard: React.FC = () => {
 
       try {
         const rows = await listAllBookingsFS();
-
-        const filtered = rows.filter((b: any) => {
-          if (!b?.date) return false;
-          return isPastOrToday(b.date);
-        });
-
         const now = new Date();
 
-        for (const b of filtered) {
+        for (const b of rows) {
           if (!b?.date || !b?.time) continue;
 
           const st = String(b.status || "pending");
           if (st !== "pending" && st !== "confirmed") continue;
 
-          const start = toDateStart(b.date, b.time);
+          const start = toEffectiveDateStart(String(b.date || ""), String(b.time || ""));
           if (!start) continue;
 
           // ✅ SAFE duration (بدون كراش)
@@ -951,7 +1092,7 @@ const Dashboard: React.FC = () => {
       alive = false;
       window.clearInterval(id);
     };
-  }, [userInfo?.role]);
+  }, [userInfo?.role, settings.booking?.businessHours]);
 
   const handleLogout = async () => {
     try {
@@ -1413,7 +1554,8 @@ const Dashboard: React.FC = () => {
                       <DashboardOverview
                         userInfo={userInfo}
                         stats={stats}
-                        latestBookings={latestBookings}
+                        scheduleBookings={todayScheduleBookings}
+                        businessHours={settings.booking?.businessHours}
                         onOpenBooking={handleOpenBooking}
                         onQuickAction={handleQuickAction}
                         financial={{
@@ -1444,7 +1586,8 @@ const Dashboard: React.FC = () => {
                       <DashboardOverview
                         userInfo={userInfo}
                         stats={stats}
-                        latestBookings={latestBookings}
+                        scheduleBookings={todayScheduleBookings}
+                        businessHours={settings.booking?.businessHours}
                         onOpenBooking={handleOpenBooking}
                         onQuickAction={handleQuickAction}
                         financial={{
