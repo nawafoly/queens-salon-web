@@ -300,6 +300,7 @@
   overflow-x: hidden;
   padding: 12px 12px;
   direction: ltr;
+  overscroll-behavior: contain;
   /* Smooth scrolling on iOS */
   -webkit-overflow-scrolling: touch;
 
@@ -476,6 +477,7 @@
   grid-template-columns: 1fr auto;
   gap: 10px;
   align-items: center;
+  padding-bottom: max(0px, env(safe-area-inset-bottom));
 }
 
 .chatbot-input-row input{
@@ -795,5 +797,4 @@
   width: 100% !important;
   max-width: none !important;
 }
-
 

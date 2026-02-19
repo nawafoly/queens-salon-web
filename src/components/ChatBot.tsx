@@ -1260,8 +1260,8 @@ const ChatBot: React.FC = () => {
       });
       const safeOffset = Math.max(0, Math.round(topOffset));
       const vv = window.visualViewport;
-      const viewportHeight = vv ? vv.height : window.innerHeight;
-      const usableHeight = Math.max(360, Math.floor(viewportHeight - safeOffset));
+      const viewportHeight = vv ? vv.height + vv.offsetTop : window.innerHeight;
+      const usableHeight = Math.max(240, Math.floor(viewportHeight - safeOffset));
       setChatViewportHeight(`${usableHeight}px`);
     };
 
@@ -1274,6 +1274,9 @@ const ChatBot: React.FC = () => {
     const delayed = window.setTimeout(updateChatViewportHeight, 80);
     window.addEventListener("resize", scheduleUpdate);
     window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("orientationchange", scheduleUpdate);
+    window.addEventListener("focusin", scheduleUpdate);
+    window.addEventListener("focusout", scheduleUpdate);
     window.visualViewport?.addEventListener("resize", scheduleUpdate);
     window.visualViewport?.addEventListener("scroll", scheduleUpdate);
 
@@ -1282,6 +1285,9 @@ const ChatBot: React.FC = () => {
       window.clearTimeout(delayed);
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("orientationchange", scheduleUpdate);
+      window.removeEventListener("focusin", scheduleUpdate);
+      window.removeEventListener("focusout", scheduleUpdate);
       window.visualViewport?.removeEventListener("resize", scheduleUpdate);
       window.visualViewport?.removeEventListener("scroll", scheduleUpdate);
     };

@@ -193,7 +193,7 @@ const App: React.FC = () => {
 
   return (
     <div className="app">
-      {!isInDashboard && <Navbar />}
+      {!isInDashboard && !isChatPage && <Navbar />}
 
       <main className="main-content">
         <ScrollToTop />
