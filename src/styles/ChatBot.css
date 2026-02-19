@@ -16,6 +16,10 @@
   inset: auto;
   width: 100%;
   background: transparent !important;
+  /* Ensure the container takes up the full available height */
+  height: var(--chatbot-vh-height, 100dvh);
+  display: flex;
+  flex-direction: column;
 }
 
 /* Floating toggle button (Black Glass) */
@@ -42,26 +46,36 @@
 }
 
 .chatbot-page{
-  min-height: var(--chatbot-page-height, 100dvh);
+  /* Use the dynamic variable or fallback to 100dvh */
+  height: var(--chatbot-vh-height, 100dvh);
+  min-height: -webkit-fill-available;
   padding: 0;
   display: flex;
   align-items: stretch;
   justify-content: center;
   background: transparent !important;
+  overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
 }
 
 .chatbot-panel-page{
   position: relative;
   width: 100%;
-  height: var(--chatbot-page-height, 100dvh);
-  max-height: var(--chatbot-page-height, 100dvh);
-  border-radius: 24px;
-  border: 1px solid rgba(245,245,244,0.12);
-  box-shadow: 0 22px 58px rgba(0,0,0,0.52);
-  background: rgba(0,0,0,0.76);
+  /* Match the dynamic height */
+  height: var(--chatbot-vh-height, 100dvh);
+  max-height: 100%;
+  border-radius: 0; /* Full screen on mobile page usually looks better without gaps */
+  border: none;
+  box-shadow: none;
+  background: rgba(0,0,0,0.85);
   backdrop-filter: blur(20px) saturate(120%);
   -webkit-backdrop-filter: blur(20px) saturate(120%);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .chatbot-page .chatbot-header{
@@ -282,9 +296,12 @@
 /* Body */
 .chatbot-body{
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 12px;
   direction: ltr;
+  /* Smooth scrolling on iOS */
+  -webkit-overflow-scrolling: touch;
 
   background:
     radial-gradient(1000px 420px at 80% 0%, rgba(0,0,0,0.10), transparent 55%),
@@ -380,6 +397,9 @@
   border-top: 1px solid rgba(245,245,244,0.12);
   background: rgba(245,245,244,0.05);
   padding: 10px 10px 12px;
+  /* Critical for iOS: prevent the footer from jumping or being hidden */
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  flex-shrink: 0;
 }
 
 .chatbot-hints-toggle{
