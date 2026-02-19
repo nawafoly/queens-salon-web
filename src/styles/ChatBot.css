@@ -10,16 +10,16 @@
 }
 
 .chatbot.chatbot-page{
-  position: relative;
-  right: auto;
-  bottom: auto;
-  inset: auto;
+  position: fixed;
+  inset: 0;
+  right: 0;
+  bottom: 0;
   width: 100%;
   background: transparent !important;
-  /* Ensure the container takes up the full available height */
-  height: var(--chatbot-vh-height, 100dvh);
+  height: var(--chatbot-page-height, 100dvh);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* Floating toggle button (Black Glass) */
