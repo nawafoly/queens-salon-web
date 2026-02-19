@@ -1,25 +1,16 @@
-// ✅ src/components/ChatBot.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCommentDots } from "@fortawesome/free-solid-svg-icons";
-
-import { generateSalonTimeSlots } from "../helpers/timeSlots";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { db } from "../services/firebase";
 import { formatTime12 } from "../helpers/timeDisplay";
+import { generateSalonTimeSlots } from "../helpers/timeSlots";
 import "../styles/ChatBot.css";
 
-import { db } from "../services/firebase";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
-
 type Sender = "user" | "bot";
+type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+type FlowStep = "idle" | "ask_section" | "ask_category" | "ask_service" | "ask_date";
 
 type Action =
   | { type: "send"; label: string; value: string }
@@ -36,11 +27,7 @@ interface Message {
 type OfferLike = {
   id?: string | number;
   title?: string;
-  description?: string;
   code?: string;
-  discountPercent?: number;
-  discountPrice?: number;
-  originalPrice?: number;
   validUntil?: string;
   startDate?: string;
   endDate?: string;
@@ -55,6 +42,37 @@ type ServiceDoc = {
   durationMin?: number;
   active?: boolean;
   sectionId?: string;
+  categoryId?: string;
+  category?: string;
+  categoryName?: string;
+  "التصنيف"?: string;
+  "الاسم"?: string;
+  "category_ar"?: string;
+  "name_ar"?: string;
+};
+
+type SectionDoc = {
+  id: string;
+  name?: string;
+  title?: string;
+  active?: boolean;
+  "الاسم"?: string;
+  "name_ar"?: string;
+};
+
+type CategoryDoc = {
+  id: string;
+  sectionId?: string;
+  name?: string;
+  title?: string;
+  active?: boolean;
+  "الاسم"?: string;
+  "name_ar"?: string;
+};
+
+type CategoryOption = {
+  id?: string;
+  name: string;
 };
 
 type PublicSettings = {
@@ -64,10 +82,30 @@ type PublicSettings = {
   hoursText?: string;
 };
 
-type BookingDoc = {
-  id: string;
-  date?: string; // "YYYY-MM-DD"
-  time?: string; // "HH:mm"
+type BusinessHoursDay = {
+  enabled: boolean;
+  start: string;
+  end: string;
+};
+
+type BookingSettingsLite = {
+  slotStepMin: number;
+  businessHours: Record<WeekdayKey, BusinessHoursDay>;
+  holidays: Array<{ date: string; reason?: string }>;
+  closures: Array<{ from: string; to: string; message?: string }>;
+  publicClosedMessage?: string;
+};
+
+type BookingFlow = {
+  step: FlowStep;
+  intent?: "booking" | "pricing";
+  sectionId?: string;
+  sectionName?: string;
+  categoryId?: string;
+  categoryName?: string;
+  serviceId?: string;
+  serviceName?: string;
+  suggestedDateISO?: string;
 };
 
 const STORAGE = {
@@ -87,11 +125,36 @@ const STORAGE = {
 };
 
 const SALON_ID = "main";
-const hours = generateSalonTimeSlots();
+const ACTION_SECTION_PREFIX = "section::";
+const ACTION_CATEGORY_PREFIX = "category::";
+const ACTION_CATEGORY_NAME_PREFIX = "category_name::";
+const ACTION_SERVICE_PREFIX = "service::";
+const ACTION_CONTINUE_BOOKING = "__continue_booking__";
+const ACTION_SHOW_OPEN_DAYS = "__show_open_days__";
+const INITIAL_BOT_MESSAGE = "مرحبًا 👋 أنا مساعدتك في صالون ملكات.\nاكتبي سؤالك وأنا معك.";
 
-/* ==============================
-   ✅ Helpers
-================================ */
+const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
+  sat: "السبت",
+  sun: "الأحد",
+  mon: "الاثنين",
+  tue: "الثلاثاء",
+  wed: "الأربعاء",
+  thu: "الخميس",
+  fri: "الجمعة",
+};
+
+const defaultBusinessHours = (): Record<WeekdayKey, BusinessHoursDay> => ({
+  sat: { enabled: true, start: "12:00", end: "22:00" },
+  sun: { enabled: true, start: "12:00", end: "22:00" },
+  mon: { enabled: true, start: "12:00", end: "22:00" },
+  tue: { enabled: true, start: "12:00", end: "22:00" },
+  wed: { enabled: true, start: "12:00", end: "22:00" },
+  thu: { enabled: true, start: "12:00", end: "22:00" },
+  fri: { enabled: false, start: "12:00", end: "22:00" },
+});
+
+const defaultFlow: BookingFlow = { step: "idle" };
+
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
     return raw ? (JSON.parse(raw) as T) : fallback;
@@ -102,6 +165,7 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
 
 const normalizeArabic = (s: string) =>
   s
+    .replace(/[\u200c\u200d\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
     .replace(/[إأآا]/g, "ا")
     .replace(/ة/g, "ه")
     .replace(/ى/g, "ي")
@@ -109,68 +173,195 @@ const normalizeArabic = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const normalizeDigits = (s: string) =>
+  String(s || "")
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[غ°-غ¹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
+
 const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+const toWhatsAppLink = (rawPhone: string) => {
+  const digits = String(rawPhone || "").replace(/[^\d+]/g, "");
+  if (!digits) return "https://wa.me/";
+  let normalized = digits.replace(/^\+/, "");
+  if (normalized.startsWith("00")) normalized = normalized.slice(2);
+  if (normalized.startsWith("05")) normalized = `966${normalized.slice(1)}`;
+  return `https://wa.me/${normalized}`;
+};
 
-const isGreeting = (qRaw: string) => {
-  const q = normalizeArabic(qRaw.toLowerCase());
-  return /(السلام عليكم|وعليكم السلام|هلا|هلا والله|اهلين|اهلا|مرحبا|مرحب|هاي|hi|hello)/i.test(
-    q
+const getLabel = (x: any) =>
+  String(x?.name ?? x?.title ?? x?.["الاسم"] ?? x?.["name_ar"] ?? "").trim();
+
+const getServiceName = (x: any) =>
+  String(x?.name ?? x?.["الاسم"] ?? x?.["name_ar"] ?? "").trim();
+
+const getServiceCategoryName = (x: any) =>
+  String(x?.category ?? x?.categoryName ?? x?.["التصنيف"] ?? x?.["category_ar"] ?? "").trim();
+
+const isGreeting = (qRaw: string) =>
+  /(السلام\s*(عليكم|عليكم|علكيم|علكم|عليكم|عليكو|عليك)|وعليكم\s*السلام|يا\s*هلا|ياهلا|هلا|اهلا|اهلين|مرحبا|hi|hello)/i.test(
+    normalizeArabic(qRaw.toLowerCase())
   );
+
+const resolveGreetingReply = (qRaw: string) => {
+  const q = normalizeArabic(qRaw.toLowerCase());
+  if (/(السلام\s*(عليكم|عليكم|علكيم|علكم|عليكم|عليكو|عليك)|وعليكم\s*السلام)/i.test(q)) return "وعليكم السلام 💜";
+  if (/(يا\s*هلا|ياهلا|هلا|اهلا|اهلين)/i.test(q)) return "أهلين 💜";
+  if (/مرحبا/i.test(q)) return "مرحبًا 💜";
+  if (/(hi|hello)/i.test(qRaw.toLowerCase())) return "Hello 💜";
+  return "أهلًا وسهلًا 💜";
 };
 
-const isThanks = (qRaw: string) => {
-  const q = normalizeArabic(qRaw.toLowerCase());
-  return /(شكرا|شكرًا|يعطيك العافيه|مشكور|تسلم|الله يعطيك العافيه)/i.test(q);
-};
+const isHowAreYou = (qRaw: string) =>
+  /(كيف حالك|كيفك|شلونك|اخبارك|how are you)/i.test(normalizeArabic(qRaw.toLowerCase()));
 
-const isBye = (qRaw: string) => {
-  const q = normalizeArabic(qRaw.toLowerCase());
-  return /(مع السلامه|باي|وداع|اشوفك|تصبح|تصبحون)/i.test(q);
-};
+const isBotIdentity = (qRaw: string) =>
+  /(مين انتي|من انتي|وش انتي|من تكونين|انت مين|انتي مين|من انت|من انتي|who are you)/i.test(normalizeArabic(qRaw.toLowerCase()));
 
-const isComplaint = (qRaw: string) => {
-  const q = normalizeArabic(qRaw.toLowerCase());
-  return /(سيء|سيئ|مو زين|زفت|خايس|يزعل|مضايق|ما عجبني|خدمتكم سيئه|تجربه سيئه)/i.test(
-    q
+const isThanks = (qRaw: string) =>
+  /(شكرا|شكراً|يعطيك العافيه|مشكور|تسلم|الله يعطيك العافيه)/i.test(
+    normalizeArabic(qRaw.toLowerCase())
   );
+
+const isBye = (qRaw: string) => /(مع السلامه|باي|وداع|اشوفك|تصبح)/i.test(normalizeArabic(qRaw.toLowerCase()));
+
+const isComplaint = (qRaw: string) =>
+  /(سيء|سيئ|مو زين|زفت|خايس|مضايق|ما عجبني|تجربه سيئه)/i.test(normalizeArabic(qRaw.toLowerCase()));
+
+const isSalonBrandMention = (qRaw: string) =>
+  /(صالون ملكات|ملكات|queens salon|queens)/i.test(normalizeArabic(qRaw.toLowerCase()));
+
+const isBookingIntent = (qRaw: string) =>
+  /(ابي احجز|ابغى احجز|احجزي موعد|احجز|حجز|ابي موعد|ابغى موعد|book|booking|reservation)/i.test(
+    normalizeArabic(qRaw.toLowerCase())
+  );
+
+const isPricingIntent = (qRaw: string) =>
+  /(قائمه الاسعار|عرض قائمه الاسعار|الاسعار|اسعاركم|بكم|كم سعر|price|pricing)/i.test(
+    normalizeArabic(qRaw.toLowerCase())
+  );
+
+const isOffersIntent = (qRaw: string) =>
+  /(العروض|عروض|الخصومات|خصومات|تخفيضات|تخفيض|برومو|كوبون|offer|offers|discount)/i.test(
+    normalizeArabic(qRaw.toLowerCase())
+  );
+
+const isContactIntent = (qRaw: string) =>
+  /(تواصل|اتصال|رقم|واتس|واتساب|whatsapp|موقع|عنوان|وينكم|اوقات الدوام)/i.test(
+    normalizeArabic(qRaw.toLowerCase())
+  );
+
+const isAvailabilityIntent = (qRaw: string) =>
+  /(اوقات متاحه|اوقات متاحه|مواعيد متاحه|مواعيد متاحه|وقت متاح|available|slots|timeslots)/i.test(
+    normalizeArabic(qRaw.toLowerCase())
+  );
+
+const isResetIntent = (qRaw: string) =>
+  /(الغاء|إلغاء|كنسل|cancel|stop|خلاص|ابدا من جديد|restart|reset)/i.test(
+    normalizeArabic(qRaw.toLowerCase())
+  );
+
+const isHelpIntent = (qRaw: string) =>
+  /(ساعدني|ساعديني|مساعده|مساعدة|help|ما فهمت|وش اقدر|ايش الخدمات)/i.test(
+    normalizeArabic(qRaw.toLowerCase())
+  );
+
+const isTopicSwitchIntent = (qRaw: string) =>
+  /(غير الموضوع|موضوع ثاني|خلينا نغير|نغير الموضوع|مو هذا|شي ثاني|موضوع اخر|change topic|something else)/i.test(
+    normalizeArabic(qRaw.toLowerCase())
+  );
+
+const toISODate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const todayISO = () => toISODate(new Date());
+const addDaysISO = (iso: string, days: number) => {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+};
+const toDMY = (iso: string) => {
+  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  return `${m[3]}-${m[2]}-${m[1]}`;
 };
 
-const extractDate = (text: string): string | null => {
-  const m = text.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-  return m ? m[1] : null;
+const parseDateSmart = (text: string): string | null => {
+  const raw = normalizeDigits(text || "").trim();
+  const q = normalizeArabic(raw.toLowerCase());
+  if (!raw) return null;
+
+  const iso = raw.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (iso) return iso[1];
+
+  const dm = raw.match(/\b(\d{1,2})[/-](\d{1,2})\b/);
+  if (dm) {
+    const d = Number(dm[1]);
+    const m = Number(dm[2]);
+    if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
+      const now = new Date();
+      let y = now.getFullYear();
+      const candidate = new Date(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}T00:00:00`);
+      const today = new Date(`${toISODate(now)}T00:00:00`);
+      if (candidate < today) y += 1;
+      return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+  }
+
+  const base = todayISO();
+  if (/(^|\s)(اليوم|today|now)(\s|$)/i.test(q)) return base;
+  if (/(^|\s)(بكره|بكرة|غدا|tomorrow)(\s|$)/i.test(q)) return addDaysISO(base, 1);
+  if (/(بعد بكره|بعد بكرة|day after tomorrow)/i.test(q)) return addDaysISO(base, 2);
+
+  const dayMap: Array<{ r: RegExp; day: number }> = [
+    { r: /(الاحد|الأحد|sunday)/i, day: 0 },
+    { r: /(الاثنين|الإثنين|monday)/i, day: 1 },
+    { r: /(الثلاثاء|tuesday)/i, day: 2 },
+    { r: /(الاربعاء|الأربعاء|wednesday)/i, day: 3 },
+    { r: /(الخميس|thursday)/i, day: 4 },
+    { r: /(الجمعة|friday)/i, day: 5 },
+    { r: /(السبت|saturday)/i, day: 6 },
+  ];
+  const hit = dayMap.find((x) => x.r.test(q));
+  if (!hit) return null;
+  const now = new Date(`${base}T00:00:00`);
+  let diff = hit.day - now.getDay();
+  if (diff < 0) diff += 7;
+  if (diff === 0 && /(الجاي|القادم|next)/i.test(q)) diff = 7;
+  return addDaysISO(base, diff);
 };
 
-const extractTime = (text: string): string | null => {
-  const m = text.match(/\b(\d{1,2}:\d{2})\b/);
-  return m ? m[1] : null;
+const resolveWeekdayFromISO = (isoDate: string): WeekdayKey => {
+  const d = new Date(`${isoDate}T00:00:00`);
+  const day = Number.isNaN(d.getTime()) ? new Date().getDay() : d.getDay();
+  if (day === 0) return "sun";
+  if (day === 1) return "mon";
+  if (day === 2) return "tue";
+  if (day === 3) return "wed";
+  if (day === 4) return "thu";
+  if (day === 5) return "fri";
+  return "sat";
 };
 
 function formatAvailableTimes(times: string[]) {
   if (!times.length) return "للأسف ما فيه أوقات متاحة بهذا اليوم.";
   const chunk = times.slice(0, 10);
   return (
-    "⏰ **الأوقات المتاحة:**\n" +
+    "🕒 **الأوقات المتاحة:**\n" +
     chunk.map((t) => `• ${formatTime12(t, t)}`).join("\n") +
     (times.length > chunk.length ? `\n\n… وفيه ${times.length - chunk.length} وقت إضافي.` : "")
   );
 }
 
-/* ==============================
-   ✅ Offers fallback (LocalStorage)
-================================ */
 function readOffersFromLocalStorage(): OfferLike[] {
   for (const key of STORAGE.OFFERS_KEYS) {
     const raw = localStorage.getItem(key);
     if (!raw) continue;
     const parsed = safeJsonParse<any>(raw, null);
-
-    if (Array.isArray(parsed)) return parsed as OfferLike[];
-
+    if (Array.isArray(parsed)) return parsed;
     if (parsed && typeof parsed === "object") {
-      if (Array.isArray(parsed.offers)) return parsed.offers as OfferLike[];
-      if (Array.isArray(parsed.coupons)) return parsed.coupons as OfferLike[];
-      if (Array.isArray(parsed.data)) return parsed.data as OfferLike[];
-      if (Array.isArray(parsed.items)) return parsed.items as OfferLike[];
+      if (Array.isArray(parsed.offers)) return parsed.offers;
+      if (Array.isArray(parsed.coupons)) return parsed.coupons;
+      if (Array.isArray(parsed.data)) return parsed.data;
+      if (Array.isArray(parsed.items)) return parsed.items;
     }
   }
   return [];
@@ -178,72 +369,47 @@ function readOffersFromLocalStorage(): OfferLike[] {
 
 function filterActiveOffers(offers: OfferLike[]): OfferLike[] {
   const today = new Date();
-  const toDate = (s?: string) => {
-    if (!s) return null;
-    const d = new Date(s);
-    return Number.isNaN(d.getTime()) ? null : d;
-  };
-
-  const isWithin = (start?: string, end?: string) => {
-    const s = toDate(start);
-    const e = toDate(end);
-    if (s && today < s) return false;
-    if (e && today > e) return false;
+  const toDate = (s?: string) => (s ? new Date(s) : null);
+  return offers.filter((o) => {
+    const flag = o.isActive ?? o.active;
+    const start = toDate(o.startDate);
+    const end = toDate(o.validUntil ?? o.endDate);
+    if (typeof flag === "boolean" && !flag) return false;
+    if (start && today < start) return false;
+    if (end && today > end) return false;
     return true;
-  };
-
-  return offers
-    .filter((o) => {
-      const flag = o.isActive ?? o.active;
-      const end = o.validUntil ?? o.endDate;
-      const start = o.startDate;
-
-      const okByFlag = typeof flag === "boolean" ? flag : true;
-      const okByDate = isWithin(start, end);
-      return okByFlag && okByDate;
-    })
-    .sort((a, b) => {
-      const da = (a.validUntil ?? a.endDate) || "9999-12-31";
-      const db = (b.validUntil ?? b.endDate) || "9999-12-31";
-      return da.localeCompare(db);
-    });
+  });
 }
-
-/* ==============================
-   ✅ Conversation State (الفلو الجديد)
-================================ */
-type FlowStep = "idle" | "ask_service" | "ask_date";
-
-type BookingFlow = {
-  step: FlowStep;
-  serviceId?: string;
-  serviceName?: string;
-  date?: string;
-};
-
-const defaultFlow: BookingFlow = { step: "idle" };
 
 const ChatBot: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [hintsOpen, setHintsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const location = useLocation();
   const navigate = useNavigate();
+  const isChatPage = location.pathname.startsWith("/chat");
 
   const [services, setServices] = useState<ServiceDoc[]>([]);
+  const [sections, setSections] = useState<SectionDoc[]>([]);
+  const [categories, setCategories] = useState<CategoryDoc[]>([]);
   const [publicSettings, setPublicSettings] = useState<PublicSettings | null>(null);
   const [bookingsCache, setBookingsCache] = useState<Record<string, string[]>>({});
   const [loadingCatalog, setLoadingCatalog] = useState(true);
-
-  // ✅ الحالة الجديدة
   const [flow, setFlow] = useState<BookingFlow>(defaultFlow);
+  const [chatViewportHeight, setChatViewportHeight] = useState("100dvh");
+  const [bookingSettings, setBookingSettings] = useState<BookingSettingsLite>({
+    slotStepMin: 5,
+    businessHours: defaultBusinessHours(),
+    holidays: [],
+    closures: [],
+    publicClosedMessage: "",
+  });
 
-  /** ✅ اقتراحات حسب الصفحة */
   const pageActions: Action[] = useMemo(() => {
     const path = location.pathname;
-
     if (path.startsWith("/booking")) {
       return [
         { type: "send", label: "احجزي موعد", value: "أبي أحجز" },
@@ -251,7 +417,6 @@ const ChatBot: React.FC = () => {
         { type: "send", label: "العروض والخصومات", value: "العروض والخصومات" },
       ];
     }
-
     if (path.startsWith("/offers")) {
       return [
         { type: "send", label: "العروض والخصومات", value: "العروض والخصومات" },
@@ -259,7 +424,6 @@ const ChatBot: React.FC = () => {
         { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
       ];
     }
-
     return [
       { type: "send", label: "احجزي موعد", value: "أبي أحجز" },
       { type: "send", label: "العروض والخصومات", value: "العروض والخصومات" },
@@ -268,207 +432,24 @@ const ChatBot: React.FC = () => {
     ];
   }, [location.pathname]);
 
-  /** ✅ تحميل المحادثة */
-  useEffect(() => {
-    const saved = safeJsonParse<Message[]>(localStorage.getItem(STORAGE.CHAT), []);
-    if (saved.length) {
-      setMessages(saved);
-      return;
-    }
-
-    setMessages([
-      {
-        id: Date.now(),
-        sender: "bot",
-        text: "مرحبًا 👋 أنا خبيرتك في صالون ملكات.\nتبغين أسعار، عروض، أو حجز؟",
-        actions: pageActions,
-        showAllPricesBtn: true,
-      },
-    ]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** ✅ تحديث اقتراحات أول رسالة */
-  useEffect(() => {
-    setMessages((prev) => {
-      if (!prev.length) return prev;
-      const first = prev[0];
-      if (first.sender === "bot" && prev.length === 1) {
-        return [{ ...first, actions: pageActions, showAllPricesBtn: true }];
-      }
-      return prev;
-    });
-  }, [pageActions]);
-
-  /** ✅ حفظ المحادثة */
-  useEffect(() => {
-    if (messages.length) {
-      localStorage.setItem(STORAGE.CHAT, JSON.stringify(messages.slice(-60)));
-    }
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  /** ✅ تحميل بيانات Firebase */
-  useEffect(() => {
-    const loadData = async () => {
-      setLoadingCatalog(true);
-      try {
-        const srvSnap = await getDocs(collection(db, "salons", SALON_ID, "services"));
-        const srv: ServiceDoc[] = srvSnap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as any),
-        }));
-
-        setServices(srv);
-
-        const pubRef = doc(db, "salons", SALON_ID, "settings", "public");
-        const pubSnap = await getDoc(pubRef);
-        setPublicSettings(pubSnap.exists() ? (pubSnap.data() as any) : null);
-      } catch (e) {
-        console.error("ChatBot loadData error:", e);
-      } finally {
-        setLoadingCatalog(false);
-      }
-    };
-
-    loadData();
-  }, []);
-
-  const replyContact = () => {
-    const phone =
-    (publicSettings as any)?.phone ||
-    (publicSettings as any)?.mobile ||
-    (publicSettings as any)?.tel ||
-    "05xxxxxxxx";
-  
-  const whatsapp =
-    (publicSettings as any)?.whatsapp ||
-    (publicSettings as any)?.wa ||
-    phone;
-  
-  const locationText =
-    (publicSettings as any)?.locationText ||
-    (publicSettings as any)?.location ||
-    "الرياض";
-  
-  const hoursText =
-    (publicSettings as any)?.hoursText ||
-    (publicSettings as any)?.hours ||
-    "يوميًا 12:00م — 11:00م";
-  
-
-    return {
-      text:
-        "📍 **طرق التواصل:**\n" +
-        `• الجوال: ${phone}\n` +
-        `• واتساب: ${whatsapp}\n` +
-        `• الموقع: ${locationText}\n` +
-        `• ساعات العمل: ${hoursText}\n\n` +
-        "تبغين أحجز لك موعد الآن؟",
-      actions: [
-        { type: "send", label: "احجزي موعد", value: "أبي أحجز" },
-        { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
-      ] as Action[],
-    };
-  };
-
-  const buildOffersReply = () => {
-    const active = filterActiveOffers(readOffersFromLocalStorage());
-
-    if (!active.length) {
-      return {
-        text: "حاليًا ما عندنا عروض فعّالة مسجّلة.\nتبغين أعرض لك قائمة الأسعار؟",
-        actions: [
-          { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
-          { type: "route", label: "صفحة العروض", value: "/offers" },
-        ] as Action[],
-      };
-    }
-
-    const top = active.slice(0, 5);
-    const lines = top.map((o) => {
-      const title = o.title || "عرض";
-      const code = o.code ? ` | الكود: ${o.code}` : "";
-      const end = o.validUntil ?? o.endDate;
-      const until = end ? ` | حتى: ${end}` : "";
-      const pct = typeof o.discountPercent === "number" ? `خصم ${o.discountPercent}%` : "";
-      const price =
-        typeof o.discountPrice === "number" && typeof o.originalPrice === "number"
-          ? `بدل ${o.originalPrice} صار ${o.discountPrice}`
-          : "";
-
-      const extra = [pct, price].filter(Boolean).join(" - ");
-      return `• ${title}${extra ? ` (${extra})` : ""}${code}${until}`;
-    });
-
-    return {
-      text: "🎉 **العروض الحالية:**\n" + lines.join("\n\n") + "\n\nتبغين نحجز لك موعد؟",
-      actions: [
-        { type: "send", label: "احجزي موعد", value: "أبي أحجز" },
-        { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
-      ] as Action[],
-    };
-  };
-
-  const buildPricesListReply = () => {
-    if (loadingCatalog) {
-      return {
-        text: "لحظة 💜 قاعدة أحمّل قائمة الخدمات والأسعار من النظام…",
-        actions: [{ type: "route", label: "احجزي الآن", value: "/booking" }] as Action[],
-      };
-    }
-
-    const list = services
-      .filter((s) => s.active !== false)
-      .slice(0, 12)
-      .map((s) => {
-        const p = typeof s.price === "number" ? `${s.price} ريال` : "اسألي عن السعر";
-        return `• ${s.name || "خدمة"}: ${p}`;
-      })
-      .join("\n");
-
-    return {
-      text:
-        "💰 **الأسعار من النظام:**\n" +
-        (list || "ما فيه خدمات محمّلة حاليًا.") +
-        "\n\nتبين حجز؟ اكتبي: (أبي أحجز) ✨",
-      actions: [
-        { type: "send", label: "أبي أحجز", value: "أبي أحجز" },
-        { type: "send", label: "طرق التواصل", value: "طرق التواصل" },
-      ] as Action[],
-      showAllPricesBtn: true,
-    };
-  };
-
-  const getBookedTimesForDate = async (dateISO: string): Promise<string[]> => {
-    if (bookingsCache[dateISO]) return bookingsCache[dateISO];
-
-    try {
-      const qy = query(
-        collection(db, "salons", SALON_ID, "bookings"),
-        where("date", "==", dateISO)
-      );
-      const snap = await getDocs(qy);
-      const times = snap.docs
-        .map((d) => (d.data() as any)?.time)
-        .map((t) => String(t || "").trim())
-        .filter(Boolean);
-
-      setBookingsCache((prev) => ({ ...prev, [dateISO]: times }));
-      return times;
-    } catch (e) {
-      console.error("getBookedTimesForDate error:", e);
-      setBookingsCache((prev) => ({ ...prev, [dateISO]: [] }));
-      return [];
-    }
-  };
-
-  const calcAvailableTimes = (bookedTimes: string[]) => {
-    const taken = new Set(bookedTimes.map((t) => String(t).trim()));
-    return hours
-      .filter((slot) => !taken.has(slot.value24))
-      .map((slot) => slot.label12);
-  };
+  const footerQuickActions: Action[] = useMemo(
+    () => [
+      flow.step === "idle"
+        ? { type: "send", label: "احجزي موعد", value: "أبي أحجز" }
+        : { type: "send", label: "كمّلي الحجز", value: ACTION_CONTINUE_BOOKING },
+      { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
+      { type: "send", label: "العروض والخصومات", value: "العروض والخصومات" },
+      { type: "send", label: "طرق التواصل", value: "طرق التواصل" },
+      { type: "send", label: "المواعيد المتاحة", value: "المواعيد المتاحة" },
+      { type: "send", label: "إلغاء / إعادة البدء", value: "إلغاء" },
+    ],
+    [flow.step]
+  );
+  const activeServices = useMemo(() => services.filter((s) => s.active !== false), [services]);
+  const activeSections = useMemo(
+    () => sections.filter((s) => s.active !== false).filter((s) => !!getLabel(s)),
+    [sections]
+  );
 
   const pushBot = (payload: { text: string; actions?: Action[]; showAllPricesBtn?: boolean }) => {
     setMessages((prev) => [
@@ -483,252 +464,729 @@ const ChatBot: React.FC = () => {
     ]);
   };
 
-  const beginBookingFlow = () => {
-    setFlow({ step: "ask_service" });
-    pushBot({
-      text: "أكيد 💜 وش الخدمة اللي تبينها؟ (مثال: قص / مكياج / صبغة / بدكير)",
+  useEffect(() => {
+    localStorage.removeItem(STORAGE.CHAT);
+    setMessages([
+      {
+        id: Date.now(),
+        sender: "bot",
+        text: INITIAL_BOT_MESSAGE,
+      },
+    ]);
+  }, []);
+
+  
+  
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    const clearChat = () => localStorage.removeItem(STORAGE.CHAT);
+    window.addEventListener("beforeunload", clearChat);
+    window.addEventListener("pagehide", clearChat);
+    return () => {
+      clearChat();
+      window.removeEventListener("beforeunload", clearChat);
+      window.removeEventListener("pagehide", clearChat);
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoadingCatalog(true);
+      try {
+        const appRef = doc(db, "salons", SALON_ID, "settings", "app");
+        const appSnap = await getDoc(appRef);
+        if (appSnap.exists()) {
+          const raw = (appSnap.data() as any)?.booking || {};
+          setBookingSettings({
+            slotStepMin: [5, 10, 15, 30].includes(Number(raw?.slotStepMin))
+              ? Number(raw.slotStepMin)
+              : 5,
+            businessHours: { ...defaultBusinessHours(), ...(raw?.businessHours || {}) },
+            holidays: Array.isArray(raw?.holidays) ? raw.holidays : [],
+            closures: Array.isArray(raw?.closures) ? raw.closures : [],
+            publicClosedMessage: String(raw?.publicClosedMessage || ""),
+          });
+        }
+
+        const secSnap = await getDocs(collection(db, "salons", SALON_ID, "service_sections"));
+        setSections(secSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+        const catSnap = await getDocs(collection(db, "salons", SALON_ID, "service_categories"));
+        setCategories(catSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+        const srvSnap = await getDocs(collection(db, "salons", SALON_ID, "services"));
+        setServices(srvSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+
+        const pubRef = doc(db, "salons", SALON_ID, "settings", "public");
+        const pubSnap = await getDoc(pubRef);
+        setPublicSettings(pubSnap.exists() ? (pubSnap.data() as any) : null);
+      } catch (e) {
+        console.error("ChatBot loadData error:", e);
+      } finally {
+        setLoadingCatalog(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  const getCategoryOptionsBySectionId = (sectionId: string): CategoryOption[] => {
+    const sid = String(sectionId || "").trim();
+    if (!sid) return [];
+
+    const fromCollection = categories
+      .filter((c) => c.active !== false)
+      .filter((c) => String(c.sectionId || "").trim() === sid)
+      .map((c) => ({ id: String(c.id || "").trim(), name: getLabel(c) }))
+      .filter((c) => c.name);
+    if (fromCollection.length) return fromCollection;
+
+    const seen = new Set<string>();
+    return activeServices
+      .filter((s) => String(s.sectionId || "").trim() === sid)
+      .map((s) => getServiceCategoryName(s))
+      .filter(Boolean)
+      .filter((n) => (seen.has(n) ? false : (seen.add(n), true)))
+      .map((name) => ({ name }));
+  };
+
+  const getServicesBySelection = (selection: {
+    sectionId?: string;
+    categoryId?: string;
+    categoryName?: string;
+  }): ServiceDoc[] => {
+    const sid = String(selection.sectionId || "").trim();
+    if (!sid) return [];
+    let base = activeServices.filter((s) => String(s.sectionId || "").trim() === sid);
+    const cid = String(selection.categoryId || "").trim();
+    const cname = String(selection.categoryName || "").trim();
+    if (cid) base = base.filter((s) => String(s.categoryId || "").trim() === cid);
+    else if (cname)
+      base = base.filter(
+        (s) => normalizeArabic(getServiceCategoryName(s)) === normalizeArabic(cname)
+      );
+    return base;
+  };
+
+  const matchSectionFromUserText = (raw: string): SectionDoc | null => {
+    const q = normalizeArabic(raw);
+    const exact = activeSections.find((s) => normalizeArabic(getLabel(s)) === q);
+    if (exact) return exact;
+    return activeSections.find((s) => normalizeArabic(getLabel(s)).includes(q)) || null;
+  };
+
+  const matchCategoryFromUserText = (raw: string, options: CategoryOption[]): CategoryOption | null => {
+    const q = normalizeArabic(raw);
+    const exact = options.find((c) => normalizeArabic(c.name) === q);
+    if (exact) return exact;
+    return options.find((c) => normalizeArabic(c.name).includes(q)) || null;
+  };
+
+  const matchServiceFromUserText = (
+    raw: string,
+    opts?: { sectionId?: string; categoryId?: string; categoryName?: string }
+  ): ServiceDoc | null => {
+    const base = getServicesBySelection({
+      sectionId: opts?.sectionId,
+      categoryId: opts?.categoryId,
+      categoryName: opts?.categoryName,
+    });
+    const q = normalizeArabic(raw);
+    const exact = base.find((s) => normalizeArabic(getServiceName(s)) === q);
+    if (exact) return exact;
+    const partial = base.find((s) => normalizeArabic(getServiceName(s)).includes(q));
+    if (partial) return partial;
+
+    const rules: { regex: RegExp; key: string }[] = [
+      { regex: /قص|اطراف|غره|مدرج/i, key: "قص" },
+      { regex: /تسريح|استشوار/i, key: "تسريح" },
+      { regex: /مكياج|ميكب/i, key: "مكياج" },
+      { regex: /صبغ|صبغة|هايلايت|بالياج/i, key: "صبغ" },
+      { regex: /بدكير|بديكير/i, key: "بدكير" },
+      { regex: /مناكير|اظافر/i, key: "مناكير" },
+    ];
+    const hit = rules.find((r) => r.regex.test(raw));
+    if (!hit) return null;
+    return base.find((s) => normalizeArabic(getServiceName(s)).includes(normalizeArabic(hit.key))) || null;
+  };
+
+  const replyContact = () => {
+    const phone = (publicSettings as any)?.phone || (publicSettings as any)?.mobile || "05xxxxxxxx";
+    const whatsapp = (publicSettings as any)?.whatsapp || phone;
+    const whatsappLink = toWhatsAppLink(String(whatsapp));
+    const locationText = (publicSettings as any)?.locationText || "الرياض";
+    const hoursText = (publicSettings as any)?.hoursText || "يوميًا";
+    return {
+      text:
+        "📞 **طرق التواصل:**\n" +
+        `• الجوال: ${phone}\n` +
+        `• واتساب: ${whatsapp}\n` +
+        `• الموقع: ${locationText}\n` +
+        `• ساعات العمل: ${hoursText}`,
       actions: [
-        { type: "send", label: "قص", value: "قص الشعر" },
-        { type: "send", label: "مكياج", value: "مكياج" },
-        { type: "send", label: "صبغة", value: "صبغة شعر" },
-        { type: "send", label: "بدكير", value: "بدكير" },
-      ],
+        { type: "route", label: "فتح واتساب", value: whatsappLink },
+        { type: "send", label: "احجزي موعد", value: "أبي أحجز" },
+      ] as Action[],
+    };
+  };
+
+  const buildOffersReply = () => {
+    const active = filterActiveOffers(readOffersFromLocalStorage());
+    if (!active.length) {
+      return {
+        text: "حاليًا ما عندنا عروض فعّالة مسجلة.\nتبين أعرض لك قائمة الأسعار؟",
+        actions: [{ type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" }] as Action[],
+      };
+    }
+    return {
+      text:
+        "🎉 **العروض الحالية:**\n" +
+        active
+          .slice(0, 5)
+          .map((o) => `• ${o.title || "عرض"}${o.code ? ` | الكود: ${o.code}` : ""}`)
+          .join("\n"),
+      actions: [{ type: "send", label: "احجزي موعد", value: "أبي أحجز" }] as Action[],
+    };
+  };
+
+  const buildCategoryPricesText = (selection: {
+    sectionId?: string;
+    sectionName?: string;
+    categoryId?: string;
+    categoryName?: string;
+  }) => {
+    const list = getServicesBySelection({
+      sectionId: selection.sectionId,
+      categoryId: selection.categoryId,
+      categoryName: selection.categoryName,
+    })
+      .filter((s) => !!getServiceName(s))
+      .sort((a, b) => getServiceName(a).localeCompare(getServiceName(b), "ar"));
+    if (!list.length) return "ما فيه خدمات ظاهرة لهذا التصنيف حاليًا.";
+    return (
+      `💰 أسعار ${selection.sectionName || "القسم"} / ${selection.categoryName || "التصنيف"}:\n` +
+      list
+        .map((s) => `• ${getServiceName(s)}: ${typeof s.price === "number" ? `${s.price} ريال` : "اسألي عن السعر"}`)
+        .join("\n")
+    );
+  };
+
+  const beginBookingFlow = () => {
+    if (loadingCatalog) return pushBot({ text: "لحظة 💜 قاعدة أحمّل بيانات الأقسام والخدمات..." });
+    if (!activeSections.length) {
+      setFlow({ step: "ask_service", intent: "booking" });
+      return pushBot({ text: "أكيد 💜 وش الخدمة اللي تبينها؟" });
+    }
+    setFlow({ step: "ask_section", intent: "booking" });
+    pushBot({
+      text: "أكيد 💜 اختاري القسم أولًا:",
+      actions: activeSections.slice(0, 8).map((s) => ({
+        type: "send",
+        label: getLabel(s),
+        value: `${ACTION_SECTION_PREFIX}${s.id}`,
+      })),
     });
   };
 
-  const matchServiceFromUserText = (raw: string): ServiceDoc | null => {
-    const q = normalizeArabic(raw);
-
-    // 1) match by Firestore services
-    const activeServices = services.filter((s) => s.active !== false);
-
-    const exact = activeServices.find(
-      (s) => normalizeArabic(String(s.name || "")) === q
-    );
-    if (exact) return exact;
-
-    const partial = activeServices.find((s) =>
-      normalizeArabic(String(s.name || "")).includes(q)
-    );
-    if (partial) return partial;
-
-    // 2) fallback: keyword mapping -> then match
-    const mapped = (() => {
-      const rules: { regex: RegExp; name: string }[] = [
-        { regex: /قص|قصة|قصات|قص الشعر|حلاقة شعر|قص اطراف/i, name: "قص الشعر" },
-        { regex: /تسريح|تسريحة|استشوار/i, name: "تسريحة شعر" },
-        { regex: /مكياج|ميكب|ميك اب|مكاب|مكيج|مكياج عرايس|مكياج سهرة/i, name: "مكياج" },
-        { regex: /بدكير|بديكير/i, name: "بدكير" },
-        { regex: /منكير|مناكير|اظافر/i, name: "منكير" },
-        { regex: /بشرة|عناية بالبشرة|تنظيف بشرة|تقشير/i, name: "عناية بالبشرة" },
-        { regex: /صبغ|صبغة|صبغات|تلوين شعر|هايلايت|بالياج/i, name: "صبغة شعر" },
-        { regex: /بروتين|كيراتين|علاج بروتين|فرد شعر/i, name: "علاج بروتين" },
-        { regex: /إزالة شعر|ازاله شعر|واكس|شمع|حواجب|نزع الشعر/i, name: "إزالة شعر" },
-      ];
-      for (const r of rules) if (r.regex.test(raw)) return r.name;
-      return null;
-    })();
-
-    if (mapped) {
-      const m = activeServices.find(
-        (s) => normalizeArabic(String(s.name || "")) === normalizeArabic(mapped)
-      );
-      if (m) return m;
-
-      const mp = activeServices.find((s) =>
-        normalizeArabic(String(s.name || "")).includes(normalizeArabic(mapped))
-      );
-      if (mp) return mp;
+  const beginPricesFlow = () => {
+    if (loadingCatalog) return pushBot({ text: "لحظة 💜 قاعدة أحمّل بيانات الأقسام والتصنيفات..." });
+    if (!activeSections.length) {
+      return pushBot({
+        text: "حاليًا ما عندي أقسام ظاهرة للأسعار.",
+        actions: [{ type: "route", label: "صفحة خدماتنا", value: "/services" }],
+      });
     }
+    setFlow({ step: "ask_section", intent: "pricing" });
+    pushBot({
+      text: "ممتاز 💜 لاختيار الأسعار: اختاري القسم أولًا.",
+      actions: activeSections.slice(0, 8).map((s) => ({
+        type: "send",
+        label: getLabel(s),
+        value: `${ACTION_SECTION_PREFIX}${s.id}`,
+      })),
+    });
+  };
 
+  const getDayClosureReason = (dateISO: string): string => {
+    const dayKey = resolveWeekdayFromISO(dateISO);
+    const day = bookingSettings.businessHours?.[dayKey] || { enabled: true, start: "10:00", end: "22:00" };
+    if (!day.enabled) return `${WEEKDAY_LABEL_AR[dayKey]} إجازة حسب ساعات العمل.`;
+    const holiday = bookingSettings.holidays.find((h: any) => String(h?.date || "") === dateISO);
+    if (holiday) return holiday.reason ? `هذا اليوم إجازة: ${holiday.reason}` : "هذا اليوم إجازة.";
+    const t = `${dateISO}T12:00:00`;
+    const closure = bookingSettings.closures.find((c: any) => String(c?.from || "") <= t && t <= String(c?.to || ""));
+    if (closure) return closure.message || bookingSettings.publicClosedMessage || "اليوم مغلق.";
+    return "";
+  };
+
+  const findNearestOpenDate = (fromISO: string, maxDays = 30): string | null => {
+    for (let i = 0; i <= maxDays; i++) {
+      const d = addDaysISO(fromISO, i);
+      if (!getDayClosureReason(d)) return d;
+    }
     return null;
+  };
+
+  const getNextOpenDates = (fromISO: string, count = 5, maxDays = 60): string[] => {
+    const out: string[] = [];
+    for (let i = 0; i <= maxDays && out.length < count; i++) {
+      const d = addDaysISO(fromISO, i);
+      if (!getDayClosureReason(d)) out.push(d);
+    }
+    return out;
+  };
+
+  const getBookedTimesForDate = async (dateISO: string): Promise<string[]> => {
+    if (bookingsCache[dateISO]) return bookingsCache[dateISO];
+    try {
+      const qy = query(collection(db, "salons", SALON_ID, "bookings"), where("date", "==", dateISO));
+      const snap = await getDocs(qy);
+      const times = snap.docs.map((d) => String((d.data() as any)?.time || "").trim()).filter(Boolean);
+      setBookingsCache((prev) => ({ ...prev, [dateISO]: times }));
+      return times;
+    } catch {
+      setBookingsCache((prev) => ({ ...prev, [dateISO]: [] }));
+      return [];
+    }
+  };
+
+  const calcAvailableTimes = (bookedTimes: string[], dateISO: string) => {
+    const dayKey = resolveWeekdayFromISO(dateISO);
+    const day = bookingSettings.businessHours?.[dayKey] || { enabled: true, start: "10:00", end: "22:00" };
+    if (!day.enabled) return [] as string[];
+    const slots = generateSalonTimeSlots(day.start, day.end, bookingSettings.slotStepMin || 5);
+    const taken = new Set(bookedTimes.map((t) => String(t).trim()));
+    return slots.filter((slot) => !taken.has(slot.value24)).map((slot) => slot.label12);
   };
 
   const smartReply = async (inputText: string) => {
     const qRaw = inputText.trim();
-    const q = normalizeArabic(qRaw);
-
-    // ✅ أوامر واضحة للحجز
-    if (/(ابي احجز|أبي أحجز|حجز|ابغى احجز|ابغى موعد|ابي موعد)/i.test(qRaw)) {
-      beginBookingFlow();
-      return;
-    }
-
-    // ✅ لو في فلو شغال: نكمّل الخطوات
-    if (flow.step === "ask_service") {
-      if (loadingCatalog) {
-        pushBot({ text: "لحظة 💜 قاعدة أحمّل قائمة الخدمات من النظام…" });
-        return;
+    const selectedSectionId = qRaw.startsWith(ACTION_SECTION_PREFIX)
+      ? qRaw.slice(ACTION_SECTION_PREFIX.length).trim()
+      : "";
+    const selectedCategoryId = qRaw.startsWith(ACTION_CATEGORY_PREFIX)
+      ? qRaw.slice(ACTION_CATEGORY_PREFIX.length).trim()
+      : "";
+    const selectedCategoryName = qRaw.startsWith(ACTION_CATEGORY_NAME_PREFIX)
+      ? qRaw.slice(ACTION_CATEGORY_NAME_PREFIX.length).trim()
+      : "";
+    const selectedServiceId = qRaw.startsWith(ACTION_SERVICE_PREFIX)
+      ? qRaw.slice(ACTION_SERVICE_PREFIX.length).trim()
+      : "";
+    const isInternalCommand = qRaw.startsWith("__");
+    const hasQuestionTone =
+      !isInternalCommand &&
+      (/[؟?]/.test(qRaw) || /(وش|ايش|كيف|وين|متى|كم|هل|ليه|لماذا|who|what|when|where|how)/i.test(normalizeArabic(qRaw.toLowerCase())));
+    const hasInternalActionSelection = !!(selectedSectionId || selectedCategoryId || selectedCategoryName || selectedServiceId);
+    const hasDateLikeInput = !!parseDateSmart(qRaw);
+    
+    const continueBookingFromCurrentStep = () => {
+      if (flow.step === "ask_section") {
+        return pushBot({
+          text: "نكمل الحجز من هنا 👇 اختاري القسم أولًا:",
+          actions: activeSections.slice(0, 8).map((s) => ({
+            type: "send",
+            label: getLabel(s),
+            value: `${ACTION_SECTION_PREFIX}${s.id}`,
+          })),
+        });
       }
-
-      const svc = matchServiceFromUserText(qRaw);
-      if (!svc) {
-        const sample = services
-          .filter((s) => s.active !== false)
-          .slice(0, 8)
-          .map((s) => s.name)
-          .filter(Boolean)
-          .join("، ");
-
-        pushBot({
-          text:
-            "تمام 💜 بس ما فهمت الخدمة بالضبط.\n" +
-            "اكتبي اسم الخدمة (مثال: مكياج / قص / صبغة).\n" +
-            (sample ? `\nخدمات شائعة عندنا: ${sample}` : ""),
+      if (flow.step === "ask_category") {
+        const options = getCategoryOptionsBySectionId(String(flow.sectionId || ""));
+        return pushBot({
+          text: `نكمل 👇 اختاري التصنيف من قسم "${flow.sectionName || "القسم"}":`,
+          actions: options.slice(0, 8).map((c) => ({
+            type: "send",
+            label: c.name,
+            value: c.id ? `${ACTION_CATEGORY_PREFIX}${c.id}` : `${ACTION_CATEGORY_NAME_PREFIX}${c.name}`,
+          })),
+        });
+      }
+      if (flow.step === "ask_service") {
+        const scoped = getServicesBySelection({
+          sectionId: flow.sectionId,
+          categoryId: flow.categoryId,
+          categoryName: flow.categoryName,
+        });
+        return pushBot({
+          text: "نكمل 👇 اختاري الخدمة:",
+          actions: scoped.slice(0, 8).map((s) => ({
+            type: "send",
+            label: getServiceName(s),
+            value: `${ACTION_SERVICE_PREFIX}${s.id}`,
+          })),
+        });
+      }
+      if (flow.step === "ask_date") {
+        return pushBot({
+          text: `نكمل 👇 اكتبي التاريخ لخدمة "${flow.serviceName || "الخدمة"}".`,
           actions: [
-            { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
+            { type: "send", label: "اليوم", value: "اليوم" },
+            { type: "send", label: "بكرة", value: "بكرة" },
+            { type: "send", label: "السبت", value: "السبت" },
           ],
         });
-        return;
       }
+      return beginBookingFlow();
+    };
+    if (isResetIntent(qRaw)) {
+      setFlow(defaultFlow);
+      return pushBot({ text: "تم إلغاء المسار الحالي. اختاري اللي تبينه ونبدأ من جديد 💜", actions: pageActions, showAllPricesBtn: true });
+    }
+    if (
+      flow.step !== "idle" &&
+      !hasInternalActionSelection &&
+      !hasDateLikeInput &&
+      (isTopicSwitchIntent(qRaw) || hasQuestionTone)
+    ) {
+      setFlow(defaultFlow);
+      return pushBot({
+        text: "واضح إنك غيرتي الموضوع 💜 طلعتك من المسار السابق. قولي لي الآن وش تبين؟",
+        actions: pageActions,
+        showAllPricesBtn: true,
+      });
+    }
+    if (qRaw === ACTION_CONTINUE_BOOKING && flow.step !== "idle") {
+      return continueBookingFromCurrentStep();
+    }
+    if (isBookingIntent(qRaw)) {
+      if (flow.step !== "idle") return continueBookingFromCurrentStep();
+      setFlow(defaultFlow);
+      return beginBookingFlow();
+    }
+    if (isPricingIntent(qRaw)) {
+      setFlow(defaultFlow);
+      return beginPricesFlow();
+    }
+    if (isContactIntent(qRaw)) {
+      setFlow(defaultFlow);
+      return pushBot(replyContact());
+    }
+    if (isOffersIntent(qRaw)) {
+      setFlow(defaultFlow);
+      return pushBot(buildOffersReply());
+    }
+    if (isAvailabilityIntent(qRaw)) {
+      if (flow.step !== "idle") return continueBookingFromCurrentStep();
+      setFlow(defaultFlow);
+      return beginBookingFlow();
+    }
+    if (isHelpIntent(qRaw) && flow.step === "idle") {
+      return pushBot({ text: "أقدر أساعدك في الحجز والأسعار والعروض والتواصل 💜", actions: pageActions, showAllPricesBtn: true });
+    }
+    if (isSalonBrandMention(qRaw) && flow.step === "idle") {
+      return pushBot({
+        text: pick([
+          "صالون ملكات 👑 تجربة متكاملة: خدمات احترافية، حجز سريع، وعروض متجددة.",
+          "أهلًا في صالون ملكات ✨ جمال راقٍ، فريق متخصص، وأسعار واضحة.",
+          "اختيار ممتاز 💯 صالون ملكات يجمع الجودة والذوق في كل خدمة.",
+        ]),
+        actions: pageActions,
+      });
+    }
 
-      setFlow({ step: "ask_date", serviceId: svc.id, serviceName: svc.name });
-      pushBot({
-        text: `تمام 💜 خدمة **${svc.name}**.\nالآن عطيني التاريخ بصيغة **YYYY-MM-DD** (مثال: 2026-02-01)`,
+    const isGeneralSmallTalk =
+      isGreeting(qRaw) || isHowAreYou(qRaw) || isThanks(qRaw) || isBotIdentity(qRaw) || isBye(qRaw);
+    const smallTalkLead = isHowAreYou(qRaw)
+      ? "بخير دامك بخير 💜"
+      : isThanks(qRaw)
+        ? "العفو 💜"
+        : isBotIdentity(qRaw)
+          ? "أنا مساعدتك في صالون ملكات 👑"
+          : isBye(qRaw)
+            ? "مع السلامة 💜"
+            : "ياهلا 💜";
+    if (flow.step !== "idle" && isGeneralSmallTalk) {
+      pushBot({ text: smallTalkLead });
+      if (flow.step === "ask_section") {
+        return pushBot({
+          text: "أكيد 💜 اختاري القسم أولًا:",
+          actions: activeSections.slice(0, 8).map((s) => ({
+            type: "send",
+            label: getLabel(s),
+            value: `${ACTION_SECTION_PREFIX}${s.id}`,
+          })),
+        });
+      }
+      if (flow.step === "ask_category") {
+        const options = getCategoryOptionsBySectionId(String(flow.sectionId || ""));
+        return pushBot({
+          text: `أكيد 💜 اختاري التصنيف من قسم "${flow.sectionName || "القسم"}":`,
+          actions: options.slice(0, 8).map((c) => ({
+            type: "send",
+            label: c.name,
+            value: c.id ? `${ACTION_CATEGORY_PREFIX}${c.id}` : `${ACTION_CATEGORY_NAME_PREFIX}${c.name}`,
+          })),
+        });
+      }
+      if (flow.step === "ask_service") {
+        const scoped = getServicesBySelection({
+          sectionId: flow.sectionId,
+          categoryId: flow.categoryId,
+          categoryName: flow.categoryName,
+        });
+        return pushBot({
+          text: "أكيد 💜 اختاري الخدمة:",
+          actions: scoped.slice(0, 8).map((s) => ({
+            type: "send",
+            label: getServiceName(s),
+            value: `${ACTION_SERVICE_PREFIX}${s.id}`,
+          })),
+        });
+      }
+      if (flow.step === "ask_date") {
+        return pushBot({
+          text: `أكيد 💜 عطيني التاريخ لخدمة "${flow.serviceName || "الخدمة"}".`,
+          actions: [
+            { type: "send", label: "اليوم", value: "اليوم" },
+            { type: "send", label: "بكرة", value: "بكرة" },
+            { type: "send", label: "السبت", value: "السبت" },
+          ],
+        });
+      }
+    }
+
+    if (flow.step === "ask_section") {
+      const section = selectedSectionId
+        ? activeSections.find((s) => String(s.id) === selectedSectionId) || null
+        : matchSectionFromUserText(qRaw);
+      if (!section) {
+        return pushBot({
+          text: "اختاري القسم أولًا عشان نكمل 💜",
+          actions: activeSections.slice(0, 8).map((s) => ({
+            type: "send",
+            label: getLabel(s),
+            value: `${ACTION_SECTION_PREFIX}${s.id}`,
+          })),
+        });
+      }
+      const sectionName = getLabel(section);
+      const options = getCategoryOptionsBySectionId(section.id);
+      if (options.length) {
+        setFlow({ step: "ask_category", intent: flow.intent || "booking", sectionId: section.id, sectionName });
+        return pushBot({
+          text: flow.intent === "pricing" ? `ممتاز 💜 قسم "${sectionName}". الآن اختاري التصنيف للأسعار:` : `ممتاز 💜 اخترتي قسم "${sectionName}". الآن اختاري التصنيف:`,
+          actions: options.slice(0, 8).map((c) => ({
+            type: "send",
+            label: c.name,
+            value: c.id ? `${ACTION_CATEGORY_PREFIX}${c.id}` : `${ACTION_CATEGORY_NAME_PREFIX}${c.name}`,
+          })),
+        });
+      }
+      if (flow.intent === "pricing") {
+        const list = getServicesBySelection({ sectionId: section.id })
+          .map((s) => `• ${getServiceName(s)}: ${typeof s.price === "number" ? `${s.price} ريال` : "اسألي عن السعر"}`)
+          .join("\n");
+        setFlow(defaultFlow);
+        return pushBot({ text: `💰 أسعار قسم "${sectionName}":\n${list || "ما فيه خدمات ظاهرة."}` });
+      }
+      const sectionServices = getServicesBySelection({ sectionId: section.id });
+      setFlow({ step: "ask_service", intent: "booking", sectionId: section.id, sectionName });
+      return pushBot({
+        text: `ممتاز 💜 اخترتي قسم "${sectionName}". الآن اختاري الخدمة:`,
+        actions: sectionServices.slice(0, 8).map((s) => ({
+          type: "send",
+          label: getServiceName(s),
+          value: `${ACTION_SERVICE_PREFIX}${s.id}`,
+        })),
+      });
+    }
+
+    if (flow.step === "ask_category") {
+      const sid = String(flow.sectionId || "");
+      const options = getCategoryOptionsBySectionId(sid);
+      let category: CategoryOption | null = null;
+      if (selectedCategoryId) {
+        category = options.find((c) => String(c.id || "") === selectedCategoryId) || null;
+      } else if (selectedCategoryName) {
+        category =
+          options.find((c) => normalizeArabic(c.name) === normalizeArabic(selectedCategoryName)) || null;
+      } else {
+        category = matchCategoryFromUserText(qRaw, options);
+      }
+      if (!category) {
+        return pushBot({
+          text: `اختاري التصنيف من قسم "${flow.sectionName || "القسم"}" 💜`,
+          actions: options.slice(0, 8).map((c) => ({
+            type: "send",
+            label: c.name,
+            value: c.id ? `${ACTION_CATEGORY_PREFIX}${c.id}` : `${ACTION_CATEGORY_NAME_PREFIX}${c.name}`,
+          })),
+        });
+      }
+      if (flow.intent === "pricing") {
+        setFlow(defaultFlow);
+        return pushBot({
+          text: buildCategoryPricesText({
+            sectionId: sid,
+            sectionName: flow.sectionName,
+            categoryId: category.id,
+            categoryName: category.name,
+          }),
+          actions: [{ type: "send", label: "قسم ثاني", value: "قائمة الأسعار" }],
+        });
+      }
+      const filtered = getServicesBySelection({ sectionId: sid, categoryId: category.id, categoryName: category.name });
+      setFlow({ step: "ask_service", intent: "booking", sectionId: sid, sectionName: flow.sectionName, categoryId: category.id, categoryName: category.name });
+      return pushBot({
+        text: `تمام 💜 اخترتي تصنيف "${category.name}". الآن اختاري الخدمة:`,
+        actions: filtered.slice(0, 8).map((s) => ({
+          type: "send",
+          label: getServiceName(s),
+          value: `${ACTION_SERVICE_PREFIX}${s.id}`,
+        })),
+      });
+    }
+
+    if (flow.step === "ask_service") {
+      const scoped = getServicesBySelection({ sectionId: flow.sectionId, categoryId: flow.categoryId, categoryName: flow.categoryName });
+      let svc: ServiceDoc | null = null;
+      if (selectedServiceId) svc = scoped.find((s) => String(s.id) === selectedServiceId) || null;
+      if (!svc) svc = matchServiceFromUserText(qRaw, { sectionId: flow.sectionId, categoryId: flow.categoryId, categoryName: flow.categoryName });
+      if (!svc) {
+        return pushBot({
+          text: "تمام 💜 ما فهمت الخدمة بالضبط. اختاري من الأزرار:",
+          actions: scoped.slice(0, 8).map((s) => ({
+            type: "send",
+            label: getServiceName(s),
+            value: `${ACTION_SERVICE_PREFIX}${s.id}`,
+          })),
+        });
+      }
+      setFlow({ ...flow, step: "ask_date", intent: "booking", serviceId: svc.id, serviceName: getServiceName(svc) });
+      return pushBot({
+        text:
+          `تمام 💜 خدمة **${getServiceName(svc)}**.\n` +
+          "اكتبي التاريخ بالطريقة اللي تناسبك:\n" +
+          "• اليوم / بكرة\n• السبت / الخميس الجاي\n• 2026-02-01 أو 25-2",
         actions: [
-          { type: "send", label: "مثال", value: "2026-02-01" },
+          { type: "send", label: "اليوم", value: "اليوم" },
+          { type: "send", label: "بكرة", value: "بكرة" },
+          { type: "send", label: "السبت", value: "السبت" },
         ],
       });
-      return;
     }
 
     if (flow.step === "ask_date") {
-      const date = extractDate(qRaw);
-      if (!date) {
-        pushBot({
-          text:
-            "تمام 💜 بس اكتب/ي التاريخ بصيغة **YYYY-MM-DD**\nمثال: 2026-02-01",
-          actions: [{ type: "send", label: "مثال", value: "2026-02-01" }],
+      const qDate = normalizeArabic(qRaw.toLowerCase()).trim();
+      const isAffirmativeReply = /^(نعم|اي|ايوه|ايه|yes|ok|اوكي|تمام)$/i.test(qDate);
+      const isNegativeReply = /^(لا|لا شكرا|no|not now)$/i.test(qDate);
+      if (flow.suggestedDateISO && (qRaw === ACTION_SHOW_OPEN_DAYS || isAffirmativeReply)) {
+        const openDays = getNextOpenDates(flow.suggestedDateISO, 5, 90);
+        if (!openDays.length) {
+          return pushBot({ text: "حالياً ما لقيت أيام متاحة قريب. جربي تاريخ ثاني 💜" });
+        }
+        return pushBot({
+          text: "هذه أقرب 5 أيام متاحة 💜 اختاري اليوم المناسب:",
+          actions: openDays.map((d) => ({
+            type: "send",
+            label: `${WEEKDAY_LABEL_AR[resolveWeekdayFromISO(d)]} ${toDMY(d)}`,
+            value: d,
+          })),
         });
-        return;
       }
-
-      // ✅ نجيب الحجوزات ونطلع الأوقات
+      const resolveWeekdayFallback = (targetDay: number, forceNext = false) => {
+        const base = todayISO();
+        const now = new Date(`${base}T00:00:00`);
+        let diff = targetDay - now.getDay();
+        if (diff < 0) diff += 7;
+        if (forceNext && diff === 0) diff = 7;
+        return addDaysISO(base, diff);
+      };
+      const parsedDate =
+        parseDateSmart(qRaw) ||
+        (qDate === "اليوم"
+          ? todayISO()
+          : qDate === "بكره" || qDate === "بكرة"
+            ? addDaysISO(todayISO(), 1)
+            : /(السبت|سبت)/i.test(qDate)
+              ? resolveWeekdayFallback(6, /الجاي|القادم|next/i.test(qDate))
+              : /(الخميس|خميس)/i.test(qDate)
+                ? resolveWeekdayFallback(4, /الجاي|القادم|next/i.test(qDate))
+              : /(الجمعة|جمعه|جمعة)/i.test(qDate)
+                ? resolveWeekdayFallback(5, /الجاي|القادم|next/i.test(qDate))
+                : null);
+      const date = parsedDate || (isAffirmativeReply && flow.suggestedDateISO ? flow.suggestedDateISO : null);
+      if (!date) {
+        if (isNegativeReply && flow.suggestedDateISO) {
+          setFlow({ ...flow, suggestedDateISO: undefined });
+          return pushBot({
+            text: "تمام 💜 اختاري تاريخ ثاني يناسبك.",
+            actions: [
+              { type: "send", label: "اليوم", value: "اليوم" },
+              { type: "send", label: "بكرة", value: "بكرة" },
+              { type: "send", label: "السبت", value: "السبت" },
+            ],
+          });
+        }
+        return pushBot({
+          text: "ما فهمت التاريخ 💜 جربي: اليوم، بكرة، السبت، الخميس الجاي، أو 2026-02-01.",
+          actions: [
+            { type: "send", label: "اليوم", value: "اليوم" },
+            { type: "send", label: "بكرة", value: "بكرة" },
+          ],
+        });
+      }
+      const closureReason = getDayClosureReason(date);
+      if (closureReason) {
+        const nearest = findNearestOpenDate(addDaysISO(date, 1), 30);
+        if (nearest) {
+          setFlow({ ...flow, suggestedDateISO: nearest });
+        }
+        return pushBot({
+          text: nearest
+            ? `يوم ${toDMY(date)} غير متاح للحجز 💜\n${closureReason}\n\nأقرب يوم متاح هو ${toDMY(nearest)} ✨\nتحبين أعرض لك الأوقات المتاحة فيه؟`
+            : `يوم ${toDMY(date)} غير متاح للحجز 💜\n${closureReason}`,
+          actions: nearest
+            ? [
+                { type: "send", label: "نعم، اعرضي الأيام", value: "نعم" },
+                { type: "send", label: "لا، تاريخ ثاني", value: "لا" },
+                { type: "send", label: "اختيار أقرب يوم", value: ACTION_SHOW_OPEN_DAYS },
+              ]
+            : undefined,
+        });
+      }
       const booked = await getBookedTimesForDate(date);
-      const available = calcAvailableTimes(booked);
-
-      const svcName = flow.serviceName || "الخدمة";
-
-
-      // ✅ نرجع الحالة idle بعد ما عرضنا الأوقات
+      const available = calcAvailableTimes(booked, date);
+      pushBot({
+        text: `الأوقات المتاحة لخدمة "${flow.serviceName || "الخدمة"}" بتاريخ ${toDMY(date)}:\n\n${formatAvailableTimes(available)}`,
+        actions: [{ type: "route", label: "الحجز", value: "/booking" }],
+      });
       setFlow(defaultFlow);
       return;
     }
 
-    // ✅ ترحيب
-    if (isGreeting(q)) {
-      pushBot({
-        text: `${pick([
-          "وعليكم السلام 💜 نورتِنا!",
-          "هلا والله 💜 يا حيّاك!",
-          "أهلًا وسهلًا 💜 يسعدني أساعدك!",
-          "مرحبا 💜 نورتِ صالون ملكات!",
-        ])}\n${pick([
-          "تبغين أسعار، عروض، ولا نحجز لك موعد؟",
-          "قولي لي تبين حجز ولا استفسار؟ ✨",
-        ])}`,
-        actions: [
-          { type: "send", label: "أبي أحجز", value: "أبي أحجز" },
-          { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
-          { type: "send", label: "العروض والخصومات", value: "العروض والخصومات" },
-          { type: "send", label: "طرق التواصل", value: "طرق التواصل" },
-        ],
+    if (isGreeting(qRaw))
+      return pushBot({
+        text: `${resolveGreetingReply(qRaw)}\nتبين حجز، أسعار، عروض، أو تواصل؟`,
+        actions: pageActions,
         showAllPricesBtn: true,
       });
-      return;
-    }
-
-    // ✅ شكر
-    if (isThanks(q)) {
-      pushBot({
-        text: pick([
-          "العفو 💜 هذا واجبي! تبين نحجز لك؟",
-          "تسلمين 💜 إذا تبين حجز قولي: أبي أحجز",
-        ]),
-        actions: [
-          { type: "send", label: "أبي أحجز", value: "أبي أحجز" },
-          { type: "send", label: "قائمة الأسعار", value: "عرض قائمة الأسعار" },
-        ],
-        showAllPricesBtn: true,
+    if (isHowAreYou(qRaw)) return pushBot({ text: "بخير دامك بخير 💜", actions: pageActions });
+    if (isBotIdentity(qRaw))
+      return pushBot({
+        text: "أنا مساعدتك الرقمية في صالون ملكات 👑\nأقدر أساعدك في الحجز، الأسعار، العروض، وطرق التواصل.",
+        actions: pageActions,
       });
-      return;
-    }
+    if (isThanks(qRaw)) return pushBot({ text: "العفو 💜", actions: pageActions });
+    if (isBye(qRaw)) return pushBot({ text: "مع السلامة 💜", actions: [{ type: "route", label: "الصفحة الرئيسية", value: "/" }] });
+    if (isComplaint(qRaw)) return pushBot({ text: "آسفة للتجربة 💜 أعطيني تفاصيل أكثر.", actions: [{ type: "send", label: "طرق التواصل", value: "طرق التواصل" }] });
 
-    // ✅ وداع
-    if (isBye(q)) {
-      pushBot({
-        text: pick([
-          "مع السلامة 💜 إذا احتجتِ أي شيء أنا موجودة.",
-          "في أمان الله 💜 متى ما تبين حجز رجعي لي.",
-        ]),
-        actions: [{ type: "route", label: "الصفحة الرئيسية", value: "/" }],
-      });
-      return;
-    }
-
-    // ✅ شكوى
-    if (isComplaint(q)) {
-      pushBot({
-        text:
-          "آسفة جدًا إن التجربة ما كانت على توقعاتك 💜\n" +
-          "قولي لي:\n1) وش الخدمة؟\n2) متى كانت الزيارة؟\n3) تبين تواصل سريع؟",
-        actions: [
-          { type: "send", label: "طرق التواصل", value: "طرق التواصل" },
-          { type: "send", label: "أبي أحجز", value: "أبي أحجز" },
-        ],
-      });
-      return;
-    }
-
-    // ✅ طرق التواصل
-    if (/(تواصل|اتصال|رقم|واتس|واتساب|عنوان|لوكيشن|موقع|اين موقعكم|وينكم)/i.test(qRaw)) {
-      pushBot(replyContact());
-      return;
-    }
-
-    // ✅ قائمة الأسعار
-    if (
-      /(عرض\s*قائمة\s*الاسعار|عرض\s*قائمة\s*الأسعار|قائمة\s*الاسعار|قائمة\s*الأسعار|كم.*اسعاركم|بكم خدماتكم)/i.test(
-        qRaw
-      )
-    ) {
-      pushBot(buildPricesListReply());
-      return;
-    }
-
-    // ✅ العروض
-    if (
-      /(^|\s)(عروض|خصومات|برومو|كوبون)(\s|$)/i.test(qRaw) ||
-      /العروض والخصومات/i.test(qRaw)
-    ) {
-      pushBot(buildOffersReply());
-      return;
-    }
-
-    // ✅ إذا سأل “أوقات متاحة” بدون ما يمشي الفلو: نبدأ الفلو بدل “أنت مكياج؟”
-    if (/(اوقات متاحه|أوقات متاحة|مواعيد متاحه|مواعيد|وقت متاح|available)/i.test(qRaw)) {
-      beginBookingFlow();
-      return;
-    }
-
-    // ✅ Default
-    pushBot({
-      text:
-        "تمام 💜 تبين:\n" +
-        "• (أبي أحجز)\n• (قائمة الأسعار)\n• (العروض والخصومات)\n• (طرق التواصل)",
+    return pushBot({
+      text: pick([
+        "أبشري 💜 اختاري اللي تبينه:\n• (أبي أحجز)\n• (قائمة الأسعار)\n• (العروض والخصومات)\n• (طرق التواصل)",
+        "حاضرين 💜 أقدر أخدمك في الحجز والأسعار والعروض والتواصل.",
+      ]),
       actions: pageActions,
       showAllPricesBtn: true,
     });
   };
 
-  const sendAllPrices = () => {
-    pushBot(buildPricesListReply());
-  };
+  const sendAllPrices = () => beginPricesFlow();
 
   const sendText = async (text: string) => {
     const t = String(text || "").trim();
     if (!t) return;
-
     setMessages((prev) => [...prev, { id: Date.now(), sender: "user", text: t }]);
     await smartReply(t);
   };
@@ -740,45 +1198,105 @@ const ChatBot: React.FC = () => {
     await sendText(t);
   };
 
+  const handleCloseChat = () => {
+    if (isChatPage) {
+      navigate("/");
+      return;
+    }
+    setOpen(false);
+  };
+
+  const handleClearChat = () => {
+    localStorage.removeItem(STORAGE.CHAT);
+    setFlow(defaultFlow);
+    setInput("");
+    setHintsOpen(false);
+    setMessages([
+      {
+        id: Date.now(),
+        sender: "bot",
+        text: INITIAL_BOT_MESSAGE,
+      },
+    ]);
+  };
+
   const handleAction = async (a: Action) => {
     if (a.type === "route") {
+      if (/^https?:\/\//i.test(a.value)) {
+        window.open(a.value, "_blank", "noopener,noreferrer");
+        return;
+      }
       navigate(a.value);
       return;
     }
-    await sendText(a.value);
+    const visible = String(a.label || "").trim() || String(a.value || "").trim();
+    const internal = String(a.value || "").trim();
+    if (!internal) return;
+    setMessages((prev) => [...prev, { id: Date.now(), sender: "user", text: visible }]);
+    await smartReply(internal);
   };
 
-  // close on ESC
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape" && !isChatPage) setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [isChatPage]);
+
+  useEffect(() => {
+    if (isChatPage) setOpen(true);
+  }, [isChatPage]);
+
+  useEffect(() => {
+    if (!isChatPage) return;
+
+    const updateChatViewportHeight = () => {
+      let topOffset = 0;
+      document.querySelectorAll<HTMLElement>(".topbar, .navbar").forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        topOffset = Math.max(topOffset, rect.bottom);
+      });
+      const safeOffset = Math.max(0, Math.round(topOffset));
+      setChatViewportHeight(`calc(100dvh - ${safeOffset}px)`);
+    };
+
+    updateChatViewportHeight();
+    const delayed = window.setTimeout(updateChatViewportHeight, 50);
+    window.addEventListener("resize", updateChatViewportHeight);
+    window.addEventListener("scroll", updateChatViewportHeight, { passive: true });
+
+    return () => {
+      window.clearTimeout(delayed);
+      window.removeEventListener("resize", updateChatViewportHeight);
+      window.removeEventListener("scroll", updateChatViewportHeight);
+    };
+  }, [isChatPage]);
+
+  const chatPageStyle: CSSProperties | undefined = isChatPage
+    ? ({ "--chatbot-page-height": chatViewportHeight } as CSSProperties)
+    : undefined;
 
   return (
-    <div className={`chatbot ${open ? "open" : ""}`}>
-      {/* Floating button */}
-      <button
-        className="chatbot-toggle"
-        type="button"
-        onClick={() => setOpen((s) => !s)}
-        aria-label="Chatbot"
-      >
-        <FontAwesomeIcon icon={faCommentDots} />
-      </button>
+    <div className={`chatbot ${open ? "open" : ""} ${isChatPage ? "chatbot-page" : ""}`} style={chatPageStyle}>
+      {!isChatPage && (
+        <button className="chatbot-toggle" type="button" onClick={() => setOpen((s) => !s)} aria-label="Chatbot">
+          <FontAwesomeIcon icon={faCommentDots} />
+        </button>
+      )}
 
-      {/* Panel */}
       {open && (
-        <div className="chatbot-panel">
+        <div className={`chatbot-panel ${isChatPage ? "chatbot-panel-page" : ""}`}>
           <div className="chatbot-header">
-            <div className="chatbot-title">
-              صالون ملكات • المساعدة
-              <span className="chatbot-sub">أسعار • عروض • مواعيد</span>
-            </div>
-            <button className="chatbot-close" type="button" onClick={() => setOpen(false)}>
+            <button className="chatbot-close" type="button" onClick={handleCloseChat} aria-label="إغلاق">
               ✕
+            </button>
+            <div className="chatbot-title">
+              صالون ملكات
+              <span className="chatbot-sub">خدمة العملاء</span>
+            </div>
+            <button className="chatbot-clear" type="button" onClick={handleClearChat} aria-label="مسح المحادثة">
+              مسح
             </button>
           </div>
 
@@ -799,12 +1317,7 @@ const ChatBot: React.FC = () => {
                   {m.sender === "bot" && m.actions?.length ? (
                     <div className="chatbot-actions">
                       {m.actions.map((a, idx) => (
-                        <button
-                          key={`${m.id}_a_${idx}`}
-                          className="chatbot-action"
-                          type="button"
-                          onClick={() => handleAction(a)}
-                        >
+                        <button key={`${m.id}_a_${idx}`} className="chatbot-action" type="button" onClick={() => handleAction(a)}>
                           {a.label}
                         </button>
                       ))}
@@ -817,17 +1330,22 @@ const ChatBot: React.FC = () => {
           </div>
 
           <div className="chatbot-footer">
-            <div className="chatbot-hints">
-              {pageActions.slice(0, 3).map((a, i) => (
-                <button
-                  key={`hint_${i}`}
-                  className="chatbot-hint"
-                  type="button"
-                  onClick={() => handleAction(a)}
-                >
-                  {a.label}
-                </button>
-              ))}
+            <div className={`chatbot-hints-wrap ${hintsOpen ? "open" : ""}`}>
+              <div className="chatbot-hints">
+                {footerQuickActions.map((a, i) => (
+                  <button
+                    key={`hint_${i}`}
+                    className="chatbot-hint"
+                    type="button"
+                    onClick={() => {
+                      handleAction(a);
+                      setHintsOpen(false);
+                    }}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="chatbot-input-row">
@@ -839,8 +1357,16 @@ const ChatBot: React.FC = () => {
                   if (e.key === "Enter") handleSend();
                 }}
               />
-              <button className="chatbot-send" type="button" onClick={handleSend}>
-                إرسال
+              <button
+                className={`chatbot-plus ${hintsOpen ? "open" : ""}`}
+                type="button"
+                onClick={() => setHintsOpen((v) => !v)}
+                aria-expanded={hintsOpen}
+                aria-label={hintsOpen ? "إخفاء الاختصارات" : "إظهار الاختصارات"}
+              >
+                <span className="chatbot-plus-glyph" aria-hidden="true">
+                  {hintsOpen ? "×" : "+"}
+                </span>
               </button>
             </div>
           </div>
@@ -851,3 +1377,8 @@ const ChatBot: React.FC = () => {
 };
 
 export default ChatBot;
+
+
+
+
+

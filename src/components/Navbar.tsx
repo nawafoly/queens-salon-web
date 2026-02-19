@@ -41,6 +41,7 @@ const Navbar: React.FC = () => {
   const navMenuRef = useRef<HTMLElement>(null);
 
   const isInDashboard = location.pathname.startsWith("/dashboard");
+  const isChatPage = location.pathname.startsWith("/chat");
 
   const syncAuthFromStorage = () => {
     let profile: any = null;
@@ -140,6 +141,15 @@ const Navbar: React.FC = () => {
         const y = target === "page" ? getScrollTop(null) : getScrollTop(target);
         setHasScrolled(y > 10);
 
+        // Keep navbar always visible on chat page.
+        if (isChatPage) {
+          setIsHidden(false);
+          lastScrollTarget.current = target;
+          lastScrollY.current = y;
+          ticking = false;
+          return;
+        }
+
         if (target !== lastScrollTarget.current) {
           lastScrollTarget.current = target;
           lastScrollY.current = y;
@@ -170,7 +180,7 @@ const Navbar: React.FC = () => {
       window.removeEventListener("scroll", onScroll);
       document.removeEventListener("scroll", onScroll, true);
     };
-  }, []);
+  }, [isChatPage]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -308,7 +318,9 @@ const Navbar: React.FC = () => {
   const hasDropdownContent = !!dropdownItems;
 
   return (
-    <header className={`navbar ${hasScrolled ? "scrolled" : ""} ${isHidden ? "is-hidden" : ""}`}>
+    <header
+      className={`navbar ${hasScrolled ? "scrolled" : ""} ${isHidden && !isChatPage ? "is-hidden" : ""}`}
+    >
       <div className="container">
         <div className="nav-main-group">
           {!isInDashboard && (
