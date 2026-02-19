@@ -178,6 +178,17 @@ textarea.form-control {
   background: #fafafa;
 }
 
+.booking-page .bk-picker-scope {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.booking-page .bk-picker-scope .btn {
+  min-width: 128px;
+  font-weight: 800;
+}
+
 .booking-page .dash-select {
   width: 100%;
   min-height: 46px;
@@ -549,8 +560,7 @@ textarea.form-control {
 }
 
 /* زر رمادي (نسخ / حجز جديد) */
-.booking-page .btn-gray,
-.booking-page .btn-secondary {
+.booking-page .btn-gray {
   color: #2f2f2f !important;
   font-weight: 700;
 }
@@ -907,4 +917,78 @@ textarea.form-control {
   border-right: 4px solid #ffc107;
   color: #856404 !important;
   font-weight: 700;
+}
+
+/* Keep page text dark without breaking button label colors */
+.booking-page {
+  color: #0d0d0d !important;
+  -webkit-text-fill-color: #0d0d0d !important;
+}
+
+/* Exceptions for dark buttons (must stay white text) */
+.booking-page .btn-dark,
+.booking-page .btn-dark *,
+.booking-page .booking-service-add-btn,
+.booking-page .booking-service-add-btn * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Explicit button text colors for consistent readability */
+.booking-page .btn-primary,
+.booking-page .btn-primary *,
+.booking-page .booking-btn,
+.booking-page .booking-btn *,
+.booking-page .bk-coupon-btn--apply,
+.booking-page .bk-coupon-btn--apply * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.booking-page .btn-outline-dark,
+.booking-page .btn-outline-dark *,
+.booking-page .btn-outline-secondary,
+.booking-page .btn-outline-secondary *,
+.booking-page .btn-outline-info,
+.booking-page .btn-outline-info *,
+.booking-page .btn-outline-danger,
+.booking-page .btn-outline-danger *,
+.booking-page .bk-coupon-btn--remove,
+.booking-page .bk-coupon-btn--remove * {
+  color: #0d0d0d !important;
+  -webkit-text-fill-color: #0d0d0d !important;
+}
+
+.booking-page .btn-link,
+.booking-page .btn-link * {
+  color: var(--primary-color) !important;
+  -webkit-text-fill-color: var(--primary-color) !important;
+}
+
+.booking-page .booking-service-add-btn {
+  background: #1f2937 !important;
+  border-color: #1f2937 !important;
+}
+
+/* Service adder dropdown readability */
+.booking-page .bk-service-adder .dash-select {
+  color: #0d0d0d !important;
+  -webkit-text-fill-color: #0d0d0d !important;
+  font-weight: 800 !important;
+}
+
+.booking-page .bk-service-adder .dash-select.is-empty {
+  color: #6b7280 !important;
+  -webkit-text-fill-color: #6b7280 !important;
+}
+
+.booking-page .bk-service-adder .dash-select:disabled {
+  color: rgba(13, 13, 13, 0.62) !important;
+  -webkit-text-fill-color: rgba(13, 13, 13, 0.62) !important;
+  opacity: 1 !important;
+}
+
+.booking-page .bk-service-adder select option,
+.booking-page .bk-service-adder select optgroup {
+  color: #0d0d0d !important;
 }

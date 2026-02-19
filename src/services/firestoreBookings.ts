@@ -38,6 +38,28 @@ export type ServiceSnapshot = {
   priceAtBooking: number;
   durationAtBooking: number;
   sectionIdAtBooking?: string;
+  sectionTitleAtBooking?: string;
+  categoryIdAtBooking?: string;
+  categoryNameAtBooking?: string;
+};
+
+export type PackageServiceSnapshot = {
+  serviceId: string;
+  serviceName: string;
+  sectionId?: string;
+  categoryId?: string;
+  price: number;
+  durationMin: number;
+};
+
+export type PackageSnapshot = {
+  packageId: string;
+  packageName: string;
+  finalPriceAtBooking: number;
+  baseTotalPriceAtBooking: number;
+  totalDurationMinAtBooking: number;
+  serviceIds: string[];
+  services: PackageServiceSnapshot[];
 };
 
 export type BookingDoc = {
@@ -63,6 +85,8 @@ export type BookingDoc = {
    */
   serviceId?: string;
   serviceSnapshot?: ServiceSnapshot;
+  packageId?: string;
+  packageSnapshot?: PackageSnapshot;
 
   /**
    * ✅ NEW: رقم حجز بشري MK-xxxxx (سيرفر)
@@ -113,6 +137,10 @@ export type BookingDoc = {
 };
 
 export type BookingDocWithId = BookingDoc & { id: string };
+export type BookingGroupInput = {
+  parent: BookingDoc;
+  items: BookingDoc[];
+};
 
 const SALON_ID = "main";
 const BOOKINGS_COL = ["salons", SALON_ID, "bookings"] as const;
@@ -189,7 +217,39 @@ function normalizeBooking(raw: any): BookingDoc {
         sectionIdAtBooking: raw.serviceSnapshot.sectionIdAtBooking
           ? String(raw.serviceSnapshot.sectionIdAtBooking)
           : undefined,
+        sectionTitleAtBooking: raw.serviceSnapshot.sectionTitleAtBooking
+          ? String(raw.serviceSnapshot.sectionTitleAtBooking)
+          : undefined,
+        categoryIdAtBooking: raw.serviceSnapshot.categoryIdAtBooking
+          ? String(raw.serviceSnapshot.categoryIdAtBooking)
+          : undefined,
+        categoryNameAtBooking: raw.serviceSnapshot.categoryNameAtBooking
+          ? String(raw.serviceSnapshot.categoryNameAtBooking)
+          : undefined,
       }
+      : undefined,
+    packageId: raw?.packageId ? String(raw.packageId) : undefined,
+    packageSnapshot: raw?.packageSnapshot
+      ? {
+          packageId: String(raw.packageSnapshot.packageId ?? ""),
+          packageName: String(raw.packageSnapshot.packageName ?? ""),
+          finalPriceAtBooking: Number(raw.packageSnapshot.finalPriceAtBooking ?? 0),
+          baseTotalPriceAtBooking: Number(raw.packageSnapshot.baseTotalPriceAtBooking ?? 0),
+          totalDurationMinAtBooking: Number(raw.packageSnapshot.totalDurationMinAtBooking ?? 0),
+          serviceIds: Array.isArray(raw.packageSnapshot.serviceIds)
+            ? raw.packageSnapshot.serviceIds.map((x: any) => String(x || "").trim()).filter(Boolean)
+            : [],
+          services: Array.isArray(raw.packageSnapshot.services)
+            ? raw.packageSnapshot.services.map((x: any) => ({
+                serviceId: String(x?.serviceId || "").trim(),
+                serviceName: String(x?.serviceName || "").trim(),
+                sectionId: String(x?.sectionId || "").trim() || undefined,
+                categoryId: String(x?.categoryId || "").trim() || undefined,
+                price: Number(x?.price || 0),
+                durationMin: Number(x?.durationMin || 0),
+              }))
+            : [],
+        }
       : undefined,
 
     durationMin: Number(raw?.durationMin ?? 0) || undefined,
@@ -330,10 +390,17 @@ function safeTimeHHMM(v: any, fallback: string) {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
-/** ✅ read slot settings safely (fallback to defaults) */
-function getSlotSettings(dateISO?: string) {
-  const cached = AppSettingsService.getCached() || {};
-  const booking = (cached as any)?.booking || {};
+type SlotSettings = {
+  dayKey: WeekdayKey;
+  enabled: boolean;
+  openTime: string;
+  closeTime: string;
+  slotStepMin: number;
+  bufferMin: number;
+};
+
+function resolveSlotSettings(source: any, dateISO?: string): SlotSettings {
+  const booking = (source as any)?.booking || {};
   const businessHours = booking?.businessHours || {};
 
   const dayKey = resolveWeekdayFromISO(String(dateISO || "").trim());
@@ -351,6 +418,22 @@ function getSlotSettings(dateISO?: string) {
   return { dayKey, enabled, openTime, closeTime, slotStepMin, bufferMin };
 }
 
+/** ✅ read slot settings from cache/defaults */
+function getSlotSettings(dateISO?: string): SlotSettings {
+  const cached = AppSettingsService.getCached() || {};
+  return resolveSlotSettings(cached, dateISO);
+}
+
+/** ✅ read slot settings with fresh remote attempt (for booking writes) */
+async function getSlotSettingsFresh(dateISO?: string): Promise<SlotSettings> {
+  try {
+    const remote = await AppSettingsService.fetchRemote();
+    return resolveSlotSettings(remote, dateISO);
+  } catch {
+    return getSlotSettings(dateISO);
+  }
+}
+
 /**
  * ✅ lock multiple time slots based on duration
  * - Uses same slots list from generateSalonTimeSlots(open, close, step)
@@ -360,9 +443,10 @@ function getTimesToLock(
   startTime: string,
   durationMin: number,
   overrides?: { slotStepMin?: number; bufferMin?: number },
-  dateISO?: string
+  dateISO?: string,
+  preloadedSettings?: SlotSettings
 ) {
-  const base = getSlotSettings(dateISO);
+  const base = preloadedSettings || getSlotSettings(dateISO);
 
   const slotStepMin =
     [5, 10, 15, 30].includes(Number(overrides?.slotStepMin))
@@ -592,7 +676,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
   // ✅ times to lock (start + next slots)
   const dateISO = String(data.date || "").trim();
-  const daySlotSettings = getSlotSettings(dateISO);
+  const daySlotSettings = await getSlotSettingsFresh(dateISO);
   if (!daySlotSettings.enabled) throw bookingDayClosedError();
 
   const requestedStartTime = String(data.time || "").trim();
@@ -618,7 +702,8 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
       slotStepMin: (data as any).slotStepMinAtBooking,
       bufferMin: (data as any).bufferMinAtBooking,
     },
-    dateISO
+    dateISO,
+    daySlotSettings
   );
 
   // ✅ booking ref
@@ -640,12 +725,15 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const fallbackPrice = Number(snapFromInput?.priceAtBooking ?? data.finalPrice ?? data.total ?? 0);
   const fallbackDur = Number(snapFromInput?.durationAtBooking ?? durationMin);
 
-  const serviceSnapshot: ServiceSnapshot = {
-    serviceNameAtBooking: fallbackName || "—",
+  const serviceSnapshot: ServiceSnapshot = stripUndefined({
+    serviceNameAtBooking: fallbackName || "-",
     priceAtBooking: Number.isFinite(fallbackPrice) ? fallbackPrice : 0,
     durationAtBooking: Number.isFinite(fallbackDur) ? fallbackDur : durationMin,
     sectionIdAtBooking: snapFromInput?.sectionIdAtBooking,
-  };
+    sectionTitleAtBooking: snapFromInput?.sectionTitleAtBooking,
+    categoryIdAtBooking: snapFromInput?.categoryIdAtBooking,
+    categoryNameAtBooking: snapFromInput?.categoryNameAtBooking,
+  }) as ServiceSnapshot;
 
   const payloadBase = stripUndefined({
     ...data,
@@ -661,6 +749,8 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     // ✅ NEW
     serviceId: data.serviceId ?? undefined,
     serviceSnapshot,
+    packageId: data.packageId ? String(data.packageId).trim() : undefined,
+    packageSnapshot: data.packageSnapshot ?? undefined,
 
     slotStepMinAtBooking: (data as any).slotStepMinAtBooking ?? daySlotSettings.slotStepMin,
     bufferMinAtBooking: (data as any).bufferMinAtBooking ?? daySlotSettings.bufferMin,
@@ -788,6 +878,8 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         serviceName: data.serviceName,
         serviceId: data.serviceId ?? undefined,
         serviceSnapshot,
+        packageId: data.packageId ? String(data.packageId).trim() : undefined,
+        packageSnapshot: data.packageSnapshot ?? undefined,
 
         employeeId: data.employeeId ?? null,
         employeeUid: data.employeeUid ?? null,
@@ -822,6 +914,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     note: "تم إنشاء الحجز",
     patch: {
       serviceId: data.serviceId ?? null,
+      packageId: data.packageId ?? null,
       employeeId: data.employeeId ?? null,
       employeeUid: data.employeeUid ?? null,
       date: data.date,
@@ -872,6 +965,222 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
 
   return { id: bookingId, publicId };
+}
+
+/* =========================
+  CREATE GROUP (Parent + Sub in same collection)
+========================= */
+export async function createBookingGroup(data: BookingGroupInput): Promise<{ parentId: string; parentPublicId: string; itemIds: string[] }> {
+  const parent = data?.parent as BookingDoc;
+  const items = Array.isArray(data?.items) ? data.items : [];
+  if (!parent || !items.length) {
+    throw new Error("GROUP_BOOKING_INVALID");
+  }
+
+  const nowMs = Date.now();
+  const actorUid = String(parent.userId || getAuth().currentUser?.uid || "").trim() || undefined;
+  const status: BookingStatus = (parent.status as BookingStatus) || "pending";
+  const statusAuditPatch = buildStatusAuditPatch(status, nowMs, actorUid);
+
+  const parentRef = doc(collection(db, ...BOOKINGS_COL));
+  const itemRefs = items.map(() => doc(collection(db, ...BOOKINGS_COL)));
+
+  const settingsByDate = new Map<string, SlotSettings>();
+  const getFreshSettingsForDate = async (dateISO: string) => {
+    const k = String(dateISO || "").trim();
+    if (settingsByDate.has(k)) return settingsByDate.get(k)!;
+    const settings = await getSlotSettingsFresh(k);
+    settingsByDate.set(k, settings);
+    return settings;
+  };
+
+  const prepared: Array<any> = [];
+  for (let idx = 0; idx < items.length; idx++) {
+    const it = items[idx];
+    const employeeIdTrimmed = String(it.employeeId ?? "").trim();
+    if (!employeeIdTrimmed) throw employeeRequiredError();
+    const employeeUidTrimmed = String(it.employeeUid ?? "").trim();
+    const employeeNameTrimmed = String(it.employeeName || "").trim();
+    const employeeKeyForLock = employeeIdTrimmed;
+    const employeeKey =
+      employeeUidTrimmed || employeeIdTrimmed || safeKey(employeeNameTrimmed || "unknown_employee");
+
+    const durationMin = Math.max(0, Number(it.durationMin || 0)) || 60;
+    const dateISO = String(it.date || "").trim();
+    const requestedStartTime = String(it.time || "").trim();
+    const daySlotSettings = await getFreshSettingsForDate(dateISO);
+    if (!daySlotSettings.enabled) throw bookingDayClosedError();
+
+    const requestedStep =
+      [5, 10, 15, 30].includes(Number((it as any).slotStepMinAtBooking))
+        ? Number((it as any).slotStepMinAtBooking)
+        : daySlotSettings.slotStepMin;
+
+    const allSlotsForDay = generateSalonTimeSlots(
+      daySlotSettings.openTime,
+      daySlotSettings.closeTime,
+      requestedStep
+    );
+    const hasRequestedStart = allSlotsForDay.some(
+      (slot) => String(slot.value24 || "").trim() === requestedStartTime
+    );
+    if (!hasRequestedStart) throw bookingTimeOutOfHoursError();
+
+    const timesToLock = getTimesToLock(
+      requestedStartTime,
+      durationMin,
+      {
+        slotStepMin: (it as any).slotStepMinAtBooking,
+        bufferMin: (it as any).bufferMinAtBooking,
+      },
+      dateISO,
+      daySlotSettings
+    );
+
+    const slotRefs = timesToLock.map((t) =>
+      doc(db, ...SLOTS_COL, buildSlotId(dateISO, t, employeeKeyForLock))
+    );
+    const startSlotId = buildSlotId(dateISO, requestedStartTime, employeeKeyForLock);
+
+    const fallbackName =
+      String(it?.serviceSnapshot?.serviceNameAtBooking || "").trim() || String(it.serviceName || "").trim();
+    const fallbackPrice = Number(it?.serviceSnapshot?.priceAtBooking ?? it.finalPrice ?? it.total ?? 0);
+    const fallbackDur = Number(it?.serviceSnapshot?.durationAtBooking ?? durationMin);
+    const serviceSnapshot: ServiceSnapshot = stripUndefined({
+      serviceNameAtBooking: fallbackName || "-",
+      priceAtBooking: Number.isFinite(fallbackPrice) ? fallbackPrice : 0,
+      durationAtBooking: Number.isFinite(fallbackDur) ? fallbackDur : durationMin,
+      sectionIdAtBooking: it?.serviceSnapshot?.sectionIdAtBooking,
+      sectionTitleAtBooking: it?.serviceSnapshot?.sectionTitleAtBooking,
+      categoryIdAtBooking: it?.serviceSnapshot?.categoryIdAtBooking,
+      categoryNameAtBooking: it?.serviceSnapshot?.categoryNameAtBooking,
+    }) as ServiceSnapshot;
+
+    const payloadBase = stripUndefined({
+      ...it,
+      employeeId: it.employeeId ?? null,
+      employeeUid: it.employeeUid ?? null,
+      durationMin,
+      employeeKey,
+      slotId: startSlotId,
+      serviceSnapshot,
+      packageId: it.packageId ? String(it.packageId).trim() : undefined,
+      packageSnapshot: it.packageSnapshot ?? undefined,
+      slotStepMinAtBooking: (it as any).slotStepMinAtBooking ?? daySlotSettings.slotStepMin,
+      bufferMinAtBooking: (it as any).bufferMinAtBooking ?? daySlotSettings.bufferMin,
+      status,
+      ...statusAuditPatch,
+      updatedAt: serverTimestamp(),
+    });
+
+    prepared.push({
+      idx,
+      it,
+      ref: itemRefs[idx],
+      employeeKeyForLock,
+      employeeKey,
+      timesToLock,
+      slotRefs,
+      startSlotId,
+      durationMin,
+      payloadBase,
+    });
+  }
+
+  const { parentPublicId } = await runTransaction(db, async (tx) => {
+    const counterRef = doc(db, ...COUNTERS_COL, BOOKINGS_COUNTER_DOC);
+    const counterSnap = await tx.get(counterRef);
+
+    const slotSnaps = await Promise.all(prepared.flatMap((p) => p.slotRefs).map((r) => tx.get(r)));
+    for (const snap of slotSnaps) {
+      if (!snap.exists()) continue;
+      const sd: any = snap.data() || {};
+      const bId = String(sd.bookingId || "").trim();
+      if (bId) throw slotTakenError();
+      throw slotTakenError();
+    }
+
+    let next = 10000;
+    if (counterSnap.exists()) {
+      const d: any = counterSnap.data() || {};
+      const cur = typeof d.next === "number" ? d.next : 10000;
+      next = cur + 1;
+      tx.update(counterRef, { next });
+    } else {
+      next = 10001;
+      tx.set(counterRef, { next }, { merge: true } as any);
+    }
+    const parentPublicId = `MK-${String(next).padStart(5, "0")}`;
+
+    const parentPayload = stripUndefined({
+      ...parent,
+      serviceName: String(parent.serviceName || parent.packageSnapshot?.packageName || "Package Booking"),
+      serviceId: parent.serviceId ?? undefined,
+      serviceSnapshot: parent.serviceSnapshot ? (stripUndefined(parent.serviceSnapshot as any) as ServiceSnapshot) : undefined,
+      packageId: parent.packageId ? String(parent.packageId).trim() : undefined,
+      packageSnapshot: parent.packageSnapshot ?? undefined,
+      employeeId: null,
+      employeeUid: null,
+      employeeName: String(parent.employeeName || "").trim() || "Auto-assigned",
+      employeeKey: undefined,
+      slotId: undefined,
+      parentBookingId: null,
+      bookingGroupId: parentRef.id,
+      isParentBooking: true,
+      isSubBooking: false,
+      subBookingCount: prepared.length,
+      publicId: parentPublicId,
+      status,
+      ...statusAuditPatch,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    tx.set(parentRef, parentPayload as any);
+
+    for (const p of prepared) {
+      const subPublicId = `${parentPublicId}-${String(p.idx + 1).padStart(2, "0")}`;
+      const payload = stripUndefined({
+        ...p.payloadBase,
+        publicId: subPublicId,
+        parentBookingId: parentRef.id,
+        bookingGroupId: parentRef.id,
+        isParentBooking: false,
+        isSubBooking: true,
+        createdAt: serverTimestamp(),
+      });
+
+      for (let i = 0; i < p.slotRefs.length; i++) {
+        const slotRef = p.slotRefs[i];
+        const t = p.timesToLock[i];
+        tx.set(slotRef, {
+          bookingId: p.ref.id,
+          parentBookingId: parentRef.id,
+          bookingGroupId: parentRef.id,
+          employeeId: p.it.employeeId ?? null,
+          employeeUid: p.it.employeeUid ?? null,
+          employeeName: p.it.employeeName,
+          employeeKey: p.employeeKey,
+          date: p.it.date,
+          time: t,
+          startTime: p.it.time,
+          durationMin: p.durationMin,
+          userId: p.it.userId ?? parent.userId ?? null,
+          clientPhone: p.it.clientPhone ?? parent.clientPhone ?? "",
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      tx.set(p.ref, payload as any);
+    }
+
+    return { parentPublicId };
+  });
+
+  return {
+    parentId: parentRef.id,
+    parentPublicId,
+    itemIds: itemRefs.map((x) => x.id),
+  };
 }
 
 /** ✅ إنشاء حجز من لوحة التحكم */
@@ -1161,6 +1470,8 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         serviceName: booking.serviceName,
         serviceId: booking.serviceId ?? undefined,
         serviceSnapshot: booking.serviceSnapshot ?? undefined,
+        packageId: booking.packageId ?? undefined,
+        packageSnapshot: booking.packageSnapshot ?? undefined,
 
         employeeId: booking.employeeId ?? null,
         employeeUid: booking.employeeUid ?? null,
@@ -1329,6 +1640,8 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
         serviceName: patch.serviceName,
         serviceId: patch.serviceId,
         serviceSnapshot: patch.serviceSnapshot,
+        packageId: patch.packageId,
+        packageSnapshot: patch.packageSnapshot,
 
         employeeId: patch.employeeId,
         employeeUid: patch.employeeUid,

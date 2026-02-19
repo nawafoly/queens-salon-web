@@ -265,6 +265,8 @@ type BookingServiceItem = {
   serviceName?: string;
   price?: number;
   durationMin?: number;
+  sectionLabel?: string;
+  categoryLabel?: string;
 };
 
 function toStringArray(v: any): string[] {
@@ -273,6 +275,20 @@ function toStringArray(v: any): string[] {
 }
 
 function extractServicesFromAny(anyB: any): BookingServiceItem[] {
+  const pkgServices = Array.isArray(anyB?.packageSnapshot?.services) ? anyB.packageSnapshot.services : [];
+  if (pkgServices.length) {
+    return pkgServices
+      .map((x: any) => ({
+        serviceId: String(x?.serviceId ?? "").trim() || undefined,
+        serviceName: String(x?.serviceName ?? "").trim() || undefined,
+        price: Number.isFinite(Number(x?.price)) ? Number(x?.price) : undefined,
+        durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x?.durationMin) : undefined,
+        sectionLabel: String(x?.sectionTitle || x?.sectionId || "").trim() || undefined,
+        categoryLabel: String(x?.categoryName || x?.categoryId || "").trim() || undefined,
+      }))
+      .filter((x: any) => x.serviceId || x.serviceName);
+  }
+
   const sArr = Array.isArray(anyB?.services) ? anyB.services : null;
   if (sArr && sArr.length) {
     return sArr.map((x: any) => ({
@@ -280,6 +296,8 @@ function extractServicesFromAny(anyB: any): BookingServiceItem[] {
       serviceName: String(x?.serviceName ?? x?.name ?? "").trim() || undefined,
       price: Number.isFinite(Number(x?.price)) ? Number(x?.price) : undefined,
       durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x?.durationMin) : undefined,
+      sectionLabel: String(x?.sectionTitle || x?.sectionId || "").trim() || undefined,
+      categoryLabel: String(x?.categoryName || x?.categoryId || "").trim() || undefined,
     })).filter((x: any) => x.serviceId || x.serviceName);
   }
   const ids = toStringArray(anyB?.serviceIds);
@@ -294,8 +312,33 @@ function extractServicesFromAny(anyB: any): BookingServiceItem[] {
   }
   const serviceId = String(anyB?.serviceId ?? anyB?.service ?? anyB?.serviceKey ?? "").trim();
   const serviceName = String(anyB?.serviceName ?? "").trim();
-  if (serviceId || serviceName) return [{ serviceId: serviceId || undefined, serviceName: serviceName || undefined }];
+  if (serviceId || serviceName) {
+    return [{
+      serviceId: serviceId || undefined,
+      serviceName: serviceName || undefined,
+      sectionLabel: String(anyB?.serviceSnapshot?.sectionTitleAtBooking || anyB?.serviceSnapshot?.sectionIdAtBooking || "").trim() || undefined,
+      categoryLabel: String(anyB?.serviceSnapshot?.categoryNameAtBooking || anyB?.serviceSnapshot?.categoryIdAtBooking || "").trim() || undefined,
+    }];
+  }
   return [];
+}
+
+function serviceMetaSummaryForTable(b: Booking): string {
+  const section = String(
+    b?.serviceSnapshot?.sectionTitleAtBooking ||
+      b?.serviceSnapshot?.sectionIdAtBooking ||
+      ""
+  ).trim();
+  const category = String(
+    b?.serviceSnapshot?.categoryNameAtBooking ||
+      b?.serviceSnapshot?.categoryIdAtBooking ||
+      ""
+  ).trim();
+  const pkgName = String(b?.packageSnapshot?.packageName || "").trim();
+  const pkgCount = Array.isArray(b?.packageSnapshot?.services) ? b.packageSnapshot.services.length : 0;
+  if (pkgName) return `${pkgName}${pkgCount > 0 ? ` (${pkgCount} خدمات)` : ""}`;
+  if (section || category) return `${section || "—"}${category ? ` • ${category}` : ""}`;
+  return "—";
 }
 
 function serviceSummaryForTable(b: Booking): string {
@@ -317,6 +360,32 @@ type Booking = {
   serviceId?: string;
   note?: string;
   services?: BookingServiceItem[];
+  serviceSnapshot?: {
+    serviceNameAtBooking?: string;
+    priceAtBooking?: number;
+    durationAtBooking?: number;
+    sectionIdAtBooking?: string;
+    sectionTitleAtBooking?: string;
+    categoryIdAtBooking?: string;
+    categoryNameAtBooking?: string;
+  };
+  packageSnapshot?: {
+    packageId?: string;
+    packageName?: string;
+    finalPriceAtBooking?: number;
+    baseTotalPriceAtBooking?: number;
+    totalDurationMinAtBooking?: number;
+    services?: Array<{
+      serviceId?: string;
+      serviceName?: string;
+      sectionId?: string;
+      sectionTitle?: string;
+      categoryId?: string;
+      categoryName?: string;
+      price?: number;
+      durationMin?: number;
+    }>;
+  };
   durationMin?: number;
   slotStepMinAtBooking?: number;
   bufferMinAtBooking?: number;
@@ -811,7 +880,10 @@ export default function DashboardBookings() {
                       <div style={{fontSize: 11, opacity: 0.6}}>{b.phone || "—"}</div>
                       <div style={{fontSize: 11, opacity: 0.6}}>المصدر: {channelLabel(b.channel)}</div>
                     </td>
-                    <td>{serviceSummaryForTable(b)}</td>
+                    <td>
+                      <div style={{ fontWeight: 700 }}>{serviceSummaryForTable(b)}</div>
+                      <div style={{ fontSize: 11, opacity: 0.75 }}>{serviceMetaSummaryForTable(b)}</div>
+                    </td>
                     <td>{b.employeeName || "—"}</td>
                     <td>
                       <div>{b.date}</div>
@@ -891,7 +963,10 @@ export default function DashboardBookings() {
                 </div>
                 <div className="bk-mobile-row">
                   <span className="bk-mobile-label">الخدمة:</span>
-                  <span className="bk-mobile-val">{serviceSummaryForTable(b)}</span>
+                  <span className="bk-mobile-val">
+                    {serviceSummaryForTable(b)}
+                    <div style={{ fontSize: 11, opacity: 0.75 }}>{serviceMetaSummaryForTable(b)}</div>
+                  </span>
                 </div>
                 <div className="bk-mobile-row">
                   <span className="bk-mobile-label">الموظفة:</span>
@@ -1032,7 +1107,12 @@ export default function DashboardBookings() {
                     : [{ serviceName: selectedBooking.serviceName, serviceId: selectedBooking.serviceId }]
                   ).map((s, idx) => (
                     <div key={`${selectedBooking.id}_svc_${idx}`} className="bk-service-row">
-                      <span>{s.serviceName || s.serviceId || "خدمة"}</span>
+                      <span>
+                        {s.serviceName || s.serviceId || "خدمة"}
+                        <div style={{ fontSize: 11, opacity: 0.75 }}>
+                          {String(s.sectionLabel || "—")} • {String(s.categoryLabel || "—")}
+                        </div>
+                      </span>
                       <span>
                         {Number(s.durationMin || 0) > 0 ? `${s.durationMin} د` : "—"} · {Number(s.price || 0) > 0 ? `${s.price} ر.س` : "—"}
                       </span>

@@ -17,6 +17,12 @@ import {
 
 import { db } from "../../services/firebase";
 import { AppSettingsService } from "../../services/AppSettingsService";
+import {
+  listAllPackages,
+  upsertPackage,
+  removePackage,
+  type ServicePackageDoc,
+} from "../../services/firestorePackages";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/DashboardSettings.css";
@@ -139,6 +145,29 @@ type ServiceRow = {
   createdAt?: any;
 };
 
+type PackageDraft = {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  active: boolean;
+  serviceIds: string[];
+  finalPrice: number;
+  warnDiscountOverPercent: number;
+};
+
+const MAX_PACKAGE_DISCOUNT_WARN_PERCENT = 70;
+const MAX_PACKAGE_IMAGE_MB = 2;
+
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("FILE_READ_FAILED"));
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const navigate = useNavigate();
   const { hasAdminPower } = props;
@@ -162,6 +191,19 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const [sectionsCatalog, setSectionsCatalog] = useState<ServiceSectionRow[]>([]);
   const [categoriesCatalog, setCategoriesCatalog] = useState<ServiceCategoryRow[]>([]);
   const [servicesCatalog, setServicesCatalog] = useState<ServiceRow[]>([]);
+  const [packagesCatalog, setPackagesCatalog] = useState<ServicePackageDoc[]>([]);
+  const [editingPackageId, setEditingPackageId] = useState<string>("");
+  const [packagePickedImageName, setPackagePickedImageName] = useState("");
+  const [packageDraft, setPackageDraft] = useState<PackageDraft>({
+    id: "",
+    name: "",
+    description: "",
+    imageUrl: "",
+    active: true,
+    serviceIds: [],
+    finalPrice: 0,
+    warnDiscountOverPercent: MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
+  });
 
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newServiceName, setNewServiceName] = useState("");
@@ -408,9 +450,12 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         })
         .filter((s) => s.name.trim());
 
+      const pkgList = await listAllPackages(SALON_ID);
+
       setSectionsCatalog(secList);
       setCategoriesCatalog(catList);
       setServicesCatalog(srvList);
+      setPackagesCatalog(pkgList || []);
 
     } catch (e) {
       console.error("loadCatalog error:", e);
@@ -675,6 +720,168 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       return id.includes(q) || name.includes(q);
     });
   }, [sectionsCatalog, secSearch]);
+
+  const activeServicesForPackages = useMemo(() => {
+    return servicesCatalog.filter((s) => s.active !== false && String(s.id || "").trim() && String(s.name || "").trim());
+  }, [servicesCatalog]);
+
+  const packageServiceMap = useMemo(() => {
+    const m = new Map<string, ServiceRow>();
+    activeServicesForPackages.forEach((s) => m.set(String(s.id), s));
+    return m;
+  }, [activeServicesForPackages]);
+
+  const packageComputed = useMemo(() => {
+    const picked = (packageDraft.serviceIds || [])
+      .map((id) => packageServiceMap.get(String(id || "").trim()))
+      .filter(Boolean) as ServiceRow[];
+
+    const baseTotalPrice = picked.reduce((sum, s) => sum + Math.max(0, Number(s.price || 0)), 0);
+    const totalDurationMin = picked.reduce((sum, s) => sum + Math.max(0, Number(s.durationMin || 0)), 0);
+    const finalPrice = Math.max(0, Number(packageDraft.finalPrice || 0));
+    const discountAmount = Math.max(0, baseTotalPrice - finalPrice);
+    const discountPercent = baseTotalPrice > 0 ? (discountAmount / baseTotalPrice) * 100 : 0;
+    const warnOver = Math.max(0, Number(packageDraft.warnDiscountOverPercent || 0));
+    const isHighDiscount = warnOver > 0 && discountPercent > warnOver;
+
+    return {
+      picked,
+      baseTotalPrice,
+      totalDurationMin,
+      finalPrice,
+      discountAmount,
+      discountPercent,
+      warnOver,
+      isHighDiscount,
+      suggestedPrice: baseTotalPrice > 0 ? Math.max(0, Math.round(baseTotalPrice * (1 - warnOver / 100))) : 0,
+    };
+  }, [packageDraft, packageServiceMap]);
+
+  const resetPackageDraft = () => {
+    setEditingPackageId("");
+    setPackagePickedImageName("");
+    setPackageDraft({
+      id: "",
+      name: "",
+      description: "",
+      imageUrl: "",
+      active: true,
+      serviceIds: [],
+      finalPrice: 0,
+      warnDiscountOverPercent: MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
+    });
+  };
+
+  const openPackageForEdit = (pkg: ServicePackageDoc) => {
+    setEditingPackageId(String(pkg.id || "").trim());
+    setPackagePickedImageName(String(pkg.imageUrl || "").trim() ? "تم اختيار صورة" : "");
+    setPackageDraft({
+      id: String(pkg.id || "").trim(),
+      name: String(pkg.name || "").trim(),
+      description: String(pkg.description || "").trim(),
+      imageUrl: String(pkg.imageUrl || "").trim(),
+      active: pkg.active !== false,
+      serviceIds: Array.isArray(pkg.serviceIds) ? pkg.serviceIds : [],
+      finalPrice: Math.max(0, Number(pkg.finalPrice || 0)),
+      warnDiscountOverPercent: Math.max(
+        0,
+        Number(pkg.warnDiscountOverPercent || MAX_PACKAGE_DISCOUNT_WARN_PERCENT)
+      ),
+    });
+  };
+
+  const toggleDraftServiceId = (serviceId: string) => {
+    const id = String(serviceId || "").trim();
+    if (!id) return;
+    setPackageDraft((prev) => {
+      const exists = prev.serviceIds.includes(id);
+      return {
+        ...prev,
+        serviceIds: exists ? prev.serviceIds.filter((x) => x !== id) : [...prev.serviceIds, id],
+      };
+    });
+  };
+
+  const onPickPackageImage = async (file: File | null) => {
+    if (!file) return;
+    const sizeMb = file.size / (1024 * 1024);
+    if (sizeMb > MAX_PACKAGE_IMAGE_MB) {
+      showCatalogMsg(`❌ حجم صورة الباكيج يجب أن يكون أقل من ${MAX_PACKAGE_IMAGE_MB}MB`, 2600);
+      return;
+    }
+    try {
+      const b64 = await fileToBase64(file);
+      setPackagePickedImageName(file.name);
+      setPackageDraft((prev) => ({ ...prev, imageUrl: b64 }));
+    } catch {
+      showCatalogMsg("❌ تعذر قراءة ملف الصورة", 2200);
+    }
+  };
+
+  const savePackageDraft = async () => {
+    if (!hasAdminPower) return;
+
+    const name = String(packageDraft.name || "").trim();
+    if (!name) return showCatalogMsg("❌ اسم الباكيج مطلوب", 2200);
+    if (!packageComputed.picked.length) return showCatalogMsg("❌ اختَر خدمة واحدة على الأقل", 2200);
+    if (packageComputed.totalDurationMin <= 0) return showCatalogMsg("❌ مدة الباكيج غير صحيحة", 2200);
+
+    const id =
+      String(packageDraft.id || "").trim() ||
+      buildId(`pkg_${name}`);
+
+    const services = packageComputed.picked.map((s) => ({
+      serviceId: String(s.id || "").trim(),
+      serviceName: String(s.name || "").trim(),
+      sectionId: String(s.sectionId || "").trim() || undefined,
+      categoryId: String(s.categoryId || "").trim() || undefined,
+      price: Math.max(0, Number(s.price || 0)),
+      durationMin: Math.max(0, Number(s.durationMin || 0)),
+    }));
+
+    try {
+      await upsertPackage(
+        {
+          id,
+          name,
+          description: String(packageDraft.description || "").trim() || undefined,
+          imageUrl: String(packageDraft.imageUrl || "").trim() || undefined,
+          active: packageDraft.active !== false,
+          serviceIds: services.map((x) => x.serviceId),
+          services,
+          baseTotalPrice: packageComputed.baseTotalPrice,
+          totalDurationMin: packageComputed.totalDurationMin,
+          finalPrice: packageComputed.finalPrice,
+          discountAmount: packageComputed.discountAmount,
+          discountPercent: packageComputed.discountPercent,
+          warnDiscountOverPercent: packageComputed.warnOver || MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
+        },
+        SALON_ID
+      );
+      showCatalogMsg("✅ تم حفظ الباكيج");
+      await loadCatalog();
+      resetPackageDraft();
+    } catch (e) {
+      console.error("savePackageDraft error:", e);
+      showCatalogMsg("❌ تعذر حفظ الباكيج", 2500);
+    }
+  };
+
+  const deletePackageById = async (idRaw: string) => {
+    if (!hasAdminPower) return;
+    const id = String(idRaw || "").trim();
+    if (!id) return;
+    if (!window.confirm("هل أنت متأكد من حذف هذا الباكيج؟")) return;
+    try {
+      await removePackage(id, SALON_ID);
+      showCatalogMsg("✅ تم حذف الباكيج");
+      await loadCatalog();
+      if (editingPackageId === id) resetPackageDraft();
+    } catch (e) {
+      console.error("deletePackageById error:", e);
+      showCatalogMsg("❌ تعذر حذف الباكيج", 2500);
+    }
+  };
 
   const saveSeasonPricing = async () => {
     if (!hasAdminPower) return;
@@ -1259,6 +1466,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             ))}
           </div>
         </div>
+
       </div>
     </div>
   );

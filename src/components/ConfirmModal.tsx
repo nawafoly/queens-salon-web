@@ -23,8 +23,8 @@ const ConfirmModal: React.FC<Props> = ({
   title,
   message,
   variant = "info",
-  confirmText = "حسنًا",
-  cancelText = "إلغاء",
+  confirmText = "OK",
+  cancelText = "Cancel",
   showCancel = false,
   onConfirm,
   onCancel,
@@ -47,13 +47,13 @@ const ConfirmModal: React.FC<Props> = ({
       ? "qm-modal-box is-success"
       : "qm-modal-box is-info";
 
-  const icon = variant === "danger" ? "!" : variant === "success" ? "✓" : "i";
+  const icon = variant === "danger" ? "!" : variant === "success" ? "v" : "i";
 
   return (
     <Modal
       open={open}
       onClose={onCancel}
-      ariaLabel={title || "تأكيد"}
+      ariaLabel={title || "Confirm"}
       panelClassName={boxClass}
       size="sm"
     >
@@ -68,9 +68,9 @@ const ConfirmModal: React.FC<Props> = ({
           type="button"
           onClick={onCancel}
           aria-label="close"
-          title="إغلاق"
+          title="Close"
         >
-          ×
+          X
         </button>
       </div>
 

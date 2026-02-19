@@ -38,6 +38,16 @@ type UiBookingView = {
 
   serviceId: string;
   serviceName: string;
+  sectionLabel?: string;
+  categoryLabel?: string;
+  packageName?: string;
+  packageServices?: Array<{
+    serviceName: string;
+    sectionLabel?: string;
+    categoryLabel?: string;
+    durationMin?: number;
+    price?: number;
+  }>;
 
   employeeName: string;
   date: string;
@@ -116,6 +126,18 @@ function buildWhatsappMessageAll(bookings: UiBookingView[]) {
     const mk = String(b.publicId || "").trim() || "—";
     lines.push(`(${i + 1}) رقم الحجز: ${mk}`);
     lines.push(`الخدمة: ${b.serviceName || "—"}`);
+    lines.push(`القسم: ${b.sectionLabel || "—"}`);
+    lines.push(`التصنيف: ${b.categoryLabel || "—"}`);
+    if (b.packageName) {
+      lines.push(`الباكيج: ${b.packageName}`);
+      const pkgServices = Array.isArray(b.packageServices) ? b.packageServices : [];
+      if (pkgServices.length) {
+        lines.push(`تفاصيل الباكيج:`);
+        pkgServices.forEach((s, idx2) => {
+          lines.push(`- ${idx2 + 1}) ${s.serviceName}${s.sectionLabel ? ` | ${s.sectionLabel}` : ""}${s.categoryLabel ? ` | ${s.categoryLabel}` : ""}`);
+        });
+      }
+    }
     lines.push(`التاريخ: ${b.date || "—"}`);
     lines.push(`الوقت: ${formatTime12ForClient(b.time) || "—"}`);
     lines.push(`الموظفة: ${b.employeeName || "—"}`);
@@ -227,6 +249,28 @@ export default function Success() {
           const serviceId = String(docData.serviceId ?? docData.serviceName ?? "").trim();
           const snapName = String(docData.serviceSnapshot?.serviceNameAtBooking ?? "").trim();
           const serviceName = snapName || (await resolveServiceName(serviceId));
+          const sectionLabel = String(
+            docData?.serviceSnapshot?.sectionTitleAtBooking ||
+              docData?.serviceSnapshot?.sectionIdAtBooking ||
+              ""
+          ).trim();
+          const categoryLabel = String(
+            docData?.serviceSnapshot?.categoryNameAtBooking ||
+              docData?.serviceSnapshot?.categoryIdAtBooking ||
+              ""
+          ).trim();
+          const packageName = String(docData?.packageSnapshot?.packageName || "").trim();
+          const packageServices = Array.isArray(docData?.packageSnapshot?.services)
+            ? docData.packageSnapshot.services
+                .map((x: any) => ({
+                  serviceName: String(x?.serviceName || x?.serviceId || "").trim(),
+                  sectionLabel: String(x?.sectionTitle || x?.sectionId || "").trim() || undefined,
+                  categoryLabel: String(x?.categoryName || x?.categoryId || "").trim() || undefined,
+                  durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x.durationMin) : undefined,
+                  price: Number.isFinite(Number(x?.price)) ? Number(x.price) : undefined,
+                }))
+                .filter((x: any) => !!x.serviceName)
+            : [];
 
           if (!mounted) return;
 
@@ -238,6 +282,10 @@ export default function Success() {
 
             serviceId,
             serviceName,
+            sectionLabel: sectionLabel || undefined,
+            categoryLabel: categoryLabel || undefined,
+            packageName: packageName || undefined,
+            packageServices,
 
             employeeName: docData.employeeName || "-",
             date: docData.date || "-",
@@ -427,6 +475,37 @@ export default function Success() {
                   <span className="detail-label">الخدمة</span>
                   <span className="detail-value">{v.serviceName}</span>
                 </div>
+                <div className="detail-row">
+                  <FontAwesomeIcon icon={faCircleInfo} className="detail-ico" />
+                  <span className="detail-label">القسم</span>
+                  <span className="detail-value">{v.sectionLabel || "—"}</span>
+                </div>
+                <div className="detail-row">
+                  <FontAwesomeIcon icon={faCircleInfo} className="detail-ico" />
+                  <span className="detail-label">التصنيف</span>
+                  <span className="detail-value">{v.categoryLabel || "—"}</span>
+                </div>
+                {v.packageName ? (
+                  <div className="detail-row detail-row--full">
+                    <span className="detail-label">تفاصيل الباكيج</span>
+                    <span className="detail-value">
+                      {v.packageName}
+                      {Array.isArray(v.packageServices) && v.packageServices.length > 0 ? (
+                        <div style={{ marginTop: 6 }}>
+                          {v.packageServices.map((s, sIdx) => (
+                            <div key={`pkg-svc-${v.id}-${sIdx}`} style={{ fontSize: 13 }}>
+                              {sIdx + 1}) {s.serviceName}
+                              {s.sectionLabel ? ` | ${s.sectionLabel}` : ""}
+                              {s.categoryLabel ? ` | ${s.categoryLabel}` : ""}
+                              {Number(s.durationMin || 0) > 0 ? ` | ${s.durationMin} د` : ""}
+                              {Number(s.price || 0) > 0 ? ` | ${s.price} ر.س` : ""}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </span>
+                  </div>
+                ) : null}
 
                 <div className="detail-row">
                   <FontAwesomeIcon icon={faUserTie} className="detail-ico" />

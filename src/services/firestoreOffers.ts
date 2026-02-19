@@ -19,6 +19,12 @@ import { writeAuditLog } from "./logService";
 
 export type DiscountType = "fixed" | "percent";
 export type OfferAppliesTo = "all" | "services";
+export type OfferSequenceStep = {
+  serviceId: string;
+  orderIndex: number;
+  gapAfterMin: number;
+  titleSnapshot?: string;
+};
 
 export type Offer = {
   id: string;
@@ -40,6 +46,7 @@ export type Offer = {
   /** تطبيق العرض على الكل أو خدمات محددة */
   appliesTo?: OfferAppliesTo;
   serviceIds?: string[];
+  sequenceSteps?: OfferSequenceStep[];
 
   usageCount?: number;
   imageUrl?: string;
@@ -171,6 +178,22 @@ export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
 
       appliesTo: (payload.appliesTo as any) || "all",
       serviceIds: Array.isArray(payload.serviceIds) ? payload.serviceIds : [],
+      sequenceSteps: Array.isArray((payload as any).sequenceSteps)
+        ? (payload as any).sequenceSteps
+            .map((x: any) => ({
+              ...(() => {
+                const serviceId = String(x?.serviceId || "").trim();
+                const orderIndex = Number(x?.orderIndex || 0);
+                const gapAfterMin = Math.max(0, Number(x?.gapAfterMin || 0));
+                const titleSnapshot = String(x?.titleSnapshot || "").trim();
+                return titleSnapshot
+                  ? { serviceId, orderIndex, gapAfterMin, titleSnapshot }
+                  : { serviceId, orderIndex, gapAfterMin };
+              })(),
+            }))
+            .filter((x: any) => x.serviceId)
+            .sort((a: any, b: any) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0))
+        : [],
 
       updatedAt: serverTimestamp(),
       createdAt: payload.createdAt ?? serverTimestamp(),

@@ -62,6 +62,7 @@ import {
 // Staff
 import {
   listActiveStaffBySpecialty,
+  listActiveStaffAll,
   type StaffPublicWithId,
 } from "../services/firestoreStaffPublic";
 
@@ -72,6 +73,11 @@ import {
   type CategoryDoc,
   type ServiceDoc,
 } from "../services/firestoreCatalog";
+import {
+  listActivePackages,
+  type ServicePackageDoc,
+  type PackageServiceItem,
+} from "../services/firestorePackages";
 
 // Create booking
 import { createBooking } from "../services/firestoreBookings";
@@ -93,6 +99,16 @@ type CartItem = {
   id: string; // local id
   serviceId: string;
   serviceName: string;
+  packageId?: string;
+  packageSnapshot?: {
+    packageId: string;
+    packageName: string;
+    finalPriceAtBooking: number;
+    baseTotalPriceAtBooking: number;
+    totalDurationMinAtBooking: number;
+    serviceIds: string[];
+    services: PackageServiceItem[];
+  };
   serviceSectionId: string;
   serviceCategoryId?: string;
   serviceCategoryName?: string;
@@ -140,6 +156,7 @@ function extractMinPrice(priceText: string): number {
 
 type FlatService = {
   id: string;
+  kind: "service" | "package";
   sectionId: string;
   sectionTitle: string;
 
@@ -152,6 +169,10 @@ type FlatService = {
   seasonPrice?: number;
 
   durationMin?: number;
+  packageId?: string;
+  packageServiceIds?: string[];
+  packageServices?: PackageServiceItem[];
+  packageBaseTotalPrice?: number;
 
   source: "firestore" | "pricing";
 };
@@ -160,6 +181,8 @@ type CategoryOption = { id: string; name: string };
 
 const SALON_ID = "main";
 const DEFAULT_SERVICE_DURATION_MIN = 60;
+const PACKAGE_SECTION_ID = "service-packages";
+const PACKAGE_SECTION_TITLE = "البكيجات";
 const ALLOW_OVERTIME_MIN = 20;
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
@@ -584,6 +607,31 @@ function normalizeSearchText(raw: string) {
     .trim();
 }
 
+function toArabicCatalogLabel(raw: string) {
+  const original = String(raw || "").trim();
+  if (!original) return "";
+  if (/[\u0600-\u06FF]/.test(original)) return original;
+
+  const normalized = normalizeSearchText(original).replace(/[_-]+/g, " ");
+  const aliases: Array<{ re: RegExp; ar: string }> = [
+    { re: /\bhair\b|blow\s*dry|color|styling|treatment/, ar: "الشعر" },
+    { re: /\bnail|manicure|pedicure\b/, ar: "الأظافر" },
+    { re: /\bmakeup|bridal\b/, ar: "المكياج" },
+    { re: /\bskin|facial\b/, ar: "العناية بالبشرة" },
+    { re: /\bbody|spa|massage\b/, ar: "العناية بالجسم" },
+    { re: /\bwax|thread|laser|hair\s*removal\b/, ar: "إزالة الشعر" },
+    { re: /\beyelash|brow|eyebrow|lash\b/, ar: "الرموش والحواجب" },
+    { re: /\bpackage|packages|bundle\b/, ar: "البكيجات" },
+    { re: /\boffers?|discounts?\b/, ar: "العروض" },
+  ];
+
+  for (const a of aliases) {
+    if (a.re.test(normalized)) return a.ar;
+  }
+
+  return original;
+}
+
 function normalizeKsaPhone(raw: string) {
   const digits = normalizeDigits(String(raw || "")).replace(/\D/g, "");
   if (!digits) return "";
@@ -754,6 +802,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [fsSections, setFsSections] = useState<SectionDoc[]>([]);
   const [fsCategories, setFsCategories] = useState<CategoryDoc[]>([]);
   const [fsServices, setFsServices] = useState<ServiceDoc[]>([]);
+  const [fsPackages, setFsPackages] = useState<ServicePackageDoc[]>([]);
 
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
@@ -1444,10 +1493,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
     if (!Object.prototype.hasOwnProperty.call(staffByService, serviceId)) {
-      const res = await listActiveStaffBySpecialty({
-        salonId: SALON_ID,
-        specialty: serviceId,
-      });
+      const res = await listStaffForService(serviceId, sv);
       staffList = (res || []) as StaffPublicWithId[];
       setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
     }
@@ -1643,19 +1689,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
     const hasStaffCache = Object.prototype.hasOwnProperty.call(staffByService, serviceId);
     if (!hasStaffCache) {
-      const res = await listActiveStaffBySpecialty({
-        salonId: SALON_ID,
-        specialty: serviceId,
-      });
-
-      staffList = (res || []).filter((st: any) => {
-        const name = String(st?.name || "").trim();
-        if (!name) return false;
-        const specs = Array.isArray(st?.specialties)
-          ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
-          : [];
-        return specs.includes(serviceId);
-      }) as any;
+      const res = await listStaffForService(serviceId, sv);
+      staffList = (res || []).filter((st: any) => String(st?.name || "").trim()) as any;
 
       setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
     }
@@ -2237,20 +2272,27 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     async function loadSectionsFirstTime() {
       try {
         setCatalogLoading(true);
-        const secs = await listActiveSections(SALON_ID);
+        const [secs, packs] = await Promise.all([
+          listActiveSections(SALON_ID),
+          listActivePackages(SALON_ID),
+        ]);
         if (cancelled) return;
 
-        if (secs && secs.length > 0) {
+        setFsPackages(Array.isArray(packs) ? packs : []);
+
+        if ((secs && secs.length > 0) || (packs && packs.length > 0)) {
           setCatalogMode("firestore");
           setFsSections(secs);
         } else {
           setCatalogMode("pricing");
           setFsSections([]);
+          setFsPackages([]);
         }
       } catch {
         if (!cancelled) {
           setCatalogMode("pricing");
           setFsSections([]);
+          setFsPackages([]);
         }
       } finally {
         if (!cancelled) setCatalogLoading(false);
@@ -2273,6 +2315,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       if (catalogMode !== "firestore") return;
 
       if (!selectedSectionId) {
+        setFsCategories([]);
+        setFsServices([]);
+        return;
+      }
+
+      if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) {
         setFsCategories([]);
         setFsServices([]);
         return;
@@ -2302,7 +2350,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
         const safeCats: any[] = catsSnap.docs
           .map((d) => ({ id: d.id, ...(d.data() as any) }))
-          .filter((c) => String(c?.الاسم ?? c?.name ?? "").trim())
+          .filter((c) => String((c as any)?.["الاسم"] ?? c?.name ?? "").trim())
           .filter((c) => c?.active !== false);
 
         setFsCategories(safeCats as any);
@@ -2381,7 +2429,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       if (!cid) return base;
 
       return base.filter((s: any) => {
-        const catName = String(s.category ?? s.categoryName ?? s.التصنيف ?? "").trim();
+        const catName = String(
+          s.category ?? s.categoryName ?? (s as any)?.["التصنيف"] ?? ""
+        ).trim();
         return catName === cid;
       });
     }
@@ -2407,15 +2457,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const HAIR_SECTION_IDS = new Set(["hair", "الشعر", "hair_section", "قص", "قص_شعر"]);
 
   const servicesFlat: FlatService[] = useMemo(() => {
-    if (catalogMode === "firestore" && fsSections.length > 0) {
+    if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
       const secMap = new Map<string, string>();
       fsSections.forEach((s: any) =>
-        secMap.set(String(s.id), String((s as any).الاسم ?? (s as any).name ?? ""))
+        secMap.set(String(s.id), String((s as any)?.["الاسم"] ?? (s as any).name ?? ""))
       );
 
       const catMap = new Map<string, string>();
       fsCategories.forEach((c: any) =>
-        catMap.set(String(c.id), String((c as any).الاسم ?? (c as any).name ?? ""))
+        catMap.set(String(c.id), String((c as any)?.["الاسم"] ?? (c as any).name ?? ""))
       );
 
       const catById = new Map<string, any>();
@@ -2428,13 +2478,19 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           const sectionId = String(x.sectionId || selectedSectionId || "").trim();
           const sectionTitle = secMap.get(sectionId) || sectionId || "—";
 
-          const catName = String(x.category ?? x.categoryName ?? x.التصنيف ?? "عام").trim() || "عام";
-          const name = String(x.الاسم ?? x.name ?? "").trim();
-          const priceNum = Number(x.السعر ?? x.price ?? 0);
+          const catName =
+            String(
+              x.category ??
+                x.categoryName ??
+                (x as any)?.["التصنيف"] ??
+                "عام"
+            ).trim() || "عام";
+          const name = String((x as any)?.["الاسم"] ?? x.name ?? "").trim();
+          const priceNum = Number((x as any)?.["السعر"] ?? x.price ?? 0);
 
           const seasonPriceRaw =
             (x as any).seasonPrice ??
-            (x as any).سعر_الموسم ??
+            (x as any)?.["سعر_الموسم"] ??
             (x as any).season_price ??
             (x as any).seasonPriceValue ??
             0;
@@ -2442,10 +2498,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           const seasonPriceNum = Number(String(seasonPriceRaw).replace(/[^\d.]/g, "")) || 0;
           const seasonPrice = seasonPriceNum > 0 ? seasonPriceNum : undefined;
 
-          const durationMin = Number(x.المدة ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN);
+          const durationMin = Number(
+            (x as any)?.["المدة"] ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN
+          );
 
           return {
             id: String(x.id),
+            kind: "service" as const,
             sectionId,
             sectionTitle,
             categoryId: "",
@@ -2466,12 +2525,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         const sectionTitle = secMap.get(sectionId) || sectionId || "—";
 
         const catName = catId ? catMap.get(catId) || "عام" : "عام";
-        const name = String(x.الاسم ?? x.name ?? "").trim();
-        const priceNum = Number(x.السعر ?? x.price ?? 0);
+        const name = String((x as any)?.["الاسم"] ?? x.name ?? "").trim();
+        const priceNum = Number((x as any)?.["السعر"] ?? x.price ?? 0);
 
         const seasonPriceRaw =
           (x as any).seasonPrice ??
-          (x as any).سعر_الموسم ??
+          (x as any)?.["سعر_الموسم"] ??
           (x as any).season_price ??
           (x as any).seasonPriceValue ??
           0;
@@ -2479,10 +2538,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         const seasonPriceNum = Number(String(seasonPriceRaw).replace(/[^\d.]/g, "")) || 0;
         const seasonPrice = seasonPriceNum > 0 ? seasonPriceNum : undefined;
 
-        const durationMin = Number(x.المدة ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN);
+        const durationMin = Number(
+          (x as any)?.["المدة"] ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN
+        );
 
         return {
           id: String(x.id),
+          kind: "service" as const,
           sectionId,
           sectionTitle,
           categoryId: catId,
@@ -2496,7 +2558,27 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         };
       });
 
-      return list;
+      const packageRows: FlatService[] = (fsPackages || []).map((pkg) => ({
+        id: `pkg:${String(pkg.id)}`,
+        kind: "package" as const,
+        sectionId: PACKAGE_SECTION_ID,
+        sectionTitle: PACKAGE_SECTION_TITLE,
+        categoryId: PACKAGE_SECTION_ID,
+        category: PACKAGE_SECTION_TITLE,
+        name: String(pkg.name || "").trim(),
+        priceText: `${Number(pkg.finalPrice || 0)} ريال`,
+        basePrice: Number(pkg.finalPrice || 0),
+        durationMin: Number(pkg.totalDurationMin || DEFAULT_SERVICE_DURATION_MIN),
+        packageId: String(pkg.id || "").trim(),
+        packageServiceIds: Array.isArray(pkg.serviceIds)
+          ? pkg.serviceIds.map((x) => String(x || "").trim()).filter(Boolean)
+          : [],
+        packageServices: Array.isArray(pkg.services) ? pkg.services : [],
+        packageBaseTotalPrice: Number(pkg.baseTotalPrice || 0),
+        source: "firestore" as const,
+      }));
+
+      return [...list, ...packageRows];
     }
 
     const out: FlatService[] = [];
@@ -2508,6 +2590,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
           out.push({
             id,
+            kind: "service" as const,
             sectionId,
             sectionTitle: section.title,
             categoryId: "",
@@ -2523,21 +2606,26 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     });
 
     return out;
-  }, [catalogMode, fsSections, fsCategories, fsServicesFiltered, selectedSectionId]);
+  }, [catalogMode, fsSections, fsCategories, fsServicesFiltered, selectedSectionId, fsPackages]);
 
   const sectionOptions = useMemo(() => {
-    if (catalogMode === "firestore" && fsSections.length > 0) {
-      return fsSections.map((s: any) => ({
+    if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
+      const rows = fsSections.map((s: any) => ({
         id: String(s.id),
-        title: String((s as any).الاسم ?? (s as any).name ?? ""),
+        title: String((s as any)?.["�����"] ?? (s as any).name ?? ""),
       }));
+      if ((fsPackages || []).length > 0) {
+        rows.push({ id: PACKAGE_SECTION_ID, title: PACKAGE_SECTION_TITLE });
+      }
+      return rows;
     }
 
     return Object.entries(pricingSections).map(([id, sec]) => ({ id, title: sec.title }));
-  }, [catalogMode, fsSections]);
+  }, [catalogMode, fsSections, fsPackages]);
 
   const categoryOptions: CategoryOption[] = useMemo(() => {
     if (!selectedSectionId) return [];
+    if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) return [];
 
     if (catalogMode === "firestore" && fsSections.length > 0) {
       if (fsCategories.length) {
@@ -2545,7 +2633,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
         const cats = fsCategories
           .filter((c: any) => String(c.sectionId || "").trim() === sid)
-          .map((c: any) => ({ id: String(c.id), name: String(c.الاسم ?? c.name ?? "").trim() }))
+          .map((c: any) => ({
+            id: String(c.id),
+            name: String((c as any)?.["الاسم"] ?? c.name ?? "").trim(),
+          }))
           .filter((x) => x.id && x.name);
 
         const seen = new Set<string>();
@@ -2555,7 +2646,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       const sid = String(selectedSectionId).trim();
       const base = fsServices
         .filter((s: any) => String(s.sectionId || "").trim() === sid)
-        .map((s: any) => String(s.category ?? s.categoryName ?? s.التصنيف ?? "عام").trim())
+        .map((s: any) =>
+          String(
+            s.category ?? s.categoryName ?? (s as any)?.["التصنيف"] ?? "عام"
+          ).trim()
+        )
         .filter(Boolean);
 
       const seen = new Set<string>();
@@ -2670,23 +2765,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
         setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
 
-        const res = await listActiveStaffBySpecialty({
-          salonId: SALON_ID,
-          specialty: sid,
-        });
+        const sv = getServiceById(sid);
+        const res = await listStaffForService(sid, sv);
 
         if (cancelled) return;
 
-        const norm = (v: any) => String(v ?? "").trim().toLowerCase();
         const normalized = (res || []).filter((st: any) => {
           const name = String(st?.name || "").trim();
           if (!name) return false;
-
-          const specs = Array.isArray(st?.specialties)
-            ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
-            : [];
-
-          return specs.some((sp: string) => norm(sp) === norm(sid));
+          return true;
         });
 
         setStaffByService((p) => ({ ...p, [sid]: normalized as any }));
@@ -2731,6 +2818,39 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   function getServiceById(id: string) {
     return servicesFlat.find((sv) => sv.id === id) || null;
+  }
+
+  function normalizeSpecialty(v: string) {
+    return String(v || "").trim().toLowerCase();
+  }
+
+  async function listStaffForService(serviceId: string, service?: FlatService | null) {
+    const sid = String(serviceId || "").trim();
+    if (!sid) return [] as StaffPublicWithId[];
+
+    const target = service || getServiceById(sid);
+    if (target?.kind === "package") {
+      const needed = (target.packageServiceIds || []).map(normalizeSpecialty).filter(Boolean);
+      if (!needed.length) return [];
+      const all = await listActiveStaffAll(SALON_ID);
+      return (all || []).filter((st: any) => {
+        const specs = Array.isArray(st?.specialties)
+          ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
+          : [];
+        return needed.every((n) => specs.includes(n));
+      });
+    }
+
+    const res = await listActiveStaffBySpecialty({
+      salonId: SALON_ID,
+      specialty: sid,
+    });
+    return (res || []).filter((st: any) => {
+      const specs = Array.isArray(st?.specialties)
+        ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
+        : [];
+      return specs.includes(normalizeSpecialty(sid));
+    });
   }
 
   function focusFutureSearchForCartItem(it: CartItem) {
@@ -2817,6 +2937,19 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           id: makeLocalId(),
           serviceId: id,
           serviceName: sv.name,
+          packageId: sv.kind === "package" ? String(sv.packageId || "").trim() : undefined,
+          packageSnapshot:
+            sv.kind === "package" && sv.packageId
+              ? {
+                  packageId: String(sv.packageId || "").trim(),
+                  packageName: sv.name,
+                  finalPriceAtBooking: Number(sv.basePrice || 0),
+                  baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
+                  totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                  serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
+                  services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
+                }
+              : undefined,
           basePrice: effectiveBasePrice,
           priceText: effectivePriceText,
           durationMin: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
@@ -2922,24 +3055,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
           setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
 
-          const res = await listActiveStaffBySpecialty({
-            salonId: SALON_ID,
-            specialty: sid,
-          });
+          const sv = getServiceById(sid);
+          const res = await listStaffForService(sid, sv);
 
           if (cancelled) return;
-
-          const norm = (v: any) => String(v ?? "").trim().toLowerCase();
 
           const normalized = (res || []).filter((st: any) => {
             const name = String(st?.name || "").trim();
             if (!name) return false;
-
-            const specs = Array.isArray(st?.specialties)
-              ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
-              : [];
-
-            return specs.some((sp: string) => norm(sp) === norm(sid));
+            return true;
           });
 
           setStaffByService((p) => ({ ...p, [sid]: normalized }));
@@ -4033,6 +4157,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
           serviceName: it.serviceName,
           serviceId: it.serviceId,
+          packageId: String(it.packageId || "").trim() || undefined,
+          packageSnapshot: it.packageSnapshot || undefined,
 
           serviceSnapshot: {
             serviceNameAtBooking: it.serviceName,
@@ -4073,6 +4199,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
           service: it.serviceId,
           serviceName: it.serviceName,
+          packageId: String(it.packageId || "").trim() || null,
+          packageSnapshot: it.packageSnapshot || null,
 
           employeeName: String(it.employeeName || "").trim(),
           employeeId: String(it.employeeId || "").trim(),
@@ -4163,23 +4291,43 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         ...prev,
         ...parsed,
         phone: String(parsed?.phone || "").replace(/\D/g, "").slice(0, 10),
-        items: items.map((it) => ({
-          ...it,
-          id: String(it?.id || makeLocalId()),
-          durationMin: Number(it?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-          basePrice: Number(it?.basePrice || 0),
-          serviceId: String(it?.serviceId || "").trim(),
-          serviceName: String(it?.serviceName || "").trim(),
-          employeeId: String(it?.employeeId || "").trim(),
-          employeeUid: String(it?.employeeUid || "").trim(),
-          employeeName: String(it?.employeeName || "").trim(),
-          date: String(it?.date || "").trim(),
-          time: String(it?.time || "").trim(),
-          priceText: String(it?.priceText || "").trim(),
-          serviceSectionId: String((it as any)?.serviceSectionId || "").trim(),
-          serviceCategoryId: String((it as any)?.serviceCategoryId || "").trim() || undefined,
-          serviceCategoryName: String((it as any)?.serviceCategoryName || "").trim() || undefined,
-        })),
+        items: items.map((it) => {
+          const serviceId = String(it?.serviceId || "").trim();
+          const sv = getServiceById(serviceId);
+          return {
+            ...it,
+            id: String(it?.id || makeLocalId()),
+            durationMin: Number(it?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+            basePrice: Number(it?.basePrice || 0),
+            serviceId,
+            serviceName: String(it?.serviceName || "").trim(),
+            packageId:
+              String((it as any)?.packageId || "").trim() ||
+              (sv?.kind === "package" ? String(sv.packageId || "").trim() : undefined),
+            packageSnapshot:
+              (it as any)?.packageSnapshot ||
+              (sv?.kind === "package" && sv.packageId
+                ? {
+                    packageId: String(sv.packageId || "").trim(),
+                    packageName: sv.name,
+                    finalPriceAtBooking: Number(sv.basePrice || 0),
+                    baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
+                    totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                    serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
+                    services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
+                  }
+                : undefined),
+            employeeId: String(it?.employeeId || "").trim(),
+            employeeUid: String(it?.employeeUid || "").trim(),
+            employeeName: String(it?.employeeName || "").trim(),
+            date: String(it?.date || "").trim(),
+            time: String(it?.time || "").trim(),
+            priceText: String(it?.priceText || "").trim(),
+            serviceSectionId: String((it as any)?.serviceSectionId || "").trim(),
+            serviceCategoryId: String((it as any)?.serviceCategoryId || "").trim() || undefined,
+            serviceCategoryName: String((it as any)?.serviceCategoryName || "").trim() || undefined,
+          };
+        }),
       }));
     } catch {
       // ignore
@@ -4558,7 +4706,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   <div className="mb-3">
                     <div className="d-flex gap-2 flex-wrap align-items-center mb-2">
                       <span className="badge text-bg-secondary" style={{ borderRadius: 999 }}>
-                        Hair Guide
+                        دليل أطوال الشعر
                       </span>
 
                       {isOwner ? (
@@ -4613,7 +4761,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       <option value="">اختاري قسم...</option>
                       {sectionOptions.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.title || s.id}
+                          {toArabicCatalogLabel(String(s.title || s.id))}
                         </option>
                       ))}
                     </select>
@@ -4630,7 +4778,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       <option value="">الكل</option>
                       {categoryOptions.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name}
+                          {toArabicCatalogLabel(String(c.name || c.id))}
                         </option>
                       ))}
                     </select>
@@ -4646,10 +4794,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     >
                       <option value="">اختاري خدمة...</option>
                       {servicesGrouped.map(([catName, arr]) => (
-                        <optgroup key={catName} label={catName}>
+                        <optgroup key={catName} label={toArabicCatalogLabel(String(catName || ""))}>
                           {arr.map((sv) => (
                             <option key={sv.id} value={sv.id}>
-                              {sv.name} — {servicePickerPriceText(sv)}
+                              {toArabicCatalogLabel(String(sv.name || sv.id))} — {servicePickerPriceText(sv)}
                             </option>
                           ))}
                         </optgroup>
@@ -4721,7 +4869,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   <div className="col-12 col-md-8">
                     <div className="d-flex align-items-center gap-2 flex-wrap">
                       <span className="badge text-bg-dark" style={{ borderRadius: 999 }}>
-                        Catalog: {catalogMode === "firestore" ? "Firestore" : "Pricing"}
+                        مصدر الكتالوج: {catalogMode === "firestore" ? "فايرستور" : "التسعير"}
                       </span>
                       {catalogLoading ? (
                         <span className="badge text-bg-secondary" style={{ borderRadius: 999 }}>
@@ -5222,7 +5370,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 {/* Submit */}
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
                   <div style={{ fontSize: 13, opacity: 0.85 }}>
-                    عند الحفظ: يتم إنشاء الحجوزات بالحالة <b>pending</b> ثم يتم الطباعة من صفحة النجاح.
+                    عند الحفظ: يتم إنشاء الحجوزات بالحالة <b>بالانتظار</b> ثم يتم الطباعة من صفحة النجاح.
                   </div>
 
                   <button

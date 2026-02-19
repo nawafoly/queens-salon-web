@@ -1,7 +1,7 @@
-// src/pages/Booking.tsx
+﻿// src/pages/Booking.tsx
 
 import { useEffect, useMemo, useState, useRef } from "react";
-import type React from "react"; // ✅ ADD: عشان React.ChangeEvent / React.FormEvent
+import type React from "react"; // âœ… ADD: عشان React.ChangeEvent / React.FormEvent
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import logo from "../assets/images/ssunnamed2.png";
@@ -28,7 +28,7 @@ import { AppSettingsService } from "../services/AppSettingsService";
 
 import "../styles/Booking.css";
 
-// ✅ Firestore slot availability check
+// âœ… Firestore slot availability check
 import {
   doc,
   getDoc,
@@ -37,47 +37,55 @@ import {
   query,
   where,
   orderBy,
-  setDoc, // ✅ add
+  setDoc, // âœ… add
 } from "firebase/firestore";
 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// ✅ انتبه: لازم firebase.ts يصدّر storage
+// âœ… انتبه: لازم firebase.ts يصدّر storage
 import { db, storage } from "../services/firebase";
 
-// ✅ Firebase Auth (للقراءة فقط)
+// âœ… Firebase Auth (للقراءة فقط)
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
-// ✅ fallback Pricing (مؤقت فقط إذا Firestore فاضي)
+// âœ… fallback Pricing (مؤقت فقط إذا Firestore فاضي)
 import { pricingSections } from "./Pricing";
 
-// ✅ Firestore Offers
+// âœ… Firestore Offers
 import type { Offer as FsOffer } from "../services/firestoreOffers";
 import {
   findActiveOfferByCode,
   offerAppliesToService,
+  listOffers,
+  isOfferActiveNow,
 } from "../services/firestoreOffers";
 
-// ✅ Staff Public (Firestore)
+// âœ… Staff Public (Firestore)
 import {
   listActiveStaffBySpecialty,
+  listActiveStaffAll,
   type StaffPublicWithId,
 } from "../services/firestoreStaffPublic";
 
-// ✅ Catalog from Firestore (Sections/Categories/Services)
+// âœ… Catalog from Firestore (Sections/Categories/Services)
 import {
   listActiveSections,
   type SectionDoc,
   type CategoryDoc,
   type ServiceDoc,
 } from "../services/firestoreCatalog";
+import {
+  listActivePackages,
+  type ServicePackageDoc,
+  type PackageServiceItem,
+} from "../services/firestorePackages";
 
-// ✅ Create booking (Firestore)
-import { createBooking } from "../services/firestoreBookings";
+// âœ… Create booking (Firestore)
+import { createBooking, createBookingGroup } from "../services/firestoreBookings";
 
 import { createOrLoadUserProfile } from "../services/userProfile";
 
-// ✅ Custom modal بدل alert
+// âœ… Custom modal بدل alert
 import ConfirmModal from "../components/ConfirmModal";
 
 /* =========================
@@ -88,12 +96,22 @@ type CartItem = {
   id: string; // local id
   serviceId: string;
   serviceName: string;
-  serviceSectionId: string; // ✅ القسم الحقيقي للخدمة وقت الإضافة
-  serviceSectionTitle?: string; // ✅ اسم القسم وقت الإضافة (للقواعد المرنة)
-  serviceCategoryId?: string; // ✅ للتوافق (اختياري)
-  serviceCategoryName?: string; // ✅ لو التصنيف نصي (للـ legacy)
+  packageId?: string;
+  packageSnapshot?: {
+    packageId: string;
+    packageName: string;
+    finalPriceAtBooking: number;
+    baseTotalPriceAtBooking: number;
+    totalDurationMinAtBooking: number;
+    serviceIds: string[];
+    services: PackageServiceItem[];
+  };
+  serviceSectionId: string; // âœ… القسم الحقيقي للخدمة وقت الإضافة
+  serviceSectionTitle?: string; // âœ… اسم القسم وقت الإضافة (للقواعد المرنة)
+  serviceCategoryId?: string; // âœ… للتوافق (اختياري)
+  serviceCategoryName?: string; // âœ… لو التصنيف نصي (للـ legacy)
 
-  serviceBasePrice?: number; // ✅ سعر الخدمة الأساسي قبل أي رسوم إضافية
+  serviceBasePrice?: number; // âœ… سعر الخدمة الأساسي قبل أي رسوم إضافية
   basePrice: number;
   priceText: string;
   durationMin: number;
@@ -103,11 +121,23 @@ type CartItem = {
   employeeName?: string;
 
   date: string; // YYYY-MM-DD
-  time: string; // slot time: string; // ✅ نخزن 24h "HH:MM" (value24)
+  time: string; // slot time: string; // âœ… نخزن 24h "HH:MM" (value24)
 
-  locked?: boolean; // ✅ جديد: هل الكرت تم تأكيده؟
-  toolsSource?: "client" | "salon"; // ✅ أدوات الخدمة: من العميلة أو من الصالون
-  toolsFeeApplied?: number; // ✅ الرسوم المضافة بسبب الأدوات (إن وجدت)
+  locked?: boolean; // âœ… جديد: هل الكرت تم تأكيده؟
+  toolsSource?: "client" | "salon"; // âœ… أدوات الخدمة: من العميلة أو من الصالون
+  toolsFeeApplied?: number; // âœ… الرسوم المضافة بسبب الأدوات (إن وجدت)
+  sequenceOfferId?: string;
+  sequenceOfferTitle?: string;
+  sequenceStepsSnapshot?: Array<{
+    serviceId: string;
+    orderIndex: number;
+    gapAfterMin: number;
+    titleSnapshot?: string;
+    serviceNameAtBooking: string;
+    priceAtBooking: number;
+    durationAtBooking: number;
+    sectionIdAtBooking?: string;
+  }>;
 };
 
 interface BookingFormData {
@@ -115,7 +145,7 @@ interface BookingFormData {
   phone: string;
   note?: string;
 
-  // ✅ سلة خدمات: كل خدمة لها (موظفة/تاريخ/وقت)
+  // âœ… سلة خدمات: كل خدمة لها (موظفة/تاريخ/وقت)
   items: CartItem[];
 }
 
@@ -140,32 +170,58 @@ function extractMinPrice(priceText: string): number {
   return Math.min(...parts);
 }
 
+function readDisplayLabel(raw: any, fallback = ""): string {
+  const obj = raw && typeof raw === "object" ? raw : {};
+  const directKeys = ["name", "title", "category", "categoryName", "الاسم", "العنوان"];
+  for (const k of directKeys) {
+    const v = String((obj as any)?.[k] ?? "").trim();
+    if (v) return v;
+  }
+  const entries = Object.entries(obj as Record<string, any>);
+  for (const [k, v] of entries) {
+    const key = String(k || "").toLowerCase();
+    if (/(name|title|اسم|عنوان)/i.test(key)) {
+      const txt = String(v ?? "").trim();
+      if (txt) return txt;
+    }
+  }
+  return String(fallback || "").trim();
+}
+
 type FlatService = {
   id: string;
+  kind: "service" | "package";
   sectionId: string;
   sectionTitle: string;
 
-  // ✅ التصنيف
+  // âœ… التصنيف
   categoryId?: string; // Firestore فقط
   category: string; // اسم التصنيف للعرض (Firestore/Pricing)
   name: string;
 
-  // ✅ حقول تسعير/عرض
+  // âœ… حقول تسعير/عرض
   priceText: string;
   basePrice: number;
-  seasonPrice?: number; // ✅ سعر الموسم (اختياري)
+  seasonPrice?: number; // âœ… سعر الموسم (اختياري)
 
-  // ✅ مدة من Firestore إذا كانت موجودة
+  // âœ… مدة من Firestore إذا كانت موجودة
   durationMin?: number;
+  packageId?: string;
+  packageServiceIds?: string[];
+  packageServices?: PackageServiceItem[];
+  packageBaseTotalPrice?: number;
 
-  // ✅ معرفة مصدر الخدمة
+  // âœ… معرفة مصدر الخدمة
   source: "firestore" | "pricing";
 };
 
 type CategoryOption = { id: string; name: string };
+type PickerScope = "services" | "offers_packages";
 
 const SALON_ID = "main";
 const DEFAULT_SERVICE_DURATION_MIN = 60;
+const PACKAGE_SECTION_ID = "service-packages";
+const PACKAGE_SECTION_TITLE = "البكيجات";
 const ALLOW_OVERTIME_MIN = 20;
 const MANI_PEDI_SECTION_KEYWORDS = [
   "manicure",
@@ -194,7 +250,7 @@ const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
   fri: "الجمعة",
 };
 
-// ✅ نفس منطق slotId الموجود في firestoreBookings.ts
+// âœ… نفس منطق slotId الموجود في firestoreBookings.ts
 function safeKey(v: string) {
   return String(v || "").trim().replaceAll("/", "-").replace(/\s+/g, "_");
 }
@@ -219,7 +275,7 @@ function buildSlotId(
 function getTimesToLock(
   allSlots: TimeSlot[],
   slotStepMin: number,
-  startTime24: string, // ✅ "HH:MM"
+  startTime24: string, // âœ… "HH:MM"
   durationMin: number,
   bufferMin: number
 ) {
@@ -248,15 +304,15 @@ function getTimesToLock(
 }
 
 
-// ✅✅✅ NEW: تحديد الأوقات اللي "تنفع كبداية" حسب مدة الخدمة (تطلع أخضر)
+// âœ…âœ…âœ… NEW: تحديد الأوقات اللي "تنفع كبداية" حسب مدة الخدمة (تطلع أخضر)
 function getGreenStartTimes(args: {
   allSlots: TimeSlot[];
   slotStepMin: number;
   durationMin: number;
   bufferMin: number;
-  takenAll: Set<string>; // ✅ times 24h
+  takenAll: Set<string>; // âœ… times 24h
 }) {
-  const greens = new Set<string>(); // ✅ نخزن value24
+  const greens = new Set<string>(); // âœ… نخزن value24
 
   for (const slot of args.allSlots) {
     const start24 = slot.value24;
@@ -296,6 +352,18 @@ function sortTimesBySlotOrder(times: string[], allSlots: TimeSlot[]) {
   );
 }
 
+function minutesToTime24(totalMin: number) {
+  const safe = Math.max(0, Math.min(23 * 60 + 59, Number(totalMin || 0)));
+  const hh = Math.floor(safe / 60);
+  const mm = safe % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function roundUpToStep(totalMin: number, stepMin: number) {
+  const step = Math.max(1, Number(stepMin || 1));
+  return Math.ceil(Number(totalMin || 0) / step) * step;
+}
+
 function calcDiscount(basePrice: number, offer: FsOffer) {
   const value = Number((offer as any).value || 0);
 
@@ -317,7 +385,7 @@ function calcDiscount(basePrice: number, offer: FsOffer) {
 }
 
 /**
- * ✅ صلاحية العرض حسب "تاريخ الحجز" (مو اليوم)
+ * âœ… صلاحية العرض حسب "تاريخ الحجز" (مو اليوم)
  */
 function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {
   if (!bookingDateISO) return { ok: true, reason: "" };
@@ -346,7 +414,7 @@ function isSeasonActiveForDate(season: any, bookingDateISO: string) {
 }
 
 
-// ✅ نبي UID الحقيقي فقط (إذا مسجل دخول) ونرفض anonymous
+// âœ… نبي UID الحقيقي فقط (إذا مسجل دخول) ونرفض anonymous
 function getSignedInUidOrNull(): string | null {
   const auth = getAuth();
   const u = auth.currentUser;
@@ -372,7 +440,7 @@ type BusyState = {
   disabledStartTimes: Set<string>;
   loading: boolean;
   hint: string;
-  suggestedSlot?: string; // ✅ NEW: الوقت المقترح (لطور الموسم فقط)
+  suggestedSlot?: string; // âœ… NEW: الوقت المقترح (لطور الموسم فقط)
 };
 
 
@@ -381,7 +449,7 @@ const emptyBusyState = (): BusyState => ({
   disabledStartTimes: new Set(),
   loading: false,
   hint: "",
-  suggestedSlot: "", // ✅ NEW
+  suggestedSlot: "", // âœ… NEW
 });
 
 
@@ -510,15 +578,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const dateRef = useRef<HTMLInputElement>(null);
 
   // =========================
-  // ✅ Settings (live)
+  // âœ… Settings (live)
   // =========================
   const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
   const booking = (appSettings as any)?.booking || {};
   const seasonPricing = (appSettings as any)?.catalogSeasonPricing || {};
 
-  const seasonCfg = seasonPricing; // ✅ موسم الأسعار (Catalog)
+  const seasonCfg = seasonPricing; // âœ… موسم الأسعار (Catalog)
   const sequentialBooking = !!(booking as any)?.sequentialBooking;
-  // ✅ تاريخ الحجز الأساسي (لازم يختاره قبل الخدمات)
+  // âœ… تاريخ الحجز الأساسي (لازم يختاره قبل الخدمات)
   const [bookingDate, setBookingDate] = useState<string>("");
 
 
@@ -567,11 +635,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   const slotStepMin = useMemo(() => {
     const v = safeInt((booking as any)?.slotStepMin, 10);
-    // ✅ لا تغيّر هذي القائمة بدون ما تغيّر SettingsBookings.tsx بعده
+    // âœ… لا تغيّر هذي القائمة بدون ما تغيّر SettingsBookings.tsx بعده
     return [5, 10, 15, 30].includes(v) ? v : 10;
   }, [(booking as any)?.slotStepMin]);
 
-  // ✅ NEW: bufferMin from settings (same contract as firestoreBookings)
+  // âœ… NEW: bufferMin from settings (same contract as firestoreBookings)
   const bufferMin = useMemo(() => {
     return Math.max(0, safeInt((booking as any)?.bufferMin, 5));
   }, [(booking as any)?.bufferMin]);
@@ -589,7 +657,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
-    // ✅ فتحة المواعيد حسب اليوم المختار
+    // âœ… فتحة المواعيد حسب اليوم المختار
     setTimeSlots(generateSalonTimeSlots(openTime, closeTime, slotStepMin));
   }, [selectedDayOpen, openTime, closeTime, slotStepMin]);
 
@@ -598,6 +666,27 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       setAppSettings(remote || {});
     });
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSequenceOffers() {
+      try {
+        const rows = await listOffers(SALON_ID);
+        if (cancelled) return;
+        const active = (Array.isArray(rows) ? rows : []).filter((o: any) => {
+          const steps = Array.isArray((o as any)?.sequenceSteps) ? (o as any).sequenceSteps : [];
+          return steps.length > 0 && isOfferActiveNow(o as any);
+        });
+        setSequenceOffers(active);
+      } catch {
+        if (!cancelled) setSequenceOffers([]);
+      }
+    }
+    loadSequenceOffers();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // =========================
@@ -610,15 +699,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [fsSections, setFsSections] = useState<SectionDoc[]>([]);
   const [fsCategories, setFsCategories] = useState<CategoryDoc[]>([]);
   const [fsServices, setFsServices] = useState<ServiceDoc[]>([]);
+  const [fsPackages, setFsPackages] = useState<ServicePackageDoc[]>([]);
+  const [sequenceOffers, setSequenceOffers] = useState<FsOffer[]>([]);
 
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [servicePicker, setServicePicker] = useState<string>("");
+  const [offerStartTime, setOfferStartTime] = useState<string>("");
+  const [pickerScope, setPickerScope] = useState<PickerScope>("services");
 
-  // ✅ دليل أطوال الشعر (عرض)
+  // âœ… دليل أطوال الشعر (عرض)
   const [showHairGuide, setShowHairGuide] = useState(false);
 
-  // ✅ دليل أطوال الشعر (رابط + رفع للأونر)
+  // âœ… دليل أطوال الشعر (رابط + رفع للأونر)
   const [hairGuideUrl, setHairGuideUrl] = useState<string>(hairGuideImg);
   const [isOwner, setIsOwner] = useState(false);
   const [uploadingGuide, setUploadingGuide] = useState(false);
@@ -631,7 +724,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   });
 
   // =========================
-  // ✅ Auto-fill client info (name/phone) from Profile
+  // âœ… Auto-fill client info (name/phone) from Profile
   // =========================
   const [signedUid, setSignedUid] = useState<string | null>(null);
 
@@ -717,10 +810,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [offerMsg, setOfferMsg] = useState("");
   const [manualOverride, setManualOverride] = useState(false);
 
-  // ✅ busy/disabled per item
+  // âœ… busy/disabled per item
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
 
-  // ✅ Future availability (clients)
+  // âœ… Future availability (clients)
   const [futureAnyStaff, setFutureAnyStaff] = useState(true);
   const [futureSelectedEmployeeKey, setFutureSelectedEmployeeKey] = useState<string>("");
   const [futureStaffNameQuery, setFutureStaffNameQuery] = useState("");
@@ -770,12 +863,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     }, 0);
   }
 
-  // ✅ Staff per serviceId
+  // âœ… Staff per serviceId
   const [staffByService, setStaffByService] = useState<Record<string, StaffPublicWithId[]>>({});
   const [staffLoadingByService, setStaffLoadingByService] = useState<Record<string, boolean>>({});
   const [staffErrorByService, setStaffErrorByService] = useState<Record<string, string>>({});
 
-  // ✅ Modal بدل alert
+  // âœ… Modal بدل alert
   const [uiModal, setUiModal] = useState<UiModalState>({
     open: false,
     title: "",
@@ -797,7 +890,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   };
 
   // =========================
-  // ✅ Helper: تعارض أوقات داخل السلة نفسها (employeeKey + نفس التاريخ)
+  // âœ… Helper: تعارض أوقات داخل السلة نفسها (employeeKey + نفس التاريخ)
   // =========================
   function getLocalTakenTimesForItem(
     items: CartItem[],
@@ -814,7 +907,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       if (!other) continue;
       if (other.id === currentItemId) continue;
 
-      const otherKey = resolveEmployeeKey(other); // ✅ FIX: نفس منطق booking_slots
+      const otherKey = resolveEmployeeKey(other); // âœ… FIX: نفس منطق booking_slots
       const otherEmployeeId = String(other.employeeId || "").trim();
       const d = String(other.date || "").trim();
       const t = String(other.time || "").trim();
@@ -846,7 +939,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     return true;
   }
 
-  // ✅ مثال شكل إعدادات الموسم (نربطه مع appSettings لاحقًا لو اسم الحقول مختلف)
+  // âœ… مثال شكل إعدادات الموسم (نربطه مع appSettings لاحقًا لو اسم الحقول مختلف)
   function isSeasonEnabledForDate(appSettings: any, dateISO: string) {
     const season = (appSettings as any)?.catalogSeasonPricing || {};
     const enabled = !!season.enabled;
@@ -860,8 +953,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     return { ok: isDateInRange(dateISO, start, end), start, end };
   }
 
-  // ✅ السعر النهائي: إذا الموسم شغال -> استخدم seasonPrice إذا موجود، وإلا استخدم العادي
-  function pickEffectivePrice(args: {
+  // âœ… السعر النهائي: إذا الموسم شغال -> استخدم seasonPrice إذا موجود، وإلا استخدم العادي
+function pickEffectivePrice(args: {
     basePrice: number;
     seasonPrice?: number;
     appSettings: any;
@@ -874,22 +967,31 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const seasonActive = seasonState.ok;
 
     if (seasonActive && season > 0) {
-      return { price: season, label: "سعر موسم ✅", usedSeason: true };
+      return { price: season, label: "سعر موسم âœ…", usedSeason: true };
     }
 
-    // ✅ إذا الموسم شغال لكن الخدمة ما لها سعر موسم: نرجع للعادي (هذا شرطك)
+    // âœ… إذا الموسم شغال لكن الخدمة ما لها سعر موسم: نرجع للعادي (هذا شرطك)
     return { price: base, label: seasonActive ? "سعر عادي (لا يوجد سعر موسم)" : "سعر عادي", usedSeason: false };
-  }
+}
 
-  function findCartOverlap(items: CartItem[]) {
-    const list = (items || []).map((x) => ({ ...x }));
-    for (let i = 0; i < list.length; i++) {
-      for (let j = i + 1; j < list.length; j++) {
-        const a = list[i];
-        const b = list[j];
+function isSequentialOfferItem(it: CartItem) {
+  return (
+    !!String((it as any)?.sequenceOfferId || "").trim() &&
+    Array.isArray((it as any)?.sequenceStepsSnapshot) &&
+    ((it as any)?.sequenceStepsSnapshot?.length || 0) > 0
+  );
+}
 
-        const empA = resolveEmployeeKey(a); // ✅ FIX
-        const empB = resolveEmployeeKey(b); // ✅ FIX
+function findCartOverlap(items: CartItem[]) {
+  const list = (items || []).map((x) => ({ ...x }));
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const a = list[i];
+      const b = list[j];
+      if (isSequentialOfferItem(a) || isSequentialOfferItem(b)) continue;
+
+        const empA = resolveEmployeeKey(a); // âœ… FIX
+        const empB = resolveEmployeeKey(b); // âœ… FIX
         const dateA = String(a.date || "").trim();
         const dateB = String(b.date || "").trim();
         const timeA = String(a.time || "").trim();
@@ -935,8 +1037,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   }
 
   // =========================
-  // ✅ Use local hair guide image + role (owner/admin)
-  // ✅ FIX: use onAuthStateChanged so role doesn't stay false
+  // âœ… Use local hair guide image + role (owner/admin)
+  // âœ… FIX: use onAuthStateChanged so role doesn't stay false
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -982,7 +1084,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       setHairGuideUrl(url);
 
       openModal({
-        title: "تم ✅",
+        title: "تم âœ…",
         message: "تم رفع صورة دليل أطوال الشعر وتحديثها.",
         variant: "success",
         confirmText: "تمام",
@@ -990,7 +1092,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     } catch (e: any) {
       openModal({
         title: "فشل الرفع",
-        message: `صار خطأ أثناء رفع الصورة\n\ncode: ${String(e?.code || "—")}\nmessage: ${String(e?.message || "—")}`,
+        message: `صار خطأ أثناء رفع الصورة\n\ncode: ${String(e?.code || "â€”")}\nmessage: ${String(e?.message || "â€”")}`,
         variant: "danger",
         confirmText: "حسنًا",
       });
@@ -1008,20 +1110,27 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     async function loadSectionsFirstTime() {
       try {
         setCatalogLoading(true);
-        const secs = await listActiveSections(SALON_ID);
+        const [secs, packs] = await Promise.all([
+          listActiveSections(SALON_ID),
+          listActivePackages(SALON_ID),
+        ]);
         if (cancelled) return;
 
-        if (secs && secs.length > 0) {
+        setFsPackages(Array.isArray(packs) ? packs : []);
+
+        if ((secs && secs.length > 0) || (packs && packs.length > 0)) {
           setCatalogMode("firestore");
           setFsSections(secs);
         } else {
           setCatalogMode("pricing");
           setFsSections([]);
+          setFsPackages([]);
         }
       } catch {
         if (!cancelled) {
           setCatalogMode("pricing");
           setFsSections([]);
+          setFsPackages([]);
         }
       } finally {
         if (!cancelled) setCatalogLoading(false);
@@ -1044,6 +1153,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       if (catalogMode !== "firestore") return;
 
       if (!selectedSectionId) {
+        setFsCategories([]);
+        setFsServices([]);
+        setCategoryLoading(false);
+        return;
+      }
+
+      if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) {
         setFsCategories([]);
         setFsServices([]);
         setCategoryLoading(false);
@@ -1080,7 +1196,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
         const safeCats: any[] = catsSnap.docs
           .map((d) => ({ id: d.id, ...(d.data() as any) }))
-          .filter((c) => String(c?.الاسم ?? c?.name ?? "").trim())
+          .filter((c) => String((c as any)?.["ط§ظ„ط§ط³ظ…"] ?? c?.name ?? "").trim())
           .filter((c) => c?.active !== false);
 
         setFsCategories(safeCats as any);
@@ -1175,7 +1291,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       if (!cid) return base;
 
       return base.filter((s: any) => {
-        const catName = String(s.category ?? s.categoryName ?? s.التصنيف ?? "").trim();
+        const catName = String(
+          s.category ?? s.categoryName ?? (s as any)?.["ط§ظ„طھطµظ†ظٹظپ"] ?? ""
+        ).trim();
         return catName === cid;
       });
     }
@@ -1203,15 +1321,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const HAIR_SECTION_IDS = new Set(["hair", "الشعر", "hair_section", "قص", "قص_شعر"]);
 
   const servicesFlat: FlatService[] = useMemo(() => {
-    if (catalogMode === "firestore" && fsSections.length > 0) {
+    if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
       const secMap = new Map<string, string>();
       fsSections.forEach((s: any) =>
-        secMap.set(String(s.id), String((s as any).الاسم ?? (s as any).name ?? ""))
+        secMap.set(String(s.id), readDisplayLabel(s, String(s.id || "")))
       );
 
       const catMap = new Map<string, string>();
       fsCategories.forEach((c: any) =>
-        catMap.set(String(c.id), String((c as any).الاسم ?? (c as any).name ?? ""))
+        catMap.set(String(c.id), readDisplayLabel(c, String(c.id || "")))
       );
 
       const catById = new Map<string, any>();
@@ -1222,15 +1340,23 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       const list = (selectedSectionId ? fsServicesFiltered : []).map((x: any) => {
         if (!hasCats) {
           const sectionId = String(x.sectionId || selectedSectionId || "").trim();
-          const sectionTitle = secMap.get(sectionId) || sectionId || "—";
+          const sectionTitle = secMap.get(sectionId) || sectionId || "â€”";
 
-          const catName = String(x.category ?? x.categoryName ?? x.التصنيف ?? "عام").trim() || "عام";
-          const name = String(x.الاسم ?? x.name ?? "").trim();
-          const priceNum = Number(x.السعر ?? x.price ?? 0);
+          const catName =
+            readDisplayLabel(
+              {
+                category: x.category,
+                categoryName: x.categoryName,
+                ...(x as any),
+              },
+              "عام"
+            ) || "عام";
+          const name = readDisplayLabel(x, String(x.id || ""));
+          const priceNum = Number((x as any)?.["ط§ظ„ط³ط¹ط±"] ?? x.price ?? 0);
 
           const seasonPriceRaw =
             (x as any).seasonPrice ??
-            (x as any).سعر_الموسم ??
+            (x as any)?.["ط³ط¹ط±_ط§ظ„ظ…ظˆط³ظ…"] ??
             (x as any).season_price ??
             (x as any).seasonPriceValue ??
             0;
@@ -1238,10 +1364,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           const seasonPriceNum = Number(String(seasonPriceRaw).replace(/[^\d.]/g, "")) || 0;
           const seasonPrice = seasonPriceNum > 0 ? seasonPriceNum : undefined;
 
-          const durationMin = Number(x.المدة ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN);
+          const durationMin = Number(
+            (x as any)?.["ط§ظ„ظ…ط¯ط©"] ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN
+          );
 
           return {
             id: String(x.id),
+            kind: "service" as const,
             sectionId,
             sectionTitle,
             categoryId: "",
@@ -1259,15 +1388,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const catDoc = catById.get(catId);
 
         const sectionId = String(catDoc?.sectionId || "").trim();
-        const sectionTitle = secMap.get(sectionId) || sectionId || "—";
+        const sectionTitle = secMap.get(sectionId) || sectionId || "â€”";
 
         const catName = catId ? catMap.get(catId) || "عام" : "عام";
-        const name = String(x.الاسم ?? x.name ?? "").trim();
-        const priceNum = Number(x.السعر ?? x.price ?? 0);
+        const name = readDisplayLabel(x, String(x.id || ""));
+        const priceNum = Number((x as any)?.["ط§ظ„ط³ط¹ط±"] ?? x.price ?? 0);
 
         const seasonPriceRaw =
           (x as any).seasonPrice ??
-          (x as any).سعر_الموسم ??
+          (x as any)?.["ط³ط¹ط±_ط§ظ„ظ…ظˆط³ظ…"] ??
           (x as any).season_price ??
           (x as any).seasonPriceValue ??
           0;
@@ -1275,10 +1404,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const seasonPriceNum = Number(String(seasonPriceRaw).replace(/[^\d.]/g, "")) || 0;
         const seasonPrice = seasonPriceNum > 0 ? seasonPriceNum : undefined;
 
-        const durationMin = Number(x.المدة ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN);
+        const durationMin = Number(
+          (x as any)?.["ط§ظ„ظ…ط¯ط©"] ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN
+        );
 
         return {
           id: String(x.id),
+          kind: "service" as const,
           sectionId,
           sectionTitle,
           categoryId: catId,
@@ -1292,7 +1424,27 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         };
       });
 
-      return list;
+      const packageRows: FlatService[] = (fsPackages || []).map((pkg) => ({
+        id: `pkg:${String(pkg.id)}`,
+        kind: "package" as const,
+        sectionId: PACKAGE_SECTION_ID,
+        sectionTitle: PACKAGE_SECTION_TITLE,
+        categoryId: PACKAGE_SECTION_ID,
+        category: PACKAGE_SECTION_TITLE,
+        name: String(pkg.name || "").trim(),
+        priceText: `${Number(pkg.finalPrice || 0)} ريال`,
+        basePrice: Number(pkg.finalPrice || 0),
+        durationMin: Number(pkg.totalDurationMin || DEFAULT_SERVICE_DURATION_MIN),
+        packageId: String(pkg.id || "").trim(),
+        packageServiceIds: Array.isArray(pkg.serviceIds)
+          ? pkg.serviceIds.map((x) => String(x || "").trim()).filter(Boolean)
+          : [],
+        packageServices: Array.isArray(pkg.services) ? pkg.services : [],
+        packageBaseTotalPrice: Number(pkg.baseTotalPrice || 0),
+        source: "firestore" as const,
+      }));
+
+      return [...list, ...packageRows];
     }
 
     // fallback to Pricing.tsx
@@ -1305,6 +1457,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
           out.push({
             id,
+            kind: "service" as const,
             sectionId,
             sectionTitle: section.title,
             categoryId: "",
@@ -1320,24 +1473,42 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     });
 
     return out;
-  }, [catalogMode, fsSections, fsCategories, fsServicesFiltered, selectedSectionId]);
+  }, [catalogMode, fsSections, fsCategories, fsServicesFiltered, selectedSectionId, fsPackages]);
 
   const sectionOptions = useMemo(() => {
-    if (catalogMode === "firestore" && fsSections.length > 0) {
-      return fsSections.map((s: any) => ({
+    if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
+      const rows = fsSections.map((s: any) => ({
         id: String(s.id),
-        title: String((s as any).الاسم ?? (s as any).name ?? ""),
+        title: readDisplayLabel(s, String(s?.id || "").trim()),
       }));
+      if ((fsPackages || []).length > 0) {
+        rows.push({ id: PACKAGE_SECTION_ID, title: PACKAGE_SECTION_TITLE });
+      }
+      return rows;
     }
 
     return Object.entries(pricingSections).map(([id, sec]) => ({
       id,
       title: sec.title,
     }));
-  }, [catalogMode, fsSections]);
+  }, [catalogMode, fsSections, fsPackages]);
+
+  const sectionOptionsSafe = useMemo(() => {
+    if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
+      const rows = fsSections
+        .map((s: any) => ({
+          id: String(s?.id || "").trim(),
+          title: readDisplayLabel(s, String(s?.id || "").trim()),
+        }))
+        .filter((x) => x.id && x.title);
+      return rows;
+    }
+    return sectionOptions.filter((x) => x.id && x.title && x.id !== PACKAGE_SECTION_ID);
+  }, [catalogMode, fsSections, fsPackages, sectionOptions]);
 
   const categoryOptions: CategoryOption[] = useMemo(() => {
     if (!selectedSectionId) return [];
+    if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) return [];
 
     if (catalogMode === "firestore" && fsSections.length > 0) {
       if (fsCategories.length) {
@@ -1347,7 +1518,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           .filter((c: any) => String(c.sectionId || "").trim() === sid)
           .map((c: any) => ({
             id: String(c.id),
-            name: String(c.الاسم ?? c.name ?? "").trim(),
+            name: String((c as any)?.["ط§ظ„ط§ط³ظ…"] ?? c.name ?? "").trim(),
           }))
           .filter((x) => x.id && x.name);
 
@@ -1360,7 +1531,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       const sid = String(selectedSectionId).trim();
       const base = fsServices
         .filter((s: any) => String(s.sectionId || "").trim() === sid)
-        .map((s: any) => String(s.category ?? s.categoryName ?? s.التصنيف ?? "عام").trim())
+        .map((s: any) =>
+          String(
+            s.category ?? s.categoryName ?? (s as any)?.["ط§ظ„طھطµظ†ظٹظپ"] ?? "عام"
+          ).trim()
+        )
         .filter(Boolean);
 
       const seen = new Set<string>();
@@ -1378,6 +1553,55 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const seen = new Set<string>();
     return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
   }, [catalogMode, fsSections.length, fsCategories, fsServices, servicesFlat, selectedSectionId]);
+
+  const categoryOptionsSafe: CategoryOption[] = useMemo(() => {
+    if (!selectedSectionId) return [];
+    if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) return [];
+    if (catalogMode === "firestore" && fsCategories.length > 0) {
+      const sid = String(selectedSectionId).trim();
+      const rows = fsCategories
+        .filter((c: any) => String(c?.sectionId || "").trim() === sid)
+        .map((c: any) => ({
+          id: String(c?.id || "").trim(),
+          name: readDisplayLabel(c, String(c?.id || "").trim()),
+        }))
+        .filter((x) => x.id && x.name);
+      if (rows.length > 0) {
+        const seen = new Set<string>();
+        return rows.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
+      }
+    }
+    return categoryOptions.filter((x) => x.id && x.name);
+  }, [selectedSectionId, catalogMode, fsCategories, categoryOptions]);
+
+  const packageOptions = useMemo(() => {
+    const rows = servicesFlat
+      .filter((s) => s.kind === "package")
+      .map((s) => ({
+        id: s.id,
+        title: String(s.name || "").trim(),
+        priceText: servicePickerPriceText(s),
+      }))
+      .filter((x) => x.id && x.title);
+    const collator = new Intl.Collator("ar", { sensitivity: "base", numeric: true });
+    return rows.sort((a, b) => collator.compare(a.title, b.title));
+  }, [servicesFlat, bookingDate, appSettings]);
+
+  const sequenceOfferOptions = useMemo(() => {
+    const collator = new Intl.Collator("ar", { sensitivity: "base", numeric: true });
+    return (sequenceOffers || [])
+      .map((o: any) => {
+        const steps = Array.isArray(o?.sequenceSteps) ? o.sequenceSteps : [];
+        return {
+          id: `offer:${String(o?.id || "").trim()}`,
+          offerId: String(o?.id || "").trim(),
+          title: String(o?.title || "").trim() || "عرض",
+          stepsCount: steps.length,
+        };
+      })
+      .filter((x) => x.offerId && x.stepsCount > 0)
+      .sort((a, b) => collator.compare(a.title, b.title));
+  }, [sequenceOffers]);
 
   const servicesInSection = useMemo(() => {
     if (!selectedSectionId) return [];
@@ -1409,7 +1633,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     return Array.from(map.entries());
   }, [servicesInSection]);
 
-  // ✅ عرض السعر في الـ dropdown حسب (طور الموسم/العادي) + تاريخ الحجز المختار
+  // âœ… عرض السعر في الـ dropdown حسب (طور الموسم/العادي) + تاريخ الحجز المختار
   function servicePickerPriceText(sv: FlatService) {
     const dateISO = String(bookingDate || "").trim();
     if (!dateISO) return sv.priceText; // احتياط
@@ -1430,7 +1654,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const id = String(selectedSectionId || "").trim().toLowerCase();
     if (HAIR_SECTION_IDS.has(id)) return true;
 
-    const sec = sectionOptions.find((s) => String(s.id) === String(selectedSectionId));
+    const sec = sectionOptionsSafe.find((s) => String(s.id) === String(selectedSectionId));
     const title = String(sec?.title || "").toLowerCase();
 
     return (
@@ -1440,10 +1664,41 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       title.includes("استشوار") ||
       title.includes("تساريح")
     );
-  }, [selectedSectionId, sectionOptions]);
+  }, [selectedSectionId, sectionOptionsSafe]);
 
   const getServiceById = (id: string) => {
     return servicesFlat.find((sv) => sv.id === id) || null;
+  };
+
+  const normalizeSpecialty = (v: string) => String(v || "").trim().toLowerCase();
+
+  const listStaffForService = async (serviceId: string, service?: FlatService | null) => {
+    const sid = String(serviceId || "").trim();
+    if (!sid) return [] as StaffPublicWithId[];
+
+    const target = service || getServiceById(sid);
+    if (target?.kind === "package") {
+      const needed = (target.packageServiceIds || []).map(normalizeSpecialty).filter(Boolean);
+      if (!needed.length) return [];
+      const all = await listActiveStaffAll(SALON_ID);
+      return (all || []).filter((st: any) => {
+        const specs = Array.isArray(st?.specialties)
+          ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
+          : [];
+        return needed.every((n) => specs.includes(n));
+      });
+    }
+
+    const res = await listActiveStaffBySpecialty({
+      salonId: SALON_ID,
+      specialty: sid,
+    });
+    return (res || []).filter((st: any) => {
+      const specs = Array.isArray(st?.specialties)
+        ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
+        : [];
+      return specs.includes(normalizeSpecialty(sid));
+    });
   };
 
   const isToolsOptionEligibleForService = (sv: FlatService | null) => {
@@ -1504,9 +1759,322 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // =========================
   // Cart actions
   // =========================
-  const addServiceToCart = (idRaw: string) => {
+  const buildSequenceStepsSnapshot = async (offerIdRaw: string) => {
+    const offerId = String(offerIdRaw || "").trim();
+    const offer = (sequenceOffers || []).find((o: any) => String((o as any)?.id || "").trim() === offerId);
+    if (!offer) return { offer: null as any, steps: [] as CartItem["sequenceStepsSnapshot"] };
+
+    const rawSteps = (Array.isArray((offer as any)?.sequenceSteps) ? (offer as any).sequenceSteps : [])
+      .map((x: any) => ({
+        serviceId: String(x?.serviceId || "").trim(),
+        orderIndex: Number(x?.orderIndex || 0),
+        gapAfterMin: Math.max(0, Number(x?.gapAfterMin || 0)),
+        titleSnapshot: String(x?.titleSnapshot || "").trim() || undefined,
+      }))
+      .filter((x: any) => x.serviceId)
+      .sort((a: any, b: any) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0));
+
+    const byIdCache = new Map<string, any>();
+    const steps: NonNullable<CartItem["sequenceStepsSnapshot"]> = [];
+    for (const step of rawSteps) {
+      const serviceId = String(step.serviceId || "").trim();
+      let sv = servicesFlat.find((s) => s.kind === "service" && String(s.id || "").trim() === serviceId) as any;
+      if (!sv && !byIdCache.has(serviceId)) {
+        try {
+          const snap = await getDoc(doc(db, "salons", SALON_ID, "services", serviceId));
+          if (snap.exists()) {
+            const d: any = snap.data() || {};
+            byIdCache.set(serviceId, {
+              id: serviceId,
+              name: readDisplayLabel(d, serviceId),
+              basePrice: Number((d as any)?.price ?? (d as any)?.["ط§ظ„ط³ط¹ط±"] ?? 0),
+              seasonPrice:
+                Number(String((d as any)?.seasonPrice ?? (d as any)?.["ط³ط¹ط±_ط§ظ„ظ…ظˆط³ظ…"] ?? 0).replace(/[^\d.]/g, "")) || 0,
+              durationMin: Number((d as any)?.durationMin ?? (d as any)?.["ط§ظ„ظ…ط¯ط©"] ?? DEFAULT_SERVICE_DURATION_MIN),
+              sectionId: String((d as any)?.sectionId || "").trim() || undefined,
+            });
+          } else {
+            byIdCache.set(serviceId, null);
+          }
+        } catch {
+          byIdCache.set(serviceId, null);
+        }
+      }
+      const fetched = byIdCache.get(serviceId);
+      const serviceName = String(step.titleSnapshot || sv?.name || fetched?.name || serviceId).trim();
+      const basePriceRaw = Number(sv?.basePrice ?? fetched?.basePrice ?? 0);
+      const seasonPriceRaw = Number((sv as any)?.seasonPrice ?? fetched?.seasonPrice ?? 0);
+      const eff = pickEffectivePrice({
+        basePrice: Math.max(0, basePriceRaw),
+        seasonPrice: seasonPriceRaw > 0 ? seasonPriceRaw : undefined,
+        appSettings,
+        dateISO: String(bookingDate || "").trim() || todayISO(),
+      });
+      const durationAtBooking = Math.max(
+        1,
+        Number(sv?.durationMin ?? fetched?.durationMin ?? DEFAULT_SERVICE_DURATION_MIN)
+      );
+      steps.push({
+        serviceId,
+        orderIndex: Number(step.orderIndex || 0),
+        gapAfterMin: Math.max(0, Number(step.gapAfterMin || 0)),
+        titleSnapshot: step.titleSnapshot,
+        serviceNameAtBooking: serviceName,
+        priceAtBooking: Number(eff.price || 0),
+        durationAtBooking,
+        sectionIdAtBooking: String(sv?.sectionId || fetched?.sectionId || "").trim() || undefined,
+      });
+    }
+
+    return { offer, steps };
+  };
+
+  const planSequentialOffer = async (args: {
+    item: CartItem;
+    startTime: string;
+    dateISO: string;
+    items: CartItem[];
+  }) => {
+    const { item, startTime, dateISO, items } = args;
+    const seqSteps = (Array.isArray(item.sequenceStepsSnapshot) ? item.sequenceStepsSnapshot : [])
+      .map((s) => ({
+        serviceId: String(s?.serviceId || "").trim(),
+        orderIndex: Number(s?.orderIndex || 0),
+        gapAfterMin: Math.max(0, Number(s?.gapAfterMin || 0)),
+        titleSnapshot: String(s?.titleSnapshot || "").trim() || undefined,
+        serviceNameAtBooking: String(s?.serviceNameAtBooking || "").trim() || "خدمة",
+        priceAtBooking: Math.max(0, Number(s?.priceAtBooking || 0)),
+        durationAtBooking: Math.max(1, Number(s?.durationAtBooking || DEFAULT_SERVICE_DURATION_MIN)),
+        sectionIdAtBooking: String(s?.sectionIdAtBooking || "").trim() || undefined,
+      }))
+      .filter((s) => s.serviceId)
+      .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0));
+
+    if (!seqSteps.length) return { ok: false as const, reason: "SEQUENCE_EMPTY" };
+
+    const baseSlots =
+      timeSlots.length > 0
+        ? timeSlots
+        : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
+    const slotOrder = new Map<string, number>();
+    baseSlots.forEach((s, idx) => slotOrder.set(String(s.value24 || "").trim(), idx));
+
+    const startSlotIdx = slotOrder.get(String(startTime || "").trim());
+    if (startSlotIdx === undefined) return { ok: false as const, reason: "START_OUT_OF_HOURS" };
+
+    const localLocks = new Map<string, Set<string>>();
+    const resolvedSteps: Array<{
+      serviceId: string;
+      orderIndex: number;
+      gapAfterMin: number;
+      titleSnapshot?: string;
+      serviceNameAtBooking: string;
+      priceAtBooking: number;
+      durationAtBooking: number;
+      sectionIdAtBooking?: string;
+      employeeId: string;
+      employeeUid: string;
+      employeeName: string;
+      startAt: string;
+      endAt: string;
+    }> = [];
+
+    let chainStartMin = toMinutes(String(startTime || "").trim());
+    if (!Number.isFinite(chainStartMin)) {
+      return { ok: false as const, reason: "START_INVALID" };
+    }
+
+    for (let idx = 0; idx < seqSteps.length; idx++) {
+      const step = seqSteps[idx];
+      const startAt = minutesToTime24(roundUpToStep(chainStartMin, slotStepMin));
+      if (!slotOrder.has(startAt)) {
+        return { ok: false as const, reason: "STEP_OUT_OF_HOURS", failedIndex: idx };
+      }
+
+      const sv = getServiceById(step.serviceId);
+      const staffRaw = await listStaffForService(step.serviceId, sv);
+      const staffList = (staffRaw || []).filter((st: any) =>
+        isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true })
+      );
+      if (!staffList.length) {
+        return { ok: false as const, reason: "NO_STAFF", failedIndex: idx };
+      }
+
+      let chosen: StaffPublicWithId | null = null;
+      let chosenLocks: string[] = [];
+
+      for (const st of staffList) {
+        const empId = String((st as any)?.id || "").trim();
+        if (!empId) continue;
+        const empUid = String((st as any)?.linkedUid || "").trim();
+        const empKey = empUid || empId;
+        const neededLocks = getTimesToLock(
+          baseSlots,
+          slotStepMin,
+          startAt,
+          Number(step.durationAtBooking || DEFAULT_SERVICE_DURATION_MIN),
+          bufferMin
+        );
+
+        const takenFs = await collectTakenTimesForEmployeeDay({
+          salonId: SALON_ID,
+          employeeKey: empKey,
+          employeeIdFallback: empId,
+          dateISO,
+        });
+
+        const takenCart = new Set<string>();
+        (items || []).forEach((it) => {
+          if (String(it.id || "").trim() === String(item.id || "").trim()) return;
+          if (String(it.date || "").trim() !== dateISO) return;
+          if (!String(it.time || "").trim()) return;
+          const otherEmpId = String(it.employeeId || "").trim();
+          const otherEmpKey = resolveEmployeeKey(it);
+          if (!otherEmpId && !otherEmpKey) return;
+          const sameEmp = otherEmpId === empId || (otherEmpKey && otherEmpKey === empKey);
+          if (!sameEmp) return;
+          const otherLocks = getTimesToLock(
+            baseSlots,
+            slotStepMin,
+            String(it.time || "").trim(),
+            Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+            bufferMin
+          );
+          otherLocks.forEach((t) => takenCart.add(String(t || "").trim()));
+        });
+
+        const takenLocal = localLocks.get(empKey) || new Set<string>();
+        const occupied = new Set<string>([...Array.from(takenFs), ...Array.from(takenCart), ...Array.from(takenLocal)]);
+        const free = neededLocks.every((t) => !occupied.has(String(t || "").trim()));
+        if (!free) continue;
+
+        chosen = st;
+        chosenLocks = neededLocks;
+        localLocks.set(empKey, new Set<string>([...Array.from(takenLocal), ...neededLocks]));
+        break;
+      }
+
+      if (!chosen) {
+        return { ok: false as const, reason: "STEP_CONFLICT", failedIndex: idx };
+      }
+
+      const durationMinSafe = Math.max(1, Number(step.durationAtBooking || DEFAULT_SERVICE_DURATION_MIN));
+      const stepEndRaw = toMinutes(startAt) + durationMinSafe;
+      const endAt = minutesToTime24(roundUpToStep(stepEndRaw, slotStepMin));
+      resolvedSteps.push({
+        ...step,
+        employeeId: String((chosen as any)?.id || "").trim(),
+        employeeUid: String((chosen as any)?.linkedUid || "").trim(),
+        employeeName: String((chosen as any)?.name || "").trim() || "-",
+        startAt,
+        endAt,
+      });
+
+      const gapAfter = idx < seqSteps.length - 1 ? Math.max(0, Number(step.gapAfterMin || 0)) : 0;
+      chainStartMin = stepEndRaw + gapAfter;
+    }
+
+    if (!resolvedSteps.length) return { ok: false as const, reason: "SEQUENCE_EMPTY" };
+    return {
+      ok: true as const,
+      steps: resolvedSteps,
+      sequenceStart: resolvedSteps[0].startAt,
+      sequenceEnd: resolvedSteps[resolvedSteps.length - 1].endAt,
+    };
+  };
+
+  const findNearestSequentialStart = async (args: {
+    item: CartItem;
+    dateISO: string;
+    preferredStart: string;
+    items: CartItem[];
+  }) => {
+    const { item, dateISO, preferredStart, items } = args;
+    const baseSlots =
+      timeSlots.length > 0
+        ? timeSlots
+        : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
+    const sorted = baseSlots.map((s) => String(s.value24 || "").trim()).filter(Boolean);
+    const startIdx = Math.max(0, sorted.indexOf(String(preferredStart || "").trim()));
+    for (let i = startIdx; i < sorted.length; i++) {
+      const t = sorted[i];
+      const plan = await planSequentialOffer({ item, startTime: t, dateISO, items });
+      if (plan.ok) return { time: t, plan };
+    }
+    return null;
+  };
+
+  const addServiceToCart = async (idRaw: string) => {
     const id = String(idRaw || "").trim();
     if (!id) return;
+
+    if (id.startsWith("offer:")) {
+      const offerId = id.slice("offer:".length).trim();
+      const startTime = String(offerStartTime || "").trim();
+      if (!startTime) {
+        openModal({
+          title: "اختاري وقت البداية",
+          message: "لازم تختاري وقت بداية العرض التسلسلي قبل الإضافة.",
+          variant: "danger",
+        });
+        return;
+      }
+      const built = await buildSequenceStepsSnapshot(offerId);
+      const builtSteps = Array.isArray(built.steps) ? built.steps : [];
+      if (!built.offer || !builtSteps.length) {
+        openModal({
+          title: "تعذر تحميل العرض",
+          message: "تعذر تحميل خطوات العرض التسلسلي من لوحة العروض.",
+          variant: "danger",
+        });
+        return;
+      }
+
+      const sorted = [...builtSteps].sort((a, b) => a.orderIndex - b.orderIndex);
+      const totalDuration = sorted.reduce((sum, s, idx) => {
+        const gap = idx < sorted.length - 1 ? Math.max(0, Number(s.gapAfterMin || 0)) : 0;
+        return sum + Math.max(0, Number(s.durationAtBooking || 0)) + gap;
+      }, 0);
+      const summedStepsPrice = sorted.reduce((sum, s) => sum + Math.max(0, Number(s.priceAtBooking || 0)), 0);
+      const configuredFinalPrice = Math.max(0, Number((built.offer as any)?.packageFinalPrice || 0));
+      const totalPrice = configuredFinalPrice > 0 ? configuredFinalPrice : summedStepsPrice;
+
+      setFormData((prev) => ({
+        ...prev,
+        items: [
+          ...(prev.items || []),
+          {
+            id: makeLocalId(),
+            serviceId: id,
+            serviceName: String((built.offer as any)?.title || "عرض تسلسلي").trim(),
+            basePrice: Number(totalPrice || 0),
+            priceText: `${Math.round(Number(totalPrice || 0))} ريال`,
+            durationMin: Math.max(1, Number(totalDuration || DEFAULT_SERVICE_DURATION_MIN)),
+            employeeId: "__AUTO_SEQ__",
+            employeeUid: "",
+            employeeName: "تعيين تلقائي",
+            date: bookingDate,
+            time: startTime,
+            locked: true,
+            serviceSectionId: "offers",
+            serviceSectionTitle: "العروض و البكجات",
+            serviceCategoryId: "sequential_offer",
+            serviceCategoryName: "عرض تسلسلي",
+            sequenceOfferId: offerId,
+            sequenceOfferTitle: String((built.offer as any)?.title || "عرض تسلسلي").trim(),
+            sequenceStepsSnapshot: sorted,
+          },
+        ],
+      }));
+
+      setServicePicker("");
+      setOfferStartTime("");
+      setCouponCode("");
+      setManualOverride(false);
+      setOfferMsg("");
+      setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+      return;
+    }
 
     const sv = getServiceById(id);
     if (!sv) return;
@@ -1533,6 +2101,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           id: makeLocalId(),
           serviceId: id,
           serviceName: sv.name,
+          packageId: sv.kind === "package" ? String(sv.packageId || "").trim() : undefined,
+          packageSnapshot:
+            sv.kind === "package" && sv.packageId
+              ? {
+                  packageId: String(sv.packageId || "").trim(),
+                  packageName: sv.name,
+                  finalPriceAtBooking: Number(sv.basePrice || 0),
+                  baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
+                  totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                  serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
+                  services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
+                }
+              : undefined,
           serviceBasePrice: priced.serviceBasePrice,
           basePrice: priced.basePrice,
           priceText: priced.priceText,
@@ -1649,6 +2230,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       const serviceIds = Array.from(
         new Set(
           (formData.items || [])
+            .filter((it) => !isSequentialOfferItem(it))
             .map((it) => String(it.serviceId || "").trim())
             .filter(Boolean)
         )
@@ -1664,10 +2246,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
           setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
 
-          const res = await listActiveStaffBySpecialty({
-            salonId: SALON_ID,
-            specialty: sid,
-          });
+          const sv = getServiceById(sid);
+          const res = await listStaffForService(sid, sv);
 
           if (cancelled) return;
 
@@ -1675,12 +2255,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           const normalized = (res || []).filter((st: any) => {
             const name = String(st?.name || "").trim();
             if (!name) return false;
-
-            const specs = Array.isArray(st?.specialties)
-              ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
-              : [];
-
-            return specs.includes(sid);
+            return true;
           });
 
           setStaffByService((p) => ({ ...p, [sid]: normalized }));
@@ -1718,7 +2293,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.items]);
 
-  // ✅ تحميل موظفات الخدمة المختارة في الـ picker (حتى قبل الإضافة للسلة)
+  // âœ… تحميل موظفات الخدمة المختارة في الـ picker (حتى قبل الإضافة للسلة)
   useEffect(() => {
     let cancelled = false;
 
@@ -1732,23 +2307,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
         setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
 
-        const res = await listActiveStaffBySpecialty({
-          salonId: SALON_ID,
-          specialty: sid,
-        });
+        const sv = getServiceById(sid);
+        const res = await listStaffForService(sid, sv);
 
         if (cancelled) return;
 
-        const norm = (v: any) => String(v ?? "").trim().toLowerCase();
         const normalized = (res || []).filter((st: any) => {
           const name = String(st?.name || "").trim();
           if (!name) return false;
-
-          const specs = Array.isArray(st?.specialties)
-            ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
-            : [];
-
-          return specs.some((sp: string) => norm(sp) === norm(sid));
+          return true;
         });
 
         setStaffByService((p) => ({ ...p, [sid]: normalized as any }));
@@ -1800,7 +2367,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     );
   }, [futureStaffOptions, futureStaffNameQuery]);
 
-  // ✅ Auto-run future search once per context when the block becomes visible
+  // âœ… Auto-run future search once per context when the block becomes visible
   useEffect(() => {
     const sid = String(futureServiceId || servicePicker || "").trim();
     const dateISO = String(bookingDate || "").trim();
@@ -1964,10 +2531,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
     let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
     if (!Object.prototype.hasOwnProperty.call(staffByService, serviceId)) {
-      const res = await listActiveStaffBySpecialty({
-        salonId: SALON_ID,
-        specialty: serviceId,
-      });
+      const res = await listStaffForService(serviceId, sv);
       staffList = (res || []) as StaffPublicWithId[];
       setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
     }
@@ -2115,19 +2679,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
     const hasStaffCache = Object.prototype.hasOwnProperty.call(staffByService, serviceId);
     if (!hasStaffCache) {
-      const res = await listActiveStaffBySpecialty({
-        salonId: SALON_ID,
-        specialty: serviceId,
-      });
-
-      staffList = (res || []).filter((st: any) => {
-        const name = String(st?.name || "").trim();
-        if (!name) return false;
-        const specs = Array.isArray(st?.specialties)
-          ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
-          : [];
-        return specs.includes(serviceId);
-      }) as any;
+      const res = await listStaffForService(serviceId, sv);
+      staffList = (res || []).filter((st: any) => String(st?.name || "").trim()) as any;
 
       setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
     }
@@ -2278,7 +2831,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     }
   }
 
-  // ✅ Show "future days search" only when selected day is full for selected service
+  // âœ… Show "future days search" only when selected day is full for selected service
   useEffect(() => {
     let cancelled = false;
 
@@ -2323,19 +2876,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const hasStaffCache = Object.prototype.hasOwnProperty.call(staffByService, serviceId);
 
         if (!hasStaffCache) {
-          const res = await listActiveStaffBySpecialty({
-            salonId: SALON_ID,
-            specialty: serviceId,
-          });
-
-          staffList = (res || []).filter((st: any) => {
-            const name = String(st?.name || "").trim();
-            if (!name) return false;
-            const specs = Array.isArray(st?.specialties)
-              ? st.specialties.map((x: any) => String(x || "").trim()).filter(Boolean)
-              : [];
-            return specs.includes(serviceId);
-          }) as StaffPublicWithId[];
+          const res = await listStaffForService(serviceId, sv);
+          staffList = (res || []).filter((st: any) => String(st?.name || "").trim()) as StaffPublicWithId[];
 
           if (!cancelled) {
             setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
@@ -2418,7 +2960,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   }, [bookingDate, servicePicker, formData.items, staffByService, slotStepMin, bufferMin, timeSlots]);
 
   // =========================
-  // ✅ Busy slots per item
+  // âœ… Busy slots per item
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -2434,6 +2976,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         if (cancelled) return;
 
         const itemId = it.id;
+        if (isSequentialOfferItem(it)) {
+          setBusyByItem((p) => ({ ...p, [itemId]: { ...emptyBusyState() } }));
+          continue;
+        }
         const employeeId = String(it.employeeId || "").trim();
         const date = String(it.date || "").trim();
 
@@ -2472,7 +3018,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           takenFs.forEach((x) => takenAll.add(x));
           takenLocal.forEach((x) => takenAll.add(x));
 
-          // ✅ currentTime مرة وحدة فقط
+          // âœ… currentTime مرة وحدة فقط
           const currentTime = String(it.time || "").trim();
 
           // 3) حساب الـ Disabled بشكل صحيح (duration + buffer)
@@ -2480,7 +3026,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           let sequentialHint = "";
           let suggestedSlot = "";
 
-          // ✅ أوقات ممكن تبدأ منها (حسب نهاية الخدمة + سماح)
+          // âœ… أوقات ممكن تبدأ منها (حسب نهاية الخدمة + سماح)
           const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
           // فقط الأوقات اللي ما تتجاوز نهاية الدوام
@@ -2492,7 +3038,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             ALLOW_OVERTIME_MIN
           );
 
-          // ✅ هذه هي “البدايات الصحيحة” فعلياً (تضمن أن كل قطع الوقت المطلوبة فاضية)
+          // âœ… هذه هي “البدايات الصحيحة” فعلياً (تضمن أن كل قطع الوقت المطلوبة فاضية)
           const greens = getGreenStartTimes({
             allSlots: baseSlots,
             slotStepMin,
@@ -2533,11 +3079,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               disabledStartTimes: disabled,
               loading: false,
               hint: sequentialHint,
-              suggestedSlot, // ✅ NEW
+              suggestedSlot, // âœ… NEW
             },
           }));
 
-          // ✅ FIX الجوهري: منع تصفير الوقت التلقائي إلا في حالات التعارض الحقيقي
+          // âœ… FIX الجوهري: منع تصفير الوقت التلقائي إلا في حالات التعارض الحقيقي
           if (currentTime && disabled.has(currentTime)) {
             const isActuallyTaken = takenAll.has(currentTime);
 
@@ -2716,13 +3262,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         offer,
         discountAmount,
         finalPrice: nextFinal,
-        reason: "تم تطبيق الخصم ✅",
+        reason: "تم تطبيق الخصم âœ…",
       });
 
       setManualOverride(true);
-      setOfferMsg(`تم تطبيق الخصم: ${(offer as any).title} ✅`);
+      setOfferMsg(`تم تطبيق الخصم: ${(offer as any).title} âœ…`);
     } catch (e: any) {
-      console.error("❌ apply coupon error:", e?.code, e?.message, e);
+      console.error("â‌Œ apply coupon error:", e?.code, e?.message, e);
       setOfferMsg("صار خطأ في التحقق من الكود");
     }
   };
@@ -2752,8 +3298,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   }
 
   // =========================
-  // ✅ Slot check for one item
-  // ✅ FIX: فحص تعارض السلة قبل Firestore (employeeKey)
+  // âœ… Slot check for one item
+  // âœ… FIX: فحص تعارض السلة قبل Firestore (employeeKey)
   // =========================
   const checkOneItemSlot = async (it: CartItem) => {
     const employeeKey = resolveEmployeeKey(it);
@@ -2769,7 +3315,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       bufferMin
     );
 
-    // ✅ FIX: التأكد من أننا لا نفحص التعارض مع الخدمة نفسها داخل السلة
+    // âœ… FIX: التأكد من أننا لا نفحص التعارض مع الخدمة نفسها داخل السلة
     const localTaken = getLocalTakenTimesForItem(
       formData.items || [],
       it.id,
@@ -2844,14 +3390,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const bookingDayCfg = getDaySettingsForDate(String(bookingDate || "").trim());
     if (!bookingDayCfg.enabled) {
       openModal({
-        title: "اليوم مغلق",
-        message: `يوم ${bookingDayCfg.dayLabel} إجازة في الصالون، لذلك لا يمكن الحجز فيه.`,
+        title: "اليوم غير متاح للحجز",
+        message: `يوم ${bookingDayCfg.dayLabel} إجازة للصالون، لذلك لا يمكن استقبال حجوزات في هذا اليوم. اختاري تاريخًا آخر من الأيام المتاحة لإكمال الحجز.`,
         variant: "danger",
         confirmText: "حسنًا",
       });
       return;
     }
-
     const closedItem = items.find((it) => {
       const d = String(it.date || bookingDate || "").trim();
       if (!d) return false;
@@ -2890,20 +3435,26 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     }
 
     const missing = items.find((it) => {
+      if (isSequentialOfferItem(it)) {
+        if (!String(it.date || bookingDate || "").trim()) return true;
+        if (!String(it.time || "").trim()) return true;
+        return false;
+      }
+      if (!String(it.date || bookingDate || "").trim()) return true;
       if (!String(it.employeeId || "").trim()) return true;
       if (!String(it.employeeName || "").trim()) return true;
       if (!String(it.time || "").trim()) return true;
       return false;
     });
 
-    // ✅ ترتيب الحجز: لازم يخلص الخدمة الأولى قبل الثانية
+    // âœ… ترتيب الحجز: لازم يخلص الخدمة الأولى قبل الثانية
     for (let i = 1; i < items.length; i++) {
       const prev = items[i - 1];
       const prevOk = String(prev.employeeId || "").trim() && String(prev.time || "").trim();
       if (!prevOk) {
         openModal({
           title: "ترتيب الخدمات",
-          message: "لازم تكمّلين بيانات الخدمة الأولى قبل ما تحددين الخدمة اللي بعدها ✅",
+          message: "لازم تكمّلين بيانات الخدمة الأولى قبل ما تحددين الخدمة اللي بعدها âœ…",
           variant: "danger",
           confirmText: "تمام",
         });
@@ -2921,7 +3472,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
-    const notLocked = items.find((x) => !x.locked);
+    const notLocked = items.find((x) => !isSequentialOfferItem(x) && !x.locked);
     if (notLocked) {
       openModal({
         title: "كمّلي خطوات الحجز",
@@ -2938,9 +3489,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         title: "تعارض في الأوقات",
         message:
           `عندك خدمتين متداخلات بنفس الموظفة ونفس اليوم:\n\n` +
-          `• ${String(overlap.a?.serviceName || "—")} (${formatTime12ForClient(String(overlap.a?.time || "—"))})\n` +
-          `• ${String(overlap.b?.serviceName || "—")} (${formatTime12ForClient(String(overlap.b?.time || "—"))})\n\n` +
-          `عدّلي وقت واحدة منهم ✅`,
+          `â€¢ ${String(overlap.a?.serviceName || "â€”")} (${formatTime12ForClient(String(overlap.a?.time || "â€”"))})\n` +
+          `â€¢ ${String(overlap.b?.serviceName || "â€”")} (${formatTime12ForClient(String(overlap.b?.time || "â€”"))})\n\n` +
+          `عدّلي وقت واحدة منهم âœ…`,
         variant: "danger",
         confirmText: "تمام",
       });
@@ -3017,7 +3568,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           offer,
           discountAmount,
           finalPrice: Math.max(0, basePrice - discountAmount),
-          reason: "تم تطبيق الخصم ✅",
+          reason: "تم تطبيق الخصم âœ…",
         };
 
         setApplied(finalApplied);
@@ -3071,6 +3622,71 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
       const createdBookings: any[] = [];
 
+      const sequentialPlans = new Map<
+        string,
+        {
+          steps: Array<{
+            serviceId: string;
+            orderIndex: number;
+            gapAfterMin: number;
+            titleSnapshot?: string;
+            serviceNameAtBooking: string;
+            priceAtBooking: number;
+            durationAtBooking: number;
+            sectionIdAtBooking?: string;
+            employeeId: string;
+            employeeUid: string;
+            employeeName: string;
+            startAt: string;
+            endAt: string;
+          }>;
+          sequenceStart: string;
+          sequenceEnd: string;
+        }
+      >();
+
+      for (const it of items) {
+        if (!isSequentialOfferItem(it)) continue;
+        const dateISO = String(it.date || bookingDate || "").trim();
+        const chosenStart = String(it.time || "").trim();
+        const plan = await planSequentialOffer({
+          item: it,
+          startTime: chosenStart,
+          dateISO,
+          items,
+        });
+        if (plan.ok) {
+          sequentialPlans.set(String(it.id || "").trim(), plan);
+          continue;
+        }
+
+        const nearest = await findNearestSequentialStart({
+          item: it,
+          dateISO,
+          preferredStart: chosenStart,
+          items,
+        });
+
+        if (nearest?.plan?.ok && nearest.time) {
+          updateItem(it.id, { time: nearest.time });
+          openModal({
+            title: "الوقت المختار غير متاح",
+            message: `العرض "${it.serviceName}" غير متاح عند ${formatTime12ForClient(chosenStart)}. أقرب وقت متاح للسلسلة كاملة: ${formatTime12ForClient(nearest.time)}.`,
+            variant: "danger",
+            confirmText: "تمام",
+          });
+          return;
+        }
+
+        openModal({
+          title: "تعذر حجز العرض",
+          message: `لا يوجد تسلسل متاح كامل للعرض "${it.serviceName}" في هذا اليوم. جربي وقت/تاريخ آخر.`,
+          variant: "danger",
+          confirmText: "تمام",
+        });
+        return;
+      }
+
       for (let idx = 0; idx < items.length; idx++) {
         const it = items[idx];
         const itemDiscount = Number(perItemDiscounts[idx] || 0);
@@ -3078,7 +3694,173 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const toolsNote = buildItemToolsNote(it);
         const itemNote = [noteFinal, toolsNote].filter(Boolean).join(" | ") || undefined;
 
+        if (isSequentialOfferItem(it)) {
+          const plan = sequentialPlans.get(String(it.id || "").trim());
+          if (!plan || !plan.steps.length) {
+            openModal({
+              title: "تعذر حجز العرض",
+              message: `تعذر بناء تسلسل العرض "${it.serviceName}".`,
+              variant: "danger",
+              confirmText: "تمام",
+            });
+            return;
+          }
+
+          const steps = plan.steps;
+          const stepBaseTotal = steps.reduce((sum, s) => sum + Math.max(0, Number(s.priceAtBooking || 0)), 0);
+          const stepFinals = steps.map((s, sIdx) => {
+            if (stepBaseTotal <= 0) return sIdx === 0 ? itemFinal : 0;
+            const ratio = Math.max(0, Number(s.priceAtBooking || 0)) / stepBaseTotal;
+            return Math.round(itemFinal * ratio * 100) / 100;
+          });
+          const roundingDiff = Math.round((itemFinal - stepFinals.reduce((sum, x) => sum + x, 0)) * 100) / 100;
+          if (stepFinals.length) stepFinals[stepFinals.length - 1] = Math.max(0, stepFinals[stepFinals.length - 1] + roundingDiff);
+
+          const parentDurationMin = Math.max(
+            1,
+            toMinutes(plan.sequenceEnd) - toMinutes(plan.sequenceStart)
+          );
+
+          const groupRes = await createBookingGroup({
+            parent: {
+              userId: uid,
+              createdBy: "client",
+              channel: "client",
+              clientName: String(formData.name || "").trim(),
+              clientPhone: phone,
+              serviceName: String(it.sequenceOfferTitle || it.serviceName || "عرض").trim(),
+              serviceId: String(it.sequenceOfferId || "").trim()
+                ? `offer:${String(it.sequenceOfferId || "").trim()}`
+                : String(it.serviceId || "").trim(),
+              serviceSnapshot: {
+                serviceNameAtBooking: String(it.sequenceOfferTitle || it.serviceName || "عرض").trim(),
+                priceAtBooking: Number(itemFinal || 0),
+                durationAtBooking: parentDurationMin,
+                sectionIdAtBooking: String(it.serviceSectionId || "").trim() || "offers",
+                sectionTitleAtBooking: String(it.serviceSectionTitle || "").trim() || "العروض و البكجات",
+                categoryIdAtBooking: String(it.serviceCategoryId || "").trim() || "sequential_offer",
+                categoryNameAtBooking: String(it.serviceCategoryName || "").trim() || "عرض تسلسلي",
+              },
+              packageId: String(it.sequenceOfferId || "").trim()
+                ? `offer:${String(it.sequenceOfferId || "").trim()}`
+                : undefined,
+              packageSnapshot: {
+                packageId: String(it.sequenceOfferId || "").trim() || String(it.serviceId || "").trim(),
+                packageName: String(it.sequenceOfferTitle || it.serviceName || "عرض").trim(),
+                finalPriceAtBooking: Number(itemFinal || 0),
+                baseTotalPriceAtBooking: Number(stepBaseTotal || 0),
+                totalDurationMinAtBooking: parentDurationMin,
+                serviceIds: steps.map((s) => String(s.serviceId || "").trim()).filter(Boolean),
+                services: steps.map((s, sIdx) => ({
+                  serviceId: String(s.serviceId || "").trim(),
+                  serviceName: String(s.serviceNameAtBooking || "خدمة").trim(),
+                  sectionId: String(s.sectionIdAtBooking || "").trim() || undefined,
+                  price: Number(stepFinals[sIdx] || 0),
+                  durationMin: Math.max(1, Number(s.durationAtBooking || DEFAULT_SERVICE_DURATION_MIN)),
+                })),
+              },
+              employeeId: null,
+              employeeUid: null,
+              employeeName: "Auto-assigned",
+              date: String(it.date || bookingDate || "").trim(),
+              time: String(plan.sequenceStart || it.time || "").trim(),
+              total: Number(itemFinal || 0),
+              finalPrice: Number(itemFinal || 0),
+              status: "pending",
+              note: [
+                itemNote,
+                `sequenceOfferId=${String(it.sequenceOfferId || "").trim() || "-"}`,
+              ]
+                .filter(Boolean)
+                .join(" | "),
+              slotStepMinAtBooking: slotStepMin,
+              bufferMinAtBooking: bufferMin,
+              durationMin: parentDurationMin,
+            } as any,
+            items: steps.map((s, sIdx) => ({
+              userId: uid,
+              createdBy: "client",
+              channel: "client",
+              clientName: String(formData.name || "").trim(),
+              clientPhone: phone,
+              serviceName: String(s.serviceNameAtBooking || "خدمة").trim(),
+              serviceId: String(s.serviceId || "").trim(),
+              serviceSnapshot: {
+                serviceNameAtBooking: String(s.serviceNameAtBooking || "خدمة").trim(),
+                priceAtBooking: Number(stepFinals[sIdx] || 0),
+                durationAtBooking: Math.max(1, Number(s.durationAtBooking || DEFAULT_SERVICE_DURATION_MIN)),
+                sectionIdAtBooking: String(s.sectionIdAtBooking || "").trim() || undefined,
+                sectionTitleAtBooking: undefined,
+                categoryIdAtBooking: undefined,
+                categoryNameAtBooking: undefined,
+              },
+              employeeId: String(s.employeeId || "").trim(),
+              employeeUid: String(s.employeeUid || "").trim() || null,
+              employeeName: String(s.employeeName || "").trim() || "-",
+              date: String(it.date || bookingDate || "").trim(),
+              time: String(s.startAt || "").trim(),
+              total: Number(stepFinals[sIdx] || 0),
+              finalPrice: Number(stepFinals[sIdx] || 0),
+              status: "pending",
+              note: [
+                itemNote,
+                `sequenceOfferId=${String(it.sequenceOfferId || "").trim() || "-"}`,
+                `orderIndex=${Number(s.orderIndex || 0)}`,
+                `gapAfterMin=${Math.max(0, Number(s.gapAfterMin || 0))}`,
+              ]
+                .filter(Boolean)
+                .join(" | "),
+              slotStepMinAtBooking: slotStepMin,
+              bufferMinAtBooking: bufferMin,
+              durationMin: Math.max(1, Number(s.durationAtBooking || DEFAULT_SERVICE_DURATION_MIN)),
+            })) as any,
+          });
+
+          createdBookings.push({
+            bookingId: groupRes.parentId,
+            id: groupRes.parentId,
+            trackId: groupRes.parentId,
+            publicId: groupRes.parentPublicId,
+            name: String(formData.name || "").trim(),
+            phone,
+            service: `offer:${String(it.sequenceOfferId || "").trim()}`,
+            serviceName: String(it.sequenceOfferTitle || it.serviceName || "عرض").trim(),
+            employee: "Auto-assigned",
+            employeeId: null,
+            employeeUid: null,
+            date: String(it.date || "").trim(),
+            time: String(plan.sequenceStart || "").trim(),
+            endTime: String(plan.sequenceEnd || "").trim(),
+            total: Number(itemFinal || 0),
+            finalPrice: Number(itemFinal || 0),
+            couponCode: normalizedCode || "",
+            offerId: (finalApplied.offer as any)?.id || null,
+            offerTitle: (finalApplied.offer as any)?.title || null,
+            discountAmount: itemDiscount,
+            durationMin: parentDurationMin,
+            status: "pending",
+            bookingGroupId: groupRes.parentId,
+            subBookingIds: groupRes.itemIds,
+            sequenceStepsSnapshot: steps.map((s, sIdx) => ({
+              serviceId: s.serviceId,
+              orderIndex: s.orderIndex,
+              gapAfterMin: s.gapAfterMin,
+              titleSnapshot: s.titleSnapshot,
+              serviceNameAtBooking: s.serviceNameAtBooking,
+              priceAtBooking: Number(stepFinals[sIdx] || 0),
+              durationAtBooking: s.durationAtBooking,
+              employeeId: s.employeeId,
+              employeeName: s.employeeName,
+              startAt: s.startAt,
+              endAt: s.endAt,
+            })),
+            createdAt: Date.now(),
+          });
+          continue;
+        }
+
         const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+        const itemDateISO = String(it.date || bookingDate || "").trim();
 
         const sv = getServiceById(String(it.serviceId || "").trim());
         const sectionIdAtBooking =
@@ -3090,35 +3872,30 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           userId: uid,
           createdBy: "client",
           channel: "client",
-
-
-
           clientName: String(formData.name || "").trim(),
           clientPhone: phone,
-
           serviceName: it.serviceName,
           serviceId: it.serviceId,
-
+          packageId: String(it.packageId || "").trim() || undefined,
+          packageSnapshot: it.packageSnapshot || undefined,
           serviceSnapshot: {
             serviceNameAtBooking: it.serviceName,
             priceAtBooking: Number(itemFinal || 0),
             durationAtBooking: durationMin,
             sectionIdAtBooking,
+            sectionTitleAtBooking: String(it.serviceSectionTitle || "").trim() || undefined,
+            categoryIdAtBooking: String(it.serviceCategoryId || "").trim() || undefined,
+            categoryNameAtBooking: String(it.serviceCategoryName || "").trim() || undefined,
           },
-
           employeeId: String(it.employeeId || "").trim(),
           employeeUid: String(it.employeeUid || "").trim() || null,
           employeeName: String(it.employeeName || "").trim() || "-",
-
-          date: String(it.date || "").trim(),
+          date: itemDateISO,
           time: String(it.time || "").trim(),
-
           total: Number(itemFinal || 0),
           finalPrice: Number(itemFinal || 0),
-
           status: "pending",
           note: itemNote,
-
           slotStepMinAtBooking: slotStepMin,
           bufferMinAtBooking: bufferMin,
           durationMin,
@@ -3129,28 +3906,23 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           id: res.id,
           trackId: res.id,
           publicId: (res as any).publicId,
-
           name: String(formData.name || "").trim(),
           phone,
-
           service: it.serviceId,
           serviceName: it.serviceName,
-
+          packageId: String(it.packageId || "").trim() || null,
+          packageSnapshot: it.packageSnapshot || null,
           employee: String(it.employeeName || "").trim(),
           employeeId: String(it.employeeId || "").trim(),
           employeeUid: String(it.employeeUid || "").trim(),
-
-          date: String(it.date || "").trim(),
+          date: itemDateISO,
           time: String(it.time || "").trim(),
-
           total: Number(itemFinal || 0),
           finalPrice: Number(itemFinal || 0),
-
           couponCode: normalizedCode || "",
           offerId: (finalApplied.offer as any)?.id || null,
           offerTitle: (finalApplied.offer as any)?.title || null,
           discountAmount: itemDiscount,
-
           durationMin,
           toolsSource: String(it.toolsSource || "").trim() || null,
           toolsFeeApplied: Number(it.toolsFeeApplied || 0),
@@ -3179,14 +3951,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
       if (e?.code === "BOOKING_DAY_CLOSED") {
         openModal({
-          title: "اليوم مغلق",
-          message: "اليوم المختار إجازة في إعدادات الدوام. اختاري تاريخًا آخر للحجز.",
+          title: "اليوم غير متاح للحجز",
+          message: "اليوم المختار مُغلق في إعدادات الدوام (إجازة للصالون). اختاري تاريخًا آخر من الأيام المتاحة للحجز.",
           variant: "danger",
           confirmText: "حسنًا",
         });
         return;
       }
-
       if (e?.code === "BOOKING_TIME_OUT_OF_HOURS") {
         openModal({
           title: "وقت خارج الدوام",
@@ -3201,8 +3972,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         title: "تعذر حفظ الحجز",
         message:
           `صار خطأ أثناء حفظ الحجز.\n\n` +
-          `code: ${String(e?.code || "—")}\n` +
-          `message: ${String(e?.message || "—")}`,
+          `code: ${String(e?.code || "â€”")}\n` +
+          `message: ${String(e?.message || "â€”")}`,
         variant: "danger",
         confirmText: "حسنًا",
       });
@@ -3257,6 +4028,22 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             durationMin: Number(it?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
             serviceId,
             serviceName: String(it?.serviceName || "").trim(),
+            packageId:
+              String((it as any)?.packageId || "").trim() ||
+              (sv?.kind === "package" ? String(sv.packageId || "").trim() : undefined),
+            packageSnapshot:
+              (it as any)?.packageSnapshot ||
+              (sv?.kind === "package" && sv.packageId
+                ? {
+                    packageId: String(sv.packageId || "").trim(),
+                    packageName: sv.name,
+                    finalPriceAtBooking: Number(sv.basePrice || 0),
+                    baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
+                    totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                    serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
+                    services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
+                  }
+                : undefined),
             employeeId: String(it?.employeeId || "").trim(),
             employeeUid: String(it?.employeeUid || "").trim(),
             employeeName: String(it?.employeeName || "").trim(),
@@ -3293,7 +4080,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ أضف هذا السطر فقط
+  // âœ… أضف هذا السطر فقط
   const isSignedClient = !!signedUid;
 
   return (
@@ -3318,7 +4105,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           <div className="col-lg-8">
             <div className="booking-card">
 
-              {/* ✅ Logo */}
+              {/* âœ… Logo */}
               <div className="text-center mb-3">
                 <img
                   src={logo}
@@ -3387,7 +4174,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                   </div>
 
 
-                  {/* ✅ التاريخ (عمود لحاله) */}
+                  {/* âœ… التاريخ (عمود لحاله) */}
                   <div className="col-12 mb-4">
                     <label htmlFor="bookingDate" className="form-label">تاريخ الحجز</label>
 
@@ -3425,7 +4212,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                     </div>
                     {bookingDate && !selectedDayOpen && (
                       <div style={{ marginTop: 8, color: "#b42318", fontWeight: 700, fontSize: 13 }}>
-                        يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة في الصالون، اختاري تاريخًا آخر للحجز.
+                        لا يمكن الحجز يوم {WEEKDAY_LABEL_AR[selectedDayKey]} لأنه يوم إجازة للصالون. الرجاء اختيار تاريخ آخر من الأيام المتاحة.
                       </div>
                     )}
                   </div>
@@ -3434,66 +4221,165 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
                 <div className="mb-4 bk-service-adder" style={{ border: '1px solid #eee', padding: '15px', borderRadius: '12px', background: '#fafafa' }}>
                   <label className="form-label" style={{ fontWeight: 'bold' }}>أضيفي خدمة جديدة</label>
-                  <div className="row g-2">
-                    <div className="col-md-4">
-                      <div className="bk-field">
-                        <select
-                          className="form-select dash-select"
-                          value={selectedSectionId}
-                          onChange={handleSectionChange}
-                          disabled={!bookingDate || !selectedDayOpen || catalogLoading}
-                        >
-                          <option value="">اختاري القسم</option>
-                          {sectionOptions.map((sec) => (
-                            <option key={sec.id} value={sec.id}>{sec.title}</option>
-                          ))}
-                        </select>
+                  <div className="bk-picker-scope mb-2">
+                    <button
+                      type="button"
+                      className={`btn ${pickerScope === "services" ? "btn-dark" : "btn-outline-dark"} btn-sm`}
+                      onClick={() => {
+                        setPickerScope("services");
+                        setServicePicker("");
+                        setSelectedSectionId("");
+                        setSelectedCategory("");
+                        setShowHairGuide(false);
+                      }}
+                    >
+                      الخدمات
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${pickerScope === "offers_packages" ? "btn-dark" : "btn-outline-dark"} btn-sm`}
+                      onClick={() => {
+                        setPickerScope("offers_packages");
+                        setServicePicker("");
+                        setSelectedSectionId("");
+                        setSelectedCategory("");
+                        setShowHairGuide(false);
+                      }}
+                    >
+                      العروض و البكجات
+                    </button>
+                  </div>
+
+                  {pickerScope === "services" ? (
+                    <div className="row g-2">
+                      <div className="col-md-4">
+                        <div className="bk-field">
+                          <select
+                            className={`form-select dash-select ${selectedSectionId ? "" : "is-empty"}`}
+                            value={selectedSectionId}
+                            onChange={handleSectionChange}
+                            disabled={catalogLoading}
+                          >
+                            <option value="">اختاري القسم</option>
+                            {!sectionOptionsSafe.length && <option value="" disabled>لا توجد أقسام متاحة</option>}
+                            {sectionOptionsSafe.map((sec) => (
+                              <option key={sec.id} value={sec.id}>{sec.title}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="col-md-4">
+                        <div className="bk-field">
+                          <select
+                            className={`form-select dash-select ${selectedCategory ? "" : "is-empty"}`}
+                            value={selectedCategory}
+                            onChange={handleCategoryChange}
+                            disabled={!selectedSectionId || categoryLoading}
+                          >
+                            <option value="">اختاري التصنيف</option>
+                            {!!selectedSectionId && !categoryOptionsSafe.length && <option value="" disabled>لا توجد تصنيفات</option>}
+                            {categoryOptionsSafe.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="col-md-4">
+                        <div className="bk-field">
+                          <select
+                            className={`form-select dash-select ${servicePicker ? "" : "is-empty"}`}
+                            value={servicePicker}
+                            onChange={(e) => setServicePicker(e.target.value)}
+                            disabled={!selectedSectionId}
+                          >
+                            <option value="">اختاري الخدمة</option>
+                            {!!selectedSectionId && !servicesGrouped.length && <option value="" disabled>لا توجد خدمات</option>}
+                            {servicesGrouped.map(([cat, items]) => (
+                              <optgroup key={cat} label={cat}>
+                                {items.map((sv) => (
+                                  <option key={sv.id} value={sv.id}>
+                                    {sv.name} — {servicePickerPriceText(sv)}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     </div>
-                    <div className="col-md-4">
-                      <div className="bk-field">
-                        <select
-                          className="form-select dash-select"
-                          value={selectedCategory}
-                          onChange={handleCategoryChange}
-                          disabled={!bookingDate || !selectedDayOpen || !selectedSectionId || categoryLoading}
-                        >
-                          <option value="">اختاري التصنيف</option>
-                          {categoryOptions.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
+                  ) : (
+                    <div className="row g-2">
+                      <div className="col-12">
+                        <div className="bk-field">
+                          <select
+                            className={`form-select dash-select ${servicePicker ? "" : "is-empty"}`}
+                            value={servicePicker}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setServicePicker(next);
+                              if (!String(next || "").startsWith("offer:")) {
+                                setOfferStartTime("");
+                              }
+                            }}
+                            disabled={!packageOptions.length && !sequenceOfferOptions.length}
+                          >
+                            <option value="">اختاري عرض أو باكيج</option>
+                            {!sequenceOfferOptions.length && !packageOptions.length && <option value="" disabled>لا توجد عناصر متاحة</option>}
+                            {sequenceOfferOptions.length > 0 && (
+                              <optgroup label="العروض التسلسلية">
+                                {sequenceOfferOptions.map((o) => (
+                                  <option key={o.id} value={o.id}>
+                                    {o.title} — {o.stepsCount} خطوات
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {packageOptions.length > 0 && (
+                              <optgroup label="الباكيجات">
+                                {packageOptions.map((pkg) => (
+                                  <option key={pkg.id} value={pkg.id}>
+                                    {pkg.title} — {pkg.priceText}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        </div>
                       </div>
-                    </div>
-                    <div className="col-md-4">
-                      <div className="bk-field">
-                        <select
-                          className="form-select dash-select"
-                          value={servicePicker}
-                          onChange={(e) => setServicePicker(e.target.value)}
-                          disabled={!bookingDate || !selectedDayOpen || !selectedSectionId}
-                        >
-                          <option value="">اختاري الخدمة</option>
-                          {servicesGrouped.map(([cat, items]) => (
-                            <optgroup key={cat} label={cat}>
-                              {items.map((sv) => (
-                                <option key={sv.id} value={sv.id}>
-                                  {sv.name} — {servicePickerPriceText(sv)}
+                      {String(servicePicker || "").startsWith("offer:") && (
+                        <div className="col-12">
+                          <div className="bk-field">
+                            <select
+                              className={`form-select dash-select ${offerStartTime ? "" : "is-empty"}`}
+                              value={offerStartTime}
+                              onChange={(e) => setOfferStartTime(e.target.value)}
+                              disabled={!selectedDayOpen}
+                            >
+                              <option value="">اختاري وقت بداية العرض</option>
+                              {(timeSlots.length ? timeSlots : generateSalonTimeSlots(openTime, closeTime, slotStepMin)).map((s) => (
+                                <option key={`offer-start-${s.value24}`} value={s.value24}>
+                                  {s.label12}
                                 </option>
                               ))}
-                            </optgroup>
-                          ))}
-                        </select>
-                      </div>
+                            </select>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  )}
 
                   <div className="row g-2 mt-2">
                     <div className="col-12 d-grid">
                       <button
                         type="button"
                         className="btn btn-dark booking-service-add-btn"
-                        disabled={!servicePicker || !selectedDayOpen}
+                        disabled={
+                          !servicePicker ||
+                          !selectedDayOpen ||
+                          (pickerScope === "offers_packages" &&
+                            String(servicePicker || "").startsWith("offer:") &&
+                            !offerStartTime)
+                        }
                         onClick={() => addServiceToCart(servicePicker)}
                       >
                         إضافة
@@ -3501,12 +4387,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                     </div>
                   </div>
 
-                  {/* ✅ دليل أطوال الشعر */}
+                  {/* âœ… دليل أطوال الشعر */}
                   {selectedSectionId && isHairSection && (
                     <div className="mt-3" style={{ border: '1px dashed rgba(13,13,13,0.18)', borderRadius: 14, padding: 12 }}>
                       <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
                         <div style={{ fontWeight: 900, color: '#0D0D0D' }}>
-                          📏 دليل أطوال الشعر
+                          ًں“ڈ دليل أطوال الشعر
                           <div className="small text-muted" style={{ fontWeight: 700 }}>اختاري طول الشعر من الصورة قبل إكمال الحجز</div>
                         </div>
 
@@ -3559,13 +4445,44 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 </div>
 
 
-                {/* ✅ الخدمات المختارة (السلة) */}
+                {/* âœ… الخدمات المختارة (السلة) */}
                 <div className="mb-4">
                   <label className="form-label" style={{ fontWeight: 'bold' }}>الخدمات المختارة</label>
 
                   {!!(formData.items || []).length ? (
                     <div className="mt-2">
                       {(formData.items || []).map((it) => {
+                        if (it.sequenceOfferId) {
+                          const seqSteps = Array.isArray(it.sequenceStepsSnapshot) ? it.sequenceStepsSnapshot : [];
+                          return (
+                            <div key={it.id} className="mb-3 p-3" style={{ border: "1px solid rgba(13,13,13,0.12)", borderRadius: 12, background: "#fff" }}>
+                              <div className="d-flex justify-content-between align-items-center mb-2">
+                                <h5 className="m-0" style={{ fontWeight: 800, color: "#0D0D0D" }}>
+                                  {it.sequenceOfferTitle || it.serviceName}
+                                  <span className="badge bg-secondary ms-2" style={{ fontSize: "0.7rem" }}>
+                                    عرض تسلسلي
+                                  </span>
+                                </h5>
+                                <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>
+                                  حذف
+                                </button>
+                              </div>
+                              <div className="small mb-2" style={{ color: "#374151", fontWeight: 700 }}>
+                                البداية: {formatTime12ForClient(String(it.time || ""))} | المدة الإجمالية: {Number(it.durationMin || 0)} د | السعر: {it.priceText}
+                              </div>
+                              <div className="small mb-2" style={{ color: "#4b5563" }}>
+                                القسم: {String(it.serviceSectionTitle || it.serviceSectionId || "â€”")} | التصنيف: {String(it.serviceCategoryName || it.serviceCategoryId || "â€”")}
+                              </div>
+                              <div className="small" style={{ color: "#6b7280" }}>
+                                {seqSteps
+                                  .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0))
+                                  .map((s) => `${s.serviceNameAtBooking}${s.gapAfterMin ? ` (+${s.gapAfterMin}د)` : ""}`)
+                                  .join(" â€¢ ")}
+                              </div>
+                            </div>
+                          );
+                        }
+
                         const busy = busyByItem[it.id] || emptyBusyState();
                         const itemsList = formData.items || [];
                         const canEditThis = canEditByLockedPrev(itemsList, it.id);
@@ -3576,7 +4493,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
 
                         const dur = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+                        const serviceSectionLabel = String(it.serviceSectionTitle || it.serviceSectionId || "â€”");
+                        const serviceCategoryLabel = String(it.serviceCategoryName || it.serviceCategoryId || "â€”");
                         const toolsEligible = isToolsOptionEligibleForItem(it);
+                        const packageServices = Array.isArray(it.packageSnapshot?.services) ? it.packageSnapshot?.services : [];
                         const toolsSource = toolsEligible
                           ? (String(it.toolsSource || "").trim() === "salon" ? "salon" : "client")
                           : undefined;
@@ -3636,15 +4556,23 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             ? suggested
                             : (availableSlotsForItem[0]?.value24 || "");
 
-                        // ✅ شكل الكرت وهو مقفول (تم التأكيد)
+                        // âœ… شكل الكرت وهو مقفول (تم التأكيد)
                         if (isLocked) {
                           return (
                             <div key={it.id} className="mb-3" style={{ background: '#f0fff4', borderLeft: '4px solid #28a745', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                               <div className="d-flex justify-content-between align-items-start">
                                 <div>
-                                  <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>✓ تم تأكيد هذه الخدمة: {it.serviceName}</p>
+                                  <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>âœ“ تم تأكيد هذه الخدمة: {it.serviceName}</p>
                                   <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{formatTime12ForClient(it.time)}</strong></p>
                                   <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.8 }}>المدة: {dur} دقيقة | السعر: {it.priceText}</p>
+                                  <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
+                                    القسم: {serviceSectionLabel} | التصنيف: {serviceCategoryLabel}
+                                  </p>
+                                  {packageServices.length > 0 ? (
+                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.82rem', color: '#155724', opacity: 0.85 }}>
+                                      تفاصيل الباكيج: {packageServices.map((s) => String(s.serviceName || s.serviceId || "").trim()).filter(Boolean).join("، ")}
+                                    </p>
+                                  ) : null}
                                   {toolsEligible ? (
                                     <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.9 }}>
                                       {toolsSummary}
@@ -3675,7 +4603,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           );
                         }
 
-                        // ✅ شكل الكرت وهو مفتوح (جاري الاختيار)
+                        // âœ… شكل الكرت وهو مفتوح (جاري الاختيار)
                         return (
                           <div key={it.id} className="mb-3 p-3" style={{ border: '1px solid rgba(13,13,13,0.12)', borderRadius: 12, background: canEditThis ? '#fff' : 'rgba(245,245,244,0.75)', opacity: canEditThis ? 1 : 0.7 }}>
                             <div className="d-flex justify-content-between align-items-center mb-3">
@@ -3687,10 +4615,20 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
                             {!canEditThis ? (
                               <div className="p-3 text-center" style={{ background: '#fff9db', borderRadius: '8px', border: '1px solid #ffe066' }}>
-                                <p style={{ margin: 0, fontWeight: 'bold', color: '#856404' }}>⚠️ كمّلي الخدمة اللي قبلها عشان يفتح هذا الكرت ✅</p>
+                                <p style={{ margin: 0, fontWeight: 'bold', color: '#856404' }}>âڑ ï¸ڈ كمّلي الخدمة اللي قبلها عشان يفتح هذا الكرت âœ…</p>
                               </div>
                             ) : (
                               <div className="row g-3">
+                                <div className="col-12">
+                                  <div className="small" style={{ color: "#4b5563", fontWeight: 700 }}>
+                                    القسم: {serviceSectionLabel} | التصنيف: {serviceCategoryLabel}
+                                  </div>
+                                  {packageServices.length > 0 ? (
+                                    <div className="small" style={{ color: "#6b7280", marginTop: 4 }}>
+                                      تفاصيل الباكيج: {packageServices.map((s) => String(s.serviceName || s.serviceId || "").trim()).filter(Boolean).join("، ")}
+                                    </div>
+                                  ) : null}
+                                </div>
                                 {toolsEligible ? (
                                   <div className="col-12">
                                     <label className="form-label small fw-bold">0. الأدوات لهذه الخدمة</label>
@@ -3833,7 +4771,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                           className="btn btn-success w-100 py-2 fw-bold"
                                           onClick={() => updateItem(it.id, { locked: true })}
                                         >
-                                          تأكيد الموظفة والوقت لهذه الخدمة ✅
+                                          تأكيد الموظفة والوقت لهذه الخدمة âœ…
                                         </button>
                                       </div>
                                     )}
@@ -3847,7 +4785,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                     </div>
                   ) : (
                     <div className="p-4 text-center" style={{ border: '2px dashed #ddd', borderRadius: '12px', background: '#fdfdfd' }}>
-                      <p className="text-muted m-0">اختاري خدمة من القائمة أعلاه للبدء ✨</p>
+                      <p className="text-muted m-0">اختاري خدمة من القائمة أعلاه للبدء âœ¨</p>
                     </div>
                   )}
                 </div>
@@ -4119,3 +5057,4 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 };
 
 export default Booking;
+

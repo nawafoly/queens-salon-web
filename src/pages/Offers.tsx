@@ -24,6 +24,7 @@ import { db } from "../services/firebase";
 
 // ✅ Modal بدل alert
 import ConfirmModal from "../components/ConfirmModal";
+import type { ServicePackageDoc } from "../services/firestorePackages";
 
 type DiscountType = "percent" | "fixed";
 
@@ -185,7 +186,9 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
 
 const Offers = () => {
   const [offers, setOffers] = useState<UiOffer[]>([]);
+  const [packageOffers, setPackageOffers] = useState<ServicePackageDoc[]>([]);
   const [openOfferId, setOpenOfferId] = useState<string | null>(null);
+  const [openPackageId, setOpenPackageId] = useState<string | null>(null);
   const [showEnded, setShowEnded] = useState(false);
 
   // ✅ Modal بدل alert
@@ -294,6 +297,35 @@ const Offers = () => {
     return () => unsub1();
   }, []);
 
+  useEffect(() => {
+    const q1 = query(
+      collection(db, "salons", SALON_ID, "service_packages"),
+      orderBy("updatedAt", "desc")
+    );
+
+    const unsub1 = onSnapshot(
+      q1,
+      (snap) => {
+        const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as ServicePackageDoc[];
+        setPackageOffers(rows);
+      },
+      () => {
+        const q2 = query(collection(db, "salons", SALON_ID, "service_packages"));
+        const unsub2 = onSnapshot(
+          q2,
+          (snap) => {
+            const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as ServicePackageDoc[];
+            setPackageOffers(rows);
+          },
+          () => setPackageOffers([])
+        );
+        return unsub2;
+      }
+    );
+
+    return () => unsub1();
+  }, []);
+
   const { activeNow, endedOrPaused, activeCount, maxPercent } = useMemo(() => {
     const activeNow = offers.filter((o) => isActiveNow(o));
     const endedOrPaused = offers.filter((o) => !isActiveNow(o) && !o.deletedAt);
@@ -340,6 +372,16 @@ const Offers = () => {
       gridOffers: grid,
     };
   }, [offers]);
+
+  const activePackages = useMemo(() => {
+    return (packageOffers || []).filter(
+      (p) =>
+        p &&
+        p.active !== false &&
+        String(p.name || "").trim() &&
+        Number(p.totalDurationMin || 0) > 0
+    );
+  }, [packageOffers]);
 
   return (
     <div className="offers-page">
@@ -499,6 +541,106 @@ const Offers = () => {
           {activeNow.length === 0 && (
             <div style={{ textAlign: "center", marginTop: 20, opacity: 0.8 }}>
               لا توجد عروض سارية الآن — أضيفي عرض من Dashboard وحددي التواريخ وسيظهر هنا تلقائيًا.
+            </div>
+          )}
+
+          {activePackages.length > 0 && (
+            <div className="package-offers-wrap">
+              <div className="text-center mb-4">
+                <h2 className="h1 fw-bold text-gradient mb-2">عروض الباكيج</h2>
+              </div>
+
+              <div className="cards-grid-2">
+                {activePackages.map((p, index) => {
+                  const expanded = openPackageId === p.id;
+                  const packageServiceNames =
+                    Array.isArray((p as any).services) && (p as any).services.length > 0
+                      ? (p as any).services
+                          .map((s: any) => String(s?.serviceName || "").trim())
+                          .filter(Boolean)
+                      : [];
+                  return (
+                    <div key={`pkg-public-${p.id}`}>
+                      <div
+                        className={["offer-card-enhanced", expanded ? "expanded" : "collapsed"].join(" ")}
+                        style={{ animationDelay: `${index * 0.05}s` }}
+                      >
+                        <div
+                          className="offer-image"
+                          style={{ backgroundImage: `url(${String((p as any).imageUrl || "").trim() || emma})` }}
+                          aria-label={String(p.name || "باكيج")}
+                        />
+
+                        <div className="offer-content">
+                          <h3 className="offer-title">{String(p.name || "باكيج")}</h3>
+
+                          <div className="offer-mini-row" style={{ flexWrap: "wrap" }}>
+                            <span className="discount-badge">خصم {Number(p.discountPercent || 0).toFixed(1)}%</span>
+                            <span className="save-badge">{Number(p.finalPrice || 0)} ريال</span>
+                            <span className="save-badge">{Number(p.totalDurationMin || 0)} د</span>
+                            <span className="status-pill active">فعال</span>
+                          </div>
+
+                          <div className="offer-validity">
+                            <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
+                            باكيج متاح للحجز الآن
+                          </div>
+
+                          <button
+                            type="button"
+                            className={["toggle-details", expanded ? "is-open" : ""].join(" ")}
+                            onClick={() => setOpenPackageId(expanded ? null : p.id)}
+                          >
+                            <span>{expanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}</span>
+                            <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} />
+                          </button>
+
+                          {expanded && (
+                            <div className="offer-details">
+                              <p className="offer-description">
+                                {String((p as any).description || "").trim() || "باكيج مجمع بخدمات مختارة بسعر خاص."}
+                              </p>
+                              <div className="offer-features mb-3">
+                                <h5 className="fw-bold mb-2">
+                                  <FontAwesomeIcon icon={faTag} className="me-2" />
+                                  تفاصيل الباكيج:
+                                </h5>
+                                <ul>
+                                  <li><span className="check-dot" />السعر الإجمالي قبل الخصم: {Number((p as any).baseTotalPrice || 0)} ريال</li>
+                                  <li><span className="check-dot" />السعر النهائي: {Number(p.finalPrice || 0)} ريال</li>
+                                  <li><span className="check-dot" />المدة: {Number(p.totalDurationMin || 0)} دقيقة</li>
+                                </ul>
+                                <div className="pkg-services-block">
+                                  <div className="pkg-services-title">
+                                    <FontAwesomeIcon icon={faTag} className="me-2" />
+                                    الخدمات المشمولة
+                                  </div>
+                                  {packageServiceNames.length > 0 ? (
+                                    <div className="pkg-services-chips">
+                                      {packageServiceNames.map((serviceName: string, serviceIdx: number) => (
+                                        <span key={`${p.id}-svc-${serviceIdx}`} className="pkg-service-chip">
+                                          {serviceName}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="pkg-services-empty">
+                                      عدد الخدمات: {Array.isArray(p.serviceIds) ? p.serviceIds.length : 0}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <Link to="/booking" className="btn btn-primary w-100 btn-lg rounded-pill">
+                                احجزي هذا الباكيج
+                              </Link>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

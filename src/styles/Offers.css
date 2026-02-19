@@ -418,6 +418,126 @@
   flex: 0 0 8px;
 }
 
+/* Package included services */
+.offers-page .pkg-services-block {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(13, 13, 13, 0.1);
+}
+
+.offers-page .pkg-services-title {
+  font-weight: 900;
+  color: #0D0D0D;
+  margin-bottom: 8px;
+}
+
+.offers-page .pkg-services-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.offers-page .pkg-service-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #40010D;
+  background: rgba(64, 1, 13, 0.08);
+  border: 1px solid rgba(64, 1, 13, 0.18);
+}
+
+.offers-page .pkg-services-empty {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(13, 13, 13, 0.7);
+}
+
+/* --------- Package Cards (Public Offers) --------- */
+.offers-page .package-offers-wrap {
+  margin-top: 28px;
+}
+
+.offers-page .package-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.offers-page .package-offer-card {
+  background: #ececec;
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 20px;
+  padding: 14px;
+}
+
+.offers-page .package-offer-inner {
+  background: #f4f4f4;
+  border: 1px solid rgba(13, 13, 13, 0.09);
+  border-radius: 18px;
+  padding: 10px 14px;
+}
+
+.offers-page .package-offer-image-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0 10px;
+}
+
+.offers-page .package-offer-image {
+  width: 74px;
+  height: 74px;
+  border-radius: 18px;
+  object-fit: cover;
+  border: 1px solid rgba(13, 13, 13, 0.1);
+  background: #fff;
+}
+
+.offers-page .package-offer-image--empty {
+  display: grid;
+  place-items: center;
+  color: #80868b;
+}
+
+.offers-page .package-offer-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid rgba(13, 13, 13, 0.08);
+  padding: 11px 2px;
+}
+
+.offers-page .package-offer-label {
+  font-weight: 700;
+  color: #515659;
+  text-align: right;
+}
+
+.offers-page .package-offer-value {
+  font-weight: 800;
+  color: #0D0D0D;
+  text-align: center;
+}
+
+.offers-page .package-offer-desc {
+  white-space: normal;
+  line-height: 1.45;
+}
+
+@media (max-width: 992px) {
+  .offers-page .package-cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .offers-page .package-offer-row {
+    grid-template-columns: 105px 1fr;
+  }
+}
+
 /* النص الرمادي داخل التفاصيل */
 .offers-page .offer-details .muted,
 .offers-page .offer-details small{
@@ -459,4 +579,3 @@
   margin-top: 0 !important;
   padding-top: 0;
 }
-

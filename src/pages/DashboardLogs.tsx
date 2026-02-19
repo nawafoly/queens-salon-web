@@ -13,7 +13,6 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
-import "../styles/Dashboard.css";
 import "../styles/DashboardLogs.css";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";

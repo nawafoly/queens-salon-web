@@ -10,7 +10,6 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import WelcomeModal from "./components/WelcomeModal";
 import ChatBot from "./components/ChatBot";
-import ChatBotLauncher from "./components/ChatBotLauncher";
 
 // Pages
 import Home from "./pages/Home";
@@ -120,7 +119,6 @@ const App: React.FC = () => {
   const isInDashboard =
     location.pathname.startsWith("/dashboard") ||
     location.pathname.startsWith("/dashboard-pending");
-  const isChatPage = location.pathname.startsWith("/chat");
 
   const readWelcomeFromStorage = () => {
     const flag = localStorage.getItem("showWelcome");
@@ -193,7 +191,7 @@ const App: React.FC = () => {
 
   return (
     <div className="app">
-      {!isInDashboard && !isChatPage && <Navbar />}
+      {!isInDashboard && <Navbar />}
 
       <main className="main-content">
         <ScrollToTop />
@@ -222,7 +220,7 @@ const App: React.FC = () => {
           <Route path="/contact" element={<Contact />} />
           <Route path="/login" element={<Login />} />
           <Route path="/pricing" element={<Pricing />} />
-          <Route path="/chat" element={<ChatBot />} />
+          <Route path="/chat" element={<Navigate to="/" replace />} />
 
           {/* Track */}
           <Route path="/track" element={<Track />} />
@@ -291,8 +289,8 @@ const App: React.FC = () => {
         </Routes>
       </main>
 
-      {!isInDashboard && !isChatPage && <Footer />}
-      {!isInDashboard && !isChatPage && <ChatBotLauncher />}
+      {!isInDashboard && <Footer />}
+      {!isInDashboard && <ChatBot />}
 
       <WelcomeModal
         show={showWelcome}
