@@ -1250,6 +1250,28 @@ const ChatBot: React.FC = () => {
 
   useEffect(() => {
     if (!isChatPage) return;
+    const y = window.scrollY;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${y}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
+    return () => {
+      const top = document.body.style.top;
+      document.body.style.position = "";
+      document.body.style.top = "";
+      document.body.style.left = "";
+      document.body.style.right = "";
+      document.body.style.width = "";
+      document.body.style.overflow = "";
+      const restoreY = top ? Math.abs(parseInt(top, 10)) : y;
+      window.scrollTo(0, restoreY || 0);
+    };
+  }, [isChatPage]);
+
+  useEffect(() => {
+    if (!isChatPage) return;
 
     let rafId: number | null = null;
     const updateChatViewportHeight = () => {
@@ -1373,6 +1395,14 @@ const ChatBot: React.FC = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="اكتبي سؤالك هنا..."
+                onFocus={() => {
+                  // iOS Safari sometimes pushes the page up when keyboard opens.
+                  if (!isChatPage) return;
+                  window.setTimeout(() => {
+                    window.scrollTo({ top: 0, behavior: "auto" });
+                    messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+                  }, 0);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleSend();
                 }}

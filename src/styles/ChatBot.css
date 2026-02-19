@@ -491,7 +491,7 @@
   padding: 0 12px;
 
   outline: none;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .chatbot-input-row input::placeholder{
@@ -797,4 +797,3 @@
   width: 100% !important;
   max-width: none !important;
 }
-
