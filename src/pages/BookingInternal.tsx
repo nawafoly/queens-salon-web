@@ -110,11 +110,15 @@ type CartItem = {
     services: PackageServiceItem[];
   };
   serviceSectionId: string;
+  serviceSectionTitle?: string;
   serviceCategoryId?: string;
   serviceCategoryName?: string;
 
+  serviceBasePrice?: number;
   basePrice: number;
   priceText: string;
+  toolsSource?: "client" | "salon";
+  toolsFeeApplied?: number;
   durationMin: number;
 
   employeeId: string; // staff_public doc id
@@ -154,6 +158,24 @@ function extractMinPrice(priceText: string): number {
   return Math.min(...parts);
 }
 
+function readDisplayLabel(raw: any, fallback = ""): string {
+  const obj = raw && typeof raw === "object" ? raw : {};
+  const directKeys = ["name", "title", "category", "categoryName", "الاسم", "العنوان"];
+  for (const k of directKeys) {
+    const v = String((obj as any)?.[k] ?? "").trim();
+    if (v) return v;
+  }
+  const entries = Object.entries(obj as Record<string, any>);
+  for (const [k, v] of entries) {
+    const key = String(k || "").toLowerCase();
+    if (/(name|title|اسم|عنوان)/i.test(key)) {
+      const txt = String(v ?? "").trim();
+      if (txt) return txt;
+    }
+  }
+  return String(fallback || "").trim();
+}
+
 type FlatService = {
   id: string;
   kind: "service" | "package";
@@ -184,6 +206,22 @@ const DEFAULT_SERVICE_DURATION_MIN = 60;
 const PACKAGE_SECTION_ID = "service-packages";
 const PACKAGE_SECTION_TITLE = "البكيجات";
 const ALLOW_OVERTIME_MIN = 20;
+const MANI_PEDI_TOOLS_FEE_FIXED = 15;
+const MANI_PEDI_SECTION_KEYWORDS = [
+  "manicure",
+  "pedicure",
+  "mani",
+  "pedi",
+  "body care",
+  "bodycare",
+  "mni",
+  "مناكير",
+  "منيكير",
+  "بديكير",
+  "بوديكير",
+  "بدكير",
+  "بوديكير",
+];
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
@@ -607,6 +645,12 @@ function normalizeSearchText(raw: string) {
     .trim();
 }
 
+function isManiPediSectionByInfo(sectionId: string, sectionTitle?: string) {
+  const hay = normalizeSearchText(`${sectionId || ""} ${sectionTitle || ""}`);
+  if (!hay) return false;
+  return MANI_PEDI_SECTION_KEYWORDS.some((k) => hay.includes(normalizeSearchText(k)));
+}
+
 function toArabicCatalogLabel(raw: string) {
   const original = String(raw || "").trim();
   if (!original) return "";
@@ -772,6 +816,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const bufferMin = useMemo(() => {
     return Math.max(0, safeInt((booking as any)?.bufferMin, 5));
   }, [(booking as any)?.bufferMin]);
+  const maniPediToolsFee = MANI_PEDI_TOOLS_FEE_FIXED;
 
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
 
@@ -831,8 +876,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   });
   const [offerMsg, setOfferMsg] = useState("");
   const [manualOverride, setManualOverride] = useState(false);
+  const couponCheckSeqRef = useRef(0);
 
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
+  const [expandedConfirmedCartItems, setExpandedConfirmedCartItems] = useState<
+    Record<string, true>
+  >({});
 
   // =========================
   // ✅ NEW: Future availability (للأيام القادمة)
@@ -887,6 +936,29 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     );
     if (!exists) setFutureTargetItemId("");
   }, [futureTargetItemId, formData.items]);
+
+  useEffect(() => {
+    setExpandedConfirmedCartItems((prev) => {
+      const prevIds = Object.keys(prev);
+      if (!prevIds.length) return prev;
+
+      const items = formData.items || [];
+      const itemById = new Map(items.map((it) => [String(it.id), it]));
+      const next: Record<string, true> = {};
+      let changed = false;
+
+      prevIds.forEach((id) => {
+        const item = itemById.get(id);
+        if (!item || !item.locked) {
+          changed = true;
+          return;
+        }
+        next[id] = true;
+      });
+
+      return changed ? next : prev;
+    });
+  }, [formData.items]);
 
   useEffect(() => {
     const sid = String(futureServiceId || "").trim();
@@ -960,6 +1032,36 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       phone: phone || prev.phone,
     }));
   }
+
+  const quickClientOptions = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("allBookings");
+      if (!raw) return [] as any[];
+
+      const parsed = JSON.parse(raw);
+      const rows = Array.isArray(parsed) ? (parsed as any[]) : [];
+      const out: any[] = [];
+      const seen = new Set<string>();
+
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const c = toClientCandidateFromBooking(rows[i]);
+        if (!c) continue;
+
+        const phone = phone10Digits(c.phone || c.mobile || "");
+        const name = normalizeSearchText(String(c.name || c.fullName || ""));
+        const key = phone ? `p:${phone}` : name ? `n:${name}` : "";
+        if (!key || seen.has(key)) continue;
+
+        seen.add(key);
+        out.push(c);
+        if (out.length >= 6) break;
+      }
+
+      return out;
+    } catch {
+      return [] as any[];
+    }
+  }, [selectedClient, clientSearchResults.length]);
 
   async function tryFindClientByPhoneOrName(raw: string) {
     const qRaw = String(raw || "").trim();
@@ -1162,7 +1264,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const handleSearchClient = async () => {
     const q = String(clientSearch || "").trim();
     if (!q) {
-      setClientSearchMsg("اكتبي اسم أو رقم جوال أو رقم حجز للبحث.");
+      setClientSearchMsg("اكتبي اسم أو رقم جوال للبحث.");
+      return;
+    }
+
+    const qKind = classifySearchKey(q).kind;
+    if (qKind === "publicId" || qKind === "id") {
+      setClientSearchMsg("في بيانات العميلة، البحث يكون بالاسم أو رقم الجوال فقط.");
       return;
     }
 
@@ -1175,7 +1283,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       const found = await tryFindClientByPhoneOrName(q);
 
       if (!found.length) {
-        setClientSearchMsg("ما لقينا بيانات مطابقة. ابحثي بالاسم أو الجوال أو رقم الحجز.");
+        setClientSearchMsg("ما لقينا بيانات مطابقة. ابحثي بالاسم أو الجوال.");
         return;
       }
 
@@ -1219,6 +1327,42 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return normalizeSearchText(name) === selectedBookingNameKey;
     });
   }, [foundBookings, selectedBookingNameKey, bookingNameChoices.length]);
+
+  const displayFoundBookingBlocks = useMemo(() => {
+    const blocks = new Map<string, { key: string; label: string; bookings: any[] }>();
+
+    (displayFoundBookings || []).forEach((b) => {
+      const key = resolveBookingBlockKey(b);
+      const current = blocks.get(key);
+      if (current) {
+        current.bookings.push(b);
+        return;
+      }
+
+      const label =
+        extractBookingPublicIdBase(b) ||
+        String(b?.publicId || b?.trackPublicId || b?.mk || "").trim() ||
+        "بدون رقم";
+
+      blocks.set(key, { key, label, bookings: [b] });
+    });
+
+    const out = Array.from(blocks.values());
+    out.forEach((block) => {
+      block.bookings.sort((a, b) => {
+        const da = String(a?.date || "");
+        const db = String(b?.date || "");
+        if (da !== db) return da.localeCompare(db);
+        const ta = toMinutes(String(a?.time || ""));
+        const tb = toMinutes(String(b?.time || ""));
+        const ma = Number.isFinite(ta) ? ta : Number.MAX_SAFE_INTEGER;
+        const mb = Number.isFinite(tb) ? tb : Number.MAX_SAFE_INTEGER;
+        return ma - mb;
+      });
+    });
+
+    return out;
+  }, [displayFoundBookings]);
 
   type ReceptionSearchKind = "empty" | "phone" | "publicId" | "name" | "id";
 
@@ -1291,6 +1435,49 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     // 5) fallback: doc id
     return { kind: "id", value: s, publicIdCandidates: [] };
+  }
+
+  function readBookingSectionLabel(booking: any) {
+    return String(
+      booking?.serviceSectionTitle ||
+        booking?.serviceSnapshot?.sectionTitleAtBooking ||
+        booking?.serviceSnapshot?.sectionIdAtBooking ||
+        booking?.serviceSectionId ||
+        ""
+    ).trim();
+  }
+
+  function readBookingCategoryLabel(booking: any) {
+    return String(
+      booking?.serviceCategoryName ||
+        booking?.serviceSnapshot?.categoryNameAtBooking ||
+        booking?.serviceSnapshot?.categoryIdAtBooking ||
+        booking?.serviceCategoryId ||
+        ""
+    ).trim();
+  }
+
+  function extractBookingPublicIdBase(booking: any) {
+    const raw = String(booking?.publicId || booking?.trackPublicId || booking?.mk || "")
+      .trim()
+      .toUpperCase();
+    if (!raw) return "";
+    const m = raw.match(/^(MK-\d+)(?:-\d+)?$/i);
+    return m ? m[1].toUpperCase() : raw;
+  }
+
+  function resolveBookingBlockKey(booking: any) {
+    const groupId = String(booking?.bookingGroupId || booking?.parentBookingId || "").trim();
+    if (groupId) return `group:${groupId}`;
+
+    const raw = String(booking?.publicId || booking?.trackPublicId || booking?.mk || "")
+      .trim()
+      .toUpperCase();
+    const base = extractBookingPublicIdBase(booking);
+    if (base && raw && raw.startsWith(`${base}-`)) return `public:${base}`;
+
+    const id = String(booking?.id || booking?.bookingId || raw || "").trim();
+    return `single:${id || "unknown"}`;
   }
 
   async function searchBookingsForReception(raw: string) {
@@ -1610,6 +1797,33 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       employeeName: String((chosenStaff as any)?.name || "").trim(),
       locked: false,
     });
+  }
+
+  async function handleFutureSlotPick(dateISO: string, time24: string) {
+    const d = String(dateISO || "").trim();
+    const t = String(time24 || "").trim();
+    if (!d || !t) return;
+
+    try {
+      await applyFutureTimeSelection(d, t);
+      const timeLabel = formatTime12(t, t);
+      openModal({
+        title: "تم اختيار الموعد ✅",
+        message: `التاريخ: ${d} - الوقت: ${timeLabel}`,
+        variant: "info",
+        confirmText: "تمام",
+      });
+    } catch (e: any) {
+      openModal({
+        title: "تعذر اختيار الموعد",
+        message:
+          `صار خطأ أثناء تثبيت الموعد.\n\n` +
+          `code: ${String(e?.code || "—")}\n` +
+          `message: ${String(e?.message || "—")}`,
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+    }
   }
 
   async function runFutureAvailabilitySearch(overrides?: {
@@ -1932,6 +2146,61 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setPaymentModalOpen(true);
   }
 
+  function enrichBookingForPrint(rawBooking: any) {
+    const booking = rawBooking || {};
+    const serviceId = String(booking?.serviceId || booking?.service || "").trim();
+    const sv = serviceId ? getServiceById(serviceId) : null;
+
+    const sectionId = String(
+      booking?.serviceSectionId ||
+        booking?.serviceSnapshot?.sectionIdAtBooking ||
+        sv?.sectionId ||
+        ""
+    ).trim();
+    const sectionTitle = String(
+      booking?.serviceSectionTitle ||
+        booking?.serviceSnapshot?.sectionTitleAtBooking ||
+        sv?.sectionTitle ||
+        sectionId ||
+        ""
+    ).trim();
+    const categoryId = String(
+      booking?.serviceCategoryId ||
+        booking?.serviceSnapshot?.categoryIdAtBooking ||
+        sv?.categoryId ||
+        ""
+    ).trim();
+    const categoryName = String(
+      booking?.serviceCategoryName ||
+        booking?.serviceSnapshot?.categoryNameAtBooking ||
+        sv?.category ||
+        categoryId ||
+        ""
+    ).trim();
+    const serviceName = String(
+      booking?.serviceName ||
+        booking?.serviceSnapshot?.serviceNameAtBooking ||
+        sv?.name ||
+        ""
+    ).trim();
+
+    return {
+      ...booking,
+      serviceSectionId: sectionId || undefined,
+      serviceSectionTitle: sectionTitle || undefined,
+      serviceCategoryId: categoryId || undefined,
+      serviceCategoryName: categoryName || undefined,
+      serviceSnapshot: {
+        ...(booking?.serviceSnapshot || {}),
+        serviceNameAtBooking: serviceName || undefined,
+        sectionIdAtBooking: sectionId || undefined,
+        sectionTitleAtBooking: sectionTitle || undefined,
+        categoryIdAtBooking: categoryId || undefined,
+        categoryNameAtBooking: categoryName || undefined,
+      },
+    };
+  }
+
   async function confirmAndPrintExistingBooking() {
     const b = confirmTargetBooking;
     const id = String(b?.id || "").trim();
@@ -2008,9 +2277,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         paymentMethod: confirmPaymentMethod,
         paidAt: now,
       };
+      const printReady = enrichBookingForPrint(refreshed);
 
-      localStorage.setItem("currentBooking", JSON.stringify(refreshed));
-      localStorage.setItem("allBookings", JSON.stringify([refreshed]));
+      localStorage.setItem("currentBooking", JSON.stringify(printReady));
+      localStorage.setItem("allBookings", JSON.stringify([printReady]));
       setPaymentModalOpen(false);
       setConfirmTargetBooking(null);
       navigate("/success-internal");
@@ -2029,8 +2299,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }
 
   function printExistingBooking(b: any) {
-    localStorage.setItem("currentBooking", JSON.stringify(b));
-    localStorage.setItem("allBookings", JSON.stringify([b]));
+    const printReady = enrichBookingForPrint(b);
+    localStorage.setItem("currentBooking", JSON.stringify(printReady));
+    localStorage.setItem("allBookings", JSON.stringify([printReady]));
     navigate("/success-internal");
   }
 
@@ -2459,14 +2730,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const servicesFlat: FlatService[] = useMemo(() => {
     if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
       const secMap = new Map<string, string>();
-      fsSections.forEach((s: any) =>
-        secMap.set(String(s.id), String((s as any)?.["الاسم"] ?? (s as any).name ?? ""))
-      );
+      fsSections.forEach((s: any) => secMap.set(String(s.id), readDisplayLabel(s, String(s.id || ""))));
 
       const catMap = new Map<string, string>();
-      fsCategories.forEach((c: any) =>
-        catMap.set(String(c.id), String((c as any)?.["الاسم"] ?? (c as any).name ?? ""))
-      );
+      fsCategories.forEach((c: any) => catMap.set(String(c.id), readDisplayLabel(c, String(c.id || ""))));
 
       const catById = new Map<string, any>();
       fsCategories.forEach((c: any) => catById.set(String(c.id), c));
@@ -2479,13 +2746,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           const sectionTitle = secMap.get(sectionId) || sectionId || "—";
 
           const catName =
-            String(
-              x.category ??
-                x.categoryName ??
-                (x as any)?.["التصنيف"] ??
-                "عام"
-            ).trim() || "عام";
-          const name = String((x as any)?.["الاسم"] ?? x.name ?? "").trim();
+            readDisplayLabel(
+              { name: x.category, categoryName: x.categoryName, label: (x as any)?.["التصنيف"] },
+              "عام"
+            ) || "عام";
+          const name = readDisplayLabel(x, String(x.id || ""));
           const priceNum = Number((x as any)?.["السعر"] ?? x.price ?? 0);
 
           const seasonPriceRaw =
@@ -2525,7 +2790,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         const sectionTitle = secMap.get(sectionId) || sectionId || "—";
 
         const catName = catId ? catMap.get(catId) || "عام" : "عام";
-        const name = String((x as any)?.["الاسم"] ?? x.name ?? "").trim();
+        const name = readDisplayLabel(x, String(x.id || ""));
         const priceNum = Number((x as any)?.["السعر"] ?? x.price ?? 0);
 
         const seasonPriceRaw =
@@ -2612,7 +2877,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
       const rows = fsSections.map((s: any) => ({
         id: String(s.id),
-        title: String((s as any)?.["�����"] ?? (s as any).name ?? ""),
+        title: readDisplayLabel(s, String(s?.id || "").trim()),
       }));
       if ((fsPackages || []).length > 0) {
         rows.push({ id: PACKAGE_SECTION_ID, title: PACKAGE_SECTION_TITLE });
@@ -2635,7 +2900,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           .filter((c: any) => String(c.sectionId || "").trim() === sid)
           .map((c: any) => ({
             id: String(c.id),
-            name: String((c as any)?.["الاسم"] ?? c.name ?? "").trim(),
+            name: readDisplayLabel(c, String(c?.id || "").trim()),
           }))
           .filter((x) => x.id && x.name);
 
@@ -2853,6 +3118,53 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     });
   }
 
+  const isToolsOptionEligibleForService = (sv: FlatService | null) => {
+    if (!sv) return false;
+    return isManiPediSectionByInfo(
+      String(sv.sectionId || "").trim(),
+      String(sv.sectionTitle || "").trim()
+    );
+  };
+
+  const isToolsOptionEligibleForItem = (it: CartItem) => {
+    const byItem = isManiPediSectionByInfo(
+      String(it.serviceSectionId || "").trim(),
+      String(it.serviceSectionTitle || "").trim()
+    );
+    if (byItem) return true;
+
+    const sv = getServiceById(String(it.serviceId || "").trim());
+    return isToolsOptionEligibleForService(sv);
+  };
+
+  const buildItemPriceWithTools = (
+    serviceBasePrice: number,
+    toolsSource: "client" | "salon" | undefined,
+    toolsEligible: boolean
+  ) => {
+    const safeServiceBase = Math.max(0, Number(serviceBasePrice || 0));
+    const toolsFee = toolsEligible && toolsSource === "salon" ? maniPediToolsFee : 0;
+    const total = safeServiceBase + toolsFee;
+
+    return {
+      serviceBasePrice: safeServiceBase,
+      toolsFeeApplied: toolsFee,
+      basePrice: total,
+      priceText: `${total} ريال`,
+    };
+  };
+
+  const buildItemToolsNote = (it: CartItem) => {
+    if (!isToolsOptionEligibleForItem(it)) return "";
+
+    const source = String(it.toolsSource || "").trim() === "salon" ? "salon" : "client";
+    if (source === "salon") {
+      const fee = Math.max(0, Number(it.toolsFeeApplied || maniPediToolsFee || 0));
+      return `الأدوات: من المشغل (+${fee} ريال)`;
+    }
+    return "الأدوات: من العميلة (بدون رسوم)";
+  };
+
   function focusFutureSearchForCartItem(it: CartItem) {
     const serviceId = String(it.serviceId || "").trim();
     const employeeKey = resolveEmployeeKey(it);
@@ -2907,6 +3219,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return !!list[idx - 1]?.locked;
   }
 
+  function toggleConfirmedCartItem(itemId: string) {
+    setExpandedConfirmedCartItems((prev) => {
+      const next = { ...prev };
+      if (next[itemId]) {
+        delete next[itemId];
+      } else {
+        next[itemId] = true;
+      }
+      return next;
+    });
+  }
+
   // =========================
   // Cart actions
   // =========================
@@ -2926,8 +3250,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       dateISO,
     });
 
-    const effectiveBasePrice = Number(eff.price || 0);
-    const effectivePriceText = `${effectiveBasePrice} ريال`;
+    const serviceBasePrice = Number(eff.price || 0);
+    const toolsEligible = isToolsOptionEligibleForService(sv);
+    const toolsSource = toolsEligible ? "client" : undefined;
+    const priced = buildItemPriceWithTools(serviceBasePrice, toolsSource, toolsEligible);
 
     setFormData((prev) => ({
       ...prev,
@@ -2950,8 +3276,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
                 }
               : undefined,
-          basePrice: effectiveBasePrice,
-          priceText: effectivePriceText,
+          serviceBasePrice: priced.serviceBasePrice,
+          basePrice: priced.basePrice,
+          priceText: priced.priceText,
+          toolsSource,
+          toolsFeeApplied: priced.toolsFeeApplied,
           durationMin: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
           employeeId: "",
           employeeUid: "",
@@ -2960,6 +3289,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           time: "",
           locked: false,
           serviceSectionId: String(sv.sectionId || "").trim(),
+          serviceSectionTitle: String(sv.sectionTitle || "").trim() || undefined,
           serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
           serviceCategoryName: String(sv.category || "").trim() || undefined,
         },
@@ -3028,6 +3358,24 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     if (patch.serviceId || patch.employeeId || patch.date || patch.time) {
       if (!couponCode.trim()) setManualOverride(false);
     }
+  };
+
+  const setItemToolsSource = (it: CartItem, nextSource: "client" | "salon") => {
+    const toolsEligible = isToolsOptionEligibleForItem(it);
+    if (!toolsEligible) return;
+
+    const baseFromItem =
+      Number((it as any)?.serviceBasePrice ?? 0) ||
+      Math.max(0, Number(it.basePrice || 0) - Number(it.toolsFeeApplied || 0));
+
+    const priced = buildItemPriceWithTools(baseFromItem, nextSource, true);
+    updateItem(it.id, {
+      toolsSource: nextSource,
+      serviceBasePrice: priced.serviceBasePrice,
+      toolsFeeApplied: priced.toolsFeeApplied,
+      basePrice: priced.basePrice,
+      priceText: priced.priceText,
+    });
   };
 
   // =========================
@@ -3259,7 +3607,78 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           ? timeSlots
           : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
 
-      for (const it of items) {
+      const takenFsCache = new Map<string, Promise<Set<string>>>();
+      const bookedMetaCache = new Map<string, Promise<Record<string, string>>>();
+
+      function getTakenFsForDay(it: CartItem, empKey: string, employeeId: string, date: string) {
+        const lookup = buildEmployeeLookupKeys({
+          employeeKey: empKey,
+          employeeIdFallback: employeeId,
+          employeeUidFallback: String(it.employeeUid || "").trim(),
+          employeeNameFallback: String(it.employeeName || "").trim(),
+        });
+        const cacheKey = `${date}__${lookup.slotKeys.join("|")}`;
+        if (!takenFsCache.has(cacheKey)) {
+          const pending = collectTakenTimesForEmployeeDay({
+            salonId: SALON_ID,
+            employeeKey: empKey,
+            employeeIdFallback: employeeId,
+            employeeUidFallback: String(it.employeeUid || "").trim(),
+            employeeNameFallback: String(it.employeeName || "").trim(),
+            dateISO: date,
+          });
+          takenFsCache.set(cacheKey, pending);
+        }
+        return takenFsCache.get(cacheKey)!;
+      }
+
+      function getBookedMetaForDay(empKey: string, employeeId: string, date: string) {
+        const cacheKey = `${date}__${empKey}__${employeeId}`;
+        if (!bookedMetaCache.has(cacheKey)) {
+          const pending = (async () => {
+            const out: Record<string, string> = {};
+            try {
+              const colBookings = collection(db, "salons", SALON_ID, "bookings");
+              let bSnap = await getDocs(
+                query(colBookings, where("employeeKey", "==", empKey), where("date", "==", date), limit(250))
+              );
+              if (bSnap.empty) {
+                bSnap = await getDocs(
+                  query(colBookings, where("employeeId", "==", employeeId), where("date", "==", date), limit(250))
+                );
+              }
+
+              bSnap.docs.forEach((d) => {
+                const data = d.data() as any;
+                const t = String(data?.time || "").trim();
+                const status = String(data?.status || "").toLowerCase();
+                if (!t) return;
+
+                if (["cancelled", "canceled", "rejected"].includes(status)) return;
+
+                const clientName = String(data?.clientName || data?.name || "").trim();
+                const clientPhone = phone10Digits(data?.clientPhone || data?.phone || "");
+                const channel = String(data?.channel || data?.source || "").trim();
+
+                const who = [clientName || "بدون اسم", clientPhone ? `(${clientPhone})` : ""]
+                  .filter(Boolean)
+                  .join(" ");
+                const ch = channel ? ` — ${channel}` : "";
+
+                out[t] = `محجوز — ${who}${ch}`;
+              });
+            } catch {
+              // ignore
+            }
+            return out;
+          })();
+          bookedMetaCache.set(cacheKey, pending);
+        }
+        return bookedMetaCache.get(cacheKey)!;
+      }
+
+      await Promise.all(
+        items.map(async (it) => {
         if (cancelled) return;
 
         const itemId = it.id;
@@ -3268,7 +3687,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
         if (!employeeId || !date) {
           setBusyByItem((p) => ({ ...p, [itemId]: { ...emptyBusyState() } }));
-          continue;
+          return;
         }
 
         setBusyByItem((p) => ({
@@ -3306,16 +3725,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               updateItem(itemId, { time: "", locked: false });
             }
             focusFutureSearchForCartItem(it);
-            continue;
+            return;
           }
-          const takenFs = await collectTakenTimesForEmployeeDay({
-            salonId: SALON_ID,
-            employeeKey: empKey,
-            employeeIdFallback: employeeId,
-            employeeUidFallback: String(it.employeeUid || "").trim(),
-            employeeNameFallback: String(it.employeeName || "").trim(),
-            dateISO: date,
-          });
+          const [takenFs, bookedMetaByTime] = await Promise.all([
+            getTakenFsForDay(it, empKey, employeeId, date),
+            getBookedMetaForDay(empKey, employeeId, date),
+          ]);
 
           if (cancelled) return;
 
@@ -3331,42 +3746,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           const takenAll = new Set<string>();
           takenFs.forEach((x) => takenAll.add(x));
           takenLocal.forEach((x) => takenAll.add(x));
-
-          // ✅ load bookings meta (مين حاجز)
-          const bookedMetaByTime: Record<string, string> = {};
-          try {
-            const colBookings = collection(db, "salons", SALON_ID, "bookings");
-            let bSnap = await getDocs(
-              query(colBookings, where("employeeKey", "==", empKey), where("date", "==", date), limit(250))
-            );
-            if (bSnap.empty) {
-              bSnap = await getDocs(
-                query(colBookings, where("employeeId", "==", employeeId), where("date", "==", date), limit(250))
-              );
-            }
-
-            bSnap.docs.forEach((d) => {
-              const data = d.data() as any;
-              const t = String(data?.time || "").trim();
-              const status = String(data?.status || "").toLowerCase();
-              if (!t) return;
-
-              if (["cancelled", "canceled", "rejected"].includes(status)) return;
-
-              const clientName = String(data?.clientName || data?.name || "").trim();
-              const clientPhone = phone10Digits(data?.clientPhone || data?.phone || "");
-              const channel = String(data?.channel || data?.source || "").trim();
-
-              const who = [clientName || "بدون اسم", clientPhone ? `(${clientPhone})` : ""]
-                .filter(Boolean)
-                .join(" ");
-              const ch = channel ? ` — ${channel}` : "";
-
-              bookedMetaByTime[t] = `محجوز — ${who}${ch}`;
-            });
-          } catch {
-            // ignore
-          }
 
           const disabled = new Set<string>();
           const disabledReasonByStart: Record<string, string> = {};
@@ -3532,7 +3911,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             [itemId]: { ...emptyBusyState(), hint: "تعذر تحميل التوفر حالياً." },
           }));
         }
-      }
+        })
+      );
     }
 
     loadBusyForItems();
@@ -3545,6 +3925,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   // =========================
   // Handlers
   // =========================
+  function openBookingDatePicker() {
+    const el = dateRef.current;
+    if (!el) return;
+    try {
+      (el as any).showPicker?.();
+    } catch {
+      // ignore browser limitations and just focus
+    }
+    el.focus();
+  }
+
   function applyBookingDate(v: string) {
     setBookingDate(v);
 
@@ -3570,8 +3961,25 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             appSettings,
             dateISO: v,
           });
-          const price = Number(eff.price || 0);
-          return { ...basePatch, basePrice: price, priceText: `${price} ريال` };
+          const serviceBasePrice = Number(eff.price || 0);
+          const toolsEligible = isToolsOptionEligibleForService(sv);
+          const toolsSource = toolsEligible
+            ? (String((it as any)?.toolsSource || "").trim() === "salon" ? "salon" : "client")
+            : undefined;
+          const priced = buildItemPriceWithTools(serviceBasePrice, toolsSource, toolsEligible);
+
+          return {
+            ...basePatch,
+            serviceSectionId: String(sv.sectionId || "").trim(),
+            serviceSectionTitle: String(sv.sectionTitle || "").trim() || undefined,
+            serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
+            serviceCategoryName: String(sv.category || "").trim() || undefined,
+            toolsSource,
+            serviceBasePrice: priced.serviceBasePrice,
+            toolsFeeApplied: priced.toolsFeeApplied,
+            basePrice: priced.basePrice,
+            priceText: priced.priceText,
+          };
         }
 
         return basePatch;
@@ -3611,6 +4019,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   // =========================
   const handleApplyCoupon = async () => {
     const code = couponCode.trim();
+    const checkSeq = ++couponCheckSeqRef.current;
+
     if (!code) {
       setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
       setOfferMsg("");
@@ -3620,6 +4030,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     try {
       const offer = await findActiveOfferByCode(SALON_ID, code);
+      if (checkSeq !== couponCheckSeqRef.current) return;
+
       if (!offer) {
         setManualOverride(false);
         setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
@@ -3675,10 +4087,36 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       setManualOverride(true);
       setOfferMsg(`تم تطبيق الخصم: ${(offer as any).title} ✅`);
     } catch (e: any) {
+      if (checkSeq !== couponCheckSeqRef.current) return;
       console.error("❌ apply coupon error:", e?.code, e?.message, e);
       setOfferMsg("صار خطأ في التحقق من الكود");
     }
   };
+
+  useEffect(() => {
+    const code = couponCode.trim();
+
+    if (!code) {
+      couponCheckSeqRef.current += 1;
+      setApplied((prev) => {
+        const alreadyReset = !prev.offer && Number(prev.discountAmount || 0) === 0;
+        if (alreadyReset) return prev;
+        return { offer: null, discountAmount: 0, finalPrice: basePrice };
+      });
+      setOfferMsg((prev) => (prev ? "" : prev));
+      setManualOverride(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void handleApplyCoupon();
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [couponCode]);
 
   function allocateDiscount(items: CartItem[], discountTotal: number) {
     const total = items.reduce((s, it) => s + Number(it.basePrice || 0), 0);
@@ -4138,6 +4576,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         const it = items[idx];
         const itemDiscount = Number(perItemDiscounts[idx] || 0);
         const itemFinal = Math.max(0, Number(it.basePrice || 0) - itemDiscount);
+        const toolsNote = buildItemToolsNote(it);
+        const itemNote = [noteFinal, toolsNote].filter(Boolean).join(" | ") || undefined;
 
         const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
@@ -4146,6 +4586,29 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           String(it.serviceSectionId || "").trim() ||
           String(sv?.sectionId || "").trim() ||
           undefined;
+        const sectionTitleAtBooking =
+          String(it.serviceSectionTitle || "").trim() ||
+          String(sv?.sectionTitle || "").trim() ||
+          sectionIdAtBooking ||
+          undefined;
+        const categoryIdAtBooking =
+          String(it.serviceCategoryId || "").trim() ||
+          String(sv?.categoryId || "").trim() ||
+          undefined;
+        const categoryNameAtBooking =
+          String(it.serviceCategoryName || "").trim() ||
+          String(sv?.category || "").trim() ||
+          categoryIdAtBooking ||
+          undefined;
+        const serviceSnapshotAtBooking = {
+          serviceNameAtBooking: it.serviceName,
+          priceAtBooking: Number(itemFinal || 0),
+          durationAtBooking: durationMin,
+          sectionIdAtBooking,
+          sectionTitleAtBooking,
+          categoryIdAtBooking,
+          categoryNameAtBooking,
+        };
 
         const res = await createBooking({
           userId: staffUid,
@@ -4160,12 +4623,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           packageId: String(it.packageId || "").trim() || undefined,
           packageSnapshot: it.packageSnapshot || undefined,
 
-          serviceSnapshot: {
-            serviceNameAtBooking: it.serviceName,
-            priceAtBooking: Number(itemFinal || 0),
-            durationAtBooking: durationMin,
-            sectionIdAtBooking,
-          },
+          serviceSnapshot: serviceSnapshotAtBooking,
 
           employeeId: String(it.employeeId || "").trim(),
           employeeUid: String(it.employeeUid || "").trim() || null,
@@ -4178,7 +4636,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           finalPrice: Number(itemFinal || 0),
 
           status: "pending",
-          note: noteFinal,
+          note: itemNote,
 
           slotStepMinAtBooking: slotStepMin,
           bufferMinAtBooking: bufferMin,
@@ -4199,6 +4657,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
           service: it.serviceId,
           serviceName: it.serviceName,
+          serviceSectionId: sectionIdAtBooking || undefined,
+          serviceSectionTitle: sectionTitleAtBooking || undefined,
+          serviceCategoryId: categoryIdAtBooking || undefined,
+          serviceCategoryName: categoryNameAtBooking || undefined,
+          serviceSnapshot: serviceSnapshotAtBooking,
           packageId: String(it.packageId || "").trim() || null,
           packageSnapshot: it.packageSnapshot || null,
 
@@ -4218,6 +4681,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           discountAmount: itemDiscount,
 
           durationMin,
+          toolsSource: String(it.toolsSource || "").trim() || null,
+          toolsFeeApplied: Number(it.toolsFeeApplied || 0),
           status: "pending",
           createdAt: Date.now(),
           channel: "internal",
@@ -4294,11 +4759,32 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         items: items.map((it) => {
           const serviceId = String(it?.serviceId || "").trim();
           const sv = getServiceById(serviceId);
+          const sectionId =
+            String((it as any)?.serviceSectionId || "").trim() ||
+            String(sv?.sectionId || "").trim();
+          const sectionTitle =
+            String((it as any)?.serviceSectionTitle || "").trim() ||
+            String(sv?.sectionTitle || "").trim();
+
+          const toolsEligible = isManiPediSectionByInfo(sectionId, sectionTitle);
+          const toolsSource = toolsEligible
+            ? (String((it as any)?.toolsSource || "").trim() === "salon" ? "salon" : "client")
+            : undefined;
+
+          const rawServiceBase = Number((it as any)?.serviceBasePrice);
+          const serviceBasePrice = Number.isFinite(rawServiceBase)
+            ? Math.max(0, rawServiceBase)
+            : Math.max(
+                0,
+                Number((it as any)?.basePrice ?? 0) -
+                  Math.max(0, Number((it as any)?.toolsFeeApplied || 0))
+              );
+          const priced = buildItemPriceWithTools(serviceBasePrice, toolsSource, toolsEligible);
+
           return {
             ...it,
             id: String(it?.id || makeLocalId()),
             durationMin: Number(it?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-            basePrice: Number(it?.basePrice || 0),
             serviceId,
             serviceName: String(it?.serviceName || "").trim(),
             packageId:
@@ -4322,10 +4808,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             employeeName: String(it?.employeeName || "").trim(),
             date: String(it?.date || "").trim(),
             time: String(it?.time || "").trim(),
-            priceText: String(it?.priceText || "").trim(),
-            serviceSectionId: String((it as any)?.serviceSectionId || "").trim(),
+            serviceSectionId: sectionId,
+            serviceSectionTitle: sectionTitle || undefined,
             serviceCategoryId: String((it as any)?.serviceCategoryId || "").trim() || undefined,
             serviceCategoryName: String((it as any)?.serviceCategoryName || "").trim() || undefined,
+            toolsSource,
+            serviceBasePrice: priced.serviceBasePrice,
+            toolsFeeApplied: priced.toolsFeeApplied,
+            basePrice: priced.basePrice,
+            priceText: priced.priceText,
           };
         }),
       }));
@@ -4334,6 +4825,42 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const previewCreatedAtLabel = new Intl.DateTimeFormat("ar-SA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date());
+
+  const bookingPreviewItems = (formData.items || []).map((it, idx) => {
+    const sv = getServiceById(String(it.serviceId || "").trim());
+    const sectionLabel =
+      String(it.serviceSectionTitle || "").trim() ||
+      String(sv?.sectionTitle || "").trim() ||
+      String(it.serviceSectionId || "").trim() ||
+      String(sv?.sectionId || "").trim() ||
+      "—";
+    const categoryLabel =
+      String(it.serviceCategoryName || "").trim() ||
+      String(sv?.category || "").trim() ||
+      String(it.serviceCategoryId || "").trim() ||
+      String(sv?.categoryId || "").trim() ||
+      "—";
+
+    return {
+      id: String(it.id || `row-${idx}`),
+      index: idx + 1,
+      serviceName: String(it.serviceName || "").trim() || "—",
+      sectionLabel,
+      categoryLabel,
+      staffName: String(it.employeeName || "").trim() || "—",
+      date: String(it.date || bookingDate || "").trim() || "—",
+      timeLabel: formatTime12(String(it.time || "").trim(), "—"),
+      durationMin: Math.max(0, Number(it.durationMin || 0)),
+      priceLabel: `${Number(it.basePrice || 0).toFixed(0)} ريال`,
+      toolsNote: buildItemToolsNote(it),
+      locked: !!it.locked,
+    };
+  });
 
   return (
     <div className="bk-page-wrapper bk-internal">
@@ -4438,26 +4965,20 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       </Modal>
 
       <div className="container bk-internal-container">
-        <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 bk-page-header">
-          <div className="d-flex align-items-center gap-2">
+        <div className="mb-3 bk-page-header">
+          <div className="bk-page-header-center">
             <img src={logo} alt="logo" className="bk-logo" />
-            <div>
-              <div className="bk-title">حجز داخلي (الاستقبال)</div>
-              <div className="bk-subtitle">
-                اختاري الخدمة → الموظفة → الوقت → تأكيد لكل خدمة
-              </div>
-            </div>
+            <div className="bk-title">حجز داخلي</div>
           </div>
 
           <button
             type="button"
-            className="btn btn-outline-light"
+            className="bk-close-btn"
+            aria-label="إغلاق"
             onClick={() => navigate("/dashboard")}
             disabled={isLoading}
-            style={{ borderRadius: 12 }}
           >
-            <FontAwesomeIcon icon={faTimesCircle} className="me-2" />
-            رجوع
+            <FontAwesomeIcon icon={faTimesCircle} />
           </button>
         </div>
 
@@ -4467,14 +4988,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           ========================= */}
           <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
             <div style={{ fontWeight: 800 }}>بحث حجز موجود (تأكيد + طباعة)</div>
-            <span className="text-muted" style={{ fontSize: 12 }}>
-              اسم / جوال / MK / bookingId
-            </span>
+
           </div>
 
           <div className="row g-2 align-items-end">
             <div className="col-12 col-md-6">
-              <label className="form-label">ابحثي باسم أو رقم جوال أو MK</label>
+              <label className="form-label"></label>
               <input
                 className="form-control"
                 value={bookingSearch}
@@ -4485,7 +5004,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   setSelectedBookingNameKey("");
                   setSelectedExistingBooking(null);
                 }}
-                placeholder="مثال: نورة أو 054xxxxxxx أو MK-123"
+                placeholder="ابحثي باسم أو رقم جوال أو MK"
               />
             </div>
 
@@ -4558,50 +5077,84 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     </tr>
                   </thead>
                   <tbody>
-                    {displayFoundBookings.map((b) => (
-                      <tr key={String(b.id)}>
-                        <td>{String(b.publicId || b.trackPublicId || b.mk || "—")}</td>
-                        <td>{String(b.clientName || b.name || "—")}</td>
-                        <td>{String(b.serviceName || b.serviceSnapshot?.serviceNameAtBooking || "—")}</td>
-                        <td>{String(b.date || "—")}</td>
-                        <td>{formatTime12(String(b.time || ""), "—")}</td>
-                        <td>
-                          <span className={`bk-status-pill ${bookingStatusClass(b?.status)}`}>
-                            {mapBookingStatusAr(b?.status)}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="d-flex gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              className="btn btn-sm bk-action-confirm"
-                              style={{ borderRadius: 10 }}
-                              onClick={() => openConfirmAndPrintModal(b)}
-                              disabled={isLoading}
-                            >
-                              تأكيد + طباعة
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-sm bk-action-print"
-                              style={{ borderRadius: 10 }}
-                              onClick={() => printExistingBooking(b)}
-                              disabled={isLoading}
-                            >
-                              طباعة فقط
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-sm bk-action-details"
-                              style={{ borderRadius: 10 }}
-                              onClick={() => setSelectedExistingBooking(b)}
-                            >
-                              تفاصيل
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {displayFoundBookingBlocks.flatMap((block) => {
+                      const rows: any[] = [];
+                      if (block.bookings.length > 1) {
+                        rows.push(
+                          <tr key={`group-${block.key}`} className="bk-existing-group-row">
+                            <td colSpan={7}>
+                              <div className="bk-existing-group-row-inner">
+                                <span className="bk-existing-group-title">حجز مجمّع</span>
+                                <span className="bk-existing-group-meta">
+                                  رقم المجموعة: {block.label} - الخدمات: {block.bookings.length}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      block.bookings.forEach((b) => {
+                        const serviceName = String(
+                          b.serviceName || b.serviceSnapshot?.serviceNameAtBooking || "—"
+                        );
+                        const sectionLabel = readBookingSectionLabel(b);
+                        const categoryLabel = readBookingCategoryLabel(b);
+                        const serviceMeta = [sectionLabel, categoryLabel].filter(Boolean).join(" / ");
+
+                        rows.push(
+                          <tr key={String(b.id)}>
+                            <td>{String(b.publicId || b.trackPublicId || b.mk || "—")}</td>
+                            <td>{String(b.clientName || b.name || "—")}</td>
+                            <td>
+                              <div>{serviceName}</div>
+                              {serviceMeta ? (
+                                <div className="small text-muted">{serviceMeta}</div>
+                              ) : null}
+                            </td>
+                            <td>{String(b.date || "—")}</td>
+                            <td>{formatTime12(String(b.time || ""), "—")}</td>
+                            <td>
+                              <span className={`bk-status-pill ${bookingStatusClass(b?.status)}`}>
+                                {mapBookingStatusAr(b?.status)}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="d-flex gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  className="btn btn-sm bk-action-confirm"
+                                  style={{ borderRadius: 10 }}
+                                  onClick={() => openConfirmAndPrintModal(b)}
+                                  disabled={isLoading}
+                                >
+                                  تأكيد + طباعة
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm bk-action-print"
+                                  style={{ borderRadius: 10 }}
+                                  onClick={() => printExistingBooking(b)}
+                                  disabled={isLoading}
+                                >
+                                  طباعة فقط
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm bk-action-details"
+                                  style={{ borderRadius: 10 }}
+                                  onClick={() => setSelectedExistingBooking(b)}
+                                >
+                                  تفاصيل
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      });
+
+                      return rows;
+                    })}
                     {bookingNameChoices.length > 1 && !selectedBookingNameKey ? (
                       <tr>
                         <td colSpan={7} className="text-muted">
@@ -4630,6 +5183,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       ["رقم الحجز", String(selectedExistingBooking?.publicId || selectedExistingBooking?.mk || selectedExistingBooking?.id || "—")],
                       ["اسم العميلة", String(selectedExistingBooking?.clientName || selectedExistingBooking?.name || "—")],
                       ["رقم الجوال", String(selectedExistingBooking?.clientPhone || selectedExistingBooking?.phone || "—")],
+                      ["القسم", readBookingSectionLabel(selectedExistingBooking) || "—"],
+                      ["الصنف", readBookingCategoryLabel(selectedExistingBooking) || "—"],
                       [
                         "الخدمة",
                         String(
@@ -4681,9 +5236,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             Form
         ========================= */}
         <form onSubmit={handleSubmit}>
-          <div className="row g-3">
+          <div className="row g-3 bk-sections-grid">
             {/* اختيار الخدمة */}
-            <div className="col-12 order-2">
+            <div className="col-12 col-lg-6 order-2">
               <div className="card p-3 bk-panel">
                 <div className="d-flex align-items-center justify-content-between mb-2">
                   <div style={{ fontWeight: 800 }}>
@@ -4749,6 +5304,47 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     </div>
                   </div>
                 ) : null}
+
+                <div className="mb-3 pb-3" style={{ borderBottom: "1px dashed #e2cdbb" }}>
+                  <div className="row g-2 align-items-end">
+                    <div className="col-12">
+                      <label htmlFor="bookingDateInternal" className="form-label">تاريخ الحجز</label>
+                      <div
+                        className="input-group"
+                        role="button"
+                        tabIndex={0}
+                        onClick={openBookingDatePicker}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openBookingDatePicker();
+                          }
+                        }}
+                      >
+                        <span className="input-group-text" aria-hidden="true">
+                          <FontAwesomeIcon icon={faCalendarAlt} />
+                        </span>
+                        <input
+                          ref={dateRef}
+                          id="bookingDateInternal"
+                          type="date"
+                          className="form-control"
+                          value={bookingDate}
+                          min={todayISO()}
+                          onChange={(e) => {
+                            const next = String(e.target.value || "").trim();
+                            applyBookingDate(next);
+                          }}
+                        />
+                      </div>
+                      {bookingDate && !selectedDayOpen && (
+                        <div className="bk-day-closed-banner" role="alert">
+                          تنبيه: يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة في الصالون، اختاري تاريخًا آخر للحجز.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
                 <div className="row g-2">
                   <div className="col-12">
@@ -4816,20 +5412,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       + إضافة للسلة
                     </button>
                   </div>
-
-                  <div className="col-12 mt-2">
-                    <div className="alert alert-secondary mb-0 py-2" style={{ borderRadius: 12 }}>
-                      <div style={{ fontSize: 12, opacity: 0.9 }}>
-                        السعر يتحدد حسب تاريخ الحجز (سعر موسم/عادي) ✅
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
 
             {/* بيانات العميلة */}
-            <div className="col-12 order-1">
+            <div className="col-12 col-lg-6 order-1">
               <div className="card p-3 bk-panel">
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                   <div style={{ fontWeight: 800 }}>
@@ -4837,75 +5425,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     بيانات العميلة
                   </div>
 
-                  <span className="badge text-bg-dark" style={{ borderRadius: 999 }}>
-                    عدد الخدمات: {(formData.items || []).length}
-                  </span>
-                </div>
-
-                <div className="row g-3 align-items-end mb-3 pb-3" style={{ borderBottom: "1px dashed #e2cdbb" }}>
-                  <div className="col-12 col-md-4">
-                    <label className="form-label">تاريخ الحجز</label>
-                    <input
-                      ref={dateRef}
-                      type="date"
-                      className="form-control"
-                      value={bookingDate}
-                      min={todayISO()}
-                      onChange={(e) => {
-                        const next = String(e.target.value || "").trim();
-                        applyBookingDate(next);
-                      }}
-                    />
-                    {bookingDate && !selectedDayOpen && (
-                      <div style={{ marginTop: 8, color: "#b42318", fontWeight: 700, fontSize: 13 }}>
-                        يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة في الصالون، اختاري تاريخًا آخر للحجز.
-                      </div>
-                    )}
-                    <div className="mt-2" style={{ fontSize: 12, opacity: 0.8 }}>
-                      ملاحظة: تغيير التاريخ يصفر اختيار الموظفات/الأوقات داخل السلة.
-                    </div>
-                  </div>
-
-                  <div className="col-12 col-md-8">
-                    <div className="d-flex align-items-center gap-2 flex-wrap">
-                      <span className="badge text-bg-dark" style={{ borderRadius: 999 }}>
-                        مصدر الكتالوج: {catalogMode === "firestore" ? "فايرستور" : "التسعير"}
-                      </span>
-                      {catalogLoading ? (
-                        <span className="badge text-bg-secondary" style={{ borderRadius: 999 }}>
-                          <FontAwesomeIcon icon={faSpinner} spin className="me-2" />
-                          تحميل الكتالوج...
-                        </span>
-                      ) : null}
-
-                      {sequentialBooking ? (
-                        <span className="badge text-bg-success" style={{ borderRadius: 999 }}>
-                          ✅ طور متتابع مفعّل (Sequential)
-                        </span>
-                      ) : (
-                        <span className="badge text-bg-warning" style={{ borderRadius: 999 }}>
-                          ⚠️ طور متتابع غير مفعّل
-                        </span>
-                      )}
-
-                      <span className="badge text-bg-info" style={{ borderRadius: 999 }}>
-                        SlotStep: {slotStepMin}m — Buffer: {bufferMin}m
-                      </span>
-                    </div>
-                  </div>
                 </div>
 
                 <div className="mb-3 pb-3" style={{ borderBottom: "1px dashed #e2cdbb" }}>
-                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                    <div style={{ fontWeight: 800 }}>بحث عميلة (اختياري)</div>
-                    <span className="text-muted" style={{ fontSize: 12 }}>
-                      يبحث بالاسم/الجوال/رقم الحجز
-                    </span>
-                  </div>
-
                   <div className="row g-2 align-items-end">
                     <div className="col-12 col-md-6">
-                      <label className="form-label">ابحثي باسم أو رقم جوال أو رقم حجز</label>
+                      <label className="form-label">ابحثي باسم أو رقم جوال لتعبية البيانات تلقائي</label>
                       <input
                         className="form-control"
                         value={clientSearch}
@@ -4914,7 +5439,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                           setSelectedClient(null);
                           setClientSearchResults([]);
                         }}
-                        placeholder="مثال: 054xxxxxxx أو نورة أو MK-123"
+                        placeholder="مثال: 054xxxxxxx أو ريفال"
                       />
                     </div>
 
@@ -4956,13 +5481,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                             const cphone = phone10Digits(
                               candidate?.phone || candidate?.mobile || candidate?.clientPhone || ""
                             );
-                            const cpublic = String(
-                              candidate?.publicId || candidate?.bookingId || ""
-                            ).trim();
                             const active = String(selectedClient?.id || "").trim() === cid;
                             return (
                               <button
-                                key={cid || `${cname}_${cphone}_${cpublic}`}
+                                key={cid || `${cname}_${cphone}`}
                                 type="button"
                                 className={`btn btn-sm ${active ? "bk-action-confirm" : "btn-outline-light"} text-start`}
                                 onClick={() => {
@@ -4972,7 +5494,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               >
                                 {cname}
                                 {cphone ? ` — ${cphone}` : ""}
-                                {cpublic ? ` — ${cpublic}` : ""}
                               </button>
                             );
                           })}
@@ -4988,11 +5509,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         {phone10Digits(
                           selectedClient?.phone || selectedClient?.mobile || selectedClient?.clientPhone || ""
                         )}
-                        {String(
-                          selectedClient?.publicId || selectedClient?.bookingId || ""
-                        ).trim()
-                          ? ` — ${String(selectedClient?.publicId || selectedClient?.bookingId || "").trim()}`
-                          : ""}
                       </div>
                     ) : null}
                   </div>
@@ -5006,9 +5522,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       value={formData.name}
                       onChange={handleChange}
                       className="form-control"
-                      placeholder="مثال: نورة"
+                      placeholder="مثال: ريفال"
                       required
                     />
+                    <div className="form-text">اكتبي الاسم واضحًا كما تفضّل العميلة لسهولة البحث لاحقًا.</div>
                   </div>
                   <div className="col-12 col-md-6">
                     <label className="form-label">رقم الجوال</label>
@@ -5020,25 +5537,61 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       placeholder="05xxxxxxxx"
                       required
                     />
+                    <div className="form-text">رقم سعودي من 10 أرقام ويبدأ بـ 05.</div>
                   </div>
-                  <div className="col-12">
-                    <label className="form-label">ملاحظة (اختياري)</label>
-                    <textarea
-                      name="note"
-                      value={formData.note}
-                      onChange={handleChange}
-                      className="form-control"
-                      rows={2}
-                      placeholder="ملاحظة للصالون..."
-                    />
+                </div>
+
+                <div className="mb-1">
+                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                    <div className="small" style={{ fontWeight: 700, color: "#5b4a3f" }}>
+                      اختيار سريع
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => {
+                        setFormData((prev) => ({ ...prev, name: "", phone: "" }));
+                        setSelectedClient(null);
+                      }}
+                    >
+                      تفريغ الحقول
+                    </button>
                   </div>
+
+                  {quickClientOptions.length ? (
+                    <div className="d-flex flex-wrap gap-2">
+                      {quickClientOptions.map((candidate) => {
+                        const cid = String(candidate?.id || "").trim();
+                        const cname = String(candidate?.name || candidate?.fullName || "بدون اسم").trim();
+                        const cphone = phone10Digits(
+                          candidate?.phone || candidate?.mobile || candidate?.clientPhone || ""
+                        );
+                        return (
+                          <button
+                            key={cid || `${cname}_${cphone}`}
+                            type="button"
+                            className="btn btn-sm btn-outline-light"
+                            onClick={() => {
+                              applyClientSelection(candidate);
+                              setClientSearchMsg("تم تعبئة البيانات من الاختيار السريع ✅");
+                            }}
+                          >
+                            {cname}
+                            {cphone ? ` — ${cphone}` : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="small text-muted">لا توجد عميلات حديثات بعد.</div>
+                  )}
                 </div>
 
               </div>
             </div>
 
             {/* السلة */}
-            <div className="col-12 order-3">
+            <div className="col-12 col-lg-6 order-3">
               <div className="card p-3 bk-panel">
                 {/* Cart */}
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
@@ -5048,20 +5601,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   </div>
 
                   <div className="d-flex gap-2 flex-wrap">
-                    <span className="badge text-bg-secondary" style={{ borderRadius: 999 }}>
-                      الإجمالي: {basePrice.toFixed(0)} ريال
+                    <span className="badge text-bg-white" style={{ borderRadius: 999 }}>
+                      عدد الخدمات: {(formData.items || []).length}
                     </span>
-                    {applied.offer ? (
-                      <span className="badge text-bg-success" style={{ borderRadius: 999 }}>
-                        بعد الخصم: {finalPrice.toFixed(0)} ريال
-                      </span>
-                    ) : null}
                   </div>
                 </div>
 
                 {(formData.items || []).length === 0 ? (
                   <div className="alert alert-secondary mb-0" style={{ borderRadius: 12 }}>
-                    ما فيه خدمات في السلة. اختاري خدمة من اليسار 👈
+                    ما فيه خدمات في السلة. اختاري خدمة
                   </div>
                 ) : (
                   <div className="bk-cart-list">
@@ -5089,13 +5637,33 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         0,
                         blockedReasonSummaries.length - blockedReasonPreview.length
                       );
+                      const canEditThis = canEditByLockedPrev(formData.items || [], it.id);
                       const canPickTime =
                         !!String(it.employeeId || "").trim() &&
                         !busy.loading &&
-                        canEditByLockedPrev(formData.items || [], it.id);
+                        canEditThis;
+                      const toolsEligible = isToolsOptionEligibleForItem(it);
+                      const toolsSource = toolsEligible
+                        ? (String(it.toolsSource || "").trim() === "salon" ? "salon" : "client")
+                        : undefined;
+                      const toolsFeeApplied =
+                        toolsEligible && toolsSource === "salon"
+                          ? Math.max(0, Number(it.toolsFeeApplied || maniPediToolsFee || 0))
+                          : 0;
+                      const toolsSummary = toolsEligible
+                        ? toolsSource === "salon"
+                          ? `الأدوات: من المشغل (+${toolsFeeApplied} ريال)`
+                          : "الأدوات: من العميلة (بدون رسوم)"
+                        : "";
+                      const canCollapseConfirmedCard = !!it.locked;
+                      const isCardExpanded =
+                        !canCollapseConfirmedCard || !!expandedConfirmedCartItems[it.id];
 
                       return (
-                        <div key={it.id} className="bk-cart-item">
+                        <div
+                          key={it.id}
+                          className={`bk-cart-item${canCollapseConfirmedCard ? " is-collapsible" : ""}${canCollapseConfirmedCard && !isCardExpanded ? " is-collapsed" : ""}`}
+                        >
                           <div className="bk-cart-item-head">
                             <div>
                               <div className="bk-cart-service-title">
@@ -5106,12 +5674,50 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 {it.durationMin} دقيقة — {it.date}
                               </div>
                             </div>
-                            <div className="bk-cart-price">
-                              {Number(it.basePrice || 0).toFixed(0)} ريال
+                            <div className="bk-cart-item-head-actions">
+                              <div className="bk-cart-price">
+                                {Number(it.basePrice || 0).toFixed(0)} ريال
+                              </div>
+                              {canCollapseConfirmedCard ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-secondary bk-cart-collapse-toggle"
+                                  onClick={() => toggleConfirmedCartItem(it.id)}
+                                >
+                                  {isCardExpanded ? "طي" : "عرض"}
+                                </button>
+                              ) : null}
                             </div>
                           </div>
 
-                          <div className="bk-cart-fields">
+                          {isCardExpanded ? (
+                            <>
+                              <div className="bk-cart-fields">
+                            {toolsEligible ? (
+                              <div className="bk-cart-field">
+                                <label className="form-label">الأدوات</label>
+                                <div className="d-flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    className={`btn btn-sm ${toolsSource === "client" ? "btn-dark" : "btn-outline-dark"}`}
+                                    disabled={!canEditThis}
+                                    onClick={() => setItemToolsSource(it, "client")}
+                                  >
+                                    من العميلة (بدون رسوم)
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`btn btn-sm ${toolsSource === "salon" ? "btn-dark" : "btn-outline-dark"}`}
+                                    disabled={!canEditThis}
+                                    onClick={() => setItemToolsSource(it, "salon")}
+                                  >
+                                    من الصالون {maniPediToolsFee > 0 ? `(+${maniPediToolsFee} ريال)` : "(بدون رسوم إضافية)"}
+                                  </button>
+                                </div>
+                                <div className="small text-muted mt-1">{toolsSummary}</div>
+                              </div>
+                            ) : null}
+
                             <div className="bk-cart-field bk-cart-field-staff">
                               <label className="form-label">الموظفة</label>
                               {staffLoadingByService[sid] ? (
@@ -5125,7 +5731,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 <select
                                   className="form-select bk-cart-select"
                                   value={it.employeeId}
-                                  disabled={!canEditByLockedPrev(formData.items || [], it.id)}
+                                  disabled={!canEditThis}
                                   onChange={(e) => {
                                     const empId = String(e.target.value || "").trim();
                                     const st = staffList.find((x) => String(x.id) === empId);
@@ -5275,7 +5881,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 disabled={
                                   !it.employeeId ||
                                   !it.time ||
-                                  !canEditByLockedPrev(formData.items || [], it.id) ||
+                                  !canEditThis ||
                                   isLoading
                                 }
                                 onClick={async () => {
@@ -5322,11 +5928,83 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               </button>
                             </div>
                           </div>
+                            </>
+                          ) : (
+                            <div className="bk-cart-collapsed-note">
+                              <span className="badge text-bg-success" style={{ borderRadius: 999 }}>
+                                ✅ مؤكد
+                              </span>
+                              <span>تم إغلاق البطاقة لتخفيف الزحمة البصرية.</span>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
                   </div>
                 )}
+
+                {(bookingPreviewItems || []).length ? (
+                  <div className="bk-cart-confirmed-preview mt-2">
+                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                      <div className="bk-cart-confirmed-title mb-0">ملخص الحجز قبل الحفظ</div>
+                      <div className="small text-muted">
+                        مؤكد: {bookingPreviewItems.filter((x) => x.locked).length} / {bookingPreviewItems.length}
+                      </div>
+                    </div>
+                    <div className="bk-cart-confirmed-meta">
+                      <div><strong>العميلة:</strong> {String(formData.name || "").trim() || "—"}</div>
+                      <div><strong>الجوال:</strong> {phone10Digits(String(formData.phone || "").trim()) || "—"}</div>
+                      <div><strong>وقت إنشاء الحجز:</strong> {previewCreatedAtLabel}</div>
+                    </div>
+                    {applied.offer ? (
+                      <div className="bk-discount-visual mt-2">
+                        <div className="bk-discount-badge">
+                          ✅ الخصم مطبّق: {String((applied.offer as any)?.title || couponCode || "").trim() || "عرض"}
+                        </div>
+                        <div className="bk-discount-lines">
+                          <div className="bk-discount-line is-before">
+                            <span>قبل الخصم</span>
+                            <strong>{basePrice.toFixed(0)} ريال</strong>
+                          </div>
+                          <div className="bk-discount-line is-discount">
+                            <span>قيمة الخصم</span>
+                            <strong>-{Number(applied.discountAmount || 0).toFixed(0)} ريال</strong>
+                          </div>
+                          <div className="bk-discount-line is-after">
+                            <span>بعد الخصم</span>
+                            <strong>{finalPrice.toFixed(0)} ريال</strong>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="bk-cart-summary-unified mt-2">
+                      {bookingPreviewItems.map((row) => (
+                        <div key={`preview-${row.id}`} className="bk-cart-summary-line">
+                          <div className="bk-cart-summary-line-head">
+                            <span className="bk-cart-summary-index">#{row.index}</span>
+                            <span className="bk-cart-summary-service">{row.serviceName}</span>
+                          </div>
+                          <div className="bk-cart-summary-line-meta">
+                            <span><strong>القسم:</strong> {row.sectionLabel}</span>
+                            <span><strong>الصنف:</strong> {row.categoryLabel}</span>
+                            <span><strong>الموظفة:</strong> {row.staffName}</span>
+                            <span><strong>التاريخ:</strong> {row.date}</span>
+                            <span><strong>الوقت:</strong> {row.timeLabel}</span>
+                            <span><strong>المدة:</strong> {row.durationMin} د</span>
+                            <span><strong>السعر:</strong> {row.priceLabel}</span>
+                            {row.toolsNote ? (
+                              <span><strong>ملاحظة:</strong> {row.toolsNote}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="bk-total-visual mt-2">
+                      <span>الإجمالي النهائي</span>
+                      <strong>{finalPrice.toFixed(0)} ريال</strong>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Coupon */}
                 <div className="mt-2">
@@ -5369,10 +6047,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
                 {/* Submit */}
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
-                  <div style={{ fontSize: 13, opacity: 0.85 }}>
-                    عند الحفظ: يتم إنشاء الحجوزات بالحالة <b>بالانتظار</b> ثم يتم الطباعة من صفحة النجاح.
-                  </div>
-
                   <button
                     type="submit"
                     className="btn btn-primary"
@@ -5393,7 +6067,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             </div>
 
             {/* بحث أوقات للأيام القادمة */}
-            <div className="col-12 order-4">
+            <div className="col-12 col-lg-6 order-4">
               <div className="card p-3 bk-panel">
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                   <div style={{ fontWeight: 800, color: "#0d0d0d" }}>بحث أوقات للأيام القادمة</div>
@@ -5458,9 +6132,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               ))}
                             </div>
                           ) : null}
-                          <div style={{ fontSize: 12, opacity: 0.75 }} className="mt-1">
-                            ابحثي باسم الموظفة وسيتم ربط EmployeeKey تلقائيًا.
-                          </div>
                         </>
                       )}
                     </div>
@@ -5500,14 +6171,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               const nearestDate = String(futureResult[0]?.date || "").trim();
                               const nearestTime = String(futureResult[0]?.times?.[0] || "").trim();
                               if (!nearestDate || !nearestTime) return;
-
-                              applyBookingDate(nearestDate);
-                              openModal({
-                                title: "تم اختيار أقرب موعد ✅",
-                                message: `التاريخ: ${nearestDate} - الوقت: ${nearestTime}`,
-                                variant: "info",
-                                confirmText: "تمام",
-                              });
+                              void handleFutureSlotPick(nearestDate, nearestTime);
                             }}
                           >
                             اختيار أقرب موعد
@@ -5535,16 +6199,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                           className="btn btn-sm bk-time-pill"
                                           style={{ borderRadius: 999 }}
                                           onClick={() => {
-                                            applyBookingDate(r.date);
-                                            openModal({
-                                              title: "تم اختيار الموعد ✅",
-                                              message: `التاريخ: ${r.date} - الوقت: ${t}`,
-                                              variant: "info",
-                                              confirmText: "تمام",
-                                            });
+                                            void handleFutureSlotPick(r.date, t);
                                           }}
                                         >
-                                          {t}
+                                          {formatTime12(t, t)}
                                         </button>
                                       ))}
                                     </div>

@@ -37,6 +37,7 @@ function mapFirestoreRoleToUi(roleRaw: string): UiRole {
 
 const SALON_ID = "main";
 const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
+const MANI_PEDI_TOOLS_FEE_FIXED = 15;
 
 // ✅ Local cache key (بديل setCached)
 const APP_SETTINGS_CACHE_KEY = "qs_app_settings_cache_v1";
@@ -167,10 +168,7 @@ export default function SettingsBookings() {
     const v = safeInt(raw, 5);
     return [0, 5, 10, 15, 20, 30].includes(v) ? v : 5;
   }, [bookingSettings?.bufferMin]);
-  const maniPediToolsFee = useMemo(() => {
-    const raw = (bookingSettings as any)?.maniPediToolsFee;
-    return Math.max(0, safeInt(raw, 0));
-  }, [bookingSettings?.maniPediToolsFee]);
+  const maniPediToolsFee = MANI_PEDI_TOOLS_FEE_FIXED;
 
 
 
@@ -501,23 +499,18 @@ export default function SettingsBookings() {
               <div style={{ minWidth: 220 }}>
                 <div style={{ fontWeight: 900 }}>رسوم أدوات المشغل (البديكير/المناكير)</div>
                 <div style={{ opacity: 0.7, fontSize: 12 }}>
-                  تظهر فقط إذا اختارت العميلة "الأدوات من المشغل" في خدمة ضمن هذا القسم
+                  ثابتة على 15 ريال، وتظهر فقط إذا اختارت العميلة "الأدوات من المشغل" ضمن هذا القسم
                 </div>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input
                   type="number"
-                  min={0}
-                  step={1}
                   className="settings-input"
                   style={{ width: 160 }}
                   value={String(maniPediToolsFee)}
-                  disabled={!hasAdminPower}
-                  onChange={(e) => {
-                    const next = Math.max(0, safeInt(e.target.value, 0));
-                    setBookingSettings({ maniPediToolsFee: next });
-                  }}
+                  disabled
+                  readOnly
                 />
                 <span style={{ opacity: 0.8 }}>ريال</span>
               </div>

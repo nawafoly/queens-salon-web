@@ -248,6 +248,34 @@
   background: #fafafa;
 }
 
+.bk-page-wrapper .bookings-table .bookings-group-row td {
+  background: #f4e6dc;
+  border-top: 2px solid #dec2af;
+  border-bottom: 1px solid #e5d0c1;
+}
+
+.bk-page-wrapper .bookings-table .bookings-group-row:hover td {
+  background: #f4e6dc;
+}
+
+.bk-page-wrapper .bookings-group-row-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bk-page-wrapper .bookings-group-title {
+  font-weight: 900;
+  color: #4e2f1f;
+}
+
+.bk-page-wrapper .bookings-group-meta {
+  font-size: 12px;
+  color: #6b4a39;
+}
+
 /* --- Status Badges --- */
 .status-badge {
   padding: 6px 12px;
@@ -269,6 +297,26 @@
   display: none;
   grid-template-columns: 1fr;
   gap: 16px;
+}
+
+.bk-page-wrapper .bk-mobile-group {
+  display: grid;
+  gap: 10px;
+}
+
+.bk-page-wrapper .bk-mobile-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  border: 1px solid #dec2af;
+  border-radius: 12px;
+  background: #f4e6dc;
+  padding: 10px 12px;
+  color: #5b3a2a;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .bk-page-wrapper .bk-mobile-card {

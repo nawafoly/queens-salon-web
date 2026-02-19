@@ -387,6 +387,8 @@ const ChatBot: React.FC = () => {
   const [hintsOpen, setHintsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const floatingScrollRestoreRef = useRef<number | null>(null);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -400,6 +402,7 @@ const ChatBot: React.FC = () => {
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [flow, setFlow] = useState<BookingFlow>(defaultFlow);
   const [chatViewportHeight, setChatViewportHeight] = useState("100dvh");
+  const [chatKeyboardInset, setChatKeyboardInset] = useState("0px");
   const [bookingSettings, setBookingSettings] = useState<BookingSettingsLite>({
     slotStepMin: 5,
     businessHours: defaultBusinessHours(),
@@ -1220,6 +1223,50 @@ const ChatBot: React.FC = () => {
     ]);
   };
 
+  const forcePageTopOnMobile = () => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    const mainContent = document.querySelector<HTMLElement>(".main-content");
+    if (mainContent) mainContent.scrollTop = 0;
+  };
+
+  const prepareForMobileInputFocus = () => {
+    if (isChatPage || !open) return;
+    if (!window.matchMedia("(max-width: 760px)").matches) return;
+
+    if (floatingScrollRestoreRef.current === null) {
+      floatingScrollRestoreRef.current = Math.max(
+        window.scrollY,
+        document.documentElement.scrollTop || 0,
+        document.body.scrollTop || 0
+      );
+    }
+
+    document.body.style.top = "0";
+    forcePageTopOnMobile();
+    window.requestAnimationFrame(forcePageTopOnMobile);
+  };
+
+  const handleInputTouchStart = () => {
+    prepareForMobileInputFocus();
+    if (!window.matchMedia("(max-width: 760px)").matches) return;
+
+    window.setTimeout(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      if (document.activeElement !== el) {
+        el.focus({ preventScroll: true });
+      }
+    }, 0);
+  };
+
+  const toggleFloatingChat = () => {
+    if (isChatPage) return;
+    setOpen((s) => !s);
+  };
+
   const handleAction = async (a: Action) => {
     if (a.type === "route") {
       if (/^https?:\/\//i.test(a.value)) {
@@ -1271,20 +1318,59 @@ const ChatBot: React.FC = () => {
   }, [isChatPage]);
 
   useEffect(() => {
-    if (!isChatPage) return;
+    if (isChatPage || !open) return;
+    if (!window.matchMedia("(max-width: 760px)").matches) return;
+
+    const y =
+      floatingScrollRestoreRef.current ??
+      Math.max(window.scrollY, document.documentElement.scrollTop || 0, document.body.scrollTop || 0);
+    floatingScrollRestoreRef.current = y;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${y}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      const top = document.body.style.top;
+      document.body.style.position = "";
+      document.body.style.top = "";
+      document.body.style.left = "";
+      document.body.style.right = "";
+      document.body.style.width = "";
+      document.body.style.overflow = "";
+      const restoreY =
+        floatingScrollRestoreRef.current ??
+        (top ? Math.abs(parseInt(top, 10)) : y);
+      window.scrollTo(0, restoreY || 0);
+      floatingScrollRestoreRef.current = null;
+    };
+  }, [isChatPage, open]);
+
+  useEffect(() => {
+    if (!isChatPage && !open) {
+      setChatViewportHeight("100dvh");
+      setChatKeyboardInset("0px");
+      return;
+    }
 
     let rafId: number | null = null;
     const updateChatViewportHeight = () => {
       let topOffset = 0;
-      document.querySelectorAll<HTMLElement>(".topbar, .navbar").forEach((el) => {
-        const rect = el.getBoundingClientRect();
-        topOffset = Math.max(topOffset, rect.bottom);
-      });
+      if (isChatPage) {
+        document.querySelectorAll<HTMLElement>(".topbar, .navbar").forEach((el) => {
+          const rect = el.getBoundingClientRect();
+          topOffset = Math.max(topOffset, rect.bottom);
+        });
+      }
       const safeOffset = Math.max(0, Math.round(topOffset));
       const vv = window.visualViewport;
-      const viewportHeight = vv ? vv.height + vv.offsetTop : window.innerHeight;
-      const usableHeight = Math.max(240, Math.floor(viewportHeight - safeOffset));
+      const visibleViewportHeight = vv ? vv.height + vv.offsetTop : window.innerHeight;
+      const keyboardInset = Math.max(0, Math.round(window.innerHeight - visibleViewportHeight));
+      const usableHeight = Math.max(240, Math.floor(visibleViewportHeight - safeOffset));
       setChatViewportHeight(`${usableHeight}px`);
+      setChatKeyboardInset(`${keyboardInset}px`);
     };
 
     const scheduleUpdate = () => {
@@ -1313,16 +1399,20 @@ const ChatBot: React.FC = () => {
       window.visualViewport?.removeEventListener("resize", scheduleUpdate);
       window.visualViewport?.removeEventListener("scroll", scheduleUpdate);
     };
-  }, [isChatPage]);
+  }, [isChatPage, open]);
 
-  const chatPageStyle: CSSProperties | undefined = isChatPage
-    ? ({ "--chatbot-page-height": chatViewportHeight } as CSSProperties)
+  const chatRootStyle: CSSProperties | undefined = isChatPage || open
+    ? ({
+        "--chatbot-page-height": chatViewportHeight,
+        "--chatbot-viewport-height": chatViewportHeight,
+        "--chatbot-keyboard-inset": chatKeyboardInset,
+      } as CSSProperties)
     : undefined;
 
   return (
-    <div className={`chatbot ${open ? "open" : ""} ${isChatPage ? "chatbot-page" : ""}`} style={chatPageStyle}>
+    <div className={`chatbot ${open ? "open" : ""} ${isChatPage ? "chatbot-page" : ""}`} style={chatRootStyle}>
       {!isChatPage && (
-        <button className="chatbot-toggle" type="button" onClick={() => setOpen((s) => !s)} aria-label="Chatbot">
+        <button className="chatbot-toggle" type="button" onClick={toggleFloatingChat} aria-label="Chatbot">
           <FontAwesomeIcon icon={faCommentDots} />
         </button>
       )}
@@ -1391,22 +1481,6 @@ const ChatBot: React.FC = () => {
             </div>
 
             <div className="chatbot-input-row">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="اكتبي سؤالك هنا..."
-                onFocus={() => {
-                  // iOS Safari sometimes pushes the page up when keyboard opens.
-                  if (!isChatPage) return;
-                  window.setTimeout(() => {
-                    window.scrollTo({ top: 0, behavior: "auto" });
-                    messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-                  }, 0);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSend();
-                }}
-              />
               <button
                 className={`chatbot-plus ${hintsOpen ? "open" : ""}`}
                 type="button"
@@ -1418,6 +1492,39 @@ const ChatBot: React.FC = () => {
                   {hintsOpen ? "×" : "+"}
                 </span>
               </button>
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="اكتبي سؤالك هنا..."
+                onTouchStart={handleInputTouchStart}
+                onMouseDown={prepareForMobileInputFocus}
+                onFocus={() => {
+                  prepareForMobileInputFocus();
+                  if (window.matchMedia("(max-width: 760px)").matches) {
+                    forcePageTopOnMobile();
+                    window.requestAnimationFrame(forcePageTopOnMobile);
+                  }
+                  // Keep the latest message visible when the keyboard opens on mobile.
+                  window.setTimeout(() => {
+                    if (window.matchMedia("(max-width: 760px)").matches) {
+                      forcePageTopOnMobile();
+                    }
+                    messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+                  }, 80);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSend();
+                }}
+              />
+              <button
+                className="chatbot-send chatbot-send--arrow"
+                type="button"
+                onClick={handleSend}
+                aria-label="إرسال"
+              >
+                ↑
+              </button>
             </div>
           </div>
         </div>
@@ -1427,8 +1534,3 @@ const ChatBot: React.FC = () => {
 };
 
 export default ChatBot;
-
-
-
-
-

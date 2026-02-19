@@ -185,6 +185,49 @@ function bookingRef(b: Partial<Booking> | null | undefined) {
   return up;
 }
 
+function toMillisSafe(v: any) {
+  if (!v) return 0;
+  if (typeof v?.toMillis === "function") return Number(v.toMillis()) || 0;
+  if (typeof v?.seconds === "number") {
+    const sec = Number(v.seconds || 0);
+    const ns = Number(v.nanoseconds || 0);
+    return sec * 1000 + Math.floor(ns / 1_000_000);
+  }
+  if (typeof v === "number") return Number(v) || 0;
+  const parsed = Date.parse(String(v));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function bookingPublicBase(publicId?: string) {
+  const up = String(publicId || "").trim().toUpperCase();
+  if (!up) return "";
+  const m = up.match(/^(MK-\d+)(?:-\d+)?$/i);
+  return m ? m[1].toUpperCase() : up;
+}
+
+function resolveDashboardBookingBlockKey(b: Booking) {
+  const groupId = String((b as any)?.bookingGroupId || (b as any)?.parentBookingId || "").trim();
+  if (groupId) return `group:${groupId}`;
+
+  const fullPublic = String(b?.publicId || "").trim().toUpperCase();
+  const basePublic = bookingPublicBase(fullPublic);
+  if (basePublic && fullPublic && fullPublic.startsWith(`${basePublic}-`)) {
+    return `public:${basePublic}`;
+  }
+
+  const phone = digitsOnly(String(b?.phone || "").trim());
+  const name = normalizeArabicName(String(b?.customerName || "").trim());
+  const date = String(b?.date || "").trim();
+  const createdMs = toMillisSafe((b as any)?.createdAt);
+  if ((phone || name) && date && createdMs > 0) {
+    const bucket = Math.floor(createdMs / (2 * 60 * 1000));
+    const idPart = phone ? `p:${phone}` : `n:${name}`;
+    return `batch:${String(b?.channel || "").trim()}:${idPart}:${date}:${bucket}`;
+  }
+
+  return `single:${String(b?.id || "").trim() || "unknown"}`;
+}
+
 function channelLabel(channel?: string) {
   if (channel === "client") return "موقع العميلات";
   if (channel === "dashboard") return "الداشبورد";
@@ -352,6 +395,10 @@ function serviceSummaryForTable(b: Booking): string {
 type Booking = {
   id: string;
   publicId?: string;
+  bookingGroupId?: string;
+  parentBookingId?: string;
+  isParentBooking?: boolean;
+  isSubBooking?: boolean;
   channel?: "client" | "dashboard" | "internal";
   createdBy?: string;
   customerName?: string;
@@ -686,6 +733,33 @@ export default function DashboardBookings() {
     return list.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
   }, [bookings, q, statusFilter, dateFrom, dateTo, uiRole, authUser]);
 
+  const groupedFiltered = useMemo(() => {
+    const blocks = new Map<string, { key: string; label: string; rows: Booking[] }>();
+
+    filtered.forEach((b) => {
+      const key = resolveDashboardBookingBlockKey(b);
+      const current = blocks.get(key);
+      if (current) {
+        current.rows.push(b);
+        return;
+      }
+
+      const label = bookingPublicBase(String(b.publicId || "").trim()) || bookingRef(b);
+      blocks.set(key, { key, label, rows: [b] });
+    });
+
+    const out = Array.from(blocks.values());
+    out.forEach((block) => {
+      block.rows.sort((a, b) => {
+        const d = String(a.date || "").localeCompare(String(b.date || ""));
+        if (d !== 0) return d;
+        return String(a.time || "").localeCompare(String(b.time || ""));
+      });
+    });
+
+    return out;
+  }, [filtered]);
+
   const getAllowedStatusOptions = (b: Booking): BookingStatus[] => {
     if (uiRole === "owner") return allStatusOptions;
     if (uiRole === "admin" || uiRole === "reception") {
@@ -872,150 +946,182 @@ export default function DashboardBookings() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(b => (
-                  <tr key={b.id}>
-                    <td style={{ fontWeight: 900 }}>{bookingRef(b)}</td>
-                    <td>
-                      <div style={{fontWeight: 800}}>{b.customerName || "—"}</div>
-                      <div style={{fontSize: 11, opacity: 0.6}}>{b.phone || "—"}</div>
-                      <div style={{fontSize: 11, opacity: 0.6}}>المصدر: {channelLabel(b.channel)}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 700 }}>{serviceSummaryForTable(b)}</div>
-                      <div style={{ fontSize: 11, opacity: 0.75 }}>{serviceMetaSummaryForTable(b)}</div>
-                    </td>
-                    <td>{b.employeeName || "—"}</td>
-                    <td>
-                      <div>{b.date}</div>
-                      <div style={{fontSize: 11, opacity: 0.7}}>{formatTime12(b.time)}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 800 }}>{lastUpdateMap[b.id]?.by || "—"}</div>
-                      <div style={{ fontSize: 11, opacity: 0.7 }}>{lastUpdateMap[b.id]?.at || "—"}</div>
-                    </td>
-                    <td>{b.finalPrice || b.total || 0} ر.س</td>
-                    <td>
-                      <div style={{display: 'flex', gap: 6, justifyContent: 'center'}}>
-                        <button className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
-                          <FontAwesomeIcon icon={faCircleInfo} />
-                        </button>
-                        {uiRole === "owner" && (
-                          <>
-                            <button
-                              className="exp-btn danger sm"
-                              onClick={() => handleDeleteBooking(b)}
-                              title="حذف نهائي"
-                            >
-                              حذف
+                {groupedFiltered.flatMap((block) => {
+                  const rows: any[] = [];
+                  if (block.rows.length > 1) {
+                    rows.push(
+                      <tr key={`group-${block.key}`} className="bookings-group-row">
+                        <td colSpan={8}>
+                          <div className="bookings-group-row-inner">
+                            <span className="bookings-group-title">حجز مجمّع</span>
+                            <span className="bookings-group-meta">
+                              المرجع: {block.label} - الخدمات: {block.rows.length}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  block.rows.forEach((b) => {
+                    rows.push(
+                      <tr key={b.id}>
+                        <td style={{ fontWeight: 900 }}>{bookingRef(b)}</td>
+                        <td>
+                          <div style={{fontWeight: 800}}>{b.customerName || "—"}</div>
+                          <div style={{fontSize: 11, opacity: 0.6}}>{b.phone || "—"}</div>
+                          <div style={{fontSize: 11, opacity: 0.6}}>المصدر: {channelLabel(b.channel)}</div>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 700 }}>{serviceSummaryForTable(b)}</div>
+                          <div style={{ fontSize: 11, opacity: 0.75 }}>{serviceMetaSummaryForTable(b)}</div>
+                        </td>
+                        <td>{b.employeeName || "—"}</td>
+                        <td>
+                          <div>{b.date}</div>
+                          <div style={{fontSize: 11, opacity: 0.7}}>{formatTime12(b.time)}</div>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 800 }}>{lastUpdateMap[b.id]?.by || "—"}</div>
+                          <div style={{ fontSize: 11, opacity: 0.7 }}>{lastUpdateMap[b.id]?.at || "—"}</div>
+                        </td>
+                        <td>{b.finalPrice || b.total || 0} ر.س</td>
+                        <td>
+                          <div style={{display: 'flex', gap: 6, justifyContent: 'center'}}>
+                            <button className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
+                              <FontAwesomeIcon icon={faCircleInfo} />
                             </button>
-                            <select
-                              className={`bk-select sm bk-owner-status-select bk-owner-status-${b.status}`}
-                              style={{ width: "auto", height: 40, padding: "0 12px", fontSize: 12 }}
-                              value={b.status}
-                              onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
-                            >
-                              {allStatusOptions.map((s) => (
-                                <option key={`desk_${b.id}_${s}`} value={s}>
-                                  {statusLabel[s]}
-                                </option>
-                              ))}
-                            </select>
-                          </>
-                        )}
-                        {(uiRole === "admin" || uiRole === "reception") && b.status === "pending" && (
-                          <>
-                            <button
-                              className="exp-btn sm"
-                              onClick={() => handleUpdateStatus(b.id, "confirmed")}
-                            >
-                              تأكيد
-                            </button>
-                            <button
-                              className="exp-btn danger sm"
-                              onClick={() => handleUpdateStatus(b.id, "cancelled")}
-                            >
-                              إلغاء
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                            {uiRole === "owner" && (
+                              <>
+                                <button
+                                  className="exp-btn danger sm"
+                                  onClick={() => handleDeleteBooking(b)}
+                                  title="حذف نهائي"
+                                >
+                                  حذف
+                                </button>
+                                <select
+                                  className={`bk-select sm bk-owner-status-select bk-owner-status-${b.status}`}
+                                  style={{ width: "auto", height: 40, padding: "0 12px", fontSize: 12 }}
+                                  value={b.status}
+                                  onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
+                                >
+                                  {allStatusOptions.map((s) => (
+                                    <option key={`desk_${b.id}_${s}`} value={s}>
+                                      {statusLabel[s]}
+                                    </option>
+                                  ))}
+                                </select>
+                              </>
+                            )}
+                            {(uiRole === "admin" || uiRole === "reception") && b.status === "pending" && (
+                              <>
+                                <button
+                                  className="exp-btn sm"
+                                  onClick={() => handleUpdateStatus(b.id, "confirmed")}
+                                >
+                                  تأكيد
+                                </button>
+                                <button
+                                  className="exp-btn danger sm"
+                                  onClick={() => handleUpdateStatus(b.id, "cancelled")}
+                                >
+                                  إلغاء
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  });
+
+                  return rows;
+                })}
               </tbody>
             </table>
           </div>
 
           <div className="bk-mobile-grid">
-            {filtered.map(b => (
-              <div key={b.id} className="bk-mobile-card">
-                <div className="bk-mobile-row">
-                  <span className="bk-mobile-label">رقم الحجز:</span>
-                  <span className="bk-mobile-val" style={{fontWeight: 900}}>{bookingRef(b)}</span>
-                </div>
-                <div className="bk-mobile-row">
-                  <span className="bk-mobile-label">الزبون:</span>
-                  <span className="bk-mobile-val">{b.customerName || "—"}</span>
-                </div>
-                <div className="bk-mobile-row">
-                  <span className="bk-mobile-label">الجوال:</span>
-                  <span className="bk-mobile-val">{b.phone || "—"}</span>
-                </div>
-                <div className="bk-mobile-row">
-                  <span className="bk-mobile-label">الخدمة:</span>
-                  <span className="bk-mobile-val">
-                    {serviceSummaryForTable(b)}
-                    <div style={{ fontSize: 11, opacity: 0.75 }}>{serviceMetaSummaryForTable(b)}</div>
-                  </span>
-                </div>
-                <div className="bk-mobile-row">
-                  <span className="bk-mobile-label">الموظفة:</span>
-                  <span className="bk-mobile-val">{b.employeeName || "—"}</span>
-                </div>
-                <div className="bk-mobile-row">
-                  <span className="bk-mobile-label">التاريخ:</span>
-                  <span className="bk-mobile-val">{b.date} {formatTime12(b.time)}</span>
-                </div>
-                <div className="bk-mobile-row">
-                  <span className="bk-mobile-label">المصدر:</span>
-                  <span className="bk-mobile-val">{channelLabel(b.channel)}</span>
-                </div>
-                <div className="bk-mobile-row">
-                  <span className="bk-mobile-label">الحالة:</span>
-                  <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
-                </div>
-                <div style={{marginTop: 12, display: 'flex', gap: 8}}>
-                   <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
-                   {uiRole === "owner" && (
-                     <>
-                       <button className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
-                         حذف نهائي
-                       </button>
-                       <select
-                         className={`bk-select sm bk-owner-status-select bk-owner-status-${b.status}`}
-                         style={{ height: 40, padding: "0 12px", fontSize: 12 }}
-                         value={b.status}
-                         onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
-                       >
-                         {allStatusOptions.map((s) => (
-                           <option key={`mob_${b.id}_${s}`} value={s}>
-                             {statusLabel[s]}
-                           </option>
-                         ))}
-                       </select>
-                     </>
-                   )}
-                   {(uiRole === "admin" || uiRole === "reception") && b.status === "pending" && (
-                     <>
-                       <button className="exp-btn sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
-                         تأكيد
-                       </button>
-                       <button className="exp-btn danger sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
-                         إلغاء
-                       </button>
-                     </>
-                   )}
-                </div>
+            {groupedFiltered.map((block) => (
+              <div key={`mob-${block.key}`} className="bk-mobile-group">
+                {block.rows.length > 1 ? (
+                  <div className="bk-mobile-group-head">
+                    <span>حجز مجمّع</span>
+                    <span>{block.label} - {block.rows.length} خدمات</span>
+                  </div>
+                ) : null}
+                {block.rows.map((b) => (
+                  <div key={b.id} className="bk-mobile-card">
+                    <div className="bk-mobile-row">
+                      <span className="bk-mobile-label">رقم الحجز:</span>
+                      <span className="bk-mobile-val" style={{fontWeight: 900}}>{bookingRef(b)}</span>
+                    </div>
+                    <div className="bk-mobile-row">
+                      <span className="bk-mobile-label">الزبون:</span>
+                      <span className="bk-mobile-val">{b.customerName || "—"}</span>
+                    </div>
+                    <div className="bk-mobile-row">
+                      <span className="bk-mobile-label">الجوال:</span>
+                      <span className="bk-mobile-val">{b.phone || "—"}</span>
+                    </div>
+                    <div className="bk-mobile-row">
+                      <span className="bk-mobile-label">الخدمة:</span>
+                      <span className="bk-mobile-val">
+                        {serviceSummaryForTable(b)}
+                        <div style={{ fontSize: 11, opacity: 0.75 }}>{serviceMetaSummaryForTable(b)}</div>
+                      </span>
+                    </div>
+                    <div className="bk-mobile-row">
+                      <span className="bk-mobile-label">الموظفة:</span>
+                      <span className="bk-mobile-val">{b.employeeName || "—"}</span>
+                    </div>
+                    <div className="bk-mobile-row">
+                      <span className="bk-mobile-label">التاريخ:</span>
+                      <span className="bk-mobile-val">{b.date} {formatTime12(b.time)}</span>
+                    </div>
+                    <div className="bk-mobile-row">
+                      <span className="bk-mobile-label">المصدر:</span>
+                      <span className="bk-mobile-val">{channelLabel(b.channel)}</span>
+                    </div>
+                    <div className="bk-mobile-row">
+                      <span className="bk-mobile-label">الحالة:</span>
+                      <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
+                    </div>
+                    <div style={{marginTop: 12, display: 'flex', gap: 8}}>
+                       <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
+                       {uiRole === "owner" && (
+                         <>
+                           <button className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
+                             حذف نهائي
+                           </button>
+                           <select
+                             className={`bk-select sm bk-owner-status-select bk-owner-status-${b.status}`}
+                             style={{ height: 40, padding: "0 12px", fontSize: 12 }}
+                             value={b.status}
+                             onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
+                           >
+                             {allStatusOptions.map((s) => (
+                               <option key={`mob_${b.id}_${s}`} value={s}>
+                                 {statusLabel[s]}
+                               </option>
+                             ))}
+                           </select>
+                         </>
+                       )}
+                       {(uiRole === "admin" || uiRole === "reception") && b.status === "pending" && (
+                         <>
+                           <button className="exp-btn sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
+                             تأكيد
+                           </button>
+                           <button className="exp-btn danger sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
+                             إلغاء
+                           </button>
+                         </>
+                       )}
+                    </div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

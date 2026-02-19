@@ -223,6 +223,7 @@ const DEFAULT_SERVICE_DURATION_MIN = 60;
 const PACKAGE_SECTION_ID = "service-packages";
 const PACKAGE_SECTION_TITLE = "البكيجات";
 const ALLOW_OVERTIME_MIN = 20;
+const MANI_PEDI_TOOLS_FEE_FIXED = 15;
 const MANI_PEDI_SECTION_KEYWORDS = [
   "manicure",
   "pedicure",
@@ -643,9 +644,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const bufferMin = useMemo(() => {
     return Math.max(0, safeInt((booking as any)?.bufferMin, 5));
   }, [(booking as any)?.bufferMin]);
-  const maniPediToolsFee = useMemo(() => {
-    return Math.max(0, safeInt((booking as any)?.maniPediToolsFee, 0));
-  }, [(booking as any)?.maniPediToolsFee]);
+  const maniPediToolsFee = MANI_PEDI_TOOLS_FEE_FIXED;
 
   console.log("[Booking] slotStepMin, bufferMin from settings:", slotStepMin, bufferMin, booking);
 
@@ -4681,7 +4680,7 @@ function findCartOverlap(items: CartItem[]) {
                                         });
                                       }}
                                     >
-                                      <option value="">اختاري الموظفة</option>
+                                      <option value=""> اختاري الموظفة</option>
                                       {staffWithLeaveMeta.map(({ staff: emp, leave }) => (
                                         <option key={emp.id} value={emp.id} disabled={leave.isOnLeave}>
                                           {leave.isOnLeave ? `${emp.name} (${leave.label})` : emp.name}
@@ -5057,4 +5056,3 @@ function findCartOverlap(items: CartItem[]) {
 };
 
 export default Booking;
-

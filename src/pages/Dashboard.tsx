@@ -609,39 +609,6 @@ const Dashboard: React.FC = () => {
   const totalExpenses = expensesTotalFS;
   const netProfit = totalIncome - totalExpenses;
 
-  // ✅ LOCK background scroll when modal open (Mobile/iOS SAFE)
-  useEffect(() => {
-    if (!selectedBooking) return;
-
-    const body = document.body;
-    const scrollY = window.scrollY;
-
-    const prevOverflow = body.style.overflow;
-    const prevPosition = body.style.position;
-    const prevTop = body.style.top;
-    const prevWidth = body.style.width;
-    const prevPaddingRight = body.style.paddingRight;
-
-    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
-
-    body.style.overflow = "hidden";
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.width = "100%";
-
-    if (scrollBarWidth > 0) body.style.paddingRight = `${scrollBarWidth}px`;
-
-    return () => {
-      body.style.overflow = prevOverflow;
-      body.style.position = prevPosition;
-      body.style.top = prevTop;
-      body.style.width = prevWidth;
-      body.style.paddingRight = prevPaddingRight;
-
-      window.scrollTo(0, scrollY);
-    };
-  }, [selectedBooking]);
-
   /**
    * ✅ refresh من Firestore
    * ✅ تعديل مهم: لا نقرأ المصروفات إلا لو AdminPower (Owner/Admin)
