@@ -233,7 +233,7 @@ const About = () => {
           <div className="row align-items-center">
             <div className="col-lg-6 mb-4 mb-lg-0">
               <div className="about-image">
-                <img src={unnamed} alt="Queens Salon" className="img-fluid rounded" />
+                <img src={unnamed} alt="MALIKAT SALON" className="img-fluid rounded" />
               </div>
             </div>
 
@@ -417,3 +417,4 @@ const About = () => {
 };
 
 export default About;
+

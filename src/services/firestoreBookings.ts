@@ -159,12 +159,32 @@ const LOGS_COL = ["salons", SALON_ID, "booking_logs"] as const;
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
-function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
-  const cleaned: Record<string, any> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (v !== undefined) cleaned[k] = v;
+function isPlainObject(v: any): v is Record<string, any> {
+  if (Object.prototype.toString.call(v) !== "[object Object]") return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+function stripUndefined<T>(value: T): T {
+  if (value === undefined) return value;
+
+  if (Array.isArray(value)) {
+    const cleanedArr = value
+      .map((item) => stripUndefined(item))
+      .filter((item) => item !== undefined);
+    return cleanedArr as T;
   }
-  return cleaned as Partial<T>;
+
+  if (isPlainObject(value)) {
+    const cleanedObj: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      const cleanedVal = stripUndefined(v as any);
+      if (cleanedVal !== undefined) cleanedObj[k] = cleanedVal;
+    }
+    return cleanedObj as T;
+  }
+
+  return value;
 }
 
 function normalizeBooking(raw: any): BookingDoc {

@@ -8,8 +8,9 @@ import "bootstrap/dist/css/bootstrap.min.css";
 // CSS العام
 import "./index.css";
 
-// 🔴 هنا المكان الصحيح
-import "./services/firestoreDebug";
+if (import.meta.env.DEV) {
+  void import("./services/firestoreDebug");
+}
 
 import App from "./App";
 

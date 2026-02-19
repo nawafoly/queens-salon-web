@@ -228,7 +228,7 @@ const isComplaint = (qRaw: string) =>
   /(سيء|سيئ|مو زين|زفت|خايس|مضايق|ما عجبني|تجربه سيئه)/i.test(normalizeArabic(qRaw.toLowerCase()));
 
 const isSalonBrandMention = (qRaw: string) =>
-  /(صالون ملكات|ملكات|queens salon|queens)/i.test(normalizeArabic(qRaw.toLowerCase()));
+  /(صالون ملكات|ملكات|malikat salon|malikat|queens salon|queens)/i.test(normalizeArabic(qRaw.toLowerCase()));
 
 const isBookingIntent = (qRaw: string) =>
   /(ابي احجز|ابغى احجز|احجزي موعد|احجز|حجز|ابي موعد|ابغى موعد|book|booking|reservation)/i.test(

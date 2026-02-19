@@ -1,4 +1,4 @@
-﻿// src/pages/Booking.tsx
+// src/pages/Booking.tsx
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import type React from "react"; // âœ… ADD: عشان React.ChangeEvent / React.FormEvent
@@ -4108,7 +4108,7 @@ function findCartOverlap(items: CartItem[]) {
               <div className="text-center mb-3">
                 <img
                   src={logo}
-                  alt="Queens Salon"
+                  alt="MALIKAT SALON"
                   style={{ height: 80, objectFit: "contain" }}
                 />
               </div>
@@ -4784,7 +4784,7 @@ function findCartOverlap(items: CartItem[]) {
                     </div>
                   ) : (
                     <div className="p-4 text-center" style={{ border: '2px dashed #ddd', borderRadius: '12px', background: '#fdfdfd' }}>
-                      <p className="text-muted m-0">اختاري خدمة من القائمة أعلاه للبدء âœ¨</p>
+                      <p className="text-muted m-0">اختاري خدمة من القائمة أعلاه للبدء ᑅ ᐧ ᑀ </p>
                     </div>
                   )}
                 </div>
@@ -5012,7 +5012,7 @@ function findCartOverlap(items: CartItem[]) {
                     </button>
                   </div>
                   {offerMsg && (
-                    <div className={`small mt-2 ${offerMsg.includes("✅") ? "text-success" : "text-danger"}`}>
+                    <div className={`small mt-2 ${offerMsg.includes("?") ? "text-success" : "text-danger"}`}>
                       {offerMsg}
                     </div>
                   )}
@@ -5056,3 +5056,4 @@ function findCartOverlap(items: CartItem[]) {
 };
 
 export default Booking;
+

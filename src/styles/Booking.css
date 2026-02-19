@@ -1,5 +1,5 @@
 /* =========================
-   Booking.css (FULL) - Queens Salon
+   Booking.css (FULL) - MALIKAT SALON
    ✅ Unified Inputs + Unified Dropdown (dash-select + bk-field) scoped to .booking-page
    ✅ Using Official Palette
 ========================= */
@@ -992,3 +992,4 @@ textarea.form-control {
 .booking-page .bk-service-adder select optgroup {
   color: #0d0d0d !important;
 }
+

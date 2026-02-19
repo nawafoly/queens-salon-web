@@ -11,7 +11,7 @@
   overflow-x: hidden;
   font-family: "Tajawal", sans-serif;
 
-  /* Queens Salon – White theme */
+  /* MALIKAT SALON – White theme */
   background:
     radial-gradient(900px 520px at 15% 18%, rgba(64,1,13,0.06), transparent 60%),
     radial-gradient(900px 520px at 85% 24%, rgba(136,140,140,0.10), transparent 55%),
@@ -573,3 +573,4 @@
   font-weight: 900;
   margin: 0 0 6px 0;
 }
+

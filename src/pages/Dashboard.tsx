@@ -113,7 +113,7 @@ type AppSettings = {
 const SETTINGS_KEY = "dashboard_settings_v1";
 
 const defaultSettings: AppSettings = {
-  salonName: "Queens Salon",
+  salonName: "MALIKAT SALON",
   phone: "",
   city: "",
   sections: {
@@ -615,7 +615,6 @@ const Dashboard: React.FC = () => {
    */
   const refreshDashboard = async (roleForRefresh?: UiRole) => {
     if (roleForRefresh === "staff") {
-      console.log("REFRESH -> skipped for staff ✅");
       setStats((prev) => ({
         ...prev,
         todayBookings: 0,
@@ -640,12 +639,8 @@ const Dashboard: React.FC = () => {
         console.warn("REFRESH -> migrateBookingsIfNeeded skipped:", err);
       }
 
-      console.log("REFRESH -> start");
-
       step = "bookings:listAllBookings";
-      console.log("REFRESH -> listAllBookings()");
       const docs = await listAllBookingsFS();
-      console.log("REFRESH -> bookings OK:", docs.length);
 
       step = "bookings:mapFirestoreToUiBooking";
       const uiBookings = await Promise.all(docs.map(mapFirestoreToUiBooking));
@@ -672,10 +667,8 @@ const Dashboard: React.FC = () => {
       let employeesCount = 0;
       try {
         step = "stats:DashboardService.getStats";
-        console.log("REFRESH -> DashboardService.getStats()");
         const s = await DashboardService.getStats();
         employeesCount = Number(s?.employeesCount || 0);
-        console.log("REFRESH -> getStats OK:", employeesCount);
       } catch (err) {
         console.warn("REFRESH -> getStats failed:", err);
         employeesCount = 0;
@@ -684,9 +677,7 @@ const Dashboard: React.FC = () => {
       if (canReadExpensesNow) {
         // ✅ income
         step = "income:listAllIncomeFS";
-        console.log("REFRESH -> listAllIncomeFS()");
         const incomes = await listAllIncomeFS("main");
-        console.log("REFRESH -> income OK:", incomes.length);
 
         step = "income:sum";
         const incomeTotal = incomes
@@ -717,9 +708,7 @@ const Dashboard: React.FC = () => {
 
         // ✅ expenses
         step = "expenses:listAllExpensesFS";
-        console.log("REFRESH -> listAllExpensesFS()");
         const expenses = await listAllExpensesFS();
-        console.log("REFRESH -> expenses OK:", expenses.length);
 
         step = "expenses:sum";
         const expensesTotal = expenses.reduce(
@@ -752,8 +741,6 @@ const Dashboard: React.FC = () => {
         });
 
       setTodayScheduleBookings(todaySchedule);
-
-      console.log("REFRESH -> done ✅");
     } catch (e) {
       console.error("refreshDashboard error:", e);
 
@@ -1036,10 +1023,8 @@ const Dashboard: React.FC = () => {
           if (now < end) continue;
 
           if (st === "pending") {
-            console.log("[AUTO] pending -> cancelled", b.id);
             await updateBookingStatusFS(b.id, "cancelled"); // يفك slots من داخل firestoreBookings
           } else if (st === "confirmed") {
-            console.log("[AUTO] confirmed -> completed", b.id);
             await updateBookingStatusFS(b.id, "completed");
           }
         }
@@ -1263,7 +1248,7 @@ const Dashboard: React.FC = () => {
             </button>
 
             <div className="sidebar-header">
-              <img src={logo1} alt="Queens Salon Logo" className="sidebar-logo" />
+              <img src={logo1} alt="MALIKAT SALON Logo" className="sidebar-logo" />
             </div>
 
             <div className="user-info">
@@ -1758,3 +1743,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
+

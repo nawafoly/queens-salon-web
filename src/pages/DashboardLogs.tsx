@@ -146,6 +146,47 @@ function getDisplayUser(r: LogRow) {
   return String(r.userName || r.userEmail || r.userUid || "-").trim();
 }
 
+function roleLabel(roleRaw: string | undefined): string {
+  const role = String(roleRaw || "").trim().toLowerCase();
+  const map: Record<string, string> = {
+    owner: "مالك",
+    admin: "أدمن",
+    reception: "استقبال",
+    staff: "موظفة",
+    client: "عميلة",
+    guest: "زائر",
+  };
+  return map[role] || (role || "-");
+}
+
+function actionTone(actionRaw: string | undefined): "danger" | "success" | "warning" | "info" | "neutral" {
+  const action = String(actionRaw || "").trim().toLowerCase();
+  if (!action) return "neutral";
+  if (action.includes("deleted") || action.includes("cancelled") || action.includes("role_changed")) {
+    return "danger";
+  }
+  if (action.includes("created") || action.includes("confirmed") || action.includes("completed") || action.includes("login")) {
+    return "success";
+  }
+  if (action.includes("updated") || action.includes("changed") || action.includes("reassigned") || action.includes("settings")) {
+    return "warning";
+  }
+  if (action.includes("logout")) return "info";
+  return "neutral";
+}
+
+function relativeTime(ms: number): string {
+  if (!ms) return "-";
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return "الآن";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `قبل ${minutes} دقيقة`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `قبل ${hours} ساعة`;
+  const days = Math.floor(hours / 24);
+  return `قبل ${days} يوم`;
+}
+
 function summarizeRow(r: LogRow): string {
   const action = asLabel(ACTION_LABELS, r.action, "عملية");
   const entity = asLabel(ENTITY_LABELS, r.entityType, "عنصر");
@@ -565,6 +606,58 @@ export default function DashboardLogs() {
     showLoginEvents,
   ]);
 
+  const analytics = useMemo(() => {
+    const today = dayKey(Date.now());
+    let sensitiveCount = 0;
+    let todayCount = 0;
+    let financialCount = 0;
+    let bookingCount = 0;
+    const actionCounter = new Map<string, number>();
+
+    filtered.forEach((r) => {
+      const actionKey = String(r.action || "").trim().toLowerCase();
+      const entityKey = String(r.entityType || "").trim().toLowerCase();
+
+      if (detectSensitiveLocal(r)) sensitiveCount += 1;
+      if (dayKey(r.atMs) === today) todayCount += 1;
+      if (actionKey) actionCounter.set(actionKey, (actionCounter.get(actionKey) || 0) + 1);
+
+      if (
+        entityKey === "income" ||
+        entityKey === "expense" ||
+        actionKey.startsWith("income_") ||
+        actionKey.startsWith("expense_")
+      ) {
+        financialCount += 1;
+      }
+
+      if (entityKey === "booking" || actionKey.startsWith("booking_")) {
+        bookingCount += 1;
+      }
+    });
+
+    let topAction = "";
+    let topCount = 0;
+    actionCounter.forEach((count, key) => {
+      if (count > topCount) {
+        topCount = count;
+        topAction = key;
+      }
+    });
+
+    return {
+      filteredCount: filtered.length,
+      totalCount: rows.length,
+      sensitiveCount,
+      todayCount,
+      financialCount,
+      bookingCount,
+      topActionLabel: topAction ? asLabel(ACTION_LABELS, topAction) : "-",
+      topActionCount: topCount,
+      latestMs: filtered[0]?.atMs || rows[0]?.atMs || 0,
+    };
+  }, [filtered, rows]);
+
   if (!authUser) {
     return (
       <div className="dashboard-page">
@@ -611,6 +704,47 @@ export default function DashboardLogs() {
         {errMsg && <div className="dash-alert">{errMsg}</div>}
 
         <div className="dash-card logs-card">
+          <div className="logs-insights">
+            <div className="logs-insight-head">
+              <div>
+                <h3>مركز مراقبة العمليات</h3>
+                <p>عرض حي للعمليات مع تصنيف لوني حسب نوع الحدث وحساسيته.</p>
+              </div>
+              <div className="logs-insight-updated">
+                آخر عملية: <b>{fmtDateTime(analytics.latestMs)}</b>
+                {analytics.latestMs ? <span> ({relativeTime(analytics.latestMs)})</span> : null}
+              </div>
+            </div>
+
+            <div className="logs-kpis">
+              <div className="logs-kpi logs-kpi--primary">
+                <div className="k">المعروض الآن</div>
+                <div className="v">{analytics.filteredCount}</div>
+              </div>
+              <div className="logs-kpi logs-kpi--danger">
+                <div className="k">عمليات حساسة</div>
+                <div className="v">{analytics.sensitiveCount}</div>
+              </div>
+              <div className="logs-kpi logs-kpi--success">
+                <div className="k">عمليات اليوم</div>
+                <div className="v">{analytics.todayCount}</div>
+              </div>
+              <div className="logs-kpi logs-kpi--warning">
+                <div className="k">الأكثر تكرارًا</div>
+                <div className="v">{analytics.topActionCount || 0}</div>
+                <div className="s">{analytics.topActionLabel}</div>
+              </div>
+              <div className="logs-kpi logs-kpi--neutral">
+                <div className="k">سجل الحجوزات</div>
+                <div className="v">{analytics.bookingCount}</div>
+              </div>
+              <div className="logs-kpi logs-kpi--neutral">
+                <div className="k">السجل المالي</div>
+                <div className="v">{analytics.financialCount}</div>
+              </div>
+            </div>
+          </div>
+
           <div className="logs-filters">
             <div className="logs-search">
               <FontAwesomeIcon icon={faMagnifyingGlass} />
@@ -628,7 +762,7 @@ export default function DashboardLogs() {
                 <option value="all">كل العمليات</option>
                 {actionOptions.map((x) => (
                   <option key={x} value={x}>
-                    {x}
+                    {asLabel(ACTION_LABELS, x)}
                   </option>
                 ))}
               </select>
@@ -638,7 +772,7 @@ export default function DashboardLogs() {
               <option value="all">كل العناصر</option>
               {entityOptions.map((x) => (
                 <option key={x} value={x}>
-                  {x}
+                  {asLabel(ENTITY_LABELS, x)}
                 </option>
               ))}
             </select>
@@ -654,10 +788,10 @@ export default function DashboardLogs() {
 
             <select className="dash-select" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
               <option value="all">كل المصادر</option>
-              <option value="dashboard">dashboard</option>
-              <option value="internal_booking">internal_booking</option>
-              <option value="client_app">client_app</option>
-              <option value="system">system</option>
+              <option value="dashboard">{asLabel(SOURCE_LABELS, "dashboard")}</option>
+              <option value="internal_booking">{asLabel(SOURCE_LABELS, "internal_booking")}</option>
+              <option value="client_app">{asLabel(SOURCE_LABELS, "client_app")}</option>
+              <option value="system">{asLabel(SOURCE_LABELS, "system")}</option>
             </select>
 
             <input className="dash-input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
@@ -719,13 +853,29 @@ export default function DashboardLogs() {
                   <div key={r.id} className={`logs-row ${sensitive ? "logs-row--sensitive" : ""}`}>
                     <div className="logs-time" data-label="الوقت">{fmtDateTime(r.atMs)}</div>
                     <div className="logs-type" data-label="العملية">
-                      {sensitive ? <FontAwesomeIcon className="logs-sensitive-icon" icon={faTriangleExclamation} /> : null}
-                      {asLabel(ACTION_LABELS, r.action)}
+                      <span className={`logs-pill logs-pill--${actionTone(r.action)}`}>
+                        {sensitive ? <FontAwesomeIcon className="logs-sensitive-icon" icon={faTriangleExclamation} /> : null}
+                        {asLabel(ACTION_LABELS, r.action)}
+                      </span>
                     </div>
-                    <div className="logs-entity" data-label="العنصر">{asLabel(ENTITY_LABELS, r.entityType)}</div>
-                    <div className="logs-user" data-label="المستخدم">{getDisplayUser(r)}</div>
-                    <div className="logs-source" data-label="المصدر">{asLabel(SOURCE_LABELS, r.source)}</div>
-                    <div className="logs-note" data-label="الملخص">{summarizeRow(r)}</div>
+                    <div className="logs-entity" data-label="العنصر">
+                      <span className="logs-chip">{asLabel(ENTITY_LABELS, r.entityType)}</span>
+                    </div>
+                    <div className="logs-user" data-label="المستخدم">
+                      <div className="logs-user-name">{getDisplayUser(r)}</div>
+                      <div className="logs-user-meta">
+                        {[roleLabel(r.userRole), r.userEmail, r.userUid ? `#${String(r.userUid).slice(0, 8)}` : ""]
+                          .filter(Boolean)
+                          .join(" | ")}
+                      </div>
+                    </div>
+                    <div className="logs-source" data-label="المصدر">
+                      <span className="logs-chip logs-chip--source">{asLabel(SOURCE_LABELS, r.source)}</span>
+                    </div>
+                    <div className="logs-note" data-label="الملخص">
+                      <div className="logs-note-main">{summarizeRow(r)}</div>
+                      {r.entityId ? <div className="logs-note-sub">ID: {r.entityId}</div> : null}
+                    </div>
                     <div data-label="تفاصيل">
                       <button
                         className="logs-expand-btn"
@@ -739,6 +889,11 @@ export default function DashboardLogs() {
 
                     {expanded ? (
                       <div className="logs-details" role="region" aria-label="تفاصيل السجل">
+                        <div className="logs-detail-top">
+                          <span className="logs-mini-chip">الوقت: {fmtDateTime(r.atMs)}</span>
+                          {r.logId ? <span className="logs-mini-chip">Log: {r.logId}</span> : null}
+                          {r.entityId ? <span className="logs-mini-chip">Entity: {r.entityId}</span> : null}
+                        </div>
                         <div className="logs-detail-summary">
                           {extractImportantChanges(r).map((line, idx) => (
                             <div key={`${r.id}-line-${idx}`} className="logs-detail-line">

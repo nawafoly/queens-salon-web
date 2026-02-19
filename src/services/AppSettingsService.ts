@@ -126,7 +126,7 @@ function defaultBusinessHours(): Record<WeekdayKey, BusinessHoursDay> {
 }
 
 const defaultSettings: AppSettings = {
-  salonName: "Queens Salon",
+  salonName: "MALIKAT SALON",
   phone: "",
   city: "",
 
@@ -527,5 +527,6 @@ export function getEffectiveServicePrice(
   if (active && hasSeason) return season;
   return base;
 }
+
 
 

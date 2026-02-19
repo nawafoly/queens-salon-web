@@ -330,6 +330,9 @@
 .bk-page-wrapper .bk-mobile-row {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
   padding: 8px 0;
   border-bottom: 1px dashed #eee;
 }
@@ -342,12 +345,42 @@
   font-weight: 800;
   color: #888;
   font-size: 13px;
+  flex: 0 0 auto;
 }
 
 .bk-page-wrapper .bk-mobile-val {
   font-weight: 700;
   color: #111;
   font-size: 13px;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.bk-page-wrapper .bk-mobile-date-val {
+  direction: ltr;
+  unicode-bidi: plaintext;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  white-space: normal;
+}
+
+.bk-page-wrapper .bk-mobile-actions {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.bk-page-wrapper .bk-mobile-actions > * {
+  min-width: 0;
+}
+
+.bk-page-wrapper .bk-mobile-actions .w-100,
+.bk-page-wrapper .bk-mobile-actions .bk-owner-status-select {
+  width: 100% !important;
 }
 
 /* Owner status dropdown (bookings actions) */

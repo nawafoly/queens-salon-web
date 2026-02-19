@@ -108,14 +108,20 @@
 /* ✅ quick stats */
 .income-page .income-quick {
   display: grid;
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;
 }
 
 @media (max-width: 992px) {
   .income-page .income-quick {
-    grid-template-columns: repeat(2, minmax(160px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .income-page .income-quick {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -132,6 +138,11 @@
   justify-content: space-between;
   gap: 12px;
   min-height: 74px;
+  min-width: 0;
+}
+
+.income-page .stat-card .stat-info {
+  min-width: 0;
 }
 
 .income-page .stat-card .stat-info h3 {
@@ -139,6 +150,9 @@
   font-weight: 900;
   letter-spacing: .2px;
   font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  font-size: clamp(1rem, 3.8vw, 1.6rem);
+  overflow-wrap: anywhere;
 }
 
 .income-page .stat-card .stat-info p {
@@ -154,14 +168,98 @@
 .income-page .income-table-wrap .table-responsive {
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 16px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   background: #fff;
+}
+
+.income-page .income-mobile-list {
+  display: none;
 }
 
 .income-page table.dashboard-table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .income-page .income-table-wrap .table-responsive {
+    display: none;
+  }
+
+  .income-page .income-mobile-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .income-page .income-mobile-card {
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.09);
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+  }
+
+  .income-page .income-mobile-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px dashed rgba(0, 0, 0, 0.12);
+  }
+
+  .income-page .income-mobile-row:last-child {
+    border-bottom: none;
+  }
+
+  .income-page .income-mobile-label {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 900;
+    color: #6b7280;
+  }
+
+  .income-page .income-mobile-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+    font-size: 13px;
+    font-weight: 700;
+    color: #111827;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .income-page .income-mobile-value--date {
+    direction: ltr;
+    unicode-bidi: plaintext;
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .income-page .income-mobile-actions {
+    margin-top: 10px;
+    display: grid;
+  }
+
+  .income-page .income-mobile-delete {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .income-page .income-mobile-empty {
+    border: 1px dashed rgba(0, 0, 0, 0.16);
+    border-radius: 14px;
+    padding: 16px;
+    text-align: center;
+    color: #6b7280;
+    background: rgba(255, 255, 255, 0.74);
+    font-size: 13px;
+    font-weight: 700;
+  }
 }
 
 .income-page table.dashboard-table thead th {

@@ -451,7 +451,7 @@ const Contact: React.FC = () => {
                       allowFullScreen
                       loading="lazy"
                       referrerPolicy="no-referrer-when-downgrade"
-                      title="Queens Salon Location"
+                      title="MALIKAT SALON Location"
                     />
                   ) : (
                     <div
@@ -477,3 +477,4 @@ const Contact: React.FC = () => {
 };
 
 export default Contact;
+

@@ -1138,7 +1138,7 @@ const DashboardExpenses: React.FC = () => {
 
           {/* أعلى 3 تصنيفات (هذا الشهر) */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 20, marginBottom: 8 }}>
+            <div style={{ fontSize: 16, marginBottom: 8 }}>
               أعلى 3 تصنيفات (هذا الشهر)
             </div>
 
@@ -1167,6 +1167,8 @@ const DashboardExpenses: React.FC = () => {
                       key={name}
                       style={{
                         display: "flex",
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
                         justifyContent: "space-between",
                         gap: 10,
                         padding: "10px 12px",
@@ -1177,7 +1179,7 @@ const DashboardExpenses: React.FC = () => {
                       }}
                     >
                       <span>{name}</span>
-                      <b>{money(value)} ريال</b>
+                      <b style={{ whiteSpace: "nowrap" }}>{money(value)} ريال</b>
                     </div>
                   ))}
                 </div>
@@ -1196,7 +1198,7 @@ const DashboardExpenses: React.FC = () => {
                 marginBottom: 8,
               }}
             >
-              <div style={{ fontSize: 20 }}>آخر 5 مصروفات</div>
+              <div style={{ fontSize: 16 }}>آخر 5 مصروفات</div>
             </div>
 
             {(() => {
@@ -1222,6 +1224,8 @@ const DashboardExpenses: React.FC = () => {
                       key={e.id}
                       style={{
                         display: "flex",
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
                         justifyContent: "space-between",
                         gap: 10,
                         padding: "10px 12px",
@@ -1231,13 +1235,13 @@ const DashboardExpenses: React.FC = () => {
                         fontSize: 13,
                       }}
                     >
-                      <div style={{ display: "grid", gap: 2 }}>
+                      <div style={{ display: "grid", gap: 2, minWidth: 0, flex: "1 1 180px" }}>
                         <b>{e.title}</b>
                         <span style={{ opacity: 0.75 }}>
                           {e.date} • {e.category}
                         </span>
                       </div>
-                      <b>{money(Number(e.amount) || 0)} ريال</b>
+                      <b style={{ whiteSpace: "nowrap" }}>{money(Number(e.amount) || 0)} ريال</b>
                     </div>
                   ))}
                 </div>

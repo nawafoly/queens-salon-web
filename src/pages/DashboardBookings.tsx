@@ -1078,7 +1078,7 @@ export default function DashboardBookings() {
                     </div>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">التاريخ:</span>
-                      <span className="bk-mobile-val">{b.date} {formatTime12(b.time)}</span>
+                      <span className="bk-mobile-val bk-mobile-date-val">{b.date} {formatTime12(b.time)}</span>
                     </div>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">المصدر:</span>
@@ -1088,7 +1088,7 @@ export default function DashboardBookings() {
                       <span className="bk-mobile-label">الحالة:</span>
                       <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
                     </div>
-                    <div style={{marginTop: 12, display: 'flex', gap: 8}}>
+                    <div className="bk-mobile-actions">
                        <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
                        {uiRole === "owner" && (
                          <>

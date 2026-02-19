@@ -53,8 +53,10 @@
    Header
 ========================= */
 .exp-header {
+  display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -63,12 +65,16 @@
   margin: 0;
   font-size: 22px;
   font-weight: 900;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .exp-header-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* =========================
@@ -479,7 +485,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 260px;
+  min-width: 0;
+  flex: 1 1 260px;
 }
 
 /* ✅ جهة اليمين (كل الأزرار مع بعض) */
@@ -490,6 +497,7 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   margin-inline-start: auto; /* يدفع الأزرار لليمين */
+  min-width: 0;
 }
 
 /* ✅ لما الشاشة تصغر: خلي الأزرار تتمدد 100% وتترتب */
@@ -638,8 +646,9 @@
 
 /* ✅ Alert Card */
 .exp-alert-card{
-  width: min(1180px, calc(100% - 28px));
-  margin: 0 auto 12px auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 12px 0;
   background: rgba(255,255,255,0.92);
   border: 1px solid rgba(139,92,246,0.16);
   border-radius: 18px;
@@ -924,10 +933,46 @@
   .exp-header-actions{
     width: 100% !important;
   }
+  .exp-page .exp-form,
+  .exp-page .exp-filters{
+    grid-template-columns: 1fr !important;
+  }
+  .exp-page .span-2{
+    grid-column: auto !important;
+  }
+  .exp-page .exp-actions{
+    flex-direction: column;
+  }
+  .exp-page .exp-actions .exp-btn,
+  .exp-page .exp-actions .reports-btn{
+    width: 100%;
+    justify-content: center;
+  }
+  .exp-header-actions .exp-btn,
   .exp-header-actions .reports-btn,
   .exp-header-actions .reports-btn.primary{
     width: 100% !important;
     justify-content: center !important;
+  }
+  .exp-page .exp-alert-card{
+    padding: 12px !important;
+    border-radius: 14px !important;
+  }
+  .exp-page .exp-alert-left{
+    width: 100%;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .exp-page .exp-alert-right{
+    width: 100%;
+    margin-inline-start: 0;
+    justify-content: stretch;
+  }
+  .exp-page .exp-alert-right .reports-btn,
+  .exp-page .exp-alert-right .exp-btn{
+    width: 100%;
+    flex: 1 1 100%;
+    justify-content: center;
   }
 }
 

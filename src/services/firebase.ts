@@ -25,17 +25,6 @@ const firebaseConfig = {
   messagingSenderId: readEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "000000000000"),
   appId: readEnv("VITE_FIREBASE_APP_ID", "1:000000000000:web:dev"),
 };
-console.log("FB ENV CHECK:", {
-  apiKey: firebaseConfig.apiKey,
-  authDomain: firebaseConfig.authDomain,
-  projectId: firebaseConfig.projectId,
-});
-
-
-if (import.meta.env.DEV) {
-  console.log("✅ Firebase Project:", firebaseConfig.projectId);
-  console.log("✅ Firebase AuthDomain:", firebaseConfig.authDomain);
-}
 
 export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 

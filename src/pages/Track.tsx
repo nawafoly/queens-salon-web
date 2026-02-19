@@ -140,7 +140,7 @@ const Track = () => {
       <div className="track-card">
         <div className="track-head">
           <div className="track-logo">
-            <img src={logo} alt="Queens Salon Logo" />
+            <img src={logo} alt="MALIKAT SALON Logo" />
           </div>
 
           <h2 className="track-title">تتبع الحجز</h2>
@@ -232,3 +232,4 @@ const Track = () => {
 };
 
 export default Track;
+

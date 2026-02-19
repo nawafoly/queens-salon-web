@@ -350,7 +350,7 @@ const Navbar: React.FC = () => {
         </div>
 
         <Link to="/" className="logo-link" onClick={() => setIsMenuOpen(false)}>
-          <img src={logoNavbar} alt="Body Salon Logo" className="logo" />
+          <img src={logoNavbar} alt="Body Salon Logo" className="navbar-logo" />
         </Link>
 
         <div className="profile-container" ref={dropdownRef}>

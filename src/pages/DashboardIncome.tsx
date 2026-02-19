@@ -515,6 +515,52 @@ export default function DashboardIncome() {
               </tbody>
             </table>
           </div>
+
+          <div className="income-mobile-list">
+            {filtered.length === 0 ? (
+              <div className="income-mobile-empty">
+                لا يوجد بيانات مطابقة للفترة الحالية.
+              </div>
+            ) : (
+              filtered.map((x) => (
+                <article className="income-mobile-card" key={`mob_${x.id}`}>
+                  <div className="income-mobile-row">
+                    <span className="income-mobile-label">التاريخ</span>
+                    <span className="income-mobile-value income-mobile-value--date">{x.date}</span>
+                  </div>
+                  <div className="income-mobile-row">
+                    <span className="income-mobile-label">المبلغ</span>
+                    <span className="income-mobile-value" style={{ fontWeight: 900 }}>
+                      {(Number(x.amount) || 0).toLocaleString()} ريال
+                    </span>
+                  </div>
+                  <div className="income-mobile-row">
+                    <span className="income-mobile-label">الدفع</span>
+                    <span className="income-mobile-value">{methodLabel(x.method)}</span>
+                  </div>
+                  <div className="income-mobile-row">
+                    <span className="income-mobile-label">المصدر</span>
+                    <span className="income-mobile-value">{x.source || "-"}</span>
+                  </div>
+                  <div className="income-mobile-row">
+                    <span className="income-mobile-label">ملاحظة</span>
+                    <span className="income-mobile-value">{x.note || "-"}</span>
+                  </div>
+                  <div className="income-mobile-actions">
+                    <button
+                      className="dash-pill dash-pill-outline income-mobile-delete"
+                      type="button"
+                      title="حذف"
+                      onClick={() => removeIncome(String(x.id))}
+                      disabled={loading}
+                    >
+                      <FontAwesomeIcon icon={faTrash} /> حذف
+                    </button>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
         </div>
 
         {/* Errors */}

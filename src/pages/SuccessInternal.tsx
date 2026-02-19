@@ -378,7 +378,7 @@ export default function SuccessInternal() {
       <div className="receipt-container">
         <header className="header">
           <h1 className="brand-logo">Malikat</h1>
-          <p className="subtitle">Queens Salon - فاتورة حجز</p>
+          <p className="subtitle">MALIKAT SALON - فاتورة حجز</p>
         </header>
 
         <div className="line" />
@@ -476,3 +476,4 @@ export default function SuccessInternal() {
     </div>
   );
 }
+

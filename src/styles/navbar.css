@@ -1,5 +1,5 @@
 /* ===========================
-   Navbar Styles (Queens Salon)
+   Navbar Styles (MALIKAT SALON)
    =========================== */
 
 /* ===== Topbar ===== */
@@ -83,7 +83,7 @@
   flex: 1;
 }
 
-.logo {
+.navbar-logo {
   width: 52px;
   height: auto;
   display: block;
@@ -328,7 +328,7 @@
   .navbar {
     padding: 0.6rem 0.9rem;
   }
-  .logo {
+  .navbar-logo {
     width: 42px;
   }
 }
@@ -370,7 +370,7 @@
   align-items: center;
 }
 
-.logo {
+.navbar-logo {
   height: 45px;        /* جرّب 48 → 56 → 64 */
   width: auto;
   object-fit: contain;
@@ -380,3 +380,4 @@
   transform: translateY(-120%);
   pointer-events: none;
 }
+
