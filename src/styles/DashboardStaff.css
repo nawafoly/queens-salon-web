@@ -115,6 +115,12 @@
   color: rgba(13,13,13,.72);
 }
 
+.dashstaff-page .pill.ack-new{
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.40);
+  color: #92400e;
+}
+
 /* =========================
    Alerts
 ========================= */
@@ -180,6 +186,13 @@
   box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.14);
 }
 
+.dashstaff-page .dashstaff-kpis{
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* =========================
    List & Cards
 ========================= */
@@ -236,6 +249,14 @@
   font-weight: 800;
 }
 
+.dashstaff-page .dashstaff-badges{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 /* =========================
    Status
 ========================= */
@@ -257,6 +278,12 @@
   background: rgba(34, 197, 94, 0.18);
   color: #166534;
   border-color: rgba(34, 197, 94, 0.42);
+}
+
+.dashstaff-page .dashstaff-status.completed{
+  background: rgba(20, 184, 166, 0.17);
+  color: #115e59;
+  border-color: rgba(20, 184, 166, 0.40);
 }
 
 .dashstaff-page .dashstaff-status.cancelled{
@@ -311,6 +338,52 @@
   box-shadow: 0 10px 22px rgba(64, 1, 13, 0.14);
 }
 
+.dashstaff-page .dashstaff-actions button:disabled{
+  opacity: .58;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+  box-shadow: none;
+}
+
+.dashstaff-page .dashstaff-actions .btn-tab{
+  background: rgba(13, 13, 13, 0.04);
+  border-color: rgba(13, 13, 13, 0.16);
+  color: rgba(13, 13, 13, 0.80);
+}
+
+.dashstaff-page .dashstaff-actions .btn-tab.is-active{
+  background: rgba(64, 1, 13, 0.14);
+  border-color: rgba(64, 1, 13, 0.32);
+  color: var(--ds-brand);
+  box-shadow: 0 8px 18px rgba(64, 1, 13, 0.12);
+}
+
+.dashstaff-page .dashstaff-actions .btn-bulk,
+.dashstaff-page .dashstaff-actions .btn-receipt{
+  background: rgba(64, 1, 13, 0.11);
+  border-color: rgba(64, 1, 13, 0.26);
+  color: var(--ds-brand);
+}
+
+.dashstaff-page .dashstaff-actions .btn-confirm{
+  background: rgba(34, 197, 94, 0.13);
+  border-color: rgba(34, 197, 94, 0.36);
+  color: #166534;
+}
+
+.dashstaff-page .dashstaff-actions .btn-complete{
+  background: rgba(20, 184, 166, 0.12);
+  border-color: rgba(20, 184, 166, 0.36);
+  color: #115e59;
+}
+
+.dashstaff-page .dashstaff-actions .btn-cancel{
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.36);
+  color: #7f1d1d;
+}
+
 /* =========================
    ✅ Mobile polish (DashboardStaff)
    Add at END of DashboardStaff.css
@@ -360,6 +433,11 @@
     height: 46px;
     border-radius: 16px;
     font-size: 13px;
+  }
+
+  .dashstaff-page .dashstaff-kpis{
+    margin-top: 8px;
+    gap: 6px;
   }
 
   /* List spacing أقل */

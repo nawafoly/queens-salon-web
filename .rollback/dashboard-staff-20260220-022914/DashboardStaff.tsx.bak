@@ -4,7 +4,6 @@ import { onAuthStateChanged } from "firebase/auth";
 
 import {
   collection,
-  getDocs,
   onSnapshot,
   query,
   where,
@@ -15,7 +14,6 @@ import {
 import type { Timestamp } from "firebase/firestore";
 
 import { auth, db } from "../services/firebase";
-import { updateBookingStatus as updateBookingStatusFS } from "../services/firestoreBookings";
 import "../styles/DashboardStaff.css";
 
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
@@ -51,13 +49,6 @@ const SALON_ID = "main";
 
 function normalizeArabic(s: any) {
   return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function safeStaffKey(s: any) {
-  return String(s || "")
-    .trim()
-    .replaceAll("/", "-")
-    .replace(/\s+/g, "_");
 }
 
 function safeMs(ts: any): number {
@@ -107,7 +98,6 @@ function formatTime12(time24?: string) {
 }
 
 type DateQuick = "all" | "today" | "tomorrow" | "week";
-type StatusQuick = "all" | BookingStatus;
 
 function isInQuickRange(iso: string, mode: DateQuick) {
   if (!iso) return false;
@@ -141,19 +131,6 @@ function isInQuickRange(iso: string, mode: DateQuick) {
   return true;
 }
 
-function normalizeStatus(status?: string): BookingStatus {
-  const st = String(status || "pending").toLowerCase();
-  if (st === "confirmed" || st === "completed" || st === "cancelled") return st;
-  return "pending";
-}
-
-const STATUS_LABEL: Record<BookingStatus, string> = {
-  pending: "بانتظار التأكيد",
-  confirmed: "مؤكد",
-  completed: "مكتمل",
-  cancelled: "ملغي",
-};
-
 /* =========================
    Log Helpers (Firestore)
 ========================= */
@@ -174,15 +151,9 @@ type BookingLogEvent = {
   note?: string;
 };
 
-type DashboardStaffProps = {
-  allowStatusChange?: boolean;
-};
-
-export default function DashboardStaff({ allowStatusChange = false }: DashboardStaffProps) {
+export default function DashboardStaff() {
   const [myUid, setMyUid] = useState<string>("");
   const [myEmail, setMyEmail] = useState<string>("");
-  const [myStaffDocId, setMyStaffDocId] = useState<string>("");
-  const [myStaffName, setMyStaffName] = useState<string>("");
 
   const [allBookingsRaw, setAllBookingsRaw] = useState<BookingWithId[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,7 +162,6 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
   const [tab, setTab] = useState<"new" | "seen" | "all">("new");
   const [q, setQ] = useState("");
   const [dateQuick, setDateQuick] = useState<DateQuick>("week");
-  const [statusQuick, setStatusQuick] = useState<StatusQuick>("all");
 
   const [busyId, setBusyId] = useState<string>(""); // ✅ disable button while writing
 
@@ -205,47 +175,6 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
     });
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    if (!myUid) {
-      setMyStaffDocId("");
-      setMyStaffName("");
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadStaffIdentity = async () => {
-      try {
-        const spCol = collection(db, "salons", SALON_ID, "staff_public");
-        const byUid = query(spCol, where("linkedUid", "==", myUid));
-        const snap = await getDocs(byUid);
-
-        if (cancelled) return;
-
-        if (!snap.empty) {
-          const hit = snap.docs[0];
-          const data = hit.data() as any;
-          setMyStaffDocId(hit.id);
-          setMyStaffName(String(data?.name || "").trim());
-        } else {
-          setMyStaffDocId("");
-          setMyStaffName("");
-        }
-      } catch (e) {
-        console.warn("DashboardStaff staff identity lookup failed:", e);
-        if (cancelled) return;
-        setMyStaffDocId("");
-        setMyStaffName("");
-      }
-    };
-
-    loadStaffIdentity();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [myUid]);
 
   // ✅ 2) Realtime: حجوزات الموظفة فقط (employeeUid == myUid)
   useEffect(() => {
@@ -261,37 +190,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
     setAllBookingsRaw([]);
 
     const colRef = collection(db, "salons", SALON_ID, "bookings");
-    const rowsByKeyUid: { value: BookingWithId[] } = { value: [] };
-    const rowsByUid: { value: BookingWithId[] } = { value: [] };
-    const rowsByStaffId: { value: BookingWithId[] } = { value: [] };
-    const rowsByName: { value: BookingWithId[] } = { value: [] };
-    const rowsByKeyName: { value: BookingWithId[] } = { value: [] };
-
-    const mapDocs = (snap: any): BookingWithId[] =>
-      snap.docs.map((d: any) => ({
-        id: d.id,
-        ...(d.data() as BookingDoc),
-      }));
-
-    const emitMerged = () => {
-      const merged = new Map<string, BookingWithId>();
-      [
-        rowsByKeyUid.value,
-        rowsByUid.value,
-        rowsByStaffId.value,
-        rowsByName.value,
-        rowsByKeyName.value,
-      ].forEach((rows) => {
-        rows.forEach((r) => merged.set(r.id, r));
-      });
-
-      const finalRows = Array.from(merged.values()).sort(
-        (a, b) => safeMs(b.createdAt) - safeMs(a.createdAt)
-      );
-
-      setAllBookingsRaw(finalRows);
-      setLoading(false);
-    };
+    const qMine = query(colRef, where("employeeKey", "==", myUid));
 
     const onErr = (e: any) => {
       console.error("DashboardStaff snapshot error:", e);
@@ -309,88 +208,34 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
       setLoading(false);
     };
 
-    const unsubs: Array<() => void> = [];
+    const unsub = onSnapshot(
+      qMine,
+      (snap) => {
+        const rows = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as BookingDoc),
+        }));
 
-    unsubs.push(
-      onSnapshot(
-        query(colRef, where("employeeKey", "==", myUid)),
-        (snap) => {
-          rowsByKeyUid.value = mapDocs(snap);
-          emitMerged();
-        },
-        onErr
-      )
+        rows.sort((a, b) => safeMs(b.createdAt) - safeMs(a.createdAt));
+
+        setAllBookingsRaw(rows);
+        setLoading(false);
+      },
+      onErr
     );
 
-    unsubs.push(
-      onSnapshot(
-        query(colRef, where("employeeUid", "==", myUid)),
-        (snap) => {
-          rowsByUid.value = mapDocs(snap);
-          emitMerged();
-        },
-        onErr
-      )
-    );
-
-    if (myStaffDocId) {
-      unsubs.push(
-        onSnapshot(
-          query(colRef, where("employeeId", "==", myStaffDocId)),
-          (snap) => {
-            rowsByStaffId.value = mapDocs(snap);
-            emitMerged();
-          },
-          onErr
-        )
-      );
-    }
-
-    if (myStaffName) {
-      const keyName = safeStaffKey(myStaffName);
-
-      unsubs.push(
-        onSnapshot(
-          query(colRef, where("employeeName", "==", myStaffName)),
-          (snap) => {
-            rowsByName.value = mapDocs(snap);
-            emitMerged();
-          },
-          onErr
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          query(colRef, where("employeeKey", "==", keyName)),
-          (snap) => {
-            rowsByKeyName.value = mapDocs(snap);
-            emitMerged();
-          },
-          onErr
-        )
-      );
-    }
-
-    return () => {
-      unsubs.forEach((u) => {
-        try {
-          u();
-        } catch {}
-      });
-    };
-  }, [myUid, myStaffDocId, myStaffName]);
+    return () => unsub();
+  }, [myUid]);
 
   const filtered = useMemo(() => {
     const text = normalizeArabic(q);
 
     const list = allBookingsRaw.filter((b) => {
-      const st = normalizeStatus(b.status);
+      const st = String(b.status || "pending").toLowerCase();
+      if (!["confirmed", "pending", "completed", "cancelled"].includes(st)) return false;
 
       const iso = String(b.date || "").trim();
       if (!isInQuickRange(iso, dateQuick)) return false;
-
-      if (statusQuick !== "all" && st !== statusQuick) return false;
 
       if (text) {
         const hay = normalizeArabic(
@@ -419,7 +264,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
     });
 
     return list;
-  }, [allBookingsRaw, q, dateQuick, statusQuick, tab]);
+  }, [allBookingsRaw, q, dateQuick, tab]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, BookingWithId[]>();
@@ -433,19 +278,6 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
 
   const countNew = useMemo(() => {
     return allBookingsRaw.filter((b) => !b.staffAck).length;
-  }, [allBookingsRaw]);
-
-  const statusCounts = useMemo(() => {
-    const out: Record<BookingStatus, number> = {
-      pending: 0,
-      confirmed: 0,
-      completed: 0,
-      cancelled: 0,
-    };
-    allBookingsRaw.forEach((b) => {
-      out[normalizeStatus(b.status)] += 1;
-    });
-    return out;
   }, [allBookingsRaw]);
 
   // ✅ Confirm Receipt: update booking + write log event (atomic batch)
@@ -561,42 +393,12 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
     }
   };
 
-  const setBookingStatus = async (bookingId: string, status: BookingStatus) => {
-    if (!myUid || !bookingId) return;
-    if (!allowStatusChange) return;
-
-    if (status === "cancelled") {
-      const ok = confirm("تأكيد إلغاء هذا الحجز؟");
-      if (!ok) return;
-    }
-
-    setBusyId(bookingId);
-    setErrMsg("");
-
-    try {
-      await updateBookingStatusFS(bookingId, status);
-    } catch (e: any) {
-      console.error("setBookingStatus error:", e);
-      const msg = String(e?.message || e);
-      setErrMsg(
-        msg.includes("Missing or insufficient permissions")
-          ? "⚠️ الصلاحيات تمنع تغيير حالة الحجز. تأكد من تفعيل صلاحية الموظفة من الإعدادات."
-          : "❌ تعذر تغيير حالة الحجز:\n" + msg
-      );
-    } finally {
-      setBusyId("");
-    }
-  };
-
   return (
     <div className="dashstaff-page" dir="rtl">
       <div className="dashstaff-header">
         <div>
           <h2 className="dashstaff-title">بوابة الموظفات</h2>
           <div className="dashstaff-sub">
-            <span className="pill soft">
-              {allowStatusChange ? "صلاحية تغيير الحالة: مفعلة" : "صلاحية تغيير الحالة: غير مفعلة"}
-            </span>
             <span className="pill soft">
               {myEmail ? `تسجيل الدخول: ${myEmail}` : "بدون تسجيل دخول"}
             </span>
@@ -631,53 +433,21 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
               <option value="tomorrow">بكرا</option>
               <option value="all">كل التواريخ</option>
             </select>
-
-            <select
-              className="dashstaff-input"
-              value={statusQuick}
-              onChange={(e) => setStatusQuick(e.target.value as StatusQuick)}
-            >
-              <option value="all">كل الحالات</option>
-              <option value="pending">بانتظار التأكيد</option>
-              <option value="confirmed">مؤكد</option>
-              <option value="completed">مكتمل</option>
-              <option value="cancelled">ملغي</option>
-            </select>
-          </div>
-
-          <div className="dashstaff-kpis">
-            <span className="pill soft">بانتظار التأكيد: {statusCounts.pending}</span>
-            <span className="pill soft">مؤكد: {statusCounts.confirmed}</span>
-            <span className="pill soft">مكتمل: {statusCounts.completed}</span>
-            <span className="pill soft">ملغي: {statusCounts.cancelled}</span>
           </div>
 
           <div className="dashstaff-actions">
-            <button
-              type="button"
-              className={`btn-tab ${tab === "new" ? "is-active" : ""}`}
-              onClick={() => setTab("new")}
-            >
+            <button type="button" onClick={() => setTab("new")}>
               جديد ({countNew})
             </button>
-            <button
-              type="button"
-              className={`btn-tab ${tab === "seen" ? "is-active" : ""}`}
-              onClick={() => setTab("seen")}
-            >
+            <button type="button" onClick={() => setTab("seen")}>
               تم الاستلام
             </button>
-            <button
-              type="button"
-              className={`btn-tab ${tab === "all" ? "is-active" : ""}`}
-              onClick={() => setTab("all")}
-            >
+            <button type="button" onClick={() => setTab("all")}>
               الكل ({allBookingsRaw.length})
             </button>
 
             <button
               type="button"
-              className="btn-bulk"
               onClick={confirmAllVisible}
               disabled={!myUid || busyId === "__all__" || filtered.every((b) => b.staffAck)}
               title="يؤكد استلام كل الحجوزات الظاهرة (ويكتب Log لكل واحد)"
@@ -698,12 +468,9 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
                   </div>
 
                   {rows.map((b) => {
-                    const st = normalizeStatus(b.status);
-                    const statusLabel = STATUS_LABEL[st];
+                    const st = String(b.status || "pending").toLowerCase();
                     const isAck = !!b.staffAck;
-                    const canConfirm = allowStatusChange && st === "pending";
-                    const canComplete = allowStatusChange && st === "confirmed";
-                    const canCancel = allowStatusChange && (st === "pending" || st === "confirmed");
+                    const badgeText = isAck ? "تم الاستلام" : "حجز جديد";
 
                     return (
                       <div key={b.id} className="dashstaff-card" style={{ marginTop: 10 }}>
@@ -715,12 +482,16 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
                             </span>
                           </div>
 
-                          <div className="dashstaff-badges">
-                            <span className={`dashstaff-status ${st}`}>{statusLabel}</span>
-                            <span className={`pill ${isAck ? "soft" : "ack-new"}`}>
-                              {isAck ? "تم الاستلام" : "جديد ولم يتم الاستلام"}
-                            </span>
-                          </div>
+                          <span
+                            className={`dashstaff-status ${isAck ? "completed" : "confirmed"}`}
+                            title={
+                              isAck
+                                ? "تم تأكيد استلام الحجز (مسجل في Firestore)"
+                                : "حجز جديد بانتظار تأكيد الاستلام"
+                            }
+                          >
+                            {badgeText}
+                          </span>
                         </div>
 
                         <div className="dashstaff-row">
@@ -737,7 +508,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
 
                         <div className="dashstaff-row">
                           <div className="dashstaff-meta">
-                            الحالة التشغيلية: <b>{statusLabel}</b>
+                            الحالة: <b>{st || "—"}</b>
                             {isAck && b.staffAckByUid ? (
                               <span className="dashstaff-meta" style={{ marginInlineStart: 10 }}>
                                 • تم بواسطة: <b>{String(b.staffAckByUid).slice(0, 6)}</b>
@@ -750,7 +521,6 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
                           {!isAck ? (
                             <button
                               type="button"
-                              className="btn-receipt"
                               onClick={() => confirmReceipt(b.id)}
                               disabled={!myUid || busyId === b.id}
                               title="يسجل حدث استلام داخل booking_logs"
@@ -759,42 +529,6 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
                             </button>
                           ) : (
                             <span className="pill soft">✅ تم تأكيد الاستلام (مسجل)</span>
-                          )}
-
-                          {canConfirm && (
-                            <button
-                              type="button"
-                              className="btn-confirm"
-                              onClick={() => setBookingStatus(b.id, "confirmed")}
-                              disabled={!myUid || busyId === b.id}
-                              title="تأكيد الحجز"
-                            >
-                              تأكيد الموعد
-                            </button>
-                          )}
-
-                          {canComplete && (
-                            <button
-                              type="button"
-                              className="btn-complete"
-                              onClick={() => setBookingStatus(b.id, "completed")}
-                              disabled={!myUid || busyId === b.id}
-                              title="إنهاء الخدمة"
-                            >
-                              إنهاء الخدمة
-                            </button>
-                          )}
-
-                          {canCancel && (
-                            <button
-                              type="button"
-                              className="btn-cancel"
-                              onClick={() => setBookingStatus(b.id, "cancelled")}
-                              disabled={!myUid || busyId === b.id}
-                              title="إلغاء الحجز"
-                            >
-                              إلغاء الحجز
-                            </button>
                           )}
 
                           <span className="pill soft">Booking ID: {b.id}</span>

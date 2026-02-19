@@ -1524,7 +1524,9 @@ const Dashboard: React.FC = () => {
                   path="staff"
                   element={
                     isStaff || hasAdminPower || isReception ? (
-                      <DashboardStaff />
+                      <DashboardStaff
+                        allowStatusChange={hasAdminPower || isReception || allowStaffChangeStatus}
+                      />
                     ) : (
                       <Navigate to="/dashboard/overview" replace />
                     )

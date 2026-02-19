@@ -85,29 +85,6 @@ service cloud.firestore {
       return isAdminPower() || isReception();
     }
 
-    function isOwnStaffBookingDoc(d) {
-      return (
-        (
-          (d.employeeUid is string)
-          && d.employeeUid == request.auth.uid
-        )
-        || (
-          (d.employeeKey is string)
-          && d.employeeKey == request.auth.uid
-        )
-      );
-    }
-
-    function allowStaffStatusChangeInSalon(salonId) {
-      return (
-        exists(/databases/$(database)/documents/salons/$(salonId)/settings/app)
-        && (
-          get(/databases/$(database)/documents/salons/$(salonId)/settings/app)
-            .data.policies.allowStaffChangeStatus == true
-        )
-      );
-    }
-
     function isGuestish() {
       return !signedIn() || isAnonymous();
     }
@@ -357,7 +334,8 @@ service cloud.firestore {
         // ✅ staff يشوف حجوزاته فقط (حتى لو pending/new)
         || (
           roleForSalon(salonId) == "staff"
-          && isOwnStaffBookingDoc(resource.data)
+          && (resource.data.employeeUid is string)
+          && resource.data.employeeUid == request.auth.uid
         )
 
         // ✅ staff: confirmed + completed فقط (القديم) إذا تبغاه يظل شغال
@@ -373,100 +351,13 @@ service cloud.firestore {
         || (signedIn() && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]));
 
       allow update: if signedIn() && (
-        isBootstrapAdmin()
-        || roleForSalon(salonId) in ["owner","admin","reception"]
-        || (
-          roleForSalon(salonId) == "staff"
-          && isOwnStaffBookingDoc(resource.data)
-          && (
-            (
-              request.resource.data.diff(resource.data).changedKeys()
-                .hasOnly(["staffAck","staffAckAt","staffAckByUid","updatedAt"])
-              && request.resource.data.staffAck == true
-              && (request.resource.data.staffAckByUid is string)
-              && request.resource.data.staffAckByUid == request.auth.uid
-            )
-            || (
-              allowStaffStatusChangeInSalon(salonId)
-              && request.resource.data.diff(resource.data).changedKeys()
-                .hasOnly([
-                  "status",
-                  "confirmedAt","confirmedByUid",
-                  "completedAt","completedByUid",
-                  "cancelledAt","cancelledByUid",
-                  "updatedAt"
-                ])
-              && request.resource.data.status in ["confirmed","completed","cancelled"]
-              && (
-                (
-                  request.resource.data.status == "confirmed"
-                  && (request.resource.data.confirmedByUid is string)
-                  && request.resource.data.confirmedByUid == request.auth.uid
-                )
-                || (
-                  request.resource.data.status == "completed"
-                  && (request.resource.data.completedByUid is string)
-                  && request.resource.data.completedByUid == request.auth.uid
-                )
-                || (
-                  request.resource.data.status == "cancelled"
-                  && (request.resource.data.cancelledByUid is string)
-                  && request.resource.data.cancelledByUid == request.auth.uid
-                )
-              )
-            )
-          )
-        )
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
       );
 
       // Permanent booking delete is restricted to owner only (and bootstrap admin).
       allow delete: if signedIn() && (
         isBootstrapAdmin() || roleForSalon(salonId) == "owner"
       );
-    }
-
-    match /salons/{salonId}/booking_logs/{bookingId}/events/{eventId} {
-      allow read: if signedIn() && (
-        isBootstrapAdmin()
-        || roleForSalon(salonId) in ["owner","admin","reception","accountant"]
-        || (
-          roleForSalon(salonId) == "staff"
-          && exists(/databases/$(database)/documents/salons/$(salonId)/bookings/$(bookingId))
-          && (
-            (
-              get(/databases/$(database)/documents/salons/$(salonId)/bookings/$(bookingId)).data.employeeUid is string
-            )
-            && get(/databases/$(database)/documents/salons/$(salonId)/bookings/$(bookingId)).data.employeeUid == request.auth.uid
-            || (
-              get(/databases/$(database)/documents/salons/$(salonId)/bookings/$(bookingId)).data.employeeKey is string
-            )
-            && get(/databases/$(database)/documents/salons/$(salonId)/bookings/$(bookingId)).data.employeeKey == request.auth.uid
-          )
-        )
-      );
-
-      allow create: if signedIn() && !isAnonymous() && (
-        isBootstrapAdmin()
-        || roleForSalon(salonId) in ["owner","admin","reception"]
-        || (
-          roleForSalon(salonId) == "staff"
-          && exists(/databases/$(database)/documents/salons/$(salonId)/bookings/$(bookingId))
-          && (
-            (
-              get(/databases/$(database)/documents/salons/$(salonId)/bookings/$(bookingId)).data.employeeUid is string
-            )
-            && get(/databases/$(database)/documents/salons/$(salonId)/bookings/$(bookingId)).data.employeeUid == request.auth.uid
-            || (
-              get(/databases/$(database)/documents/salons/$(salonId)/bookings/$(bookingId)).data.employeeKey is string
-            )
-            && get(/databases/$(database)/documents/salons/$(salonId)/bookings/$(bookingId)).data.employeeKey == request.auth.uid
-          )
-          && (request.resource.data.byUid is string)
-          && request.resource.data.byUid == request.auth.uid
-        )
-      );
-
-      allow update, delete: if false;
     }
 
     match /salons/{salonId}/booking_slots/{slotId} {

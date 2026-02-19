@@ -4391,7 +4391,7 @@ function findCartOverlap(items: CartItem[]) {
                     <div className="mt-3" style={{ border: '1px dashed rgba(13,13,13,0.18)', borderRadius: 14, padding: 12 }}>
                       <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
                         <div style={{ fontWeight: 900, color: '#0D0D0D' }}>
-                          ًں“ڈ دليل أطوال الشعر
+                          دليل أطوال الشعر
                           <div className="small text-muted" style={{ fontWeight: 700 }}>اختاري طول الشعر من الصورة قبل إكمال الحجز</div>
                         </div>
 
@@ -4561,7 +4561,7 @@ function findCartOverlap(items: CartItem[]) {
                             <div key={it.id} className="mb-3" style={{ background: '#f0fff4', borderLeft: '4px solid #28a745', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                               <div className="d-flex justify-content-between align-items-start">
                                 <div>
-                                  <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>âœ“ تم تأكيد هذه الخدمة: {it.serviceName}</p>
+                                  <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>تم تأكيد هذه الخدمة: {it.serviceName}</p>
                                   <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{formatTime12ForClient(it.time)}</strong></p>
                                   <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.8 }}>المدة: {dur} دقيقة | السعر: {it.priceText}</p>
                                   <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
@@ -4614,7 +4614,7 @@ function findCartOverlap(items: CartItem[]) {
 
                             {!canEditThis ? (
                               <div className="p-3 text-center" style={{ background: '#fff9db', borderRadius: '8px', border: '1px solid #ffe066' }}>
-                                <p style={{ margin: 0, fontWeight: 'bold', color: '#856404' }}>âڑ ï¸ڈ كمّلي الخدمة اللي قبلها عشان يفتح هذا الكرت âœ…</p>
+                                <p style={{ margin: 0, fontWeight: 'bold', color: '#856404' }}> كمّلي الخدمة اللي قبلها عشان يفتح هذا الكرت</p>
                               </div>
                             ) : (
                               <div className="row g-3">
