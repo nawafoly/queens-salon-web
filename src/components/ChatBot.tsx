@@ -1251,6 +1251,7 @@ const ChatBot: React.FC = () => {
   useEffect(() => {
     if (!isChatPage) return;
 
+    let rafId: number | null = null;
     const updateChatViewportHeight = () => {
       let topOffset = 0;
       document.querySelectorAll<HTMLElement>(".topbar, .navbar").forEach((el) => {
@@ -1258,18 +1259,31 @@ const ChatBot: React.FC = () => {
         topOffset = Math.max(topOffset, rect.bottom);
       });
       const safeOffset = Math.max(0, Math.round(topOffset));
-      setChatViewportHeight(`calc(100dvh - ${safeOffset}px)`);
+      const vv = window.visualViewport;
+      const viewportHeight = vv ? vv.height : window.innerHeight;
+      const usableHeight = Math.max(360, Math.floor(viewportHeight - safeOffset));
+      setChatViewportHeight(`${usableHeight}px`);
+    };
+
+    const scheduleUpdate = () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(updateChatViewportHeight);
     };
 
     updateChatViewportHeight();
-    const delayed = window.setTimeout(updateChatViewportHeight, 50);
-    window.addEventListener("resize", updateChatViewportHeight);
-    window.addEventListener("scroll", updateChatViewportHeight, { passive: true });
+    const delayed = window.setTimeout(updateChatViewportHeight, 80);
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.visualViewport?.addEventListener("resize", scheduleUpdate);
+    window.visualViewport?.addEventListener("scroll", scheduleUpdate);
 
     return () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
       window.clearTimeout(delayed);
-      window.removeEventListener("resize", updateChatViewportHeight);
-      window.removeEventListener("scroll", updateChatViewportHeight);
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.visualViewport?.removeEventListener("resize", scheduleUpdate);
+      window.visualViewport?.removeEventListener("scroll", scheduleUpdate);
     };
   }, [isChatPage]);
 
