@@ -21,7 +21,7 @@ import "../styles/Success.css";
 import LoadingBrand from "../components/LoadingBrand";
 
 // Firestore
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { getBookingById } from "../services/firestoreBookings";
 
@@ -83,6 +83,38 @@ function normalizeMk(raw: string) {
 function safeNum(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function toArabicLabel(value: string, fallback = "-") {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+
+  const map: Record<string, string> = {
+    makeup: "مكياج",
+    "hair care": "العناية بالشعر",
+    "hair-care": "العناية بالشعر",
+    hair: "الشعر",
+    nails: "الأظافر",
+    skin: "البشرة",
+    offers: "العروض",
+    package: "باكيج",
+    packages: "باكيجات",
+    "auto assigned": "تعيين تلقائي",
+    "auto-assigned": "تعيين تلقائي",
+  };
+
+  let s = raw.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  const lower = s.toLowerCase();
+
+  Object.entries(map)
+    .sort((a, b) => b[0].length - a[0].length)
+    .forEach(([en, ar]) => {
+      const re = new RegExp(`\\b${en.replace(/\s+/g, "\\s+")}\\b`, "gi");
+      s = s.replace(re, ar);
+    });
+
+  s = s.replace(/\s+/g, " ").trim();
+  return s || fallback;
 }
 
 function formatTime12ForClient(time24: string) {
@@ -248,29 +280,61 @@ export default function Success() {
 
           const serviceId = String(docData.serviceId ?? docData.serviceName ?? "").trim();
           const snapName = String(docData.serviceSnapshot?.serviceNameAtBooking ?? "").trim();
-          const serviceName = snapName || (await resolveServiceName(serviceId));
-          const sectionLabel = String(
+          const serviceNameRaw = snapName || (await resolveServiceName(serviceId));
+          const sectionLabelRaw = String(
             docData?.serviceSnapshot?.sectionTitleAtBooking ||
               docData?.serviceSnapshot?.sectionIdAtBooking ||
               ""
           ).trim();
-          const categoryLabel = String(
+          const categoryLabelRaw = String(
             docData?.serviceSnapshot?.categoryNameAtBooking ||
               docData?.serviceSnapshot?.categoryIdAtBooking ||
               ""
           ).trim();
-          const packageName = String(docData?.packageSnapshot?.packageName || "").trim();
+          const packageNameRaw = String(docData?.packageSnapshot?.packageName || "").trim();
           const packageServices = Array.isArray(docData?.packageSnapshot?.services)
             ? docData.packageSnapshot.services
                 .map((x: any) => ({
-                  serviceName: String(x?.serviceName || x?.serviceId || "").trim(),
-                  sectionLabel: String(x?.sectionTitle || x?.sectionId || "").trim() || undefined,
-                  categoryLabel: String(x?.categoryName || x?.categoryId || "").trim() || undefined,
+                  serviceName: toArabicLabel(String(x?.serviceName || x?.serviceId || "").trim(), "-"),
+                  sectionLabel: toArabicLabel(String(x?.sectionTitle || x?.sectionId || "").trim(), "") || undefined,
+                  categoryLabel: toArabicLabel(String(x?.categoryName || x?.categoryId || "").trim(), "") || undefined,
                   durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x.durationMin) : undefined,
                   price: Number.isFinite(Number(x?.price)) ? Number(x.price) : undefined,
                 }))
                 .filter((x: any) => !!x.serviceName)
             : [];
+
+          const rawEmployeeName = toArabicLabel(String(docData.employeeName || "-"), "-");
+          const shouldResolveFromSubs =
+            rawEmployeeName === "تعيين تلقائي" ||
+            rawEmployeeName === "-" ||
+            rawEmployeeName === "غير محدد";
+
+          let employeeNameResolved = rawEmployeeName;
+          if (shouldResolveFromSubs) {
+            try {
+              const groupQ = query(
+                collection(db, "salons", SALON_ID, "bookings"),
+                where("bookingGroupId", "==", bookingId)
+              );
+              const subSnap = await getDocs(groupQ);
+              const names = Array.from(
+                new Set(
+                  subSnap.docs
+                    .filter((d) => String(d.id || "").trim() !== bookingId)
+                    .map((d) => toArabicLabel(String((d.data() as any)?.employeeName || "").trim(), ""))
+                    .filter((n) => n && n !== "تعيين تلقائي")
+                )
+              );
+              if (names.length === 1) {
+                employeeNameResolved = names[0];
+              } else if (names.length > 1) {
+                employeeNameResolved = "عدة موظفات";
+              }
+            } catch {
+              // ignore and keep fallback employee name
+            }
+          }
 
           if (!mounted) return;
 
@@ -281,13 +345,13 @@ export default function Success() {
             clientPhone: docData.clientPhone || "-",
 
             serviceId,
-            serviceName,
-            sectionLabel: sectionLabel || undefined,
-            categoryLabel: categoryLabel || undefined,
-            packageName: packageName || undefined,
+            serviceName: toArabicLabel(serviceNameRaw, "-"),
+            sectionLabel: toArabicLabel(sectionLabelRaw, "") || undefined,
+            categoryLabel: toArabicLabel(categoryLabelRaw, "") || undefined,
+            packageName: toArabicLabel(packageNameRaw, "") || undefined,
             packageServices,
 
-            employeeName: docData.employeeName || "-",
+            employeeName: employeeNameResolved,
             date: docData.date || "-",
             time: docData.time || "-",
 

@@ -480,7 +480,7 @@ h1, h2, h3, h4, h5, h6 {
 .emp-page-wrapper .staff-leave-controls,
 .emp-modal .staff-leave-controls {
   display: grid;
-  grid-template-columns: 110px 170px 1fr 1fr 1fr;
+  grid-template-columns: 96px 170px minmax(180px, 1fr) auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -492,6 +492,17 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 800;
 }
 
+.emp-page-wrapper .staff-leave-controls .dash-input,
+.emp-modal .staff-leave-controls .dash-input {
+  width: 100%;
+}
+
+.emp-page-wrapper .staff-leave-controls .exp-btn,
+.emp-modal .staff-leave-controls .exp-btn {
+  white-space: nowrap;
+  min-width: 120px;
+}
+
 @media (max-width: 620px) {
   .emp-page-wrapper .staff-metrics-grid,
   .emp-modal .staff-metrics-grid {
@@ -500,7 +511,7 @@ h1, h2, h3, h4, h5, h6 {
 
   .emp-page-wrapper .staff-leave-controls,
   .emp-modal .staff-leave-controls {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 
   .emp-page-wrapper .staff-leave-controls .exp-btn,

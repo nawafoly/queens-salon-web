@@ -11,6 +11,8 @@ export type StaffPublicDoc = {
   onLeave?: boolean;
   leaveUntil?: string;
   leaveNote?: string;
+  exceptionalLeaveDates?: string[];
+  exceptionalLeaveWeekdays?: string[];
 };
 
 export type StaffPublicWithId = StaffPublicDoc & { id: string };
@@ -23,6 +25,25 @@ function normalizeArray(v: any): string[] {
   if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
   if (typeof v === "string" && v.trim()) return [v.trim()];
   return [];
+}
+
+function normalizeIsoDates(v: any): string[] {
+  const rows = Array.isArray(v) ? v : [];
+  return rows
+    .map((x) => String(x || "").trim())
+    .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+}
+
+function normalizeWeekdays(v: any): string[] {
+  const rows = Array.isArray(v) ? v : [];
+  const allowed = new Set(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
+  return Array.from(
+    new Set(
+      rows
+        .map((x) => String(x || "").trim().toLowerCase())
+        .filter((x) => allowed.has(x))
+    )
+  );
 }
 
 export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWithId[]> {
@@ -45,6 +66,8 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
         onLeave: !!data?.onLeave,
         leaveUntil: String(data?.leaveUntil ?? "").trim(),
         leaveNote: String(data?.leaveNote ?? "").trim(),
+        exceptionalLeaveDates: normalizeIsoDates(data?.exceptionalLeaveDates),
+        exceptionalLeaveWeekdays: normalizeWeekdays(data?.exceptionalLeaveWeekdays),
       } as StaffPublicWithId;
     });
 
@@ -83,6 +106,8 @@ export async function listActiveStaffBySpecialty(args: {
         onLeave: !!data?.onLeave,
         leaveUntil: String(data?.leaveUntil ?? "").trim(),
         leaveNote: String(data?.leaveNote ?? "").trim(),
+        exceptionalLeaveDates: normalizeIsoDates(data?.exceptionalLeaveDates),
+        exceptionalLeaveWeekdays: normalizeWeekdays(data?.exceptionalLeaveWeekdays),
       } as StaffPublicWithId;
     });
 
@@ -107,4 +132,3 @@ export async function listActiveStaffBySpecialty(args: {
     return [];
   }
 }
-

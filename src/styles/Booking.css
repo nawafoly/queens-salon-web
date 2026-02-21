@@ -1049,6 +1049,8 @@ textarea.form-control {
 /* Explicit button text colors for consistent readability */
 .booking-page .btn-primary,
 .booking-page .btn-primary *,
+.booking-page .btn-success,
+.booking-page .btn-success *,
 .booking-page .booking-btn,
 .booking-page .booking-btn *,
 .booking-page .bk-coupon-btn--apply,

@@ -59,6 +59,8 @@ type StaffPublicDoc = {
   onLeave?: boolean;
   leaveUntil?: string;
   leaveNote?: string;
+  exceptionalLeaveDates?: string[];
+  exceptionalLeaveWeekdays?: string[];
 
   specialties: string[];
   bio?: string;
@@ -255,6 +257,45 @@ function normalizeLeaveUntil(v: any) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
 }
 
+function normalizeExceptionalLeaveDates(v: any) {
+  const arr = Array.isArray(v) ? v : [];
+  return Array.from(
+    new Set(
+      arr
+        .map((x: any) => normalizeLeaveUntil(x))
+        .filter(Boolean)
+        .sort((a: string, b: string) => a.localeCompare(b))
+    )
+  );
+}
+
+type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+const WEEKDAY_OPTIONS: Array<{ key: WeekdayKey; label: string }> = [
+  { key: "sat", label: "السبت" },
+  { key: "sun", label: "الأحد" },
+  { key: "mon", label: "الاثنين" },
+  { key: "tue", label: "الثلاثاء" },
+  { key: "wed", label: "الأربعاء" },
+  { key: "thu", label: "الخميس" },
+  { key: "fri", label: "الجمعة" },
+];
+
+function normalizeWeekdayKey(v: any): WeekdayKey | "" {
+  const s = String(v || "").trim().toLowerCase();
+  return (WEEKDAY_OPTIONS.some((d) => d.key === s) ? s : "") as WeekdayKey | "";
+}
+
+function normalizeExceptionalLeaveWeekdays(v: any): WeekdayKey[] {
+  const arr = Array.isArray(v) ? v : [];
+  return Array.from(
+    new Set(
+      arr
+        .map((x: any) => normalizeWeekdayKey(x))
+        .filter(Boolean)
+    )
+  ) as WeekdayKey[];
+}
+
 /* =========================
    Component
 ========================= */
@@ -300,6 +341,9 @@ export default function DashboardEmployees() {
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
   const [expandedSpecialtiesByStaff, setExpandedSpecialtiesByStaff] = useState<Record<string, boolean>>({});
+  const [leaveExceptionWeekdayByStaff, setLeaveExceptionWeekdayByStaff] = useState<
+    Record<string, WeekdayKey | "">
+  >({});
 
   const [srvQ, setSrvQ] = useState("");
   const [srvSection, setSrvSection] = useState<string>("all");
@@ -366,6 +410,8 @@ export default function DashboardEmployees() {
           onLeave: !!data?.onLeave,
           leaveUntil: normalizeLeaveUntil(data?.leaveUntil),
           leaveNote: String(data?.leaveNote || ""),
+          exceptionalLeaveDates: normalizeExceptionalLeaveDates(data?.exceptionalLeaveDates),
+          exceptionalLeaveWeekdays: normalizeExceptionalLeaveWeekdays(data?.exceptionalLeaveWeekdays),
 
           specialties: normalizeSpecialties(data?.specialties),
           bio: data?.bio ?? "",
@@ -380,6 +426,7 @@ export default function DashboardEmployees() {
       });
       rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
       setList(rows);
+      setLeaveExceptionWeekdayByStaff({});
     } catch {
       setErrorMsg("تعذر تحميل الموظفات");
       setList([]);
@@ -508,7 +555,17 @@ export default function DashboardEmployees() {
 
   const updateStaffBookingDraft = (
     staffId: string,
-    patch: Partial<Pick<StaffPublicUi, "showOnBooking" | "onLeave" | "leaveUntil" | "leaveNote">>
+    patch: Partial<
+      Pick<
+        StaffPublicUi,
+        | "showOnBooking"
+        | "onLeave"
+        | "leaveUntil"
+        | "leaveNote"
+        | "exceptionalLeaveDates"
+        | "exceptionalLeaveWeekdays"
+      >
+    >
   ) => {
     setList((prev) =>
       prev.map((row) =>
@@ -522,6 +579,42 @@ export default function DashboardEmployees() {
     );
   };
 
+  const addExceptionalLeaveWeekday = (staffId: string) => {
+    const nextWeekday = normalizeWeekdayKey(leaveExceptionWeekdayByStaff[staffId]);
+    if (!nextWeekday) return;
+    setList((prev) =>
+      prev.map((row) => {
+        if (row.id !== staffId) return row;
+        const current = normalizeExceptionalLeaveWeekdays(
+          (row as any).exceptionalLeaveWeekdays
+        );
+        return {
+          ...row,
+          exceptionalLeaveWeekdays: normalizeExceptionalLeaveWeekdays([
+            ...current,
+            nextWeekday,
+          ]),
+        } as StaffPublicUi;
+      })
+    );
+    setLeaveExceptionWeekdayByStaff((prev) => ({ ...prev, [staffId]: "" }));
+  };
+
+  const removeExceptionalLeaveWeekday = (staffId: string, dayKey: WeekdayKey) => {
+    setList((prev) =>
+      prev.map((row) => {
+        if (row.id !== staffId) return row;
+        const current = normalizeExceptionalLeaveWeekdays(
+          (row as any).exceptionalLeaveWeekdays
+        );
+        return {
+          ...row,
+          exceptionalLeaveWeekdays: current.filter((d) => d !== dayKey),
+        } as StaffPublicUi;
+      })
+    );
+  };
+
   const saveStaffBookingSettings = async (staff: StaffPublicUi) => {
     if (!canManage) return;
 
@@ -529,6 +622,12 @@ export default function DashboardEmployees() {
     const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
     const effectiveOnLeave = !!(staff as any).onLeave && !leaveExpired;
     const leaveNote = String((staff as any).leaveNote || "").trim();
+    const exceptionalLeaveDates = normalizeExceptionalLeaveDates(
+      (staff as any).exceptionalLeaveDates
+    );
+    const exceptionalLeaveWeekdays = normalizeExceptionalLeaveWeekdays(
+      (staff as any).exceptionalLeaveWeekdays
+    );
 
     setLoading(true);
     setErrorMsg("");
@@ -538,6 +637,8 @@ export default function DashboardEmployees() {
         onLeave: effectiveOnLeave,
         leaveUntil,
         leaveNote,
+        exceptionalLeaveDates,
+        exceptionalLeaveWeekdays,
         updatedAt: serverTimestamp(),
       } as any);
 
@@ -550,6 +651,8 @@ export default function DashboardEmployees() {
                 onLeave: effectiveOnLeave,
                 leaveUntil,
                 leaveNote,
+                exceptionalLeaveDates,
+                exceptionalLeaveWeekdays,
               } as StaffPublicUi)
             : row
         )
@@ -742,6 +845,8 @@ export default function DashboardEmployees() {
           onLeave: false,
           leaveUntil: "",
           leaveNote: "",
+          exceptionalLeaveDates: [],
+          exceptionalLeaveWeekdays: [],
           leaveBalanceDays: 0,
           leaveEntitlementDate: "",
           leaveEntries: [],
@@ -1197,6 +1302,57 @@ export default function DashboardEmployees() {
                     }
                     placeholder="مثال: العودة يوم الأحد بإذن الله"
                   />
+                </div>
+
+                <div className="staff-booking-inline-field">
+                  <div className="staff-booking-inline-field-label">إجازة استثنائية (يوم محدد)</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <select
+                      className="staff-booking-inline-input"
+                      value={String(leaveExceptionWeekdayByStaff[x.id] || "")}
+                      disabled={loading}
+                      onChange={(e) =>
+                        setLeaveExceptionWeekdayByStaff((prev) => ({
+                          ...prev,
+                          [x.id]: e.target.value as WeekdayKey | "",
+                        }))
+                      }
+                    >
+                      <option value="">اختاري اليوم</option>
+                      {WEEKDAY_OPTIONS.map((d) => (
+                        <option key={`${x.id}_${d.key}`} value={d.key}>
+                          {d.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="exp-btn ghost sm"
+                      disabled={loading || !normalizeWeekdayKey(leaveExceptionWeekdayByStaff[x.id])}
+                      onClick={() => addExceptionalLeaveWeekday(x.id)}
+                    >
+                      إضافة اليوم
+                    </button>
+                  </div>
+
+                  {normalizeExceptionalLeaveWeekdays((x as any).exceptionalLeaveWeekdays).length > 0 ? (
+                    <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {normalizeExceptionalLeaveWeekdays((x as any).exceptionalLeaveWeekdays).map((d) => (
+                        <button
+                          key={`${x.id}_${d}`}
+                          type="button"
+                          className="exp-btn ghost sm"
+                          disabled={loading}
+                          onClick={() => removeExceptionalLeaveWeekday(x.id, d)}
+                          title="حذف اليوم الاستثنائي"
+                        >
+                          {fmtIsoDate(d)} ×
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="staff-booking-inline-hint">لا توجد أيام استثنائية حالياً.</div>
+                  )}
                 </div>
 
                 {leaveExpired && (

@@ -48,8 +48,6 @@ import { db, storage } from "../services/firebase";
 // âœ… Firebase Auth (للقراءة فقط)
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
-// âœ… fallback Pricing (مؤقت فقط إذا Firestore فاضي)
-import { pricingSections } from "./Pricing";
 
 // âœ… Firestore Offers
 import type { Offer as FsOffer } from "../services/firestoreOffers";
@@ -81,12 +79,23 @@ import {
 } from "../services/firestorePackages";
 
 // âœ… Create booking (Firestore)
-import { createBooking, createBookingGroup } from "../services/firestoreBookings";
+import { createBooking } from "../services/firestoreBookings";
+import * as firestoreBookings from "../services/firestoreBookings";
 
 import { createOrLoadUserProfile } from "../services/userProfile";
 
 // âœ… Custom modal بدل alert
 import ConfirmModal from "../components/ConfirmModal";
+
+const createBookingGroup = (
+  firestoreBookings as {
+    createBookingGroup?: (data: any) => Promise<{
+      parentId: string;
+      parentPublicId: string;
+      itemIds: string[];
+    }>;
+  }
+).createBookingGroup;
 
 /* =========================
    Types
@@ -157,23 +166,22 @@ type AppliedOfferResult = {
   reason?: string;
 };
 
-function extractMinPrice(priceText: string): number {
-  const cleaned = priceText.replace(/[^\d\-]/g, "");
-  if (!cleaned) return 0;
-
-  const parts = cleaned
-    .split("-")
-    .filter(Boolean)
-    .map((n) => Number(n))
-    .filter((n) => Number.isFinite(n));
-
-  if (!parts.length) return 0;
-  return Math.min(...parts);
-}
-
 function readDisplayLabel(raw: any, fallback = ""): string {
   const obj = raw && typeof raw === "object" ? raw : {};
-  const directKeys = ["name", "title", "category", "categoryName", "الاسم", "العنوان"];
+  const directKeys = [
+    "nameAr",
+    "titleAr",
+    "labelAr",
+    "displayNameAr",
+    "الاسم",
+    "العنوان",
+    "name",
+    "title",
+    "displayName",
+    "label",
+    "categoryName",
+    "category",
+  ];
   for (const k of directKeys) {
     const v = String((obj as any)?.[k] ?? "").trim();
     if (v) return v;
@@ -186,7 +194,12 @@ function readDisplayLabel(raw: any, fallback = ""): string {
       if (txt) return txt;
     }
   }
-  return String(fallback || "").trim();
+  const fb = String(fallback || "").trim();
+  if (!fb) return "";
+  // avoid showing internal slugs/ids like "advanced/catalog" to clients
+  const looksLikeInternalId = /^[a-z0-9/_-]+$/i.test(fb) && /[/_-]/.test(fb);
+  if (looksLikeInternalId) return "";
+  return fb;
 }
 
 function humanizeCatalogToken(value: string) {
@@ -243,18 +256,36 @@ function normalizeUiLabel(value: string) {
     .trim();
 }
 
+function stripCatalogNoise(value: string) {
+  let s = String(value || "");
+  // remove slug-like fragments: hair-color-treatments / advanced_catalog / a/b
+  s = s.replace(/[A-Za-z0-9]+(?:[\/_-][A-Za-z0-9]+)+/g, " ");
+  // remove remaining long latin tokens
+  s = s.replace(/\b[A-Za-z][A-Za-z0-9_-]{2,}\b/g, " ");
+  s = s.replace(/[_-]+/g, " ");
+  return normalizeUiLabel(s);
+}
+
+function toArabicUiLabel(value: string) {
+  let s = arabizeCatalogLabel(normalizeUiLabel(value));
+  s = s.replace(/[_-]+/g, " ");
+  // remove leftover latin words if any remain after dictionary replacement
+  s = s.replace(/\b[A-Za-z]{2,}\b/g, " ");
+  return normalizeUiLabel(s);
+}
+
 function cleanSectionLabel(value: string) {
-  const s = normalizeUiLabel(value);
+  const s = stripCatalogNoise(toArabicUiLabel(value));
   if (!s) return "";
   return s.replace(/^قسم\s+/u, "").trim();
 }
 
 function cleanCategoryLabel(category: string, section: string) {
-  let c = normalizeUiLabel(category);
+  let c = stripCatalogNoise(toArabicUiLabel(category));
   if (!c) return "";
   c = c.replace(/^قسم\s+/u, "").trim();
 
-  const sec = cleanSectionLabel(section);
+  const sec = cleanSectionLabel(toArabicUiLabel(section));
   if (!sec) return c;
 
   const variants = [
@@ -623,13 +654,34 @@ function formatISODateAr(v: any) {
 }
 
 function getStaffLeaveMetaForDate(staff: any, dateISO: string) {
+  const target = normalizeISODate(dateISO) || todayISO();
+  const exceptionalDates = Array.isArray(staff?.exceptionalLeaveDates)
+    ? staff.exceptionalLeaveDates.map((d: any) => normalizeISODate(d)).filter(Boolean)
+    : [];
+  if (exceptionalDates.includes(target)) {
+    return { isOnLeave: true, leaveUntil: "", label: "إجازة في هذا اليوم" };
+  }
+
+  const exceptionalWeekdays = Array.isArray(staff?.exceptionalLeaveWeekdays)
+    ? staff.exceptionalLeaveWeekdays
+        .map((d: any) => String(d || "").trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+  const dayKey = resolveWeekdayFromISO(target);
+  if (dayKey && exceptionalWeekdays.includes(dayKey)) {
+    return {
+      isOnLeave: true,
+      leaveUntil: "",
+      label: `إجازة كل ${WEEKDAY_LABEL_AR[dayKey]}`,
+    };
+  }
+
   const onLeave = !!staff?.onLeave;
   const leaveUntil = normalizeISODate(staff?.leaveUntil);
   if (!onLeave) {
     return { isOnLeave: false, leaveUntil: "", label: "" };
   }
 
-  const target = normalizeISODate(dateISO) || todayISO();
   const isOnLeave = !leaveUntil || target <= leaveUntil;
   if (!isOnLeave) {
     return { isOnLeave: false, leaveUntil, label: "" };
@@ -806,7 +858,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // =========================
   // Catalog mode
   // =========================
-  const [catalogMode, setCatalogMode] = useState<"firestore" | "pricing">("pricing");
+  const [catalogMode, setCatalogMode] = useState<"firestore" | "pricing">("firestore");
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [categoryLoading, setCategoryLoading] = useState(false);
 
@@ -1086,7 +1138,7 @@ function pickEffectivePrice(args: {
     const seasonActive = seasonState.ok;
 
     if (seasonActive && season > 0) {
-      return { price: season, label: "سعر موسم âœ…", usedSeason: true };
+      return { price: season, label: "سعر موسم", usedSeason: true };
     }
 
     // âœ… إذا الموسم شغال لكن الخدمة ما لها سعر موسم: نرجع للعادي (هذا شرطك)
@@ -1203,7 +1255,7 @@ function findCartOverlap(items: CartItem[]) {
       setHairGuideUrl(url);
 
       openModal({
-        title: "تم âœ…",
+        title: "تم",
         message: "تم رفع صورة دليل أطوال الشعر وتحديثها.",
         variant: "success",
         confirmText: "تمام",
@@ -1211,7 +1263,7 @@ function findCartOverlap(items: CartItem[]) {
     } catch (e: any) {
       openModal({
         title: "فشل الرفع",
-        message: `صار خطأ أثناء رفع الصورة\n\ncode: ${String(e?.code || "â€”")}\nmessage: ${String(e?.message || "â€”")}`,
+        message: `صار خطأ أثناء رفع الصورة\n\ncode: ${String(e?.code || "-")}\nmessage: ${String(e?.message || "-")}`,
         variant: "danger",
         confirmText: "حسنًا",
       });
@@ -1237,17 +1289,11 @@ function findCartOverlap(items: CartItem[]) {
 
         setFsPackages(Array.isArray(packs) ? packs : []);
 
-        if ((secs && secs.length > 0) || (packs && packs.length > 0)) {
-          setCatalogMode("firestore");
-          setFsSections(secs);
-        } else {
-          setCatalogMode("pricing");
-          setFsSections([]);
-          setFsPackages([]);
-        }
+        setCatalogMode("firestore");
+        setFsSections(Array.isArray(secs) ? secs : []);
       } catch {
         if (!cancelled) {
-          setCatalogMode("pricing");
+          setCatalogMode("firestore");
           setFsSections([]);
           setFsPackages([]);
         }
@@ -1377,7 +1423,7 @@ function findCartOverlap(items: CartItem[]) {
         if (!cancelled) {
           setFsCategories([]);
           setFsServices([]);
-          setCatalogMode("pricing");
+          setCatalogMode("firestore");
           setCategoryLoading(false);
         }
       } finally {
@@ -1459,7 +1505,7 @@ function findCartOverlap(items: CartItem[]) {
       const list = (selectedSectionId ? fsServicesFiltered : []).map((x: any) => {
         if (!hasCats) {
           const sectionId = String(x.sectionId || selectedSectionId || "").trim();
-          const sectionTitle = secMap.get(sectionId) || sectionId || "â€”";
+          const sectionTitle = secMap.get(sectionId) || sectionId || "-";
 
           const catName =
             readDisplayLabel(
@@ -1507,7 +1553,7 @@ function findCartOverlap(items: CartItem[]) {
         const catDoc = catById.get(catId);
 
         const sectionId = String(catDoc?.sectionId || "").trim();
-        const sectionTitle = secMap.get(sectionId) || sectionId || "â€”";
+        const sectionTitle = secMap.get(sectionId) || sectionId || "-";
 
         const catName = catId ? catMap.get(catId) || "عام" : "عام";
         const name = readDisplayLabel(x, String(x.id || ""));
@@ -1566,32 +1612,7 @@ function findCartOverlap(items: CartItem[]) {
       return [...list, ...packageRows];
     }
 
-    // fallback to Pricing.tsx
-    const out: FlatService[] = [];
-    Object.entries(pricingSections).forEach(([sectionId, section]) => {
-      section.services.forEach((cat, catIdx) => {
-        cat.items.forEach((it, itemIdx) => {
-          const id = `${sectionId}-${catIdx}-${itemIdx}`;
-          const basePrice = extractMinPrice(it.price);
-
-          out.push({
-            id,
-            kind: "service" as const,
-            sectionId,
-            sectionTitle: section.title,
-            categoryId: "",
-            category: cat.category,
-            name: `${cat.category} - ${it.name}`,
-            priceText: it.price,
-            basePrice,
-            durationMin: DEFAULT_SERVICE_DURATION_MIN,
-            source: "pricing",
-          });
-        });
-      });
-    });
-
-    return out;
+    return [];
   }, [catalogMode, fsSections, fsCategories, fsServicesFiltered, selectedSectionId, fsPackages]);
 
   const sectionOptions = useMemo(() => {
@@ -1606,10 +1627,7 @@ function findCartOverlap(items: CartItem[]) {
       return rows;
     }
 
-    return Object.entries(pricingSections).map(([id, sec]) => ({
-      id,
-      title: sec.title,
-    }));
+    return [];
   }, [catalogMode, fsSections, fsPackages]);
 
   const sectionOptionsSafe = useMemo(() => {
@@ -1663,14 +1681,7 @@ function findCartOverlap(items: CartItem[]) {
         .map((n) => ({ id: n, name: n }));
     }
 
-    // Pricing.tsx mode
-    const cats = servicesFlat
-      .filter((s) => s.sectionId === selectedSectionId)
-      .map((s) => ({ id: s.category, name: s.category }))
-      .filter((x) => x.id && x.name);
-
-    const seen = new Set<string>();
-    return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
+    return [];
   }, [catalogMode, fsSections.length, fsCategories, fsServices, servicesFlat, selectedSectionId]);
 
   const categoryOptionsSafe: CategoryOption[] = useMemo(() => {
@@ -1701,13 +1712,6 @@ function findCartOverlap(items: CartItem[]) {
       const label = readDisplayLabel(s, id);
       if (label) map.set(id, label);
     });
-    if (!map.size) {
-      Object.entries(pricingSections).forEach(([id, sec]) => {
-        const key = String(id || "").trim();
-        const label = String((sec as any)?.title || "").trim();
-        if (key && label) map.set(key, label);
-      });
-    }
     map.set(PACKAGE_SECTION_ID, PACKAGE_SECTION_TITLE);
     return map;
   }, [fsSections]);
@@ -2338,16 +2342,15 @@ function findCartOverlap(items: CartItem[]) {
       const packageFinal = Math.max(0, Number(sv.basePrice || 0));
       const targetTotal = packageFinal > 0 ? packageFinal : baseTotal;
 
-      let allocated = 0;
+      const splitCount = Math.max(1, baseByService.length);
+      const equalShare = Math.floor((targetTotal / splitCount) * 100) / 100;
+      const remaining = Math.round((targetTotal - equalShare * splitCount) * 100) / 100;
       const distributed = baseByService.map((row, idx) => {
-        if (idx === baseByService.length - 1) {
-          const last = Math.max(0, Number((targetTotal - allocated).toFixed(2)));
+        if (idx === splitCount - 1) {
+          const last = Math.max(0, Number((equalShare + remaining).toFixed(2)));
           return { ...row, price: last };
         }
-        const share = baseTotal > 0 ? (Number(row.base || 0) / baseTotal) * targetTotal : 0;
-        const price = Math.max(0, Number(share.toFixed(2)));
-        allocated += price;
-        return { ...row, price };
+        return { ...row, price: Math.max(0, Number(equalShare.toFixed(2))) };
       });
       const packageRunId = makeLocalId();
 
@@ -4123,13 +4126,13 @@ function findCartOverlap(items: CartItem[]) {
         offer,
         discountAmount,
         finalPrice: nextFinal,
-        reason: "تم تطبيق الخصم âœ…",
+        reason: "تم تطبيق الخصم",
       });
 
       setManualOverride(true);
-      setOfferMsg(`تم تطبيق الخصم: ${(offer as any).title} âœ…`);
+      setOfferMsg(`تم تطبيق الخصم: ${(offer as any).title}`);
     } catch (e: any) {
-      console.error("â‌Œ apply coupon error:", e?.code, e?.message, e);
+      console.error("apply coupon error:", e?.code, e?.message, e);
       setOfferMsg("صار خطأ في التحقق من الكود");
     }
   };
@@ -4315,7 +4318,7 @@ function findCartOverlap(items: CartItem[]) {
       if (!prevOk) {
         openModal({
           title: "ترتيب الخدمات",
-          message: "لازم تكمّلين بيانات الخدمة الأولى قبل ما تحددين الخدمة اللي بعدها âœ…",
+          message: "لازم تكمّلين بيانات الخدمة الأولى قبل ما تحددين الخدمة اللي بعدها.",
           variant: "danger",
           confirmText: "تمام",
         });
@@ -4350,9 +4353,9 @@ function findCartOverlap(items: CartItem[]) {
         title: "تعارض في الأوقات",
         message:
           `عندك خدمتين متداخلات بنفس الموظفة ونفس اليوم:\n\n` +
-          `â€¢ ${String(overlap.a?.serviceName || "â€”")} (${formatTime12ForClient(String(overlap.a?.time || "â€”"))})\n` +
-          `â€¢ ${String(overlap.b?.serviceName || "â€”")} (${formatTime12ForClient(String(overlap.b?.time || "â€”"))})\n\n` +
-          `عدّلي وقت واحدة منهم âœ…`,
+          `- ${String(overlap.a?.serviceName || "-")} (${formatTime12ForClient(String(overlap.a?.time || "-"))})\n` +
+          `- ${String(overlap.b?.serviceName || "-")} (${formatTime12ForClient(String(overlap.b?.time || "-"))})\n\n` +
+          `عدّلي وقت واحدة منهم.`,
         variant: "danger",
         confirmText: "تمام",
       });
@@ -4429,7 +4432,7 @@ function findCartOverlap(items: CartItem[]) {
           offer,
           discountAmount,
           finalPrice: Math.max(0, basePrice - discountAmount),
-          reason: "تم تطبيق الخصم âœ…",
+          reason: "تم تطبيق الخصم",
         };
 
         setApplied(finalApplied);
@@ -4548,6 +4551,7 @@ function findCartOverlap(items: CartItem[]) {
         return;
       }
 
+      const processedPackageRuns = new Set<string>();
       for (let idx = 0; idx < items.length; idx++) {
         const it = items[idx];
         const itemDiscount = Number(perItemDiscounts[idx] || 0);
@@ -4582,6 +4586,7 @@ function findCartOverlap(items: CartItem[]) {
             toMinutes(plan.sequenceEnd) - toMinutes(plan.sequenceStart)
           );
 
+          if (!createBookingGroup) throw new Error("GROUP_BOOKING_UNAVAILABLE");
           const groupRes = await createBookingGroup({
             parent: {
               userId: uid,
@@ -4720,6 +4725,257 @@ function findCartOverlap(items: CartItem[]) {
           continue;
         }
 
+        const packageRunId = String(it.packageRunId || "").trim();
+        if (packageRunId) {
+          if (processedPackageRuns.has(packageRunId)) continue;
+
+          const runEntries = items
+            .map((row, rowIdx) => ({ item: row, idx: rowIdx }))
+            .filter(
+              ({ item }) =>
+                String(item.packageRunId || "").trim() === packageRunId &&
+                !isSequentialOfferItem(item)
+            );
+
+          if (runEntries.length > 1) {
+            if (!createBookingGroup) throw new Error("GROUP_BOOKING_UNAVAILABLE");
+            processedPackageRuns.add(packageRunId);
+
+            const sortedRun = [...runEntries].sort((a, b) => {
+              const aDate = String(a.item.date || bookingDate || "").trim();
+              const bDate = String(b.item.date || bookingDate || "").trim();
+              if (aDate !== bDate) return aDate.localeCompare(bDate);
+              const aTime = String(a.item.time || "").trim();
+              const bTime = String(b.item.time || "").trim();
+              if (aTime !== bTime) return aTime.localeCompare(bTime);
+              return a.idx - b.idx;
+            });
+
+            const runDateISO = String(sortedRun[0]?.item?.date || bookingDate || "").trim();
+            const allSameDate = sortedRun.every(
+              ({ item }) => String(item.date || bookingDate || "").trim() === runDateISO
+            );
+
+            let parentStartTime = String(sortedRun[0]?.item?.time || "").trim();
+            let parentEndTime = "";
+            let parentDurationMin = sortedRun.reduce(
+              (sum, row) =>
+                sum + Math.max(1, Number(row.item.durationMin || DEFAULT_SERVICE_DURATION_MIN)),
+              0
+            );
+
+            if (allSameDate) {
+              const windows = sortedRun.map(({ item }) => {
+                const s = toMinutes(String(item.time || "").trim());
+                const d = Math.max(1, Number(item.durationMin || DEFAULT_SERVICE_DURATION_MIN));
+                return { start: s, end: s + d };
+              });
+              const minStart = Math.min(...windows.map((w) => w.start));
+              const maxEnd = Math.max(...windows.map((w) => w.end));
+              if (Number.isFinite(minStart) && Number.isFinite(maxEnd) && maxEnd > minStart) {
+                parentStartTime = minutesToTime24(minStart);
+                parentEndTime = minutesToTime24(maxEnd);
+                parentDurationMin = Math.max(1, maxEnd - minStart);
+              }
+            }
+
+            const packageName = String(
+              it.packageSnapshot?.packageName || it.serviceName || "باكيج"
+            ).trim();
+            const packageIdRaw = String(it.packageId || it.packageSnapshot?.packageId || "").trim();
+            const runBaseTotal = sortedRun.reduce(
+              (sum, row) => sum + Math.max(0, Number(row.item.basePrice || 0)),
+              0
+            );
+            const runDiscountTotal = sortedRun.reduce(
+              (sum, row) => sum + Math.max(0, Number(perItemDiscounts[row.idx] || 0)),
+              0
+            );
+            const runFinalTotal = sortedRun.reduce((sum, row) => {
+              const d = Number(perItemDiscounts[row.idx] || 0);
+              return sum + Math.max(0, Number(row.item.basePrice || 0) - d);
+            }, 0);
+
+            const employeeIdsInRun = Array.from(
+              new Set(
+                sortedRun
+                  .map((x) => String(x.item.employeeId || "").trim())
+                  .filter(Boolean)
+              )
+            );
+            const hasSingleEmployeeForRun = employeeIdsInRun.length === 1;
+            const runEmployee = hasSingleEmployeeForRun
+              ? sortedRun.find(
+                  (x) => String(x.item.employeeId || "").trim() === employeeIdsInRun[0]
+                )?.item
+              : undefined;
+
+            const lead = sortedRun[0].item;
+            const packageSnapshot = {
+              packageId: packageIdRaw || String(it.serviceId || "").trim(),
+              packageName,
+              finalPriceAtBooking: Number(runFinalTotal || 0),
+              baseTotalPriceAtBooking: Number(runBaseTotal || 0),
+              totalDurationMinAtBooking: Number(parentDurationMin || 0),
+              serviceIds: sortedRun
+                .map((x) => String(x.item.serviceId || "").trim())
+                .filter(Boolean),
+              services: sortedRun.map((x) => ({
+                serviceId: String(x.item.serviceId || "").trim(),
+                serviceName: String(x.item.serviceName || "").trim() || "خدمة",
+                sectionId: String(x.item.serviceSectionId || "").trim() || undefined,
+                price: Math.max(
+                  0,
+                  Number(x.item.basePrice || 0) - Number(perItemDiscounts[x.idx] || 0)
+                ),
+                durationMin: Math.max(
+                  1,
+                  Number(x.item.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+                ),
+              })),
+            };
+
+            const groupRes = await createBookingGroup({
+              parent: {
+                userId: uid,
+                createdBy: "client",
+                channel: "client",
+                clientName: String(formData.name || "").trim(),
+                clientPhone: phone,
+                serviceName: packageName,
+                serviceId: packageIdRaw
+                  ? `package:${packageIdRaw}`
+                  : String(it.serviceId || "").trim(),
+                serviceSnapshot: {
+                  serviceNameAtBooking: packageName,
+                  priceAtBooking: Number(runFinalTotal || 0),
+                  durationAtBooking: parentDurationMin,
+                  sectionIdAtBooking: String(lead.serviceSectionId || "").trim() || undefined,
+                  sectionTitleAtBooking:
+                    String(lead.serviceSectionTitle || "").trim() || undefined,
+                  categoryIdAtBooking:
+                    String(lead.serviceCategoryId || "").trim() || undefined,
+                  categoryNameAtBooking:
+                    String(lead.serviceCategoryName || "").trim() || undefined,
+                },
+                packageId: packageIdRaw || undefined,
+                packageSnapshot,
+                employeeId: hasSingleEmployeeForRun
+                  ? String(runEmployee?.employeeId || "").trim() || null
+                  : null,
+                employeeUid: hasSingleEmployeeForRun
+                  ? String(runEmployee?.employeeUid || "").trim() || null
+                  : null,
+                employeeName: hasSingleEmployeeForRun
+                  ? String(runEmployee?.employeeName || "").trim() || "تعيين تلقائي"
+                  : "تعيين تلقائي",
+                date: runDateISO,
+                time: parentStartTime,
+                total: Number(runFinalTotal || 0),
+                finalPrice: Number(runFinalTotal || 0),
+                status: "pending",
+                note: [noteFinal, `packageRunId=${packageRunId}`, `packageItems=${sortedRun.length}`]
+                  .filter(Boolean)
+                  .join(" | "),
+                slotStepMinAtBooking: slotStepMin,
+                bufferMinAtBooking: bufferMin,
+                durationMin: parentDurationMin,
+              } as any,
+              items: sortedRun.map(({ item, idx: sourceIdx }, itemOrder) => {
+                const currentFinal = Math.max(
+                  0,
+                  Number(item.basePrice || 0) - Number(perItemDiscounts[sourceIdx] || 0)
+                );
+                const currentItemToolsNote = buildItemToolsNote(item);
+                const currentItemNote =
+                  [noteFinal, currentItemToolsNote, `packageRunId=${packageRunId}`, `packageIndex=${itemOrder + 1}`]
+                    .filter(Boolean)
+                    .join(" | ") || undefined;
+
+                return {
+                  userId: uid,
+                  createdBy: "client",
+                  channel: "client",
+                  clientName: String(formData.name || "").trim(),
+                  clientPhone: phone,
+                  serviceName: String(item.serviceName || "").trim(),
+                  serviceId: String(item.serviceId || "").trim(),
+                  packageId: packageIdRaw || undefined,
+                  packageSnapshot,
+                  serviceSnapshot: {
+                    serviceNameAtBooking: String(item.serviceName || "").trim(),
+                    priceAtBooking: Number(currentFinal || 0),
+                    durationAtBooking: Math.max(
+                      1,
+                      Number(item.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+                    ),
+                    sectionIdAtBooking:
+                      String(item.serviceSectionId || "").trim() || undefined,
+                    sectionTitleAtBooking:
+                      String(item.serviceSectionTitle || "").trim() || undefined,
+                    categoryIdAtBooking:
+                      String(item.serviceCategoryId || "").trim() || undefined,
+                    categoryNameAtBooking:
+                      String(item.serviceCategoryName || "").trim() || undefined,
+                  },
+                  employeeId: String(item.employeeId || "").trim(),
+                  employeeUid: String(item.employeeUid || "").trim() || null,
+                  employeeName: String(item.employeeName || "").trim() || "-",
+                  date: String(item.date || bookingDate || "").trim(),
+                  time: String(item.time || "").trim(),
+                  total: Number(currentFinal || 0),
+                  finalPrice: Number(currentFinal || 0),
+                  status: "pending",
+                  note: currentItemNote,
+                  slotStepMinAtBooking: slotStepMin,
+                  bufferMinAtBooking: bufferMin,
+                  durationMin: Math.max(
+                    1,
+                    Number(item.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+                  ),
+                };
+              }) as any,
+            });
+
+            createdBookings.push({
+              bookingId: groupRes.parentId,
+              id: groupRes.parentId,
+              trackId: groupRes.parentId,
+              publicId: groupRes.parentPublicId,
+              name: String(formData.name || "").trim(),
+              phone,
+              service: packageIdRaw ? `package:${packageIdRaw}` : String(it.serviceId || "").trim(),
+              serviceName: packageName,
+              packageId: packageIdRaw || null,
+              packageSnapshot,
+              employee: hasSingleEmployeeForRun
+                ? String(runEmployee?.employeeName || "").trim() || "تعيين تلقائي"
+                : "تعيين تلقائي",
+              employeeId: hasSingleEmployeeForRun
+                ? String(runEmployee?.employeeId || "").trim() || null
+                : null,
+              employeeUid: hasSingleEmployeeForRun
+                ? String(runEmployee?.employeeUid || "").trim() || null
+                : null,
+              date: runDateISO,
+              time: parentStartTime,
+              endTime: parentEndTime || null,
+              total: Number(runFinalTotal || 0),
+              finalPrice: Number(runFinalTotal || 0),
+              couponCode: normalizedCode || "",
+              offerId: (finalApplied.offer as any)?.id || null,
+              offerTitle: (finalApplied.offer as any)?.title || null,
+              discountAmount: runDiscountTotal,
+              durationMin: parentDurationMin,
+              status: "pending",
+              bookingGroupId: groupRes.parentId,
+              subBookingIds: groupRes.itemIds,
+              createdAt: Date.now(),
+            });
+            continue;
+          }
+        }
+
         const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
         const itemDateISO = String(it.date || bookingDate || "").trim();
 
@@ -4833,8 +5089,8 @@ function findCartOverlap(items: CartItem[]) {
         title: "تعذر حفظ الحجز",
         message:
           `صار خطأ أثناء حفظ الحجز.\n\n` +
-          `code: ${String(e?.code || "â€”")}\n` +
-          `message: ${String(e?.message || "â€”")}`,
+          `code: ${String(e?.code || "-")}\n` +
+          `message: ${String(e?.message || "-")}`,
         variant: "danger",
         confirmText: "حسنًا",
       });
@@ -5064,10 +5320,6 @@ function findCartOverlap(items: CartItem[]) {
                       }}
 
                     >
-                      <span className="input-group-text" aria-hidden="true">
-                        <FontAwesomeIcon icon={faCalendarAlt} />
-                      </span>
-
                       <input
                         ref={dateRef}
                         type="date"
@@ -5080,8 +5332,19 @@ function findCartOverlap(items: CartItem[]) {
                       />
                     </div>
                     {bookingDate && !selectedDayOpen && (
-                      <div style={{ marginTop: 8, color: "#b42318", fontWeight: 700, fontSize: 13 }}>
-                        لا يمكن الحجز يوم {WEEKDAY_LABEL_AR[selectedDayKey]} لأنه يوم إجازة للصالون. الرجاء اختيار تاريخ آخر من الأيام المتاحة.
+                      <div
+                        style={{
+                          marginTop: 8,
+                          color: "#b00020",
+                          background: "#fff1f1",
+                          border: "1px solid #f5b5bd",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          fontWeight: 900,
+                          fontSize: 14,
+                        }}
+                      >
+                        يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة. اختاري يومًا آخر للحجز.
                       </div>
                     )}
                   </div>
@@ -5287,7 +5550,7 @@ function findCartOverlap(items: CartItem[]) {
 
                   {!!(formData.items || []).length ? (
                     <div className="mt-2">
-                      {(formData.items || []).map((it) => {
+                      {(formData.items || []).map((it, rowIdx) => {
                         if (it.sequenceOfferId) {
                           const seqSteps = Array.isArray(it.sequenceStepsSnapshot) ? it.sequenceStepsSnapshot : [];
                           return (
@@ -5307,20 +5570,29 @@ function findCartOverlap(items: CartItem[]) {
                                 البداية: {formatTime12ForClient(String(it.time || ""))} | المدة الإجمالية: {Number(it.durationMin || 0)} د | السعر: {it.priceText}
                               </div>
                               <div className="small mb-2" style={{ color: "#4b5563" }}>
-                                القسم: {String(it.serviceSectionTitle || it.serviceSectionId || "â€”")} | التصنيف: {String(it.serviceCategoryName || it.serviceCategoryId || "â€”")}
+                                القسم: {String(it.serviceSectionTitle || it.serviceSectionId || "-")} | التصنيف: {String(it.serviceCategoryName || it.serviceCategoryId || "-")}
                               </div>
                               <div className="small" style={{ color: "#6b7280" }}>
                                 {seqSteps
                                   .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0))
                                   .map((s) => `${s.serviceNameAtBooking}${s.gapAfterMin ? ` (+${s.gapAfterMin}د)` : ""}`)
-                                  .join(" â€¢ ")}
+                                  .join(" - ")}
                               </div>
                             </div>
                           );
                         }
 
-                        const busy = busyByItem[it.id] || emptyBusyState();
                         const itemsList = formData.items || [];
+                        const packageRunId = String(it.packageRunId || "").trim();
+                        const packageRunFirstIdx = packageRunId
+                          ? itemsList.findIndex((x) => String(x.packageRunId || "").trim() === packageRunId)
+                          : -1;
+                        const packageRunCount = packageRunId
+                          ? itemsList.filter((x) => String(x.packageRunId || "").trim() === packageRunId).length
+                          : 0;
+                        const isPackageRunFirstCard = packageRunId ? packageRunFirstIdx === rowIdx : false;
+                        const showPackageRunHeader = !!packageRunId && packageRunCount > 1 && isPackageRunFirstCard;
+                        const busy = busyByItem[it.id] || emptyBusyState();
                         const canEditThis = canEditByLockedPrev(itemsList, it.id);
                         const isLocked = !!it.locked;
                         const baseSlotsForUi =
@@ -5331,14 +5603,12 @@ function findCartOverlap(items: CartItem[]) {
                         const dur = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
                         const rawSectionLabel =
                           String(it.serviceSectionTitle || "").trim() ||
-                          String(sectionLabelById.get(String(it.serviceSectionId || "").trim()) || "").trim() ||
-                          String(it.serviceSectionId || "").trim();
+                          String(sectionLabelById.get(String(it.serviceSectionId || "").trim()) || "").trim();
                         const rawCategoryLabel =
                           String(it.serviceCategoryName || "").trim() ||
-                          String(categoryLabelById.get(String(it.serviceCategoryId || "").trim()) || "").trim() ||
-                          String(it.serviceCategoryId || "").trim();
-                        const sectionLabelRaw = arabizeCatalogLabel(rawSectionLabel);
-                        const categoryLabelRaw = arabizeCatalogLabel(rawCategoryLabel);
+                          String(categoryLabelById.get(String(it.serviceCategoryId || "").trim()) || "").trim();
+                        const sectionLabelRaw = normalizeUiLabel(rawSectionLabel);
+                        const categoryLabelRaw = normalizeUiLabel(rawCategoryLabel);
                         const sectionLabelClean = cleanSectionLabel(sectionLabelRaw) || "غير محدد";
                         const categoryLabelClean = cleanCategoryLabel(categoryLabelRaw, sectionLabelRaw) || "غير محدد";
                         const serviceSectionLabel = sectionLabelClean;
@@ -5387,7 +5657,6 @@ function findCartOverlap(items: CartItem[]) {
                         const selectedEmployeeAvailable = availableStaff.some(
                           (emp) => String(emp?.id || "").trim() === String(it.employeeId || "").trim()
                         );
-                        const packageRunId = String(it.packageRunId || "").trim();
                         const packageRunMeta = packageRunId ? packageRunMetaByRun[packageRunId] : undefined;
                         const quickEligibility = packageRunId ? packageQuickEligibilityByRun[packageRunId] : undefined;
                         const quickCommonStaff = quickEligibility?.commonStaff || [];
@@ -5443,89 +5712,126 @@ function findCartOverlap(items: CartItem[]) {
                         // âœ… شكل الكرت وهو مقفول (تم التأكيد)
                         if (isLocked) {
                           return (
-                            <div key={it.id} className="mb-3" style={{ background: '#f0fff4', borderLeft: '4px solid #28a745', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                              <div className="d-flex justify-content-between align-items-start">
-                                <div>
-                                  <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>
-                                    {showAsPackageBlock ? "تم تأكيد هذا البكج:" : "تم تأكيد هذه الخدمة:"} {cardTitle}
-                                  </p>
-                                  <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{formatTime12ForClient(it.time)}</strong></p>
-                                  <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.8 }}>المدة: {dur} دقيقة | السعر: {cardPriceText}</p>
-                                  <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
-                                    القسم: {serviceSectionLabel}
-                                  </p>
-                                  <p style={{ margin: '3px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
-                                    التصنيف: {serviceCategoryLabel}
-                                  </p>
-                                  {packageServiceNames.length > 0 ? (
-                                    <div style={{ margin: '8px 0 0 0' }}>
-                                      <div style={{ fontSize: '0.8rem', color: '#155724', opacity: 0.9, fontWeight: 700, marginBottom: 4 }}>
-                                        تفاصيل الباكيج
-                                      </div>
-                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                        {packageServiceNames.map((name) => (
-                                          <span
-                                            key={name}
-                                            style={{
-                                              fontSize: '0.78rem',
-                                              color: '#155724',
-                                              background: 'rgba(21,87,36,0.08)',
-                                              border: '1px solid rgba(21,87,36,0.2)',
-                                              borderRadius: 999,
-                                              padding: '2px 10px',
-                                              lineHeight: 1.6,
-                                            }}
-                                          >
-                                            {name}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  ) : null}
-                                  {toolsEligible ? (
-                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.9 }}>
-                                      {toolsSummary}
-                                    </p>
-                                  ) : null}
-                                </div>
-                                <button
-                                  type="button"
-                                  className="btn btn-link p-0"
-                                  style={{ color: '#155724', textDecoration: 'underline', fontWeight: 'bold' }}
-                                  onClick={() => {
-                                    const list = formData.items || [];
-                                    const idx = list.findIndex(x => x.id === it.id);
-                                    setFormData(prev => ({
-                                      ...prev,
-                                      items: (prev.items || []).map((x, i) => {
-                                        if (i === idx) return { ...x, locked: false };
-                                        if (i > idx) return { ...x, locked: false, time: "", employeeId: "", employeeUid: "", employeeName: "" };
-                                        return x;
-                                      })
-                                    }));
+                            <>
+                              {showPackageRunHeader ? (
+                                <div
+                                  className="mb-2 p-2"
+                                  style={{
+                                    border: "1px solid rgba(13,13,13,0.18)",
+                                    borderRadius: 10,
+                                    background: "#f5f3ff",
                                   }}
                                 >
-                                  تعديل
-                                </button>
+                                  <div style={{ fontSize: 12, fontWeight: 800, color: "#4338ca" }}>
+                                    باكيج مستقل
+                                  </div>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
+                                    {packageName || "باكيج"} • {packageRunCount} خدمات
+                                  </div>
+                                </div>
+                              ) : null}
+                              <div className="mb-3" style={{ background: '#f0fff4', borderLeft: '4px solid #28a745', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                                <div className="d-flex justify-content-between align-items-start">
+                                  <div>
+                                    <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>
+                                      {showAsPackageBlock ? "تم تأكيد هذا البكج:" : "تم تأكيد هذه الخدمة:"} {cardTitle}
+                                    </p>
+                                    <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{formatTime12ForClient(it.time)}</strong></p>
+                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.8 }}>المدة: {dur} دقيقة | السعر: {cardPriceText}</p>
+                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
+                                      القسم: {serviceSectionLabel}
+                                    </p>
+                                    <p style={{ margin: '3px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
+                                      التصنيف: {serviceCategoryLabel}
+                                    </p>
+                                    {packageServiceNames.length > 0 ? (
+                                      <div style={{ margin: '8px 0 0 0' }}>
+                                        <div style={{ fontSize: '0.8rem', color: '#155724', opacity: 0.9, fontWeight: 700, marginBottom: 4 }}>
+                                          تفاصيل الباكيج
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                          {packageServiceNames.map((name) => (
+                                            <span
+                                              key={name}
+                                              style={{
+                                                fontSize: '0.78rem',
+                                                color: '#155724',
+                                                background: 'rgba(21,87,36,0.08)',
+                                                border: '1px solid rgba(21,87,36,0.2)',
+                                                borderRadius: 999,
+                                                padding: '2px 10px',
+                                                lineHeight: 1.6,
+                                              }}
+                                            >
+                                              {name}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    {toolsEligible ? (
+                                      <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.9 }}>
+                                        {toolsSummary}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-link p-0"
+                                    style={{ color: '#155724', textDecoration: 'underline', fontWeight: 'bold' }}
+                                    onClick={() => {
+                                      const list = formData.items || [];
+                                      const idx = list.findIndex(x => x.id === it.id);
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        items: (prev.items || []).map((x, i) => {
+                                          if (i === idx) return { ...x, locked: false };
+                                          if (i > idx) return { ...x, locked: false, time: "", employeeId: "", employeeUid: "", employeeName: "" };
+                                          return x;
+                                        })
+                                      }));
+                                    }}
+                                  >
+                                    تعديل
+                                  </button>
+                                </div>
                               </div>
-                            </div>
+                            </>
                           );
                         }
 
                         // âœ… شكل الكرت وهو مفتوح (جاري الاختيار)
                         return (
-                          <div key={it.id} className="mb-3 p-3" style={{ border: '1px solid rgba(13,13,13,0.12)', borderRadius: 12, background: canEditThis ? '#fff' : 'rgba(245,245,244,0.75)', opacity: canEditThis ? 1 : 0.7 }}>
-                            <div className="d-flex justify-content-between align-items-start mb-3">
-                              <div>
-                                <h5 className="m-0" style={{ fontWeight: 800, color: '#0D0D0D' }}>
-                                  {cardTitle}
-                                </h5>
-                                <div className="small text-muted" style={{ marginTop: 4, fontWeight: 700 }}>
-                                  {showAsPackageBlock ? `باكيج - ${cardPriceText}` : cardPriceText}
+                          <>
+                            {showPackageRunHeader ? (
+                              <div
+                                className="mb-2 p-2"
+                                style={{
+                                  border: "1px solid rgba(13,13,13,0.18)",
+                                  borderRadius: 10,
+                                  background: "#f5f3ff",
+                                }}
+                              >
+                                <div style={{ fontSize: 12, fontWeight: 800, color: "#4338ca" }}>
+                                  باكيج مستقل
+                                </div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
+                                  {packageName || "باكيج"} • {packageRunCount} خدمات
                                 </div>
                               </div>
-                              <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>حذف</button>
-                            </div>
+                            ) : null}
+                            <div className="mb-3 p-3" style={{ border: '1px solid rgba(13,13,13,0.12)', borderRadius: 12, background: canEditThis ? '#fff' : 'rgba(245,245,244,0.75)', opacity: canEditThis ? 1 : 0.7 }}>
+                              <div className="d-flex justify-content-between align-items-start mb-3">
+                                <div>
+                                  <h5 className="m-0" style={{ fontWeight: 800, color: '#0D0D0D' }}>
+                                    {cardTitle}
+                                  </h5>
+                                  <div className="small text-muted" style={{ marginTop: 4, fontWeight: 700 }}>
+                                    {showAsPackageBlock ? `باكيج - ${cardPriceText}` : cardPriceText}
+                                  </div>
+                                </div>
+                                <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>حذف</button>
+                              </div>
 
                             {!canEditThis ? (
                               <div className="p-3 text-center" style={{ background: '#fff9db', borderRadius: '8px', border: '1px solid #ffe066' }}>
@@ -5733,17 +6039,6 @@ function findCartOverlap(items: CartItem[]) {
                                 {!hasPackageQuickMode && it.employeeId && selectedEmployeeAvailable && (
                                   <div className="col-12">
                                     <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
-                                    {nearestAvailableStart ? (
-                                      <div className="mb-2">
-                                        <button
-                                          type="button"
-                                          className="btn btn-outline-dark btn-sm bk-nearest-btn"
-                                          onClick={() => updateItem(it.id, { time: nearestAvailableStart })}
-                                        >
-                                          أقرب موعد متاح: {formatTime12ForClient(nearestAvailableStart)}
-                                        </button>
-                                      </div>
-                                    ) : null}
                                     <div className="bk-time-grid">
                                       {availableSlotsForItem.length === 0 ? (
                                         <div className="text-muted small" style={{ padding: 8 }}>
@@ -5788,7 +6083,9 @@ function findCartOverlap(items: CartItem[]) {
                                     ) : null}
 
                                     {busy.loading && <div className="small text-muted mt-2"><FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات...</div>}
-                                    {busy.hint && <div className="small text-warning mt-2">{busy.hint}</div>}
+                                    {busy.hint && !String(busy.hint).includes("الوقت المقترح") && (
+                                      <div className="small text-warning mt-2">{busy.hint}</div>
+                                    )}
 
                                     {it.time && (
                                       <div className="mt-3 text-center">
@@ -5797,7 +6094,7 @@ function findCartOverlap(items: CartItem[]) {
                                           className="btn btn-success w-100 py-2 fw-bold"
                                           onClick={() => updateItem(it.id, { locked: true })}
                                         >
-                                          تأكيد الموظفة والوقت لهذه الخدمة âœ…
+                                          تأكيد الموظفة والوقت لهذه الخدمة
                                         </button>
                                       </div>
                                     )}
@@ -5805,7 +6102,8 @@ function findCartOverlap(items: CartItem[]) {
                                 )}
                               </div>
                             )}
-                          </div>
+                            </div>
+                          </>
                         );
                       })}
                     </div>

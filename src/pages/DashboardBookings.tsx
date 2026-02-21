@@ -312,6 +312,33 @@ type BookingServiceItem = {
   categoryLabel?: string;
 };
 
+function toArabicOnlyLabel(value: string, fallback = "—"): string {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+
+  const dict: Record<string, string> = {
+    makeup: "مكياج",
+    "hair care": "العناية بالشعر",
+    "hair-care": "العناية بالشعر",
+    hair: "شعر",
+    nails: "أظافر",
+    skin: "بشرة",
+    eyeliner: "ايلاينر",
+  };
+
+  let s = raw.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  Object.entries(dict)
+    .sort((a, b) => b[0].length - a[0].length)
+    .forEach(([en, ar]) => {
+      const re = new RegExp(`\\b${en.replace(/\s+/g, "\\s+")}\\b`, "gi");
+      s = s.replace(re, ar);
+    });
+
+  // منع أي كلمات إنجليزية متبقية من الظهور
+  s = s.replace(/\b[A-Za-z]{2,}\b/g, " ").replace(/\s+/g, " ").trim();
+  return s || fallback;
+}
+
 function toStringArray(v: any): string[] {
   if (Array.isArray(v)) return v.map((x) => String(x ?? "").trim()).filter(Boolean);
   return [];
@@ -323,11 +350,11 @@ function extractServicesFromAny(anyB: any): BookingServiceItem[] {
     return pkgServices
       .map((x: any) => ({
         serviceId: String(x?.serviceId ?? "").trim() || undefined,
-        serviceName: String(x?.serviceName ?? "").trim() || undefined,
+        serviceName: toArabicOnlyLabel(String(x?.serviceName ?? "").trim(), "") || undefined,
         price: Number.isFinite(Number(x?.price)) ? Number(x?.price) : undefined,
         durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x?.durationMin) : undefined,
-        sectionLabel: String(x?.sectionTitle || x?.sectionId || "").trim() || undefined,
-        categoryLabel: String(x?.categoryName || x?.categoryId || "").trim() || undefined,
+        sectionLabel: toArabicOnlyLabel(String(x?.sectionTitle || x?.sectionId || "").trim(), "") || undefined,
+        categoryLabel: toArabicOnlyLabel(String(x?.categoryName || x?.categoryId || "").trim(), "") || undefined,
       }))
       .filter((x: any) => x.serviceId || x.serviceName);
   }
@@ -336,11 +363,11 @@ function extractServicesFromAny(anyB: any): BookingServiceItem[] {
   if (sArr && sArr.length) {
     return sArr.map((x: any) => ({
       serviceId: String(x?.serviceId ?? x?.id ?? x?.key ?? "").trim() || undefined,
-      serviceName: String(x?.serviceName ?? x?.name ?? "").trim() || undefined,
+      serviceName: toArabicOnlyLabel(String(x?.serviceName ?? x?.name ?? "").trim(), "") || undefined,
       price: Number.isFinite(Number(x?.price)) ? Number(x?.price) : undefined,
       durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x?.durationMin) : undefined,
-      sectionLabel: String(x?.sectionTitle || x?.sectionId || "").trim() || undefined,
-      categoryLabel: String(x?.categoryName || x?.categoryId || "").trim() || undefined,
+      sectionLabel: toArabicOnlyLabel(String(x?.sectionTitle || x?.sectionId || "").trim(), "") || undefined,
+      categoryLabel: toArabicOnlyLabel(String(x?.categoryName || x?.categoryId || "").trim(), "") || undefined,
     })).filter((x: any) => x.serviceId || x.serviceName);
   }
   const ids = toStringArray(anyB?.serviceIds);
@@ -358,9 +385,9 @@ function extractServicesFromAny(anyB: any): BookingServiceItem[] {
   if (serviceId || serviceName) {
     return [{
       serviceId: serviceId || undefined,
-      serviceName: serviceName || undefined,
-      sectionLabel: String(anyB?.serviceSnapshot?.sectionTitleAtBooking || anyB?.serviceSnapshot?.sectionIdAtBooking || "").trim() || undefined,
-      categoryLabel: String(anyB?.serviceSnapshot?.categoryNameAtBooking || anyB?.serviceSnapshot?.categoryIdAtBooking || "").trim() || undefined,
+      serviceName: toArabicOnlyLabel(serviceName, "") || undefined,
+      sectionLabel: toArabicOnlyLabel(String(anyB?.serviceSnapshot?.sectionTitleAtBooking || anyB?.serviceSnapshot?.sectionIdAtBooking || "").trim(), "") || undefined,
+      categoryLabel: toArabicOnlyLabel(String(anyB?.serviceSnapshot?.categoryNameAtBooking || anyB?.serviceSnapshot?.categoryIdAtBooking || "").trim(), "") || undefined,
     }];
   }
   return [];
@@ -1214,9 +1241,9 @@ export default function DashboardBookings() {
                   ).map((s, idx) => (
                     <div key={`${selectedBooking.id}_svc_${idx}`} className="bk-service-row">
                       <span>
-                        {s.serviceName || s.serviceId || "خدمة"}
+                        {toArabicOnlyLabel(String(s.serviceName || s.serviceId || ""), "خدمة")}
                         <div style={{ fontSize: 11, opacity: 0.75 }}>
-                          {String(s.sectionLabel || "—")} • {String(s.categoryLabel || "—")}
+                          {toArabicOnlyLabel(String(s.sectionLabel || ""), "—")} • {toArabicOnlyLabel(String(s.categoryLabel || ""), "—")}
                         </div>
                       </span>
                       <span>

@@ -17,7 +17,6 @@ import {
   faFilter,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { pricingSections } from "./Pricing";
 
 import "../styles/DashboardModals.css";
 import "../styles/DashboardOffers.css";
@@ -55,6 +54,7 @@ type PackageServiceRow = {
   id: string;
   name: string;
   sectionId: string;
+  sectionTitle?: string;
   categoryId: string;
   categoryName?: string;
   durationMin: number;
@@ -172,18 +172,13 @@ async function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function extractMinPrice(priceText: string): number {
-  const cleaned = String(priceText || "").replace(/[^\d\-]/g, "");
-  if (!cleaned) return 0;
-
-  const parts = cleaned
-    .split("-")
-    .filter(Boolean)
-    .map((n) => Number(n))
-    .filter((n) => Number.isFinite(n));
-
-  if (!parts.length) return 0;
-  return Math.min(...parts);
+function pickDocLabel(raw: any, fallback = ""): string {
+  const keys = ["nameAr", "titleAr", "labelAr", "الاسم", "name", "title", "label", "categoryName", "category"];
+  for (const k of keys) {
+    const v = String(raw?.[k] ?? "").trim();
+    if (v) return v;
+  }
+  return String(fallback || "").trim();
 }
 
 type FlatService = {
@@ -246,6 +241,8 @@ const DashboardOffers: React.FC = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [packagesCatalog, setPackagesCatalog] = useState<ServicePackageDoc[]>([]);
   const [packageServices, setPackageServices] = useState<PackageServiceRow[]>([]);
+  const [sectionNameById, setSectionNameById] = useState<Record<string, string>>({});
+  const [categoryNameById, setCategoryNameById] = useState<Record<string, string>>({});
   const [packageServiceSearch, setPackageServiceSearch] = useState("");
   const [packageListMode, setPackageListMode] = useState<PackageListMode>("all");
   const [packageOpenGroups, setPackageOpenGroups] = useState<Record<string, boolean>>({});
@@ -335,26 +332,27 @@ const DashboardOffers: React.FC = () => {
   }, [discountOpen]);
 
 
-  // ✅ قائمة خدمات مطابقة للي في Booking (نفس id)
+  // ✅ قائمة خدمات من Firestore (نفس id المستخدم بالحجز)
   const servicesFlat: FlatService[] = useMemo(() => {
-    const out: FlatService[] = [];
-    Object.entries(pricingSections).forEach(([sectionId, section]) => {
-      section.services.forEach((cat, catIdx) => {
-        cat.items.forEach((it, itemIdx) => {
-          const id = `${sectionId}-${catIdx}-${itemIdx}`;
-          out.push({
-            id,
-            sectionId,
-            sectionTitle: section.title,
-            category: cat.category,
-            name: `${cat.category} - ${it.name}`,
-            basePrice: extractMinPrice(it.price),
-          });
-        });
-      });
-    });
-    return out;
-  }, []);
+    return (packageServices || [])
+      .filter((s) => s.active !== false)
+      .map((s) => ({
+        id: String(s.id || "").trim(),
+        sectionId: String(s.sectionId || "").trim(),
+        sectionTitle:
+          String((s as any).sectionTitle || "").trim() ||
+          String(sectionNameById[String(s.sectionId || "").trim()] || "").trim() ||
+          String(s.sectionId || "").trim(),
+        category:
+          String(s.categoryName || "").trim() ||
+          String(categoryNameById[String(s.categoryId || "").trim()] || "").trim() ||
+          String(s.categoryId || "").trim() ||
+          "عام",
+        name: String(s.name || "").trim(),
+        basePrice: Math.max(0, Number(s.price || 0)),
+      }))
+      .filter((s) => s.id && s.name);
+  }, [packageServices, sectionNameById, categoryNameById]);
 
   const servicesFiltered = useMemo(() => {
     const q = serviceSearch.trim().toLowerCase();
@@ -407,22 +405,45 @@ const DashboardOffers: React.FC = () => {
 
   const refresh = async () => {
     try {
-      const [offersData, packagesData, servicesSnap] = await Promise.all([
+      const [offersData, packagesData, servicesSnap, sectionsSnap, categoriesSnap] = await Promise.all([
         listOffers(SALON_ID),
         listAllPackages(SALON_ID),
         getDocs(query(collection(db, "salons", SALON_ID, "services"), orderBy("name", "asc"))),
+        getDocs(collection(db, "salons", SALON_ID, "service_sections")),
+        getDocs(collection(db, "salons", SALON_ID, "service_categories")),
       ]);
       const filteredOffers = (Array.isArray(offersData) ? offersData : []).filter((o: any) => !isPackageLinkedOffer(o));
       setOffers(filteredOffers);
       setPackagesCatalog(Array.isArray(packagesData) ? packagesData : []);
+      const secMap: Record<string, string> = {};
+      sectionsSnap.docs.forEach((d) => {
+        const id = String(d.id || "").trim();
+        const label = pickDocLabel(d.data() as any, "");
+        if (id && label) secMap[id] = label;
+      });
+      setSectionNameById(secMap);
+      const catMap: Record<string, string> = {};
+      categoriesSnap.docs.forEach((d) => {
+        const id = String(d.id || "").trim();
+        const label = pickDocLabel(d.data() as any, "");
+        if (id && label) catMap[id] = label;
+      });
+      setCategoryNameById(catMap);
       const srvRows: PackageServiceRow[] = servicesSnap.docs
         .map((d) => ({ id: d.id, ...(d.data() as any) }))
         .map((x: any) => ({
           id: String(x.id || "").trim(),
           name: String(x.name || "").trim(),
           sectionId: String(x.sectionId || "").trim(),
+          sectionTitle:
+            String(secMap[String(x.sectionId || "").trim()] || "").trim() ||
+            String(x.sectionTitle || "").trim() ||
+            String(x.sectionId || "").trim(),
           categoryId: String(x.categoryId || "").trim(),
-          categoryName: String(x.categoryName || x.category || "").trim() || undefined,
+          categoryName:
+            String(catMap[String(x.categoryId || "").trim()] || "").trim() ||
+            String(x.categoryName || x.category || "").trim() ||
+            undefined,
           durationMin: Math.max(0, Number(x.durationMin || 0)),
           price: Math.max(0, Number(x.price || 0)),
           active: x.active !== false,
@@ -765,19 +786,12 @@ const DashboardOffers: React.FC = () => {
   const unselectedPackageServices = useMemo(
     () => filteredPackageServices.filter((s) => !packageDraft.serviceIds.includes(s.id)),
     [filteredPackageServices, packageDraft.serviceIds]
-  );
-  const sectionTitleMap = useMemo(() => {
-    const map = new Map<string, string>();
-    Object.entries(pricingSections).forEach(([secId, sec]) => {
-      map.set(String(secId || "").trim(), String(sec?.title || "").trim());
-    });
-    return map;
-  }, []);
-  const groupPackageServices = (rows: PackageServiceRow[]) => {
+  );  const groupPackageServices = (rows: PackageServiceRow[]) => {
     const groups = new Map<string, { title: string; services: PackageServiceRow[] }>();
     rows.forEach((s) => {
       const sectionTitle = normalizeGroupLabel(
-        sectionTitleMap.get(String(s.sectionId || "").trim()) ||
+        String((s as any).sectionTitle || "").trim() ||
+          String(sectionNameById[String(s.sectionId || "").trim()] || "").trim() ||
           String(s.sectionId || "").trim() ||
           "قسم غير محدد"
       );
@@ -803,8 +817,8 @@ const DashboardOffers: React.FC = () => {
       }))
       .sort((a, b) => collator.compare(a.title, b.title));
   };
-  const selectedPackageGroups = useMemo(() => groupPackageServices(selectedPackageServices), [selectedPackageServices, sectionTitleMap]);
-  const unselectedPackageGroups = useMemo(() => groupPackageServices(unselectedPackageServices), [unselectedPackageServices, sectionTitleMap]);
+  const selectedPackageGroups = useMemo(() => groupPackageServices(selectedPackageServices), [selectedPackageServices, sectionNameById]);
+  const unselectedPackageGroups = useMemo(() => groupPackageServices(unselectedPackageServices), [unselectedPackageServices, sectionNameById]);
   const visibleSelectedGroups = useMemo(
     () => (packageListMode === "unselected" ? [] : selectedPackageGroups),
     [packageListMode, selectedPackageGroups]
@@ -1147,7 +1161,11 @@ const DashboardOffers: React.FC = () => {
         <div className="pkgm__row">
           <div className="pkgm__field">
             <label>معرف الباكيج (اختياري)</label>
-            <input value={packageDraft.id} placeholder="مثال: باكج_العناية_الشامل" onChange={(e) => setPackageDraft((p) => ({ ...p, id: buildId(e.target.value) }))} />
+            <input
+              value={packageDraft.id}
+              placeholder="مثال: باكج العناية الشامل"
+              onChange={(e) => setPackageDraft((p) => ({ ...p, id: e.target.value }))}
+            />
           </div>
           <div className="pkgm__field">
             <label>اسم الباكيج</label>
@@ -1765,3 +1783,6 @@ const DashboardOffers: React.FC = () => {
 };
 
 export default DashboardOffers;
+
+
+

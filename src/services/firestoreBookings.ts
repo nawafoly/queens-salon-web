@@ -1132,6 +1132,10 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
     }
     const parentPublicId = `MK-${String(next).padStart(5, "0")}`;
 
+    const parentEmployeeId = String((parent as any)?.employeeId ?? "").trim();
+    const parentEmployeeUid = String((parent as any)?.employeeUid ?? "").trim();
+    const parentEmployeeName = String((parent as any)?.employeeName ?? "").trim();
+
     const parentPayload = stripUndefined({
       ...parent,
       serviceName: String(parent.serviceName || parent.packageSnapshot?.packageName || "Package Booking"),
@@ -1139,9 +1143,9 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
       serviceSnapshot: parent.serviceSnapshot ? (stripUndefined(parent.serviceSnapshot as any) as ServiceSnapshot) : undefined,
       packageId: parent.packageId ? String(parent.packageId).trim() : undefined,
       packageSnapshot: parent.packageSnapshot ?? undefined,
-      employeeId: null,
-      employeeUid: null,
-      employeeName: String(parent.employeeName || "").trim() || "Auto-assigned",
+      employeeId: parentEmployeeId || null,
+      employeeUid: parentEmployeeUid || null,
+      employeeName: parentEmployeeName || "Auto-assigned",
       employeeKey: undefined,
       slotId: undefined,
       parentBookingId: null,

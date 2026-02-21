@@ -3,6 +3,8 @@ type StaffAvailabilityLike = {
   showOnBooking?: boolean;
   onLeave?: boolean;
   leaveUntil?: string;
+  exceptionalLeaveDates?: string[];
+  exceptionalLeaveWeekdays?: string[];
 };
 
 type StaffAvailabilityOptions = {
@@ -27,13 +29,33 @@ function normalizeISODate(value: string | undefined | null) {
   return isISODate(s) ? s : "";
 }
 
+function weekdayFromISO(dateISO: string) {
+  const s = normalizeISODate(dateISO);
+  if (!s) return "";
+  const d = new Date(`${s}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  const map = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  return map[d.getDay()] || "";
+}
+
 function isLeaveActiveForDate(staff: StaffAvailabilityLike, dateISO?: string) {
+  const target = normalizeISODate(dateISO) || todayISO();
+  const exceptional = Array.isArray(staff?.exceptionalLeaveDates)
+    ? staff.exceptionalLeaveDates.map((d) => normalizeISODate(d)).filter(Boolean)
+    : [];
+  if (exceptional.includes(target)) return true;
+
+  const exceptionalWeekdays = Array.isArray(staff?.exceptionalLeaveWeekdays)
+    ? staff.exceptionalLeaveWeekdays.map((d) => String(d || "").trim().toLowerCase()).filter(Boolean)
+    : [];
+  const targetWeekday = weekdayFromISO(target);
+  if (targetWeekday && exceptionalWeekdays.includes(targetWeekday)) return true;
+
   if (!staff?.onLeave) return false;
 
   const until = normalizeISODate(staff.leaveUntil);
   if (!until) return true;
 
-  const target = normalizeISODate(dateISO) || todayISO();
   return target <= until;
 }
 
