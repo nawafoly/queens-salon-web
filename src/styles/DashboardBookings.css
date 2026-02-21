@@ -224,28 +224,75 @@
   width: 100%;
   border-collapse: collapse;
   min-width: 800px;
+  table-layout: fixed;
 }
 
 .bk-page-wrapper .bookings-table th {
-  background: #f8f9fa;
-  padding: 16px;
-  font-size: 14px;
+  background: #f6f6f8;
+  padding: 14px 12px;
+  font-size: 13px;
   font-weight: 800;
-  color: #333;
+  color: #1d1d1d;
   text-align: center;
-  border-bottom: 2px solid #eee;
+  border-bottom: 2px solid #e9e9ee;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .bk-page-wrapper .bookings-table td {
-  padding: 14px 16px;
-  font-size: 14px;
-  color: #444;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 10px 10px;
+  font-size: 13px;
+  color: #242424;
+  border-bottom: 1px solid #ececf1;
   text-align: center;
+  vertical-align: top;
+  line-height: 1.45;
 }
 
-.bk-page-wrapper .bookings-table tr:hover td {
-  background: #fafafa;
+.bk-page-wrapper .bookings-table .bk-row td {
+  background: #fff;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.bk-page-wrapper .bookings-table .bk-row:hover td {
+  background: #fcfcff;
+}
+
+.bk-page-wrapper .bookings-table .bk-row.bk-row-confirmed td {
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.04), rgba(34, 197, 94, 0.015));
+}
+
+.bk-page-wrapper .bookings-table .bk-row.bk-row-pending td {
+  background: linear-gradient(180deg, rgba(234, 179, 8, 0.06), rgba(234, 179, 8, 0.02));
+}
+
+.bk-page-wrapper .bookings-table .bk-row.bk-row-cancelled td {
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.05), rgba(239, 68, 68, 0.02));
+}
+
+.bk-page-wrapper .bookings-table .bk-row.bk-row-completed td {
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.05), rgba(59, 130, 246, 0.02));
+}
+
+.bk-page-wrapper .bookings-table .bk-row td:first-child {
+  border-right: 4px solid transparent;
+}
+
+.bk-page-wrapper .bookings-table .bk-row.bk-row-confirmed td:first-child {
+  border-right-color: rgba(34, 197, 94, 0.7);
+}
+
+.bk-page-wrapper .bookings-table .bk-row.bk-row-pending td:first-child {
+  border-right-color: rgba(234, 179, 8, 0.7);
+}
+
+.bk-page-wrapper .bookings-table .bk-row.bk-row-cancelled td:first-child {
+  border-right-color: rgba(239, 68, 68, 0.65);
+}
+
+.bk-page-wrapper .bookings-table .bk-row.bk-row-completed td:first-child {
+  border-right-color: rgba(59, 130, 246, 0.7);
 }
 
 .bk-page-wrapper .bookings-table .bookings-group-row td {
@@ -275,6 +322,222 @@
   font-size: 12px;
   color: #6b4a39;
 }
+
+.bk-page-wrapper .bk-ref-cell {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.bk-page-wrapper .bk-ref-code {
+  font-weight: 900;
+  font-size: 17px;
+  letter-spacing: 0.4px;
+  color: #1f2937;
+  white-space: nowrap;
+  direction: ltr;
+  unicode-bidi: plaintext;
+}
+
+.bk-page-wrapper .bk-customer-name {
+  font-weight: 900;
+  font-size: 15px;
+  line-height: 1.2;
+  color: #111827;
+}
+
+.bk-page-wrapper .bk-customer-phone {
+  margin-top: 4px;
+  font-size: 15px;
+  color: #374151;
+  font-weight: 800;
+}
+
+.bk-page-wrapper .bk-service-main {
+  font-weight: 900;
+  color: #111827;
+  line-height: 1.25;
+  font-size: 15px;
+}
+
+.bk-page-wrapper .bk-service-meta {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #4b5563;
+  font-weight: 700;
+}
+
+.bk-page-wrapper .bk-employee-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  background: rgba(79, 70, 229, 0.08);
+  color: #312e81;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.bk-page-wrapper .bk-datetime-date {
+  font-weight: 900;
+  color: #111827;
+  white-space: nowrap;
+  direction: ltr;
+  unicode-bidi: plaintext;
+  font-size: 14px;
+}
+
+.bk-page-wrapper .bk-datetime-time {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #374151;
+  font-weight: 700;
+  white-space: nowrap;
+  direction: ltr;
+  unicode-bidi: plaintext;
+}
+
+.bk-page-wrapper .bk-update-by {
+  font-weight: 900;
+  color: #111827;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.bk-page-wrapper .bk-update-at {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #4b5563;
+  font-weight: 700;
+  white-space: nowrap;
+  direction: ltr;
+  unicode-bidi: plaintext;
+}
+
+.bk-page-wrapper .bk-price-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 5px 12px;
+  border: 1px solid rgba(64, 1, 13, 0.22);
+  background: rgba(64, 1, 13, 0.08);
+  color: #40010d;
+  font-weight: 900;
+  font-size: 12px;
+}
+
+.bk-page-wrapper .bk-actions-cell {
+  min-width: 150px;
+}
+
+.bk-page-wrapper .bk-actions-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  max-width: none;
+  margin: 0 auto;
+}
+
+.bk-page-wrapper .bk-actions-row .exp-btn.sm {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.bk-page-wrapper .bk-actions-row .bk-info-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(76, 29, 149, 0.22);
+  background: linear-gradient(145deg, rgba(124, 58, 237, 0.12), rgba(124, 58, 237, 0.04));
+  color: #5b21b6;
+}
+
+.bk-page-wrapper .bk-actions-row .bk-info-btn:hover {
+  border-color: rgba(76, 29, 149, 0.32);
+  background: linear-gradient(145deg, rgba(124, 58, 237, 0.18), rgba(124, 58, 237, 0.08));
+  transform: translateY(-1px);
+}
+
+.bk-page-wrapper .bk-actions-row .bk-info-btn svg {
+  font-size: 14px;
+}
+
+.bk-page-wrapper .bk-refund-btn {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+}
+
+.bk-page-wrapper .bk-refund-btn:hover:not(:disabled) {
+  border-color: rgba(217, 119, 6, 0.45);
+  background: rgba(245, 158, 11, 0.2);
+}
+
+.bk-page-wrapper .bk-actions-row .bk-owner-status-select {
+  width: auto !important;
+}
+
+.bk-page-wrapper .bk-owner-status-select.bk-owner-status-compact {
+  min-width: 42px;
+  width: 42px !important;
+  height: 34px !important;
+  padding: 0 6px !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  text-indent: -9999px;
+  overflow: hidden;
+  background-position: center center;
+}
+
+.bk-page-wrapper .bk-owner-status-select.bk-owner-status-compact option {
+  font-size: 13px;
+  line-height: 1.4;
+  color: #111;
+  text-indent: 0;
+}
+
+.bk-page-wrapper .bk-actions-row .bk-owner-status-select.bk-owner-status-compact {
+  width: 42px !important;
+}
+
+.bk-page-wrapper .bk-mobile-actions .bk-owner-status-select.bk-owner-status-compact {
+  width: 42px !important;
+}
+
+.bk-page-wrapper .bk-actions-row .bk-select.sm {
+  width: auto !important;
+}
+
+.bk-page-wrapper .bookings-table th:nth-child(1),
+.bk-page-wrapper .bookings-table td:nth-child(1) { width: 12%; }
+.bk-page-wrapper .bookings-table th:nth-child(2),
+.bk-page-wrapper .bookings-table td:nth-child(2) { width: 16%; }
+.bk-page-wrapper .bookings-table th:nth-child(3),
+.bk-page-wrapper .bookings-table td:nth-child(3) { width: 14%; }
+.bk-page-wrapper .bookings-table th:nth-child(4),
+.bk-page-wrapper .bookings-table td:nth-child(4) { width: 12%; }
+.bk-page-wrapper .bookings-table th:nth-child(5),
+.bk-page-wrapper .bookings-table td:nth-child(5) { width: 12%; }
+.bk-page-wrapper .bookings-table th:nth-child(6),
+.bk-page-wrapper .bookings-table td:nth-child(6) { width: 14%; }
+.bk-page-wrapper .bookings-table th:nth-child(7),
+.bk-page-wrapper .bookings-table td:nth-child(7) { width: 8%; }
+.bk-page-wrapper .bookings-table th:nth-child(8),
+.bk-page-wrapper .bookings-table td:nth-child(8) { width: 12%; }
 
 /* --- Status Badges --- */
 .status-badge {
@@ -325,6 +588,26 @@
   border-radius: 18px;
   padding: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.bk-page-wrapper .bk-mobile-card.bk-mobile-card-confirmed {
+  border-color: rgba(34, 197, 94, 0.34);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.06), #fff);
+}
+
+.bk-page-wrapper .bk-mobile-card.bk-mobile-card-pending {
+  border-color: rgba(234, 179, 8, 0.4);
+  background: linear-gradient(180deg, rgba(234, 179, 8, 0.08), #fff);
+}
+
+.bk-page-wrapper .bk-mobile-card.bk-mobile-card-cancelled {
+  border-color: rgba(239, 68, 68, 0.34);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.07), #fff);
+}
+
+.bk-page-wrapper .bk-mobile-card.bk-mobile-card-completed {
+  border-color: rgba(59, 130, 246, 0.34);
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.07), #fff);
 }
 
 .bk-page-wrapper .bk-mobile-row {
@@ -668,6 +951,98 @@
 }
 
 .bk-cancel-modal .bk-cancel-foot {
+  padding: 14px 18px 18px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Refund Modal (separate from cancel modal for clarity) */
+.bk-refund-modal {
+  direction: rtl;
+  font-family: "Tajawal", sans-serif;
+}
+
+.bk-refund-modal .bk-cancel-head {
+  padding: 16px 18px;
+  border-bottom: 1px solid #eee;
+  font-size: 18px;
+  font-weight: 900;
+  color: #111;
+}
+
+.bk-refund-modal .bk-cancel-body {
+  padding: 16px 18px;
+}
+
+.bk-refund-modal .bk-cancel-meta {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: #4b5563;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.bk-refund-modal .bk-refund-status {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  border: 1px solid;
+}
+
+.bk-refund-modal .bk-refund-status strong {
+  font-size: 14px;
+}
+
+.bk-refund-modal .bk-refund-status.is-refunded {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #065f46;
+}
+
+.bk-refund-modal .bk-refund-status.is-none {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #1e3a8a;
+}
+
+.bk-refund-modal .bk-input,
+.bk-refund-modal .bk-select {
+  width: 100%;
+  color: #111827;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  font-size: 14px;
+  box-shadow: none;
+}
+
+.bk-refund-modal textarea.bk-input {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.bk-refund-modal .bk-input::placeholder {
+  color: #9ca3af;
+}
+
+.bk-refund-modal .bk-input:focus,
+.bk-refund-modal .bk-select:focus {
+  outline: none;
+  border-color: #40010d;
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.08);
+}
+
+.bk-refund-modal .bk-cancel-foot {
   padding: 14px 18px 18px;
   border-top: 1px solid #eee;
   display: flex;

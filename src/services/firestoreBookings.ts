@@ -31,6 +31,7 @@ import { writeAuditLog } from "./logService";
 
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 export type BookingChannel = "client" | "dashboard" | "internal";
+type BookingPaymentMethod = "cash" | "card" | "transfer";
 
 // ✅ NEW: Snapshot ثابت للعرض وعدم تأثر الحجوزات بتغيير الأسعار لاحقًا
 export type ServiceSnapshot = {
@@ -119,6 +120,7 @@ export type BookingDoc = {
 
   total?: number;
   finalPrice?: number;
+  paymentMethod?: BookingPaymentMethod;
 
   status: BookingStatus;
   note?: string;
@@ -287,6 +289,7 @@ function normalizeBooking(raw: any): BookingDoc {
 
     total: Number(raw?.total ?? 0),
     finalPrice: Number(raw?.finalPrice ?? 0),
+    paymentMethod: normalizePaymentMethod(raw?.paymentMethod) ?? undefined,
 
     status: raw?.status ?? "pending",
     note: raw?.note ?? undefined,
@@ -357,12 +360,52 @@ function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
   return JS_DAY_TO_WEEKDAY[dt.getDay()] || "sat";
 }
 
-// ✅ Helper: parse payment method from note
-function parsePaymentMethod(note?: string): string {
-  const s = String(note || "").toLowerCase();
-  if (s.includes("card") || s.includes("شبكة") || s.includes("مدى")) return "card";
-  if (s.includes("cash") || s.includes("كاش") || s.includes("نقد")) return "cash";
-  return "cash";
+function normalizePaymentMethod(raw: any): BookingPaymentMethod | null {
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (!s) return null;
+  if (s === "cash" || s === "نقد" || s === "كاش") return "cash";
+  if (s === "card" || s === "pos_card" || s === "mada_online" || s === "شبكة" || s === "مدى")
+    return "card";
+  if (s === "transfer" || s === "تحويل" || s === "بنكي") return "transfer";
+  return null;
+}
+
+// ✅ Helper: parse explicit payment method from note only
+function parseExplicitPaymentMethod(note?: string): BookingPaymentMethod | null {
+  const raw = String(note || "").trim();
+  const s = raw.toLowerCase();
+
+  // Structured markers from reception/invoice flows
+  const inv = s.match(/invoice_from_reception:(cash|transfer|card)/);
+  if (inv?.[1]) return inv[1] as BookingPaymentMethod;
+
+  const pm = s.match(/payment[_\s-]?method\s*[:=]\s*(cash|transfer|card)/);
+  if (pm?.[1]) return pm[1] as BookingPaymentMethod;
+
+  // Explicit payment phrases only (avoid accidental matches in free notes)
+  if (/(طريقة\s*(الدفع|السداد)\s*[:\-]?\s*(شبكة|مدى))/i.test(raw)) return "card";
+  if (/(طريقة\s*(الدفع|السداد)\s*[:\-]?\s*(كاش|نقد))/i.test(raw)) return "cash";
+  if (/(طريقة\s*(الدفع|السداد)\s*[:\-]?\s*(تحويل|بنكي))/i.test(raw)) return "transfer";
+
+  // Legacy explicit tokens
+  if (/\b(card|mada|pos_card|mada_online)\b/i.test(s)) return "card";
+  if (/\b(cash)\b/i.test(s)) return "cash";
+  if (/\b(transfer|bank)\b/i.test(s)) return "transfer";
+
+  return null;
+}
+
+function resolvePaymentMethodForStatus(
+  status: BookingStatus,
+  paymentMethodRaw: any,
+  note?: string
+): BookingPaymentMethod | undefined {
+  const fromField = normalizePaymentMethod(paymentMethodRaw);
+  if (fromField) return fromField;
+  const fromNote = parseExplicitPaymentMethod(note);
+  if (fromNote) return fromNote;
+  if (status === "confirmed" || status === "completed") return "transfer";
+  return undefined;
 }
 
 function getAmount(b: BookingDoc): number {
@@ -688,10 +731,12 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const durationMin = Math.max(0, Number(data.durationMin || 0)) || 60;
   const nowMs = Date.now();
   const actorUid = String(data.userId || getAuth().currentUser?.uid || "").trim() || undefined;
-  const statusAuditPatch = buildStatusAuditPatch(
-    (data.status as BookingStatus) || "pending",
-    nowMs,
-    actorUid
+  const statusNow = ((data.status as BookingStatus) || "pending") as BookingStatus;
+  const statusAuditPatch = buildStatusAuditPatch(statusNow, nowMs, actorUid);
+  const resolvedPaymentMethod = resolvePaymentMethodForStatus(
+    statusNow,
+    (data as any).paymentMethod,
+    data.note
   );
 
   // ✅ times to lock (start + next slots)
@@ -774,6 +819,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
     slotStepMinAtBooking: (data as any).slotStepMinAtBooking ?? daySlotSettings.slotStepMin,
     bufferMinAtBooking: (data as any).bufferMinAtBooking ?? daySlotSettings.bufferMin,
+    paymentMethod: resolvedPaymentMethod,
     ...statusAuditPatch,
 
     createdAt: serverTimestamp(),
@@ -909,6 +955,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         date: data.date,
         time: data.time,
         durationMin,
+        paymentMethod: resolvedPaymentMethod,
 
         // ✅ NEW: خزن إعدادات السلوّت وقت الحجز
         slotStepMinAtBooking: (payloadBase as any).slotStepMinAtBooking,
@@ -954,7 +1001,11 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
       if (!existing.exists()) {
         const amount = Number(data.finalPrice ?? data.total ?? serviceSnapshot.priceAtBooking ?? 0) || 0;
-        const method = parsePaymentMethod(data.note);
+        const method = resolvePaymentMethodForStatus(
+          statusNow,
+          (data as any).paymentMethod,
+          data.note
+        ) || "transfer";
 
         await setDoc(
           incomeRef,
@@ -1465,17 +1516,24 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
   const incomeRef = doc(db, ...INCOME_COL, bookingId);
 
   // ✅ 1) Transaction: booking + track فقط
-  const bookingForIncome = await runTransaction(db, async (tx) => {
+  const txResult = await runTransaction(db, async (tx) => {
     const snap = await tx.get(bookingRef);
     if (!snap.exists()) throw new Error("BOOKING_NOT_FOUND");
 
     const booking = normalizeBooking(snap.data());
+
+    const resolvedPaymentMethod = resolvePaymentMethodForStatus(
+      status,
+      (booking as any).paymentMethod,
+      booking.note
+    );
 
     // booking
     tx.update(
       bookingRef,
       stripUndefined({
         status,
+        paymentMethod: resolvedPaymentMethod,
         ...statusAuditPatch,
         updatedAt: serverTimestamp(),
       }) as any
@@ -1505,6 +1563,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         date: booking.date,
         time: booking.time,
         durationMin: booking.durationMin ?? undefined,
+        paymentMethod: resolvedPaymentMethod,
 
         status,
         ...statusAuditPatch,
@@ -1515,7 +1574,7 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
       { merge: true }
     );
 
-    return booking;
+    return { booking, resolvedPaymentMethod };
   });
 
   // ✅ booking log: status changed (best effort)
@@ -1548,6 +1607,11 @@ if (status === "confirmed" || status === "completed") {
 
   // ✅ 2) Best-effort: income خارج الترانزاكشن (ما يمنع تعديل الحجز)
   try {
+    const bookingForIncome = txResult.booking;
+    const resolvedPaymentMethod =
+      txResult.resolvedPaymentMethod ||
+      resolvePaymentMethodForStatus(status, (bookingForIncome as any).paymentMethod, bookingForIncome.note) ||
+      "transfer";
     const amount = getAmount(bookingForIncome);
 
     // ✅ المطلوب منك: الدخل يننشأ مرة وحدة فقط عند confirmed
@@ -1555,8 +1619,6 @@ if (status === "confirmed" || status === "completed") {
       // ✅ check: إذا income موجود مسبقًا لنفس bookingId → لا نعيد إنشاء (ما يتكرر)
       const existing = await getDoc(incomeRef);
       if (!existing.exists()) {
-        const method = parsePaymentMethod(bookingForIncome.note);
-
         await setDoc(
           incomeRef,
           stripUndefined({
@@ -1564,7 +1626,7 @@ if (status === "confirmed" || status === "completed") {
             bookingId,
             amount: Number(amount || 0),
             status: "confirmed",
-            method,
+            method: resolvedPaymentMethod,
 
             date: bookingForIncome.date,
             clientName: bookingForIncome.clientName,
@@ -1587,6 +1649,7 @@ if (status === "confirmed" || status === "completed") {
             incomeRef,
             stripUndefined({
               status: "confirmed",
+              method: resolvedPaymentMethod,
               updatedAt: serverTimestamp(),
             }) as any,
             { merge: true }
@@ -1620,6 +1683,7 @@ if (status === "confirmed" || status === "completed") {
             incomeRef,
             stripUndefined({
               status: "completed",
+              method: resolvedPaymentMethod,
               updatedAt: serverTimestamp(),
             }) as any,
             { merge: true }

@@ -38,6 +38,8 @@ import {
   deleteBooking,
   type BookingStatus,
 } from "../services/firestoreBookings";
+import { listAllIncomeFS, removeIncomeFS, upsertIncomeFS } from "../services/firestoreIncome";
+import type { PaymentMethod } from "../types/finance";
 
 import type { UiRole } from "../services/userProfile";
 
@@ -469,6 +471,7 @@ type Booking = {
   date: string;
   time: string;
   status: BookingStatus;
+  paymentMethod?: string;
   total?: number;
   finalPrice?: number;
   createdAt?: any;
@@ -484,6 +487,24 @@ type ClientLoyaltyInfo = {
 type BookingLastUpdate = {
   by: string;
   at: string;
+};
+
+type RefundRecord = {
+  incomeId: string;
+  bookingId: string;
+  amount: number;
+  method: PaymentMethod;
+  reason: string;
+  details: string;
+  date: string;
+};
+
+type RefundDraft = {
+  amount: string;
+  method: PaymentMethod;
+  reason: string;
+  details: string;
+  date: string;
 };
 
 /* =========================
@@ -508,12 +529,29 @@ export default function DashboardBookings() {
   const [lastUpdateMap, setLastUpdateMap] = useState<Record<string, BookingLastUpdate>>({});
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [refundBusyId, setRefundBusyId] = useState("");
+  const [refundMapByBookingId, setRefundMapByBookingId] = useState<Record<string, RefundRecord>>({});
+  const [refundTarget, setRefundTarget] = useState<Booking | null>(null);
+  const [refundSaving, setRefundSaving] = useState(false);
+  const [refundError, setRefundError] = useState("");
+  const [refundDraft, setRefundDraft] = useState<RefundDraft>({
+    amount: "",
+    method: "transfer",
+    reason: "",
+    details: "",
+    date: new Date().toISOString().slice(0, 10),
+  });
   const saveHintTimerRef = useRef<number | null>(null);
 
   const uiRole = getUiRole();
   const authUser = getAuthUserSafe();
   const closeBookingModal = useCallback(() => setSelectedBooking(null), []);
   const closeCancelModal = useCallback(() => setCancelTarget(null), []);
+  const closeRefundModal = useCallback(() => {
+    if (refundSaving) return;
+    setRefundTarget(null);
+    setRefundError("");
+  }, [refundSaving]);
 
   useEffect(() => {
     return () => {
@@ -587,6 +625,47 @@ export default function DashboardBookings() {
     });
     return () => unsub();
   }, []);
+
+  const loadRefundState = useCallback(async () => {
+    const incomeRows = await listAllIncomeFS();
+    const next: Record<string, RefundRecord> = {};
+    incomeRows.forEach((x) => {
+      const bookingId = String(x.bookingId || "").trim();
+      if (!bookingId) return;
+      if (Number(x.amount || 0) >= 0) return;
+      const source = String(x.source || "").trim().toLowerCase();
+      if (source !== "استرجاع" && source !== "refund") return;
+      const noteRaw = String(x.note || "").trim();
+      const noteWithoutPrefix = noteRaw.replace(/^استرجاع للحجز\s+[^\-]+-\s*/i, "");
+      const [reason, details] = noteWithoutPrefix
+        .split("|")
+        .map((p) => String(p || "").trim());
+      next[bookingId] = {
+        incomeId: String(x.id || `refund_${bookingId}`),
+        bookingId,
+        amount: Math.abs(Number(x.amount || 0)),
+        method: (String(x.method || "").trim() as PaymentMethod) || "transfer",
+        reason: reason || noteWithoutPrefix || noteRaw,
+        details: details || "",
+        date: String(x.date || ""),
+      };
+    });
+    setRefundMapByBookingId(next);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await loadRefundState();
+      } catch {
+        if (!cancelled) setRefundMapByBookingId({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadRefundState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -737,12 +816,21 @@ export default function DashboardBookings() {
       list = list.filter((b) => inDateRange(b.date, dateFrom, dateTo));
     }
     const search = normalizeArabicName(q);
-    if (search) {
+    const searchRaw = String(q || "").trim().toLowerCase();
+    const searchDigits = digitsOnly(searchRaw);
+    if (search || searchRaw) {
       list = list.filter((b) => {
         const name = normalizeArabicName(b.customerName || "");
         const phone = (b.phone || "").toLowerCase();
         const emp = normalizeArabicName(b.employeeName || "");
-        return name.includes(search) || phone.includes(search) || emp.includes(search);
+        const ref = bookingRef(b).toLowerCase();
+        const refDigits = digitsOnly(ref);
+        return (
+          (search ? name.includes(search) || emp.includes(search) : false) ||
+          phone.includes(searchRaw) ||
+          ref.includes(searchRaw) ||
+          (!!searchDigits && refDigits.includes(searchDigits))
+        );
       });
     }
     // Filter by role if staff
@@ -846,6 +934,118 @@ export default function DashboardBookings() {
     }
   };
 
+  const canManageRefund = (b: Booking) => {
+    if (!(uiRole === "owner" || uiRole === "admin" || uiRole === "reception")) return false;
+    if (!(b.status === "confirmed" || b.status === "completed")) return false;
+    const amount = Number(b.finalPrice || b.total || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return false;
+    return true;
+  };
+
+  const detectPaymentMethod = (b: Booking): PaymentMethod => {
+    const stored = String((b as any)?.paymentMethod || "").toLowerCase().trim();
+    if (stored === "card" || stored === "cash" || stored === "transfer") {
+      return stored as PaymentMethod;
+    }
+    const s = String((b as any)?.note || "").toLowerCase();
+    if (s.includes("شبكة") || s.includes("مدى") || s.includes("card")) return "card";
+    if (s.includes("تحويل") || s.includes("transfer")) return "transfer";
+    if (s.includes("كاش") || s.includes("cash") || s.includes("نقد")) return "cash";
+    return "transfer";
+  };
+
+  const openRefundModal = (b: Booking) => {
+    if (!canManageRefund(b)) return;
+    const bookingId = String(b.id || "").trim();
+    const existing = refundMapByBookingId[bookingId];
+    const bookingAmount = Number(b.finalPrice || b.total || 0);
+    const fallbackMethod = detectPaymentMethod(b);
+    setRefundDraft({
+      amount: existing ? String(existing.amount || "") : String(Math.abs(bookingAmount || 0)),
+      method: existing?.method || fallbackMethod || "transfer",
+      reason: existing?.reason || "",
+      details: existing?.details || "",
+      date: existing?.date || new Date().toISOString().slice(0, 10),
+    });
+    setRefundError("");
+    setRefundTarget(b);
+  };
+
+  const handleSaveRefund = async () => {
+    const b = refundTarget;
+    if (!b) return;
+    const bookingId = String(b.id || "").trim();
+    if (!bookingId || !canManageRefund(b)) return;
+
+    const bookingAmount = Number(b.finalPrice || b.total || 0);
+    const amountInput = Number(refundDraft.amount || 0);
+    if (!Number.isFinite(amountInput) || amountInput <= 0) {
+      setRefundError("أدخل مبلغ استرجاع صحيح.");
+      return;
+    }
+    if (amountInput > bookingAmount) {
+      setRefundError("مبلغ الاسترجاع لا يمكن أن يتجاوز قيمة الحجز.");
+      return;
+    }
+    const reason = String(refundDraft.reason || "").trim();
+    if (!reason) {
+      setRefundError("سبب الاسترجاع مطلوب.");
+      return;
+    }
+    const details = String(refundDraft.details || "").trim();
+    const note = details ? `${reason} | ${details}` : reason;
+    const method = (refundDraft.method || "transfer") as PaymentMethod;
+    const refundAmount = -Math.abs(amountInput);
+
+    try {
+      setRefundBusyId(bookingId);
+      setRefundSaving(true);
+      setRefundError("");
+      await upsertIncomeFS({
+        id: `refund_${bookingId}`,
+        date: refundDraft.date || new Date().toISOString().slice(0, 10),
+        amount: refundAmount,
+        method,
+        source: "استرجاع",
+        note: `استرجاع للحجز ${bookingRef(b)} - ${note}`,
+        bookingId,
+        createdAt: Date.now(),
+      });
+      await loadRefundState();
+      setRefundTarget(null);
+    } catch {
+      setRefundError("تعذر تسجيل الاسترجاع.");
+    } finally {
+      setRefundSaving(false);
+      setRefundBusyId("");
+    }
+  };
+
+  const handleCancelRefund = async () => {
+    const b = refundTarget;
+    if (!b) return;
+    const bookingId = String(b.id || "").trim();
+    const existing = refundMapByBookingId[bookingId];
+    if (!existing?.incomeId) return;
+    try {
+      setRefundBusyId(bookingId);
+      setRefundSaving(true);
+      setRefundError("");
+      await removeIncomeFS(existing.incomeId);
+      await loadRefundState();
+      setRefundTarget(null);
+    } catch {
+      setRefundError("تعذر إلغاء الاسترجاع.");
+    } finally {
+      setRefundSaving(false);
+      setRefundBusyId("");
+    }
+  };
+
+  const activeRefundForTarget = refundTarget
+    ? refundMapByBookingId[String(refundTarget.id || "").trim()] || null
+    : null;
+
   const handleExport = () => {
     const rows = [
       ["ID", "الزبون", "الهاتف", "الخدمة", "الموظفة", "التاريخ", "الوقت", "الحالة", "السعر"],
@@ -901,7 +1101,7 @@ export default function DashboardBookings() {
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="none"
-                placeholder="اسم، هاتف، أو موظفة..." 
+                placeholder="اسم، هاتف، موظفة، أو رقم الحجز (MK)..." 
                 value={q} 
                 onChange={e => setQ(e.target.value)} 
               />
@@ -991,32 +1191,53 @@ export default function DashboardBookings() {
                   }
 
                   block.rows.forEach((b) => {
+                    const safeStatus = (["pending", "confirmed", "completed", "cancelled"] as const).includes(
+                      b.status as any
+                    )
+                      ? (b.status as BookingStatus)
+                      : "pending";
                     rows.push(
-                      <tr key={b.id}>
-                        <td style={{ fontWeight: 900 }}>{bookingRef(b)}</td>
+                      <tr key={b.id} className={`bk-row bk-row-${safeStatus}`}>
                         <td>
-                          <div style={{fontWeight: 800}}>{b.customerName || "—"}</div>
-                          <div style={{fontSize: 11, opacity: 0.6}}>{b.phone || "—"}</div>
-                          <div style={{fontSize: 11, opacity: 0.6}}>المصدر: {channelLabel(b.channel)}</div>
+                          <div className="bk-ref-cell">
+                            <div className="bk-ref-code">{bookingRef(b)}</div>
+                            <span className={`status-badge ${safeStatus}`}>{statusLabel[safeStatus]}</span>
+                          </div>
                         </td>
                         <td>
-                          <div style={{ fontWeight: 700 }}>{serviceSummaryForTable(b)}</div>
-                          <div style={{ fontSize: 11, opacity: 0.75 }}>{serviceMetaSummaryForTable(b)}</div>
-                        </td>
-                        <td>{b.employeeName || "—"}</td>
-                        <td>
-                          <div>{b.date}</div>
-                          <div style={{fontSize: 11, opacity: 0.7}}>{formatTime12(b.time)}</div>
+                          <div className="bk-customer-name">{b.customerName || "—"}</div>
+                          <div className="bk-customer-phone">{b.phone || "—"}</div>
                         </td>
                         <td>
-                          <div style={{ fontWeight: 800 }}>{lastUpdateMap[b.id]?.by || "—"}</div>
-                          <div style={{ fontSize: 11, opacity: 0.7 }}>{lastUpdateMap[b.id]?.at || "—"}</div>
+                          <div className="bk-service-main">{serviceSummaryForTable(b)}</div>
+                          <div className="bk-service-meta">{serviceMetaSummaryForTable(b)}</div>
                         </td>
-                        <td>{b.finalPrice || b.total || 0} ر.س</td>
                         <td>
-                          <div style={{display: 'flex', gap: 6, justifyContent: 'center'}}>
-                            <button className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
+                          <span className="bk-employee-pill">{b.employeeName || "—"}</span>
+                        </td>
+                        <td>
+                          <div className="bk-datetime-date">{b.date}</div>
+                          <div className="bk-datetime-time">{formatTime12(b.time)}</div>
+                        </td>
+                        <td>
+                          <div className="bk-update-by">{lastUpdateMap[b.id]?.by || "—"}</div>
+                          <div className="bk-update-at">{lastUpdateMap[b.id]?.at || "—"}</div>
+                        </td>
+                        <td>
+                          <span className="bk-price-pill">{b.finalPrice || b.total || 0} ر.س</span>
+                        </td>
+                        <td className="bk-actions-cell">
+                          <div className="bk-actions-row">
+                            <button className="exp-btn ghost sm bk-info-btn" onClick={() => setSelectedBooking(b)} aria-label="تفاصيل الحجز">
                               <FontAwesomeIcon icon={faCircleInfo} />
+                            </button>
+                            <button
+                              className="exp-btn ghost sm bk-refund-btn"
+                              onClick={() => openRefundModal(b)}
+                              disabled={!canManageRefund(b) || refundBusyId === b.id}
+                              title={refundMapByBookingId[String(b.id || "").trim()] ? "تعديل/إلغاء الاسترجاع" : "تسجيل استرجاع"}
+                            >
+                              {refundMapByBookingId[String(b.id || "").trim()] ? "الاسترجاع" : "استرجاع"}
                             </button>
                             {uiRole === "owner" && (
                               <>
@@ -1028,7 +1249,7 @@ export default function DashboardBookings() {
                                   حذف
                                 </button>
                                 <select
-                                  className={`bk-select sm bk-owner-status-select bk-owner-status-${b.status}`}
+                                  className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
                                   style={{ width: "auto", height: 40, padding: "0 12px", fontSize: 12 }}
                                   value={b.status}
                                   onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
@@ -1079,7 +1300,7 @@ export default function DashboardBookings() {
                   </div>
                 ) : null}
                 {block.rows.map((b) => (
-                  <div key={b.id} className="bk-mobile-card">
+                  <div key={b.id} className={`bk-mobile-card bk-mobile-card-${b.status || "pending"}`}>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">رقم الحجز:</span>
                       <span className="bk-mobile-val" style={{fontWeight: 900}}>{bookingRef(b)}</span>
@@ -1108,22 +1329,25 @@ export default function DashboardBookings() {
                       <span className="bk-mobile-val bk-mobile-date-val">{b.date} {formatTime12(b.time)}</span>
                     </div>
                     <div className="bk-mobile-row">
-                      <span className="bk-mobile-label">المصدر:</span>
-                      <span className="bk-mobile-val">{channelLabel(b.channel)}</span>
-                    </div>
-                    <div className="bk-mobile-row">
                       <span className="bk-mobile-label">الحالة:</span>
                       <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
                     </div>
                     <div className="bk-mobile-actions">
                        <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
+                       <button
+                         className="exp-btn ghost sm w-100 bk-refund-btn"
+                         onClick={() => openRefundModal(b)}
+                         disabled={!canManageRefund(b) || refundBusyId === b.id}
+                       >
+                         {refundMapByBookingId[String(b.id || "").trim()] ? "الاسترجاع" : "استرجاع"}
+                       </button>
                        {uiRole === "owner" && (
                          <>
                            <button className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
                              حذف نهائي
                            </button>
                            <select
-                             className={`bk-select sm bk-owner-status-select bk-owner-status-${b.status}`}
+                             className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
                              style={{ height: 40, padding: "0 12px", fontSize: 12 }}
                              value={b.status}
                              onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
@@ -1297,6 +1521,13 @@ export default function DashboardBookings() {
               </div>
             </div>
             <div className="modal-foot">
+              {canManageRefund(selectedBooking) && (
+                <button className="exp-btn ghost" onClick={() => openRefundModal(selectedBooking)}>
+                  {refundMapByBookingId[String(selectedBooking.id || "").trim()]
+                    ? "إدارة الاسترجاع"
+                    : "تسجيل استرجاع"}
+                </button>
+              )}
               {uiRole === "owner" && (
                 <button className="exp-btn danger" onClick={() => handleDeleteBooking(selectedBooking)}>
                   حذف نهائي
@@ -1306,6 +1537,141 @@ export default function DashboardBookings() {
             </div>
           </Modal>
         )}
+
+        <Modal
+          open={!!refundTarget}
+          onClose={closeRefundModal}
+          ariaLabel="الاسترجاع"
+          panelClassName="bk-refund-modal"
+          size="sm"
+        >
+          <div className="bk-cancel-head">إدارة الاسترجاع</div>
+          <div className="bk-cancel-body">
+            <div className="bk-cancel-meta">
+              <span>رقم الحجز: {bookingRef(refundTarget)}</span>
+              <span>العميلة: {refundTarget?.customerName || "—"}</span>
+              <span>قيمة الحجز: {refundTarget ? Number(refundTarget.finalPrice || refundTarget.total || 0) : 0} ر.س</span>
+            </div>
+
+            <div className={`bk-refund-status ${activeRefundForTarget ? "is-refunded" : "is-none"}`}>
+              {activeRefundForTarget ? (
+                <>
+                  <strong>حالة الاسترجاع: تم الاسترجاع</strong>
+                  <span>
+                    المبلغ: {Number(activeRefundForTarget.amount || 0).toLocaleString()} ر.س
+                    {" • "}
+                    الطريقة: {activeRefundForTarget.method === "transfer" ? "تحويل" : activeRefundForTarget.method === "card" ? "شبكة" : "كاش"}
+                    {" • "}
+                    التاريخ: {activeRefundForTarget.date || "—"}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <strong>حالة الاسترجاع: غير مسترجع</strong>
+                  <span>لا يوجد استرجاع مسجل لهذا الحجز حالياً.</span>
+                </>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ الاسترجاع</div>
+                <input
+                  type="number"
+                  className="bk-input"
+                  value={refundDraft.amount}
+                  onChange={(e) => setRefundDraft((p) => ({ ...p, amount: e.target.value }))}
+                  placeholder="مثال: 120"
+                  disabled={refundSaving}
+                />
+              </label>
+
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>طريقة الاسترجاع</div>
+                <select
+                  className="bk-select"
+                  value={refundDraft.method}
+                  onChange={(e) =>
+                    setRefundDraft((p) => ({ ...p, method: e.target.value as PaymentMethod }))
+                  }
+                  disabled={refundSaving}
+                >
+                  <option value="transfer">تحويل</option>
+                  <option value="cash">كاش</option>
+                  <option value="card">شبكة</option>
+                </select>
+              </label>
+
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>تاريخ الاسترجاع</div>
+                <input
+                  type="date"
+                  className="bk-input"
+                  value={refundDraft.date}
+                  onChange={(e) => setRefundDraft((p) => ({ ...p, date: e.target.value }))}
+                  disabled={refundSaving}
+                />
+              </label>
+
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>سبب الاسترجاع</div>
+                <input
+                  type="text"
+                  className="bk-input"
+                  value={refundDraft.reason}
+                  onChange={(e) => setRefundDraft((p) => ({ ...p, reason: e.target.value }))}
+                  placeholder="مثال: إلغاء قبل الموعد"
+                  disabled={refundSaving}
+                />
+              </label>
+
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>تفاصيل إضافية</div>
+                <textarea
+                  className="bk-input"
+                  rows={3}
+                  value={refundDraft.details}
+                  onChange={(e) => setRefundDraft((p) => ({ ...p, details: e.target.value }))}
+                  placeholder="أي تفاصيل داخلية للاسترجاع"
+                  disabled={refundSaving}
+                />
+              </label>
+            </div>
+
+            {refundError ? (
+              <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{refundError}</div>
+            ) : null}
+          </div>
+          <div className="bk-cancel-foot">
+            <button
+              type="button"
+              className="exp-btn ghost"
+              onClick={closeRefundModal}
+              disabled={refundSaving}
+            >
+              رجوع
+            </button>
+            {refundTarget && refundMapByBookingId[String(refundTarget.id || "").trim()] ? (
+              <button
+                type="button"
+                className="exp-btn danger"
+                onClick={handleCancelRefund}
+                disabled={refundSaving}
+                title="يمكن التراجع عن الاسترجاع من هنا"
+              >
+                {refundSaving ? "جاري الإلغاء..." : "إلغاء الاسترجاع"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="exp-btn"
+              onClick={handleSaveRefund}
+              disabled={refundSaving}
+            >
+              {refundSaving ? "جاري الحفظ..." : "حفظ الاسترجاع"}
+            </button>
+          </div>
+        </Modal>
 
         <Modal
           open={!!cancelTarget}

@@ -19,8 +19,9 @@ import { FinanceSettingsService } from "../services/FinanceSettingsService";
 // ✅ Firebase Auth
 import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 
-import { auth } from "../services/firebase";
+import { auth, db } from "../services/firebase";
 
 // ✅ Firestore Expenses
 import {
@@ -32,29 +33,31 @@ import {
 
 type UiRole = "owner" | "admin" | "staff" | "client" | "guest";
 
-function getUiRole(): UiRole {
-  // ✅ اقرأ من auth_user أولاً (الأصح) ثم fallback
-  try {
-    const rawAuth = localStorage.getItem("auth_user");
-    if (rawAuth) {
-      const au = JSON.parse(rawAuth);
-      const r = String(au?.role || "")
-        .toLowerCase()
-        .trim();
-      if (r === "owner") return "owner";
-      if (r === "admin") return "admin";
-      if (r === "staff") return "staff";
-      if (r === "client") return "client";
-    }
-  } catch {
-    // ignore
+function mapFirestoreRole(raw: unknown): UiRole {
+  const role = String(raw || "").toLowerCase().trim();
+  if (role === "owner") return "owner";
+  if (role === "admin") return "admin";
+  if (role === "staff") return "staff";
+  if (role === "client") return "client";
+  return "guest";
+}
+
+async function resolveRoleFromFirestore(uid: string): Promise<UiRole> {
+  const id = String(uid || "").trim();
+  if (!id) return "guest";
+
+  const salonRef = doc(db, "salons", "main", "users", id);
+  const salonSnap = await getDoc(salonRef);
+  if (salonSnap.exists()) {
+    return mapFirestoreRole((salonSnap.data() as any)?.role);
   }
 
-  const raw = (localStorage.getItem("userRole") || "").toLowerCase().trim();
-  if (raw === "owner") return "owner";
-  if (raw === "admin") return "admin";
-  if (raw === "staff") return "staff";
-  if (raw === "client") return "client";
+  const rootRef = doc(db, "users", id);
+  const rootSnap = await getDoc(rootRef);
+  if (rootSnap.exists()) {
+    return mapFirestoreRole((rootSnap.data() as any)?.role);
+  }
+
   return "guest";
 }
 
@@ -254,8 +257,9 @@ function DashDropdown(props: {
 }
 
 const DashboardExpenses: React.FC = () => {
-  const role = getUiRole();
-  const allowed = role === "owner" || role === "admin";
+  const [uiRole, setUiRole] = useState<UiRole>("guest");
+  const [authReady, setAuthReady] = useState(false);
+  const allowed = uiRole === "owner" || uiRole === "admin";
 
   // ✅ settings
   const [categories, setCategories] = useState<string[]>([]);
@@ -419,6 +423,7 @@ const DashboardExpenses: React.FC = () => {
 
     const run = async () => {
       try {
+        if (mounted) setAuthReady(false);
         const user = await new Promise<User | null>(
           (resolve) => {
             const unsub = onAuthStateChanged(auth, (u) => {
@@ -430,12 +435,17 @@ const DashboardExpenses: React.FC = () => {
 
         if (!user) {
           if (mounted) {
+            setUiRole("guest");
             setItems([]);
             setLoading(false);
             setModalMsg("لا يوجد مستخدم مسجل دخول. سجّل دخول الإدارة ثم جرّب.");
+            setAuthReady(true);
           }
           return;
         }
+
+        const role = await resolveRoleFromFirestore(user.uid);
+        if (mounted) setUiRole(role);
 
         if (mounted) await loadExpenses();
 
@@ -451,7 +461,10 @@ const DashboardExpenses: React.FC = () => {
           // ignore
         }
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+          setAuthReady(true);
+        }
       }
     };
 
@@ -462,6 +475,16 @@ const DashboardExpenses: React.FC = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  if (!authReady) {
+    return (
+      <div className="exp-page">
+        <div className="exp-card">
+          <h2>جاري التحقق من الصلاحيات...</h2>
+        </div>
+      </div>
+    );
+  }
 
   // ====== ملخص اليوم/الأسبوع/الشهر (لوحة خفيفة) ======
   const summary = useMemo(() => {

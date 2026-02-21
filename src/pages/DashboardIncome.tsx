@@ -17,13 +17,15 @@ import "../styles/DashboardModals.css";
 import Modal from "../components/Modal";
 
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../services/firebase";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { auth, db } from "../services/firebase";
 
 import {
   listAllIncomeFS,
   removeIncomeFS,
   upsertIncomeFS,
 } from "../services/firestoreIncome";
+import { listAllBookings } from "../services/firestoreBookings";
 
 import type { IncomeItem, PaymentMethod } from "../types/finance";
 
@@ -32,6 +34,37 @@ const ALL_BOOKINGS_KEY = "allBookings";
 // ✅ LocalStorage Income (Migration)
 const LEGACY_INCOME_KEY = "dashboard_income_v1";
 const INCOME_MIGRATED_KEY = "income_migrated_to_firestore_v1";
+
+type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
+
+function mapFirestoreRole(raw: unknown): UiRole {
+  const role = String(raw || "").toLowerCase().trim();
+  if (role === "owner") return "owner";
+  if (role === "admin") return "admin";
+  if (role === "reception") return "reception";
+  if (role === "staff") return "staff";
+  if (role === "client") return "client";
+  return "guest";
+}
+
+async function resolveRoleFromFirestore(uid: string): Promise<UiRole> {
+  const id = String(uid || "").trim();
+  if (!id) return "guest";
+
+  const salonRef = doc(db, "salons", "main", "users", id);
+  const salonSnap = await getDoc(salonRef);
+  if (salonSnap.exists()) {
+    return mapFirestoreRole((salonSnap.data() as any)?.role);
+  }
+
+  const rootRef = doc(db, "users", id);
+  const rootSnap = await getDoc(rootRef);
+  if (rootSnap.exists()) {
+    return mapFirestoreRole((rootSnap.data() as any)?.role);
+  }
+
+  return "guest";
+}
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -51,6 +84,22 @@ function methodLabel(m: PaymentMethod) {
   return "أخرى";
 }
 
+function sourceLabel(source: string) {
+  const s = String(source || "").trim().toLowerCase();
+  if (!s) return "-";
+  if (s === "booking" || s === "حجز") return "حجز";
+  if (s === "refund" || s === "استرجاع") return "استرجاع";
+  return String(source || "").trim();
+}
+
+function toBookingRef(v?: string) {
+  const raw = String(v || "").trim().toUpperCase();
+  if (!raw) return "-";
+  if (/^MK-\d+$/.test(raw)) return raw;
+  if (/^\d+$/.test(raw)) return `MK-${raw}`;
+  return raw;
+}
+
 function toCsv(items: IncomeItem[]) {
   const header = ["date", "amount", "method", "source", "note", "id"].join(",");
   const lines = items.map((x) =>
@@ -58,7 +107,7 @@ function toCsv(items: IncomeItem[]) {
       x.date,
       x.amount,
       methodLabel(x.method),
-      (x.source || "").replaceAll(",", " "),
+      sourceLabel(x.source || "").replaceAll(",", " "),
       (x.note || "").replaceAll(",", " "),
       String(x.id || ""),
     ].join(",")
@@ -116,6 +165,12 @@ function normalizePaymentMethod(x: any): PaymentMethod {
   return "other";
 }
 
+function normalizeConfirmedPaymentMethod(raw: any): "cash" | "card" | "transfer" | null {
+  const m = normalizePaymentMethod(raw);
+  if (m === "cash" || m === "card" || m === "transfer") return m;
+  return null;
+}
+
 function loadLegacyIncome(): IncomeItem[] {
   try {
     const raw = localStorage.getItem(LEGACY_INCOME_KEY);
@@ -156,7 +211,11 @@ function firebaseMsg(e: any) {
 }
 
 export default function DashboardIncome() {
+  type BookingMeta = { bookingRef: string; clientName: string };
+
   const [items, setItems] = useState<IncomeItem[]>([]);
+  const [bookingMetaById, setBookingMetaById] = useState<Record<string, BookingMeta>>({});
+  const [uiRole, setUiRole] = useState<UiRole>("guest");
   const [loading, setLoading] = useState(true);
 
   const [addOpen, setAddOpen] = useState(false);
@@ -165,7 +224,7 @@ export default function DashboardIncome() {
   const [date, setDate] = useState(todayISO());
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [source, setSource] = useState("حجز");
+  const [source, setSource] = useState("يدوي");
   const [note, setNote] = useState("");
 
   // Filters
@@ -177,8 +236,21 @@ export default function DashboardIncome() {
   const refresh = async () => {
     try {
       setLoading(true);
-      const data = await listAllIncomeFS();
-      setItems(data);
+      const [incomeRows, bookingRows] = await Promise.all([listAllIncomeFS(), listAllBookings()]);
+      const bookingMap = bookingRows.reduce(
+        (acc, b: any) => {
+          acc[String(b.id)] = {
+            bookingRef: toBookingRef(String(b.publicId || "")),
+            clientName: String(
+              b.clientName || b.customerName || b.name || b.client?.name || b.customer?.name || ""
+            ).trim(),
+          };
+          return acc;
+        },
+        {} as Record<string, BookingMeta>
+      );
+      setItems(incomeRows);
+      setBookingMetaById(bookingMap);
     } catch (e) {
       setModalMsg(firebaseMsg(e));
     } finally {
@@ -207,6 +279,9 @@ export default function DashboardIncome() {
           return;
         }
 
+        const role = await resolveRoleFromFirestore(user.uid);
+        if (mounted) setUiRole(role);
+
         const data = await listAllIncomeFS();
 
         // ✅ Migration (once)
@@ -223,8 +298,23 @@ export default function DashboardIncome() {
           localStorage.setItem(INCOME_MIGRATED_KEY, "1");
         }
 
-        const finalData = await listAllIncomeFS();
-        if (mounted) setItems(finalData);
+        const [finalData, bookingRows] = await Promise.all([listAllIncomeFS(), listAllBookings()]);
+        const bookingMap = bookingRows.reduce(
+          (acc, b: any) => {
+            acc[String(b.id)] = {
+              bookingRef: toBookingRef(String(b.publicId || "")),
+              clientName: String(
+                b.clientName || b.customerName || b.name || b.client?.name || b.customer?.name || ""
+              ).trim(),
+            };
+            return acc;
+          },
+          {} as Record<string, BookingMeta>
+        );
+        if (mounted) {
+          setItems(finalData);
+          setBookingMetaById(bookingMap);
+        }
       } catch (e) {
         if (mounted) setModalMsg(firebaseMsg(e));
       } finally {
@@ -247,14 +337,18 @@ export default function DashboardIncome() {
         if (to && x.date > to) return false;
 
         if (!qq) return true;
+        const linkedBookingId =
+          String(x.bookingId || "").trim() ||
+          (sourceLabel(String(x.source || "")) === "حجز" ? String(x.id || "").trim() : "");
+        const bm = bookingMetaById[linkedBookingId];
         const a =
-          `${x.date} ${x.amount} ${x.source || ""} ${x.note || ""} ${
+          `${x.date} ${x.amount} ${sourceLabel(x.source || "")} ${x.note || ""} ${
             x.bookingId || ""
-          } ${x.id}`.toLowerCase();
+          } ${x.id} ${bm?.clientName || ""} ${bm?.bookingRef || ""}`.toLowerCase();
         return a.includes(qq);
       })
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  }, [items, q, fMethod, from, to]);
+  }, [items, q, fMethod, from, to, bookingMetaById]);
 
   const total = useMemo(
     () => filtered.reduce((s, x) => s + (Number(x.amount) || 0), 0),
@@ -285,17 +379,30 @@ export default function DashboardIncome() {
     [filtered]
   );
 
+  const totalRefund = useMemo(
+    () =>
+      Math.abs(
+        filtered
+          .filter((x) => Number(x.amount) < 0)
+          .reduce((s, x) => s + (Number(x.amount) || 0), 0)
+      ),
+    [filtered]
+  );
+
   const addIncome = async () => {
     const n = Number(amount);
+    const reason = String(note || "").trim();
+    const cleanedSource = String(source || "").trim() || "يدوي";
     if (!date || !n || n <= 0) return setModalMsg("بيانات غير صحيحة");
+    if (!reason) return setModalMsg("سبب/مرجع الدخل اليدوي مطلوب");
 
     const item: IncomeItem = {
       id: uid(),
       date,
       amount: n,
       method,
-      source,
-      note: note || undefined,
+      source: cleanedSource,
+      note: reason,
       createdAt: Date.now(),
     };
 
@@ -333,19 +440,81 @@ export default function DashboardIncome() {
     downloadTextFile(`income_${todayISO()}.csv`, csv);
   };
 
+  const canFixPaymentMethods = uiRole === "owner" || uiRole === "admin";
+
+  const fixPaymentMethods = async () => {
+    if (!canFixPaymentMethods) {
+      setModalMsg("هذه العملية تتطلب صلاحية Owner/Admin.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const bookings = await listAllBookings();
+      const targets = bookings.filter((b: any) => {
+        const status = String(b?.status || "").toLowerCase().trim();
+        if (!(status === "confirmed" || status === "completed")) return false;
+        const method = normalizeConfirmedPaymentMethod((b as any)?.paymentMethod);
+        return !method || method === "cash";
+      });
+
+      await Promise.all(
+        targets.map(async (b: any) => {
+          const id = String(b?.id || "").trim();
+          if (!id) return;
+          await setDoc(
+            doc(db, "salons", "main", "bookings", id),
+            {
+              paymentMethod: "transfer",
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          await setDoc(
+            doc(db, "salons", "main", "booking_tracks", id),
+            {
+              paymentMethod: "transfer",
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        })
+      );
+
+      await refresh();
+      setModalMsg(`تم إصلاح ${targets.length} حجز: تم تعيين paymentMethod = transfer.`);
+    } catch (e) {
+      setModalMsg(firebaseMsg(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="dashboard-section income-page">
       <div className="income-container">
         {/* Header */}
         <div className="income-header">
-          <div className="qs-black">
-            <h2 style={{ margin: 0 }}>الإيرادات</h2>
-            <p style={{ margin: "6px 0 0", opacity: 0.75, fontSize: 13 }}>
+          <div className="income-title-block qs-black">
+            <h2 className="income-title">الإيرادات</h2>
+            <p className="income-subtitle">
               إدارة وتسجيل الإيرادات اليومية
             </p>
           </div>
 
           <div className="income-actions">
+            {canFixPaymentMethods && (
+              <button
+                className="dash-pill dash-pill-outline"
+                onClick={fixPaymentMethods}
+                type="button"
+                disabled={loading}
+                title="إصلاح طرق الدفع"
+              >
+                إصلاح طرق الدفع
+              </button>
+            )}
             <button
               className="dash-pill dash-pill-outline"
               onClick={refresh}
@@ -378,31 +547,38 @@ export default function DashboardIncome() {
 
         {/* Quick Stat */}
         <div className="income-quick">
-          <div className="stat-card">
+          <div className="stat-card stat-card-total">
             <div className="stat-info">
               <h3>{total.toLocaleString()} ريال</h3>
               <p>الإجمالي (حسب الفلترة)</p>
             </div>
           </div>
 
-          <div className="stat-card">
+          <div className="stat-card stat-card-cash">
             <div className="stat-info">
               <h3>{totalCash.toLocaleString()} ريال</h3>
               <p>كاش</p>
             </div>
           </div>
 
-          <div className="stat-card">
+          <div className="stat-card stat-card-card">
             <div className="stat-info">
               <h3>{totalCard.toLocaleString()} ريال</h3>
               <p>شبكة</p>
             </div>
           </div>
 
-          <div className="stat-card">
+          <div className="stat-card stat-card-transfer">
             <div className="stat-info">
               <h3>{totalTransfer.toLocaleString()} ريال</h3>
               <p>تحويل</p>
+            </div>
+          </div>
+
+          <div className="stat-card stat-card-refund">
+            <div className="stat-info">
+              <h3>{totalRefund.toLocaleString()} ريال</h3>
+              <p>إجمالي الاسترجاع</p>
             </div>
           </div>
         </div>
@@ -461,11 +637,11 @@ export default function DashboardIncome() {
         {/* Table */}
         <div className="income-table-wrap" style={{ marginTop: 12 }}>
           <div className="income-table-head">
-            <div style={{ fontWeight: 900 }}>
+            <div className="income-table-count">
               السجلات: {filtered.length.toLocaleString()}
             </div>
             {loading && (
-              <div style={{ opacity: 0.7, fontSize: 13 }}>...جاري التحميل</div>
+              <div className="income-table-loading">...جاري التحميل</div>
             )}
           </div>
 
@@ -476,6 +652,8 @@ export default function DashboardIncome() {
                   <th>التاريخ</th>
                   <th>المبلغ</th>
                   <th>الدفع</th>
+                  <th>العميلة</th>
+                  <th>رقم الحجز</th>
                   <th>المصدر</th>
                   <th>ملاحظة</th>
                   <th>حذف</th>
@@ -484,33 +662,45 @@ export default function DashboardIncome() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: 18, opacity: 0.75 }}>
-                      لا يوجد بيانات مطابقة للفلترة الحالية.
+                    <td colSpan={8} style={{ padding: 18, opacity: 0.75 }}>
+                      لا يوجد بيانات مطابقة للفترة الحالية.
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((x) => (
-                    <tr key={x.id}>
-                      <td>{x.date}</td>
-                      <td style={{ fontWeight: 900 }}>
-                        {(Number(x.amount) || 0).toLocaleString()} ريال
-                      </td>
-                      <td>{methodLabel(x.method)}</td>
-                      <td>{x.source || "-"}</td>
-                      <td>{x.note || "-"}</td>
-                      <td>
-                        <button
-                          className="dash-icon-btn qs-black "
-                          type="button"
-                          title="حذف"
-                          onClick={() => removeIncome(String(x.id))}
-                          disabled={loading}
-                        >
-                          <FontAwesomeIcon icon={faTrash} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  filtered.map((x) => {
+                    const linkedBookingId =
+                      String(x.bookingId || "").trim() ||
+                      (sourceLabel(String(x.source || "")) === "حجز" ? String(x.id || "").trim() : "");
+                    const bookingMeta = bookingMetaById[linkedBookingId];
+                    return (
+                      <tr key={x.id} className={"income-row income-row-" + x.method}>
+                        <td className="income-date">{x.date}</td>
+                        <td>
+                          <span className="income-amount">
+                            {(Number(x.amount) || 0).toLocaleString()} ريال
+                          </span>
+                        </td>
+                        <td>
+                          <span className={"income-method-badge " + x.method}>{methodLabel(x.method)}</span>
+                        </td>
+                        <td className="income-client-text">{bookingMeta?.clientName || "-"}</td>
+                        <td className="income-booking-text">{bookingMeta?.bookingRef || "-"}</td>
+                        <td className="income-source-text">{sourceLabel(x.source || "")}</td>
+                        <td className="income-note-text">{x.note || "-"}</td>
+                        <td>
+                          <button
+                            className="dash-icon-btn qs-black income-delete-btn"
+                            type="button"
+                            title="حذف"
+                            onClick={() => removeIncome(String(x.id))}
+                            disabled={loading}
+                          >
+                            <FontAwesomeIcon icon={faTrash} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -522,43 +712,57 @@ export default function DashboardIncome() {
                 لا يوجد بيانات مطابقة للفترة الحالية.
               </div>
             ) : (
-              filtered.map((x) => (
-                <article className="income-mobile-card" key={`mob_${x.id}`}>
-                  <div className="income-mobile-row">
-                    <span className="income-mobile-label">التاريخ</span>
-                    <span className="income-mobile-value income-mobile-value--date">{x.date}</span>
-                  </div>
-                  <div className="income-mobile-row">
-                    <span className="income-mobile-label">المبلغ</span>
-                    <span className="income-mobile-value" style={{ fontWeight: 900 }}>
-                      {(Number(x.amount) || 0).toLocaleString()} ريال
-                    </span>
-                  </div>
-                  <div className="income-mobile-row">
-                    <span className="income-mobile-label">الدفع</span>
-                    <span className="income-mobile-value">{methodLabel(x.method)}</span>
-                  </div>
-                  <div className="income-mobile-row">
-                    <span className="income-mobile-label">المصدر</span>
-                    <span className="income-mobile-value">{x.source || "-"}</span>
-                  </div>
-                  <div className="income-mobile-row">
-                    <span className="income-mobile-label">ملاحظة</span>
-                    <span className="income-mobile-value">{x.note || "-"}</span>
-                  </div>
-                  <div className="income-mobile-actions">
-                    <button
-                      className="dash-pill dash-pill-outline income-mobile-delete"
-                      type="button"
-                      title="حذف"
-                      onClick={() => removeIncome(String(x.id))}
-                      disabled={loading}
-                    >
-                      <FontAwesomeIcon icon={faTrash} /> حذف
-                    </button>
-                  </div>
-                </article>
-              ))
+              filtered.map((x) => {
+                const linkedBookingId =
+                  String(x.bookingId || "").trim() ||
+                  (sourceLabel(String(x.source || "")) === "حجز" ? String(x.id || "").trim() : "");
+                const bookingMeta = bookingMetaById[linkedBookingId];
+                return (
+                  <article className="income-mobile-card" key={"mob_" + x.id}>
+                    <div className="income-mobile-row">
+                      <span className="income-mobile-label">التاريخ</span>
+                      <span className="income-mobile-value income-mobile-value--date">{x.date}</span>
+                    </div>
+                    <div className="income-mobile-row">
+                      <span className="income-mobile-label">المبلغ</span>
+                      <span className="income-mobile-value income-mobile-amount">
+                        {(Number(x.amount) || 0).toLocaleString()} ريال
+                      </span>
+                    </div>
+                    <div className="income-mobile-row">
+                      <span className="income-mobile-label">الدفع</span>
+                      <span className="income-mobile-value"><span className={"income-method-badge " + x.method}>{methodLabel(x.method)}</span></span>
+                    </div>
+                    <div className="income-mobile-row">
+                      <span className="income-mobile-label">العميلة</span>
+                      <span className="income-mobile-value">{bookingMeta?.clientName || "-"}</span>
+                    </div>
+                    <div className="income-mobile-row">
+                      <span className="income-mobile-label">رقم الحجز</span>
+                      <span className="income-mobile-value">{bookingMeta?.bookingRef || "-"}</span>
+                    </div>
+                    <div className="income-mobile-row">
+                      <span className="income-mobile-label">المصدر</span>
+                      <span className="income-mobile-value">{sourceLabel(x.source || "")}</span>
+                    </div>
+                    <div className="income-mobile-row">
+                      <span className="income-mobile-label">ملاحظة</span>
+                      <span className="income-mobile-value">{x.note || "-"}</span>
+                    </div>
+                    <div className="income-mobile-actions">
+                      <button
+                        className="dash-pill dash-pill-outline income-mobile-delete"
+                        type="button"
+                        title="حذف"
+                        onClick={() => removeIncome(String(x.id))}
+                        disabled={loading}
+                      >
+                        <FontAwesomeIcon icon={faTrash} /> حذف
+                      </button>
+                    </div>
+                  </article>
+                );
+              })
             )}
           </div>
         </div>
@@ -628,7 +832,7 @@ export default function DashboardIncome() {
                   <span>المصدر</span>
                   <input
                     type="text"
-                    placeholder="مثال: فاتورة حجز"
+                    placeholder="مثال: بيع منتج / تعديل يدوي"
                     value={source}
                     onChange={(e) => setSource(e.target.value)}
                     className="income-modal-input"
@@ -636,10 +840,10 @@ export default function DashboardIncome() {
                 </label>
 
                 <label className="income-modal-field">
-                  <span>ملاحظة (اختياري)</span>
+                  <span>سبب/مرجع (إلزامي)</span>
                   <input
                     type="text"
-                    placeholder="أي تفاصيل إضافية"
+                    placeholder="مثال: بيع منتج، عربون، تعديل يدوي"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     className="income-modal-input"
@@ -676,3 +880,4 @@ export default function DashboardIncome() {
 // 🔕 silence unused helpers
 void loadBookings;
 void isRevenueStatus;
+
