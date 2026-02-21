@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import type React from "react"; // âœ… ADD: عشان React.ChangeEvent / React.FormEvent
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import logo from "../assets/images/ssunnamed2.png";
 import hairGuideImg from "../assets/images/hair-length-guide.png";
@@ -94,6 +94,7 @@ import ConfirmModal from "../components/ConfirmModal";
 
 type CartItem = {
   id: string; // local id
+  packageRunId?: string;
   serviceId: string;
   serviceName: string;
   packageId?: string;
@@ -186,6 +187,95 @@ function readDisplayLabel(raw: any, fallback = ""): string {
     }
   }
   return String(fallback || "").trim();
+}
+
+function humanizeCatalogToken(value: string) {
+  return String(value || "")
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function arabizeCatalogLabel(value: string) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const dict: Record<string, string> = {
+    "hair": "الشعر",
+    "hair care": "العناية بالشعر",
+    "hair color treatments": "صبغات ومعالجات الشعر",
+    "hair color treatment": "صبغات ومعالجات الشعر",
+    "coloring": "الصبغات",
+    "blow dry": "استشوار",
+    "blowdry": "استشوار",
+    "makeup": "المكياج",
+    "skin": "البشرة",
+    "skin care": "العناية بالبشرة",
+    "nails": "الأظافر",
+    "nail care": "العناية بالأظافر",
+    "massage": "المساج",
+    "offers": "العروض",
+    "service packages": "البكجات",
+    "service package": "البكجات",
+    "packages": "البكجات",
+    "package": "باكيج",
+    "filter": "فلر",
+  };
+  let key = humanizeCatalogToken(raw).toLowerCase();
+
+  const phraseEntries = Object.entries(dict).sort((a, b) => b[0].length - a[0].length);
+  for (const [en, ar] of phraseEntries) {
+    const pattern = new RegExp(`\\b${en.replace(/\s+/g, "\\s+")}\\b`, "gi");
+    key = key.replace(pattern, ar);
+  }
+
+  const cleaned = key
+    .replace(/\s+/g, " ")
+    .replace(/\b(and|with|for|of|the)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned || key;
+}
+
+function normalizeUiLabel(value: string) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanSectionLabel(value: string) {
+  const s = normalizeUiLabel(value);
+  if (!s) return "";
+  return s.replace(/^قسم\s+/u, "").trim();
+}
+
+function cleanCategoryLabel(category: string, section: string) {
+  let c = normalizeUiLabel(category);
+  if (!c) return "";
+  c = c.replace(/^قسم\s+/u, "").trim();
+
+  const sec = cleanSectionLabel(section);
+  if (!sec) return c;
+
+  const variants = [
+    sec,
+    `${sec} الشعر`,
+    `${sec} للشعر`,
+    `${sec} البشرة`,
+    `${sec} للأظافر`,
+  ]
+    .map((x) => normalizeUiLabel(x))
+    .filter(Boolean);
+
+  for (const v of variants) {
+    if (c === v) return "";
+    if (c.startsWith(`${v} `)) {
+      c = c.slice(v.length).trim();
+      break;
+    }
+  }
+
+  return c.trim();
 }
 
 type FlatService = {
@@ -444,6 +534,30 @@ type BusyState = {
   suggestedSlot?: string; // âœ… NEW: الوقت المقترح (لطور الموسم فقط)
 };
 
+type PackageQuickState = {
+  employeeId: string;
+  times: string[];
+  loading: boolean;
+  error: string;
+};
+
+type PackageRunMeta = {
+  runId: string;
+  leaderItemId: string;
+  items: CartItem[];
+  dateISO: string;
+  totalDurationMin: number;
+  totalWindowMin: number;
+  commonStaff: StaffPublicWithId[];
+  loading: boolean;
+  staffError: string;
+};
+
+type PackageQuickEligibility = {
+  loading: boolean;
+  commonStaff: StaffPublicWithId[];
+};
+
 
 const emptyBusyState = (): BusyState => ({
   busyTimes: new Set(),
@@ -576,6 +690,7 @@ function phone10Digits(raw: string) {
 
 const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const dateRef = useRef<HTMLInputElement>(null);
 
   // =========================
@@ -704,6 +819,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [servicePicker, setServicePicker] = useState<string>("");
+  const [autoAddPackageId, setAutoAddPackageId] = useState<string>("");
   const [offerStartTime, setOfferStartTime] = useState<string>("");
   const [pickerScope, setPickerScope] = useState<PickerScope>("services");
 
@@ -811,6 +927,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   // âœ… busy/disabled per item
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
+  const [packageQuickByRun, setPackageQuickByRun] = useState<Record<string, PackageQuickState>>({});
+  const [packageQuickEligibilityByRun, setPackageQuickEligibilityByRun] = useState<
+    Record<string, PackageQuickEligibility>
+  >({});
 
   // âœ… Future availability (clients)
   const [futureAnyStaff, setFutureAnyStaff] = useState(true);
@@ -1573,6 +1693,36 @@ function findCartOverlap(items: CartItem[]) {
     return categoryOptions.filter((x) => x.id && x.name);
   }, [selectedSectionId, catalogMode, fsCategories, categoryOptions]);
 
+  const sectionLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    (fsSections || []).forEach((s: any) => {
+      const id = String(s?.id || "").trim();
+      if (!id) return;
+      const label = readDisplayLabel(s, id);
+      if (label) map.set(id, label);
+    });
+    if (!map.size) {
+      Object.entries(pricingSections).forEach(([id, sec]) => {
+        const key = String(id || "").trim();
+        const label = String((sec as any)?.title || "").trim();
+        if (key && label) map.set(key, label);
+      });
+    }
+    map.set(PACKAGE_SECTION_ID, PACKAGE_SECTION_TITLE);
+    return map;
+  }, [fsSections]);
+
+  const categoryLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    (fsCategories || []).forEach((c: any) => {
+      const id = String(c?.id || "").trim();
+      if (!id) return;
+      const label = readDisplayLabel(c, id);
+      if (label) map.set(id, label);
+    });
+    return map;
+  }, [fsCategories]);
+
   const packageOptions = useMemo(() => {
     const rows = servicesFlat
       .filter((s) => s.kind === "package")
@@ -1586,21 +1736,88 @@ function findCartOverlap(items: CartItem[]) {
     return rows.sort((a, b) => collator.compare(a.title, b.title));
   }, [servicesFlat, bookingDate, appSettings]);
 
-  const sequenceOfferOptions = useMemo(() => {
-    const collator = new Intl.Collator("ar", { sensitivity: "base", numeric: true });
-    return (sequenceOffers || [])
-      .map((o: any) => {
-        const steps = Array.isArray(o?.sequenceSteps) ? o.sequenceSteps : [];
-        return {
-          id: `offer:${String(o?.id || "").trim()}`,
-          offerId: String(o?.id || "").trim(),
-          title: String(o?.title || "").trim() || "عرض",
-          stepsCount: steps.length,
-        };
-      })
-      .filter((x) => x.offerId && x.stepsCount > 0)
-      .sort((a, b) => collator.compare(a.title, b.title));
-  }, [sequenceOffers]);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || "");
+    const scope = String(params.get("scope") || "").trim();
+    const pick = String(params.get("pick") || "").trim();
+    const autoAdd = String(params.get("autoAdd") || "").trim() === "1";
+    if (scope !== "offers_packages" || !pick) return;
+
+    const isOfferPick = pick.startsWith("offer:");
+    if (isOfferPick) {
+      params.delete("scope");
+      params.delete("pick");
+      params.delete("autoAdd");
+      const nextSearchSkip = params.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearchSkip ? `?${nextSearchSkip}` : "",
+        },
+        { replace: true }
+      );
+      return;
+    }
+
+    setPickerScope("offers_packages");
+    setServicePicker(pick);
+    setSelectedSectionId("");
+    setSelectedCategory("");
+    setShowHairGuide(false);
+    setOfferStartTime("");
+
+    const hasPackage = packageOptions.some((p) => String(p.id || "").trim() === pick);
+    if (autoAdd && hasPackage) setAutoAddPackageId(pick);
+    if (!hasPackage) {
+      void (async () => {
+        try {
+          const snap = await getDoc(doc(db, "salons", SALON_ID, "service_packages", pick));
+          if (!snap.exists()) return;
+          const raw = snap.data() as any;
+          setFsPackages((prev) => {
+            if ((prev || []).some((x) => String((x as any)?.id || "").trim() === pick)) return prev;
+            return [...(prev || []), ({ id: pick, ...(raw || {}) } as any)];
+          });
+          setCatalogMode("firestore");
+          if (autoAdd) setAutoAddPackageId(pick);
+        } catch {
+          // no-op
+        }
+      })();
+    }
+
+    params.delete("scope");
+    params.delete("pick");
+    params.delete("autoAdd");
+    const nextSearch = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : "",
+      },
+      { replace: true }
+    );
+  }, [location.pathname, location.search, navigate, packageOptions]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || "");
+    const coupon = String(params.get("coupon") || "").trim();
+    if (!coupon) return;
+
+    setCouponCode(coupon.toUpperCase());
+    setOfferMsg("تم تعبئة كود الخصم تلقائيًا. أضيفي خدمة ثم اضغطي تطبيق.");
+    setManualOverride(false);
+
+    params.delete("coupon");
+    const nextSearch = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : "",
+      },
+      { replace: true }
+    );
+  }, [location.pathname, location.search, navigate]);
 
   const servicesInSection = useMemo(() => {
     if (!selectedSectionId) return [];
@@ -1676,28 +1893,48 @@ function findCartOverlap(items: CartItem[]) {
     if (!sid) return [] as StaffPublicWithId[];
 
     const target = service || getServiceById(sid);
+    const wanted = new Set<string>();
+    wanted.add(normalizeSpecialty(sid));
+    wanted.add(normalizeSpecialty(String(target?.sectionId || "")));
+    wanted.add(normalizeSpecialty(String(target?.categoryId || "")));
+
     if (target?.kind === "package") {
-      const needed = (target.packageServiceIds || []).map(normalizeSpecialty).filter(Boolean);
-      if (!needed.length) return [];
-      const all = await listActiveStaffAll(SALON_ID);
-      return (all || []).filter((st: any) => {
-        const specs = Array.isArray(st?.specialties)
-          ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
-          : [];
-        return needed.every((n) => specs.includes(n));
+      (target.packageServiceIds || []).forEach((x: any) => wanted.add(normalizeSpecialty(String(x || ""))));
+      (target.packageServices || []).forEach((x: any) => {
+        wanted.add(normalizeSpecialty(String(x?.serviceId || "")));
+        wanted.add(normalizeSpecialty(String(x?.sectionId || "")));
+        wanted.add(normalizeSpecialty(String(x?.categoryId || "")));
       });
     }
 
-    const res = await listActiveStaffBySpecialty({
-      salonId: SALON_ID,
-      specialty: sid,
-    });
-    return (res || []).filter((st: any) => {
+    const wantedKeys = Array.from(wanted).filter(Boolean);
+    if (!wantedKeys.length) return [] as StaffPublicWithId[];
+
+    const all = await listActiveStaffAll(SALON_ID);
+    const matchesAny = (all || []).filter((st: any) => {
       const specs = Array.isArray(st?.specialties)
         ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
         : [];
-      return specs.includes(normalizeSpecialty(sid));
+      return wantedKeys.some((k) => specs.includes(k));
     });
+
+    // للبكجات: جرّب المطابقة الصارمة أولاً (كل serviceId)، وإذا ما فيه نتائج ارجع لأي تطابق.
+    if (target?.kind === "package") {
+      const strictIds = Array.from(
+        new Set((target.packageServiceIds || []).map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean))
+      );
+      if (strictIds.length) {
+        const strict = (all || []).filter((st: any) => {
+          const specs = Array.isArray(st?.specialties)
+            ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
+            : [];
+          return strictIds.every((id) => specs.includes(id));
+        });
+        if (strict.length) return strict;
+      }
+    }
+
+    return matchesAny;
   };
 
   const isToolsOptionEligibleForService = (sv: FlatService | null) => {
@@ -2068,7 +2305,6 @@ function findCartOverlap(items: CartItem[]) {
 
       setServicePicker("");
       setOfferStartTime("");
-      setCouponCode("");
       setManualOverride(false);
       setOfferMsg("");
       setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
@@ -2077,6 +2313,122 @@ function findCartOverlap(items: CartItem[]) {
 
     const sv = getServiceById(id);
     if (!sv) return;
+
+    if (sv.kind === "package") {
+      const pkgServices = Array.isArray(sv.packageServices) ? sv.packageServices : [];
+      const pkgServiceIds = (Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean);
+      const serviceIds = pkgServices.length
+        ? pkgServices.map((x: any) => String(x?.serviceId || "").trim()).filter(Boolean)
+        : pkgServiceIds;
+      if (!serviceIds.length) return;
+
+      const baseByService = serviceIds.map((serviceId, idx) => {
+        const meta = pkgServices[idx] || {};
+        const serviceDoc = getServiceById(serviceId);
+        const base = Math.max(
+          0,
+          Number((meta as any)?.price ?? (serviceDoc as any)?.basePrice ?? 0)
+        );
+        return { serviceId, meta, serviceDoc, base };
+      });
+
+      const baseTotal = baseByService.reduce((sum, x) => sum + Number(x.base || 0), 0);
+      const packageFinal = Math.max(0, Number(sv.basePrice || 0));
+      const targetTotal = packageFinal > 0 ? packageFinal : baseTotal;
+
+      let allocated = 0;
+      const distributed = baseByService.map((row, idx) => {
+        if (idx === baseByService.length - 1) {
+          const last = Math.max(0, Number((targetTotal - allocated).toFixed(2)));
+          return { ...row, price: last };
+        }
+        const share = baseTotal > 0 ? (Number(row.base || 0) / baseTotal) * targetTotal : 0;
+        const price = Math.max(0, Number(share.toFixed(2)));
+        allocated += price;
+        return { ...row, price };
+      });
+      const packageRunId = makeLocalId();
+
+      const packageSnapshot = {
+        packageId: String(sv.packageId || "").trim(),
+        packageName: sv.name,
+        finalPriceAtBooking: targetTotal,
+        baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || baseTotal || targetTotal),
+        totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+        serviceIds: serviceIds,
+        services: pkgServices,
+      };
+
+      const nextItems: CartItem[] = distributed.map((row) => {
+        const serviceDoc = row.serviceDoc;
+        const serviceName = String(
+          (row.meta as any)?.serviceName ||
+            serviceDoc?.name ||
+            row.serviceId
+        ).trim();
+        const durationMin = Math.max(
+          1,
+          Number((row.meta as any)?.durationMin || serviceDoc?.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+        );
+        const sectionId = String((row.meta as any)?.sectionId || serviceDoc?.sectionId || "").trim();
+        const sectionTitle = String(
+          serviceDoc?.sectionTitle ||
+            sectionLabelById.get(sectionId) ||
+            sectionId
+        ).trim();
+        const categoryId = String((row.meta as any)?.categoryId || serviceDoc?.categoryId || "").trim();
+        const categoryName = String(
+          serviceDoc?.category ||
+            categoryLabelById.get(categoryId) ||
+            categoryId
+        ).trim();
+        const toolsEligible = isManiPediSectionByInfo(sectionId, sectionTitle);
+        const toolsSource = toolsEligible ? "client" : undefined;
+        const priced = buildItemPriceWithTools(Number(row.price || 0), toolsSource, toolsEligible);
+
+        return {
+          id: makeLocalId(),
+          packageRunId,
+          serviceId: row.serviceId,
+          serviceName,
+          packageId: String(sv.packageId || "").trim(),
+          packageSnapshot,
+          serviceBasePrice: priced.serviceBasePrice,
+          basePrice: priced.basePrice,
+          priceText: priced.priceText,
+          durationMin,
+          employeeId: "",
+          employeeUid: "",
+          employeeName: "",
+          date: bookingDate,
+          time: "",
+          locked: false,
+          serviceSectionId: sectionId,
+          serviceSectionTitle: sectionTitle || undefined,
+          serviceCategoryId: categoryId || undefined,
+          serviceCategoryName: categoryName || undefined,
+          toolsSource,
+          toolsFeeApplied: priced.toolsFeeApplied,
+        };
+      });
+
+      setFormData((prev) => ({
+        ...prev,
+        items: [...(prev.items || []), ...nextItems],
+      }));
+
+      setServicePicker("");
+      setSelectedCategory("");
+      setSelectedSectionId("");
+      setShowHairGuide(false);
+      setOfferStartTime("");
+      setManualOverride(false);
+      setOfferMsg("");
+      setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+      return;
+    }
 
     const dateISO = String(bookingDate || "").trim();
 
@@ -2138,29 +2490,72 @@ function findCartOverlap(items: CartItem[]) {
     setSelectedSectionId("");
     setShowHairGuide(false);
 
-    setCouponCode("");
     setManualOverride(false);
     setOfferMsg("");
     setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
   };
 
   const removeServiceFromCart = (itemId: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      items: (prev.items || []).filter((it) => it.id !== itemId),
-    }));
+    let removedIds = new Set<string>([String(itemId || "").trim()]);
+    let removedPackageRunId = "";
+
+    setFormData((prev) => {
+      const list = prev.items || [];
+      const target = list.find((it) => String(it.id || "").trim() === String(itemId || "").trim());
+      const runId = String(target?.packageRunId || "").trim();
+      removedPackageRunId = runId;
+      if (!runId) {
+        return {
+          ...prev,
+          items: list.filter((it) => String(it.id || "").trim() !== String(itemId || "").trim()),
+        };
+      }
+
+      const ids = new Set<string>(
+        list
+          .filter((it) => String(it.packageRunId || "").trim() === runId)
+          .map((it) => String(it.id || "").trim())
+          .filter(Boolean)
+      );
+      removedIds = ids.size ? ids : removedIds;
+      return {
+        ...prev,
+        items: list.filter((it) => !removedIds.has(String(it.id || "").trim())),
+      };
+    });
 
     setBusyByItem((prev) => {
       const next = { ...prev };
-      delete next[itemId];
+      Array.from(removedIds).forEach((id) => delete next[id]);
       return next;
     });
 
-    setCouponCode("");
+    if (removedPackageRunId) {
+      setPackageQuickByRun((prev) => {
+        const next = { ...prev };
+        delete next[removedPackageRunId];
+        return next;
+      });
+    }
+
     setManualOverride(false);
     setOfferMsg("");
     setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
   };
+
+  useEffect(() => {
+    const pid = String(autoAddPackageId || "").trim();
+    if (!pid) return;
+    const hasPackage = packageOptions.some((p) => String(p.id || "").trim() === pid);
+    if (!hasPackage) return;
+    const alreadyInCart = (formData.items || []).some(
+      (it) => String(it?.serviceId || "").trim() === pid
+    );
+    if (!alreadyInCart) {
+      void addServiceToCart(pid);
+    }
+    setAutoAddPackageId("");
+  }, [autoAddPackageId, packageOptions, formData.items, addServiceToCart]);
 
   const updateItem = (itemId: string, patch: Partial<CartItem>) => {
     setFormData((prev) => {
@@ -2245,7 +2640,22 @@ function findCartOverlap(items: CartItem[]) {
           setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
           setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
 
-          const sv = getServiceById(sid);
+          const fromCart = (formData.items || []).find((x) => String(x.serviceId || "").trim() === sid);
+          const sv =
+            getServiceById(sid) ||
+            ({
+              id: sid,
+              kind: "service",
+              sectionId: String(fromCart?.serviceSectionId || "").trim(),
+              sectionTitle: String(fromCart?.serviceSectionTitle || "").trim(),
+              categoryId: String(fromCart?.serviceCategoryId || "").trim() || undefined,
+              category: String(fromCart?.serviceCategoryName || "").trim(),
+              name: String(fromCart?.serviceName || sid).trim(),
+              priceText: String(fromCart?.priceText || "").trim(),
+              basePrice: Number(fromCart?.basePrice || 0),
+              durationMin: Number(fromCart?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+              source: "firestore",
+            } as FlatService);
           const res = await listStaffForService(sid, sv);
 
           if (cancelled) return;
@@ -2365,6 +2775,458 @@ function findCartOverlap(items: CartItem[]) {
       String(x.name || "").toLowerCase().includes(q)
     );
   }, [futureStaffOptions, futureStaffNameQuery]);
+
+  const packageRunMetaByRun = useMemo(() => {
+    const byRun: Record<string, PackageRunMeta> = {};
+    const grouped = new Map<string, CartItem[]>();
+    (formData.items || []).forEach((it) => {
+      const runId = String(it.packageRunId || "").trim();
+      if (!runId || isSequentialOfferItem(it)) return;
+      const arr = grouped.get(runId) || [];
+      arr.push(it);
+      grouped.set(runId, arr);
+    });
+
+    grouped.forEach((items, runId) => {
+      const ordered = [...items];
+      const dateISO = String(ordered[0]?.date || bookingDate || "").trim();
+      const totalDurationMin = ordered.reduce(
+        (sum, x) => sum + Math.max(1, Number(x.durationMin || DEFAULT_SERVICE_DURATION_MIN)),
+        0
+      );
+      const totalWindowMin = ordered.reduce(
+        (sum, x) => sum + Math.max(1, Number(x.durationMin || DEFAULT_SERVICE_DURATION_MIN)) + Math.max(0, bufferMin),
+        0
+      );
+
+      let loading = false;
+      const errors = new Set<string>();
+      const perService: StaffPublicWithId[][] = [];
+      let hasStrictCoverageForAll = true;
+
+      ordered.forEach((x) => {
+        const sid = String(x.serviceId || "").trim();
+        if (!sid) return;
+        if (!Object.prototype.hasOwnProperty.call(staffByService, sid) || staffLoadingByService[sid]) {
+          loading = true;
+        }
+        const err = String(staffErrorByService[sid] || "").trim();
+        if (err) errors.add(err);
+
+        const list = ((staffByService[sid] || []) as StaffPublicWithId[]).filter((st: any) => {
+          if ((st as any)?.showOnBooking === false) return false;
+          const leave = getStaffLeaveMetaForDate(st, dateISO);
+          return !leave.isOnLeave;
+        });
+        const strictByService = list.filter((st: any) => {
+          const specs = Array.isArray((st as any)?.specialties)
+            ? (st as any).specialties.map((v: any) => normalizeSpecialty(String(v || ""))).filter(Boolean)
+            : [];
+          return specs.includes(normalizeSpecialty(sid));
+        });
+        if (!strictByService.length) hasStrictCoverageForAll = false;
+        perService.push(strictByService);
+      });
+
+      const first = perService[0] || [];
+      const firstById = new Map<string, StaffPublicWithId>();
+      first.forEach((st: any) => {
+        const id = String(st?.id || "").trim();
+        if (id) firstById.set(id, st);
+      });
+
+      const commonIds = new Set<string>(Array.from(firstById.keys()));
+      perService.slice(1).forEach((list) => {
+        const ids = new Set(
+          (list || [])
+            .map((st: any) => String(st?.id || "").trim())
+            .filter(Boolean)
+        );
+        Array.from(commonIds).forEach((id) => {
+          if (!ids.has(id)) commonIds.delete(id);
+        });
+      });
+
+      const commonStaff = (hasStrictCoverageForAll ? Array.from(commonIds) : [])
+        .map((id) => firstById.get(id))
+        .filter(Boolean) as StaffPublicWithId[];
+
+      byRun[runId] = {
+        runId,
+        leaderItemId: String(ordered[0]?.id || "").trim(),
+        items: ordered,
+        dateISO,
+        totalDurationMin,
+        totalWindowMin,
+        commonStaff,
+        loading,
+        staffError: Array.from(errors).join(" | "),
+      };
+    });
+
+    return byRun;
+  }, [formData.items, staffByService, staffLoadingByService, staffErrorByService, bookingDate, bufferMin]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolvePackageQuickEligibility() {
+      const grouped = new Map<string, CartItem[]>();
+      (formData.items || []).forEach((it) => {
+        const runId = String(it.packageRunId || "").trim();
+        if (!runId || isSequentialOfferItem(it)) return;
+        const arr = grouped.get(runId) || [];
+        arr.push(it);
+        grouped.set(runId, arr);
+      });
+
+      const runIds = Array.from(grouped.keys());
+      if (!runIds.length) {
+        setPackageQuickEligibilityByRun({});
+        return;
+      }
+
+      setPackageQuickEligibilityByRun((prev) => {
+        const next: Record<string, PackageQuickEligibility> = {};
+        runIds.forEach((rid) => {
+          next[rid] = prev[rid] || { loading: true, commonStaff: [] };
+          next[rid].loading = true;
+        });
+        return next;
+      });
+
+      const resolved: Record<string, PackageQuickEligibility> = {};
+      for (const runId of runIds) {
+        const items = grouped.get(runId) || [];
+        const ordered = [...items];
+        const dateISO = String(ordered[0]?.date || bookingDate || "").trim();
+        const serviceIds = Array.from(
+          new Set(
+            ordered
+              .map((x) => String(x.serviceId || "").trim())
+              .filter(Boolean)
+          )
+        );
+
+        if (serviceIds.length < 2) {
+          resolved[runId] = { loading: false, commonStaff: [] };
+          continue;
+        }
+
+        const perService: StaffPublicWithId[][] = [];
+        for (const sid of serviceIds) {
+          try {
+            const rows = await listActiveStaffBySpecialty({ salonId: SALON_ID, specialty: sid });
+            const filtered = (rows || []).filter((st: any) => {
+              if ((st as any)?.showOnBooking === false) return false;
+              if (!String((st as any)?.name || "").trim()) return false;
+              const leave = getStaffLeaveMetaForDate(st, dateISO);
+              return !leave.isOnLeave;
+            });
+            perService.push(filtered);
+          } catch {
+            perService.push([]);
+          }
+        }
+
+        const first = perService[0] || [];
+        const firstById = new Map<string, StaffPublicWithId>();
+        first.forEach((st: any) => {
+          const id = String(st?.id || "").trim();
+          if (id) firstById.set(id, st);
+        });
+
+        const commonIds = new Set<string>(Array.from(firstById.keys()));
+        perService.slice(1).forEach((list) => {
+          const ids = new Set(
+            (list || [])
+              .map((st: any) => String(st?.id || "").trim())
+              .filter(Boolean)
+          );
+          Array.from(commonIds).forEach((id) => {
+            if (!ids.has(id)) commonIds.delete(id);
+          });
+        });
+
+        const commonStaff = Array.from(commonIds)
+          .map((id) => firstById.get(id))
+          .filter(Boolean) as StaffPublicWithId[];
+
+        resolved[runId] = { loading: false, commonStaff };
+      }
+
+      if (!cancelled) {
+        setPackageQuickEligibilityByRun(resolved);
+      }
+    }
+
+    void resolvePackageQuickEligibility();
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.items, bookingDate]);
+
+  const collectLocalTakenOutsidePackageRun = (args: {
+    runId: string;
+    employeeKey: string;
+    employeeIdFallback: string;
+    dateISO: string;
+    baseSlots: TimeSlot[];
+  }) => {
+    const { runId, employeeKey, employeeIdFallback, dateISO, baseSlots } = args;
+    const taken = new Set<string>();
+    const targetKey = String(employeeKey || "").trim();
+    const targetEmployeeId = String(employeeIdFallback || "").trim();
+
+    (formData.items || []).forEach((other) => {
+      if (!other) return;
+      if (String(other.packageRunId || "").trim() === runId) return;
+
+      const otherDate = String(other.date || "").trim();
+      const otherTime = String(other.time || "").trim();
+      if (!otherDate || !otherTime || otherDate !== dateISO) return;
+
+      const otherKey = resolveEmployeeKey(other);
+      const otherEmployeeId = String(other.employeeId || "").trim();
+      if (!otherKey && !otherEmployeeId) return;
+
+      const sameByKey = !!targetKey && otherKey === targetKey;
+      const sameByEmployeeId = !!targetEmployeeId && otherEmployeeId === targetEmployeeId;
+      const crossKeyMatch =
+        (!!targetEmployeeId && otherKey === targetEmployeeId) ||
+        (!!targetKey && otherEmployeeId === targetKey);
+      if (!sameByKey && !sameByEmployeeId && !crossKeyMatch) return;
+
+      const otherLocks = getTimesToLock(
+        baseSlots,
+        slotStepMin,
+        otherTime,
+        Number(other.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+        bufferMin
+      );
+      otherLocks.forEach((t) => taken.add(String(t || "").trim()));
+    });
+
+    return taken;
+  };
+
+  const buildPackageRunPlan = (args: {
+    runItems: CartItem[];
+    startTime24: string;
+    baseSlots: TimeSlot[];
+    takenBase: Set<string>;
+  }) => {
+    const { runItems, startTime24, baseSlots, takenBase } = args;
+    const ordered = [...runItems];
+    const slotOrder = new Map<string, number>();
+    baseSlots.forEach((s, idx) => slotOrder.set(String(s.value24 || "").trim(), idx));
+
+    let cursor = String(startTime24 || "").trim();
+    const occupied = new Set<string>(takenBase);
+    const plan = new Map<string, string>();
+    for (const it of ordered) {
+      const itemId = String(it.id || "").trim();
+      if (!itemId || !slotOrder.has(cursor)) {
+        return { ok: false as const, plan: new Map<string, string>() };
+      }
+      const durationMin = Math.max(1, Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN));
+      const needed = getTimesToLock(baseSlots, slotStepMin, cursor, durationMin, bufferMin);
+      const expectedCount = Math.max(
+        1,
+        Math.ceil((durationMin + Math.max(0, bufferMin)) / Math.max(1, slotStepMin))
+      );
+      if (needed.length < expectedCount) {
+        return { ok: false as const, plan: new Map<string, string>() };
+      }
+      const conflict = needed.some((t) => occupied.has(String(t || "").trim()));
+      if (conflict) return { ok: false as const, plan: new Map<string, string>() };
+
+      plan.set(itemId, cursor);
+      needed.forEach((t) => occupied.add(String(t || "").trim()));
+
+      const nextRaw = toMinutes(cursor) + durationMin + Math.max(0, bufferMin);
+      cursor = minutesToTime24(roundUpToStep(nextRaw, slotStepMin));
+    }
+    return { ok: true as const, plan };
+  };
+
+  const loadPackageQuickStarts = async (runIdRaw: string, employeeIdRaw: string) => {
+    const runId = String(runIdRaw || "").trim();
+    const employeeId = String(employeeIdRaw || "").trim();
+    if (!runId || !employeeId) return;
+    const runMeta = packageRunMetaByRun[runId];
+    if (!runMeta || !runMeta.items.length) return;
+    const quickCommonStaff = packageQuickEligibilityByRun[runId]?.commonStaff || [];
+    if (!quickCommonStaff.length) return;
+
+    const dateISO = String(runMeta.dateISO || bookingDate || "").trim();
+    const selectedStaff = quickCommonStaff.find(
+      (st: any) => String(st?.id || "").trim() === employeeId
+    );
+    if (!selectedStaff || !dateISO) return;
+
+    const employeeKey =
+      String((selectedStaff as any)?.linkedUid || "").trim() ||
+      String((selectedStaff as any)?.id || "").trim();
+    const employeeIdFallback = String((selectedStaff as any)?.id || "").trim();
+    const dayCfg = getDaySettingsForDate(dateISO);
+    const dayOpenTime = safeTimeHHMM(dayCfg.openTime, openTime);
+    const dayCloseTime = safeTimeHHMM(dayCfg.closeTime, closeTime);
+    const baseSlots = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
+    if (!baseSlots.length) return;
+
+    setPackageQuickByRun((prev) => ({
+      ...prev,
+      [runId]: { employeeId, times: [], loading: true, error: "" },
+    }));
+
+    try {
+      const takenFs = await collectTakenTimesForEmployeeDay({
+        salonId: SALON_ID,
+        employeeKey,
+        employeeIdFallback,
+        dateISO,
+      });
+      const takenLocal = collectLocalTakenOutsidePackageRun({
+        runId,
+        employeeKey,
+        employeeIdFallback,
+        dateISO,
+        baseSlots,
+      });
+      const takenBase = new Set<string>([...Array.from(takenFs), ...Array.from(takenLocal)]);
+      const startsBase = filterSlotsByServiceEnd(
+        baseSlots,
+        dayCloseTime,
+        Math.max(1, Number(runMeta.totalWindowMin || runMeta.totalDurationMin || DEFAULT_SERVICE_DURATION_MIN)),
+        0,
+        ALLOW_OVERTIME_MIN
+      );
+      const starts = sortTimesBySlotOrder(
+        startsBase
+          .map((s) => String(s.value24 || "").trim())
+          .filter(Boolean)
+          .filter((start) => {
+            const simulated = buildPackageRunPlan({
+              runItems: runMeta.items,
+              startTime24: start,
+              baseSlots,
+              takenBase,
+            });
+            return simulated.ok;
+          }),
+        baseSlots
+      ).slice(0, 48);
+
+      setPackageQuickByRun((prev) => ({
+        ...prev,
+        [runId]: {
+          employeeId,
+          times: starts,
+          loading: false,
+          error: starts.length ? "" : "لا توجد أوقات متاحة لهذه الموظفة لكامل مدة البكج.",
+        },
+      }));
+    } catch (e: any) {
+      setPackageQuickByRun((prev) => ({
+        ...prev,
+        [runId]: {
+          employeeId,
+          times: [],
+          loading: false,
+          error: `تعذر تحميل الأوقات: ${String(e?.message || e || "خطأ غير معروف")}`,
+        },
+      }));
+    }
+  };
+
+  const applyPackageQuickSelection = async (
+    runIdRaw: string,
+    employeeIdRaw: string,
+    startTime24Raw: string
+  ) => {
+    const runId = String(runIdRaw || "").trim();
+    const employeeId = String(employeeIdRaw || "").trim();
+    const startTime24 = String(startTime24Raw || "").trim();
+    if (!runId || !employeeId || !startTime24) return;
+
+    const runMeta = packageRunMetaByRun[runId];
+    if (!runMeta || !runMeta.items.length) return;
+    const quickCommonStaff = packageQuickEligibilityByRun[runId]?.commonStaff || [];
+    if (!quickCommonStaff.length) return;
+    const dateISO = String(runMeta.dateISO || bookingDate || "").trim();
+    const selectedStaff = quickCommonStaff.find(
+      (st: any) => String(st?.id || "").trim() === employeeId
+    );
+    if (!selectedStaff || !dateISO) return;
+
+    const employeeKey =
+      String((selectedStaff as any)?.linkedUid || "").trim() ||
+      String((selectedStaff as any)?.id || "").trim();
+    const employeeIdFallback = String((selectedStaff as any)?.id || "").trim();
+    const dayCfg = getDaySettingsForDate(dateISO);
+    const dayOpenTime = safeTimeHHMM(dayCfg.openTime, openTime);
+    const dayCloseTime = safeTimeHHMM(dayCfg.closeTime, closeTime);
+    const baseSlots = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
+    if (!baseSlots.length) return;
+
+    try {
+      const takenFs = await collectTakenTimesForEmployeeDay({
+        salonId: SALON_ID,
+        employeeKey,
+        employeeIdFallback,
+        dateISO,
+      });
+      const takenLocal = collectLocalTakenOutsidePackageRun({
+        runId,
+        employeeKey,
+        employeeIdFallback,
+        dateISO,
+        baseSlots,
+      });
+      const takenBase = new Set<string>([...Array.from(takenFs), ...Array.from(takenLocal)]);
+      const plan = buildPackageRunPlan({
+        runItems: runMeta.items,
+        startTime24,
+        baseSlots,
+        takenBase,
+      });
+      if (!plan.ok) {
+        openModal({
+          title: "الوقت لم يعد متاحًا",
+          message: "تغيّر التوفر لهذا الوقت. اختاري وقتًا آخر من القائمة.",
+          variant: "danger",
+        });
+        void loadPackageQuickStarts(runId, employeeId);
+        return;
+      }
+
+      const employeeName = String((selectedStaff as any)?.name || "").trim();
+      setFormData((prev) => ({
+        ...prev,
+        items: (prev.items || []).map((it) => {
+          if (String(it.packageRunId || "").trim() !== runId) return it;
+          const nextTime = String(plan.plan.get(String(it.id || "").trim()) || "").trim();
+          if (!nextTime) return it;
+          return {
+            ...it,
+            date: dateISO,
+            employeeId,
+            employeeUid: String((selectedStaff as any)?.linkedUid || "").trim(),
+            employeeName,
+            time: nextTime,
+            locked: true,
+          };
+        }),
+      }));
+    } catch (e: any) {
+      openModal({
+        title: "تعذر تطبيق اختيار البكج",
+        message: String(e?.message || e || "حدث خطأ غير متوقع."),
+        variant: "danger",
+      });
+    }
+  };
 
   // âœ… Auto-run future search once per context when the block becomes visible
   useEffect(() => {
@@ -3603,7 +4465,7 @@ function findCartOverlap(items: CartItem[]) {
           title: internalMode ? "تسجيل دخول الموظف مطلوب" : "تسجيل الدخول مطلوب",
           message: internalMode
             ? "لازم موظف/إدارة يكون مسجل دخول عشان الحجز الداخلي."
-            : "لازم تسجّلين دخول.",
+            : "لازم تنشئين حساب جديد أو تسجّلين دخول إذا كان عندك حساب.",
           variant: "danger",
           confirmText: "تمام",
         });
@@ -3985,6 +4847,14 @@ function findCartOverlap(items: CartItem[]) {
   // Restore draft (optional)
   // =========================
   useEffect(() => {
+    const incoming = new URLSearchParams(location.search || "");
+    const hasIncomingPrefill =
+      !!String(incoming.get("pick") || "").trim() ||
+      String(incoming.get("scope") || "").trim() === "offers_packages" ||
+      String(incoming.get("autoAdd") || "").trim() === "1" ||
+      !!String(incoming.get("coupon") || "").trim();
+    if (hasIncomingPrefill) return;
+
     const draft = localStorage.getItem("bookingDraft");
     if (!draft) return;
 
@@ -4077,7 +4947,7 @@ function findCartOverlap(items: CartItem[]) {
       // ignore
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [location.search]);
 
   // âœ… أضف هذا السطر فقط
   const isSignedClient = !!signedUid;
@@ -4245,7 +5115,7 @@ function findCartOverlap(items: CartItem[]) {
                         setShowHairGuide(false);
                       }}
                     >
-                      العروض و البكجات
+                      البكجات
                     </button>
                   </div>
 
@@ -4316,23 +5186,12 @@ function findCartOverlap(items: CartItem[]) {
                             onChange={(e) => {
                               const next = e.target.value;
                               setServicePicker(next);
-                              if (!String(next || "").startsWith("offer:")) {
-                                setOfferStartTime("");
-                              }
+                              setOfferStartTime("");
                             }}
-                            disabled={!packageOptions.length && !sequenceOfferOptions.length}
+                            disabled={!packageOptions.length}
                           >
-                            <option value="">اختاري عرض أو باكيج</option>
-                            {!sequenceOfferOptions.length && !packageOptions.length && <option value="" disabled>لا توجد عناصر متاحة</option>}
-                            {sequenceOfferOptions.length > 0 && (
-                              <optgroup label="العروض التسلسلية">
-                                {sequenceOfferOptions.map((o) => (
-                                  <option key={o.id} value={o.id}>
-                                    {o.title} — {o.stepsCount} خطوات
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
+                            <option value="">اختاري باكيج</option>
+                            {!packageOptions.length && <option value="" disabled>لا توجد باكيجات متاحة</option>}
                             {packageOptions.length > 0 && (
                               <optgroup label="الباكيجات">
                                 {packageOptions.map((pkg) => (
@@ -4345,25 +5204,6 @@ function findCartOverlap(items: CartItem[]) {
                           </select>
                         </div>
                       </div>
-                      {String(servicePicker || "").startsWith("offer:") && (
-                        <div className="col-12">
-                          <div className="bk-field">
-                            <select
-                              className={`form-select dash-select ${offerStartTime ? "" : "is-empty"}`}
-                              value={offerStartTime}
-                              onChange={(e) => setOfferStartTime(e.target.value)}
-                              disabled={!selectedDayOpen}
-                            >
-                              <option value="">اختاري وقت بداية العرض</option>
-                              {(timeSlots.length ? timeSlots : generateSalonTimeSlots(openTime, closeTime, slotStepMin)).map((s) => (
-                                <option key={`offer-start-${s.value24}`} value={s.value24}>
-                                  {s.label12}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
 
@@ -4374,10 +5214,7 @@ function findCartOverlap(items: CartItem[]) {
                         className="btn btn-dark booking-service-add-btn"
                         disabled={
                           !servicePicker ||
-                          !selectedDayOpen ||
-                          (pickerScope === "offers_packages" &&
-                            String(servicePicker || "").startsWith("offer:") &&
-                            !offerStartTime)
+                          !selectedDayOpen
                         }
                         onClick={() => addServiceToCart(servicePicker)}
                       >
@@ -4492,10 +5329,25 @@ function findCartOverlap(items: CartItem[]) {
                             : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
 
                         const dur = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
-                        const serviceSectionLabel = String(it.serviceSectionTitle || it.serviceSectionId || "â€”");
-                        const serviceCategoryLabel = String(it.serviceCategoryName || it.serviceCategoryId || "â€”");
+                        const rawSectionLabel =
+                          String(it.serviceSectionTitle || "").trim() ||
+                          String(sectionLabelById.get(String(it.serviceSectionId || "").trim()) || "").trim() ||
+                          String(it.serviceSectionId || "").trim();
+                        const rawCategoryLabel =
+                          String(it.serviceCategoryName || "").trim() ||
+                          String(categoryLabelById.get(String(it.serviceCategoryId || "").trim()) || "").trim() ||
+                          String(it.serviceCategoryId || "").trim();
+                        const sectionLabelRaw = arabizeCatalogLabel(rawSectionLabel);
+                        const categoryLabelRaw = arabizeCatalogLabel(rawCategoryLabel);
+                        const sectionLabelClean = cleanSectionLabel(sectionLabelRaw) || "غير محدد";
+                        const categoryLabelClean = cleanCategoryLabel(categoryLabelRaw, sectionLabelRaw) || "غير محدد";
+                        const serviceSectionLabel = sectionLabelClean;
+                        const serviceCategoryLabel = categoryLabelClean;
                         const toolsEligible = isToolsOptionEligibleForItem(it);
                         const packageServices = Array.isArray(it.packageSnapshot?.services) ? it.packageSnapshot?.services : [];
+                        const packageServiceNames = packageServices
+                          .map((s) => String(s.serviceName || s.serviceId || "").trim())
+                          .filter(Boolean);
                         const toolsSource = toolsEligible
                           ? (String(it.toolsSource || "").trim() === "salon" ? "salon" : "client")
                           : undefined;
@@ -4535,6 +5387,39 @@ function findCartOverlap(items: CartItem[]) {
                         const selectedEmployeeAvailable = availableStaff.some(
                           (emp) => String(emp?.id || "").trim() === String(it.employeeId || "").trim()
                         );
+                        const packageRunId = String(it.packageRunId || "").trim();
+                        const packageRunMeta = packageRunId ? packageRunMetaByRun[packageRunId] : undefined;
+                        const quickEligibility = packageRunId ? packageQuickEligibilityByRun[packageRunId] : undefined;
+                        const quickCommonStaff = quickEligibility?.commonStaff || [];
+                        const quickLoading = !!quickEligibility?.loading;
+                        const isPackageRunLeader =
+                          !!packageRunMeta &&
+                          packageRunMeta.items.length > 1 &&
+                          String(packageRunMeta.leaderItemId || "").trim() === String(it.id || "").trim();
+                        const hasPackageQuickMode =
+                          !!packageRunMeta &&
+                          packageRunMeta.items.length > 1 &&
+                          quickCommonStaff.length > 0;
+                        const isPackageRunFollower = !!packageRunMeta && !isPackageRunLeader;
+                        const packageName = String(it.packageSnapshot?.packageName || "").trim();
+                        const packageFinalPrice = Math.max(0, Number(it.packageSnapshot?.finalPriceAtBooking || 0));
+                        const showAsPackageBlock = hasPackageQuickMode && isPackageRunLeader && !!packageName;
+                        const cardTitle = showAsPackageBlock ? packageName : it.serviceName;
+                        const cardPriceText = showAsPackageBlock && packageFinalPrice > 0 ? `${packageFinalPrice} ريال` : it.priceText;
+                        if (hasPackageQuickMode && isPackageRunFollower) return null;
+                        const packageQuickState = packageRunId
+                          ? (packageQuickByRun[packageRunId] || {
+                              employeeId: "",
+                              times: [],
+                              loading: false,
+                              error: "",
+                            })
+                          : {
+                              employeeId: "",
+                              times: [],
+                              loading: false,
+                              error: "",
+                            };
                         const staffUnavailableMsg = (!staffLoading && !staffError && bookingVisibleStaff.length && !availableStaff.length)
                           ? "لا توجد موظفات متاحات لهذا التاريخ."
                           : "";
@@ -4561,16 +5446,41 @@ function findCartOverlap(items: CartItem[]) {
                             <div key={it.id} className="mb-3" style={{ background: '#f0fff4', borderLeft: '4px solid #28a745', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                               <div className="d-flex justify-content-between align-items-start">
                                 <div>
-                                  <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>تم تأكيد هذه الخدمة: {it.serviceName}</p>
-                                  <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{formatTime12ForClient(it.time)}</strong></p>
-                                  <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.8 }}>المدة: {dur} دقيقة | السعر: {it.priceText}</p>
-                                  <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
-                                    القسم: {serviceSectionLabel} | التصنيف: {serviceCategoryLabel}
+                                  <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>
+                                    {showAsPackageBlock ? "تم تأكيد هذا البكج:" : "تم تأكيد هذه الخدمة:"} {cardTitle}
                                   </p>
-                                  {packageServices.length > 0 ? (
-                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.82rem', color: '#155724', opacity: 0.85 }}>
-                                      تفاصيل الباكيج: {packageServices.map((s) => String(s.serviceName || s.serviceId || "").trim()).filter(Boolean).join("، ")}
-                                    </p>
+                                  <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{formatTime12ForClient(it.time)}</strong></p>
+                                  <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.8 }}>المدة: {dur} دقيقة | السعر: {cardPriceText}</p>
+                                  <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
+                                    القسم: {serviceSectionLabel}
+                                  </p>
+                                  <p style={{ margin: '3px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
+                                    التصنيف: {serviceCategoryLabel}
+                                  </p>
+                                  {packageServiceNames.length > 0 ? (
+                                    <div style={{ margin: '8px 0 0 0' }}>
+                                      <div style={{ fontSize: '0.8rem', color: '#155724', opacity: 0.9, fontWeight: 700, marginBottom: 4 }}>
+                                        تفاصيل الباكيج
+                                      </div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                        {packageServiceNames.map((name) => (
+                                          <span
+                                            key={name}
+                                            style={{
+                                              fontSize: '0.78rem',
+                                              color: '#155724',
+                                              background: 'rgba(21,87,36,0.08)',
+                                              border: '1px solid rgba(21,87,36,0.2)',
+                                              borderRadius: 999,
+                                              padding: '2px 10px',
+                                              lineHeight: 1.6,
+                                            }}
+                                          >
+                                            {name}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
                                   ) : null}
                                   {toolsEligible ? (
                                     <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.9 }}>
@@ -4605,10 +5515,15 @@ function findCartOverlap(items: CartItem[]) {
                         // âœ… شكل الكرت وهو مفتوح (جاري الاختيار)
                         return (
                           <div key={it.id} className="mb-3 p-3" style={{ border: '1px solid rgba(13,13,13,0.12)', borderRadius: 12, background: canEditThis ? '#fff' : 'rgba(245,245,244,0.75)', opacity: canEditThis ? 1 : 0.7 }}>
-                            <div className="d-flex justify-content-between align-items-center mb-3">
-                              <h5 className="m-0" style={{ fontWeight: 800, color: '#0D0D0D' }}>
-                                {it.serviceName} <span className="badge bg-secondary ms-2" style={{ fontSize: '0.7rem' }}>{it.priceText}</span>
-                              </h5>
+                            <div className="d-flex justify-content-between align-items-start mb-3">
+                              <div>
+                                <h5 className="m-0" style={{ fontWeight: 800, color: '#0D0D0D' }}>
+                                  {cardTitle}
+                                </h5>
+                                <div className="small text-muted" style={{ marginTop: 4, fontWeight: 700 }}>
+                                  {showAsPackageBlock ? `باكيج - ${cardPriceText}` : cardPriceText}
+                                </div>
+                              </div>
                               <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>حذف</button>
                             </div>
 
@@ -4618,13 +5533,123 @@ function findCartOverlap(items: CartItem[]) {
                               </div>
                             ) : (
                               <div className="row g-3">
+                                {isPackageRunLeader && packageRunMeta && (quickLoading || hasPackageQuickMode) ? (
+                                  <div className="col-12">
+                                    <div
+                                      style={{
+                                        border: "1px solid rgba(13,13,13,0.12)",
+                                        borderRadius: 10,
+                                        padding: 12,
+                                        background: "#fafaf9",
+                                      }}
+                                    >
+                                      <div className="small fw-bold mb-2">اختيار سريع للبكج</div>
+                                      <div className="small text-muted mb-2">
+                                        إجمالي وقت الخدمات: {Math.max(1, Number(packageRunMeta.totalDurationMin || 0))} دقيقة
+                                      </div>
+                                      {quickLoading ? (
+                                        <div className="small text-muted">
+                                          <FontAwesomeIcon icon={faSpinner} spin /> جاري تجهيز الموظفات المشتركات...
+                                        </div>
+                                      ) : quickCommonStaff.length === 0 ? (
+                                        <div className="small text-muted">
+                                          لا توجد موظفة واحدة تغطي كل خدمات هذا البكج. كمّلي الاختيار لكل خدمة على حدة.
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <div className="row g-2 align-items-end">
+                                            <div className="col-md-6">
+                                              <label className="form-label small fw-bold">موظفة البكج</label>
+                                              <select
+                                                className="form-select"
+                                                value={packageQuickState.employeeId}
+                                                onChange={(e) => {
+                                                  const empId = String(e.target.value || "").trim();
+                                                  setPackageQuickByRun((prev) => ({
+                                                    ...prev,
+                                                    [packageRunId]: {
+                                                      employeeId: empId,
+                                                      times: [],
+                                                      loading: false,
+                                                      error: "",
+                                                    },
+                                                  }));
+                                                  if (empId) {
+                                                    void loadPackageQuickStarts(packageRunId, empId);
+                                                  }
+                                                }}
+                                              >
+                                                <option value="">اختاري موظفة للبكج</option>
+                                                {quickCommonStaff.map((emp: any) => (
+                                                  <option key={String(emp?.id || "").trim()} value={String(emp?.id || "").trim()}>
+                                                    {String(emp?.name || "").trim() || "موظفة"}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </div>
+                                          </div>
+                                          {packageQuickState.loading ? (
+                                            <div className="small text-muted mt-2">
+                                              <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات المتاحة لكامل البكج...
+                                            </div>
+                                          ) : null}
+                                          {packageQuickState.error ? (
+                                            <div className="small text-warning mt-2">{packageQuickState.error}</div>
+                                          ) : null}
+                                          {packageQuickState.employeeId && packageQuickState.times.length > 0 ? (
+                                            <div className="mt-2">
+                                              <div className="small fw-bold mb-1">وقت بداية البكج</div>
+                                              <div className="bk-time-grid">
+                                                {packageQuickState.times.map((t) => (
+                                                  <button
+                                                    key={t}
+                                                    type="button"
+                                                    className="bk-time-chip"
+                                                    onClick={() => {
+                                                      void applyPackageQuickSelection(packageRunId, packageQuickState.employeeId, t);
+                                                    }}
+                                                  >
+                                                    {formatTime12ForClient(t)}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          ) : null}
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : null}
                                 <div className="col-12">
                                   <div className="small" style={{ color: "#4b5563", fontWeight: 700 }}>
-                                    القسم: {serviceSectionLabel} | التصنيف: {serviceCategoryLabel}
+                                    القسم: {serviceSectionLabel}
                                   </div>
-                                  {packageServices.length > 0 ? (
-                                    <div className="small" style={{ color: "#6b7280", marginTop: 4 }}>
-                                      تفاصيل الباكيج: {packageServices.map((s) => String(s.serviceName || s.serviceId || "").trim()).filter(Boolean).join("، ")}
+                                  <div className="small" style={{ color: "#4b5563", fontWeight: 700, marginTop: 2 }}>
+                                    التصنيف: {serviceCategoryLabel}
+                                  </div>
+                                  {packageServiceNames.length > 0 ? (
+                                    <div style={{ marginTop: 6 }}>
+                                      <div className="small" style={{ color: "#4b5563", fontWeight: 700, marginBottom: 4 }}>
+                                        تفاصيل الباكيج
+                                      </div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                        {packageServiceNames.map((name) => (
+                                          <span
+                                            key={name}
+                                            style={{
+                                              fontSize: '0.78rem',
+                                              color: '#374151',
+                                              background: '#f3f4f6',
+                                              border: '1px solid #e5e7eb',
+                                              borderRadius: 999,
+                                              padding: '3px 10px',
+                                              lineHeight: 1.5,
+                                            }}
+                                          >
+                                            {name}
+                                          </span>
+                                        ))}
+                                      </div>
                                     </div>
                                   ) : null}
                                 </div>
@@ -4650,6 +5675,7 @@ function findCartOverlap(items: CartItem[]) {
                                   </div>
                                 ) : null}
 
+                                {!hasPackageQuickMode && (
                                 <div className="col-md-6">
                                   <label className="form-label small fw-bold">1. اختاري الموظفة</label>
                                   <div className="input-group">
@@ -4702,8 +5728,9 @@ function findCartOverlap(items: CartItem[]) {
                                     </div>
                                   )}
                                 </div>
+                                )}
 
-                                {it.employeeId && selectedEmployeeAvailable && (
+                                {!hasPackageQuickMode && it.employeeId && selectedEmployeeAvailable && (
                                   <div className="col-12">
                                     <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
                                     {nearestAvailableStart ? (

@@ -220,11 +220,18 @@
 }
 
 .of-img {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
   object-fit: cover;
-  border: 1px solid rgba(13, 13, 13, 0.10);
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  box-shadow: 0 10px 22px rgba(13, 13, 13, 0.10);
+}
+
+.offers-table tbody td.of-cell-image {
+  width: 96px;
+  text-align: center;
+  vertical-align: top;
 }
 
 .of-desc-cell {
@@ -251,32 +258,44 @@
   padding: 14px 14px 16px;
 }
 
+.pkg-offer-card.is-editing {
+  border-color: rgba(64, 1, 13, 0.34);
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.10), 0 14px 30px rgba(13, 13, 13, 0.10);
+}
+
+.offers-like-package-card.is-deleted {
+  opacity: 0.85;
+  border-color: rgba(127, 29, 29, 0.24);
+}
+
 .pkg-offer-inner {
   background: #f4f4f4;
   border: 1px solid rgba(13, 13, 13, 0.08);
   border-radius: 18px;
-  padding: 10px 14px;
+  padding: 0 14px 10px;
+  overflow: hidden;
 }
 
 .pkg-offer-image-wrap {
-  display: flex;
-  justify-content: center;
-  margin: 8px 0 10px;
+  display: block;
+  margin: 0 -14px 10px;
 }
 
 .pkg-offer-image {
-  width: 74px;
-  height: 74px;
-  border-radius: 18px;
+  width: 100%;
+  height: 148px;
+  border-radius: 14px 14px 10px 10px;
   object-fit: cover;
-  border: 1px solid rgba(13, 13, 13, 0.1);
+  border: 0;
   background: #fff;
+  display: block;
 }
 
 .pkg-offer-image--empty {
   display: grid;
   place-items: center;
   color: #80868b;
+  background: linear-gradient(180deg, rgba(13,13,13,0.04), rgba(13,13,13,0.02));
 }
 
 .pkg-offer-row {
@@ -367,16 +386,6 @@
   border-bottom: 1px solid rgba(13, 13, 13, 0.06);
   padding: 8px 4px;
 }
-.pkgm .pkgm__stats {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-  background: rgba(0,0,0,0.03);
-  border-radius: 10px;
-  padding: 8px;
-  font-size: 13px;
-}
 .pkgm .pkgm__warn {
   margin-top: 10px;
   background: #fff7e6;
@@ -395,9 +404,6 @@
 @media (max-width: 900px) {
   .pkgm .pkgm__row {
     grid-template-columns: 1fr;
-  }
-  .pkgm .pkgm__stats {
-    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -549,6 +555,23 @@
   font-weight: 700;
 }
 
+.offers-modal .dash-select--with-caret {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.offers-modal .dash-dd-caret-inline {
+  font-size: 12px;
+  line-height: 1;
+  color: rgba(64, 1, 13, 0.82);
+}
+
+.offers-modal .dash-dd-caret-inline.is-open {
+  color: #40010D;
+}
+
 .offers-modal .dash-select:hover {
   border-color: rgba(64, 1, 13, 0.24);
   box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.08);
@@ -591,7 +614,7 @@
 }
 
 .offers-modal input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(0);
+  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
   opacity: 1;
   cursor: pointer;
 }
@@ -1101,12 +1124,12 @@
 
 
 /* =========================
-   ✅ Mobile: Table -> Cards (No horizontal scroll)
+   ✅ Mobile/Tablet: Table -> Cards (No horizontal scroll)
 ========================= */
-@media (max-width: 640px) {
+@media (max-width: 900px) {
   /* لا نبي أي سحب أفقي */
   .offers-table-card { overflow: visible; }
-  .table-responsive { overflow: visible !important; }
+  .offers-page .table-responsive { overflow: visible !important; }
 
   /* نخفي header في الجوال */
   .offers-table thead {
@@ -1182,15 +1205,15 @@
    ✅ Mobile Luxury Cards (DashboardOffers)
    هدفها: فخامة + راحة عين + ترتيب
 ========================= */
-@media (max-width: 640px) {
+@media (max-width: 900px) {
 
   /* الكرت نفسه */
   .offers-table tbody tr{
     background: rgba(255,255,255,0.96);
     border: 1px solid rgba(13, 13, 13, 0.08);
-    border-radius: 18px;
-    padding: 12px 14px;
-    margin: 12px 0;
+    border-radius: 20px;
+    padding: 14px 15px;
+    margin: 14px 0;
 
     box-shadow:
       0 18px 40px rgba(13, 13, 13, 0.07),
@@ -1217,12 +1240,12 @@
   /* كل سطر: عنوان | قيمة */
   .offers-table tbody td{
     border: none !important;
-    padding: 10px 0 !important;
+    padding: 11px 0 !important;
     white-space: normal !important;
 
     display: grid;
-    grid-template-columns: 98px 1fr; /* عنوان ثابت */
-    gap: 12px;
+    grid-template-columns: 104px 1fr; /* عنوان ثابت */
+    gap: 14px;
 
     align-items: center;
   }
@@ -1255,43 +1278,52 @@
     word-break: break-word;
   }
 
-  /* ✅ صورة: صف لطيف */
-  .offers-table tbody td[data-label="صورة"]{
-    grid-template-columns: 98px 1fr;
+  /* ✅ خلية الصورة */
+  .offers-table tbody td.of-cell-image{
+    grid-template-columns: 1fr;
     align-items: center;
+    justify-items: center;
+    padding-top: 0 !important;
+    padding-bottom: 10px !important;
   }
 
-  .offers-table tbody td[data-label="صورة"] .of-img{
-    width: 62px;
-    height: 62px;
-    border-radius: 16px;
-    border: 1px solid rgba(13, 13, 13, 0.10);
-    box-shadow: 0 10px 22px rgba(13, 13, 13, 0.08);
+  .offers-table tbody td.of-cell-image .of-img{
+    width: 100%;
+    max-width: none;
+    height: 150px;
+    border-radius: 14px;
+    border: 0;
+    box-shadow: 0 10px 24px rgba(13, 13, 13, 0.12);
+    display: block;
   }
 
-  /* ✅ “الكود” كبادج */
-  .offers-table tbody td[data-label="الكود"]{
-    font-weight: 800;
+  .offers-table tbody td.of-cell-image::before{
+    display: none;
+    margin: 0;
+  }
+
+  .offers-table tbody td.of-cell-image + td{
+    border-top: 0 !important;
+  }
+
+  .offers-table tbody td[data-label="العنوان"] > * {
+    font-weight: 900;
+    line-height: 1.45;
+  }
+
+  /* كود العرض كبادج أنظف */
+  .offers-table tbody td[data-label="الكود"] > * {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(13, 13, 13, 0.14);
+    background: rgba(13, 13, 13, 0.04);
     color: #0D0D0D;
-  }
-  .offers-table tbody td[data-label="الكود"]{
-    /* نخلي القيمة كبادج عن طريق لفّها بصريًا */
-  }
-  .offers-table tbody td[data-label="الكود"]{
-    background: transparent;
-  }
-  .offers-table tbody td[data-label="الكود"]{
-    /* نخلي محتوى النص يوحي كبادج بدون ما نغير JSX */
-  }
-  .offers-table tbody td[data-label="الكود"]{
-    /* نطبق على النص مباشرة */
-  }
-  .offers-table tbody td[data-label="الكود"]{
-    /* لا شيء إضافي هنا */
-  }
-  .offers-table tbody td[data-label="الكود"]{
-    /* نستخدم pseudo على الخانة نفسها ما ينفع للقيمة، فبنستخدم span لو موجود.
-       الحل الأفضل: نخلي القيمة تكسب ستايل عام */
+    font-weight: 900;
+    font-size: 12px;
   }
 
   /* ✅ ستايل “قيمة” موحّد (يلقط النص/سبان/زر) */
@@ -1357,8 +1389,8 @@
   .offers-table tbody td[data-label="تحكم"] .dash-pill{
     width: 100%;
     justify-content: center;
-    padding: 10px 12px;
-    border-radius: 14px;
+    padding: 11px 12px;
+    border-radius: 15px;
     font-weight: 900;
   }
 
@@ -1374,33 +1406,152 @@
 .offers-page {
   padding-top: 20px;
   padding-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.offers-section-note {
+  margin: -2px 0 10px;
+  font-size: 12px;
+  color: rgba(13, 13, 13, 0.58);
+  font-weight: 700;
+}
+
+/* Visual order: filters/search first, then offers results, then packages */
+.offers-header { order: 0; }
+.offers-section--quick-actions { order: 1; }
+.offers-section--offer-form { order: 2; }
+.offers-section--package-form { order: 3; }
+.offers-section--filters { order: 4; }
+.offers-section--offers-table { order: 5; }
+.offers-section--packages-list { order: 6; }
+
+.offers-section--offers-table .offers-card-title {
+  color: #30363a;
+  font-size: 14px;
+}
+
+.offers-quick-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.offers-quick-btn {
+  min-height: 46px;
+  min-width: 190px;
+  padding-inline: 16px;
+  font-size: 14px;
+  font-weight: 900;
+  justify-content: center;
+}
+
+.offers-quick-btn--offer {
+  min-width: 220px;
+}
+
+.offers-quick-btn--offer.is-open {
+  background: #40010D !important;
+  border-color: rgba(64, 1, 13, 0.70) !important;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.offers-quick-btn--offer.is-open,
+.offers-quick-btn--offer.is-open * {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.offers-quick-state {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  background: rgba(245, 245, 244, 0.9);
+  color: #0D0D0D;
+}
+
+.offers-quick-state.is-open {
+  border-color: rgba(64, 1, 13, 0.25);
+  background: rgba(64, 1, 13, 0.08);
+  color: #40010D;
 }
 
 .offers-head-main {
   width: 100%;
 }
 
-.offers-kpis {
-  margin-top: 12px;
+.offers-stats-section {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.offers-kpi {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(13, 13, 13, 0.08);
+.offers-stats-group {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(13, 13, 13, 0.05);
   border-radius: 14px;
-  padding: 8px 10px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.offers-stats-group--offers {
+  background: linear-gradient(180deg, rgba(64, 1, 13, 0.08) 0%, rgba(64, 1, 13, 0.03) 100%);
+  border-color: rgba(64, 1, 13, 0.16);
+}
+
+.offers-stats-group--packages {
+  background: linear-gradient(180deg, rgba(19, 78, 74, 0.10) 0%, rgba(19, 78, 74, 0.04) 100%);
+  border-color: rgba(19, 78, 74, 0.18);
+}
+
+.offers-stats-group-title {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  font-weight: 900;
+  color: #5b1a25;
+  margin: 0 2px 2px;
+}
+
+.offers-stats-group--offers .offers-stats-group-title {
+  color: #5b1a25;
+}
+
+.offers-stats-group--packages .offers-stats-group-title {
+  color: #0f4f4b;
+}
+
+.offers-kpi {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(13, 13, 13, 0.04);
+  border-radius: 12px;
+  padding: 7px 9px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-height: 46px;
+  box-shadow: 0 2px 8px rgba(13, 13, 13, 0.035);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.offers-kpi:hover {
+  box-shadow: 0 3px 10px rgba(13, 13, 13, 0.05);
+  border-color: rgba(64, 1, 13, 0.08);
+  background: rgba(255, 255, 255, 0.95);
 }
 
 .offers-kpi span {
-  font-size: 12px;
-  color: #515659;
+  font-size: 11px;
+  color: #61676a;
   font-weight: 700;
 }
 
@@ -1408,6 +1559,17 @@
   font-size: 16px;
   color: #0D0D0D;
   font-weight: 900;
+  line-height: 1;
+}
+
+.offers-stats-group--offers .offers-kpi {
+  border-color: rgba(64, 1, 13, 0.10);
+  background: rgba(255, 255, 255, 0.93);
+}
+
+.offers-stats-group--packages .offers-kpi {
+  border-color: rgba(19, 78, 74, 0.12);
+  background: rgba(255, 255, 255, 0.93);
 }
 
 .offers-row--filters {
@@ -1645,23 +1807,6 @@
   font-weight: 700;
 }
 
-.pkgm .pkgm__stats {
-  margin-top: 12px;
-  background: rgba(64, 1, 13, 0.04);
-  border: 1px solid rgba(64, 1, 13, 0.1);
-  border-radius: 12px;
-  padding: 10px;
-  gap: 10px;
-}
-
-.pkgm .pkgm__stats > span {
-  background: #fff;
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-weight: 700;
-}
-
 .pkgm .pkgm__actions {
   margin-top: 12px;
   justify-content: flex-start;
@@ -1674,8 +1819,12 @@
 }
 
 @media (max-width: 900px) {
-  .offers-kpis {
+  .offers-stats-section {
     grid-template-columns: 1fr;
+  }
+
+  .offers-stats-group {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .offers-row--filters {
@@ -1690,6 +1839,16 @@
   .offers-add-btn {
     width: 100%;
   }
+
+  .offers-quick-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .offers-quick-btn {
+    width: 100%;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1697,8 +1856,12 @@
     padding-top: 14px;
   }
 
+  .offers-stats-group {
+    grid-template-columns: 1fr;
+  }
+
   .offers-kpi {
-    padding: 10px 12px;
+    padding: 7px 9px;
   }
 
   .pkgm .pkgm__service {
@@ -1736,8 +1899,5 @@
 
   .pkgm .pkgm__service-status { min-width: 64px; }
 
-  .pkgm .pkgm__stats {
-    grid-template-columns: 1fr;
-  }
 }
 

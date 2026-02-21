@@ -170,6 +170,17 @@
   cursor: not-allowed;
 }
 
+.dashboard-skin .settings-date-clickable,
+.dashboard-skin .settings-date-clickable .settings-input {
+  cursor: pointer;
+}
+
+.dashboard-skin .settings-date-input::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
+  cursor: pointer;
+}
+
 /* ✅ Lists */
 .dashboard-skin .settings-list {
   display: grid;

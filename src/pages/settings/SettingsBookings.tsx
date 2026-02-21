@@ -37,7 +37,6 @@ function mapFirestoreRoleToUi(roleRaw: string): UiRole {
 
 const SALON_ID = "main";
 const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
-const MANI_PEDI_TOOLS_FEE_FIXED = 15;
 
 // ✅ Local cache key (بديل setCached)
 const APP_SETTINGS_CACHE_KEY = "qs_app_settings_cache_v1";
@@ -95,6 +94,18 @@ function defaultBusinessHoursLocal() {
 }
 
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+type BookingHourOverrideMode = "hours" | "closed";
+type BookingHourOverride = {
+  id: string;
+  fromDate: string;
+  toDate: string;
+  mode: BookingHourOverrideMode;
+  start?: string;
+  end?: string;
+  includeWeekdays?: WeekdayKey[];
+  blockedWeekdays?: WeekdayKey[];
+  reason?: string;
+};
 
 const WEEKDAY_KEYS: WeekdayKey[] = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"];
 
@@ -132,6 +143,40 @@ export default function SettingsBookings() {
   });
 
   const bookingSettings = (settings as any)?.booking || {};
+  const bookingHourOverrides = useMemo(() => {
+    const raw = Array.isArray((bookingSettings as any)?.bookingHourOverrides)
+      ? (bookingSettings as any).bookingHourOverrides
+      : [];
+    return raw
+      .map((x: any, idx: number) => ({
+        id: String(x?.id || `ovr_${idx}`),
+        fromDate: String(x?.fromDate || "").trim(),
+        toDate: String(x?.toDate || "").trim(),
+        mode: String(x?.mode || "hours").trim() === "closed" ? "closed" : "hours",
+        start: String(x?.start || "10:00").trim(),
+        end: String(x?.end || "22:00").trim(),
+        includeWeekdays: Array.isArray(x?.includeWeekdays)
+          ? x.includeWeekdays.filter((d: any) => WEEKDAY_KEYS.includes(d))
+          : [],
+        blockedWeekdays: Array.isArray(x?.blockedWeekdays)
+          ? x.blockedWeekdays.filter((d: any) => WEEKDAY_KEYS.includes(d))
+          : [],
+        reason: String(x?.reason || "").trim(),
+      }))
+      .filter((x: any) => x.fromDate && x.toDate) as BookingHourOverride[];
+  }, [bookingSettings]);
+
+  const [overrideDraft, setOverrideDraft] = useState<BookingHourOverride>({
+    id: "",
+    fromDate: "",
+    toDate: "",
+    mode: "hours",
+    start: "10:00",
+    end: "22:00",
+    includeWeekdays: [],
+    blockedWeekdays: [],
+    reason: "",
+  });
 
   const seasonFill = (bookingSettings as any)?.seasonFill || {};
   const seasonFillEnabled = !!seasonFill.enabled;
@@ -168,7 +213,10 @@ export default function SettingsBookings() {
     const v = safeInt(raw, 5);
     return [0, 5, 10, 15, 20, 30].includes(v) ? v : 5;
   }, [bookingSettings?.bufferMin]);
-  const maniPediToolsFee = MANI_PEDI_TOOLS_FEE_FIXED;
+  const maniPediToolsFee = useMemo(() => {
+    const raw = bookingSettings?.maniPediToolsFee;
+    return Math.max(0, safeInt(raw, 15));
+  }, [bookingSettings?.maniPediToolsFee]);
 
 
 
@@ -198,6 +246,88 @@ export default function SettingsBookings() {
   };
 
   const [savedMsg, setSavedMsg] = useState("");
+
+  const openDatePickerInput = (el: HTMLInputElement | null) => {
+    if (!el || el.disabled || el.readOnly) return;
+    try {
+      (el as any).showPicker?.();
+    } catch {
+      // ignore browser limitations
+    }
+    el.focus();
+  };
+
+  const openDatePickerFromContainer = (container: HTMLElement | null) => {
+    if (!container) return;
+    const input = container.querySelector('input[type="date"]') as HTMLInputElement | null;
+    openDatePickerInput(input);
+  };
+
+  const resetOverrideDraft = () => {
+    setOverrideDraft({
+      id: "",
+      fromDate: "",
+      toDate: "",
+      mode: "hours",
+      start: "10:00",
+      end: "22:00",
+      includeWeekdays: [],
+      blockedWeekdays: [],
+      reason: "",
+    });
+  };
+
+  const toggleDraftWeekday = (key: "includeWeekdays" | "blockedWeekdays", day: WeekdayKey) => {
+    setOverrideDraft((prev) => {
+      const cur = Array.isArray(prev[key]) ? [...(prev[key] as WeekdayKey[])] : [];
+      const next = cur.includes(day) ? cur.filter((d) => d !== day) : [...cur, day];
+      return { ...prev, [key]: next };
+    });
+  };
+
+  const addBookingHourOverride = () => {
+    if (!hasAdminPower) return;
+    const fromDate = String(overrideDraft.fromDate || "").trim();
+    const toDate = String(overrideDraft.toDate || "").trim();
+    if (!fromDate || !toDate) {
+      setSavedMsg("❌ حددي من/إلى تاريخ للاستثناء");
+      setTimeout(() => setSavedMsg(""), 2200);
+      return;
+    }
+    if (fromDate > toDate) {
+      setSavedMsg("❌ تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية");
+      setTimeout(() => setSavedMsg(""), 2200);
+      return;
+    }
+    if (overrideDraft.mode === "hours" && String(overrideDraft.start || "") === String(overrideDraft.end || "")) {
+      setSavedMsg("❌ وقت البداية والنهاية لا يمكن أن يكونا متطابقين");
+      setTimeout(() => setSavedMsg(""), 2200);
+      return;
+    }
+
+    const entry: BookingHourOverride = {
+      id: `ovr_${Date.now()}`,
+      fromDate,
+      toDate,
+      mode: overrideDraft.mode === "closed" ? "closed" : "hours",
+      start: overrideDraft.mode === "hours" ? String(overrideDraft.start || "10:00") : undefined,
+      end: overrideDraft.mode === "hours" ? String(overrideDraft.end || "22:00") : undefined,
+      includeWeekdays: (overrideDraft.includeWeekdays || []).filter((d) => WEEKDAY_KEYS.includes(d)),
+      blockedWeekdays: (overrideDraft.blockedWeekdays || []).filter((d) => WEEKDAY_KEYS.includes(d)),
+      reason: String(overrideDraft.reason || "").trim(),
+    };
+
+    setBookingSettings({
+      bookingHourOverrides: [...bookingHourOverrides, entry],
+    });
+    resetOverrideDraft();
+  };
+
+  const removeBookingHourOverride = (id: string) => {
+    if (!hasAdminPower) return;
+    const next = bookingHourOverrides.filter((x) => String(x.id) !== String(id));
+    setBookingSettings({ bookingHourOverrides: next });
+  };
 
   // ✅ helper: خذ آخر نسخة مؤكدة (state الحالي أولاً ثم cache)
   function getLatestSettingsSnapshot() {
@@ -242,6 +372,9 @@ export default function SettingsBookings() {
           slotStepMin, // من UI (مضمون 5/10/15/30)
           bufferMin,   // ✅ جديد: بفر بعد كل حجز
           maniPediToolsFee, // ✅ رسوم أدوات المشغل لخدمات البديكير/المناكير
+          bookingHourOverrides: Array.isArray(latestBooking?.bookingHourOverrides)
+            ? latestBooking.bookingHourOverrides
+            : [],
           businessHours: bh,
           seasonFill: latestBooking?.seasonFill || { enabled: false, from: "", to: "" },
           sequentialBooking: !!latestBooking?.sequentialBooking,
@@ -371,7 +504,7 @@ export default function SettingsBookings() {
 
   const hint = useMemo(() => {
     if (hasAdminPower) return "تقدر تعدّل وتحفظ.";
-    return "عرض فقط (تحتاج Owner/Admin للتعديل).";
+    return "تحتاج صلاحية Owner/Admin.";
   }, [hasAdminPower]);
 
   if (authLoading) {
@@ -386,7 +519,7 @@ export default function SettingsBookings() {
     );
   }
 
-  if (!hasAdminPower && uiRole !== "reception" && uiRole !== "staff") {
+  if (!hasAdminPower) {
     return (
       <div className="dashboard-section settings-page">
         <div className="settings-wrap">
@@ -496,12 +629,12 @@ export default function SettingsBookings() {
               className="settings-row"
               style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}
             >
-              <div style={{ minWidth: 220 }}>
-                <div style={{ fontWeight: 900 }}>رسوم أدوات المشغل (البديكير/المناكير)</div>
-                <div style={{ opacity: 0.7, fontSize: 12 }}>
-                  ثابتة على 15 ريال، وتظهر فقط إذا اختارت العميلة "الأدوات من المشغل" ضمن هذا القسم
+                <div style={{ minWidth: 220 }}>
+                  <div style={{ fontWeight: 900 }}>رسوم أدوات المشغل (البديكير/المناكير)</div>
+                  <div style={{ opacity: 0.7, fontSize: 12 }}>
+                    تظهر فقط إذا اختارت العميلة "الأدوات من المشغل" ضمن هذا القسم
+                  </div>
                 </div>
-              </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input
@@ -509,8 +642,14 @@ export default function SettingsBookings() {
                   className="settings-input"
                   style={{ width: 160 }}
                   value={String(maniPediToolsFee)}
-                  disabled
-                  readOnly
+                  min={0}
+                  step={1}
+                  disabled={!hasAdminPower}
+                  onChange={(e) =>
+                    setBookingSettings({
+                      maniPediToolsFee: Math.max(0, safeInt(e.target.value, 0)),
+                    })
+                  }
                 />
                 <span style={{ opacity: 0.8 }}>ريال</span>
               </div>
@@ -697,32 +836,62 @@ export default function SettingsBookings() {
             <div className="settings-grid" style={{ marginTop: 10 }}>
               <div className="settings-field">
                 <label>من تاريخ</label>
-                <input
-                  className="settings-input"
-                  type="date"
-                  value={seasonFillFrom}
-                  disabled={!hasAdminPower || !seasonFillEnabled}
-                  onChange={(e) =>
-                    setBookingSettings({
-                      seasonFill: { ...(seasonFill || {}), from: e.target.value },
-                    })
-                  }
-                />
+                <div
+                  className="settings-date-clickable"
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => openDatePickerFromContainer(e.currentTarget)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openDatePickerFromContainer(e.currentTarget);
+                    }
+                  }}
+                >
+                  <input
+                    className="settings-input settings-date-input"
+                    type="date"
+                    value={seasonFillFrom}
+                    disabled={!hasAdminPower || !seasonFillEnabled}
+                    onClick={(e) => openDatePickerInput(e.currentTarget)}
+                    onFocus={(e) => openDatePickerInput(e.currentTarget)}
+                    onChange={(e) =>
+                      setBookingSettings({
+                        seasonFill: { ...(seasonFill || {}), from: e.target.value },
+                      })
+                    }
+                  />
+                </div>
               </div>
 
               <div className="settings-field">
                 <label>إلى تاريخ</label>
-                <input
-                  className="settings-input"
-                  type="date"
-                  value={seasonFillTo}
-                  disabled={!hasAdminPower || !seasonFillEnabled}
-                  onChange={(e) =>
-                    setBookingSettings({
-                      seasonFill: { ...(seasonFill || {}), to: e.target.value },
-                    })
-                  }
-                />
+                <div
+                  className="settings-date-clickable"
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => openDatePickerFromContainer(e.currentTarget)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openDatePickerFromContainer(e.currentTarget);
+                    }
+                  }}
+                >
+                  <input
+                    className="settings-input settings-date-input"
+                    type="date"
+                    value={seasonFillTo}
+                    disabled={!hasAdminPower || !seasonFillEnabled}
+                    onClick={(e) => openDatePickerInput(e.currentTarget)}
+                    onFocus={(e) => openDatePickerInput(e.currentTarget)}
+                    onChange={(e) =>
+                      setBookingSettings({
+                        seasonFill: { ...(seasonFill || {}), to: e.target.value },
+                      })
+                    }
+                  />
+                </div>
               </div>
             </div>
 
@@ -752,6 +921,210 @@ export default function SettingsBookings() {
               </p>
             </div>
           </div>
+
+        <div className="settings-card">
+          <h3 className="settings-title">استثناءات الدوام (فترات بتاريخ محدد)</h3>
+          <div className="settings-grid" style={{ marginTop: 10 }}>
+            <div className="settings-field">
+              <label>من تاريخ</label>
+              <div
+                className="settings-date-clickable"
+                role="button"
+                tabIndex={0}
+                onClick={(e) => openDatePickerFromContainer(e.currentTarget)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openDatePickerFromContainer(e.currentTarget);
+                  }
+                }}
+              >
+                <input
+                  className="settings-input settings-date-input"
+                  type="date"
+                  value={overrideDraft.fromDate}
+                  disabled={!hasAdminPower}
+                  onClick={(e) => openDatePickerInput(e.currentTarget)}
+                  onFocus={(e) => openDatePickerInput(e.currentTarget)}
+                  onChange={(e) => setOverrideDraft((p) => ({ ...p, fromDate: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="settings-field">
+              <label>إلى تاريخ</label>
+              <div
+                className="settings-date-clickable"
+                role="button"
+                tabIndex={0}
+                onClick={(e) => openDatePickerFromContainer(e.currentTarget)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openDatePickerFromContainer(e.currentTarget);
+                  }
+                }}
+              >
+                <input
+                  className="settings-input settings-date-input"
+                  type="date"
+                  value={overrideDraft.toDate}
+                  disabled={!hasAdminPower}
+                  onClick={(e) => openDatePickerInput(e.currentTarget)}
+                  onFocus={(e) => openDatePickerInput(e.currentTarget)}
+                  onChange={(e) => setOverrideDraft((p) => ({ ...p, toDate: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="settings-field">
+              <label>وضع الفترة</label>
+              <select
+                className="form-select dash-select"
+                value={overrideDraft.mode}
+                disabled={!hasAdminPower}
+                onChange={(e) =>
+                  setOverrideDraft((p) => ({
+                    ...p,
+                    mode: (e.target.value === "closed" ? "closed" : "hours") as BookingHourOverrideMode,
+                  }))
+                }
+              >
+                <option value="hours">مفتوح بساعات مخصصة</option>
+                <option value="closed">مغلق بالكامل</option>
+              </select>
+            </div>
+            <div className="settings-field">
+              <label>وقت البداية</label>
+              <input
+                className="settings-input"
+                type="time"
+                value={String(overrideDraft.start || "10:00")}
+                disabled={!hasAdminPower || overrideDraft.mode === "closed"}
+                onChange={(e) => setOverrideDraft((p) => ({ ...p, start: e.target.value }))}
+              />
+            </div>
+            <div className="settings-field">
+              <label>وقت النهاية</label>
+              <input
+                className="settings-input"
+                type="time"
+                value={String(overrideDraft.end || "22:00")}
+                disabled={!hasAdminPower || overrideDraft.mode === "closed"}
+                onChange={(e) => setOverrideDraft((p) => ({ ...p, end: e.target.value }))}
+              />
+            </div>
+            <div className="settings-field" style={{ gridColumn: "1 / -1" }}>
+              <label>أيام مستهدفة داخل الفترة (اختياري)</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                {WEEKDAY_KEYS.map((d) => {
+                  const active = (overrideDraft.includeWeekdays || []).includes(d);
+                  return (
+                    <button
+                      key={`inc_${d}`}
+                      type="button"
+                      className={`btn btn-sm ${active ? "btn-dark" : "btn-outline-dark"}`}
+                      disabled={!hasAdminPower}
+                      onClick={() => toggleDraftWeekday("includeWeekdays", d)}
+                    >
+                      {WEEKDAY_LABEL_AR[d]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="settings-field" style={{ gridColumn: "1 / -1" }}>
+              <label>أيام مغلقة داخل الفترة (اختياري)</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                {WEEKDAY_KEYS.map((d) => {
+                  const active = (overrideDraft.blockedWeekdays || []).includes(d);
+                  return (
+                    <button
+                      key={`blk_${d}`}
+                      type="button"
+                      className={`btn btn-sm ${active ? "btn-danger" : "btn-outline-danger"}`}
+                      disabled={!hasAdminPower}
+                      onClick={() => toggleDraftWeekday("blockedWeekdays", d)}
+                    >
+                      {WEEKDAY_LABEL_AR[d]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="settings-field" style={{ gridColumn: "1 / -1" }}>
+              <label>سبب داخلي (اختياري)</label>
+              <input
+                className="settings-input"
+                value={String(overrideDraft.reason || "")}
+                disabled={!hasAdminPower}
+                onChange={(e) => setOverrideDraft((p) => ({ ...p, reason: e.target.value }))}
+                placeholder="مثال: دوام رمضان / جدول حملة صبغات"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className={`dash-btn ${!hasAdminPower ? "is-disabled" : ""}`}
+              disabled={!hasAdminPower}
+              onClick={addBookingHourOverride}
+            >
+              إضافة استثناء
+            </button>
+            <button
+              type="button"
+              className="dash-btn"
+              disabled={!hasAdminPower}
+              onClick={resetOverrideDraft}
+            >
+              تنظيف
+            </button>
+          </div>
+
+          <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+            {!bookingHourOverrides.length ? (
+              <div className="settings-footnote">لا توجد استثناءات مضافة.</div>
+            ) : (
+              bookingHourOverrides.map((x) => (
+                <div key={x.id} className="settings-row" style={{ alignItems: "flex-start", gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 900 }}>
+                      {x.fromDate} ← {x.toDate} | {x.mode === "closed" ? "مغلق بالكامل" : `ساعات: ${x.start} - ${x.end}`}
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+                      الأيام المستهدفة: {(x.includeWeekdays || []).length
+                        ? (x.includeWeekdays || []).map((d) => WEEKDAY_LABEL_AR[d]).join("، ")
+                        : "الكل"}
+                      {" | "}
+                      الأيام المغلقة: {(x.blockedWeekdays || []).length
+                        ? (x.blockedWeekdays || []).map((d) => WEEKDAY_LABEL_AR[d]).join("، ")
+                        : "لا يوجد"}
+                    </div>
+                    {x.reason ? (
+                      <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
+                        السبب: {x.reason}
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline-danger btn-sm"
+                    disabled={!hasAdminPower}
+                    onClick={() => removeBookingHourOverride(x.id)}
+                  >
+                    حذف
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="settings-footnote" style={{ marginTop: 10 }}>
+            * الأولوية: الإغلاقات الخاصة بالتاريخ ثم الاستثناءات ثم الدوام الأسبوعي.
+            <br />
+            * خارج فترة الاستثناء لا يتغير الدوام الأسبوعي العادي.
+          </div>
+        </div>
         </div>
       </div>
   );

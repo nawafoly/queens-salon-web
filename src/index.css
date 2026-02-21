@@ -87,6 +87,9 @@
   --bs-warning-color: #f59e0b;
   --bs-error-color: #ef4444;
   --bs-info-color: var(--bs-primary-color);
+
+  /* Date picker icon (single source of truth) */
+  --qs-date-picker-icon-filter: brightness(0) saturate(100%);
 }
 
 /* ===========================
@@ -234,6 +237,10 @@ textarea:focus {
   outline: none;
   box-shadow: var(--qs-focus);
   border-color: rgba(64, 1, 13, 0.75);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
 }
 
 /* ===========================

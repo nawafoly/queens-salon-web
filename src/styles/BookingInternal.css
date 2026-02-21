@@ -220,6 +220,17 @@
   font-size: 0.86rem;
 }
 
+.bk-internal input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
+  cursor: pointer;
+}
+
+.bk-internal .booking-date-group,
+.bk-internal .booking-date-group * {
+  cursor: pointer;
+}
+
 .bk-internal .bk-booking-value {
   color: #2f241f;
   font-weight: 700;

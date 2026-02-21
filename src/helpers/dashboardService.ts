@@ -22,6 +22,8 @@ export type Booking = {
   phone?: string;
   serviceName: string;
   serviceId?: string;
+  serviceSectionName?: string;
+  serviceCategoryName?: string;
   employeeName?: string;
   date: string; // YYYY-MM-DD
   time: string; // "10:00 ص" or "17:30"
@@ -114,6 +116,16 @@ function mapBookingDoc(id: string, b: any): Booking {
     phone,
     serviceId,
     serviceName,
+    serviceSectionName:
+      b.serviceSnapshot?.sectionTitleAtBooking ??
+      b.sectionTitleAtBooking ??
+      b.serviceSectionTitle ??
+      undefined,
+    serviceCategoryName:
+      b.serviceSnapshot?.categoryNameAtBooking ??
+      b.categoryNameAtBooking ??
+      b.serviceCategoryName ??
+      undefined,
     employeeName,
     date,
     time,

@@ -1,4 +1,4 @@
-function safeTimeHHMM(v: any, fallback: string) {
+export function safeTimeHHMM(v: any, fallback: string) {
   const s = String(v || "").trim();
   const m = s.match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return fallback;

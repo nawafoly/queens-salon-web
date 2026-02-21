@@ -227,7 +227,7 @@
 .reports-page .reports-audit input[type="date"]::-webkit-calendar-picker-indicator {
   opacity: 0.9;
   cursor: pointer;
-  filter: none;
+  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
 }
 
 /* =========================

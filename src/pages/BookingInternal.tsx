@@ -206,7 +206,6 @@ const DEFAULT_SERVICE_DURATION_MIN = 60;
 const PACKAGE_SECTION_ID = "service-packages";
 const PACKAGE_SECTION_TITLE = "البكيجات";
 const ALLOW_OVERTIME_MIN = 20;
-const MANI_PEDI_TOOLS_FEE_FIXED = 15;
 const MANI_PEDI_SECTION_KEYWORDS = [
   "manicure",
   "pedicure",
@@ -223,6 +222,18 @@ const MANI_PEDI_SECTION_KEYWORDS = [
   "بوديكير",
 ];
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+type BookingHourOverrideMode = "hours" | "closed";
+type BookingHourOverride = {
+  id?: string;
+  fromDate: string;
+  toDate: string;
+  mode: BookingHourOverrideMode;
+  start?: string;
+  end?: string;
+  includeWeekdays?: WeekdayKey[];
+  blockedWeekdays?: WeekdayKey[];
+  reason?: string;
+};
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
   sat: "السبت",
@@ -605,6 +616,40 @@ function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
   return JS_DAY_TO_WEEKDAY[dt.getDay()] || "sat";
 }
 
+function normalizeWeekdayList(v: any): WeekdayKey[] {
+  if (!Array.isArray(v)) return [];
+  const allowed = new Set<WeekdayKey>(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
+  const out: WeekdayKey[] = [];
+  for (const d0 of v) {
+    const d = String(d0 || "").trim().toLowerCase() as WeekdayKey;
+    if (allowed.has(d) && !out.includes(d)) out.push(d);
+  }
+  return out;
+}
+
+function readBookingHourOverrides(raw: any): BookingHourOverride[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((x: any) => {
+      const fromDate = String(x?.fromDate || "").trim();
+      const toDate = String(x?.toDate || "").trim();
+      if (!fromDate || !toDate) return null;
+      const mode: BookingHourOverrideMode = String(x?.mode || "").trim() === "closed" ? "closed" : "hours";
+      return {
+        id: String(x?.id || "").trim() || undefined,
+        fromDate,
+        toDate,
+        mode,
+        start: String(x?.start || "").trim() || undefined,
+        end: String(x?.end || "").trim() || undefined,
+        includeWeekdays: normalizeWeekdayList(x?.includeWeekdays),
+        blockedWeekdays: normalizeWeekdayList(x?.blockedWeekdays),
+        reason: String(x?.reason || "").trim() || undefined,
+      };
+    })
+    .filter(Boolean) as BookingHourOverride[];
+}
+
 const ARABIC_DIGIT_MAP: Record<string, string> = {
   "٠": "0",
   "١": "1",
@@ -769,44 +814,65 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [bookingDate, setBookingDate] = useState<string>(() => todayISO());
 
   const businessHours = (booking as any)?.businessHours || {};
-  const selectedDayKey = useMemo(
-    () => resolveWeekdayFromISO(String(bookingDate || "").trim() || todayISO()),
-    [bookingDate]
-  );
-  const selectedDayHours = useMemo(
-    () =>
-      (businessHours as any)?.[selectedDayKey] || {
-        enabled: true,
-        start: "10:00",
-        end: "22:00",
-      },
-    [businessHours, selectedDayKey]
-  );
-  const selectedDayOpen = selectedDayHours?.enabled !== false;
-
-  const openTime = useMemo(
-    () => safeTimeHHMM((selectedDayHours as any)?.start, "10:00"),
-    [selectedDayHours]
-  );
-
-  const closeTime = useMemo(
-    () => safeTimeHHMM((selectedDayHours as any)?.end, "22:00"),
-    [selectedDayHours]
+  const bookingHourOverrides = useMemo(
+    () => readBookingHourOverrides((booking as any)?.bookingHourOverrides),
+    [(booking as any)?.bookingHourOverrides]
   );
 
   const getDaySettingsForDate = (dateISO: string) => {
     const dayKey = resolveWeekdayFromISO(String(dateISO || "").trim() || todayISO());
-    const dayHours = (businessHours as any)?.[dayKey] || {
+    const dayHoursBase = (businessHours as any)?.[dayKey] || {
       enabled: true,
       start: "10:00",
       end: "22:00",
     };
+
+    for (let i = bookingHourOverrides.length - 1; i >= 0; i--) {
+      const ov = bookingHourOverrides[i];
+      const fromDate = String(ov?.fromDate || "").trim();
+      const toDate = String(ov?.toDate || "").trim();
+      if (!fromDate || !toDate) continue;
+      if (dateISO < fromDate || dateISO > toDate) continue;
+
+      const includeDays = Array.isArray(ov?.includeWeekdays) ? ov.includeWeekdays : [];
+      if (includeDays.length > 0 && !includeDays.includes(dayKey)) continue;
+
+      const blockedDays = Array.isArray(ov?.blockedWeekdays) ? ov.blockedWeekdays : [];
+      if (blockedDays.includes(dayKey) || String(ov?.mode || "").trim() === "closed") {
+        return {
+          dayKey,
+          dayLabel: WEEKDAY_LABEL_AR[dayKey],
+          enabled: false,
+          openTime: safeTimeHHMM((dayHoursBase as any)?.start, "10:00"),
+          closeTime: safeTimeHHMM((dayHoursBase as any)?.end, "22:00"),
+        };
+      }
+
+      return {
+        dayKey,
+        dayLabel: WEEKDAY_LABEL_AR[dayKey],
+        enabled: true,
+        openTime: safeTimeHHMM(String(ov?.start || ""), safeTimeHHMM((dayHoursBase as any)?.start, "10:00")),
+        closeTime: safeTimeHHMM(String(ov?.end || ""), safeTimeHHMM((dayHoursBase as any)?.end, "22:00")),
+      };
+    }
+
     return {
       dayKey,
       dayLabel: WEEKDAY_LABEL_AR[dayKey],
-      enabled: dayHours?.enabled !== false,
+      enabled: dayHoursBase?.enabled !== false,
+      openTime: safeTimeHHMM((dayHoursBase as any)?.start, "10:00"),
+      closeTime: safeTimeHHMM((dayHoursBase as any)?.end, "22:00"),
     };
   };
+  const selectedDaySettings = useMemo(
+    () => getDaySettingsForDate(String(bookingDate || "").trim() || todayISO()),
+    [bookingDate, businessHours, bookingHourOverrides]
+  );
+  const selectedDayKey = selectedDaySettings.dayKey;
+  const selectedDayOpen = selectedDaySettings.enabled !== false;
+  const openTime = selectedDaySettings.openTime;
+  const closeTime = selectedDaySettings.closeTime;
 
   const slotStepMin = useMemo(() => {
     const v = safeInt((booking as any)?.slotStepMin, 10);
@@ -816,7 +882,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const bufferMin = useMemo(() => {
     return Math.max(0, safeInt((booking as any)?.bufferMin, 5));
   }, [(booking as any)?.bufferMin]);
-  const maniPediToolsFee = MANI_PEDI_TOOLS_FEE_FIXED;
+  const maniPediToolsFee = useMemo(() => {
+    return Math.max(0, safeInt((booking as any)?.maniPediToolsFee, 15));
+  }, [(booking as any)?.maniPediToolsFee]);
 
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
 
@@ -5310,7 +5378,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     <div className="col-12">
                       <label htmlFor="bookingDateInternal" className="form-label">تاريخ الحجز</label>
                       <div
-                        className="input-group"
+                        className="input-group booking-date-group"
                         role="button"
                         tabIndex={0}
                         onClick={openBookingDatePicker}
@@ -5321,9 +5389,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                           }
                         }}
                       >
-                        <span className="input-group-text" aria-hidden="true">
-                          <FontAwesomeIcon icon={faCalendarAlt} />
-                        </span>
                         <input
                           ref={dateRef}
                           id="bookingDateInternal"
@@ -5331,6 +5396,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                           className="form-control"
                           value={bookingDate}
                           min={todayISO()}
+                          onClick={openBookingDatePicker}
+                          onFocus={openBookingDatePicker}
                           onChange={(e) => {
                             const next = String(e.target.value || "").trim();
                             applyBookingDate(next);

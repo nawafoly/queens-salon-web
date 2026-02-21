@@ -163,9 +163,51 @@
   color: #0D0D0D;
 }
 
+.dashboard-skin .ov-card-head-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .dashboard-skin .ov-actions-hint {
   font-size: 12px;
   color: rgba(13, 13, 13, 0.60);
+}
+
+.dashboard-skin .ov-date-filter {
+  display: grid;
+  gap: 6px;
+  min-width: 190px;
+}
+
+.dashboard-skin .ov-date-filter label {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(13, 13, 13, 0.74);
+}
+
+.dashboard-skin .ov-date-filter input[type="date"] {
+  height: 40px;
+  border: 1px solid rgba(64, 1, 13, 0.2);
+  border-radius: 12px;
+  background: #fff;
+  color: #0D0D0D;
+  color-scheme: light;
+  padding: 0 10px;
+  font-weight: 800;
+  outline: none;
+  cursor: pointer;
+}
+
+.dashboard-skin .ov-date-filter input[type="date"]:focus {
+  border-color: rgba(64, 1, 13, 0.45);
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.08);
+}
+
+.dashboard-skin .ov-date-filter input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
+  cursor: pointer;
 }
 
 /* =========================
@@ -288,7 +330,7 @@
 .dashboard-skin .ov-hour-booking-pill {
   border: 1px solid rgba(64, 1, 13, 0.18);
   background: rgba(64, 1, 13, 0.06);
-  color: #0D0D0D;
+  color: #0D0D0D !important;
   border-radius: 999px;
   padding: 6px 10px;
   display: inline-flex;
@@ -308,6 +350,8 @@
 
 .dashboard-skin .ov-hour-booking-name {
   font-weight: 900;
+  color: #0D0D0D !important;
+  -webkit-text-fill-color: #0D0D0D;
 }
 
 .dashboard-skin .ov-hour-booking-time {
@@ -344,6 +388,7 @@
   border: 1px solid rgba(64, 1, 13, 0.16);
   border-radius: 12px;
   background: rgba(64, 1, 13, 0.05);
+  color: #0D0D0D !important;
   padding: 8px 10px;
   text-align: right;
 }
@@ -354,6 +399,7 @@
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 4px;
+  color: #0D0D0D !important;
 }
 
 .dashboard-skin .ov-hour-mobile-meta {
@@ -492,6 +538,15 @@
   .dashboard-skin .ov-latest-mobile {
     display: block;
     padding: 8px 10px 12px 10px;
+  }
+
+  .dashboard-skin .ov-card-head {
+    align-items: stretch;
+  }
+
+  .dashboard-skin .ov-date-filter {
+    width: 100%;
+    min-width: 0;
   }
 }
 

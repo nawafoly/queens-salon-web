@@ -8,6 +8,15 @@
   padding: 18px;
   direction: rtl;
   font-family: "Tajawal", Arial, sans-serif;
+  color: #0D0D0D;
+}
+
+/* Override global typography color from index.css (dark theme) */
+.clients-page h1,
+.clients-page h2,
+.clients-page h3,
+.clients-page p {
+  color: #0D0D0D;
 }
 
 /* Section spacing (بدل inline marginBottom) */
@@ -47,6 +56,10 @@
   font-weight: 900;
   font-size: 13px;
   margin-bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #0D0D0D;
 }
 
 /* Error card (بدل inline styles) */

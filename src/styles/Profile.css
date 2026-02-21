@@ -603,7 +603,7 @@
 
 /* ✅ Profile: make date picker icon black (Chrome/Edge/Safari) */
 .p-root input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(0);
+  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
   opacity: 1;
   cursor: pointer;
 }

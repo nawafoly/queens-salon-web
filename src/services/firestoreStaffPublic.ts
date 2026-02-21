@@ -4,7 +4,7 @@ import { collection, getDocs } from "firebase/firestore";
 
 export type StaffPublicDoc = {
   name: string;
-  specialties: string[]; // ✅ مفاتيح واضحة (مثل hair / skin / nails ... لازم تطابق IDs الأقسام)
+  specialties: string[];
   active?: boolean;
   linkedUid?: string;
   showOnBooking?: boolean;
@@ -59,7 +59,7 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
 
 export async function listActiveStaffBySpecialty(args: {
   salonId: string;
-  specialty: string; // ✅ لازم يطابق بالضبط (مثل hair / skin / nails)
+  specialty: string;
 }): Promise<StaffPublicWithId[]> {
   const salonId = String(args?.salonId || "").trim();
   const wantedRaw = String(args?.specialty || "").trim();
@@ -86,7 +86,6 @@ export async function listActiveStaffBySpecialty(args: {
       } as StaffPublicWithId;
     });
 
-    // ✅ فلترة محلية حسب specialties + active
     const filtered = all.filter((staff) => {
       if (!staff.active) return false;
       const specs = normalizeArray(staff.specialties);
@@ -108,3 +107,4 @@ export async function listActiveStaffBySpecialty(args: {
     return [];
   }
 }
+

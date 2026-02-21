@@ -49,6 +49,7 @@ type UiOffer = {
 
   createdAt?: number;
   deletedAt?: number;
+  packageLike?: boolean;
 };
 
 const SALON_ID = "main";
@@ -163,6 +164,12 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
       : "بدون تاريخ نهاية",
   ];
 
+  const packageLike =
+    Number(raw?.packageFinalPrice || 0) > 0 ||
+    Number(raw?.packageBaseTotalPrice || 0) > 0 ||
+    Number(raw?.packageTotalDurationMin || 0) > 0 ||
+    String(docId || "").trim().toLowerCase().startsWith("pkg_");
+
   return {
     id: String(docId),
     title,
@@ -181,6 +188,7 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
 
     createdAt: toMillis(raw?.createdAt) || 0,
     deletedAt: toMillis(raw?.deletedAt) || 0,
+    packageLike,
   };
 }
 
@@ -327,8 +335,9 @@ const Offers = () => {
   }, []);
 
   const { activeNow, endedOrPaused, activeCount, maxPercent } = useMemo(() => {
-    const activeNow = offers.filter((o) => isActiveNow(o));
-    const endedOrPaused = offers.filter((o) => !isActiveNow(o) && !o.deletedAt);
+    const onlyRealOffers = offers.filter((o) => !o.packageLike);
+    const activeNow = onlyRealOffers.filter((o) => isActiveNow(o));
+    const endedOrPaused = onlyRealOffers.filter((o) => !isActiveNow(o) && !o.deletedAt);
 
     const best = (arr: UiOffer[]) => {
       const percent = arr
@@ -342,14 +351,14 @@ const Offers = () => {
     };
 
     const hero =
-      best(activeNow) ?? best(offers.filter((x) => !x.deletedAt)) ?? offers[0];
+      best(activeNow) ?? best(onlyRealOffers.filter((x) => !x.deletedAt)) ?? onlyRealOffers[0];
     const rest = hero
-      ? offers.filter((o) => o.id !== hero.id && !o.deletedAt)
-      : offers.filter((x) => !x.deletedAt);
+      ? onlyRealOffers.filter((o) => o.id !== hero.id && !o.deletedAt)
+      : onlyRealOffers.filter((x) => !x.deletedAt);
 
     const maxP =
-      offers.length > 0
-        ? Math.min(50, Math.max(...offers.map((o) => o.discountPercent || 0)))
+      onlyRealOffers.length > 0
+        ? Math.min(50, Math.max(...onlyRealOffers.map((o) => o.discountPercent || 0)))
         : 0;
 
     // ✅ القائمة الأساسية: الساري الآن أولاً، ثم الباقي
@@ -438,7 +447,6 @@ const Offers = () => {
         <div className="container">
           <div className="text-center mb-4">
             <h2 className="h1 fw-bold text-gradient mb-2">العروض السارية الآن</h2>
-            <p className="lead text-gray">هذه العروض فقط اللي تنطبق الآن حسب التاريخ + الحالة</p>
           </div>
 
           <div className="cards-grid-2">
@@ -526,7 +534,13 @@ const Offers = () => {
                             </ul>
                           </div>
 
-                          <Link to="/booking" className="btn btn-primary w-100 btn-lg rounded-pill">
+                          <Link
+                            to={{
+                              pathname: "/booking",
+                              search: `?coupon=${encodeURIComponent(String(offer.code || "").trim())}`,
+                            }}
+                            className="btn btn-primary w-100 btn-lg rounded-pill"
+                          >
                             احجزي واستعملي الكود
                           </Link>
                         </div>
@@ -553,6 +567,8 @@ const Offers = () => {
               <div className="cards-grid-2">
                 {activePackages.map((p, index) => {
                   const expanded = openPackageId === p.id;
+                  const pkgStart = toISODate((p as any)?.startDate);
+                  const pkgEnd = toISODate((p as any)?.endDate);
                   const packageServiceNames =
                     Array.isArray((p as any).services) && (p as any).services.length > 0
                       ? (p as any).services
@@ -583,7 +599,12 @@ const Offers = () => {
 
                           <div className="offer-validity">
                             <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
-                            باكيج متاح للحجز الآن
+                            {pkgStart
+                              ? `يبدأ: ${new Date(pkgStart).toLocaleDateString("ar-SA")} — `
+                              : "يبدأ: الآن — "}
+                            {pkgEnd
+                              ? `ينتهي: ${new Date(pkgEnd).toLocaleDateString("ar-SA")}`
+                              : "بدون تاريخ انتهاء"}
                           </div>
 
                           <button
@@ -609,6 +630,18 @@ const Offers = () => {
                                   <li><span className="check-dot" />السعر الإجمالي قبل الخصم: {Number((p as any).baseTotalPrice || 0)} ريال</li>
                                   <li><span className="check-dot" />السعر النهائي: {Number(p.finalPrice || 0)} ريال</li>
                                   <li><span className="check-dot" />المدة: {Number(p.totalDurationMin || 0)} دقيقة</li>
+                                  <li>
+                                    <span className="check-dot" />
+                                    {pkgStart
+                                      ? `يبدأ: ${new Date(pkgStart).toLocaleDateString("ar-SA")}`
+                                      : "يبدأ: الآن"}
+                                  </li>
+                                  <li>
+                                    <span className="check-dot" />
+                                    {pkgEnd
+                                      ? `ينتهي: ${new Date(pkgEnd).toLocaleDateString("ar-SA")}`
+                                      : "ينتهي: بدون تاريخ انتهاء"}
+                                  </li>
                                 </ul>
                                 <div className="pkg-services-block">
                                   <div className="pkg-services-title">
@@ -630,7 +663,13 @@ const Offers = () => {
                                   )}
                                 </div>
                               </div>
-                              <Link to="/booking" className="btn btn-primary w-100 btn-lg rounded-pill">
+                              <Link
+                                to={{
+                                  pathname: "/booking",
+                                  search: `?scope=offers_packages&pick=${encodeURIComponent(String(p.id || "").trim())}&autoAdd=1`,
+                                }}
+                                className="btn btn-primary w-100 btn-lg rounded-pill"
+                              >
                                 احجزي هذا الباكيج
                               </Link>
                             </div>

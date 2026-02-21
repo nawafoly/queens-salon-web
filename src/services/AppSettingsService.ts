@@ -40,6 +40,18 @@ export type Closure = {
   message?: string;
 };
 
+export type BookingHourOverride = {
+  id?: string;
+  fromDate: string; // YYYY-MM-DD
+  toDate: string; // YYYY-MM-DD
+  mode: "hours" | "closed";
+  start?: string; // HH:MM when mode=hours
+  end?: string; // HH:MM when mode=hours
+  includeWeekdays?: WeekdayKey[]; // optional: apply only on these weekdays
+  blockedWeekdays?: WeekdayKey[]; // optional: close these weekdays inside range
+  reason?: string; // internal note
+};
+
 export type ServiceItem = {
   id: string;
   name: string;
@@ -78,7 +90,11 @@ export type AppSettings = {
   booking?: {
     slotStepMin: number; // default 30
     bufferMin: number; // default 0
+    maniPediToolsFee: number; // default 15
+    maintenanceMode?: boolean;
+    maintenanceMessage?: string;
     businessHours: Record<WeekdayKey, BusinessHoursDay>;
+    bookingHourOverrides?: BookingHourOverride[];
     holidays: Holiday[];
     closures: Closure[];
     publicClosedMessage: string;
@@ -154,7 +170,11 @@ const defaultSettings: AppSettings = {
   booking: {
     slotStepMin: 5,
     bufferMin: 0,
+    maniPediToolsFee: 15,
+    maintenanceMode: false,
+    maintenanceMessage: "",
     businessHours: defaultBusinessHours(),
+    bookingHourOverrides: [],
     holidays: [],
     closures: [],
     publicClosedMessage: "",
@@ -240,6 +260,58 @@ function sanitizeServicesCatalog(v: any): ServiceItem[] {
     .filter(Boolean) as ServiceItem[];
 }
 
+function normalizeWeekdayList(v: any): WeekdayKey[] {
+  if (!Array.isArray(v)) return [];
+  const valid = new Set<WeekdayKey>([
+    "sat",
+    "sun",
+    "mon",
+    "tue",
+    "wed",
+    "thu",
+    "fri",
+  ]);
+  const out: WeekdayKey[] = [];
+  for (const x of v) {
+    const d = String(x || "").trim().toLowerCase() as WeekdayKey;
+    if (valid.has(d) && !out.includes(d)) out.push(d);
+  }
+  return out;
+}
+
+function sanitizeBookingHourOverrides(v: any): BookingHourOverride[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((x: any, idx: number) => {
+      const fromDate = safeString(x?.fromDate, "");
+      const toDate = safeString(x?.toDate, "");
+      if (!fromDate || !toDate) return null;
+      const modeRaw = safeString(x?.mode, "hours").toLowerCase();
+      const mode: "hours" | "closed" = modeRaw === "closed" ? "closed" : "hours";
+      const includeWeekdays = normalizeWeekdayList(x?.includeWeekdays);
+      const blockedWeekdays = normalizeWeekdayList(x?.blockedWeekdays);
+      const reason = safeString(x?.reason, "").trim();
+      const id = safeString(x?.id, `ovr_${idx}_${fromDate}_${toDate}`);
+
+      if (mode === "closed") {
+        const out: BookingHourOverride = { id, fromDate, toDate, mode };
+        if (includeWeekdays.length) out.includeWeekdays = includeWeekdays;
+        if (blockedWeekdays.length) out.blockedWeekdays = blockedWeekdays;
+        if (reason) out.reason = reason;
+        return out;
+      }
+
+      const start = safeString(x?.start, "10:00");
+      const end = safeString(x?.end, "22:00");
+      const out: BookingHourOverride = { id, fromDate, toDate, mode, start, end };
+      if (includeWeekdays.length) out.includeWeekdays = includeWeekdays;
+      if (blockedWeekdays.length) out.blockedWeekdays = blockedWeekdays;
+      if (reason) out.reason = reason;
+      return out;
+    })
+    .filter(Boolean) as BookingHourOverride[];
+}
+
 function sanitize(input: any): AppSettings {
   const s = input || {};
   const sectionsRaw = s.sections || {};
@@ -268,6 +340,13 @@ function sanitize(input: any): AppSettings {
   const bufferMin = Math.max(
     0,
     safeNumber(bookingRaw.bufferMin, defaultSettings.booking!.bufferMin)
+  );
+  const maniPediToolsFee = Math.max(
+    0,
+    safeNumber(
+      bookingRaw.maniPediToolsFee,
+      defaultSettings.booking!.maniPediToolsFee
+    )
   );
 
   return {
@@ -316,7 +395,17 @@ function sanitize(input: any): AppSettings {
     booking: {
       slotStepMin,
       bufferMin,
+      maniPediToolsFee,
+      maintenanceMode: safeBool(
+        bookingRaw.maintenanceMode,
+        defaultSettings.booking!.maintenanceMode || false
+      ),
+      maintenanceMessage: safeString(
+        bookingRaw.maintenanceMessage,
+        defaultSettings.booking!.maintenanceMessage || ""
+      ),
       businessHours,
+      bookingHourOverrides: sanitizeBookingHourOverrides(bookingRaw.bookingHourOverrides),
       holidays: sanitizeHolidays(bookingRaw.holidays),
       closures: sanitizeClosures(bookingRaw.closures),
       publicClosedMessage: safeString(

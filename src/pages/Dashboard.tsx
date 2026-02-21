@@ -1,5 +1,5 @@
 // ✅ src/pages/Dashboard.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Routes, Route, NavLink, useNavigate, Navigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -94,6 +94,20 @@ type BusinessHoursDay = { enabled?: boolean; start?: string; end?: string };
 type BusinessHoursMap = Partial<Record<WeekdayKey, BusinessHoursDay>>;
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
+function formatLocalDateISO(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function weekdayKeyFromISODate(dateStr: string): WeekdayKey | null {
+  const m = String(dateStr || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const dt = new Date(Number(m[1]), Math.max(0, Number(m[2]) - 1), Number(m[3]));
+  return JS_DAY_TO_WEEKDAY[dt.getDay()] || null;
+}
+
 type AppSettings = {
   salonName: string;
   phone: string;
@@ -168,6 +182,32 @@ function parseTimeToMinutes(time24: string): number | null {
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
+function toMillisSafe(v: any): number {
+  if (!v) return 0;
+  if (typeof v === "number") return v;
+  if (typeof v?.toMillis === "function") return v.toMillis();
+  if (typeof v?.seconds === "number") return v.seconds * 1000;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatDateTimeAr(v: any): string {
+  const ms = toMillisSafe(v);
+  if (!ms) return "—";
+  try {
+    return new Intl.DateTimeFormat("ar-SA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(new Date(ms));
+  } catch {
+    return "—";
+  }
+}
+
 function bookingNoOf(b: Partial<Booking> | null | undefined) {
   const raw = String(b?.publicId || "").trim();
   if (!raw) return "—";
@@ -188,12 +228,22 @@ async function mapFirestoreToUiBooking(b: BookingDocWithId): Promise<Booking> {
     phone: b.clientPhone || "",
     serviceId,
     serviceName: await resolveServiceName(serviceId),
+    serviceSectionName:
+      (b as any)?.serviceSnapshot?.sectionTitleAtBooking ||
+      (b as any)?.sectionTitleAtBooking ||
+      (b as any)?.serviceSectionTitle ||
+      "",
+    serviceCategoryName:
+      (b as any)?.serviceSnapshot?.categoryNameAtBooking ||
+      (b as any)?.categoryNameAtBooking ||
+      (b as any)?.serviceCategoryName ||
+      "",
     employeeName: b.employeeName || "",
     date: b.date || "",
     time: b.time || "",
     status: (b.status || "pending") as BookingStatus,
     total: Number(b.finalPrice ?? (b as any).total ?? 0),
-    createdAt: (b.createdAt as any) || undefined,
+    createdAt: toMillisSafe((b as any)?.createdAt || (b as any)?.updatedAt) || Date.now(),
     note: (b.note as any) || undefined,
   };
 }
@@ -208,6 +258,8 @@ type OverviewProps = {
     employeesCount: number;
   };
   scheduleBookings: Booking[];
+  selectedScheduleDate: string;
+  onSelectedScheduleDateChange: (nextDate: string) => void;
   businessHours?: BusinessHoursMap;
   onOpenBooking: (booking: Booking) => void;
   onQuickAction: (key: "newBooking" | "bookings" | "reports") => void;
@@ -222,11 +274,23 @@ const DashboardOverview: React.FC<OverviewProps> = ({
   userInfo,
   stats,
   scheduleBookings,
+  selectedScheduleDate,
+  onSelectedScheduleDateChange,
   businessHours,
   onOpenBooking,
   onQuickAction,
   financial,
 }) => {
+  const todayISO = useMemo(() => formatLocalDateISO(new Date()), []);
+  const scheduleDateInputRef = useRef<HTMLInputElement | null>(null);
+
+  const openScheduleDatePicker = () => {
+    const el = scheduleDateInputRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+    if (!el) return;
+    el.focus();
+    if (typeof el.showPicker === "function") el.showPicker();
+  };
+
   const statusLabel = useMemo(
     () =>
     ({
@@ -252,58 +316,23 @@ const DashboardOverview: React.FC<OverviewProps> = ({
       bookingByHour.get(hour)!.push(booking);
     });
 
-    const todayKey = JS_DAY_TO_WEEKDAY[new Date().getDay()] || "sun";
-    const todayHours = businessHours?.[todayKey];
-
-    const startMin = parseTimeToMinutes(String(todayHours?.start || ""));
-    const endMin = parseTimeToMinutes(String(todayHours?.end || ""));
-    const rows: Array<{ hour: number; bookings: Booking[] }> = [];
-
-    if (
-      todayHours?.enabled !== false &&
-      startMin !== null &&
-      endMin !== null &&
-      endMin > startMin
-    ) {
-      let startHour = Math.floor(startMin / 60);
-      let endHourExclusive = Math.ceil(endMin / 60);
-
-      if (bookingByHour.size > 0) {
-        const hours = Array.from(bookingByHour.keys()).sort((a, b) => a - b);
-        startHour = Math.min(startHour, hours[0]);
-        endHourExclusive = Math.max(endHourExclusive, hours[hours.length - 1] + 1);
-      }
-
-      for (let hour = startHour; hour < endHourExclusive; hour += 1) {
-        rows.push({ hour, bookings: bookingByHour.get(hour) || [] });
-      }
-      return rows;
-    }
-
-    if (bookingByHour.size > 0) {
-      const hours = Array.from(bookingByHour.keys()).sort((a, b) => a - b);
-      const minHour = hours[0];
-      const maxHour = hours[hours.length - 1];
-      for (let hour = minHour; hour <= maxHour; hour += 1) {
-        rows.push({ hour, bookings: bookingByHour.get(hour) || [] });
-      }
-    }
-
-    return rows;
+    return Array.from(bookingByHour.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([hour, bookings]) => ({ hour, bookings }));
   }, [scheduleBookings, businessHours]);
 
   const scheduleHint = useMemo(() => {
-    const todayKey = JS_DAY_TO_WEEKDAY[new Date().getDay()] || "sun";
-    const todayHours = businessHours?.[todayKey];
+    const dateKey = weekdayKeyFromISODate(selectedScheduleDate);
+    const dayHours = dateKey ? businessHours?.[dateKey] : undefined;
 
-    if (todayHours?.enabled === false) return "اليوم مغلق حسب إعدادات ساعات العمل";
+    if (dayHours?.enabled === false) return "اليوم المختار مغلق حسب إعدادات ساعات العمل";
 
-    const start = String(todayHours?.start || "").trim();
-    const end = String(todayHours?.end || "").trim();
-    if (start && end) return `ساعات العمل اليوم: ${formatTime12(start)} - ${formatTime12(end)}`;
+    const start = String(dayHours?.start || "").trim();
+    const end = String(dayHours?.end || "").trim();
+    if (start && end) return `ساعات العمل لليوم المختار: ${formatTime12(start)} - ${formatTime12(end)}`;
 
     return "اضغط على أي حجز لعرض التفاصيل";
-  }, [businessHours]);
+  }, [businessHours, selectedScheduleDate]);
 
   const formatHourLabel = (hour: number) => {
     const normalized = ((hour % 24) + 24) % 24;
@@ -408,8 +437,23 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 
         <div className="ov-card">
           <div className="ov-card-head">
-            <h3>جدول حجوزات اليوم حسب الساعة</h3>
-            <span className="ov-actions-hint">{scheduleHint}</span>
+            <div className="ov-card-head-main">
+              <h3>جدول الحجوزات حسب الساعة</h3>
+              <span className="ov-actions-hint">{scheduleHint}</span>
+            </div>
+            <div className="ov-date-filter" onClick={openScheduleDatePicker}>
+              <label htmlFor="ov-schedule-date">تاريخ الجدول</label>
+              <input
+                ref={scheduleDateInputRef}
+                id="ov-schedule-date"
+                type="date"
+                min={todayISO}
+                value={selectedScheduleDate}
+                onChange={(e) => onSelectedScheduleDateChange(String(e.target.value || todayISO))}
+                onFocus={openScheduleDatePicker}
+                onClick={openScheduleDatePicker}
+              />
+            </div>
           </div>
 
           <div className="table-responsive">
@@ -425,7 +469,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
                 {hourRows.length === 0 ? (
                   <tr>
                     <td className="ov-empty" colSpan={2}>
-                      لا توجد بيانات ساعات عمل أو حجوزات لليوم
+                      لا توجد حجوزات في التاريخ المحدد
                     </td>
                   </tr>
                 ) : (
@@ -464,7 +508,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 
           <div className="ov-latest-mobile">
             {hourRows.length === 0 ? (
-              <div className="ov-empty">لا توجد بيانات ساعات عمل أو حجوزات لليوم</div>
+              <div className="ov-empty">لا توجد حجوزات في التاريخ المحدد</div>
             ) : (
               hourRows.map((row) => (
                 <div key={`m_h_${row.hour}`} className="ov-hour-mobile-row">
@@ -594,6 +638,8 @@ const Dashboard: React.FC = () => {
   });
 
   const [todayScheduleBookings, setTodayScheduleBookings] = useState<Booking[]>([]);
+  const [allScheduleBookings, setAllScheduleBookings] = useState<Booking[]>([]);
+  const [scheduleDate, setScheduleDate] = useState<string>(() => formatLocalDateISO(new Date()));
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const [expensesTotalFS, setExpensesTotalFS] = useState(0);
@@ -644,13 +690,10 @@ const Dashboard: React.FC = () => {
 
       step = "bookings:mapFirestoreToUiBooking";
       const uiBookings = await Promise.all(docs.map(mapFirestoreToUiBooking));
+      setAllScheduleBookings(uiBookings);
 
       step = "today:compute";
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, "0");
-      const dd = String(today.getDate()).padStart(2, "0");
-      const todayStr = `${yyyy}-${mm}-${dd}`;
+      const todayStr = formatLocalDateISO(new Date());
 
       const todayListAll = uiBookings.filter((b) => String(b.date) === todayStr);
 
@@ -729,18 +772,18 @@ const Dashboard: React.FC = () => {
         employeesCount,
       });
 
-      const todaySchedule = todayListAll
-        .filter((b) => b.status !== "cancelled")
-        .sort((a, b) => {
-          const aMin = parseTimeToMinutes(a.time);
-          const bMin = parseTimeToMinutes(b.time);
-          if (aMin === null && bMin === null) return 0;
-          if (aMin === null) return 1;
-          if (bMin === null) return -1;
-          return aMin - bMin;
-        });
-
-      setTodayScheduleBookings(todaySchedule);
+      setTodayScheduleBookings(
+        uiBookings
+          .filter((b) => String(b.date) === scheduleDate && b.status !== "cancelled")
+          .sort((a, b) => {
+            const aMin = parseTimeToMinutes(a.time);
+            const bMin = parseTimeToMinutes(b.time);
+            if (aMin === null && bMin === null) return 0;
+            if (aMin === null) return 1;
+            if (bMin === null) return -1;
+            return aMin - bMin;
+          })
+      );
     } catch (e) {
       console.error("refreshDashboard error:", e);
 
@@ -1136,6 +1179,21 @@ const Dashboard: React.FC = () => {
   };
 
   useEffect(() => {
+    setTodayScheduleBookings(
+      (allScheduleBookings || [])
+        .filter((b) => String(b.date) === scheduleDate && b.status !== "cancelled")
+        .sort((a, b) => {
+          const aMin = parseTimeToMinutes(a.time);
+          const bMin = parseTimeToMinutes(b.time);
+          if (aMin === null && bMin === null) return 0;
+          if (aMin === null) return 1;
+          if (bMin === null) return -1;
+          return aMin - bMin;
+        })
+    );
+  }, [allScheduleBookings, scheduleDate]);
+
+  useEffect(() => {
     const close = () => setIsSidebarOpen(false);
     window.addEventListener("popstate", close);
     return () => window.removeEventListener("popstate", close);
@@ -1164,9 +1222,18 @@ const Dashboard: React.FC = () => {
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
       <style>
         {`
-          .dash-booking-modal { direction: rtl; }
+          .dash-booking-modal {
+            direction: rtl;
+            max-height: none !important;
+            overflow: visible !important;
+          }
 
-          .dash-booking-modal .dash-modal-head{
+          .dash-booking-modal .dash-modal-body{
+            max-height: none !important;
+            overflow: visible !important;
+          }
+
+          .dash-booking-modal .dash-modal-header{
             display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
           }
 
@@ -1175,15 +1242,15 @@ const Dashboard: React.FC = () => {
           .dash-booking-modal .dash-modal-title small{ opacity:.7; font-weight:700; }
 
           .dash-booking-modal .dash-details-grid{
-            display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin-top:14px;
+            display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; margin-top:14px;
           }
 
           .dash-booking-modal .dash-detail{
-            background:rgba(255,255,255,0.85);
-            border:1px solid rgba(0,0,0,0.06);
+            background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(245,245,244,0.92));
+            border:1px solid rgba(64,1,13,0.12);
             border-radius:16px;
-            padding:12px;
-            box-shadow:0 8px 20px rgba(0,0,0,0.04);
+            padding:12px 14px;
+            box-shadow:0 10px 22px rgba(64,1,13,0.08);
             min-width:0;
           }
 
@@ -1192,10 +1259,30 @@ const Dashboard: React.FC = () => {
           }
 
           .dash-booking-modal .dash-detail .dash-value{
-            font-weight:900; font-size:14px; color:#2f2a2a; word-break:break-word;
+            font-weight:900; font-size:16px; color:#1f1a17; word-break:break-word;
           }
 
-          .dash-booking-modal .dash-detail--wide{ grid-column:span 3; }
+          .dash-booking-modal .dash-detail--wide{ grid-column:span 2; }
+          .dash-booking-modal .dash-detail--hero{
+            grid-column: span 2;
+            border-color: rgba(64,1,13,.2);
+            background:
+              radial-gradient(420px 180px at 10% 10%, rgba(64,1,13,.09), transparent 60%),
+              linear-gradient(180deg, #fff 0%, #f8f4f0 100%);
+          }
+          .dash-booking-modal .dash-value-sub{
+            margin-top: 6px;
+            font-size: 12px;
+            color: rgba(13,13,13,.65);
+            font-weight: 800;
+          }
+          .dash-booking-modal .dash-created-badge{
+            display:inline-flex; align-items:center; gap:6px;
+            margin-top:8px; padding:6px 10px; border-radius:999px;
+            border:1px solid rgba(64,1,13,.18);
+            background: rgba(64,1,13,.06);
+            color:#40010D; font-size:12px; font-weight:900;
+          }
 
           .dash-booking-modal .dash-status-row{
             display:flex; align-items:center; gap:10px; flex-wrap:wrap;
@@ -1214,14 +1301,39 @@ const Dashboard: React.FC = () => {
             display:flex; gap:10px; justify-content:flex-end; margin-top:14px; flex-wrap:wrap;
           }
 
+          /* ألوان أزرار مودال تفاصيل الحجز (هادئة ومتناغمة) */
+          .dash-booking-modal .exp-btn,
+          .dash-booking-modal .exp-btn.ghost{
+            background: rgba(245, 245, 244, 0.95) !important;
+            color: #0D0D0D !important;
+            border: 1px solid rgba(13, 13, 13, 0.14) !important;
+            box-shadow: 0 8px 18px rgba(13, 13, 13, 0.08);
+          }
+
+          .dash-booking-modal .exp-btn.primary{
+            background: #515659 !important;
+            color: #fff !important;
+            border: 1px solid rgba(81, 86, 89, 0.65) !important;
+            box-shadow: 0 10px 22px rgba(13, 13, 13, 0.14);
+          }
+
+          .dash-booking-modal .exp-btn:hover,
+          .dash-booking-modal .exp-btn.primary:hover,
+          .dash-booking-modal .exp-btn.ghost:hover{
+            transform: translateY(-1px);
+            filter: brightness(1.02);
+          }
+
           @media (max-width: 992px){
             .dash-booking-modal .dash-details-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
             .dash-booking-modal .dash-detail--wide{ grid-column:span 2; }
+            .dash-booking-modal .dash-detail--hero{ grid-column:span 2; }
           }
 
           @media (max-width: 600px){
             .dash-booking-modal .dash-details-grid{ grid-template-columns:1fr; }
             .dash-booking-modal .dash-detail--wide{ grid-column:span 1; }
+            .dash-booking-modal .dash-detail--hero{ grid-column:span 1; }
             .dash-booking-modal .dash-modal-actions .exp-btn{ width:100%; justify-content:center; }
           }
         `}
@@ -1507,6 +1619,8 @@ const Dashboard: React.FC = () => {
                         userInfo={userInfo}
                         stats={stats}
                         scheduleBookings={todayScheduleBookings}
+                        selectedScheduleDate={scheduleDate}
+                        onSelectedScheduleDateChange={setScheduleDate}
                         businessHours={settings.booking?.businessHours}
                         onOpenBooking={handleOpenBooking}
                         onQuickAction={handleQuickAction}
@@ -1541,6 +1655,8 @@ const Dashboard: React.FC = () => {
                         userInfo={userInfo}
                         stats={stats}
                         scheduleBookings={todayScheduleBookings}
+                        selectedScheduleDate={scheduleDate}
+                        onSelectedScheduleDateChange={setScheduleDate}
                         businessHours={settings.booking?.businessHours}
                         onOpenBooking={handleOpenBooking}
                         onQuickAction={handleQuickAction}
@@ -1626,10 +1742,10 @@ const Dashboard: React.FC = () => {
           open={!!selectedBooking}
           onClose={() => setSelectedBooking(null)}
           ariaLabel="تفاصيل الحجز"
-          panelClassName="dash-modal dash-booking-modal"
+          panelClassName="dash-modal dash-booking-modal booking-details-modal dashboard-skin"
           size="lg"
         >
-          <div className="dash-modal-head">
+          <div className="dash-modal-header">
             <div className="dash-modal-title">
               <h3>تفاصيل الحجز</h3>
               <small>عرض تفاصيل الحجز بشكل مرتب وواضح</small>
@@ -1646,14 +1762,23 @@ const Dashboard: React.FC = () => {
 
           <div className="dash-modal-body">
             <div className="dash-details-grid">
-              <div className="dash-detail">
+              <div className="dash-detail dash-detail--hero">
                 <b>رقم الحجز</b>
                 <div className="dash-value">{bookingNoOf(selectedBooking)}</div>
+                <div className="dash-created-badge">
+                  <FontAwesomeIcon icon={faClockRotateLeft} />
+                  تم إنشاء الحجز: {formatDateTimeAr((selectedBooking as any).createdAt)}
+                </div>
               </div>
 
               <div className="dash-detail">
                 <b>العميلة</b>
                 <div className="dash-value">{selectedBooking.customerName}</div>
+              </div>
+
+              <div className="dash-detail">
+                <b>رقم الجوال</b>
+                <div className="dash-value">{selectedBooking.phone || "—"}</div>
               </div>
 
               <div className="dash-detail">
@@ -1664,6 +1789,16 @@ const Dashboard: React.FC = () => {
               </div>
 
               <div className="dash-detail">
+                <b>القسم</b>
+                <div className="dash-value">{selectedBooking.serviceSectionName || "—"}</div>
+              </div>
+
+              <div className="dash-detail">
+                <b>التصنيف</b>
+                <div className="dash-value">{selectedBooking.serviceCategoryName || "—"}</div>
+              </div>
+
+              <div className="dash-detail">
                 <b>الموظفة</b>
                 <div className="dash-value">{selectedBooking.employeeName ?? "-"}</div>
               </div>
@@ -1671,6 +1806,9 @@ const Dashboard: React.FC = () => {
               <div className="dash-detail">
                 <b>التاريخ</b>
                 <div className="dash-value">{selectedBooking.date}</div>
+                <div className="dash-value-sub">
+                  {selectedBooking.time ? `الساعة ${formatTime12(selectedBooking.time)}` : ""}
+                </div>
               </div>
 
               <div className="dash-detail">

@@ -164,6 +164,109 @@ textarea.form-control {
   min-height: 60px;
 }
 
+.booking-page .booking-day-closed-alert {
+  margin-top: 10px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid #f04438;
+  background: linear-gradient(180deg, #fff5f4 0%, #ffeceb 100%);
+  color: #b42318;
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.6;
+  box-shadow: 0 8px 18px rgba(240, 68, 56, 0.14);
+}
+
+.booking-page .booking-day-closed-alert__title {
+  color: #912018;
+  font-weight: 900;
+}
+
+.booking-page .booking-service-price-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-inline-start: 8px;
+  padding: 0.24rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(64, 1, 13, 0.16);
+  background: linear-gradient(180deg, #fff8f2 0%, #f7ebe2 100%);
+  color: #40010d;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+  box-shadow: 0 6px 14px rgba(64, 1, 13, 0.12);
+}
+
+.booking-page .booking-hair-guide-panel {
+  border: 1px solid rgba(64, 1, 13, 0.22);
+  border-radius: 14px;
+  padding: 12px;
+  background:
+    radial-gradient(560px 160px at 10% 10%, rgba(64, 1, 13, 0.08), transparent 65%),
+    linear-gradient(180deg, #fffcfa 0%, #fff7f2 100%);
+  box-shadow: 0 10px 24px rgba(64, 1, 13, 0.09);
+}
+
+.booking-page .booking-hair-guide-panel__title-wrap {
+  color: #0d0d0d;
+}
+
+.booking-page .booking-hair-guide-panel__title {
+  font-weight: 900;
+  font-size: 1.06rem;
+  line-height: 1.35;
+}
+
+.booking-page .booking-hair-guide-panel__subtitle {
+  font-weight: 700;
+  color: rgba(13, 13, 13, 0.66) !important;
+}
+
+.booking-page .booking-hair-guide-panel__btn-secondary {
+  border: 1px solid rgba(64, 1, 13, 0.32);
+  color: #40010d;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 999px;
+  font-weight: 800;
+  padding-inline: 14px;
+}
+
+.booking-page .booking-hair-guide-panel__btn-secondary:hover {
+  background: #fff;
+  border-color: rgba(64, 1, 13, 0.5);
+  color: #2f0009;
+}
+
+.booking-page .booking-hair-guide-panel__btn-primary {
+  border: 1px solid rgba(64, 1, 13, 0.2);
+  color: #fff;
+  background: #40010d;
+  border-radius: 999px;
+  font-weight: 800;
+  padding-inline: 14px;
+}
+
+.booking-page .booking-hair-guide-panel__btn-primary:hover {
+  background: #2f0009;
+}
+
+.booking-page .booking-hair-guide-panel__image-wrap {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px dashed rgba(64, 1, 13, 0.22);
+  border-radius: 14px;
+  padding: 10px;
+}
+
+.booking-page .booking-hair-guide-panel__image {
+  width: 100%;
+  max-width: 560px;
+  border-radius: 12px;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  box-shadow: 0 12px 28px rgba(13, 13, 13, 0.14);
+}
+
 /* =========================
    ✅ Unified Select (Booking)
 ========================= */
@@ -449,7 +552,8 @@ textarea.form-control {
    Date picker UX
 ========================= */
 .booking-page input[type="date"]::-webkit-calendar-picker-indicator {
-  opacity: 0;
+  opacity: 1;
+  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
   cursor: pointer;
 }
 
@@ -458,6 +562,14 @@ textarea.form-control {
 }
 .booking-page .booking-date-group * {
   cursor: pointer;
+}
+.booking-page .booking-date-group .input-group-text,
+.booking-page .booking-date-group .booking-date-icon {
+  color: #000 !important;
+}
+
+.booking-page .booking-date-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
 }
 
 /* =========================

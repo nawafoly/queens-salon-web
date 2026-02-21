@@ -21,7 +21,6 @@ import { pricingSections } from "./Pricing";
 
 import "../styles/DashboardModals.css";
 import "../styles/DashboardOffers.css";
-import Modal from "../components/Modal";
 import { db } from "../services/firebase";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 
@@ -68,6 +67,7 @@ type PackageDraft = {
   description: string;
   imageUrl: string;
   active: boolean;
+  endDate: string;
   serviceIds: string[];
   finalPrice: number;
   warnDiscountOverPercent: number;
@@ -131,6 +131,36 @@ function normalizeGroupLabel(raw: string) {
     return base.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
   }
   return base;
+}
+
+function resolveSectionLabel(raw: string) {
+  const src = String(raw || "").trim();
+  const x = normalizeGroupLabel(src);
+  const lower = src.toLowerCase();
+  const map: Record<string, string> = {
+    services: "الخدمات",
+    service: "الخدمات",
+    "nail care": "العناية بالأظافر",
+    nails: "العناية بالأظافر",
+    hair: "العناية بالشعر",
+    coloring: "الصبغات والمعالجات",
+    makeup: "المكياج",
+    consultation: "استشارة",
+    blowdry: "استشوار",
+  };
+  if (map[lower]) return map[lower];
+  if (hasArabicText(x)) return x.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
+  return "قسم عام";
+}
+
+function resolveCategoryLabel(raw: string) {
+  const src = String(raw || "").trim();
+  const preferred = src.includes(">") ? src.split(">").pop() || src : src;
+  const x = humanizeLabel(preferred);
+  if (hasArabicText(x)) return x.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
+  const mapped = normalizeGroupLabel(x);
+  if (hasArabicText(mapped)) return mapped.replace(/[A-Za-z]+/g, " ").replace(/\s+/g, " ").trim();
+  return "غير محدد";
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -197,6 +227,21 @@ function isActiveNow(o: any) {
   return true;
 }
 
+function isPackageLinkedOffer(o: any) {
+  return (
+    o &&
+    (Number(o?.packageFinalPrice || 0) > 0 ||
+      Number(o?.packageBaseTotalPrice || 0) > 0 ||
+      Number(o?.packageTotalDurationMin || 0) > 0)
+  );
+}
+
+function isPackageExpiredByToday(p: any) {
+  const end = String(p?.endDate || "").trim();
+  if (!end) return false;
+  return todayISO() > end;
+}
+
 const DashboardOffers: React.FC = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [packagesCatalog, setPackagesCatalog] = useState<ServicePackageDoc[]>([]);
@@ -205,6 +250,7 @@ const DashboardOffers: React.FC = () => {
   const [packageListMode, setPackageListMode] = useState<PackageListMode>("all");
   const [packageOpenGroups, setPackageOpenGroups] = useState<Record<string, boolean>>({});
   const [editingPackageId, setEditingPackageId] = useState("");
+  const [packageFormOpen, setPackageFormOpen] = useState(false);
   const [packagePickedImageName, setPackagePickedImageName] = useState("");
   const [packageDraft, setPackageDraft] = useState<PackageDraft>({
     id: "",
@@ -212,6 +258,7 @@ const DashboardOffers: React.FC = () => {
     description: "",
     imageUrl: "",
     active: true,
+    endDate: "",
     serviceIds: [],
     finalPrice: 0,
     warnDiscountOverPercent: MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
@@ -226,6 +273,8 @@ const DashboardOffers: React.FC = () => {
   const [filterMode, setFilterMode] = useState<OfferFilterMode>("active_now");
   const [inlineNotice, setInlineNotice] = useState<{ type: "error" | "success"; text: string } | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
+  const packageFormRef = useRef<HTMLDivElement | null>(null);
+  const offerFormRef = useRef<HTMLDivElement | null>(null);
 
   const [form, setForm] = useState<OfferForm>({
     title: "",
@@ -363,7 +412,8 @@ const DashboardOffers: React.FC = () => {
         listAllPackages(SALON_ID),
         getDocs(query(collection(db, "salons", SALON_ID, "services"), orderBy("name", "asc"))),
       ]);
-      setOffers(Array.isArray(offersData) ? offersData : []);
+      const filteredOffers = (Array.isArray(offersData) ? offersData : []).filter((o: any) => !isPackageLinkedOffer(o));
+      setOffers(filteredOffers);
       setPackagesCatalog(Array.isArray(packagesData) ? packagesData : []);
       const srvRows: PackageServiceRow[] = servicesSnap.docs
         .map((d) => ({ id: d.id, ...(d.data() as any) }))
@@ -431,6 +481,12 @@ const DashboardOffers: React.FC = () => {
 
     return { total, activeNowCount, scheduledCount, expiredCount, deletedCount, used };
   }, [offers]);
+  const packageStats = useMemo(() => {
+    const total = packagesCatalog.length;
+    const activeNowCount = packagesCatalog.filter((p: any) => p?.active !== false && !isPackageExpiredByToday(p)).length;
+    const used = packagesCatalog.filter((p: any) => Number((p as any)?.usageCount || 0) > 0).length;
+    return { total, activeNowCount, used };
+  }, [packagesCatalog]);
 
   const openAdd = () => {
     setEditing(null);
@@ -453,6 +509,9 @@ const DashboardOffers: React.FC = () => {
     });
 
     setOpen(true);
+    window.requestAnimationFrame(() => {
+      offerFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const openEdit = (o: Offer) => {
@@ -476,6 +535,9 @@ const DashboardOffers: React.FC = () => {
     });
 
     setOpen(true);
+    window.requestAnimationFrame(() => {
+      offerFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const close = () => {
@@ -782,13 +844,36 @@ const DashboardOffers: React.FC = () => {
       description: "",
       imageUrl: "",
       active: true,
+      endDate: "",
       serviceIds: [],
       finalPrice: 0,
       warnDiscountOverPercent: MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
     });
   };
+  const startCreatePackage = () => {
+    resetPackageDraft();
+    setPackageFormOpen(true);
+    window.requestAnimationFrame(() => {
+      packageFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+  const togglePackageForm = () => {
+    if (packageFormOpen) {
+      setPackageFormOpen(false);
+      return;
+    }
+    startCreatePackage();
+  };
+  const toggleOfferModal = () => {
+    if (open) {
+      close();
+      return;
+    }
+    openAdd();
+  };
   const openPackageForEdit = (pkg: ServicePackageDoc) => {
     setEditingPackageId(String(pkg.id || "").trim());
+    setPackageFormOpen(true);
     setPackagePickedImageName(String(pkg.imageUrl || "").trim() ? "تم اختيار صورة" : "");
     setPackageDraft({
       id: String(pkg.id || "").trim(),
@@ -796,9 +881,13 @@ const DashboardOffers: React.FC = () => {
       description: String(pkg.description || "").trim(),
       imageUrl: String(pkg.imageUrl || "").trim(),
       active: pkg.active !== false,
+      endDate: String((pkg as any).endDate || "").trim(),
       serviceIds: Array.isArray(pkg.serviceIds) ? pkg.serviceIds : [],
       finalPrice: Math.max(0, Number(pkg.finalPrice || 0)),
       warnDiscountOverPercent: Math.max(0, Number(pkg.warnDiscountOverPercent || MAX_PACKAGE_DISCOUNT_WARN_PERCENT)),
+    });
+    window.requestAnimationFrame(() => {
+      packageFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
   const toggleDraftServiceId = (serviceId: string) => {
@@ -823,6 +912,7 @@ const DashboardOffers: React.FC = () => {
   const savePackageDraft = async () => {
     const name = String(packageDraft.name || "").trim();
     if (!name) return showNotice("اكتب اسم الباكيج");
+    if (packageDraft.endDate && packageDraft.endDate < todayISO()) return showNotice("تاريخ انتهاء الباكيج يجب أن يكون اليوم أو بعده");
     if (!packageComputed.picked.length) return showNotice("اختر خدمة واحدة على الأقل");
     if (packageComputed.totalDurationMin <= 0) return showNotice("مدة الباكيج غير صحيحة");
     const id = String(packageDraft.id || "").trim() || buildId(`pkg_${name}`);
@@ -841,6 +931,7 @@ const DashboardOffers: React.FC = () => {
         description: String(packageDraft.description || "").trim() || undefined,
         imageUrl: String(packageDraft.imageUrl || "").trim() || undefined,
         active: packageDraft.active !== false,
+        endDate: String(packageDraft.endDate || "").trim() || undefined,
         serviceIds: services.map((x) => x.serviceId),
         services,
         baseTotalPrice: packageComputed.baseTotalPrice,
@@ -852,34 +943,13 @@ const DashboardOffers: React.FC = () => {
       },
       SALON_ID
     );
-    const sequenceSteps = services.map((s, idx) => ({
-      serviceId: String(s.serviceId || "").trim(),
-      orderIndex: idx,
-      gapAfterMin: 0,
-      titleSnapshot: String(s.serviceName || "").trim() || undefined,
-    }));
-    await upsertOffer(
-      {
-        id,
-        title: name,
-        code: String(id || "").trim().toUpperCase(),
-        discountType: "fixed",
-        value: 0,
-        startDate: "",
-        endDate: "",
-        active: packageDraft.active !== false,
-        imageUrl: String(packageDraft.imageUrl || "").trim() || "",
-        appliesTo: "services",
-        serviceIds: sequenceSteps.map((x) => x.serviceId),
-        sequenceSteps,
-        usageCount: 0,
-        packageFinalPrice: packageComputed.finalPrice,
-        packageBaseTotalPrice: packageComputed.baseTotalPrice,
-        packageTotalDurationMin: packageComputed.totalDurationMin,
-        packageDescription: String(packageDraft.description || "").trim() || undefined,
-      } as any,
-      SALON_ID
-    );
+    // مهم: لا ننشئ عرض تلقائي عند حفظ الباكج.
+    // تنظيف أي عرض قديم لنفس المعرف (من الإصدارات السابقة).
+    try {
+      await removeOffer(id, SALON_ID);
+    } catch {
+      // ignore (قد يكون العرض غير موجود أو مستخدم سابقا)
+    }
     await refresh();
     resetPackageDraft();
   };
@@ -888,8 +958,26 @@ const DashboardOffers: React.FC = () => {
     if (!id) return;
     if (!confirm("هل أنت متأكد من حذف هذا الباكيج؟")) return;
     await removePackage(id, SALON_ID);
+    try {
+      await removeOffer(id, SALON_ID);
+    } catch {
+      // ignore (قد يكون غير موجود أو مستخدم)
+    }
     await refresh();
     if (editingPackageId === id) resetPackageDraft();
+  };
+  const togglePackageActive = async (pkg: ServicePackageDoc) => {
+    const id = String(pkg.id || "").trim();
+    if (!id) return;
+    await upsertPackage(
+      {
+        ...(pkg as any),
+        id,
+        active: !(pkg.active !== false),
+      } as ServicePackageDoc,
+      SALON_ID
+    );
+    await refresh();
   };
 
   return (
@@ -917,29 +1005,149 @@ const DashboardOffers: React.FC = () => {
             <FontAwesomeIcon icon={faTag} /> العروض والكوبونات
           </h1>
           <p className="offers-sub">فلترة: سارية / مجدولة / منتهية / محذوفة + نطاق (الكل/خدمات)</p>
-          <div className="offers-kpis">
+        </div>
+      </div>
+
+      <div className="offers-card offers-section offers-section--stats">
+        <div className="offers-stats-section">
+          <div className="offers-stats-group offers-stats-group--offers">
+            <div className="offers-stats-group-title">العروض</div>
             <div className="offers-kpi">
-              <span>إجمالي العروض</span>
+              <span>إجمالي</span>
               <strong>{stats.total}</strong>
             </div>
             <div className="offers-kpi">
-              <span>السارية الآن</span>
+              <span>ساري</span>
               <strong>{stats.activeNowCount}</strong>
             </div>
             <div className="offers-kpi">
-              <span>المستخدمة</span>
+              <span>مستخدم</span>
               <strong>{stats.used}</strong>
+            </div>
+          </div>
+          <div className="offers-stats-group offers-stats-group--packages">
+            <div className="offers-stats-group-title">البكجات</div>
+            <div className="offers-kpi">
+              <span>إجمالي</span>
+              <strong>{packageStats.total}</strong>
+            </div>
+            <div className="offers-kpi">
+              <span>ساري</span>
+              <strong>{packageStats.activeNowCount}</strong>
+            </div>
+            <div className="offers-kpi">
+              <span>مستخدم</span>
+              <strong>{packageStats.used}</strong>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="offers-card pkgm">
-        <div className="offers-card-title"><FontAwesomeIcon icon={faTag} /> 4) الباكيجات (Package Offer)</div>
+      <div className="offers-card offers-section offers-section--packages-list">
+        <div className="offers-card-title"><FontAwesomeIcon icon={faTag} /> الباكيجات المحفوظة</div>
+        <div className="offers-section-note">كل باكيج في كرت مستقل. اضغط تعديل وسيتم فتح النموذج أسفل هذا القسم مباشرة.</div>
+        {!packagesCatalog.length ? (
+          <div className="offers-hint">لا توجد باكيجات محفوظة</div>
+        ) : (
+          <div className="pkg-offers-grid">
+            {packagesCatalog.map((p) => {
+              const isEditingThis = editingPackageId === String(p.id || "").trim();
+              const pkgExpired = isPackageExpiredByToday(p);
+              const pkgStatus = p.active === false ? "موقوف" : pkgExpired ? "منتهي" : "نشط";
+              return (
+                <div key={p.id} className={`pkg-offer-card ${isEditingThis ? "is-editing" : ""}`}>
+                  <div className="pkg-offer-inner">
+                    <div className="pkg-offer-image-wrap">
+                      {String(p.imageUrl || "").trim() ? (
+                        <img className="pkg-offer-image" src={String(p.imageUrl)} alt={String(p.name || p.id || "package")} />
+                      ) : (
+                        <div className="pkg-offer-image pkg-offer-image--empty">—</div>
+                      )}
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">الاسم</div>
+                      <div className="pkg-offer-value">{p.name || p.id}</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">الخدمات</div>
+                      <div className="pkg-offer-value">{Array.isArray(p.serviceIds) ? p.serviceIds.length : 0}</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">السعر النهائي</div>
+                      <div className="pkg-offer-value">{Math.round(Number(p.finalPrice || 0))} ر.س</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">الخصم</div>
+                      <div className="pkg-offer-value">{Number(p.discountPercent || 0).toFixed(1)}%</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">ينتهي</div>
+                      <div className="pkg-offer-value">{String((p as any).endDate || "").trim() || "—"}</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">الحالة</div>
+                      <div className="pkg-offer-value">{pkgStatus}</div>
+                    </div>
+                    {!!String(p.description || "").trim() && (
+                      <div className="pkg-offer-row">
+                        <div className="pkg-offer-label">الوصف</div>
+                        <div className="pkg-offer-value pkg-offer-desc">{String(p.description)}</div>
+                      </div>
+                    )}
+                    <div className="of-actions" style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        className="dash-pill dash-pill-outline dash-pill-sm"
+                        onClick={() => openPackageForEdit(p)}
+                      >
+                        <FontAwesomeIcon icon={faPen} /> تعديل
+                      </button>
+                      <button
+                        type="button"
+                        className={`dash-pill ${p.active ? "dash-pill-warning" : "dash-pill-success"} dash-pill-sm`}
+                        onClick={() => togglePackageActive(p)}
+                        title={p.active ? "إيقاف" : "تفعيل"}
+                      >
+                        <FontAwesomeIcon icon={p.active ? faBan : faCheck} />
+                        {p.active ? " إيقاف" : " تفعيل"}
+                      </button>
+                      <button
+                        type="button"
+                        className="dash-pill dash-pill-danger dash-pill-sm"
+                        onClick={() => deletePackageById(p.id)}
+                      >
+                        <FontAwesomeIcon icon={faTrash} /> حذف
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {packageFormOpen && (
+      <div ref={packageFormRef} className="offers-card pkgm offers-section offers-section--package-form">
+        <div className="offers-card-title" style={{ justifyContent: "space-between" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <FontAwesomeIcon icon={faTag} /> {editingPackageId ? "تعديل الباكيج" : "نموذج الباكيج"}
+          </span>
+          <button
+            type="button"
+            className="dash-pill dash-pill-outline dash-pill-sm"
+            onClick={() => setPackageFormOpen(false)}
+          >
+            <FontAwesomeIcon icon={faXmark} /> إغلاق
+          </button>
+        </div>
+        <div className="offers-section-note">
+          عدّل البيانات ثم اضغط حفظ. أثناء التعديل سيتم تحديث نفس الباكيج.
+        </div>
         <div className="pkgm__row">
           <div className="pkgm__field">
             <label>معرف الباكيج (اختياري)</label>
-            <input value={packageDraft.id} placeholder="pkg_hair_skin_combo" onChange={(e) => setPackageDraft((p) => ({ ...p, id: buildId(e.target.value) }))} />
+            <input value={packageDraft.id} placeholder="مثال: باكج_العناية_الشامل" onChange={(e) => setPackageDraft((p) => ({ ...p, id: buildId(e.target.value) }))} />
           </div>
           <div className="pkgm__field">
             <label>اسم الباكيج</label>
@@ -948,6 +1156,10 @@ const DashboardOffers: React.FC = () => {
           <div className="pkgm__field">
             <label>سعر الباكيج النهائي</label>
             <input type="number" min={0} value={packageDraft.finalPrice} onChange={(e) => setPackageDraft((p) => ({ ...p, finalPrice: Math.max(0, Number(e.target.value || 0)) }))} />
+          </div>
+          <div className="pkgm__field">
+            <label>تاريخ انتهاء الباكيج</label>
+            <input type="date" value={packageDraft.endDate} onChange={(e) => setPackageDraft((p) => ({ ...p, endDate: e.target.value }))} />
           </div>
         </div>
         <div className="pkgm__field">
@@ -960,6 +1172,14 @@ const DashboardOffers: React.FC = () => {
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => onPickPackageImage(e.target.files?.[0] || null)} />
           </label>
           <span className="offers-hint">{packagePickedImageName || `أقل من ${MAX_PACKAGE_IMAGE_MB}MB`}</span>
+          {packageDraft.imageUrl && (
+            <img
+              className="of-img"
+              src={packageDraft.imageUrl}
+              alt="معاينة صورة الباكيج"
+              style={{ width: 48, height: 48, borderRadius: 12 }}
+            />
+          )}
           {packageDraft.imageUrl && (
             <button type="button" className="dash-pill dash-pill-danger" onClick={() => { setPackagePickedImageName(""); setPackageDraft((p) => ({ ...p, imageUrl: "" })); }}>
               إزالة الصورة
@@ -1006,29 +1226,7 @@ const DashboardOffers: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="pkgm__list-mode">
-          <button
-            type="button"
-            className={`dash-pill dash-pill-sm ${packageListMode === "all" ? "dash-pill-primary" : "dash-pill-outline"}`}
-            onClick={() => setPackageListMode("all")}
-          >
-            الكل
-          </button>
-          <button
-            type="button"
-            className={`dash-pill dash-pill-sm ${packageListMode === "selected" ? "dash-pill-primary" : "dash-pill-outline"}`}
-            onClick={() => setPackageListMode("selected")}
-          >
-            المحددة فقط
-          </button>
-          <button
-            type="button"
-            className={`dash-pill dash-pill-sm ${packageListMode === "unselected" ? "dash-pill-primary" : "dash-pill-outline"}`}
-            onClick={() => setPackageListMode("unselected")}
-          >
-            غير المحددة
-          </button>
-        </div>
+        <div className="offers-hint">اضغط على أي خدمة للتحديد أو الإلغاء.</div>
         {!!selectedPackageServices.length && (
           <div className="pkgm__selected-summary">
             <strong>المحدد الآن:</strong> {selectedPackageServices.length} خدمة
@@ -1042,68 +1240,37 @@ const DashboardOffers: React.FC = () => {
           </div>
         )}
         <div className="pkgm__services">
-          {visibleSelectedGroups.length > 0 && (
-            <div className="pkgm__group-title">الخدمات المحددة ({selectedPackageServices.length})</div>
-          )}
-          {visibleSelectedGroups.map((group, idx) => {
-            const key = `sel::${group.title}`;
-            const open = isPackageGroupOpen(key, idx === 0);
-            return (
-            <div key={group.title} className="pkgm__group">
-              <button type="button" className="pkgm__group-toggle" onClick={() => togglePackageGroup(key)}>
-                <span className="pkgm__group-toggle-label">{group.title}</span>
-                <span className="pkgm__group-toggle-caret">{open ? "−" : "+"}</span>
-              </button>
-              {open && (
-                <div className="pkgm__group-items">
-                  {group.services.map((s) => (
-                    <button key={s.id} type="button" className="pkgm__service is-selected pkgm__service-row" onClick={() => toggleDraftServiceId(s.id)}>
-                      <div className="pkgm__service-main">
-                        <span className="pkgm__service-name">{s.name}</span>
-                        <span className="pkgm__service-meta">{s.price} ر.س • {s.durationMin} د</span>
-                      </div>
-                      <span className="pkgm__service-status">
-                        <FontAwesomeIcon icon={faCheck} /> محدد
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )})}
-          {visibleUnselectedGroups.length > 0 && <div className="pkgm__group-title">باقي الخدمات ({unselectedPackageServices.length})</div>}
-          {visibleUnselectedGroups.map((group, idx) => {
-            const key = `unsel::${group.title}`;
-            const open = isPackageGroupOpen(key, idx === 0 && !visibleSelectedGroups.length);
-            return (
-            <div key={group.title} className="pkgm__group">
-              <button type="button" className="pkgm__group-toggle" onClick={() => togglePackageGroup(key)}>
-                <span className="pkgm__group-toggle-label">{group.title}</span>
-                <span className="pkgm__group-toggle-caret">{open ? "−" : "+"}</span>
-              </button>
-              {open && (
-                <div className="pkgm__group-items">
-                  {group.services.map((s) => (
-                    <button key={s.id} type="button" className="pkgm__service pkgm__service-row" onClick={() => toggleDraftServiceId(s.id)}>
-                      <div className="pkgm__service-main">
-                        <span className="pkgm__service-name">{s.name}</span>
-                        <span className="pkgm__service-meta">{s.price} ر.س • {s.durationMin} د</span>
-                      </div>
-                      <span className="pkgm__service-status">اختيار</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )})}
+          {[...filteredPackageServices]
+            .sort((a, b) => {
+              const aSel = packageDraft.serviceIds.includes(a.id) ? 1 : 0;
+              const bSel = packageDraft.serviceIds.includes(b.id) ? 1 : 0;
+              if (aSel !== bSel) return bSel - aSel;
+              return String(a.name || "").localeCompare(String(b.name || ""), "ar");
+            })
+            .map((s) => {
+              const selected = packageDraft.serviceIds.includes(s.id);
+              const sectionText = resolveSectionLabel(s.sectionId || "");
+              const categoryText = resolveCategoryLabel(s.categoryName || s.categoryId || "");
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`pkgm__service pkgm__service-row ${selected ? "is-selected" : ""}`}
+                  onClick={() => toggleDraftServiceId(s.id)}
+                >
+                  <div className="pkgm__service-main">
+                    <span className="pkgm__service-name">{s.name}</span>
+                    <span className="pkgm__service-meta">
+                      {s.price} ر.س • {s.durationMin} د • القسم: {sectionText} • الصنف: {categoryText}
+                    </span>
+                  </div>
+                  <span className="pkgm__service-status">
+                    {selected ? (<><FontAwesomeIcon icon={faCheck} /> محدد</>) : "اختيار"}
+                  </span>
+                </button>
+              );
+            })}
           {!filteredPackageServices.length && <div className="pkgm__empty">لا توجد خدمات مطابقة للبحث</div>}
-        </div>
-        <div className="pkgm__stats">
-          <span>الخدمات المختارة: {packageComputed.picked.length}</span>
-          <span>إجمالي قبل الخصم: {Math.round(packageComputed.baseTotalPrice)} ر.س</span>
-          <span>مدة الباكيج: {Math.round(packageComputed.totalDurationMin)} دقيقة</span>
-          <span>قيمة الخصم: {Math.round(packageComputed.discountAmount)} ر.س</span>
-          <span>نسبة الخصم: {packageComputed.discountPercent.toFixed(1)}%</span>
         </div>
         {packageComputed.isHighDiscount && (
           <div className="pkgm__warn">
@@ -1113,44 +1280,36 @@ const DashboardOffers: React.FC = () => {
         )}
         <div className="pkgm__actions">
           <button type="button" className="dash-pill dash-pill-primary" onClick={savePackageDraft}>{editingPackageId ? "تحديث الباكيج" : "حفظ الباكيج"}</button>
-          {editingPackageId && (
-            <button type="button" className="dash-pill dash-pill-primary" onClick={savePackageDraft}>
-              حفظ التعديلات
-            </button>
-          )}
           <button type="button" className="dash-pill dash-pill-outline" onClick={resetPackageDraft}>تفريغ النموذج</button>
         </div>
-        <div className="table-responsive" style={{ marginTop: 10 }}>
-          <table className="offers-table">
-            <thead>
-              <tr>
-                <th>الاسم</th><th>الخدمات</th><th>السعر قبل</th><th>السعر النهائي</th><th>المدة</th><th>الخصم</th><th>تعديل</th><th>حذف</th>
-              </tr>
-            </thead>
-            <tbody>
-              {packagesCatalog.map((p) => (
-                <tr key={p.id}>
-                  <td data-label="الاسم">{p.name || p.id}</td>
-                  <td data-label="الخدمات">{Array.isArray(p.serviceIds) ? p.serviceIds.length : 0}</td>
-                  <td data-label="السعر قبل">{Math.round(Number(p.baseTotalPrice || 0))} ر.س</td>
-                  <td data-label="السعر النهائي">{Math.round(Number(p.finalPrice || 0))} ر.س</td>
-                  <td data-label="المدة">{Math.round(Number(p.totalDurationMin || 0))} د</td>
-                  <td data-label="الخصم">{Number(p.discountPercent || 0).toFixed(1)}%</td>
-                  <td data-label="تعديل"><button type="button" className="dash-pill dash-pill-outline dash-pill-sm" onClick={() => openPackageForEdit(p)}>تعديل</button></td>
-                  <td data-label="حذف"><button type="button" className="dash-pill dash-pill-danger dash-pill-sm" onClick={() => deletePackageById(p.id)}>حذف</button></td>
-                </tr>
-              ))}
-              {!packagesCatalog.length && <tr><td colSpan={8} style={{ textAlign: "center", padding: 12 }}>لا توجد باكيجات محفوظة</td></tr>}
-            </tbody>
-          </table>
+      </div>
+      )}
+
+      <div className="offers-card offers-section offers-section--quick-actions">
+        <div className="offers-card-title">
+          <FontAwesomeIcon icon={faPlus} /> إجراءات سريعة
+        </div>
+        <div className="offers-quick-actions">
+          <button
+            className={`dash-pill dash-pill-primary offers-quick-btn offers-quick-btn--offer ${open ? "is-open" : ""}`}
+            type="button"
+            onClick={toggleOfferModal}
+            aria-expanded={open}
+          >
+            <FontAwesomeIcon icon={open ? faXmark : faPlus} /> {open ? "إغلاق إضافة العرض" : "فتح إضافة العرض"}
+          </button>
+          <button className="dash-pill dash-pill-outline offers-quick-btn" type="button" onClick={togglePackageForm}>
+            <FontAwesomeIcon icon={faTag} /> {packageFormOpen ? "إغلاق نموذج الباكيج" : "فتح نموذج الباكيج"}
+          </button>
         </div>
       </div>
 
       {/* Filters + Add */}
-      <div className="offers-card">
+      <div className="offers-card offers-section offers-section--filters">
         <div className="offers-card-title">
           <FontAwesomeIcon icon={faFilter} /> فلترة + بحث
         </div>
+        <div className="offers-section-note">ابدأ من هنا: اختر حالة العروض ثم ابحث بالعنوان أو الكود.</div>
 
         <div className="offers-row offers-row--filters">
           <div className="offers-filter-pills">
@@ -1192,153 +1351,109 @@ const DashboardOffers: React.FC = () => {
             <input value={queryText} onChange={(e) => setQueryText(e.target.value)} placeholder="بحث بالعنوان أو الكود..." />
           </div>
 
-          <button className="dash-pill dash-pill-primary offers-add-btn" type="button" onClick={openAdd}>
-            <FontAwesomeIcon icon={faPlus} /> إضافة عرض
-          </button>
         </div>
 
-        <div className="offers-hint">
-          إجمالي (بدون المحذوف): {stats.total} — عروض مستخدمة: {stats.used}
-        </div>
       </div>
 
 
       {/* Table */}
-      <div className="offers-table-card">
-        <div className="table-responsive">
-          <table className="offers-table">
-            <thead>
-              <tr>
-                <th>صورة</th>
-                <th>العنوان</th>
-                <th>الكود</th>
-                <th>الخصم</th>
-                <th>الفترة</th>
-                <th>الحالة</th>
-                <th>الاستخدام</th>
-                <th>النطاق</th>
-                <th>تحكم</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredOffers.length === 0 ? (
-                <tr>
-                  <td colSpan={9} data-label=" " style={{ textAlign: "center", padding: 16 }}>
-                    لا توجد عروض مطابقة
-                  </td>
-                </tr>
-
-              ) : (
-                filteredOffers.map((o: any) => {
-                  const deleted = isDeleted(o);
-                  const scheduled = isScheduledByToday(o) && !isExpiredByToday(o) && !deleted;
-                  const expired = isExpiredByToday(o) && !deleted;
-
-                  const statusLabel = deleted ? "محذوف" : scheduled ? "مجدول" : expired ? "منتهي" : o.active ? "نشط" : "موقوف";
-
-                  return (
-                    <tr key={o.id} style={{ verticalAlign: "middle" }}>
-                      <td data-label="صورة">
-                        {o.imageUrl ? (
-                          <img className="of-img" src={o.imageUrl} alt="offer" />
-                        ) : (
-                          <span style={{ opacity: 0.6 }}>—</span>
-                        )}
-                      </td>
-
-                      <td data-label="العنوان">{o.title}</td>
-
-                      <td data-label="الكود">{o.code}</td>
-
-                      <td data-label="الخصم">
-                        {o.discountType === "percent" ? `${o.value}%` : `${o.value} ريال`}
-                      </td>
-
-                      <td data-label="الفترة">
-                        {o.startDate || "—"} → {o.endDate || "—"}
-                      </td>
-
-                      <td data-label="الحالة">{statusLabel}</td>
-
-                      <td data-label="الاستخدام">{o.usageCount || 0}</td>
-
-                      <td data-label="النطاق">
-                        {(o.appliesTo || "all") === "services" ? "خدمات محددة" : "الكل"}
-                      </td>
-
-                      <td data-label="تحكم">
-                        <div className="of-actions" style={{ flexWrap: "wrap" }}>
-                          {!deleted && (
-                            <>
-                              <button
-                                className="dash-pill dash-pill-outline dash-pill-sm"
-                                type="button"
-                                onClick={() => openEdit(o)}
-                              >
-                                <FontAwesomeIcon icon={faPen} /> تعديل
-                              </button>
-
-                              <button
-                                className={`dash-pill ${o.active ? "dash-pill-warning" : "dash-pill-success"
-                                  } dash-pill-sm`}
-                                type="button"
-                                onClick={() => toggleActive(o)}
-                                title={o.active ? "إيقاف" : "تفعيل"}
-                              >
-                                <FontAwesomeIcon icon={o.active ? faBan : faCheck} />
-                                {o.active ? " إيقاف" : " تفعيل"}
-                              </button>
-
-                              <button
-                                className="dash-pill dash-pill-danger dash-pill-sm"
-                                type="button"
-                                onClick={() => softDelete(o)}
-                              >
-                                <FontAwesomeIcon icon={faTrash} /> حذف
-                              </button>
-                            </>
-                          )}
-
-                          {deleted && (
-                            <>
-                              <button
-                                className="dash-pill dash-pill-success dash-pill-sm"
-                                type="button"
-                                onClick={() => restore(o)}
-                              >
-                                <FontAwesomeIcon icon={faRotateLeft} /> استرجاع
-                              </button>
-
-                              <button
-                                className="dash-pill dash-pill-danger dash-pill-sm"
-                                type="button"
-                                onClick={() => hardDelete(o)}
-                              >
-                                <FontAwesomeIcon icon={faSkullCrossbones} /> حذف نهائي
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-
-                })
-              )}
-            </tbody>
-          </table>
+      <div className="offers-table-card offers-section offers-section--offers-table">
+        <div className="offers-card-title" style={{ marginBottom: 12 }}>
+          <FontAwesomeIcon icon={faTag} /> نتائج العروض
         </div>
+        {filteredOffers.length === 0 ? (
+          <div className="offers-hint">لا توجد عروض مطابقة</div>
+        ) : (
+          <div className="pkg-offers-grid offers-as-packages-grid">
+            {filteredOffers.map((o: any) => {
+              const deleted = isDeleted(o);
+              const scheduled = isScheduledByToday(o) && !isExpiredByToday(o) && !deleted;
+              const expired = isExpiredByToday(o) && !deleted;
+              const statusLabel = deleted ? "محذوف" : scheduled ? "مجدول" : expired ? "منتهي" : o.active ? "نشط" : "موقوف";
+
+              return (
+                <div key={o.id} className={`pkg-offer-card offers-like-package-card ${deleted ? "is-deleted" : ""}`}>
+                  <div className="pkg-offer-inner">
+                    <div className="pkg-offer-image-wrap">
+                      {o.imageUrl ? (
+                        <img className="pkg-offer-image" src={o.imageUrl} alt="offer" />
+                      ) : (
+                        <div className="pkg-offer-image pkg-offer-image--empty">—</div>
+                      )}
+                    </div>
+
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">العنوان</div>
+                      <div className="pkg-offer-value">{o.title}</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">الكود</div>
+                      <div className="pkg-offer-value">{o.code || "—"}</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">الخصم</div>
+                      <div className="pkg-offer-value">{o.discountType === "percent" ? `${o.value}%` : `${o.value} ريال`}</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">الفترة</div>
+                      <div className="pkg-offer-value">{o.startDate || "—"} → {o.endDate || "—"}</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">الحالة</div>
+                      <div className="pkg-offer-value">{statusLabel}</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">الاستخدام</div>
+                      <div className="pkg-offer-value">{o.usageCount || 0}</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">النطاق</div>
+                      <div className="pkg-offer-value">{(o.appliesTo || "all") === "services" ? "خدمات محددة" : "الكل"}</div>
+                    </div>
+
+                    <div className="of-actions" style={{ marginTop: 10 }}>
+                      {!deleted && (
+                        <>
+                          <button className="dash-pill dash-pill-outline dash-pill-sm" type="button" onClick={() => openEdit(o)}>
+                            <FontAwesomeIcon icon={faPen} /> تعديل
+                          </button>
+                          <button
+                            className={`dash-pill ${o.active ? "dash-pill-warning" : "dash-pill-success"} dash-pill-sm`}
+                            type="button"
+                            onClick={() => toggleActive(o)}
+                            title={o.active ? "إيقاف" : "تفعيل"}
+                          >
+                            <FontAwesomeIcon icon={o.active ? faBan : faCheck} />
+                            {o.active ? " إيقاف" : " تفعيل"}
+                          </button>
+                          <button className="dash-pill dash-pill-danger dash-pill-sm" type="button" onClick={() => softDelete(o)}>
+                            <FontAwesomeIcon icon={faTrash} /> حذف
+                          </button>
+                        </>
+                      )}
+
+                      {deleted && (
+                        <>
+                          <button className="dash-pill dash-pill-success dash-pill-sm" type="button" onClick={() => restore(o)}>
+                            <FontAwesomeIcon icon={faRotateLeft} /> استرجاع
+                          </button>
+                          <button className="dash-pill dash-pill-danger dash-pill-sm" type="button" onClick={() => hardDelete(o)}>
+                            <FontAwesomeIcon icon={faSkullCrossbones} /> حذف نهائي
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Modal */}
-      <Modal
-        open={open}
-        onClose={close}
-        ariaLabel={editing ? "Edit offer" : "Add offer"}
-        overlayClassName="dash-modal-overlay offers-modal-overlay"
-        panelClassName="dash-modal offers-modal offers-modal--fullscreen"
-      >
+      {/* Offer Form (inline card, not modal) */}
+      {open && (
+      <div ref={offerFormRef} className="offers-card offers-section offers-section--offer-form">
             {/* Header (Fixed) */}
             <div className="of-modal-head">
               <div className="of-modal-title">
@@ -1383,8 +1498,16 @@ const DashboardOffers: React.FC = () => {
 
                     {/* ✅ Custom Dropdown بدل select */}
                     <div className="dash-dd-wrap" ref={discountWrapRef}>
-                      <button type="button" className="dash-select" onClick={() => setDiscountOpen((s) => !s)} aria-expanded={discountOpen}>
-                        {discountLabel}
+                      <button
+                        type="button"
+                        className="dash-select dash-select--with-caret"
+                        onClick={() => setDiscountOpen((s) => !s)}
+                        aria-expanded={discountOpen}
+                      >
+                        <span>{discountLabel}</span>
+                        <span className={`dash-dd-caret-inline ${discountOpen ? "is-open" : ""}`} aria-hidden="true">
+                          {discountOpen ? "▴" : "▾"}
+                        </span>
                       </button>
 
                       {discountOpen && (
@@ -1635,7 +1758,8 @@ const DashboardOffers: React.FC = () => {
                 إلغاء
               </button>
             </div>
-      </Modal>
+      </div>
+      )}
     </div>
   );
 };

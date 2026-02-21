@@ -27,6 +27,7 @@ export type ServicePackageDoc = {
   description?: string;
   imageUrl?: string;
   active: boolean;
+  endDate?: string; // YYYY-MM-DD
   serviceIds: string[];
   services: PackageServiceItem[];
   baseTotalPrice: number;
@@ -100,6 +101,7 @@ function normalizePackage(raw: any, id: string): ServicePackageDoc {
     description: String(raw?.description || "").trim() || undefined,
     imageUrl: String(raw?.imageUrl || "").trim() || undefined,
     active: raw?.active !== false,
+    endDate: String(raw?.endDate || "").trim() || undefined,
     serviceIds,
     services,
     baseTotalPrice,
@@ -114,16 +116,18 @@ function normalizePackage(raw: any, id: string): ServicePackageDoc {
 }
 
 export async function listActivePackages(salonId = DEFAULT_SALON_ID): Promise<ServicePackageDoc[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  const isActiveByDate = (x: ServicePackageDoc) => !x.endDate || x.endDate >= today;
   try {
     const snap = await getDocs(query(packagesCol(salonId), orderBy("updatedAt", "desc")));
     return snap.docs
       .map((d) => normalizePackage(d.data(), d.id))
-      .filter((x) => x.active && x.name && x.serviceIds.length > 0 && x.totalDurationMin > 0);
+      .filter((x) => x.active && isActiveByDate(x) && x.name && x.serviceIds.length > 0 && x.totalDurationMin > 0);
   } catch {
     const snap = await getDocs(packagesCol(salonId));
     return snap.docs
       .map((d) => normalizePackage(d.data(), d.id))
-      .filter((x) => x.active && x.name && x.serviceIds.length > 0 && x.totalDurationMin > 0);
+      .filter((x) => x.active && isActiveByDate(x) && x.name && x.serviceIds.length > 0 && x.totalDurationMin > 0);
   }
 }
 
@@ -164,6 +168,7 @@ export async function upsertPackage(pkg: ServicePackageDoc, salonId = DEFAULT_SA
     description: String(pkg.description || "").trim() || undefined,
     imageUrl: String(pkg.imageUrl || "").trim() || undefined,
     active: pkg.active !== false,
+    endDate: String(pkg.endDate || "").trim() || undefined,
     serviceIds,
     services,
     baseTotalPrice,
@@ -192,6 +197,7 @@ export async function upsertPackage(pkg: ServicePackageDoc, salonId = DEFAULT_SA
         description: String(pkg.description || "").trim() || undefined,
         imageUrl: String(pkg.imageUrl || "").trim() || undefined,
         active: pkg.active !== false,
+        endDate: String(pkg.endDate || "").trim() || undefined,
         serviceIds,
         baseTotalPrice,
         totalDurationMin,
