@@ -1,4 +1,4 @@
-// src/pages/Booking.tsx
+﻿// src/pages/Booking.tsx
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import type React from "react"; // âœ… ADD: عشان React.ChangeEvent / React.FormEvent
@@ -1195,7 +1195,7 @@ function findCartOverlap(items: CartItem[]) {
 
         const safeCats: any[] = catsSnap.docs
           .map((d) => ({ id: d.id, ...(d.data() as any) }))
-          .filter((c) => String((c as any)?.["ط§ظ„ط§ط³ظ…"] ?? c?.name ?? "").trim())
+          .filter((c) => String((c as any)?.["الاسم"] ?? c?.name ?? "").trim())
           .filter((c) => c?.active !== false);
 
         setFsCategories(safeCats as any);
@@ -1291,7 +1291,7 @@ function findCartOverlap(items: CartItem[]) {
 
       return base.filter((s: any) => {
         const catName = String(
-          s.category ?? s.categoryName ?? (s as any)?.["ط§ظ„طھطµظ†ظٹظپ"] ?? ""
+          s.category ?? s.categoryName ?? (s as any)?.["التصنيف"] ?? ""
         ).trim();
         return catName === cid;
       });
@@ -1351,11 +1351,11 @@ function findCartOverlap(items: CartItem[]) {
               "عام"
             ) || "عام";
           const name = readDisplayLabel(x, String(x.id || ""));
-          const priceNum = Number((x as any)?.["ط§ظ„ط³ط¹ط±"] ?? x.price ?? 0);
+          const priceNum = Number((x as any)?.["السعر"] ?? x.price ?? 0);
 
           const seasonPriceRaw =
             (x as any).seasonPrice ??
-            (x as any)?.["ط³ط¹ط±_ط§ظ„ظ…ظˆط³ظ…"] ??
+            (x as any)?.["سعر_الموسم"] ??
             (x as any).season_price ??
             (x as any).seasonPriceValue ??
             0;
@@ -1364,7 +1364,7 @@ function findCartOverlap(items: CartItem[]) {
           const seasonPrice = seasonPriceNum > 0 ? seasonPriceNum : undefined;
 
           const durationMin = Number(
-            (x as any)?.["ط§ظ„ظ…ط¯ط©"] ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN
+            (x as any)?.["المدة"] ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN
           );
 
           return {
@@ -1391,11 +1391,11 @@ function findCartOverlap(items: CartItem[]) {
 
         const catName = catId ? catMap.get(catId) || "عام" : "عام";
         const name = readDisplayLabel(x, String(x.id || ""));
-        const priceNum = Number((x as any)?.["ط§ظ„ط³ط¹ط±"] ?? x.price ?? 0);
+        const priceNum = Number((x as any)?.["السعر"] ?? x.price ?? 0);
 
         const seasonPriceRaw =
           (x as any).seasonPrice ??
-          (x as any)?.["ط³ط¹ط±_ط§ظ„ظ…ظˆط³ظ…"] ??
+          (x as any)?.["سعر_الموسم"] ??
           (x as any).season_price ??
           (x as any).seasonPriceValue ??
           0;
@@ -1404,7 +1404,7 @@ function findCartOverlap(items: CartItem[]) {
         const seasonPrice = seasonPriceNum > 0 ? seasonPriceNum : undefined;
 
         const durationMin = Number(
-          (x as any)?.["ط§ظ„ظ…ط¯ط©"] ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN
+          (x as any)?.["المدة"] ?? x.durationMin ?? DEFAULT_SERVICE_DURATION_MIN
         );
 
         return {
@@ -1517,7 +1517,7 @@ function findCartOverlap(items: CartItem[]) {
           .filter((c: any) => String(c.sectionId || "").trim() === sid)
           .map((c: any) => ({
             id: String(c.id),
-            name: String((c as any)?.["ط§ظ„ط§ط³ظ…"] ?? c.name ?? "").trim(),
+            name: String((c as any)?.["الاسم"] ?? c.name ?? "").trim(),
           }))
           .filter((x) => x.id && x.name);
 
@@ -1532,7 +1532,7 @@ function findCartOverlap(items: CartItem[]) {
         .filter((s: any) => String(s.sectionId || "").trim() === sid)
         .map((s: any) =>
           String(
-            s.category ?? s.categoryName ?? (s as any)?.["ط§ظ„طھطµظ†ظٹظپ"] ?? "عام"
+            s.category ?? s.categoryName ?? (s as any)?.["التصنيف"] ?? "عام"
           ).trim()
         )
         .filter(Boolean);
@@ -1786,10 +1786,10 @@ function findCartOverlap(items: CartItem[]) {
             byIdCache.set(serviceId, {
               id: serviceId,
               name: readDisplayLabel(d, serviceId),
-              basePrice: Number((d as any)?.price ?? (d as any)?.["ط§ظ„ط³ط¹ط±"] ?? 0),
+              basePrice: Number((d as any)?.price ?? (d as any)?.["السعر"] ?? 0),
               seasonPrice:
-                Number(String((d as any)?.seasonPrice ?? (d as any)?.["ط³ط¹ط±_ط§ظ„ظ…ظˆط³ظ…"] ?? 0).replace(/[^\d.]/g, "")) || 0,
-              durationMin: Number((d as any)?.durationMin ?? (d as any)?.["ط§ظ„ظ…ط¯ط©"] ?? DEFAULT_SERVICE_DURATION_MIN),
+                Number(String((d as any)?.seasonPrice ?? (d as any)?.["سعر_الموسم"] ?? 0).replace(/[^\d.]/g, "")) || 0,
+              durationMin: Number((d as any)?.durationMin ?? (d as any)?.["المدة"] ?? DEFAULT_SERVICE_DURATION_MIN),
               sectionId: String((d as any)?.sectionId || "").trim() || undefined,
             });
           } else {
