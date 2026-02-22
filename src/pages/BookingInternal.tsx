@@ -56,13 +56,6 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 // fallback Pricing
 import { pricingSections } from "./Pricing";
 
-// Offers
-import type { Offer as FsOffer } from "../services/firestoreOffers";
-import {
-  findActiveOfferByCode,
-  offerAppliesToService,
-} from "../services/firestoreOffers";
-
 // Staff
 import {
   listActiveStaffBySpecialty,
@@ -154,10 +147,11 @@ interface BookingFormData {
 }
 
 type AppliedOfferResult = {
-  offer: FsOffer | null;
+  discountType: "fixed" | "percent" | null;
+  discountValue: number;
+  title: string;
   discountAmount: number;
   finalPrice: number;
-  reason?: string;
 };
 
 function extractMinPrice(priceText: string): number {
@@ -555,35 +549,24 @@ function summarizeBlockedReasons(
   return out;
 }
 
-function calcDiscount(basePrice: number, offer: FsOffer) {
-  const value = Number((offer as any).value || 0);
-
-  if ((offer as any).discountType === "percent") {
-    const percent = Math.min(100, Math.max(0, value));
-    const discount = Math.round((basePrice * percent) / 100);
-    return {
-      discountAmount: discount,
-      finalPrice: Math.max(0, basePrice - discount),
-    };
+function calcManualDiscount(
+  basePrice: number,
+  discountType: "fixed" | "percent" | null,
+  discountValue: number
+) {
+  const value = Math.max(0, Number(discountValue || 0));
+  if (!discountType || value <= 0 || basePrice <= 0) {
+    return { discountAmount: 0, finalPrice: Math.max(0, basePrice) };
   }
 
-  const fixed = Math.max(0, value);
-  const discount = Math.min(basePrice, fixed);
-  return {
-    discountAmount: discount,
-    finalPrice: Math.max(0, basePrice - discount),
-  };
-}
+  if (discountType === "percent") {
+    const percent = Math.min(100, value);
+    const discount = Math.round((basePrice * percent) / 100);
+    return { discountAmount: discount, finalPrice: Math.max(0, basePrice - discount) };
+  }
 
-function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {
-  if (!bookingDateISO) return { ok: true, reason: "" };
-
-  const s = String(offer?.startDate || "").trim();
-  const e = String(offer?.endDate || "").trim();
-
-  if (s && bookingDateISO < s) return { ok: false, reason: `العرض يبدأ من ${s}` };
-  if (e && bookingDateISO > e) return { ok: false, reason: `العرض انتهى بتاريخ ${e}` };
-  return { ok: true, reason: "" };
+  const discount = Math.min(basePrice, value);
+  return { discountAmount: discount, finalPrice: Math.max(0, basePrice - discount) };
 }
 
 function todayISO() {
@@ -986,15 +969,16 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const [couponCode, setCouponCode] = useState("");
+  const [manualDiscountType, setManualDiscountType] = useState<"" | "fixed" | "percent">("");
+  const [manualDiscountValue, setManualDiscountValue] = useState("");
+  const [discountMsg, setDiscountMsg] = useState("");
   const [applied, setApplied] = useState<AppliedOfferResult>({
-    offer: null,
+    discountType: null,
+    discountValue: 0,
+    title: "",
     discountAmount: 0,
     finalPrice: 0,
   });
-  const [offerMsg, setOfferMsg] = useState("");
-  const [manualOverride, setManualOverride] = useState(false);
-  const couponCheckSeqRef = useRef(0);
 
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
   const busyQueryKeyByItemRef = useRef<Record<string, string>>({});
@@ -1539,6 +1523,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     "" | "cash" | "card" | "transfer"
   >("");
   const internalPaymentMethodRef = useRef<"cash" | "card" | "transfer" | null>(null);
+  const internalSubmitModeRef = useRef<"payment" | "future">("payment");
   const internalBookingFormRef = useRef<HTMLFormElement | null>(null);
   const pendingInvoicePopupRef = useRef<Window | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -3808,10 +3793,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       setSelectedCategory("");
       setSelectedSectionId("");
       setShowHairGuide(false);
-      setCouponCode("");
-      setManualOverride(false);
-      setOfferMsg("");
-      setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+      setDiscountMsg("");
       return;
     }
 
@@ -3875,10 +3857,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setSelectedSectionId("");
     setShowHairGuide(false);
 
-    setCouponCode("");
-    setManualOverride(false);
-    setOfferMsg("");
-    setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+    setDiscountMsg("");
   };
 
   const removeServiceFromCart = (itemId: string) => {
@@ -3916,10 +3895,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       delete busyQueryKeyByItemRef.current[id];
     });
 
-    setCouponCode("");
-    setManualOverride(false);
-    setOfferMsg("");
-    setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+    setDiscountMsg("");
   };
 
   const updateItem = (itemId: string, patch: Partial<CartItem>) => {
@@ -3953,7 +3929,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     });
 
     if (patch.serviceId || patch.employeeId || patch.date || patch.time) {
-      if (!couponCode.trim()) setManualOverride(false);
+      setDiscountMsg("");
     }
   };
 
@@ -4630,114 +4606,35 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return (formData.items || []).reduce((sum, it) => sum + Number(it.basePrice || 0), 0);
   }, [formData.items]);
 
-  const finalPrice = useMemo(() => {
-    if (applied.offer) return applied.finalPrice;
-    return basePrice;
-  }, [basePrice, applied]);
-
-  // =========================
-  // Coupon
-  // =========================
-  const handleApplyCoupon = async () => {
-    const code = couponCode.trim();
-    const checkSeq = ++couponCheckSeqRef.current;
-
-    if (!code) {
-      setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
-      setOfferMsg("");
-      setManualOverride(false);
-      return;
-    }
-
-    try {
-      const offer = await findActiveOfferByCode(SALON_ID, code);
-      if (checkSeq !== couponCheckSeqRef.current) return;
-
-      if (!offer) {
-        setManualOverride(false);
-        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
-        setOfferMsg("الكود غير صحيح أو منتهي");
-        return;
-      }
-
-      const applicable = (formData.items || []).filter((it) => {
-        const sid = String(it.serviceId || "").trim();
-        return sid && offerAppliesToService(offer, sid);
-      });
-
-      if (!applicable.length) {
-        setManualOverride(false);
-        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
-        setOfferMsg("هذا الكود لا ينطبق على الخدمات المختارة");
-        return;
-      }
-
-      const missingDate = applicable.find((it) => !String(it.date || "").trim());
-      if (missingDate) {
-        setManualOverride(false);
-        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
-        setOfferMsg("اختاري تاريخ الحجز للخدمات قبل تطبيق الكود");
-        return;
-      }
-
-      const badDate = applicable
-        .map((it) => ({
-          it,
-          check: isOfferValidForBookingDate(offer as any, String(it.date || "").trim()),
-        }))
-        .find((x) => !x.check.ok);
-
-      if (badDate) {
-        setManualOverride(false);
-        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
-        setOfferMsg(badDate.check.reason || "هذا العرض غير متاح لتاريخ الحجز المختار");
-        return;
-      }
-
-      const applicableTotal = applicable.reduce((s, it) => s + Number(it.basePrice || 0), 0);
-      const { discountAmount } = calcDiscount(applicableTotal, offer);
-      const nextFinal = Math.max(0, basePrice - discountAmount);
-
-      setApplied({
-        offer,
-        discountAmount,
-        finalPrice: nextFinal,
-        reason: "تم تطبيق الخصم ✅",
-      });
-
-      setManualOverride(true);
-      setOfferMsg(`تم تطبيق الخصم: ${(offer as any).title} ✅`);
-    } catch (e: any) {
-      if (checkSeq !== couponCheckSeqRef.current) return;
-      console.error("❌ apply coupon error:", e?.code, e?.message, e);
-      setOfferMsg("صار خطأ في التحقق من الكود");
-    }
-  };
+  const finalPrice = useMemo(() => applied.finalPrice, [applied.finalPrice]);
 
   useEffect(() => {
-    const code = couponCode.trim();
+    const rawValue = Number(manualDiscountValue);
+    const hasType = manualDiscountType === "fixed" || manualDiscountType === "percent";
+    const value = Number.isFinite(rawValue) ? Math.max(0, rawValue) : 0;
+    const warning =
+      manualDiscountType === "percent" && value > 100
+        ? "  100%   100% ."
+        : "";
+    const normalizedValue = manualDiscountType === "percent" ? Math.min(100, value) : value;
+    const calc = calcManualDiscount(basePrice, hasType ? manualDiscountType : null, normalizedValue);
 
-    if (!code) {
-      couponCheckSeqRef.current += 1;
-      setApplied((prev) => {
-        const alreadyReset = !prev.offer && Number(prev.discountAmount || 0) === 0;
-        if (alreadyReset) return prev;
-        return { offer: null, discountAmount: 0, finalPrice: basePrice };
-      });
-      setOfferMsg((prev) => (prev ? "" : prev));
-      setManualOverride(false);
-      return;
-    }
+    const title =
+      hasType && normalizedValue > 0
+        ? manualDiscountType === "percent"
+          ? `  (${normalizedValue.toFixed(0)}%)`
+          : `  (${normalizedValue.toFixed(0)} )`
+        : "";
 
-    const timer = window.setTimeout(() => {
-      void handleApplyCoupon();
-    }, 250);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [couponCode]);
+    setApplied({
+      discountType: hasType ? manualDiscountType : null,
+      discountValue: normalizedValue,
+      title,
+      discountAmount: calc.discountAmount,
+      finalPrice: calc.finalPrice,
+    });
+    setDiscountMsg(warning);
+  }, [basePrice, manualDiscountType, manualDiscountValue]);
 
   function allocateDiscount(items: CartItem[], discountTotal: number) {
     const total = items.reduce((s, it) => s + Number(it.basePrice || 0), 0);
@@ -5004,8 +4901,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   // =========================
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const selectedPaymentMethod = internalPaymentMethodRef.current;
-    if (!selectedPaymentMethod) {
+    const submitMode = internalSubmitModeRef.current;
+    const isFutureBooking = submitMode === "future";
+    const selectedPaymentMethod = isFutureBooking ? null : internalPaymentMethodRef.current;
+    if (!isFutureBooking && !selectedPaymentMethod) {
       setInternalPaymentMethodDraft("");
       setInternalPaymentModalOpen(true);
       return;
@@ -5133,68 +5032,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setIsLoading(true);
 
     try {
-      const normalizedCode = couponCode.trim();
-      let finalApplied: AppliedOfferResult = applied;
-
-      if (normalizedCode) {
-        const offer = await findActiveOfferByCode(SALON_ID, normalizedCode);
-        if (!offer) {
-          openModal({
-            title: "كود الخصم غير صحيح",
-            message: "الكود غير صحيح أو غير متاح حالياً.",
-            variant: "danger",
-            confirmText: "حسنًا",
-          });
-          return;
-        }
-
-        const applicable = items.filter((it) => {
-          const sid = String(it.serviceId || "").trim();
-          return sid && offerAppliesToService(offer, sid);
-        });
-
-        if (!applicable.length) {
-          openModal({
-            title: "الكود لا ينطبق",
-            message: "هذا الكود لا ينطبق على الخدمات المختارة.",
-            variant: "danger",
-            confirmText: "حسنًا",
-          });
-          return;
-        }
-
-        const badDate = applicable
-          .map((it) => ({
-            it,
-            check: isOfferValidForBookingDate(offer as any, String(it.date || "").trim()),
-          }))
-          .find((x) => !x.check.ok);
-
-        if (badDate) {
-          openModal({
-            title: "العرض غير متاح لهذا التاريخ",
-            message: badDate.check.reason || "هذا العرض غير متاح لتاريخ الحجز المختار.",
-            variant: "danger",
-            confirmText: "حسنًا",
-          });
-          return;
-        }
-
-        const applicableTotal = applicable.reduce((s, it) => s + Number(it.basePrice || 0), 0);
-        const { discountAmount } = calcDiscount(applicableTotal, offer);
-
-        finalApplied = {
-          offer,
-          discountAmount,
-          finalPrice: Math.max(0, basePrice - discountAmount),
-          reason: "تم تطبيق الخصم ✅",
-        };
-
-        setApplied(finalApplied);
-        setManualOverride(true);
-      }
-
-      // تحقق نهائي للوقت
+      const finalApplied: AppliedOfferResult = applied;
       for (const it of items) {
         const check = await checkOneItemSlot(it);
         if (!check.ok) {
@@ -5209,14 +5047,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       }
 
       const discountTotal = Number(finalApplied.discountAmount || 0);
-      const offerObj = finalApplied.offer;
-
-      const applicableIdx: number[] = offerObj
-        ? items
-          .map((it, idx) => ({ it, idx }))
-          .filter(({ it }) => offerAppliesToService(offerObj, String(it.serviceId || "").trim()))
-          .map(({ idx }) => idx)
-        : [];
+      const applicableIdx: number[] = discountTotal > 0 ? items.map((_, idx) => idx) : [];
 
       const perItemDiscounts = items.map(() => 0);
 
@@ -5242,11 +5073,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       }
 
       const userNote = String(formData.note || "").trim();
-      const offerNote = finalApplied.offer
-        ? `Offer: ${(finalApplied.offer as any)?.title || normalizedCode || "-"} | discount=${Number(finalApplied.discountAmount || 0).toFixed(0)}`
+      const offerNote = finalApplied.title
+        ? `Offer: ${finalApplied.title} | discount=${Number(finalApplied.discountAmount || 0).toFixed(0)}`
         : "";
 
-      const paymentNote = `payment_method:${selectedPaymentMethod}`;
+      const paymentNote = selectedPaymentMethod ? `payment_method:${selectedPaymentMethod}` : "";
       const noteFinal = [userNote, offerNote, paymentNote].filter(Boolean).join(" | ") || undefined;
 
       const createdBookings: any[] = [];
@@ -5386,9 +5217,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 time: parentStartTime,
                 total: Number(runFinalTotal || 0),
                 finalPrice: Number(runFinalTotal || 0),
-                status: "completed",
-                paymentMethod: selectedPaymentMethod,
-                paidAt: Date.now(),
+                discountAmount: Number(runDiscountTotal || 0),
+                discountType: finalApplied.discountType || null,
+                discountValue: Number(finalApplied.discountValue || 0),
+                offerTitle: finalApplied.title || null,
+                status: isFutureBooking ? "pending" : "completed",
+                ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
+                ...(!isFutureBooking ? { paidAt: Date.now() } : {}),
                 note: [noteFinal, `packageRunId=${packageRunId}`, `packageItems=${sortedRun.length}`]
                   .filter(Boolean)
                   .join(" | "),
@@ -5440,9 +5275,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   time: String(item.time || "").trim(),
                   total: Number(currentFinal || 0),
                   finalPrice: Number(currentFinal || 0),
-                  status: "completed",
-                  paymentMethod: selectedPaymentMethod,
-                  paidAt: Date.now(),
+                  discountAmount: Number(perItemDiscounts[sourceIdx] || 0),
+                  discountType: finalApplied.discountType || null,
+                  discountValue: Number(finalApplied.discountValue || 0),
+                  offerTitle: finalApplied.title || null,
+                  status: isFutureBooking ? "pending" : "completed",
+                  ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
+                  ...(!isFutureBooking ? { paidAt: Date.now() } : {}),
                   note: currentItemNote,
                   slotStepMinAtBooking: slotStepMin,
                   bufferMinAtBooking: bufferMin,
@@ -5478,33 +5317,37 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               time: parentStartTime,
               total: Number(runFinalTotal || 0),
               finalPrice: Number(runFinalTotal || 0),
-              couponCode: normalizedCode || "",
-              offerId: (finalApplied.offer as any)?.id || null,
-              offerTitle: (finalApplied.offer as any)?.title || null,
+              couponCode: "",
+              offerId: null,
+              offerTitle: finalApplied.title || null,
               discountAmount: runDiscountTotal,
+              discountType: finalApplied.discountType || null,
+              discountValue: Number(finalApplied.discountValue || 0),
               durationMin: parentDurationMin,
-              status: "completed",
-              paymentMethod: selectedPaymentMethod,
-              paidAt: Date.now(),
+              status: isFutureBooking ? "pending" : "completed",
+              ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
+              ...(!isFutureBooking ? { paidAt: Date.now() } : {}),
               channel: "internal",
               bookingGroupId: groupRes.parentId,
               subBookingIds: groupRes.itemIds,
               createdAt: Date.now(),
             });
 
-            await upsertIncomeFS(
-              {
-                id: String(groupRes.parentId || "").trim(),
-                date: todayISO(),
-                amount: Number(runFinalTotal || 0),
-                method: incomeMethod as any,
-                source: "booking",
-                bookingId: String(groupRes.parentId || "").trim(),
-                note: `internal_payment:${selectedPaymentMethod}`,
-                createdAt: Date.now(),
-              } as any,
-              SALON_ID
-            );
+            if (!isFutureBooking && selectedPaymentMethod && incomeMethod) {
+              await upsertIncomeFS(
+                {
+                  id: String(groupRes.parentId || "").trim(),
+                  date: todayISO(),
+                  amount: Number(runFinalTotal || 0),
+                  method: incomeMethod as any,
+                  source: "booking",
+                  bookingId: String(groupRes.parentId || "").trim(),
+                  note: `internal_payment:${selectedPaymentMethod}`,
+                  createdAt: Date.now(),
+                } as any,
+                SALON_ID
+              );
+            }
             continue;
           }
         }
@@ -5562,10 +5405,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
           total: Number(itemFinal || 0),
           finalPrice: Number(itemFinal || 0),
+          discountAmount: itemDiscount,
+          discountType: finalApplied.discountType || null,
+          discountValue: Number(finalApplied.discountValue || 0),
+          offerTitle: finalApplied.title || null,
 
-          status: "completed",
-          paymentMethod: selectedPaymentMethod,
-          paidAt: Date.now(),
+          status: isFutureBooking ? "pending" : "completed",
+          ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
+          ...(!isFutureBooking ? { paidAt: Date.now() } : {}),
           note: itemNote,
 
           slotStepMinAtBooking: slotStepMin,
@@ -5605,34 +5452,38 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           total: Number(itemFinal || 0),
           finalPrice: Number(itemFinal || 0),
 
-          couponCode: normalizedCode || "",
-          offerId: (finalApplied.offer as any)?.id || null,
-          offerTitle: (finalApplied.offer as any)?.title || null,
+          couponCode: "",
+          offerId: null,
+          offerTitle: finalApplied.title || null,
           discountAmount: itemDiscount,
+          discountType: finalApplied.discountType || null,
+          discountValue: Number(finalApplied.discountValue || 0),
 
           durationMin,
           toolsSource: String(it.toolsSource || "").trim() || null,
           toolsFeeApplied: Number(it.toolsFeeApplied || 0),
-          status: "completed",
-          paymentMethod: selectedPaymentMethod,
-          paidAt: Date.now(),
+          status: isFutureBooking ? "pending" : "completed",
+          ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
+          ...(!isFutureBooking ? { paidAt: Date.now() } : {}),
           createdAt: Date.now(),
           channel: "internal",
         });
 
-        await upsertIncomeFS(
-          {
-            id: String(res.id || "").trim(),
-            date: todayISO(),
-            amount: Number(itemFinal || 0),
-            method: incomeMethod as any,
-            source: "booking",
-            bookingId: String(res.id || "").trim(),
-            note: `internal_payment:${selectedPaymentMethod}`,
-            createdAt: Date.now(),
-          } as any,
-          SALON_ID
-        );
+        if (!isFutureBooking && selectedPaymentMethod && incomeMethod) {
+          await upsertIncomeFS(
+            {
+              id: String(res.id || "").trim(),
+              date: todayISO(),
+              amount: Number(itemFinal || 0),
+              method: incomeMethod as any,
+              source: "booking",
+              bookingId: String(res.id || "").trim(),
+              note: `internal_payment:${selectedPaymentMethod}`,
+              createdAt: Date.now(),
+            } as any,
+            SALON_ID
+          );
+        }
       }
 
       localStorage.setItem("allBookings", JSON.stringify(createdBookings));
@@ -5640,9 +5491,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       localStorage.removeItem("bookingDraft");
       internalPaymentMethodRef.current = null;
 
-      if (!openInternalPrintPopup()) notifyInvoicePopupBlocked();
+      if (isFutureBooking) {
+        navigate("/success");
+      } else {
+        if (!openInternalPrintPopup()) notifyInvoicePopupBlocked();
+      }
     } catch (e: any) {
-      closePendingInvoicePopup();
+      if (!isFutureBooking) closePendingInvoicePopup();
       console.error(e);
 
       if (e?.code === "SLOT_TAKEN" || String(e?.message || "") === "SLOT_TAKEN") {
@@ -5687,6 +5542,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     } finally {
       setIsLoading(false);
       internalPaymentMethodRef.current = null;
+      internalSubmitModeRef.current = "payment";
     }
   };
 
@@ -5878,6 +5734,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               style={{ borderRadius: 12, fontWeight: 800, minHeight: 48 }}
               onClick={() => {
                 if (!internalPaymentMethodDraft) return;
+                internalSubmitModeRef.current = "payment";
                 primeInternalPrintPopup();
                 internalPaymentMethodRef.current = internalPaymentMethodDraft;
                 setInternalPaymentModalOpen(false);
@@ -6306,7 +6163,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   <div className="col-12 d-grid mt-1">
                     <button
                       type="button"
-                      className="btn btn-primary"
+                      className="btn btn-primary bk-add-cart-btn"
                       style={{ borderRadius: 12 }}
                       disabled={!servicePicker || !selectedDayOpen}
                       onClick={() => addServiceToCart(servicePicker)}
@@ -7027,10 +6884,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       <div><strong>الجوال:</strong> {phone10Digits(String(formData.phone || "").trim()) || "—"}</div>
                       <div><strong>وقت إنشاء الحجز:</strong> {previewCreatedAtLabel}</div>
                     </div>
-                    {applied.offer ? (
+                    {Number(applied.discountAmount || 0) > 0 ? (
                       <div className="bk-discount-visual mt-2">
                         <div className="bk-discount-badge">
-                          ✅ الخصم مطبّق: {String((applied.offer as any)?.title || couponCode || "").trim() || "عرض"}
+                            : {String(applied.title || " ").trim()}
                         </div>
                         <div className="bk-discount-lines">
                           <div className="bk-discount-line is-before">
@@ -7077,39 +6934,44 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   </div>
                 ) : null}
 
-                {/* Coupon */}
+                {/* Manual Discount */}
                 <div className="mt-2">
                   <div className="row g-2 align-items-end">
                     <div className="col-12 col-md-6">
-                      <label className="form-label">كود خصم (اختياري)</label>
-                      <input
-                        className="form-control"
-                        value={couponCode}
-                        onChange={(e) => setCouponCode(String(e.target.value || ""))}
-                        placeholder="مثال: SALE10"
-                        disabled={isLoading}
-                      />
-                    </div>
-
-                    <div className="col-12 col-md-3 d-grid">
-                      <button
-                        type="button"
-                        className="btn btn-outline-light"
-                        style={{ borderRadius: 12 }}
-                        onClick={handleApplyCoupon}
+                      <label className="form-label">  ()</label>
+                      <select
+                        className="form-select"
+                        value={manualDiscountType}
+                        onChange={(e) => setManualDiscountType(String(e.target.value || "") as "" | "fixed" | "percent")}
                         disabled={isLoading}
                       >
-                        تطبيق
-                      </button>
+                        <option value=""> </option>
+                        <option value="fixed"> </option>
+                        <option value="percent"> %</option>
+                      </select>
                     </div>
 
                     <div className="col-12 col-md-3">
-                      {offerMsg ? (
+                      <input
+                        type="number"
+                        min={0}
+                        max={manualDiscountType === "percent" ? 100 : undefined}
+                        step="1"
+                        className="form-control"
+                        value={manualDiscountValue}
+                        onChange={(e) => setManualDiscountValue(String(e.target.value || ""))}
+                        placeholder={manualDiscountType === "percent" ? ": 10" : ": 50"}
+                        disabled={isLoading || !manualDiscountType}
+                      />
+                    </div>
+
+                    <div className="col-12 col-md-3">
+                      {discountMsg ? (
                         <div
                           className="alert alert-secondary mb-0 py-2"
                           style={{ borderRadius: 12, fontSize: 13 }}
                         >
-                          {offerMsg}
+                          {discountMsg}
                         </div>
                       ) : null}
                     </div>
@@ -7120,9 +6982,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
                   <button
                     type="submit"
-                    className="btn btn-primary"
+                    className="btn btn-primary bk-pay-btn"
                     style={{ borderRadius: 14, minWidth: 200 }}
                     disabled={isLoading}
+                    onClick={() => {
+                      internalSubmitModeRef.current = "payment";
+                    }}
                   >
                     {isLoading ? (
                       <>
@@ -7132,6 +6997,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     ) : (
                       "دفع"
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary bk-future-booking-btn"
+                    style={{ borderRadius: 14, minWidth: 200 }}
+                    disabled={isLoading}
+                    onClick={() => {
+                      internalSubmitModeRef.current = "future";
+                      internalBookingFormRef.current?.requestSubmit();
+                    }}
+                  >
+                    حجز للمستقبل
                   </button>
                 </div>
                 </div>
@@ -7299,6 +7176,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 };
 
 export default BookingInternal;
+
+
 
 
 

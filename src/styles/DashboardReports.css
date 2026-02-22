@@ -1,576 +1,403 @@
-/* =========================
-   Dashboard Reports (Queens WHITE + Mobile Cards)
-   File: src/styles/DashboardReports.css
-   ✅ Scoped داخل .reports-page فقط
-   ✅ White theme + Wine (#40010D) (بدون بنفسجي)
-========================= */
-
-.reports-page{
-  min-height: 100vh;
-  padding: 18px 0;
-  overflow-x: hidden;
+.reports-v2 {
+  width: min(1280px, calc(100% - 24px));
+  margin: 0 auto;
+  padding: 16px 0 28px;
+  color: #111827;
   font-family: "Tajawal", sans-serif;
-
-  /* MALIKAT SALON – White theme */
-  background:
-    radial-gradient(900px 520px at 15% 18%, rgba(64,1,13,0.06), transparent 60%),
-    radial-gradient(900px 520px at 85% 24%, rgba(136,140,140,0.10), transparent 55%),
-    linear-gradient(180deg, #ffffff 0%, #f5f5f4 100%);
 }
 
-.reports-page *{ box-sizing: border-box; }
-
-/* =========================
-   Header card
-========================= */
-.reports-header{
-  width: min(1180px, calc(100% - 28px));
-  margin: 0 auto 12px auto;
-
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(13, 13, 13, 0.07);
+.reports-v2__header {
+  background: linear-gradient(145deg, #ffffff, #fbf7f8);
+  border: 1px solid #ecdde1;
   border-radius: 18px;
-  padding: 14px 16px;
-
-  box-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
-
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  padding: 16px 18px;
+  box-shadow: 0 10px 26px rgba(20, 20, 20, 0.06);
 }
 
-.reports-header h1{
-  margin: 0 0 6px 0;
-  font-size: 18px;
+.reports-v2__header h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
   font-weight: 900;
-  color: #0D0D0D;
 }
 
-.reports-header p{
+.reports-v2__header p {
   margin: 0;
   font-size: 13px;
-  color: rgba(13, 13, 13, 0.60);
+  color: #4b5563;
+  font-weight: 700;
 }
 
-/* =========================
-   Buttons (Queens vibe)
-========================= */
-.reports-actions{
+.reports-v2__sync {
+  margin-top: 8px;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.reports-v2__filters {
+  margin-top: 12px;
+  background: #fff;
+  border: 1px solid #ecdde1;
+  border-radius: 16px;
+  padding: 12px;
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  align-items: center;
 }
 
-.reports-btn{
-  border: 1px solid rgba(13, 13, 13, 0.10);
-  background: rgba(255,255,255,0.92);
-  color: #0D0D0D;
-
-  border-radius: 14px;
-  padding: 9px 12px;
+.f-btn {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #111827;
+  border-radius: 999px;
+  padding: 7px 12px;
   font-size: 13px;
   font-weight: 900;
-
   cursor: pointer;
+}
+
+.f-btn.is-active {
+  border-color: #5b0015;
+  background: #5b0015;
+  color: #fff;
+}
+
+.reports-v2__custom-range {
+  display: inline-flex;
+  gap: 8px;
+  align-items: end;
+}
+
+.reports-v2__custom-range label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.reports-v2__custom-range input {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.reports-v2__range-caption {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #4b5563;
+  font-weight: 800;
+}
+
+.reports-v2__kpis {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.kpi {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  padding: 14px;
+  box-shadow: 0 10px 20px rgba(17, 24, 39, 0.05);
+}
+
+.kpi h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 900;
+}
+
+.kpi strong {
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.kpi-revenue {
+  border-color: #d8f1e1;
+  background: linear-gradient(150deg, #fff, #f3fcf7);
+}
+
+.kpi-revenue strong {
+  color: #065f46;
+}
+
+.kpi-expense {
+  border-color: #fee2e2;
+  background: linear-gradient(150deg, #fff, #fff5f5);
+}
+
+.kpi-expense strong {
+  color: #991b1b;
+}
+
+.kpi-net {
+  border-color: #e5e7eb;
+}
+
+.kpi-net.is-positive {
+  background: linear-gradient(150deg, #fff, #f6fbff);
+}
+
+.kpi-net.is-positive strong {
+  color: #1d4ed8;
+}
+
+.kpi-net.is-negative {
+  background: linear-gradient(150deg, #fff, #fff4f4);
+}
+
+.kpi-net.is-negative strong {
+  color: #b91c1c;
+}
+
+.reports-v2__section {
+  margin-top: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.reports-v2__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #374151;
+  font-weight: 800;
+}
+
+.reports-v2__legend .lg {
+  width: 16px;
+  height: 3px;
+  display: inline-block;
+  border-radius: 999px;
+  margin-inline-end: 6px;
+  vertical-align: middle;
+}
+
+.reports-v2__legend .lg-rev {
+  background: #0f766e;
+}
+
+.reports-v2__legend .lg-exp {
+  background: #dc2626;
+}
+
+.reports-v2__legend .lg-net {
+  background: #1d4ed8;
+}
+
+.reports-v2__chart-wrap {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff, #fcfcfd);
+  overflow: auto;
+}
+
+.reports-v2__chart {
+  width: 100%;
+  min-width: 760px;
+  height: 280px;
+  display: block;
+}
+
+.reports-v2__chart .chart-zero {
+  stroke: #cbd5e1;
+  stroke-width: 1.3;
+  stroke-dasharray: 3 3;
+}
+
+.reports-v2__chart .chart-grid {
+  stroke: #e5e7eb;
+  stroke-width: 1;
+}
+
+.reports-v2__chart .bar-revenue {
+  fill: rgba(15, 118, 110, 0.32);
+}
+
+.reports-v2__chart .bar-expense {
+  fill: rgba(220, 38, 38, 0.32);
+}
+
+.reports-v2__chart .line-revenue,
+.reports-v2__chart .line-expense,
+.reports-v2__chart .line-net {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.reports-v2__chart .line-revenue {
+  stroke: #0f766e;
+  opacity: 0.82;
+}
+
+.reports-v2__chart .line-expense {
+  stroke: #dc2626;
+  opacity: 0.82;
+}
+
+.reports-v2__chart .line-net {
+  stroke: #1d4ed8;
+  stroke-width: 3;
+}
+
+.reports-v2__chart .dot-net {
+  fill: #1d4ed8;
+}
+
+.reports-v2__chart .chart-x-label,
+.reports-v2__chart .chart-y-label {
+  fill: #6b7280;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.section-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-
-  transition: transform .15s ease, background .15s ease, border-color .15s ease;
 }
 
-.reports-btn:hover{
-  background: rgba(64,1,13,0.05);
-  border-color: rgba(64,1,13,0.16);
-  transform: translateY(-1px);
-}
-
-.reports-btn:active{
-  transform: translateY(0px);
-}
-
-.reports-btn:disabled{
-  opacity: .55;
-  cursor: not-allowed;
-}
-
-.reports-btn.primary{
-  background: rgba(64, 1, 13, 0.08);
-  color: #40010D;
-  border: 1px solid rgba(64, 1, 13, 0.18);
-}
-
-.reports-btn.primary:hover{
-  background: rgba(64, 1, 13, 0.14);
-  border-color: rgba(64, 1, 13, 0.28);
-}
-
-.reports-btn.primary:focus-visible{
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.16);
-}
-
-/* =========================
-   Stats
-========================= */
-.reports-stats{
-  width: min(1180px, calc(100% - 28px));
-  margin: 0 auto 12px auto;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-@media (max-width: 980px){
-  .reports-stats{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-.report-stat{
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(13, 13, 13, 0.07);
-  border-radius: 18px;
-  padding: 12px 12px;
-
-  box-shadow: 0 10px 26px rgba(13,13,13,0.05);
-}
-
-.report-stat .label{
-  font-size: 13px;
+.section-head span {
+  font-size: 12px;
+  color: #6b7280;
   font-weight: 800;
-  color: rgba(13, 13, 13, 0.70);
-  margin-bottom: 6px;
 }
 
-.report-stat .value{
-  font-size: 22px;
-  font-weight: 900;
-  color: #40010D;
-}
-
-/* =========================
-   Table Wrapper
-========================= */
-.reports-table-wrap{
-  width: min(1180px, calc(100% - 28px));
-  margin: 0 auto 18px auto;
-
-  background: rgba(255,255,255,0.92);
-  border: 1px solid rgba(13,13,13,0.07);
-  border-radius: 18px;
-
-  overflow: hidden;
-  box-shadow: 0 10px 26px rgba(13,13,13,0.05);
-}
-
-.reports-table-scroll{
+.table-wrap {
   width: 100%;
-  overflow-x: auto;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
 }
 
-.reports-table{
+.table-wrap table {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 13px;
-  min-width: 860px;
+  min-width: 920px;
+  border-collapse: collapse;
 }
 
-.reports-table th,
-.reports-table td{
-  padding: 12px 10px;
+.table-wrap th,
+.table-wrap td {
   text-align: right;
-  border-bottom: 1px solid rgba(13,13,13,0.06);
+  padding: 10px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+  font-weight: 700;
   white-space: nowrap;
 }
 
-.reports-table th{
-  background: rgba(64, 1, 13, 0.06);
-  border-bottom: 1px solid rgba(64, 1, 13, 0.14);
-  color: rgba(13, 13, 13, 0.90);
-  font-weight: 900;
+.table-wrap th {
   position: sticky;
   top: 0;
-}
-
-.reports-table tbody tr:hover td{
-  background: rgba(64, 1, 13, 0.03);
-}
-
-/* Empty state */
-.reports-empty{
-  padding: 22px 14px;
-  text-align: center;
-  color: rgba(13, 13, 13, 0.65);
-  font-weight: 800;
-}
-
-/* =========================
-   Audit Inputs (force light look)
-========================= */
-.reports-page .reports-audit input[type="date"],
-.reports-page .reports-audit input[type="number"],
-.reports-page .reports-audit .field input {
-  background: #fff !important;
-  color: #0d0d0d !important;
-  border: 1px solid rgba(13, 13, 13, 0.16) !important;
-  border-radius: 10px;
-  color-scheme: light;
-}
-
-.reports-page .reports-audit input::placeholder {
-  color: rgba(13, 13, 13, 0.5) !important;
-}
-
-.reports-page .reports-audit input[type="date"]::-webkit-calendar-picker-indicator {
-  opacity: 0.9;
-  cursor: pointer;
-  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
-}
-
-/* =========================
-   ✅ Mobile: Table -> Cards (No horizontal scroll)
-   يعتمد على data-label في td
-========================= */
-@media (max-width: 640px){
-
-  .reports-table-wrap{
-    overflow: visible;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-  }
-
-  .reports-table-scroll{
-    overflow: visible !important;
-  }
-
-  .reports-table thead{
-    display: none;
-  }
-
-  .reports-table,
-  .reports-table tbody,
-  .reports-table tr,
-  .reports-table td{
-    display: block;
-    width: 100%;
-  }
-
-  .reports-table{
-    min-width: 0 !important;
-  }
-
-  /* كل صف = كرت */
-  .reports-table tbody tr{
-    background: rgba(255,255,255,0.96);
-    border: 1px solid rgba(13, 13, 13, 0.08);
-    border-radius: 18px;
-    padding: 12px 14px;
-    margin: 12px 0;
-
-    box-shadow:
-      0 18px 40px rgba(13, 13, 13, 0.07),
-      0 2px 8px rgba(13, 13, 13, 0.04);
-
-    overflow: hidden;
-    position: relative;
-  }
-
-  .reports-table tbody tr::before{
-    content:"";
-    position:absolute;
-    inset:0 0 auto 0;
-    height:3px;
-    background: linear-gradient(90deg,
-      rgba(64,1,13,0.00),
-      rgba(64,1,13,0.22),
-      rgba(64,1,13,0.00)
-    );
-  }
-
-  /* سطرين: عنوان + قيمة */
-  .reports-table tbody td{
-    border: none !important;
-    padding: 10px 0 !important;
-    white-space: normal !important;
-
-    display: grid;
-    grid-template-columns: 98px 1fr;
-    gap: 12px;
-    align-items: center;
-  }
-
-  .reports-table tbody td + td{
-    border-top: 1px solid rgba(13, 13, 13, 0.06) !important;
-  }
-
-  .reports-table tbody td::before{
-    content: attr(data-label);
-    display: block;
-
-    font-size: 12px;
-    font-weight: 900;
-    color: rgba(13, 13, 13, 0.62);
-    line-height: 1.25;
-  }
-
-  /* بادج للحالة */
-  .reports-table tbody td[data-label="الحالة"] > span{
-    display: inline-flex;
-    width: fit-content;
-    max-width: 100%;
-    padding: 6px 10px;
-    border-radius: 999px;
-    background: rgba(64, 1, 13, 0.06);
-    border: 1px solid rgba(64, 1, 13, 0.14);
-    color: #40010D;
-    font-weight: 900;
-    font-size: 12px;
-  }
-
-  /* الإجمالي أوضح */
-  .reports-table tbody td[data-label="الإجمالي"]{
-    font-weight: 900;
-    color: #0D0D0D;
-  }
-}
-
-/* =========================
-   🎯 Status Badges (FORCED / IMPORTANT)
-   فخم + ثابت + ما يتأثر بأي ستايل خارجي
-========================= */
-
-.status-badge{
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-
-  padding: 6px 12px !important;
-  border-radius: 999px !important;
-
-  font-size: 12px !important;
-  font-weight: 900 !important;
-
-  border: 1px solid transparent !important;
-  width: fit-content !important;
-  min-width: 78px !important;
-
-  white-space: nowrap !important;
-}
-
-/* 🟢 مؤكد */
-.status-confirmed{
-  background: rgba(22,163,74,0.10) !important;
-  color: #15803d !important;
-  border-color: rgba(22,163,74,0.28) !important;
-}
-
-/* 🟡 انتظار */
-.status-pending{
-  background: rgba(245,158,11,0.12) !important;
-  color: #b45309 !important;
-  border-color: rgba(245,158,11,0.30) !important;
-}
-
-/* 🔴 ملغي */
-.status-cancelled{
-  background: rgba(220,38,38,0.10) !important;
-  color: #b91c1c !important;
-  border-color: rgba(220,38,38,0.28) !important;
-}
-
-/* 👑 مكتمل (خمري ملكات) */
-.status-completed{
-  background: rgba(64,1,13,0.08) !important;
-  color: #40010D !important;
-  border-color: rgba(64,1,13,0.22) !important;
-}
-
-/* لمسة نعومة */
-.status-badge:hover{
-  transform: translateY(-1px) !important;
-}
-
-/* =========================
-   Daily Audit Print (Receipt)
-========================= */
-
-.print-area {
-  display: none;
-}
-
-/* مقاس بسيط لطابعة فواتير */
-.receipt {
-  width: 80mm;
-  padding: 8px;
-  font-family: Arial, "Tajawal", sans-serif;
-  font-size: 12px;
-}
-
-.receipt-title {
-  text-align: center;
-  font-weight: 800;
-  font-size: 16px;
-}
-
-.receipt-sub {
-  text-align: center;
-  margin-top: 2px;
-  margin-bottom: 6px;
-}
-
-.receipt-line {
-  border-top: 1px dashed #000;
-  margin: 8px 0;
-}
-
-.receipt-row {
-  display: flex;
-  justify-content: space-between;
-  margin: 4px 0;
-}
-
-.receipt-items {
-  margin-top: 6px;
-}
-
-.receipt-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 0;
-  border-bottom: 1px dotted #999;
-}
-
-.receipt-item .left .top {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 2px;
-}
-
-.receipt-item .time {
-  font-weight: 700;
-}
-
-.receipt-item .name {
-  font-weight: 700;
-}
-
-.receipt-item .emp {
-  opacity: 0.8;
-  font-size: 11px;
-}
-
-.receipt-item .right {
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.st {
-  font-size: 11px;
-  padding: 1px 6px;
-  border: 1px solid #000;
-  border-radius: 999px;
-}
-
-.receipt-footer {
-  text-align: center;
-  margin-top: 8px;
-  font-size: 11px;
-  opacity: 0.8;
-}
-
-/* =========================
-   🎯 إعدادات الطباعة المحكمة (Receipt)
-   تم دمجها لضمان ورقة واحدة ووضوح الخط
-========================= */
-@media print {
-  /* 1. إخفاء كل شيء غير ضروري */
-  body * {
-    visibility: hidden !important;
-  }
-
-  /* 2. إظهار منطقة الطباعة فقط وضبطها بدقة */
-  .print-area,
-  .print-area * {
-    visibility: visible !important;
-    color: #000 !important; /* أسود غامق جداً للوضوح */
-    box-sizing: border-box !important; /* يضمن أن الحواف لا تزيد من العرض */
-  }
-
-  .print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 72mm !important; /* تقليل العرض قليلاً (من 80 إلى 72) لضمان الأمان */
-    margin: 0 !important;
-    padding: 0 2mm !important; /* هامش داخلي بسيط جداً */
-    display: block !important;
-    height: auto !important;
-    overflow: visible !important; /* السماح بالتمدد الطولي لورقة واحدة */
-    
-    /* تحسين الخط ليكون واضحاً جداً */
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-    font-weight: 900 !important; /* أقصى درجة سماكة للخط */
-    font-size: 11pt !important;
-    line-height: 1.2;
-    text-align: right; /* التأكد من المحاذاة لليمين للعربي */
-  }
-
-  /* 3. إجبار الجداول أو العناصر الداخلية على عدم تجاوز العرض */
-  .print-area table, 
-  .print-area div, 
-  .print-area p {
-    max-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    word-wrap: break-word !important; /* كسر الكلمات الطويلة إذا لزم الأمر */
-  }
-
-  /* 4. إعدادات الصفحة */
-  @page {
-    margin: 0;
-    size: 80mm auto; /* عرض الورقة 80 ملم، لكن المحتوى داخلها 72 ملم للأمان */
-  }
-
-  html, body {
-    width: 80mm !important;
-    height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background-color: #fff !important;
-    overflow: visible !important;
-  }
-
-  /* ✅ تقسيم الأقسام داخل الطباعة بدون لمس البادينق/المارجن */
-  .receipt-section-title {
-    font-weight: 900 !important;
-    text-align: center !important;
-    margin: 4mm 0 1mm !important; /* بسيط */
-    background: #eee !important;
-    padding: 1mm !important;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-
-  /* ✅ فاصل بسيط بين الأقسام */
-  .receipt-section-sep {
-    border-top: 1px dashed #000 !important;
-    margin: 2mm 0 !important;
-  }
-}
-
-.qs-black {
-  color: var(--qs-black);
-}
-
-.today-inventory-title {
-  font-size: 18px;
+  background: #f9fafb;
   font-weight: 900;
-  margin: 0 0 6px 0;
+  z-index: 1;
 }
 
+.table-wrap tbody tr:hover td {
+  background: #fafafa;
+}
+
+.empty-cell {
+  text-align: center !important;
+  color: #6b7280;
+  font-weight: 800 !important;
+  padding: 16px !important;
+}
+
+.amount-pos {
+  color: #065f46;
+  font-weight: 900 !important;
+}
+
+.amount-neg,
+.amount-exp {
+  color: #991b1b;
+  font-weight: 900 !important;
+}
+
+.reports-v2__error {
+  margin-top: 12px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.reports-v2__loading {
+  margin-top: 10px;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (max-width: 980px) {
+  .reports-v2__kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-v2__range-caption {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .reports-v2 {
+    width: calc(100% - 16px);
+    padding-top: 10px;
+  }
+
+  .reports-v2__header h1 {
+    font-size: 22px;
+  }
+
+  .reports-v2__filters {
+    padding: 10px;
+  }
+
+  .f-btn {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+
+  .reports-v2__custom-range {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}

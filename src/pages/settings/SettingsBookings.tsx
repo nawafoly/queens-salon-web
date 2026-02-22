@@ -331,7 +331,8 @@ export default function SettingsBookings() {
 
   // ✅ helper: خذ آخر نسخة مؤكدة (state الحالي أولاً ثم cache)
   function getLatestSettingsSnapshot() {
-    return settings || loadLocalSettings() || AppSettingsService.getCached?.() || {};
+    // Prefer local cache first because setState is async and may lag behind latest edits.
+    return loadLocalSettings() || settings || AppSettingsService.getCached?.() || {};
   }
 
   const saveAll = async () => {
@@ -341,6 +342,57 @@ export default function SettingsBookings() {
       // ✅ أهم نقطة: نقرأ آخر نسخة من localStorage (عشان ما نتعلق بتأخير setState)
       const latest = getLatestSettingsSnapshot();
       const latestBooking = (latest as any)?.booking || {};
+      let latestOverrides = Array.isArray(latestBooking?.bookingHourOverrides)
+        ? latestBooking.bookingHourOverrides
+        : bookingHourOverrides;
+
+      // UX safety: if admin filled override draft but forgot "إضافة استثناء", include it on save.
+      const draftFromDate = String(overrideDraft.fromDate || "").trim();
+      const draftToDate = String(overrideDraft.toDate || "").trim();
+      const draftHasAnyValue = !!(
+        draftFromDate ||
+        draftToDate ||
+        String(overrideDraft.reason || "").trim() ||
+        (overrideDraft.includeWeekdays || []).length ||
+        (overrideDraft.blockedWeekdays || []).length ||
+        (overrideDraft.mode === "hours" &&
+          (String(overrideDraft.start || "10:00").trim() !== "10:00" ||
+            String(overrideDraft.end || "22:00").trim() !== "22:00"))
+      );
+
+      if (draftHasAnyValue) {
+        if (!draftFromDate || !draftToDate) {
+          setSavedMsg("❌ حددي من/إلى تاريخ للاستثناء أو اضغطي تنظيف");
+          setTimeout(() => setSavedMsg(""), 2600);
+          return;
+        }
+        if (draftFromDate > draftToDate) {
+          setSavedMsg("❌ تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية");
+          setTimeout(() => setSavedMsg(""), 2600);
+          return;
+        }
+        if (
+          overrideDraft.mode === "hours" &&
+          String(overrideDraft.start || "") === String(overrideDraft.end || "")
+        ) {
+          setSavedMsg("❌ وقت البداية والنهاية لا يمكن أن يكونا متطابقين");
+          setTimeout(() => setSavedMsg(""), 2600);
+          return;
+        }
+
+        const draftEntry: BookingHourOverride = {
+          id: `ovr_${Date.now()}`,
+          fromDate: draftFromDate,
+          toDate: draftToDate,
+          mode: overrideDraft.mode === "closed" ? "closed" : "hours",
+          start: overrideDraft.mode === "hours" ? String(overrideDraft.start || "10:00") : undefined,
+          end: overrideDraft.mode === "hours" ? String(overrideDraft.end || "22:00") : undefined,
+          includeWeekdays: (overrideDraft.includeWeekdays || []).filter((d) => WEEKDAY_KEYS.includes(d)),
+          blockedWeekdays: (overrideDraft.blockedWeekdays || []).filter((d) => WEEKDAY_KEYS.includes(d)),
+          reason: String(overrideDraft.reason || "").trim(),
+        };
+        latestOverrides = [...latestOverrides, draftEntry];
+      }
 
       const bhRaw = latestBooking?.businessHours || defaultBusinessHoursLocal();
       const bhFallback = defaultBusinessHoursLocal();
@@ -372,9 +424,7 @@ export default function SettingsBookings() {
           slotStepMin, // من UI (مضمون 5/10/15/30)
           bufferMin,   // ✅ جديد: بفر بعد كل حجز
           maniPediToolsFee, // ✅ رسوم أدوات المشغل لخدمات البديكير/المناكير
-          bookingHourOverrides: Array.isArray(latestBooking?.bookingHourOverrides)
-            ? latestBooking.bookingHourOverrides
-            : [],
+          bookingHourOverrides: latestOverrides,
           businessHours: bh,
           seasonFill: latestBooking?.seasonFill || { enabled: false, from: "", to: "" },
           sequentialBooking: !!latestBooking?.sequentialBooking,
@@ -390,6 +440,7 @@ export default function SettingsBookings() {
       // AppSettingsService.setCached?.(normalizedSettingsToSave);
       saveLocalSettings(normalizedSettingsToSave);
       setSettings(normalizedSettingsToSave);
+      resetOverrideDraft();
 
       console.log("✅ SAVED booking:", normalizedSettingsToSave.booking);
 

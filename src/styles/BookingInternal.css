@@ -481,6 +481,27 @@
   color: #fff;
 }
 
+.bk-internal .bk-add-cart-btn,
+.bk-internal .bk-add-cart-btn:hover,
+.bk-internal .bk-add-cart-btn:focus,
+.bk-internal .bk-add-cart-btn:active,
+.bk-internal .bk-pay-btn,
+.bk-internal .bk-pay-btn:hover,
+.bk-internal .bk-pay-btn:focus,
+.bk-internal .bk-pay-btn:active {
+  color: #fff !important;
+}
+
+.bk-internal .bk-add-cart-btn:disabled,
+.bk-internal .bk-pay-btn:disabled {
+  color: #fff !important;
+}
+
+.bk-internal .bk-future-booking-btn {
+  border-width: 2px;
+  font-weight: 800;
+}
+
 .bk-internal .btn-success {
   background: var(--bk-success);
   border-color: var(--bk-success);

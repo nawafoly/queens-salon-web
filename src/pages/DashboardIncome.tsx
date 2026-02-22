@@ -462,9 +462,47 @@ export default function DashboardIncome() {
         amount: nextAmount,
         createdAt: Number(item.createdAt) || Date.now(),
       });
+      const explicitBookingId = String(item.bookingId || "").trim();
+      const fallbackBookingId = String(item.id || "").trim();
+      const bookingId = explicitBookingId || fallbackBookingId;
+      const source = String(item.source || "").trim().toLowerCase();
+      const isRefundRow =
+        String(item.id || "").startsWith("refund_") ||
+        source === "refund" ||
+        source === "استرجاع" ||
+        Number(item.amount || 0) < 0;
+      const shouldSyncBookingAmount = !!bookingId && nextAmount > 0 && !isRefundRow;
+
+      if (shouldSyncBookingAmount) {
+        await Promise.all([
+          setDoc(
+            doc(db, "salons", "main", "bookings", bookingId),
+            {
+              total: nextAmount,
+              finalPrice: nextAmount,
+              updatedAt: serverTimestamp(),
+              amountEditedFromIncome: true,
+              amountEditedAt: serverTimestamp(),
+            },
+            { merge: true }
+          ),
+          setDoc(
+            doc(db, "salons", "main", "booking_tracks", bookingId),
+            {
+              total: nextAmount,
+              finalPrice: nextAmount,
+              updatedAt: serverTimestamp(),
+              amountEditedFromIncome: true,
+              amountEditedAt: serverTimestamp(),
+            },
+            { merge: true }
+          ),
+        ]);
+      }
+
       const next = await listAllIncomeFS();
       setItems(next);
-      setModalMsg("تم تعديل المبلغ");
+      setModalMsg(shouldSyncBookingAmount ? "تم تعديل المبلغ وتحديث سعر الحجز" : "تم تعديل المبلغ");
     } catch (e) {
       setModalMsg(firebaseMsg(e));
     } finally {

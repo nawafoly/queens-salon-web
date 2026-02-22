@@ -88,9 +88,21 @@ type BusinessHoursDay = {
   end: string;
 };
 
+type BookingHourOverride = {
+  id?: string;
+  fromDate: string;
+  toDate: string;
+  mode: "hours" | "closed";
+  start?: string;
+  end?: string;
+  includeWeekdays?: WeekdayKey[];
+  blockedWeekdays?: WeekdayKey[];
+};
+
 type BookingSettingsLite = {
   slotStepMin: number;
   businessHours: Record<WeekdayKey, BusinessHoursDay>;
+  bookingHourOverrides: BookingHourOverride[];
   holidays: Array<{ date: string; reason?: string }>;
   closures: Array<{ from: string; to: string; message?: string }>;
   publicClosedMessage?: string;
@@ -341,6 +353,38 @@ const resolveWeekdayFromISO = (isoDate: string): WeekdayKey => {
   return "sat";
 };
 
+const normalizeWeekdayList = (v: any): WeekdayKey[] => {
+  if (!Array.isArray(v)) return [];
+  const allowed = new Set<WeekdayKey>(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
+  const out: WeekdayKey[] = [];
+  for (const d0 of v) {
+    const d = String(d0 || "").trim().toLowerCase() as WeekdayKey;
+    if (allowed.has(d) && !out.includes(d)) out.push(d);
+  }
+  return out;
+};
+
+const readBookingHourOverrides = (raw: any): BookingHourOverride[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((x: any) => {
+      const fromDate = String(x?.fromDate || "").trim();
+      const toDate = String(x?.toDate || "").trim();
+      if (!fromDate || !toDate) return null;
+      return {
+        id: String(x?.id || "").trim() || undefined,
+        fromDate,
+        toDate,
+        mode: String(x?.mode || "").trim() === "closed" ? "closed" : "hours",
+        start: String(x?.start || "").trim() || undefined,
+        end: String(x?.end || "").trim() || undefined,
+        includeWeekdays: normalizeWeekdayList(x?.includeWeekdays),
+        blockedWeekdays: normalizeWeekdayList(x?.blockedWeekdays),
+      };
+    })
+    .filter(Boolean) as BookingHourOverride[];
+};
+
 function formatAvailableTimes(times: string[]) {
   if (!times.length) return "للأسف ما فيه أوقات متاحة بهذا اليوم.";
   const chunk = times.slice(0, 10);
@@ -406,6 +450,7 @@ const ChatBot: React.FC = () => {
   const [bookingSettings, setBookingSettings] = useState<BookingSettingsLite>({
     slotStepMin: 5,
     businessHours: defaultBusinessHours(),
+    bookingHourOverrides: [],
     holidays: [],
     closures: [],
     publicClosedMessage: "",
@@ -508,6 +553,7 @@ const ChatBot: React.FC = () => {
               ? Number(raw.slotStepMin)
               : 5,
             businessHours: { ...defaultBusinessHours(), ...(raw?.businessHours || {}) },
+            bookingHourOverrides: readBookingHourOverrides(raw?.bookingHourOverrides),
             holidays: Array.isArray(raw?.holidays) ? raw.holidays : [],
             closures: Array.isArray(raw?.closures) ? raw.closures : [],
             publicClosedMessage: String(raw?.publicClosedMessage || ""),
@@ -710,10 +756,50 @@ const ChatBot: React.FC = () => {
     });
   };
 
-  const getDayClosureReason = (dateISO: string): string => {
+  const getDaySettingsForDate = (dateISO: string) => {
     const dayKey = resolveWeekdayFromISO(dateISO);
-    const day = bookingSettings.businessHours?.[dayKey] || { enabled: true, start: "10:00", end: "22:00" };
-    if (!day.enabled) return `${WEEKDAY_LABEL_AR[dayKey]} إجازة حسب ساعات العمل.`;
+    const dayBase = bookingSettings.businessHours?.[dayKey] || { enabled: true, start: "10:00", end: "22:00" };
+    const dayBaseStart = String(dayBase.start || "10:00");
+    const dayBaseEnd = String(dayBase.end || "22:00");
+    const dateKey = String(dateISO || "").trim();
+
+    const overrides = Array.isArray(bookingSettings.bookingHourOverrides)
+      ? bookingSettings.bookingHourOverrides
+      : [];
+    for (let i = overrides.length - 1; i >= 0; i--) {
+      const ov = overrides[i];
+      const fromDate = String(ov?.fromDate || "").trim();
+      const toDate = String(ov?.toDate || "").trim();
+      if (!fromDate || !toDate) continue;
+      if (dateKey < fromDate || dateKey > toDate) continue;
+
+      const includeDays = Array.isArray(ov?.includeWeekdays) ? ov.includeWeekdays : [];
+      if (includeDays.length > 0 && !includeDays.includes(dayKey)) continue;
+
+      const blockedDays = Array.isArray(ov?.blockedWeekdays) ? ov.blockedWeekdays : [];
+      if (blockedDays.includes(dayKey) || String(ov?.mode || "").trim() === "closed") {
+        return { dayKey, enabled: false, start: dayBaseStart, end: dayBaseEnd };
+      }
+
+      return {
+        dayKey,
+        enabled: true,
+        start: String(ov?.start || dayBaseStart),
+        end: String(ov?.end || dayBaseEnd),
+      };
+    }
+
+    return {
+      dayKey,
+      enabled: dayBase.enabled !== false,
+      start: dayBaseStart,
+      end: dayBaseEnd,
+    };
+  };
+
+  const getDayClosureReason = (dateISO: string): string => {
+    const dayCfg = getDaySettingsForDate(dateISO);
+    if (!dayCfg.enabled) return `${WEEKDAY_LABEL_AR[dayCfg.dayKey]} إجازة حسب ساعات العمل.`;
     const holiday = bookingSettings.holidays.find((h: any) => String(h?.date || "") === dateISO);
     if (holiday) return holiday.reason ? `هذا اليوم إجازة: ${holiday.reason}` : "هذا اليوم إجازة.";
     const t = `${dateISO}T12:00:00`;
@@ -754,8 +840,7 @@ const ChatBot: React.FC = () => {
   };
 
   const calcAvailableTimes = (bookedTimes: string[], dateISO: string) => {
-    const dayKey = resolveWeekdayFromISO(dateISO);
-    const day = bookingSettings.businessHours?.[dayKey] || { enabled: true, start: "10:00", end: "22:00" };
+    const day = getDaySettingsForDate(dateISO);
     if (!day.enabled) return [] as string[];
     const slots = generateSalonTimeSlots(day.start, day.end, bookingSettings.slotStepMin || 5);
     const taken = new Set(bookedTimes.map((t) => String(t).trim()));

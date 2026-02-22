@@ -462,16 +462,88 @@ type SlotSettings = {
   bufferMin: number;
 };
 
+type BookingHourOverrideMode = "hours" | "closed";
+type BookingHourOverride = {
+  id?: string;
+  fromDate: string;
+  toDate: string;
+  mode: BookingHourOverrideMode;
+  start?: string;
+  end?: string;
+  includeWeekdays?: WeekdayKey[];
+  blockedWeekdays?: WeekdayKey[];
+};
+
+function normalizeISODate(v: any): string {
+  const s = String(v || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
+function normalizeWeekdayList(v: any): WeekdayKey[] {
+  if (!Array.isArray(v)) return [];
+  const allowed = new Set<WeekdayKey>(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
+  const out: WeekdayKey[] = [];
+  for (const d0 of v) {
+    const d = String(d0 || "").trim().toLowerCase() as WeekdayKey;
+    if (allowed.has(d) && !out.includes(d)) out.push(d);
+  }
+  return out;
+}
+
+function readBookingHourOverrides(raw: any): BookingHourOverride[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((x: any) => {
+      const fromDate = normalizeISODate(x?.fromDate);
+      const toDate = normalizeISODate(x?.toDate);
+      if (!fromDate || !toDate) return null;
+      const mode: BookingHourOverrideMode = String(x?.mode || "").trim() === "closed" ? "closed" : "hours";
+      return {
+        id: String(x?.id || "").trim() || undefined,
+        fromDate,
+        toDate,
+        mode,
+        start: String(x?.start || "").trim() || undefined,
+        end: String(x?.end || "").trim() || undefined,
+        includeWeekdays: normalizeWeekdayList(x?.includeWeekdays),
+        blockedWeekdays: normalizeWeekdayList(x?.blockedWeekdays),
+      };
+    })
+    .filter(Boolean) as BookingHourOverride[];
+}
+
 function resolveSlotSettings(source: any, dateISO?: string): SlotSettings {
   const booking = (source as any)?.booking || {};
   const businessHours = booking?.businessHours || {};
+  const bookingHourOverrides = readBookingHourOverrides(booking?.bookingHourOverrides);
 
-  const dayKey = resolveWeekdayFromISO(String(dateISO || "").trim());
-  const dayHours = businessHours?.[dayKey] || {};
+  const dateKey = normalizeISODate(dateISO);
+  const dayKey = resolveWeekdayFromISO(dateKey || String(dateISO || "").trim());
+  const dayHoursBase = businessHours?.[dayKey] || {};
 
-  const enabled = dayHours?.enabled !== false;
-  const openTime = safeTimeHHMM(dayHours?.start, "10:00");
-  const closeTime = safeTimeHHMM(dayHours?.end, "22:00");
+  let enabled = dayHoursBase?.enabled !== false;
+  let openTime = safeTimeHHMM(dayHoursBase?.start, "10:00");
+  let closeTime = safeTimeHHMM(dayHoursBase?.end, "22:00");
+
+  if (dateKey) {
+    for (let i = bookingHourOverrides.length - 1; i >= 0; i--) {
+      const ov = bookingHourOverrides[i];
+      if (dateKey < ov.fromDate || dateKey > ov.toDate) continue;
+
+      const includeDays = Array.isArray(ov?.includeWeekdays) ? ov.includeWeekdays : [];
+      if (includeDays.length > 0 && !includeDays.includes(dayKey)) continue;
+
+      const blockedDays = Array.isArray(ov?.blockedWeekdays) ? ov.blockedWeekdays : [];
+      if (blockedDays.includes(dayKey) || String(ov?.mode || "").trim() === "closed") {
+        enabled = false;
+      } else {
+        enabled = true;
+        openTime = safeTimeHHMM(String(ov?.start || ""), openTime);
+        closeTime = safeTimeHHMM(String(ov?.end || ""), closeTime);
+      }
+      break;
+    }
+  }
 
   const rawStep = safeInt(booking?.slotStepMin, 10);
   const slotStepMin = [5, 10, 15, 30].includes(rawStep) ? rawStep : 10;
