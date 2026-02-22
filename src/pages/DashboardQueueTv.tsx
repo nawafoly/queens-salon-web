@@ -131,65 +131,34 @@ export default function DashboardQueueTv() {
     return () => unsub();
   }, [todayKey]);
 
-  const perEmployee = useMemo(() => {
-    const byEmp = new Map<
-      string,
-      {
-        employeeName: string;
-        allToday: Array<
-          QueueBooking & {
-            startMs: number;
-            state: "upcoming" | "current";
-            countdownMs: number;
-          }
-        >;
-        current: Array<
-          QueueBooking & {
-            startMs: number;
-            state: "upcoming" | "current";
-            countdownMs: number;
-          }
-        >;
-        priorityStartMs: number;
+  const todayQueue = useMemo(() => {
+    const rows = bookings
+      .map((b) => {
+        const startMs = toDateTimeMs(b.date, b.time);
+        if (!Number.isFinite(startMs)) return null;
+        const isExpired = nowMs > startMs + SHOW_AFTER_TURN_MS;
+        if (isExpired) return null;
+        const isCurrent = nowMs >= startMs;
+        return {
+          ...b,
+          startMs,
+          state: (isCurrent ? "current" : "upcoming") as "current" | "upcoming",
+        };
+      })
+      .filter(Boolean) as Array<
+      QueueBooking & {
+        startMs: number;
+        state: "current" | "upcoming";
       }
-    >();
+    >;
 
-    bookings.forEach((b) => {
-      const startMs = toDateTimeMs(b.date, b.time);
-      if (!Number.isFinite(startMs)) return;
-      if (nowMs > startMs + SHOW_AFTER_TURN_MS) return;
-      const state: "upcoming" | "current" = nowMs >= startMs ? "current" : "upcoming";
-      const countdownMs = Math.max(0, startMs - nowMs);
-      const key = String(b.employeeName || "غير محدد").trim() || "غير محدد";
-      const item = { ...b, startMs, state, countdownMs };
-      const group = byEmp.get(key);
-      if (!group) {
-        byEmp.set(key, {
-          employeeName: key,
-          allToday: [item],
-          current: state === "current" ? [item] : [],
-          priorityStartMs: startMs,
-        });
-        return;
-      }
-      group.allToday.push(item);
-      if (state === "current") group.current.push(item);
-      if (startMs < group.priorityStartMs) group.priorityStartMs = startMs;
+    rows.sort((a, b) => {
+      const aRank = a.state === "current" ? 0 : 1;
+      const bRank = b.state === "current" ? 0 : 1;
+      if (aRank !== bRank) return aRank - bRank;
+      return a.startMs - b.startMs;
     });
-
-    const groups = Array.from(byEmp.values()).map((g) => {
-      g.allToday.sort((a, b) => {
-        const aRank = a.state === "current" ? 0 : 1;
-        const bRank = b.state === "current" ? 0 : 1;
-        if (aRank !== bRank) return aRank - bRank;
-        return a.startMs - b.startMs;
-      });
-      g.current.sort((a, b) => a.startMs - b.startMs);
-      return g;
-    });
-
-    groups.sort((a, b) => a.priorityStartMs - b.priorityStartMs);
-    return groups;
+    return rows;
   }, [bookings, nowMs]);
 
   return (
@@ -216,53 +185,31 @@ export default function DashboardQueueTv() {
         {!loading && !error ? (
           <>
             <div className="dashboard-tv-summary">
-              إجمالي الظاهر الآن: {perEmployee.reduce((sum, g) => sum + g.allToday.length, 0)} حجز
+              إجمالي الظاهر الآن: {todayQueue.length} حجز
             </div>
 
-            {!perEmployee.length ? (
+            {!todayQueue.length ? (
               <div className="dashboard-tv-empty">لا توجد حجوزات فعالة لعرضها الآن.</div>
             ) : (
-              <div className="dashboard-tv-employee-grid">
-                {perEmployee.map((g) => (
-                  <article key={g.employeeName} className="dashboard-tv-employee-card">
-                    <div className="dashboard-tv-employee-head">
-                      <h4>{g.employeeName}</h4>
-                      <span>{g.allToday.length} حجز</span>
+              <div className="dashboard-tv-booking-list">
+                {todayQueue.map((row, idx) => (
+                  <article key={row.id} className={`dashboard-tv-booking-card ${row.state === "current" ? "is-current" : "is-upcoming"}`}>
+                    <div className="dashboard-tv-booking-head">
+                      <h4>حجز {idx + 1}</h4>
+                      <span>{row.state === "current" ? "الحالي" : "قادم"}</span>
                     </div>
-
-                    <div className="dashboard-tv-main-card is-current">
-                      <div className="dashboard-tv-main-label">الحالي</div>
-                      {g.current.length ? (
-                        g.current.map((c) => (
-                          <div key={c.id} className="dashboard-tv-now-item">
-                            <b>{bookingNoOf(c.publicId)}</b>
-                            <span>{c.clientName}</span>
-                            <small>الوقت: {formatTime12(c.time)}</small>
-                            <small>ينتهي العرض بعد: {msToMinSec(c.startMs + SHOW_AFTER_TURN_MS - nowMs)}</small>
-                          </div>
-                        ))
+                    <div className="dashboard-tv-booking-main">
+                      <b>{bookingNoOf(row.publicId)}</b>
+                      <span>العميله: {row.clientName || "—"}</span>
+                      <span>عند الموظفه: {row.employeeName || "—"}</span>
+                    </div>
+                    <div className="dashboard-tv-booking-foot">
+                      <span>الوقت: {formatTime12(row.time)}</span>
+                      {row.state === "current" ? (
+                        <small>ينتهي العرض بعد: {msToMinSec(row.startMs + SHOW_AFTER_TURN_MS - nowMs)}</small>
                       ) : (
-                        <div className="dashboard-tv-empty">لا يوجد دور حالي</div>
+                        <small>باقي: {countdownLabel(row.startMs, nowMs)}</small>
                       )}
-                    </div>
-
-                    <div className="dashboard-tv-timeline">
-                      {g.allToday.map((row) => (
-                        <div key={row.id} className={`dashboard-tv-timeline-row ${row.state === "current" ? "is-current" : "is-upcoming"}`}>
-                          <div className="dashboard-tv-timeline-left">
-                            <b>{bookingNoOf(row.publicId)}</b>
-                            <span>{row.clientName}</span>
-                          </div>
-                          <div className="dashboard-tv-timeline-right">
-                            <span>{formatTime12(row.time)}</span>
-                            {row.state === "upcoming" ? (
-                              <small>باقي: {countdownLabel(row.startMs, nowMs)}</small>
-                            ) : (
-                              <small>الحجز الحالي</small>
-                            )}
-                          </div>
-                        </div>
-                      ))}
                     </div>
                   </article>
                 ))}

@@ -39,6 +39,7 @@ import DashboardExpenses from "../pages/DashboardExpenses";
 import DashboardIncome from "../pages/DashboardIncome";
 import DashboardLogs from "../pages/DashboardLogs";
 import DashboardQueueTv from "../pages/DashboardQueueTv";
+import DashboardDayAudit from "../pages/DashboardDayAudit";
 
 import DashboardStaff from "../pages/DashboardStaff";
 
@@ -1429,6 +1430,19 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
+                {(hasAdminPower || isReception) && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/day-audit"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faWallet} />
+                      إغلاق اليوم / الشفت
+                    </NavLink>
+                  </li>
+                )}
+
                 {(hasAdminPower || isReception) && canSeeSection("bookings") && (
                   <li>
                     <NavLink
@@ -1699,6 +1713,10 @@ const Dashboard: React.FC = () => {
 
                 {(hasAdminPower || isReception) && canSeeSection("bookings") && (
                   <Route path="tv-queue" element={<DashboardQueueTv />} />
+                )}
+
+                {(hasAdminPower || isReception) && (
+                  <Route path="day-audit" element={<DashboardDayAudit />} />
                 )}
 
                 {(hasAdminPower || (isReception && allowStaffViewClients)) &&

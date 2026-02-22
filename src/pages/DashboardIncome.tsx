@@ -10,6 +10,7 @@ import {
   faFileCsv,
   faTrash,
   faRotate,
+  faPen,
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/DashboardIncome.css";
@@ -34,6 +35,7 @@ const ALL_BOOKINGS_KEY = "allBookings";
 // ✅ LocalStorage Income (Migration)
 const LEGACY_INCOME_KEY = "dashboard_income_v1";
 const INCOME_MIGRATED_KEY = "income_migrated_to_firestore_v1";
+const INCOME_EDIT_PIN = "598867395";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 
@@ -435,6 +437,41 @@ export default function DashboardIncome() {
     }
   };
 
+  const editIncomeAmount = async (item: IncomeItem) => {
+    const pin = window.prompt("أدخلي الرقم السري لتعديل المبلغ");
+    if (pin === null) return;
+    if (String(pin).trim() !== INCOME_EDIT_PIN) {
+      setModalMsg("الرقم السري غير صحيح");
+      return;
+    }
+
+    const currentAmount = Number(item.amount) || 0;
+    const rawAmount = window.prompt("أدخلي المبلغ الجديد", String(currentAmount));
+    if (rawAmount === null) return;
+
+    const nextAmount = Number(String(rawAmount).replaceAll(",", "").trim());
+    if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
+      setModalMsg("المبلغ غير صحيح");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await upsertIncomeFS({
+        ...item,
+        amount: nextAmount,
+        createdAt: Number(item.createdAt) || Date.now(),
+      });
+      const next = await listAllIncomeFS();
+      setItems(next);
+      setModalMsg("تم تعديل المبلغ");
+    } catch (e) {
+      setModalMsg(firebaseMsg(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const exportCsv = () => {
     const csv = toCsv(filtered);
     downloadTextFile(`income_${todayISO()}.csv`, csv);
@@ -687,7 +724,16 @@ export default function DashboardIncome() {
                         <td className="income-booking-text">{bookingMeta?.bookingRef || "-"}</td>
                         <td className="income-source-text">{sourceLabel(x.source || "")}</td>
                         <td className="income-note-text">{x.note || "-"}</td>
-                        <td>
+                        <td className="income-row-actions">
+                          <button
+                            className="dash-icon-btn qs-black income-edit-btn"
+                            type="button"
+                            title="تعديل المبلغ"
+                            onClick={() => editIncomeAmount(x)}
+                            disabled={loading}
+                          >
+                            <FontAwesomeIcon icon={faPen} />
+                          </button>
                           <button
                             className="dash-icon-btn qs-black income-delete-btn"
                             type="button"
@@ -750,6 +796,15 @@ export default function DashboardIncome() {
                       <span className="income-mobile-value">{x.note || "-"}</span>
                     </div>
                     <div className="income-mobile-actions">
+                      <button
+                        className="dash-pill dash-pill-outline income-mobile-edit"
+                        type="button"
+                        title="تعديل المبلغ"
+                        onClick={() => editIncomeAmount(x)}
+                        disabled={loading}
+                      >
+                        <FontAwesomeIcon icon={faPen} /> تعديل
+                      </button>
                       <button
                         className="dash-pill dash-pill-outline income-mobile-delete"
                         type="button"

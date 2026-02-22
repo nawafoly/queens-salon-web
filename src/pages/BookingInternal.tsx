@@ -5881,7 +5881,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 primeInternalPrintPopup();
                 internalPaymentMethodRef.current = internalPaymentMethodDraft;
                 setInternalPaymentModalOpen(false);
-                internalBookingFormRef.current?.requestSubmit();
+                // Let the popup render first, then run the heavy submit flow.
+                window.setTimeout(() => {
+                  internalBookingFormRef.current?.requestSubmit();
+                }, 0);
               }}
               disabled={isLoading || !internalPaymentMethodDraft}
             >

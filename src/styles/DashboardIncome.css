@@ -881,10 +881,34 @@
   background: #fff7f9;
 }
 
+.income-page .income-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.income-page .income-edit-btn {
+  border-color: #d5e6fb;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.income-page .income-edit-btn:hover {
+  border-color: #b9d7fd;
+  background: #dbeafe;
+  box-shadow: 0 8px 16px rgba(29, 78, 216, 0.14);
+}
+
 .income-page .income-delete-btn:hover {
   border-color: #e4b5c0;
   background: #ffeef2;
   box-shadow: 0 8px 16px rgba(159, 18, 57, 0.15);
+}
+
+.income-page .income-mobile-edit {
+  width: 100%;
+  justify-content: center;
 }
 
 .income-page .income-mobile-card {

@@ -220,3 +220,66 @@
   color: #5b4a3f;
   font-weight: 700;
 }
+
+.dashboard-tv-booking-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.dashboard-tv-booking-card {
+  border: 1px solid rgba(64, 1, 13, 0.16);
+  border-radius: 14px;
+  padding: 10px;
+  background: #fff;
+}
+
+.dashboard-tv-booking-card.is-current {
+  background: #fff5e9;
+}
+
+.dashboard-tv-booking-card.is-upcoming {
+  background: #f8fbff;
+}
+
+.dashboard-tv-booking-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.dashboard-tv-booking-head h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.dashboard-tv-booking-head span {
+  font-weight: 900;
+}
+
+.dashboard-tv-booking-main {
+  display: grid;
+  gap: 3px;
+}
+
+.dashboard-tv-booking-main b {
+  font-size: 1.1rem;
+}
+
+.dashboard-tv-booking-main span {
+  font-weight: 800;
+}
+
+.dashboard-tv-booking-foot {
+  margin-top: 6px;
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-tv-booking-foot span,
+.dashboard-tv-booking-foot small {
+  color: #5b4a3f;
+  font-weight: 800;
+}

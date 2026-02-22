@@ -1,0 +1,77 @@
+.day-audit-page {
+  direction: rtl;
+}
+
+.day-audit-card {
+  background: #fff;
+  border: 1px solid rgba(64, 1, 13, 0.14);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 12px 24px rgba(64, 1, 13, 0.08);
+  max-width: 760px;
+}
+
+.day-audit-card h2 {
+  margin: 0 0 6px;
+  font-weight: 900;
+}
+
+.day-audit-card p {
+  margin: 0 0 14px;
+  color: #5b4a3f;
+  font-weight: 700;
+}
+
+.day-audit-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.day-audit-row {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(64, 1, 13, 0.12);
+  border-radius: 12px;
+  padding: 10px;
+  background: #fffdfb;
+}
+
+.day-audit-row label {
+  font-weight: 800;
+}
+
+.day-audit-row input {
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(64, 1, 13, 0.2);
+  padding: 0 12px;
+}
+
+.day-audit-row .is-neg {
+  color: #a10000;
+  font-weight: 900;
+}
+
+.day-audit-row .is-pos {
+  color: #0d6b34;
+  font-weight: 900;
+}
+
+.day-audit-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .day-audit-card {
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+}
+
