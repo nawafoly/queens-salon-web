@@ -27,6 +27,7 @@ import {
   isStaffAvailableForDate,
   filterStaffSlotsByWorkingHours,
   isStaffWorkingAtTime,
+  isStaffEmploymentEndedForDate,
 } from "../helpers/staffAvailability";
 import { AppSettingsService } from "../services/AppSettingsService";
 
@@ -5752,7 +5753,9 @@ function findCartOverlap(items: CartItem[]) {
                         const serviceStaff = staffByService[it.serviceId] || [];
                         const dateISO = String(it.date || "").trim();
                         const bookingVisibleStaff = serviceStaff.filter(
-                          (st) => (st as any)?.showOnBooking !== false
+                          (st) =>
+                            (st as any)?.showOnBooking !== false &&
+                            !isStaffEmploymentEndedForDate(st as any, dateISO)
                         );
                         const staffWithLeaveMeta = bookingVisibleStaff.map((st) => {
                           const leave = getStaffLeaveMetaForDate(st, dateISO);

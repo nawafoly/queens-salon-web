@@ -958,6 +958,22 @@
   font-size: 0.9rem;
 }
 
+.bk-internal .bk-discount-editor .form-label {
+  margin-bottom: 0.3rem;
+}
+
+.bk-internal .bk-discount-value-input {
+  direction: ltr;
+  text-align: center;
+  font-weight: 700;
+}
+
+.bk-internal .bk-discount-msg {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
 .bk-internal .bk-total-visual {
   display: flex;
   align-items: center;

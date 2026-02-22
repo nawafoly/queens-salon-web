@@ -26,6 +26,7 @@ import {
 
 import { db } from "../services/firebase";
 import { writeAuditLog } from "../services/logService";
+import { AppSettingsService } from "../services/AppSettingsService";
 import "../styles/DashboardEmployees.css";
 import Modal from "../components/Modal";
 
@@ -51,6 +52,7 @@ type AuthUser = {
 type StaffPublicDoc = {
   name: string;
   active: boolean;
+  employmentEndDate?: string;
 
   // ✅ جديد: هل تظهر في صفحة About؟
   showOnAbout: boolean;
@@ -110,11 +112,25 @@ type ServiceOption = {
   active?: boolean;
 };
 
+type EmployeeModalTab = "stats" | "basic" | "booking" | "services" | "profile";
+type BookingHourOverrideMode = "hours" | "closed";
+type BookingHourOverride = {
+  fromDate: string;
+  toDate: string;
+  mode: BookingHourOverrideMode;
+  start?: string;
+  end?: string;
+  includeWeekdays?: WeekdayKey[];
+  blockedWeekdays?: WeekdayKey[];
+};
+
 /* =========================
    Const
 ========================= */
 const SALON_ID = "main";
 const STAFF_CHIPS_PREVIEW_COUNT = 8;
+const DEFAULT_OPEN_TIME = "10:00";
+const DEFAULT_CLOSE_TIME = "22:00";
 const STAFF_IMAGE_MODULES = import.meta.glob("../assets/images/*.{png,jpg,jpeg,webp,avif,svg}", {
   eager: true,
   import: "default",
@@ -376,6 +392,107 @@ function normalizeWorkingHourOverrides(v: any): StaffWorkingHourOverride[] {
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 
+function weekdayFromIso(dateIso: string): WeekdayKey | "" {
+  const s = normalizeLeaveUntil(dateIso);
+  if (!s) return "";
+  const d = new Date(`${s}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  const map: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  return (map[d.getDay()] || "") as WeekdayKey | "";
+}
+
+function toMinutes(hhmm: string) {
+  const [h, m] = String(hhmm || "")
+    .split(":")
+    .map((x) => Number(x));
+  return (Number(h) || 0) * 60 + (Number(m) || 0);
+}
+
+function isTimeInsideWindow(time24: string, start24: string, end24: string) {
+  const t = toMinutes(time24);
+  const s = toMinutes(start24);
+  const e = toMinutes(end24);
+  if (s === e) return false;
+  if (s < e) return t >= s && t < e;
+  return t >= s || t < e;
+}
+
+function formatWindow(start: string, end: string) {
+  const to12 = (hhmm: string) => {
+    const s = normalizeTimeHHMM(hhmm);
+    if (!s) return hhmm;
+    const [hStr, mStr] = s.split(":");
+    const h24 = Number(hStr);
+    const m = Number(mStr);
+    if (!Number.isFinite(h24) || !Number.isFinite(m)) return s;
+    const isPM = h24 >= 12;
+    const h12 = h24 === 12 ? 12 : h24 % 12 || 12;
+    return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${isPM ? "م" : "ص"}`;
+  };
+  return `${to12(start)} - ${to12(end)}`;
+}
+
+function normalizeIsoDate(v: any): string {
+  const s = String(v || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
+function normalizeWeekdayList(v: any): WeekdayKey[] {
+  if (!Array.isArray(v)) return [];
+  const allowed = new Set<WeekdayKey>(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
+  const out: WeekdayKey[] = [];
+  for (const d0 of v) {
+    const d = String(d0 || "").trim().toLowerCase() as WeekdayKey;
+    if (allowed.has(d) && !out.includes(d)) out.push(d);
+  }
+  return out;
+}
+
+function readBookingHourOverrides(raw: any): BookingHourOverride[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((x: any) => {
+      const fromDate = normalizeIsoDate(x?.fromDate);
+      const toDate = normalizeIsoDate(x?.toDate);
+      if (!fromDate || !toDate) return null;
+      return {
+        fromDate,
+        toDate,
+        mode: String(x?.mode || "").trim() === "closed" ? "closed" : "hours",
+        start: String(x?.start || "").trim() || undefined,
+        end: String(x?.end || "").trim() || undefined,
+        includeWeekdays: normalizeWeekdayList(x?.includeWeekdays),
+        blockedWeekdays: normalizeWeekdayList(x?.blockedWeekdays),
+      } as BookingHourOverride;
+    })
+    .filter(Boolean) as BookingHourOverride[];
+}
+
+function minutesToHHMM(totalMin: number) {
+  const n = ((Math.floor(totalMin) % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(n / 60)).padStart(2, "0");
+  const mm = String(n % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function intersectTimeWindows(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string
+): { start: string; end: string } | null {
+  const as = toMinutes(aStart);
+  let ae = toMinutes(aEnd);
+  const bs = toMinutes(bStart);
+  let be = toMinutes(bEnd);
+  if (ae <= as) ae += 1440;
+  if (be <= bs) be += 1440;
+  const start = Math.max(as, bs);
+  const end = Math.min(ae, be);
+  if (end <= start) return null;
+  return { start: minutesToHHMM(start), end: minutesToHHMM(end) };
+}
+
 /* =========================
    Component
 ========================= */
@@ -406,6 +523,7 @@ export default function DashboardEmployees() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [modalTab, setModalTab] = useState<EmployeeModalTab>("basic");
 
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
@@ -420,6 +538,7 @@ export default function DashboardEmployees() {
   const [modalOnLeave, setModalOnLeave] = useState(false);
   const [modalLeaveUntil, setModalLeaveUntil] = useState("");
   const [modalLeaveNote, setModalLeaveNote] = useState("");
+  const [employmentEndDate, setEmploymentEndDate] = useState("");
   const [modalExceptionalLeaveWeekdays, setModalExceptionalLeaveWeekdays] = useState<WeekdayKey[]>([]);
   const [modalLeaveWeekdayDraft, setModalLeaveWeekdayDraft] = useState<WeekdayKey | "">("");
   const [modalUseCustomWorkingHours, setModalUseCustomWorkingHours] = useState(false);
@@ -441,9 +560,12 @@ export default function DashboardEmployees() {
 
   const [srvQ, setSrvQ] = useState("");
   const [srvSection, setSrvSection] = useState<string>("all");
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
 
   const resetForm = () => {
     setEditId(null);
+    setModalTab("basic");
     setName("");
     setBio("");
     setAvatarUrl("");
@@ -456,6 +578,7 @@ export default function DashboardEmployees() {
     setModalOnLeave(false);
     setModalLeaveUntil("");
     setModalLeaveNote("");
+    setEmploymentEndDate("");
     setModalExceptionalLeaveWeekdays([]);
     setModalLeaveWeekdayDraft("");
     setModalUseCustomWorkingHours(false);
@@ -476,6 +599,7 @@ export default function DashboardEmployees() {
 
   const openEdit = (x: StaffPublicUi) => {
     setEditId(x.id);
+    setModalTab("basic");
     setName(x.name ?? "");
     setBio(x.bio ?? "");
     setAvatarUrl(resolveAvatarFromAssets(pickAvatarUrl(x as any)));
@@ -487,6 +611,7 @@ export default function DashboardEmployees() {
     setModalOnLeave(!!(x as any).onLeave && !initialLeaveExpired);
     setModalLeaveUntil(initialLeaveUntil);
     setModalLeaveNote(String((x as any).leaveNote || ""));
+    setEmploymentEndDate(normalizeLeaveUntil((x as any).employmentEndDate));
     setModalExceptionalLeaveWeekdays(
       normalizeExceptionalLeaveWeekdays((x as any).exceptionalLeaveWeekdays)
     );
@@ -533,6 +658,7 @@ export default function DashboardEmployees() {
           // ✅ جديد (افتراضي: تظهر إذا ما كان الحقل موجود)
           showOnAbout: data?.showOnAbout !== false,
           showOnBooking: data?.showOnBooking !== false,
+          employmentEndDate: normalizeLeaveUntil(data?.employmentEndDate),
           onLeave: !!data?.onLeave,
           leaveUntil: normalizeLeaveUntil(data?.leaveUntil),
           leaveNote: String(data?.leaveNote || ""),
@@ -748,6 +874,7 @@ export default function DashboardEmployees() {
     if (!canManage) return;
 
     const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
+    const employmentEndDate = normalizeLeaveUntil((staff as any).employmentEndDate);
     const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
     const effectiveOnLeave = !!(staff as any).onLeave && !leaveExpired;
     const leaveNote = String((staff as any).leaveNote || "").trim();
@@ -763,6 +890,7 @@ export default function DashboardEmployees() {
     try {
       await updateDoc(staffPublicDoc(staff.id), {
         showOnBooking: (staff as any).showOnBooking !== false,
+        employmentEndDate,
         onLeave: effectiveOnLeave,
         leaveUntil,
         leaveNote,
@@ -777,6 +905,7 @@ export default function DashboardEmployees() {
             ? ({
                 ...row,
                 showOnBooking: (staff as any).showOnBooking !== false,
+                employmentEndDate,
                 onLeave: effectiveOnLeave,
                 leaveUntil,
                 leaveNote,
@@ -797,6 +926,24 @@ export default function DashboardEmployees() {
   useEffect(() => {
     load();
     loadServiceOptions();
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const unsub = AppSettingsService.subscribe((remote: any) => {
+      setAppSettings(remote || {});
+    });
+    return () => {
+      try {
+        unsub?.();
+      } catch {
+        // noop
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -949,6 +1096,7 @@ export default function DashboardEmployees() {
     setLoading(true);
     setErrorMsg("");
     const normalizedModalLeaveUntil = normalizeLeaveUntil(modalLeaveUntil);
+    const normalizedEmploymentEndDate = normalizeLeaveUntil(employmentEndDate);
     const modalLeaveExpired = !!normalizedModalLeaveUntil && normalizedModalLeaveUntil < todayIso();
     const effectiveModalOnLeave = modalOnLeave && !modalLeaveExpired;
     const normalizedExceptionalWeekdays = normalizeExceptionalLeaveWeekdays(
@@ -965,6 +1113,7 @@ export default function DashboardEmployees() {
       active: !!active,
       showOnAbout: !!showOnAbout,
       showOnBooking: !!showOnBooking,
+      employmentEndDate: normalizedEmploymentEndDate,
       onLeave: effectiveModalOnLeave,
       leaveUntil: normalizedModalLeaveUntil,
       leaveNote: String(modalLeaveNote || "").trim(),
@@ -1041,10 +1190,238 @@ export default function DashboardEmployees() {
     return rows;
   }, [list, onlyActive, specialtyFilter, qText]);
 
+  const staffScheduleSummary = useMemo(() => {
+    const now = new Date(nowTick);
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const today = `${yyyy}-${mm}-${dd}`;
+    const timeNow = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const weekday = weekdayFromIso(today);
+    const booking = (appSettings as any)?.booking || {};
+    const businessHours = (booking as any)?.businessHours || {};
+    const bookingHourOverrides = readBookingHourOverrides((booking as any)?.bookingHourOverrides);
+    const overrideRanges = Array.from(
+      new Set(
+        bookingHourOverrides
+          .map((ov) => `${ov.fromDate} - ${ov.toDate}`)
+          .filter((x) => String(x || "").trim())
+      )
+    );
+
+    const dayKey = weekday || "sat";
+    const dayHoursBase = (businessHours as any)?.[dayKey] || {
+      enabled: true,
+      start: DEFAULT_OPEN_TIME,
+      end: DEFAULT_CLOSE_TIME,
+    };
+
+    const salonWeeklyEnabled = dayHoursBase?.enabled !== false;
+    const salonWeeklyOpen = normalizeTimeHHMM(dayHoursBase?.start) || DEFAULT_OPEN_TIME;
+    const salonWeeklyClose = normalizeTimeHHMM(dayHoursBase?.end) || DEFAULT_CLOSE_TIME;
+    let salonEnabled = salonWeeklyEnabled;
+    let salonOpen = salonWeeklyOpen;
+    let salonClose = salonWeeklyClose;
+    let salonSourceLabel = "أسبوعي";
+    let activeRange = "";
+
+    for (let i = bookingHourOverrides.length - 1; i >= 0; i--) {
+      const ov = bookingHourOverrides[i];
+      if (today < ov.fromDate || today > ov.toDate) continue;
+      const includeDays = Array.isArray(ov?.includeWeekdays) ? ov.includeWeekdays : [];
+      if (includeDays.length > 0 && !includeDays.includes(dayKey)) continue;
+      const blockedDays = Array.isArray(ov?.blockedWeekdays) ? ov.blockedWeekdays : [];
+      if (blockedDays.includes(dayKey) || String(ov?.mode || "").trim() === "closed") {
+        salonEnabled = false;
+        salonSourceLabel = `استثناء (${ov.fromDate} - ${ov.toDate})`;
+        activeRange = `${ov.fromDate} - ${ov.toDate}`;
+      } else {
+        salonEnabled = true;
+        const ovStart = normalizeTimeHHMM(ov.start) || salonOpen;
+        const ovEnd = normalizeTimeHHMM(ov.end) || salonClose;
+        salonOpen = ovStart;
+        salonClose = ovEnd;
+        salonSourceLabel = `استثناء (${ov.fromDate} - ${ov.toDate})`;
+        activeRange = `${ov.fromDate} - ${ov.toDate}`;
+      }
+      break;
+    }
+    let salonSourceDetails = "";
+    if (activeRange) {
+      const others = overrideRanges.filter((r) => r !== activeRange);
+      if (others.length) salonSourceDetails = `استثناءات أخرى: ${others.join(" | ")}`;
+    } else if (overrideRanges.length) {
+      salonSourceDetails = `الاستثناءات المسجلة: ${overrideRanges.join(" | ")}`;
+    }
+    const salonWeeklyWindowLabel = salonWeeklyEnabled
+      ? formatWindow(salonWeeklyOpen, salonWeeklyClose)
+      : "مغلق أسبوعيًا";
+    const salonEffectiveWindowLabel = salonEnabled
+      ? formatWindow(salonOpen, salonClose)
+      : "مغلق للحجوزات اليوم";
+
+    const weekdayLabel = (key: WeekdayKey | "") =>
+      WEEKDAY_OPTIONS.find((x) => x.key === key)?.label || "-";
+
+    return list
+      .map((staff) => {
+        const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
+        const employmentEndDate = normalizeLeaveUntil((staff as any).employmentEndDate);
+        const exceptionalDates = normalizeExceptionalLeaveDates((staff as any).exceptionalLeaveDates);
+        const exceptionalWeekdays = normalizeExceptionalLeaveWeekdays(
+          (staff as any).exceptionalLeaveWeekdays
+        );
+        const overrides = normalizeWorkingHourOverrides((staff as any).customWorkingHourOverrides);
+        const customWorkingHours = normalizeWorkingHours((staff as any).customWorkingHours);
+        const useCustom = !!(staff as any).useCustomWorkingHours;
+        const overrideToday = overrides.find((x) => x.date === today);
+        const baseDay = weekday ? customWorkingHours[weekday] : undefined;
+
+        const staffBaseWindowLabel = useCustom
+          ? baseDay && baseDay.enabled !== false
+            ? formatWindow(
+                normalizeTimeHHMM(baseDay.start) || salonOpen,
+                normalizeTimeHHMM(baseDay.end) || salonClose
+              )
+            : "مغلق هذا اليوم"
+          : formatWindow(salonOpen, salonClose);
+
+        const staffOverrideLabel = overrideToday
+          ? overrideToday.enabled === false
+            ? "إغلاق كامل اليوم"
+            : formatWindow(
+                normalizeTimeHHMM(overrideToday.start) || salonOpen,
+                normalizeTimeHHMM(overrideToday.end) || salonClose
+              )
+          : "-";
+
+        const leaveByDate = exceptionalDates.includes(today);
+        const leaveByWeekday = weekday ? exceptionalWeekdays.includes(weekday) : false;
+        const leaveByToggle =
+          !!(staff as any).onLeave && (!leaveUntil || leaveUntil >= today);
+        const leaveActiveToday = leaveByDate || leaveByWeekday || leaveByToggle;
+
+        const ended = !!employmentEndDate && today > employmentEndDate;
+
+        let effectiveEnabled = true;
+        let effectiveStart = salonOpen;
+        let effectiveEnd = salonClose;
+
+        if (overrideToday) {
+          effectiveEnabled = overrideToday.enabled !== false;
+          effectiveStart = normalizeTimeHHMM(overrideToday.start) || salonOpen;
+          effectiveEnd = normalizeTimeHHMM(overrideToday.end) || salonClose;
+        } else if (useCustom) {
+          if (!baseDay || baseDay.enabled === false) {
+            effectiveEnabled = false;
+          } else {
+            effectiveStart = normalizeTimeHHMM(baseDay.start) || salonOpen;
+            effectiveEnd = normalizeTimeHHMM(baseDay.end) || salonClose;
+          }
+        }
+        const intersection =
+          salonEnabled && effectiveEnabled
+            ? intersectTimeWindows(salonOpen, salonClose, effectiveStart, effectiveEnd)
+            : null;
+        const nowInsideWindow =
+          !!intersection && isTimeInsideWindow(timeNow, intersection.start, intersection.end);
+
+        const actualNow = ended
+          ? "مستبعدة من الحجز (انتهى التوظيف)"
+          : leaveActiveToday
+            ? "متوقفة اليوم (إجازة)"
+            : !salonEnabled
+              ? "الحجوزات مغلقة اليوم على مستوى الصالون"
+              : !effectiveEnabled
+                ? "لا يوجد دوام موظفة اليوم"
+                : !intersection
+                  ? "لا يوجد تقاطع بين دوام الموظفة ودوام الحجوزات"
+                  : nowInsideWindow
+                    ? `تعمل الآن: ${formatWindow(intersection.start, intersection.end)}`
+                    : `خارج الدوام الآن: ${formatWindow(intersection.start, intersection.end)}`;
+
+        const warnings: string[] = [];
+        if ((staff as any).onLeave) {
+          if (leaveUntil && leaveUntil >= today) {
+            warnings.push(`في إجازة من ${fmtIsoDate(today)} إلى ${fmtIsoDate(leaveUntil)}.`);
+          } else if (leaveUntil && leaveUntil < today) {
+            warnings.push(`انتهت إجازتها بتاريخ ${fmtIsoDate(leaveUntil)}.`);
+          } else {
+            warnings.push("في إجازة حالياً بدون تاريخ نهاية محدد.");
+          }
+        }
+
+        const futureExceptional = exceptionalDates.filter((d) => d > today).sort((a, b) => a.localeCompare(b));
+        if (futureExceptional.length > 0) {
+          const start = futureExceptional[0];
+          let end = start;
+          for (let i = 1; i < futureExceptional.length; i++) {
+            const expectedNext = addDaysIso(end, 1);
+            if (futureExceptional[i] === expectedNext) {
+              end = futureExceptional[i];
+              continue;
+            }
+            break;
+          }
+          const diffDays = Math.max(
+            0,
+            Math.floor(
+              (new Date(`${start}T00:00:00`).getTime() - new Date(`${today}T00:00:00`).getTime()) /
+                86400000
+            )
+          );
+          const lead = diffDays <= 14 ? "إجازة قريبة" : "إجازة مجدولة";
+          warnings.push(`${lead} تبدأ ${fmtIsoDate(start)} وتنتهي ${fmtIsoDate(end)}.`);
+        }
+
+        if (exceptionalWeekdays.length > 0) {
+          const weeklyLabels = exceptionalWeekdays.map((d) => weekdayLabel(d));
+          if (weeklyLabels.length === 1) {
+            warnings.push(`إجازة ثابتة كل ${weeklyLabels[0]}.`);
+          } else {
+            warnings.push(`إجازة ثابتة كل: ${weeklyLabels.join(" / ")}.`);
+          }
+        }
+
+        const leaveDaysLabel = exceptionalWeekdays.length
+          ? exceptionalWeekdays.map((d) => weekdayLabel(d)).join(" / ")
+          : "-";
+
+        return {
+          id: staff.id,
+          name: String(staff.name || "-"),
+          todayWeekdayLabel: weekdayLabel(weekday),
+          salonWeeklyWindowLabel,
+          salonEffectiveWindowLabel,
+          salonSourceLabel,
+          salonSourceDetails,
+          staffBaseWindowLabel,
+          staffOverrideLabel,
+          leaveDaysLabel,
+          warnings,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  }, [list, nowTick, appSettings]);
+
   const editingStaff = useMemo(
     () => (editId ? list.find((x) => x.id === editId) || null : null),
     [editId, list]
   );
+  const modalTabs: Array<{ key: EmployeeModalTab; label: string }> = editingStaff
+    ? [
+        { key: "basic", label: "البيانات الأساسية" },
+        { key: "booking", label: "الحجز والدوام" },
+        { key: "services", label: "الخدمات" },
+        { key: "profile", label: "الملف" },
+        { key: "stats", label: "الإحصائيات والإجازات" },
+      ]
+    : [
+        { key: "basic", label: "البيانات الأساسية" },
+        { key: "booking", label: "الحجز والدوام" },
+        { key: "services", label: "الخدمات" },
+        { key: "profile", label: "الملف" },
+      ];
   const modalLeaveExpired = useMemo(() => {
     const leaveUntil = normalizeLeaveUntil(modalLeaveUntil);
     return !!leaveUntil && leaveUntil < todayIso();
@@ -1265,6 +1642,73 @@ export default function DashboardEmployees() {
             {errorMsg}
           </div>
         )}
+
+        <div className="dash-card mt-3 staff-summary-card">
+          <div className="staff-summary-head">
+            <h3>ملخص الدوام الفعلي اليوم لكل موظفة</h3>
+            <span className="staff-summary-stamp">
+              {new Date(nowTick).toLocaleString("ar-SA", {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
+          <div className="staff-summary-table-wrap">
+            <table className="staff-summary-table">
+              <thead>
+                <tr>
+                  <th>الموظفة</th>
+                  <th>الدوام الرسمي (أسبوعي)</th>
+                  <th>دوام الحجز الفعلي اليوم</th>
+                  <th>مصدر الدوام الفعلي</th>
+                  <th>دوام الموظفة الأساسي</th>
+                  <th>استثناء دوام الموظفة</th>
+                  <th>أيام الإجازة الأسبوعية</th>
+                  <th>التنبيهات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staffScheduleSummary.map((row) => (
+                  <tr key={`summary_${row.id}`}>
+                    <td data-label="الموظفة">
+                      <b>{row.name}</b>
+                    </td>
+                    <td data-label="الدوام الرسمي (أسبوعي)">{row.salonWeeklyWindowLabel}</td>
+                    <td data-label="دوام الحجز الفعلي اليوم">{row.salonEffectiveWindowLabel}</td>
+                    <td data-label="مصدر الدوام الفعلي">
+                      <div>{row.salonSourceLabel}</div>
+                      {row.salonSourceDetails ? (
+                        <div className="staff-summary-subnote">{row.salonSourceDetails}</div>
+                      ) : null}
+                    </td>
+                    <td data-label="دوام الموظفة الأساسي">{row.staffBaseWindowLabel}</td>
+                    <td data-label="استثناء دوام الموظفة">{row.staffOverrideLabel}</td>
+                    <td data-label="أيام الإجازة الأسبوعية">{row.leaveDaysLabel}</td>
+                    <td data-label="التنبيهات">
+                      {row.warnings.length ? (
+                        <span className="staff-summary-warning">
+                          {row.warnings.join(" | ")}
+                        </span>
+                      ) : (
+                        <span className="staff-summary-ok">لا توجد إجازة حالية أو قريبة</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {staffScheduleSummary.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="staff-summary-empty">
+                      لا توجد موظفات لعرض الملخص حاليًا.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
         <div className="dash-card mt-3">
           <div className="dash-row">
@@ -1507,8 +1951,22 @@ export default function DashboardEmployees() {
             </div>
 
             <div className="modal-body emp-modal-grid">
+              <div className="emp-modal-tabs" role="tablist" aria-label="أقسام نموذج الموظفة">
+                {modalTabs.map((tab) => (
+                  <button
+                    key={`emp_tab_${tab.key}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={modalTab === tab.key}
+                    className={`emp-modal-tab ${modalTab === tab.key ? "active" : ""}`}
+                    onClick={() => setModalTab(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
               {editingStaff ? (
-                <div className="emp-modal-section">
+                <div className={`emp-modal-section ${modalTab !== "stats" ? "is-hidden" : ""}`}>
                   <b className="emp-modal-section-title">إحصائيات الشهر والإجازات</b>
 
                   <div className="staff-metrics">
@@ -1616,7 +2074,7 @@ export default function DashboardEmployees() {
                 </div>
               ) : null}
 
-              <div className="emp-modal-section">
+              <div className={`emp-modal-section ${modalTab !== "basic" ? "is-hidden" : ""}`}>
                 <b className="emp-modal-section-title">المعلومات الأساسية</b>
 
                 <div className="emp-modal-fields two-cols">
@@ -1671,10 +2129,11 @@ export default function DashboardEmployees() {
 </div>
               </div>
 
-              <div className="emp-modal-section">
+              <div className={`emp-modal-section ${modalTab !== "booking" ? "is-hidden" : ""}`}>
                 <b className="emp-modal-section-title">إعدادات الحجز لهذه الموظفة</b>
                 <div className="emp-modal-fields emp-booking-settings">
-                  <div className="dash-field">
+                  <div className="emp-booking-subtitle">الحالة العامة</div>
+                  <div className="dash-field booking-card">
                     <label className="emp-label emp-check-label">
                       <input
                         type="checkbox"
@@ -1686,7 +2145,7 @@ export default function DashboardEmployees() {
                     </label>
                   </div>
 
-                  <div className="dash-field">
+                  <div className="dash-field booking-card">
                     <label className="emp-label">تاريخ العودة (Date) — مثال: 21/02/2026</label>
                     <input
                       className="dash-input"
@@ -1697,7 +2156,7 @@ export default function DashboardEmployees() {
                     />
                   </div>
 
-                  <div className="dash-field">
+                  <div className="dash-field booking-card">
                     <label className="emp-label">ملاحظة للزبائن (اختياري)</label>
                     <input
                       className="dash-input"
@@ -1708,7 +2167,22 @@ export default function DashboardEmployees() {
                     />
                   </div>
 
-                  <div className="dash-field">
+                  <div className="dash-field booking-card">
+                    <label className="emp-label">آخر يوم دوام (في حال الاستقالة)</label>
+                    <input
+                      className="dash-input"
+                      type="date"
+                      value={employmentEndDate}
+                      disabled={loading}
+                      onChange={(e) => setEmploymentEndDate(e.target.value)}
+                    />
+                    <div className="emp-field-note danger">
+                      بعد هذا التاريخ لن تظهر الموظفة نهائيًا في صفحة الحجز.
+                    </div>
+                  </div>
+
+                  <div className="emp-booking-subtitle">الإجازات الأسبوعية</div>
+                  <div className="dash-field booking-card booking-full">
                     <label className="emp-label">إجازة استثنائية (يوم محدد)</label>
                     <div className="emp-inline-actions">
                       <select
@@ -1767,7 +2241,8 @@ export default function DashboardEmployees() {
                     )}
                   </div>
 
-                  <div className="dash-field">
+                  <div className="emp-booking-subtitle">ساعات الدوام الخاصة</div>
+                  <div className="dash-field booking-card booking-full">
                     <label className="emp-label emp-check-label">
                       <input
                         type="checkbox"
@@ -1780,7 +2255,7 @@ export default function DashboardEmployees() {
                   </div>
 
                   {modalUseCustomWorkingHours ? (
-                    <div className="dash-field emp-working-hours-block">
+                    <div className="dash-field booking-card booking-full emp-working-hours-block">
                       <label className="emp-label">الساعات الأسبوعية</label>
                       <div className="emp-working-week-grid">
                         {WEEKDAY_OPTIONS.map((d) => {
@@ -1829,7 +2304,7 @@ export default function DashboardEmployees() {
                   ) : null}
 
                   {modalUseCustomWorkingHours ? (
-                    <div className="dash-field emp-working-override-block">
+                    <div className="dash-field booking-card booking-full emp-working-override-block">
                       <label className="emp-label">استثناء ساعات يوم محدد</label>
                       <div className="emp-working-override-grid">
                         <div className="emp-working-override-form">
@@ -1937,7 +2412,7 @@ export default function DashboardEmployees() {
                 </div>
               </div>
 
-              <div className="emp-modal-section">
+              <div className={`emp-modal-section ${modalTab !== "profile" ? "is-hidden" : ""}`}>
                 <b className="emp-modal-section-title">ملف الموظفة</b>
                 <div className="emp-modal-fields">
                   <div className="dash-field">
@@ -1995,7 +2470,7 @@ export default function DashboardEmployees() {
                 </div>
               </div>
 
-              <div className="emp-modal-section">
+              <div className={`emp-modal-section ${modalTab !== "services" ? "is-hidden" : ""}`}>
                 <b className="emp-modal-section-title">الخدمات التي تقدمها الموظفة</b>
                 <div className="emp-picks-toolbar">
                   <input

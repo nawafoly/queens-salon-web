@@ -26,6 +26,7 @@ import {
   isStaffAvailableForDate,
   filterStaffSlotsByWorkingHours,
   isStaffWorkingAtTime,
+  isStaffEmploymentEndedForDate,
 } from "../helpers/staffAvailability";
 
 import { AppSettingsService } from "../services/AppSettingsService";
@@ -6494,7 +6495,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       const staffList = (staffByService[sid] || []) as StaffPublicWithId[];
                       const busy = busyByItem[it.id] || emptyBusyState();
                       const dateISO = String(it.date || "").trim();
-                      const visibleStaff = staffList.filter((st: any) => (st as any)?.showOnBooking !== false);
+                      const visibleStaff = staffList.filter(
+                        (st: any) =>
+                          (st as any)?.showOnBooking !== false &&
+                          !isStaffEmploymentEndedForDate(st as any, dateISO)
+                      );
                       const staffWithAvailability = visibleStaff.map((st) => {
                         const dayAvailable = isStaffAvailableForDate(st as any, dateISO, {
                           requireShowOnBooking: true,
@@ -6887,7 +6892,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     {Number(applied.discountAmount || 0) > 0 ? (
                       <div className="bk-discount-visual mt-2">
                         <div className="bk-discount-badge">
-                            : {String(applied.title || " ").trim()}
+                          الخصم المطبق: {String(applied.title || "خصم يدوي").trim()}
                         </div>
                         <div className="bk-discount-lines">
                           <div className="bk-discount-line is-before">
@@ -6936,31 +6941,32 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
                 {/* Manual Discount */}
                 <div className="mt-2">
-                  <div className="row g-2 align-items-end">
-                    <div className="col-12 col-md-6">
-                      <label className="form-label">  ()</label>
+                  <div className="row g-2 align-items-end bk-discount-editor">
+                    <div className="col-12 col-md-5">
+                      <label className="form-label">نوع الخصم</label>
                       <select
                         className="form-select"
                         value={manualDiscountType}
                         onChange={(e) => setManualDiscountType(String(e.target.value || "") as "" | "fixed" | "percent")}
                         disabled={isLoading}
                       >
-                        <option value=""> </option>
-                        <option value="fixed"> </option>
-                        <option value="percent"> %</option>
+                        <option value="">بدون خصم</option>
+                        <option value="fixed">خصم مبلغ ثابت (ريال)</option>
+                        <option value="percent">خصم نسبة مئوية (%)</option>
                       </select>
                     </div>
 
-                    <div className="col-12 col-md-3">
+                    <div className="col-12 col-md-4">
+                      <label className="form-label">قيمة الخصم</label>
                       <input
                         type="number"
                         min={0}
                         max={manualDiscountType === "percent" ? 100 : undefined}
                         step="1"
-                        className="form-control"
+                        className="form-control bk-discount-value-input"
                         value={manualDiscountValue}
                         onChange={(e) => setManualDiscountValue(String(e.target.value || ""))}
-                        placeholder={manualDiscountType === "percent" ? ": 10" : ": 50"}
+                        placeholder={manualDiscountType === "percent" ? "مثال: 10" : "مثال: 50"}
                         disabled={isLoading || !manualDiscountType}
                       />
                     </div>
@@ -6968,7 +6974,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     <div className="col-12 col-md-3">
                       {discountMsg ? (
                         <div
-                          className="alert alert-secondary mb-0 py-2"
+                          className="alert alert-secondary mb-0 py-2 bk-discount-msg"
                           style={{ borderRadius: 12, fontSize: 13 }}
                         >
                           {discountMsg}

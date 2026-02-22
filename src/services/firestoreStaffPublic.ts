@@ -6,6 +6,7 @@ export type StaffPublicDoc = {
   name: string;
   specialties: string[];
   active?: boolean;
+  employmentEndDate?: string;
   linkedUid?: string;
   showOnBooking?: boolean;
   onLeave?: boolean;
@@ -45,6 +46,27 @@ function normalizeIsoDates(v: any): string[] {
   return rows
     .map((x) => String(x || "").trim())
     .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+}
+
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function resolveEmploymentEndDate(raw: any): string {
+  const candidates = [
+    raw?.employmentEndDate,
+    raw?.lastWorkingDate,
+    raw?.resignationDate,
+  ];
+  for (const c of candidates) {
+    const s = String(c || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  }
+  return "";
 }
 
 function normalizeWeekdays(v: any): string[] {
@@ -113,6 +135,7 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
         name: String(data?.name ?? "").trim(),
         specialties: normalizeArray(data?.specialties),
         active: data?.active !== false,
+        employmentEndDate: resolveEmploymentEndDate(data) || undefined,
         linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
         showOnBooking: data?.showOnBooking !== false,
         onLeave: !!data?.onLeave,
@@ -126,7 +149,13 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
       } as StaffPublicWithId;
     });
 
-    const activeOnly = all.filter((x) => x.active);
+    const today = todayISO();
+    const activeOnly = all.filter((x) => {
+      if (!x.active) return false;
+      const endDate = String((x as any)?.employmentEndDate || "").trim();
+      if (endDate && today > endDate) return false;
+      return true;
+    });
     console.log("[staff_public] listActiveStaffAll active =", activeOnly.length);
     return activeOnly;
   } catch (e: any) {
@@ -156,6 +185,7 @@ export async function listActiveStaffBySpecialty(args: {
         name: String(data?.name ?? "").trim(),
         specialties: normalizeArray(data?.specialties),
         active: data?.active !== false,
+        employmentEndDate: resolveEmploymentEndDate(data) || undefined,
         linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
         showOnBooking: data?.showOnBooking !== false,
         onLeave: !!data?.onLeave,
@@ -169,8 +199,11 @@ export async function listActiveStaffBySpecialty(args: {
       } as StaffPublicWithId;
     });
 
+    const today = todayISO();
     const filtered = all.filter((staff) => {
       if (!staff.active) return false;
+      const endDate = String((staff as any)?.employmentEndDate || "").trim();
+      if (endDate && today > endDate) return false;
       const specs = normalizeArray(staff.specialties);
       return specs.some((sp) => norm(sp) === wanted);
     });
