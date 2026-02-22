@@ -107,16 +107,14 @@
 
 /* ✅ quick stats */
 .income-page .income-quick {
-  display: flex;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;
 }
 
 .income-page .income-quick .stat-card {
-  flex: 1 0 0;
-  min-width: 180px;
+  width: 100%;
 }
 
 /* ✅ stat-card ستايل خاص بالدخل */
@@ -146,7 +144,7 @@
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
   font-size: clamp(1rem, 3.8vw, 1.6rem);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .income-page .stat-card .stat-info p {
@@ -381,12 +379,36 @@
   opacity: 0.95;
 }
 
+@media (max-width: 1100px) {
+  .income-page .income-quick {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 768px) {
+  .income-page .income-quick {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .income-page .stat-card.stat-card-total {
+    grid-column: span 2;
+  }
+
   .income-page .income-actions {
     width: 100%;
   }
   .income-page .dash-pill {
     width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .income-page .income-quick {
+    grid-template-columns: 1fr;
+  }
+
+  .income-page .stat-card.stat-card-total {
+    grid-column: auto;
   }
 }
 

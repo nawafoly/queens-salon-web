@@ -11,6 +11,9 @@
   --bk-shadow: 0 12px 30px rgba(61, 36, 23, 0.08);
   min-height: 100vh;
   color: var(--bk-text);
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top right, rgba(201, 156, 123, 0.2), transparent 40%),
     linear-gradient(180deg, #fffdf9 0%, var(--bk-bg) 100%);
@@ -19,10 +22,18 @@
 .bk-internal .booking-page {
   padding-top: 2rem !important;
   padding-bottom: 2rem !important;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .bk-internal .bk-internal-container {
-  max-width: 1100px;
+  max-width: none !important;
+  width: 100%;
+  min-width: 0;
+  padding-left: 24px;
+  padding-right: 24px;
+  overflow-x: hidden;
 }
 
 .bk-internal .bk-logo {
@@ -52,6 +63,45 @@
   border-radius: 16px;
   background: var(--bk-panel);
   box-shadow: var(--bk-shadow);
+}
+
+.bk-internal .bk-client-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.bk-internal .bk-client-section .bk-existing-booking-block {
+  order: 1;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  border-top: none !important;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px dashed #e2cdbb;
+}
+
+.bk-internal .bk-client-section .bk-client-search-block {
+  order: 2;
+}
+
+.bk-internal .bk-client-section .bk-quick-select-block {
+  order: 3;
+}
+
+.bk-internal .bk-service-section .bk-service-date-block {
+  order: 1;
+}
+
+.bk-internal .bk-service-section .bk-service-client-fields {
+  order: 2;
+}
+
+.bk-internal .bk-service-section .bk-service-hair-guide {
+  order: 3;
+}
+
+.bk-internal .bk-service-section .bk-service-picker-block {
+  order: 4;
 }
 
 .bk-internal .bk-modal-panel {
@@ -160,6 +210,19 @@
   color: #fff;
 }
 
+.bk-internal .bk-action-confirm.bk-action-confirm-alt {
+  color: #1f4e79;
+  background: #e9f3ff;
+  border: 1px solid #9bc2ee;
+}
+
+.bk-internal .bk-action-confirm.bk-action-confirm-alt:hover,
+.bk-internal .bk-action-confirm.bk-action-confirm-alt:focus {
+  color: #153b5c;
+  background: #dbeaff;
+  border-color: #7eb0ea;
+}
+
 .bk-internal .bk-action-print {
   color: #5b3f2f;
   background: #fff7ef;
@@ -173,6 +236,19 @@
   border-color: #b68764;
 }
 
+.bk-internal .bk-action-refund {
+  color: #8a1d2e;
+  background: #fdecef;
+  border: 1px solid #e6b2bb;
+}
+
+.bk-internal .bk-action-refund:hover,
+.bk-internal .bk-action-refund:focus {
+  color: #6e1423;
+  background: #fadbe1;
+  border-color: #d98594;
+}
+
 .bk-internal .bk-action-details {
   color: #5a4a3f;
   background: #f8f1ea;
@@ -184,6 +260,62 @@
   color: #3b2f28;
   background: #f1e6da;
   border-color: #c7ad95;
+}
+
+.bk-internal .bk-existing-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.bk-internal .bk-existing-actions .btn {
+  width: 100%;
+  min-height: 44px;
+  font-size: 0.78rem;
+  padding-inline: 0.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.bk-internal .bk-payment-method-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bk-internal .bk-payment-method-btn {
+  width: 100%;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border-width: 2px;
+  font-weight: 800;
+  color: #5b3f2f;
+  background: #fff7ef;
+  border-color: #d6baa3;
+}
+
+.bk-internal .bk-payment-method-btn:hover,
+.bk-internal .bk-payment-method-btn:focus {
+  color: #3f2c21;
+  background: #fbe9d8;
+  border-color: #b68764;
+}
+
+.bk-internal .bk-payment-method-btn.is-active {
+  color: #fff;
+  background: var(--bk-primary);
+  border-color: var(--bk-primary);
+}
+
+.bk-internal .bk-payment-method-btn.is-active:hover,
+.bk-internal .bk-payment-method-btn.is-active:focus {
+  background: var(--bk-primary-dark);
+  border-color: var(--bk-primary-dark);
 }
 
 .bk-internal .bk-booking-details {
@@ -274,6 +406,12 @@
   border-color: #a8d1e2;
 }
 
+.bk-internal .bk-status-refunded {
+  color: #8a1d2e;
+  background: #fdecef;
+  border-color: #e3a0ab;
+}
+
 .bk-internal .bk-status-default {
   color: #5a4a3f;
   background: #f5f1ec;
@@ -281,6 +419,14 @@
 }
 
 @media (max-width: 768px) {
+  .bk-internal .bk-existing-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .bk-internal .bk-payment-method-grid {
+    grid-template-columns: 1fr;
+  }
+
   .bk-internal .bk-booking-row {
     grid-template-columns: 1fr;
   }
@@ -423,6 +569,14 @@
   border-spacing: 0;
   border-radius: 14px;
   overflow: hidden;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.bk-internal .table-responsive {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden !important;
 }
 
 .bk-internal .table.table-dark {
@@ -450,6 +604,9 @@
 .bk-internal .table td,
 .bk-internal .table th {
   vertical-align: middle;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .bk-internal .table .form-select {
@@ -588,6 +745,12 @@
   font-weight: 700;
 }
 
+.bk-internal .bk-cart-head-delete-btn {
+  border-radius: 999px;
+  padding-inline: 0.7rem;
+  min-height: 34px;
+}
+
 .bk-internal .bk-cart-item.is-collapsed {
   padding-bottom: 0.7rem;
 }
@@ -693,6 +856,11 @@
   justify-content: space-between;
   gap: 0.7rem;
   flex-wrap: wrap;
+}
+
+.bk-internal .bk-cart-delete-btn {
+  min-height: 42px;
+  padding-inline: 0.9rem;
 }
 
 .bk-internal .bk-cart-confirmed-preview {
@@ -924,6 +1092,11 @@
 }
 
 @media (max-width: 768px) {
+  .bk-internal .bk-internal-container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
   .bk-internal .bk-title {
     font-size: 0.95rem;
   }
@@ -963,5 +1136,15 @@
   .bk-internal .bk-time-debug-row {
     grid-template-columns: 1fr;
     gap: 0.2rem;
+  }
+
+  .bk-internal .bk-cart-actions {
+    width: 100%;
+  }
+
+  .bk-internal .bk-cart-delete-btn {
+    width: 100%;
+    flex: 0 0 100%;
+    min-height: 48px;
   }
 }

@@ -234,12 +234,19 @@
   align-items: center;
 }
 
+.qs-modal-panel.emp-modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .emp-modal .modal-body.emp-modal-grid {
   padding: 24px !important;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-height: 70vh;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -379,6 +386,23 @@ h1, h2, h3, h4, h5, h6 {
   padding: 8px 12px;
   min-height: 38px;
   font-weight: 700;
+}
+
+.emp-modal .exp-btn.primary {
+  background: #40010D;
+  border-color: #40010D;
+  color: #ffffff;
+}
+
+.emp-modal .exp-btn.primary:hover {
+  background: #2e0009;
+  border-color: #2e0009;
+}
+
+.emp-modal .exp-btn.ghost {
+  background: rgba(64, 1, 13, 0.06);
+  border-color: rgba(64, 1, 13, 0.22);
+  color: #40010D;
 }
 
 /* Card enhancements: monthly performance + leave balance */
@@ -659,5 +683,148 @@ h1, h2, h3, h4, h5, h6 {
 @media (max-width: 640px) {
   .emp-page-wrapper .staff-card-cover .staff-avatar-box {
     height: 170px !important;
+  }
+}
+
+/* Booking settings layout inside employee modal */
+.emp-modal .emp-booking-settings {
+  gap: 14px;
+}
+
+.emp-modal .emp-booking-settings > .dash-field {
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.emp-modal .emp-check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  font-weight: 800;
+  color: #111827;
+}
+
+.emp-modal .emp-check-label input,
+.emp-modal .emp-mini-check input {
+  accent-color: #40010D;
+}
+
+.emp-modal .emp-inline-actions {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.emp-modal .emp-tags-row {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.emp-modal .emp-field-note {
+  margin-top: 4px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.emp-modal .emp-field-note.danger {
+  color: #9f1239;
+}
+
+.emp-modal .emp-working-hours-block,
+.emp-modal .emp-working-override-block {
+  background: #f9fafb;
+}
+
+.emp-modal .emp-working-week-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.emp-modal .emp-working-day-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 86px 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 10px;
+  padding: 8px;
+  background: #fff;
+}
+
+.emp-modal .emp-working-day-name {
+  font-weight: 800;
+  color: #111827;
+}
+
+.emp-modal .emp-mini-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.emp-modal .emp-working-override-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.emp-modal .emp-working-override-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  align-items: center;
+}
+
+.emp-modal .emp-override-list {
+  display: grid;
+  gap: 6px;
+}
+
+.emp-modal .emp-override-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.emp-modal .emp-override-item-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+@media (max-width: 780px) {
+  .emp-modal .emp-inline-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .emp-modal .emp-working-day-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .emp-modal .emp-working-day-name {
+    grid-column: 1 / -1;
+  }
+
+  .emp-modal .emp-mini-check {
+    justify-self: start;
+  }
+
+  .emp-modal .emp-override-item {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

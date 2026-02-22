@@ -708,3 +708,34 @@
   }
 }
 
+/* Mobile overflow hardening across dashboard pages */
+@media (max-width: 900px) {
+  .dashboard-page,
+  .dashboard-main,
+  .dashboard-inner {
+    max-width: 100%;
+    overflow-x: hidden !important;
+  }
+
+  .dashboard-main > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .dashboard-main .table-responsive {
+    max-width: 100%;
+    overflow-x: hidden !important;
+  }
+
+  .dashboard-main table {
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  .dashboard-main th,
+  .dashboard-main td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+

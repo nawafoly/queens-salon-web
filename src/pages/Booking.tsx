@@ -23,7 +23,11 @@ import {
 } from "../helpers/timeSlots";
 import { formatTime12 } from "../helpers/timeDisplay";
 
-import { isStaffAvailableForDate } from "../helpers/staffAvailability";
+import {
+  isStaffAvailableForDate,
+  filterStaffSlotsByWorkingHours,
+  isStaffWorkingAtTime,
+} from "../helpers/staffAvailability";
 import { AppSettingsService } from "../services/AppSettingsService";
 
 import "../styles/Booking.css";
@@ -3309,6 +3313,7 @@ function findCartOverlap(items: CartItem[]) {
     durationMin: number;
     take: number;
     localTakenTimes?: Set<string>;
+    staff?: StaffPublicWithId | null;
   }) {
     const {
       salonId,
@@ -3318,6 +3323,7 @@ function findCartOverlap(items: CartItem[]) {
       durationMin,
       take,
       localTakenTimes,
+      staff,
     } = args;
 
     const baseSlots =
@@ -3348,6 +3354,16 @@ function findCartOverlap(items: CartItem[]) {
 
     if (!slotsForThisService.length) return [];
 
+    const staffScopedSlots = staff
+      ? filterStaffSlotsByWorkingHours(staff as any, {
+          dateISO,
+          slots: slotsForThisService,
+          fallbackOpenTime: openTime,
+          fallbackCloseTime: closeTime,
+        })
+      : slotsForThisService;
+    if (!staffScopedSlots.length) return [];
+
     const greens = getGreenStartTimes({
       allSlots: baseSlots,
       slotStepMin,
@@ -3357,7 +3373,7 @@ function findCartOverlap(items: CartItem[]) {
     });
 
     const list = sortTimesBySlotOrder(
-      slotsForThisService
+      staffScopedSlots
       .map((s) => s.value24)
       .filter((t) => greens.has(t)),
       baseSlots
@@ -3458,6 +3474,7 @@ function findCartOverlap(items: CartItem[]) {
           durationMin,
           take: 288,
           localTakenTimes: localTaken,
+          staff: st,
         });
         if (starts.includes(time24)) {
           chosenStaff = st;
@@ -3488,6 +3505,7 @@ function findCartOverlap(items: CartItem[]) {
         durationMin,
         take: 288,
         localTakenTimes: localTaken,
+        staff: chosenStaff,
       });
       if (!starts.includes(time24)) {
         chosenStaff = null;
@@ -3607,6 +3625,7 @@ function findCartOverlap(items: CartItem[]) {
               durationMin,
               take: 5,
               localTakenTimes: localTaken,
+              staff: staff || null,
             });
 
             if (dayTimes.length && fixedName) {
@@ -3646,6 +3665,7 @@ function findCartOverlap(items: CartItem[]) {
               durationMin,
               take: 5,
               localTakenTimes: localTaken,
+              staff: st,
             });
             if (times.length) {
               const stName = String((st as any)?.name || "").trim();
@@ -3786,6 +3806,7 @@ function findCartOverlap(items: CartItem[]) {
             durationMin,
             take: 1,
             localTakenTimes: localTaken,
+            staff: st,
           });
 
           if (times.length) {
@@ -4170,6 +4191,19 @@ function findCartOverlap(items: CartItem[]) {
     const date = String(it.date || "").trim();
     const time = String(it.time || "").trim();
     if (!employeeKey || !date || !time) return { ok: false, msg: "بيانات الوقت ناقصة" };
+    const staffList = (staffByService[String(it.serviceId || "").trim()] || []) as StaffPublicWithId[];
+    const staff = staffList.find((s: any) => String(s?.id || "").trim() === String(it.employeeId || "").trim());
+    if (
+      staff &&
+      !isStaffWorkingAtTime(staff as any, {
+        dateISO: date,
+        time24: time,
+        fallbackOpenTime: openTime,
+        fallbackCloseTime: closeTime,
+      })
+    ) {
+      return { ok: false, msg: "الوقت المختار خارج ساعات عمل الموظفة في هذا اليوم." };
+    }
 
     const timesToCheck = getTimesToLock(
       timeSlots,
@@ -4284,7 +4318,18 @@ function findCartOverlap(items: CartItem[]) {
       if (!d || !t) return false;
       const cfg = getDaySettingsForDate(d);
       const slots = generateSalonTimeSlots(cfg.openTime, cfg.closeTime, slotStepMin);
-      return !slots.some((s) => String(s.value24 || "").trim() === t);
+      if (!slots.some((s) => String(s.value24 || "").trim() === t)) return true;
+      const staffList = (staffByService[String(it.serviceId || "").trim()] || []) as StaffPublicWithId[];
+      const staff = staffList.find(
+        (s: any) => String(s?.id || "").trim() === String(it.employeeId || "").trim()
+      );
+      if (!staff) return false;
+      return !isStaffWorkingAtTime(staff as any, {
+        dateISO: d,
+        time24: t,
+        fallbackOpenTime: cfg.openTime,
+        fallbackCloseTime: cfg.closeTime,
+      });
     });
     if (outOfHoursItem) {
       const d = String(outOfHoursItem.date || bookingDate || "").trim();
@@ -5644,14 +5689,27 @@ function findCartOverlap(items: CartItem[]) {
                         const bookingVisibleStaff = serviceStaff.filter(
                           (st) => (st as any)?.showOnBooking !== false
                         );
-                        const staffWithLeaveMeta = bookingVisibleStaff.map((st) => ({
-                          staff: st,
-                          leave: getStaffLeaveMetaForDate(st, dateISO),
-                        }));
+                        const staffWithLeaveMeta = bookingVisibleStaff.map((st) => {
+                          const leave = getStaffLeaveMetaForDate(st, dateISO);
+                          const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
+                            dateISO,
+                            slots: baseSlotsForUi,
+                            fallbackOpenTime: openTime,
+                            fallbackCloseTime: closeTime,
+                          });
+                          return {
+                            staff: st,
+                            leave,
+                            hasWorkingHours: workingSlots.length > 0,
+                          };
+                        });
                         const availableStaff = staffWithLeaveMeta
-                          .filter((x) => !x.leave.isOnLeave)
+                          .filter((x) => !x.leave.isOnLeave && x.hasWorkingHours)
                           .map((x) => x.staff);
                         const leaveBlockedStaff = staffWithLeaveMeta.filter((x) => x.leave.isOnLeave);
+                        const workingHoursBlockedStaff = staffWithLeaveMeta.filter(
+                          (x) => !x.leave.isOnLeave && !x.hasWorkingHours
+                        );
                         const staffLoading = !!staffLoadingByService[it.serviceId];
                         const staffError = staffErrorByService[it.serviceId] || "";
                         const selectedEmployeeAvailable = availableStaff.some(
@@ -5701,7 +5759,18 @@ function findCartOverlap(items: CartItem[]) {
                           bufferMin,
                           ALLOW_OVERTIME_MIN
                         );
-                        const availableSlotsForItem = slotsForThisService.filter(
+                        const selectedStaffForTime = bookingVisibleStaff.find(
+                          (x) => String(x.id || "").trim() === String(it.employeeId || "").trim()
+                        );
+                        const slotsForSelectedStaff = selectedStaffForTime
+                          ? filterStaffSlotsByWorkingHours(selectedStaffForTime as any, {
+                              dateISO,
+                              slots: slotsForThisService,
+                              fallbackOpenTime: openTime,
+                              fallbackCloseTime: closeTime,
+                            })
+                          : slotsForThisService;
+                        const availableSlotsForItem = slotsForSelectedStaff.filter(
                           (s) => !busy.disabledStartTimes.has(s.value24)
                         );
                         const nearestAvailableStart =
@@ -6004,6 +6073,13 @@ function findCartOverlap(items: CartItem[]) {
                                         if (!emp) return;
                                         const leaveMeta = getStaffLeaveMetaForDate(emp, dateISO);
                                         if (leaveMeta.isOnLeave) return;
+                                        const hasWorkingHours = filterStaffSlotsByWorkingHours(emp as any, {
+                                          dateISO,
+                                          slots: slotsForThisService,
+                                          fallbackOpenTime: openTime,
+                                          fallbackCloseTime: closeTime,
+                                        }).length > 0;
+                                        if (!hasWorkingHours) return;
                                         updateItem(it.id, {
                                           employeeId: empId,
                                           employeeUid: emp?.linkedUid || "",
@@ -6013,9 +6089,13 @@ function findCartOverlap(items: CartItem[]) {
                                       }}
                                     >
                                       <option value=""> اختاري الموظفة</option>
-                                      {staffWithLeaveMeta.map(({ staff: emp, leave }) => (
-                                        <option key={emp.id} value={emp.id} disabled={leave.isOnLeave}>
-                                          {leave.isOnLeave ? `${emp.name} (${leave.label})` : emp.name}
+                                      {staffWithLeaveMeta.map(({ staff: emp, leave, hasWorkingHours }) => (
+                                        <option key={emp.id} value={emp.id} disabled={leave.isOnLeave || !hasWorkingHours}>
+                                          {leave.isOnLeave
+                                            ? `${emp.name} (${leave.label})`
+                                            : !hasWorkingHours
+                                              ? `${emp.name} (خارج ساعات العمل)`
+                                              : emp.name}
                                         </option>
                                       ))}
                                     </select>
@@ -6026,6 +6106,11 @@ function findCartOverlap(items: CartItem[]) {
                                   {leaveBlockedStaff.length > 0 && (
                                     <div className="text-muted small mt-1">
                                       الموظفات المعلّمات بعبارة "في إجازة" لا يمكن اختيارهن.
+                                    </div>
+                                  )}
+                                  {workingHoursBlockedStaff.length > 0 && (
+                                    <div className="text-muted small mt-1">
+                                      بعض الموظفات خارج ساعات العمل في هذا اليوم.
                                     </div>
                                   )}
                                   {!selectedEmployeeAvailable && String(it.employeeId || "").trim() && (

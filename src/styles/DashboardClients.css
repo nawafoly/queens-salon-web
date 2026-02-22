@@ -9,6 +9,8 @@
   direction: rtl;
   font-family: "Tajawal", Arial, sans-serif;
   color: #0D0D0D;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 /* Override global typography color from index.css (dark theme) */
@@ -56,10 +58,11 @@
   font-weight: 900;
   font-size: 13px;
   margin-bottom: 10px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
   color: #0D0D0D;
+  width: 100%;
 }
 
 /* Error card (بدل inline styles) */
@@ -84,12 +87,13 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap; /* بالموبايل ينزلون تحت */
+  width: 100%;
 }
 
 /* الانبت هو اللي يتمدد */
 .clients-page .cl-form .cl-input {
   flex: 1;
-  min-width: 240px;
+  min-width: 180px;
 }
 
 /* ✅ السلكت لا يتمدد */
@@ -105,6 +109,11 @@
   white-space: nowrap;
   font-size: 13px;
   padding: 10px 12px;
+  min-height: 44px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Input (يدعم input مباشرة + يدعم .cl-input) */
@@ -116,11 +125,32 @@
   padding: 10px 10px;
   outline: none;
   font-size: 14px;
+  min-height: 44px;
+  line-height: 1.35;
+  text-align: right;
+  direction: rtl;
 
   /* ✅ Fix: لا يأخذ لون غامق من ستايل عام */
   background: #fff;
   color: #0D0D0D;
   caret-color: #0D0D0D;
+}
+
+.clients-page .cl-form input::placeholder,
+.clients-page .cl-form .cl-input::placeholder {
+  color: #7a7a7a;
+  opacity: 1;
+}
+
+.clients-page .cl-form .reports-btn.cl-export,
+.clients-page .cl-form .cl-sort-btn {
+  min-height: 44px;
+  line-height: 1.2;
+  font-size: 14px;
+}
+
+.clients-page .cl-form .reports-btn.cl-export {
+  gap: 8px;
 }
 
 
@@ -133,8 +163,8 @@
 /* hint */
 .clients-page .mini-hint {
   margin-top: 8px;
-  font-size: 12px;
-  color: #777;
+  font-size: 13px;
+  color: #5f5f5f;
 }
 
 /* Buttons */
@@ -207,6 +237,12 @@
   .clients-page .cl-form {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
+  }
+
+  .clients-page .cl-form > * {
+    width: 100%;
+    min-width: 0 !important;
   }
 
   .clients-page .cl-btn {
@@ -216,6 +252,23 @@
 
   .clients-page .cl-select {
     width: 100%;
+  }
+
+  .clients-page .cl-form .cl-sort-wrap,
+  .clients-page .cl-form .cl-sort-btn,
+  .clients-page .cl-form .reports-btn.cl-export {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .clients-page .cl-form .cl-sort-wrap {
+    display: block;
+  }
+
+  .clients-page .cl-form .cl-sort-btn {
+    min-height: 44px;
+    justify-content: center;
+    text-align: center;
   }
 }
 
@@ -564,6 +617,9 @@
 .clients-page .clients-stats .cl-topValue {
   margin: 0;
   font-weight: 900;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Summary + notes inside modal */
@@ -637,12 +693,43 @@
     padding: 12px;
   }
 
+  .clients-page .cl-mini {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
   .clients-page .clients-header {
     align-items: flex-start;
   }
 
   .clients-page .clients-header h1 {
     font-size: 19px;
+  }
+
+  .clients-page .clients-header > div {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .clients-page .mini-hint {
+    margin-top: 8px;
+    font-size: 13px;
+    text-align: right;
+    color: #5a5a5a;
+  }
+
+  .clients-page .clients-stats .stat-card {
+    min-height: 84px;
+    border-radius: 14px;
+    padding: 12px;
+  }
+
+  .clients-page .clients-stats .stat-info h3 {
+    font-size: 24px;
+  }
+
+  .clients-page .clients-stats .stat-info p {
+    font-size: 12px;
   }
 
   .clients-page .clients-table-card {

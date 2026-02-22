@@ -825,6 +825,10 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  const shouldCreateIncomeOnCreate = statusNow === "confirmed" || statusNow === "completed";
+  const incomeAmount = Number(data.finalPrice ?? data.total ?? serviceSnapshot.priceAtBooking ?? 0) || 0;
+  const incomeMethod = resolvedPaymentMethod || "transfer";
+  const incomeStatus = statusNow === "completed" ? "completed" : "confirmed";
 
   // ✅✅✅ FIX: reads before writes inside transaction
   const { bookingId, publicId } = await runTransaction(db, async (tx) => {
@@ -926,6 +930,30 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     // ✅ write booking
     tx.set(bookingRef, payload);
 
+    // ✅ atomic income write with booking creation
+    if (shouldCreateIncomeOnCreate) {
+      const incomeRef = doc(db, ...INCOME_COL, bookingRef.id);
+      tx.set(
+        incomeRef,
+        stripUndefined({
+          source: "booking",
+          bookingId: bookingRef.id,
+          amount: incomeAmount,
+          status: incomeStatus,
+          method: incomeMethod,
+          date: data.date,
+          clientName: data.clientName,
+          clientNameLower: String(data.clientName || "").toLowerCase(),
+          clientPhone: data.clientPhone,
+          serviceName: serviceSnapshot?.serviceNameAtBooking || data.serviceName,
+          employeeName: data.employeeName,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }) as any,
+        { merge: true } as any
+      );
+    }
+
     return { bookingId: bookingRef.id, publicId };
   });
 
@@ -989,51 +1017,6 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
       total: Number(data.finalPrice ?? data.total ?? 0),
     },
   });
-
-  // ✅ NEW: create income on CREATE when booking is created as confirmed/completed (Dashboard internal)
-  // - prevents "income=0" when booking is created directly as confirmed
-  // - uniqueness: income docId = bookingId
-  try {
-    const shouldCreateIncome = data.status === "confirmed" || data.status === "completed";
-    if (shouldCreateIncome) {
-      const incomeRef = doc(db, ...INCOME_COL, bookingId);
-      const existing = await getDoc(incomeRef);
-
-      if (!existing.exists()) {
-        const amount = Number(data.finalPrice ?? data.total ?? serviceSnapshot.priceAtBooking ?? 0) || 0;
-        const method = resolvePaymentMethodForStatus(
-          statusNow,
-          (data as any).paymentMethod,
-          data.note
-        ) || "transfer";
-
-        await setDoc(
-          incomeRef,
-          stripUndefined({
-            source: "booking",
-            bookingId,
-            amount,
-            status: data.status === "completed" ? "completed" : "confirmed",
-            method,
-
-            date: data.date,
-            clientName: data.clientName,
-            clientNameLower: String(data.clientName || "").toLowerCase(),
-            clientPhone: data.clientPhone,
-
-            serviceName: serviceSnapshot?.serviceNameAtBooking || data.serviceName,
-            employeeName: data.employeeName,
-
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          }) as any
-        );
-      }
-    }
-  } catch (e) {
-    console.error("[createBooking] income create failed (ignored):", e);
-  }
-
 
   return { id: bookingId, publicId };
 }

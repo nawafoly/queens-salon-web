@@ -61,6 +61,9 @@ type StaffPublicDoc = {
   leaveNote?: string;
   exceptionalLeaveDates?: string[];
   exceptionalLeaveWeekdays?: string[];
+  useCustomWorkingHours?: boolean;
+  customWorkingHours?: Partial<Record<WeekdayKey, StaffWorkingDay>>;
+  customWorkingHourOverrides?: StaffWorkingHourOverride[];
 
   specialties: string[];
   bio?: string;
@@ -82,6 +85,19 @@ type LeaveEntry = {
   createdAtIso: string;
   byUid?: string;
   byName?: string;
+};
+
+type StaffWorkingDay = {
+  enabled?: boolean;
+  start?: string;
+  end?: string;
+};
+
+type StaffWorkingHourOverride = {
+  date: string;
+  enabled?: boolean;
+  start?: string;
+  end?: string;
 };
 
 type StaffPublicUi = StaffPublicDoc & { id: string };
@@ -246,6 +262,18 @@ function fmtIsoDate(v?: string) {
   return d.toLocaleDateString("ar-SA", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
+function addDaysIso(dateIso: string, days: number) {
+  const s = normalizeLeaveUntil(dateIso);
+  if (!s) return "";
+  const d = new Date(`${s}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + Math.trunc(days || 0));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function parsePositiveInt(v: string, fallback = 0) {
   const n = Number(v);
   if (!Number.isFinite(n)) return fallback;
@@ -296,6 +324,58 @@ function normalizeExceptionalLeaveWeekdays(v: any): WeekdayKey[] {
   ) as WeekdayKey[];
 }
 
+function normalizeTimeHHMM(v: any) {
+  const s = String(v || "").trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return "";
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return "";
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return "";
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function createDefaultWorkingHours(): Record<WeekdayKey, StaffWorkingDay> {
+  return {
+    sat: { enabled: true, start: "10:00", end: "22:00" },
+    sun: { enabled: true, start: "10:00", end: "22:00" },
+    mon: { enabled: true, start: "10:00", end: "22:00" },
+    tue: { enabled: true, start: "10:00", end: "22:00" },
+    wed: { enabled: true, start: "10:00", end: "22:00" },
+    thu: { enabled: true, start: "10:00", end: "22:00" },
+    fri: { enabled: true, start: "10:00", end: "22:00" },
+  };
+}
+
+function normalizeWorkingHours(v: any): Record<WeekdayKey, StaffWorkingDay> {
+  const defaults = createDefaultWorkingHours();
+  const src = v && typeof v === "object" ? v : {};
+  const out = { ...defaults };
+  WEEKDAY_OPTIONS.forEach((d) => {
+    const row = (src as any)?.[d.key];
+    if (!row || typeof row !== "object") return;
+    out[d.key] = {
+      enabled: row.enabled !== false,
+      start: normalizeTimeHHMM(row.start) || defaults[d.key].start,
+      end: normalizeTimeHHMM(row.end) || defaults[d.key].end,
+    };
+  });
+  return out;
+}
+
+function normalizeWorkingHourOverrides(v: any): StaffWorkingHourOverride[] {
+  const rows = Array.isArray(v) ? v : [];
+  return rows
+    .map((row: any) => ({
+      date: normalizeLeaveUntil(row?.date),
+      enabled: row?.enabled !== false,
+      start: normalizeTimeHHMM(row?.start) || "10:00",
+      end: normalizeTimeHHMM(row?.end) || "22:00",
+    }))
+    .filter((row) => row.date)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
 /* =========================
    Component
 ========================= */
@@ -337,6 +417,20 @@ export default function DashboardEmployees() {
   // ✅ جديد
   const [showOnAbout, setShowOnAbout] = useState(true);
   const [showOnBooking, setShowOnBooking] = useState(true);
+  const [modalOnLeave, setModalOnLeave] = useState(false);
+  const [modalLeaveUntil, setModalLeaveUntil] = useState("");
+  const [modalLeaveNote, setModalLeaveNote] = useState("");
+  const [modalExceptionalLeaveWeekdays, setModalExceptionalLeaveWeekdays] = useState<WeekdayKey[]>([]);
+  const [modalLeaveWeekdayDraft, setModalLeaveWeekdayDraft] = useState<WeekdayKey | "">("");
+  const [modalUseCustomWorkingHours, setModalUseCustomWorkingHours] = useState(false);
+  const [modalCustomWorkingHours, setModalCustomWorkingHours] =
+    useState<Record<WeekdayKey, StaffWorkingDay>>(createDefaultWorkingHours());
+  const [modalCustomHourOverrides, setModalCustomHourOverrides] = useState<StaffWorkingHourOverride[]>([]);
+  const [modalHourOverrideFromDate, setModalHourOverrideFromDate] = useState("");
+  const [modalHourOverrideToDate, setModalHourOverrideToDate] = useState("");
+  const [modalHourOverrideStart, setModalHourOverrideStart] = useState("10:00");
+  const [modalHourOverrideEnd, setModalHourOverrideEnd] = useState("22:00");
+  const [modalHourOverrideEnabled, setModalHourOverrideEnabled] = useState(true);
 
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
@@ -359,6 +453,19 @@ export default function DashboardEmployees() {
     // ✅ جديد
     setShowOnAbout(true);
     setShowOnBooking(true);
+    setModalOnLeave(false);
+    setModalLeaveUntil("");
+    setModalLeaveNote("");
+    setModalExceptionalLeaveWeekdays([]);
+    setModalLeaveWeekdayDraft("");
+    setModalUseCustomWorkingHours(false);
+    setModalCustomWorkingHours(createDefaultWorkingHours());
+    setModalCustomHourOverrides([]);
+    setModalHourOverrideFromDate("");
+    setModalHourOverrideToDate("");
+    setModalHourOverrideStart("10:00");
+    setModalHourOverrideEnd("22:00");
+    setModalHourOverrideEnabled(true);
 
     setSpecialties([]);
     setLeaveAdjustDays("1");
@@ -375,6 +482,25 @@ export default function DashboardEmployees() {
     setCvUrl((x as any).cvUrl ?? "");
     setActive(!!x.active);
     setShowOnBooking((x as any).showOnBooking !== false);
+    const initialLeaveUntil = normalizeLeaveUntil((x as any).leaveUntil);
+    const initialLeaveExpired = !!initialLeaveUntil && initialLeaveUntil < todayIso();
+    setModalOnLeave(!!(x as any).onLeave && !initialLeaveExpired);
+    setModalLeaveUntil(initialLeaveUntil);
+    setModalLeaveNote(String((x as any).leaveNote || ""));
+    setModalExceptionalLeaveWeekdays(
+      normalizeExceptionalLeaveWeekdays((x as any).exceptionalLeaveWeekdays)
+    );
+    setModalLeaveWeekdayDraft("");
+    setModalUseCustomWorkingHours(!!(x as any).useCustomWorkingHours);
+    setModalCustomWorkingHours(normalizeWorkingHours((x as any).customWorkingHours));
+    setModalCustomHourOverrides(
+      normalizeWorkingHourOverrides((x as any).customWorkingHourOverrides)
+    );
+    setModalHourOverrideFromDate("");
+    setModalHourOverrideToDate("");
+    setModalHourOverrideStart("10:00");
+    setModalHourOverrideEnd("22:00");
+    setModalHourOverrideEnabled(true);
 
     // ✅ جديد
     setShowOnAbout((x as any).showOnAbout !== false);
@@ -412,6 +538,9 @@ export default function DashboardEmployees() {
           leaveNote: String(data?.leaveNote || ""),
           exceptionalLeaveDates: normalizeExceptionalLeaveDates(data?.exceptionalLeaveDates),
           exceptionalLeaveWeekdays: normalizeExceptionalLeaveWeekdays(data?.exceptionalLeaveWeekdays),
+          useCustomWorkingHours: !!data?.useCustomWorkingHours,
+          customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
+          customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
 
           specialties: normalizeSpecialties(data?.specialties),
           bio: data?.bio ?? "",
@@ -819,13 +948,31 @@ export default function DashboardEmployees() {
 
     setLoading(true);
     setErrorMsg("");
+    const normalizedModalLeaveUntil = normalizeLeaveUntil(modalLeaveUntil);
+    const modalLeaveExpired = !!normalizedModalLeaveUntil && normalizedModalLeaveUntil < todayIso();
+    const effectiveModalOnLeave = modalOnLeave && !modalLeaveExpired;
+    const normalizedExceptionalWeekdays = normalizeExceptionalLeaveWeekdays(
+      modalExceptionalLeaveWeekdays
+    );
+    const normalizedCustomWorkingHours = normalizeWorkingHours(modalCustomWorkingHours);
+    const normalizedCustomHourOverrides = normalizeWorkingHourOverrides(modalCustomHourOverrides);
+    const normalizedExceptionalDates = editId
+      ? normalizeExceptionalLeaveDates((editingStaff as any)?.exceptionalLeaveDates)
+      : [];
 
     const payload: StaffPublicDoc = {
       name: cleanName,
       active: !!active,
       showOnAbout: !!showOnAbout,
       showOnBooking: !!showOnBooking,
-      
+      onLeave: effectiveModalOnLeave,
+      leaveUntil: normalizedModalLeaveUntil,
+      leaveNote: String(modalLeaveNote || "").trim(),
+      exceptionalLeaveDates: normalizedExceptionalDates,
+      exceptionalLeaveWeekdays: normalizedExceptionalWeekdays,
+      useCustomWorkingHours: !!modalUseCustomWorkingHours,
+      customWorkingHours: normalizedCustomWorkingHours,
+      customWorkingHourOverrides: normalizedCustomHourOverrides,
 
       specialties,
       bio: bio.trim(),
@@ -842,11 +989,6 @@ export default function DashboardEmployees() {
           .slice(0, 40);
         await setDoc(staffPublicDoc(id || crypto.randomUUID()), {
           ...payload,
-          onLeave: false,
-          leaveUntil: "",
-          leaveNote: "",
-          exceptionalLeaveDates: [],
-          exceptionalLeaveWeekdays: [],
           leaveBalanceDays: 0,
           leaveEntitlementDate: "",
           leaveEntries: [],
@@ -903,6 +1045,57 @@ export default function DashboardEmployees() {
     () => (editId ? list.find((x) => x.id === editId) || null : null),
     [editId, list]
   );
+  const modalLeaveExpired = useMemo(() => {
+    const leaveUntil = normalizeLeaveUntil(modalLeaveUntil);
+    return !!leaveUntil && leaveUntil < todayIso();
+  }, [modalLeaveUntil]);
+
+  const updateModalWorkingDay = (
+    day: WeekdayKey,
+    patch: Partial<StaffWorkingDay>
+  ) => {
+    setModalCustomWorkingHours((prev) => ({
+      ...prev,
+      [day]: {
+        ...(prev[day] || { enabled: true, start: "10:00", end: "22:00" }),
+        ...patch,
+      },
+    }));
+  };
+
+  const addModalWorkingHourOverride = () => {
+    const fromInput = normalizeLeaveUntil(modalHourOverrideFromDate);
+    const toInput = normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
+    if (!fromInput) return;
+    const from = fromInput <= toInput ? fromInput : toInput;
+    const to = fromInput <= toInput ? toInput : fromInput;
+    const start = normalizeTimeHHMM(modalHourOverrideStart) || "10:00";
+    const end = normalizeTimeHHMM(modalHourOverrideEnd) || "22:00";
+    const maxDays = 120;
+    const rows: StaffWorkingHourOverride[] = [];
+    let cursor = from;
+    let guard = 0;
+    while (cursor && cursor <= to) {
+      rows.push({ date: cursor, enabled: modalHourOverrideEnabled, start, end });
+      cursor = addDaysIso(cursor, 1);
+      guard += 1;
+      if (guard > maxDays) {
+        setErrorMsg("نطاق التاريخ كبير جداً. الحد الأقصى 120 يوم.");
+        return;
+      }
+    }
+    setModalCustomHourOverrides((prev) =>
+      normalizeWorkingHourOverrides([
+        ...prev.filter((x) => !rows.some((r) => r.date === x.date)),
+        ...rows,
+      ])
+    );
+    setModalHourOverrideFromDate("");
+    setModalHourOverrideToDate("");
+    setModalHourOverrideStart("10:00");
+    setModalHourOverrideEnd("22:00");
+    setModalHourOverrideEnabled(true);
+  };
 
   const applyLeaveChange = async (mode: "add" | "deduct") => {
     if (authUser?.role !== "owner" || !editingStaff) return;
@@ -1237,140 +1430,6 @@ export default function DashboardEmployees() {
                 </div>
               </div>
 
-              <div
-                className="staff-booking-inline"
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              >
-                <div className="staff-booking-inline-title">إعدادات الحجز لهذه الموظفة</div>
-
-                <div className="staff-booking-inline-toggles">
-                  <label className="staff-booking-inline-check">
-                    <input
-                      type="checkbox"
-                      checked={(x as any).showOnBooking !== false}
-                      disabled={loading}
-                      onChange={(e) =>
-                        updateStaffBookingDraft(x.id, {
-                          showOnBooking: e.target.checked,
-                        })
-                      }
-                    />
-                    تظهر في الحجز
-                  </label>
-
-                  <label className="staff-booking-inline-check">
-                    <input
-                      type="checkbox"
-                      checked={effectiveOnLeave}
-                      disabled={loading}
-                      onChange={(e) =>
-                        updateStaffBookingDraft(x.id, {
-                          onLeave: e.target.checked,
-                        })
-                      }
-                    />
-                    في إجازة
-                  </label>
-                </div>
-
-                <div className="staff-booking-inline-field">
-                  <div className="staff-booking-inline-field-label">تاريخ العودة</div>
-                  <input
-                    className="staff-booking-inline-input"
-                    type="date"
-                    value={leaveUntil}
-                    disabled={loading}
-                    onChange={(e) =>
-                      updateStaffBookingDraft(x.id, {
-                        leaveUntil: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-
-                <div className="staff-booking-inline-field">
-                  <div className="staff-booking-inline-field-label">ملاحظة للزبائن (اختياري)</div>
-                  <input
-                    className="staff-booking-inline-input"
-                    value={String((x as any).leaveNote || "")}
-                    disabled={loading}
-                    onChange={(e) =>
-                      updateStaffBookingDraft(x.id, {
-                        leaveNote: e.target.value,
-                      })
-                    }
-                    placeholder="مثال: العودة يوم الأحد بإذن الله"
-                  />
-                </div>
-
-                <div className="staff-booking-inline-field">
-                  <div className="staff-booking-inline-field-label">إجازة استثنائية (يوم محدد)</div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <select
-                      className="staff-booking-inline-input"
-                      value={String(leaveExceptionWeekdayByStaff[x.id] || "")}
-                      disabled={loading}
-                      onChange={(e) =>
-                        setLeaveExceptionWeekdayByStaff((prev) => ({
-                          ...prev,
-                          [x.id]: e.target.value as WeekdayKey | "",
-                        }))
-                      }
-                    >
-                      <option value="">اختاري اليوم</option>
-                      {WEEKDAY_OPTIONS.map((d) => (
-                        <option key={`${x.id}_${d.key}`} value={d.key}>
-                          {d.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="exp-btn ghost sm"
-                      disabled={loading || !normalizeWeekdayKey(leaveExceptionWeekdayByStaff[x.id])}
-                      onClick={() => addExceptionalLeaveWeekday(x.id)}
-                    >
-                      إضافة اليوم
-                    </button>
-                  </div>
-
-                  {normalizeExceptionalLeaveWeekdays((x as any).exceptionalLeaveWeekdays).length > 0 ? (
-                    <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {normalizeExceptionalLeaveWeekdays((x as any).exceptionalLeaveWeekdays).map((d) => (
-                        <button
-                          key={`${x.id}_${d}`}
-                          type="button"
-                          className="exp-btn ghost sm"
-                          disabled={loading}
-                          onClick={() => removeExceptionalLeaveWeekday(x.id, d)}
-                          title="حذف اليوم الاستثنائي"
-                        >
-                          {fmtIsoDate(d)} ×
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="staff-booking-inline-hint">لا توجد أيام استثنائية حالياً.</div>
-                  )}
-                </div>
-
-                {leaveExpired && (
-                  <div className="staff-booking-inline-hint">
-                    تاريخ الإجازة انتهى؛ بعد الحفظ سيتم اعتبار الموظفة غير مجازة.
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  className="exp-btn primary staff-booking-inline-save"
-                  disabled={loading}
-                  onClick={() => saveStaffBookingSettings(x)}
-                >
-                  حفظ إعدادات الحجز
-                </button>
-              </div>
-
               {x.bio ? <div className="staff-bio">{x.bio}</div> : <div className="staff-bio muted">بدون نبذة</div>}
 
               <div className="staff-chips">
@@ -1437,7 +1496,11 @@ export default function DashboardEmployees() {
             size="lg"
           >
             <div className="modal-head">
-              <b style={{ fontSize: "1.2rem" }}>{editId ? "تعديل موظفة" : "إضافة موظفة"}</b>
+              <b style={{ fontSize: "1.2rem" }}>
+                {editId
+                  ? `تعديل موظفة${String(name || editingStaff?.name || "").trim() ? ` - ${String(name || editingStaff?.name || "").trim()}` : ""}`
+                  : "إضافة موظفة"}
+              </b>
               <button className="exp-btn ghost" onClick={closeModal} type="button">
                 <FontAwesomeIcon icon={faXmark} />
               </button>
@@ -1606,6 +1669,272 @@ export default function DashboardEmployees() {
   </div>
 
 </div>
+              </div>
+
+              <div className="emp-modal-section">
+                <b className="emp-modal-section-title">إعدادات الحجز لهذه الموظفة</b>
+                <div className="emp-modal-fields emp-booking-settings">
+                  <div className="dash-field">
+                    <label className="emp-label emp-check-label">
+                      <input
+                        type="checkbox"
+                        checked={modalOnLeave}
+                        disabled={loading}
+                        onChange={(e) => setModalOnLeave(e.target.checked)}
+                      />
+                      في إجازة
+                    </label>
+                  </div>
+
+                  <div className="dash-field">
+                    <label className="emp-label">تاريخ العودة (Date) — مثال: 21/02/2026</label>
+                    <input
+                      className="dash-input"
+                      type="date"
+                      value={modalLeaveUntil}
+                      disabled={loading}
+                      onChange={(e) => setModalLeaveUntil(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="dash-field">
+                    <label className="emp-label">ملاحظة للزبائن (اختياري)</label>
+                    <input
+                      className="dash-input"
+                      value={modalLeaveNote}
+                      disabled={loading}
+                      onChange={(e) => setModalLeaveNote(e.target.value)}
+                      placeholder="مثال: العودة يوم الأحد بإذن الله"
+                    />
+                  </div>
+
+                  <div className="dash-field">
+                    <label className="emp-label">إجازة استثنائية (يوم محدد)</label>
+                    <div className="emp-inline-actions">
+                      <select
+                        className="dash-select"
+                        value={String(modalLeaveWeekdayDraft || "")}
+                        disabled={loading}
+                        onChange={(e) => setModalLeaveWeekdayDraft(e.target.value as WeekdayKey | "")}
+                      >
+                        <option value="">اختاري اليوم</option>
+                        {WEEKDAY_OPTIONS.map((d) => (
+                          <option key={`modal_${d.key}`} value={d.key}>
+                            {d.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="exp-btn ghost sm"
+                        disabled={loading || !normalizeWeekdayKey(modalLeaveWeekdayDraft)}
+                        onClick={() => {
+                          const next = normalizeWeekdayKey(modalLeaveWeekdayDraft);
+                          if (!next) return;
+                          setModalExceptionalLeaveWeekdays((prev) =>
+                            normalizeExceptionalLeaveWeekdays([...prev, next])
+                          );
+                          setModalLeaveWeekdayDraft("");
+                        }}
+                      >
+                        إضافة اليوم
+                      </button>
+                    </div>
+
+                    {modalExceptionalLeaveWeekdays.length > 0 ? (
+                      <div className="emp-tags-row">
+                        {modalExceptionalLeaveWeekdays.map((d) => (
+                          <button
+                            key={`modal_day_${d}`}
+                            type="button"
+                            className="exp-btn ghost sm"
+                            disabled={loading}
+                            onClick={() =>
+                              setModalExceptionalLeaveWeekdays((prev) =>
+                                prev.filter((day) => day !== d)
+                              )
+                            }
+                            title="حذف اليوم الاستثنائي"
+                          >
+                            {WEEKDAY_OPTIONS.find((x) => x.key === d)?.label || d} ×
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="emp-field-note danger">
+                        لا توجد أيام استثنائية حالياً.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="dash-field">
+                    <label className="emp-label emp-check-label">
+                      <input
+                        type="checkbox"
+                        checked={modalUseCustomWorkingHours}
+                        disabled={loading}
+                        onChange={(e) => setModalUseCustomWorkingHours(e.target.checked)}
+                      />
+                      ساعات عمل خاصة لهذه الموظفة
+                    </label>
+                  </div>
+
+                  {modalUseCustomWorkingHours ? (
+                    <div className="dash-field emp-working-hours-block">
+                      <label className="emp-label">الساعات الأسبوعية</label>
+                      <div className="emp-working-week-grid">
+                        {WEEKDAY_OPTIONS.map((d) => {
+                          const row = modalCustomWorkingHours[d.key] || {
+                            enabled: true,
+                            start: "10:00",
+                            end: "22:00",
+                          };
+                          return (
+                            <div key={`work_${d.key}`} className="emp-working-day-row">
+                              <div className="emp-working-day-name">{d.label}</div>
+                              <label className="emp-mini-check">
+                                <input
+                                  type="checkbox"
+                                  checked={row.enabled !== false}
+                                  disabled={loading}
+                                  onChange={(e) =>
+                                    updateModalWorkingDay(d.key, { enabled: e.target.checked })
+                                  }
+                                />
+                                <span>دوام</span>
+                              </label>
+                              <input
+                                className="dash-input"
+                                type="time"
+                                value={normalizeTimeHHMM(row.start) || "10:00"}
+                                disabled={loading || row.enabled === false}
+                                onChange={(e) =>
+                                  updateModalWorkingDay(d.key, { start: e.target.value })
+                                }
+                              />
+                              <input
+                                className="dash-input"
+                                type="time"
+                                value={normalizeTimeHHMM(row.end) || "22:00"}
+                                disabled={loading || row.enabled === false}
+                                onChange={(e) =>
+                                  updateModalWorkingDay(d.key, { end: e.target.value })
+                                }
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {modalUseCustomWorkingHours ? (
+                    <div className="dash-field emp-working-override-block">
+                      <label className="emp-label">استثناء ساعات يوم محدد</label>
+                      <div className="emp-working-override-grid">
+                        <div className="emp-working-override-form">
+                          <div>
+                            <label className="emp-label">من تاريخ</label>
+                            <input
+                              className="dash-input"
+                              type="date"
+                              value={modalHourOverrideFromDate}
+                              disabled={loading}
+                              onChange={(e) => setModalHourOverrideFromDate(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="emp-label">إلى تاريخ</label>
+                            <input
+                              className="dash-input"
+                              type="date"
+                              value={modalHourOverrideToDate}
+                              disabled={loading}
+                              onChange={(e) => setModalHourOverrideToDate(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="emp-label">من الساعة</label>
+                            <input
+                              className="dash-input"
+                              type="time"
+                              value={modalHourOverrideStart}
+                              disabled={loading || !modalHourOverrideEnabled}
+                              onChange={(e) => setModalHourOverrideStart(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="emp-label">إلى الساعة</label>
+                            <input
+                              className="dash-input"
+                              type="time"
+                              value={modalHourOverrideEnd}
+                              disabled={loading || !modalHourOverrideEnabled}
+                              onChange={(e) => setModalHourOverrideEnd(e.target.value)}
+                            />
+                          </div>
+                          <label className="emp-mini-check">
+                            <input
+                              type="checkbox"
+                              checked={modalHourOverrideEnabled}
+                              disabled={loading}
+                              onChange={(e) => setModalHourOverrideEnabled(e.target.checked)}
+                            />
+                            <span>دوام</span>
+                          </label>
+                          <button
+                            type="button"
+                            className="exp-btn ghost sm"
+                            disabled={loading || !normalizeLeaveUntil(modalHourOverrideFromDate)}
+                            onClick={addModalWorkingHourOverride}
+                          >
+                            إضافة النطاق
+                          </button>
+                        </div>
+                        <div className="emp-field-note">
+                          حددي من تاريخ إلى تاريخ لتطبيق نفس الساعات على كامل الفترة.
+                        </div>
+
+                        {modalCustomHourOverrides.length ? (
+                          <div className="emp-override-list">
+                            {modalCustomHourOverrides.map((ov) => (
+                              <div key={`ov_${ov.date}`} className="emp-override-item">
+                                <span className="emp-override-item-text">
+                                  {fmtIsoDate(ov.date)} -{" "}
+                                  {ov.enabled === false
+                                    ? "إجازة هذا اليوم"
+                                    : `${ov.start || "10:00"} إلى ${ov.end || "22:00"}`}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="exp-btn ghost sm"
+                                  disabled={loading}
+                                  onClick={() =>
+                                    setModalCustomHourOverrides((prev) =>
+                                      prev.filter((x) => x.date !== ov.date)
+                                    )
+                                  }
+                                >
+                                  حذف
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="emp-field-note">
+                            لا توجد استثناءات ساعات حالياً.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {modalLeaveExpired ? (
+                    <div style={{ color: "#b91c1c", fontSize: 13, fontWeight: 800 }}>
+                      تاريخ الإجازة انتهى؛ بعد الحفظ سيتم اعتبار الموظفة غير مجازة.
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
               <div className="emp-modal-section">

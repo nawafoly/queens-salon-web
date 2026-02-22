@@ -159,6 +159,13 @@
   gap: 14px;
 }
 
+/* Ensure routed page content stretches full width inside dashboard-inner */
+.dashboard-skin .dashboard-inner > * {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
 /* ✅ Sidebar width on desktop */
 @media (min-width: 992px) {
   .dashboard-skin .dashboard-sidebar { flex: 0 0 320px; }

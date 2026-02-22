@@ -13,6 +13,19 @@ export type StaffPublicDoc = {
   leaveNote?: string;
   exceptionalLeaveDates?: string[];
   exceptionalLeaveWeekdays?: string[];
+  useCustomWorkingHours?: boolean;
+  customWorkingHours?: Partial<
+    Record<
+      "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri",
+      { enabled?: boolean; start?: string; end?: string }
+    >
+  >;
+  customWorkingHourOverrides?: Array<{
+    date?: string;
+    enabled?: boolean;
+    start?: string;
+    end?: string;
+  }>;
 };
 
 export type StaffPublicWithId = StaffPublicDoc & { id: string };
@@ -46,6 +59,45 @@ function normalizeWeekdays(v: any): string[] {
   );
 }
 
+function normalizeTimeHHMM(v: any): string {
+  const s = String(v || "").trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return "";
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return "";
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return "";
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function normalizeWorkingHours(v: any) {
+  const out: Record<string, { enabled: boolean; start: string; end: string }> = {};
+  const src = v && typeof v === "object" ? v : {};
+  const keys = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"];
+  keys.forEach((k) => {
+    const row = (src as any)?.[k];
+    if (!row || typeof row !== "object") return;
+    out[k] = {
+      enabled: row.enabled !== false,
+      start: normalizeTimeHHMM(row.start) || "10:00",
+      end: normalizeTimeHHMM(row.end) || "22:00",
+    };
+  });
+  return out;
+}
+
+function normalizeWorkingHourOverrides(v: any) {
+  const rows = Array.isArray(v) ? v : [];
+  return rows
+    .map((row: any) => ({
+      date: String(row?.date || "").trim(),
+      enabled: row?.enabled !== false,
+      start: normalizeTimeHHMM(row?.start) || "10:00",
+      end: normalizeTimeHHMM(row?.end) || "22:00",
+    }))
+    .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date));
+}
+
 export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWithId[]> {
   const sid = String(salonId || "").trim();
   if (!sid) return [];
@@ -68,6 +120,9 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
         leaveNote: String(data?.leaveNote ?? "").trim(),
         exceptionalLeaveDates: normalizeIsoDates(data?.exceptionalLeaveDates),
         exceptionalLeaveWeekdays: normalizeWeekdays(data?.exceptionalLeaveWeekdays),
+        useCustomWorkingHours: !!data?.useCustomWorkingHours,
+        customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
+        customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
       } as StaffPublicWithId;
     });
 
@@ -108,6 +163,9 @@ export async function listActiveStaffBySpecialty(args: {
         leaveNote: String(data?.leaveNote ?? "").trim(),
         exceptionalLeaveDates: normalizeIsoDates(data?.exceptionalLeaveDates),
         exceptionalLeaveWeekdays: normalizeWeekdays(data?.exceptionalLeaveWeekdays),
+        useCustomWorkingHours: !!data?.useCustomWorkingHours,
+        customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
+        customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
       } as StaffPublicWithId;
     });
 
