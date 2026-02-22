@@ -77,7 +77,7 @@
   border-top: none !important;
   margin-bottom: 1rem;
   padding-bottom: 1rem;
-  border-bottom: 1px dashed #e2cdbb;
+  border-bottom: none;
 }
 
 .bk-internal .bk-client-section .bk-client-search-block {
@@ -86,6 +86,12 @@
 
 .bk-internal .bk-client-section .bk-quick-select-block {
   order: 3;
+}
+
+.bk-internal .bk-client-section .bk-client-cart-block {
+  order: 2;
+  margin-top: 0;
+  padding-top: 0;
 }
 
 .bk-internal .bk-service-section .bk-service-date-block {

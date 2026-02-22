@@ -6058,7 +6058,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         <form ref={internalBookingFormRef} onSubmit={handleSubmit}>
           <div className="row g-3 bk-sections-grid">
             {/* اختيار الخدمة */}
-            <div className="col-12 col-lg-6 order-2">
+            <div className="col-12 col-lg-6 order-1">
               <div className="card p-3 bk-panel bk-service-section">
                 <div className="d-flex align-items-center justify-content-between mb-2">
                   <div style={{ fontWeight: 800 }}>
@@ -6150,7 +6150,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   </div>
                 ) : null}
 
-                <div className="mb-3 pb-3 bk-client-search-block bk-service-date-block" style={{ borderBottom: "1px dashed #e2cdbb" }}>
+                <div className="mb-3 pb-3 bk-client-search-block bk-service-date-block">
                   <div className="row g-2 align-items-end">
                     <div className="col-12">
                       <label htmlFor="bookingDateInternal" className="form-label">تاريخ الحجز</label>
@@ -6316,7 +6316,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             </div>
 
             {/* بيانات العميلة */}
-            <div className="col-12 col-lg-6 order-1">
+            <div className="col-12 col-lg-6 order-4">
               <div className="card p-3 bk-panel bk-client-section">
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                   <div style={{ fontWeight: 800 }}>
@@ -6325,66 +6325,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   </div>
 
                 </div>
-                <div className="mb-1 bk-quick-select-block">
-                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                    <div className="small" style={{ fontWeight: 700, color: "#5b4a3f" }}>
-                      اختيار سريع
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-secondary"
-                      onClick={() => {
-                        setFormData((prev) => ({ ...prev, name: "", phone: "" }));
-                        setSelectedClient(null);
-                        setQuickClientQuery("");
-                      }}
-                    >
-                      تفريغ الحقول
-                    </button>
-                  </div>
-
-                  {quickClientOptions.length ? (
-                    <>
-                      <div className="mb-2">
-                        <input
-                          className="form-control form-control-sm"
-                          value={quickClientQuery}
-                          onChange={(e) => setQuickClientQuery(String(e.target.value || ""))}
-                          placeholder="ابحثي داخل الاختيار السريع..."
-                        />
-                      </div>
-                    <div className="d-flex flex-wrap gap-2">
-                      {filteredQuickClientOptions.map((candidate) => {
-                        const cid = String(candidate?.id || "").trim();
-                        const cname = formatQuickClientButtonLabel(candidate);
-                        const cphone = phone10Digits(
-                          candidate?.phone || candidate?.mobile || candidate?.clientPhone || ""
-                        );
-                        return (
-                          <button
-                            key={cid || `${cname}_${cphone}`}
-                            type="button"
-                            className="btn btn-sm btn-outline-light"
-                            onClick={() => {
-                              applyClientSelection(candidate);
-                              setClientSearchMsg("تم تعبئة البيانات من الاختيار السريع ✅");
-                            }}
-                          >
-                            {cname}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {!filteredQuickClientOptions.length ? (
-                      <div className="small text-muted">لا توجد نتائج مطابقة في الاختيار السريع.</div>
-                    ) : null}
-                    </>
-                  ) : (
-                    <div className="small text-muted">لا توجد عميلات حديثات بعد.</div>
-                  )}
-                </div>
-
-                <div className="mt-4 pt-3 bk-existing-booking-block" style={{ borderTop: "1px dashed #e2cdbb" }}>
+                <div className="mt-4 pt-3 bk-existing-booking-block">
                   <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                     <div style={{ fontWeight: 800 }}>بحث حجز موجود (تأكيد + طباعة)</div>
                   </div>
@@ -6665,8 +6606,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             </div>
 
             {/* السلة */}
-            <div className="col-12 col-lg-6 order-3">
+            <div className="col-12 col-lg-6 order-2">
               <div className="card p-3 bk-panel">
+                <div className="bk-client-cart-block">
                 {/* Cart */}
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                   <div style={{ fontWeight: 800 }}>
@@ -7189,11 +7131,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     )}
                   </button>
                 </div>
+                </div>
               </div>
             </div>
 
             {/* بحث أوقات للأيام القادمة */}
-            <div className="col-12 col-lg-6 order-4">
+            <div className="col-12 col-lg-6 order-3">
               <div className="card p-3 bk-panel">
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                   <div style={{ fontWeight: 800, color: "#0d0d0d" }}>بحث أوقات للأيام القادمة</div>

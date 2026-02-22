@@ -19,6 +19,7 @@ import {
   faBars,
   faHouse,
   faClockRotateLeft,
+  faTv,
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/DashboardSkin.css";
@@ -37,6 +38,7 @@ import DashboardSettings from "../pages/DashboardSettings";
 import DashboardExpenses from "../pages/DashboardExpenses";
 import DashboardIncome from "../pages/DashboardIncome";
 import DashboardLogs from "../pages/DashboardLogs";
+import DashboardQueueTv from "../pages/DashboardQueueTv";
 
 import DashboardStaff from "../pages/DashboardStaff";
 
@@ -1427,6 +1429,19 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
+                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/tv-queue"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faTv} />
+                      شاشة الحجوزات (TV)
+                    </NavLink>
+                  </li>
+                )}
+
                 {(hasAdminPower || (isReception && allowStaffViewClients)) &&
                   canSeeSection("clients") && (
                     <li>
@@ -1680,6 +1695,10 @@ const Dashboard: React.FC = () => {
 
                 {(hasAdminPower || isReception) && canSeeSection("bookings") && (
                   <Route path="bookings" element={<DashboardBookings />} />
+                )}
+
+                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
+                  <Route path="tv-queue" element={<DashboardQueueTv />} />
                 )}
 
                 {(hasAdminPower || (isReception && allowStaffViewClients)) &&
