@@ -997,6 +997,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const couponCheckSeqRef = useRef(0);
 
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
+  const busyQueryKeyByItemRef = useRef<Record<string, string>>({});
   const [expandedConfirmedCartItems, setExpandedConfirmedCartItems] = useState<
     Record<string, true>
   >({});
@@ -1539,6 +1540,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   >("");
   const internalPaymentMethodRef = useRef<"cash" | "card" | "transfer" | null>(null);
   const internalBookingFormRef = useRef<HTMLFormElement | null>(null);
+  const pendingInvoicePopupRef = useRef<Window | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [confirmTargetBooking, setConfirmTargetBooking] = useState<any | null>(null);
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<"cash" | "card">("cash");
@@ -2384,9 +2386,57 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setPaymentModalOpen(true);
   }
 
-  function openInternalPrintPopup() {
+  function primeInternalPrintPopup() {
+    const current = pendingInvoicePopupRef.current;
+    if (current && !current.closed) {
+      current.focus();
+      return true;
+    }
     const popup = window.open(
-      "/success-internal",
+      "about:blank",
+      "internal_print_popup",
+      "width=980,height=900,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes"
+    );
+    if (popup) {
+      pendingInvoicePopupRef.current = popup;
+      try {
+        popup.document.title = "جاري تجهيز الفاتورة";
+      } catch {
+        // ignore
+      }
+      popup.focus();
+      return true;
+    }
+    return false;
+  }
+
+  function closePendingInvoicePopup() {
+    const popup = pendingInvoicePopupRef.current;
+    if (popup && !popup.closed) {
+      try {
+        popup.close();
+      } catch {
+        // ignore
+      }
+    }
+    pendingInvoicePopupRef.current = null;
+  }
+
+  function openInternalPrintPopup() {
+    const invoiceUrl = `${window.location.origin}/success-internal`;
+    const pending = pendingInvoicePopupRef.current;
+    if (pending && !pending.closed) {
+      try {
+        pending.location.href = invoiceUrl;
+      } catch {
+        // ignore and fallback to fresh popup
+      }
+      pending.focus();
+      pendingInvoicePopupRef.current = null;
+      return true;
+    }
+    const popup = window.open(
+      invoiceUrl,
       "internal_print_popup",
       "width=980,height=900,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes"
     );
@@ -2395,6 +2445,16 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return true;
     }
     return false;
+  }
+
+  function notifyInvoicePopupBlocked() {
+    closePendingInvoicePopup();
+    openModal({
+      title: "تعذر فتح الفاتورة",
+      message: "تم منع فتح نافذة الفاتورة. فعلي فتح النوافذ المنبثقة (Pop-ups) للموقع ثم المحاولة مرة أخرى.",
+      variant: "danger",
+      confirmText: "تمام",
+    });
   }
 
   function enrichBookingForPrint(rawBooking: any) {
@@ -2545,8 +2605,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       localStorage.setItem("allBookings", JSON.stringify([printReady]));
       setPaymentModalOpen(false);
       setConfirmTargetBooking(null);
-      if (!openInternalPrintPopup()) navigate("/success-internal");
+      if (!openInternalPrintPopup()) notifyInvoicePopupBlocked();
     } catch (e: any) {
+      closePendingInvoicePopup();
       openModal({
         title: "تعذر إصدار الفاتورة",
         message:
@@ -2697,7 +2758,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const printReady = enrichBookingForPrint(b);
     localStorage.setItem("currentBooking", JSON.stringify(printReady));
     localStorage.setItem("allBookings", JSON.stringify([printReady]));
-    if (!openInternalPrintPopup()) navigate("/success-internal");
+    if (!openInternalPrintPopup()) notifyInvoicePopupBlocked();
   }
 
   // =========================
@@ -3851,6 +3912,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       Array.from(removedIds).forEach((id) => delete next[id]);
       return next;
     });
+    Array.from(removedIds).forEach((id) => {
+      delete busyQueryKeyByItemRef.current[id];
+    });
 
     setCouponCode("");
     setManualOverride(false);
@@ -4229,21 +4293,30 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         const itemId = it.id;
         const employeeId = String(it.employeeId || "").trim();
         const date = String(it.date || "").trim();
+        const queryKey = `${employeeId}__${date}`;
 
         if (!employeeId || !date) {
+          delete busyQueryKeyByItemRef.current[itemId];
           setBusyByItem((p) => ({ ...p, [itemId]: { ...emptyBusyState() } }));
           return;
         }
 
         setBusyByItem((p) => ({
           ...p,
-          [itemId]: {
-            ...(p[itemId] || emptyBusyState()),
-            loading: true,
-            hint: "",
-            disabledStartTimes: new Set(baseSlots.map((s) => s.value24)),
-            disabledReasonByStart: {},
-          },
+          [itemId]: (() => {
+            const prev = p[itemId];
+            const prevQueryKey = busyQueryKeyByItemRef.current[itemId] || "";
+            const shouldReset = !prev || prevQueryKey !== queryKey;
+            return {
+              ...(prev || emptyBusyState()),
+              loading: true,
+              hint: shouldReset ? "" : prev?.hint || "",
+              disabledStartTimes: shouldReset
+                ? new Set(baseSlots.map((s) => s.value24))
+                : prev?.disabledStartTimes || new Set<string>(),
+              disabledReasonByStart: shouldReset ? {} : prev?.disabledReasonByStart || {},
+            };
+          })(),
         }));
 
         try {
@@ -4251,6 +4324,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           if (!isCartItemStaffAvailable(it)) {
             const disabledAll = new Set(baseSlots.map((s) => s.value24));
             const allStarts = baseSlots.map((s) => s.value24);
+            busyQueryKeyByItemRef.current[itemId] = queryKey;
             setBusyByItem((p) => ({
               ...p,
               [itemId]: {
@@ -4440,6 +4514,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               bookedMetaByTime,
             },
           }));
+          busyQueryKeyByItemRef.current[itemId] = queryKey;
 
           const currentTime = String(it.time || "").trim();
           if (currentTime && disabled.has(currentTime)) {
@@ -5565,8 +5640,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       localStorage.removeItem("bookingDraft");
       internalPaymentMethodRef.current = null;
 
-      if (!openInternalPrintPopup()) navigate("/success-internal");
+      if (!openInternalPrintPopup()) notifyInvoicePopupBlocked();
     } catch (e: any) {
+      closePendingInvoicePopup();
       console.error(e);
 
       if (e?.code === "SLOT_TAKEN" || String(e?.message || "") === "SLOT_TAKEN") {
@@ -5802,6 +5878,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               style={{ borderRadius: 12, fontWeight: 800, minHeight: 48 }}
               onClick={() => {
                 if (!internalPaymentMethodDraft) return;
+                primeInternalPrintPopup();
                 internalPaymentMethodRef.current = internalPaymentMethodDraft;
                 setInternalPaymentModalOpen(false);
                 internalBookingFormRef.current?.requestSubmit();
@@ -5867,6 +5944,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               className="btn btn-primary"
               style={{ borderRadius: 12, fontWeight: 800, minHeight: 48 }}
               onClick={() => {
+                primeInternalPrintPopup();
                 void confirmAndPrintExistingBooking();
               }}
               disabled={isLoading || !confirmTargetBooking}
@@ -6446,7 +6524,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                             type="button"
                                             className="btn btn-sm bk-action-print"
                                             style={{ borderRadius: 10 }}
-                                            onClick={() => printExistingBooking(b)}
+                                            onClick={() => {
+                                              primeInternalPrintPopup();
+                                              printExistingBooking(b);
+                                            }}
                                             disabled={isLoading}
                                           >
                                             طباعة فقط
@@ -6457,7 +6538,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                               type="button"
                                               className="btn btn-sm bk-action-confirm"
                                               style={{ borderRadius: 10 }}
-                                              onClick={() => void completeAndPrintExistingBooking(b)}
+                                              onClick={() => {
+                                                primeInternalPrintPopup();
+                                                void completeAndPrintExistingBooking(b);
+                                              }}
                                               disabled={isLoading}
                                             >
                                               تأكيد + طباعة
@@ -6835,6 +6919,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                       </button>
                                     );
                                   })}
+                                </div>
+                              ) : busy.loading ? (
+                                <div className="small text-muted bk-time-grid-empty">
+                                  جاري تحميل الأوقات المتاحة...
                                 </div>
                               ) : (
                                 <div className="small text-muted bk-time-grid-empty">

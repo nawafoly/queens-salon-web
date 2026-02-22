@@ -166,8 +166,27 @@ export default function SuccessInternal() {
 
   useEffect(() => {
     if (allBookings.length === 0) return;
+    let closeTimer: number | null = null;
+    const closeAfterPrint = () => {
+      // Close only when the page is opened as a popup/tab by script.
+      if (window.opener || window.name === "internal_print_popup") {
+        closeTimer = window.setTimeout(() => {
+          try {
+            window.close();
+          } catch {
+            // ignore browser restrictions
+          }
+        }, 250);
+      }
+    };
+
+    window.addEventListener("afterprint", closeAfterPrint);
     const timer = window.setTimeout(() => window.print(), 800);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      if (closeTimer != null) window.clearTimeout(closeTimer);
+      window.removeEventListener("afterprint", closeAfterPrint);
+    };
   }, [allBookings]);
 
   if (allBookings.length === 0) {
