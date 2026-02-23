@@ -5,6 +5,12 @@ import { collection, onSnapshot } from "firebase/firestore";
 
 import "../styles/DashboardReports.css";
 import { db } from "../services/firebase";
+import { AppSettingsService } from "../services/AppSettingsService";
+import {
+  buildPayrollExpenseRowsForMonths,
+  type BookingPayrollSource,
+  type StaffPayrollSource,
+} from "../helpers/staffPayroll";
 
 type PeriodKey = "day" | "week" | "month" | "year" | "custom";
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
@@ -16,6 +22,9 @@ type BookingRow = {
   time: string;
   status: BookingStatus;
   amount: number;
+  employeeId?: string | null;
+  employeeUid?: string | null;
+  employeeKey?: string | null;
   employeeName: string;
   clientName: string;
 };
@@ -117,6 +126,92 @@ function normalizeSource(raw: string) {
   if (s === "booking" || s === "invoice" || s === "حجز") return "booking";
   if (s === "refund" || s === "استرجاع") return "refund";
   return "manual";
+}
+
+function isIsoDate(v: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(v || "").trim());
+}
+
+function monthKeyFromIsoDate(v: string) {
+  return isIsoDate(v) ? String(v).slice(0, 7) : "";
+}
+
+function previousMonthKey(monthKey: string) {
+  if (!/^\d{4}-\d{2}$/.test(String(monthKey || ""))) return "";
+  const y = Number(monthKey.slice(0, 4));
+  const m = Number(monthKey.slice(5, 7));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return "";
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
+function monthKeysBetween(fromIso: string, toIso: string): string[] {
+  const from = isIsoDate(fromIso) ? fromIso : "";
+  const to = isIsoDate(toIso) ? toIso : "";
+  if (!from && !to) return [];
+  const start = new Date(`${(from || to).slice(0, 7)}-01T00:00:00`);
+  const end = new Date(`${(to || from).slice(0, 7)}-01T00:00:00`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return [];
+  const a = start <= end ? start : end;
+  const b = start <= end ? end : start;
+  const out: string[] = [];
+  const cursor = new Date(a);
+  let guard = 0;
+  while (cursor <= b && guard < 180) {
+    out.push(`${cursor.getFullYear()}-${pad2(cursor.getMonth() + 1)}`);
+    cursor.setMonth(cursor.getMonth() + 1);
+    guard += 1;
+  }
+  return out;
+}
+
+function normalizeStaffPayrollRows(rows: any[]): StaffPayrollSource[] {
+  return (Array.isArray(rows) ? rows : [])
+    .map((x) => {
+      const id = String(x?.id || "").trim();
+      if (!id) return null;
+      return {
+        id,
+        name: String(x?.name || "").trim() || id,
+        active: x?.active !== false,
+        useCustomWorkingHours: !!x?.useCustomWorkingHours,
+        customWorkingHours: x?.customWorkingHours || {},
+        customWorkingHourOverrides: Array.isArray(x?.customWorkingHourOverrides)
+          ? x.customWorkingHourOverrides
+          : [],
+        monthlySalary: Number(x?.monthlySalary ?? 0) || 0,
+        overtimeMethod:
+          String(x?.overtimeMethod || "").trim() === "invoice_percentage"
+            ? "invoice_percentage"
+            : "hours_from_salary",
+        overtimeDaysPerMonth: Number(x?.overtimeDaysPerMonth ?? 30) || 30,
+        overtimeBaseHoursPerDay: Number(x?.overtimeBaseHoursPerDay ?? 8) || 8,
+        overtimeSeasonBaseHoursPerDay: Number(x?.overtimeSeasonBaseHoursPerDay ?? 6) || 6,
+        overtimeHoursBasis:
+          String(x?.overtimeHoursBasis || "").trim() === "season" ? "season" : "regular",
+        overtimePercent: Number(x?.overtimePercent ?? 0) || 0,
+        overtimeInvoicePercent: Number(x?.overtimeInvoicePercent ?? 0) || 0,
+      } as StaffPayrollSource;
+    })
+    .filter(Boolean) as StaffPayrollSource[];
+}
+
+function normalizeBookingPayrollRows(rows: BookingRow[]): BookingPayrollSource[] {
+  return (Array.isArray(rows) ? rows : [])
+    .map((x) => {
+      const date = String(x?.date || "").trim();
+      if (!isIsoDate(date)) return null;
+      return {
+        date,
+        status: String(x?.status || "").trim().toLowerCase(),
+        amount: Math.max(0, Number(x?.amount || 0)),
+        employeeId: String(x?.employeeId || "").trim() || null,
+        employeeUid: String(x?.employeeUid || "").trim() || null,
+        employeeKey: String(x?.employeeKey || "").trim() || null,
+        employeeName: String(x?.employeeName || "").trim() || null,
+      } as BookingPayrollSource;
+    })
+    .filter(Boolean) as BookingPayrollSource[];
 }
 
 function getRange(period: PeriodKey, customFrom: string, customTo: string) {
@@ -231,6 +326,8 @@ export default function DashboardReports() {
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [incomeRows, setIncomeRows] = useState<IncomeRow[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
+  const [staffRows, setStaffRows] = useState<StaffPayrollSource[]>([]);
+  const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
   const [loading, setLoading] = useState(true);
   const [lastSyncMs, setLastSyncMs] = useState<number>(Date.now());
   const [loadErr, setLoadErr] = useState("");
@@ -241,7 +338,7 @@ export default function DashboardReports() {
   );
 
   useEffect(() => {
-    let pending = 3;
+    let pending = 5;
     setLoading(true);
     setLoadErr("");
 
@@ -249,10 +346,16 @@ export default function DashboardReports() {
       pending -= 1;
       if (pending <= 0) setLoading(false);
     };
+    let bookingsReady = false;
+    let incomeReady = false;
+    let expensesReady = false;
+    let staffReady = false;
+    let settingsReady = false;
 
     const bookingsQ = collection(db, "salons", SALON_ID, "bookings");
     const incomeQ = collection(db, "salons", SALON_ID, "income");
     const expensesQ = collection(db, "salons", SALON_ID, "expenses");
+    const staffQ = collection(db, "salons", SALON_ID, "staff_public");
 
     const unsubBookings = onSnapshot(
       bookingsQ,
@@ -267,17 +370,26 @@ export default function DashboardReports() {
             time: String(raw?.time || "").trim(),
             status: String(raw?.status || "pending").trim() as BookingStatus,
             amount: Number(raw?.finalPrice ?? raw?.total ?? raw?.serviceSnapshot?.priceAtBooking ?? 0) || 0,
+            employeeId: String(raw?.employeeId || "").trim() || null,
+            employeeUid: String(raw?.employeeUid || "").trim() || null,
+            employeeKey: String(raw?.employeeKey || "").trim() || null,
             employeeName: String(raw?.employeeName || "").trim(),
             clientName: String(raw?.clientName || raw?.name || raw?.customerName || "").trim(),
           };
         });
         setBookings(rows);
         setLastSyncMs(Date.now());
-        done();
+        if (!bookingsReady) {
+          bookingsReady = true;
+          done();
+        }
       },
       (err) => {
         setLoadErr(String(err?.message || err || "تعذر تحميل الحجوزات"));
-        done();
+        if (!bookingsReady) {
+          bookingsReady = true;
+          done();
+        }
       }
     );
 
@@ -308,11 +420,17 @@ export default function DashboardReports() {
         });
         setIncomeRows(rows);
         setLastSyncMs(Date.now());
-        done();
+        if (!incomeReady) {
+          incomeReady = true;
+          done();
+        }
       },
       (err) => {
         setLoadErr(String(err?.message || err || "تعذر تحميل الإيرادات"));
-        done();
+        if (!incomeReady) {
+          incomeReady = true;
+          done();
+        }
       }
     );
 
@@ -339,18 +457,69 @@ export default function DashboardReports() {
         });
         setExpenses(rows);
         setLastSyncMs(Date.now());
-        done();
+        if (!expensesReady) {
+          expensesReady = true;
+          done();
+        }
       },
       (err) => {
         setLoadErr(String(err?.message || err || "تعذر تحميل المصروفات"));
-        done();
+        if (!expensesReady) {
+          expensesReady = true;
+          done();
+        }
       }
     );
+
+    const unsubStaff = onSnapshot(
+      staffQ,
+      (snap) => {
+        const rows = normalizeStaffPayrollRows(
+          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
+        );
+        setStaffRows(rows);
+        setLastSyncMs(Date.now());
+        if (!staffReady) {
+          staffReady = true;
+          done();
+        }
+      },
+      (err) => {
+        setLoadErr(String(err?.message || err || "تعذر تحميل الموظفات"));
+        if (!staffReady) {
+          staffReady = true;
+          done();
+        }
+      }
+    );
+
+    let unsubSettings: undefined | (() => void);
+    try {
+      unsubSettings = AppSettingsService.subscribe((remote: any) => {
+        setAppSettings(remote || {});
+        setLastSyncMs(Date.now());
+        if (!settingsReady) {
+          settingsReady = true;
+          done();
+        }
+      });
+    } catch {
+      if (!settingsReady) {
+        settingsReady = true;
+        done();
+      }
+    }
 
     return () => {
       unsubBookings();
       unsubIncome();
       unsubExpenses();
+      unsubStaff();
+      try {
+        unsubSettings?.();
+      } catch {
+        // noop
+      }
     };
   }, []);
 
@@ -390,9 +559,61 @@ export default function DashboardReports() {
     });
   }, [incomeRows, range.from, range.to]);
 
+  const payrollMonthKeys = useMemo(() => {
+    const set = new Set<string>();
+    bookings.forEach((x) => {
+      const mk = monthKeyFromIsoDate(String(x.date || ""));
+      if (mk) set.add(mk);
+    });
+    expenses.forEach((x) => {
+      const mk = monthKeyFromIsoDate(String(x.date || ""));
+      if (mk) set.add(mk);
+    });
+    monthKeysBetween(range.from, range.to).forEach((mk) => set.add(mk));
+    const rangeToMonth = monthKeyFromIsoDate(String(range.to || ""));
+    if (rangeToMonth) {
+      set.add(rangeToMonth);
+      const prev = previousMonthKey(rangeToMonth);
+      if (prev) set.add(prev);
+    }
+    set.add(toMonthKey(new Date()));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [bookings, expenses, range.from, range.to]);
+
+  const autoPayrollExpenses = useMemo<ExpenseRow[]>(() => {
+    if (!staffRows.length || !payrollMonthKeys.length) return [];
+    const bookingRows = normalizeBookingPayrollRows(bookings);
+    const payrollRows = buildPayrollExpenseRowsForMonths({
+      staffList: staffRows,
+      bookings: bookingRows,
+      appSettings: appSettings || {},
+      monthKeys: payrollMonthKeys,
+    });
+    return payrollRows.map((x) => ({
+      id: x.id,
+      date: String(x.date || "").trim(),
+      amount: Number(x.amount || 0),
+      category: String(x.category || "أخرى").trim() || "أخرى",
+      title: String(x.title || "").trim(),
+      note: String(x.note || "").trim(),
+      addedBy: "النظام (رواتب)",
+      createdAtMs: Number(x.createdAt || 0),
+    }));
+  }, [staffRows, bookings, appSettings, payrollMonthKeys]);
+
+  const expensesWithPayroll = useMemo(() => {
+    const map = new Map<string, ExpenseRow>();
+    [...expenses, ...autoPayrollExpenses].forEach((x) => {
+      const id = String(x?.id || "").trim();
+      if (!id) return;
+      map.set(id, x);
+    });
+    return Array.from(map.values());
+  }, [expenses, autoPayrollExpenses]);
+
   const expensesInRange = useMemo(
-    () => expenses.filter((x) => inDateRange(x.date, range.from, range.to)),
-    [expenses, range.from, range.to]
+    () => expensesWithPayroll.filter((x) => inDateRange(x.date, range.from, range.to)),
+    [expensesWithPayroll, range.from, range.to]
   );
 
   const revenueRowsDetailed = useMemo<RevenueDetailsRow[]>(() => {
@@ -484,7 +705,7 @@ export default function DashboardReports() {
         .reduce((s, x) => s + Number(x.amount || 0), 0);
 
     const expensesByMonth = (key: string) =>
-      expenses
+      expensesWithPayroll
         .filter((x) => String(x.date || "").startsWith(`${key}-`))
         .reduce((s, x) => s + Number(x.amount || 0), 0);
 
@@ -518,7 +739,7 @@ export default function DashboardReports() {
         net: calcDeltaPct(currentNet, previousNet),
       },
     };
-  }, [range.to, bookings, incomeRows, expenses]);
+  }, [range.to, bookings, incomeRows, expensesWithPayroll]);
 
   const chartsModel = useMemo(() => {
     const selectedYear = Number(String(range.to || "").slice(0, 4)) || new Date().getFullYear();
@@ -699,7 +920,8 @@ export default function DashboardReports() {
         <div>
           <h1>اللوحة المالية</h1>
           <p>
-            المصدر الرسمي: إيراد الحجوزات من الحجوزات (مؤكد/مكتمل) + دخل يدوي/استرجاع من income، والمصروفات من expenses.
+            المصدر الرسمي: إيراد الحجوزات من الحجوزات (مؤكد/مكتمل) + دخل يدوي/استرجاع من income، والمصروفات من
+            expenses + الرواتب/الأوفر تايم المحسوبة تلقائيًا.
           </p>
           <small className="reports-v2__sync">
             <FontAwesomeIcon icon={faClockRotateLeft} /> آخر مزامنة: {lastSyncLabel}

@@ -15,11 +15,18 @@ import Modal from "../components/Modal";
 
 import type { Expense, PaymentMethod } from "../types/finance";
 import { FinanceSettingsService } from "../services/FinanceSettingsService";
+import { AppSettingsService } from "../services/AppSettingsService";
+import { listAllBookings } from "../services/firestoreBookings";
+import {
+  buildPayrollExpenseRowsForMonths,
+  type StaffPayrollSource,
+  type BookingPayrollSource,
+} from "../helpers/staffPayroll";
 
 // ✅ Firebase Auth
 import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 
 import { auth, db } from "../services/firebase";
 
@@ -162,6 +169,70 @@ function parseISODate(iso: string) {
   return new Date(y, m - 1, d);
 }
 
+function isIsoDate(v: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(v || "").trim());
+}
+
+function monthKeyFromIsoDate(v: string) {
+  return isIsoDate(v) ? String(v).slice(0, 7) : "";
+}
+
+function isAutoPayrollExpenseId(id: string) {
+  return String(id || "").startsWith("auto_payroll_");
+}
+
+function normalizeStaffPayrollRows(rows: any[]): StaffPayrollSource[] {
+  return (Array.isArray(rows) ? rows : [])
+    .map((x) => {
+      const id = String(x?.id || "").trim();
+      if (!id) return null;
+      return {
+        id,
+        name: String(x?.name || "").trim() || id,
+        active: x?.active !== false,
+        useCustomWorkingHours: !!x?.useCustomWorkingHours,
+        customWorkingHours: x?.customWorkingHours || {},
+        customWorkingHourOverrides: Array.isArray(x?.customWorkingHourOverrides)
+          ? x.customWorkingHourOverrides
+          : [],
+        monthlySalary: Number(x?.monthlySalary ?? 0) || 0,
+        overtimeMethod:
+          String(x?.overtimeMethod || "").trim() === "invoice_percentage"
+            ? "invoice_percentage"
+            : "hours_from_salary",
+        overtimeDaysPerMonth: Number(x?.overtimeDaysPerMonth ?? 30) || 30,
+        overtimeBaseHoursPerDay: Number(x?.overtimeBaseHoursPerDay ?? 8) || 8,
+        overtimeSeasonBaseHoursPerDay: Number(x?.overtimeSeasonBaseHoursPerDay ?? 6) || 6,
+        overtimeHoursBasis:
+          String(x?.overtimeHoursBasis || "").trim() === "season" ? "season" : "regular",
+        overtimePercent: Number(x?.overtimePercent ?? 0) || 0,
+        overtimeInvoicePercent: Number(x?.overtimeInvoicePercent ?? 0) || 0,
+      } as StaffPayrollSource;
+    })
+    .filter(Boolean) as StaffPayrollSource[];
+}
+
+function normalizeBookingPayrollRows(rows: any[]): BookingPayrollSource[] {
+  return (Array.isArray(rows) ? rows : [])
+    .map((x) => {
+      const date = String(x?.date || "").trim();
+      if (!isIsoDate(date)) return null;
+      return {
+        date,
+        status: String(x?.status || "").trim().toLowerCase() || "pending",
+        amount: Math.max(
+          0,
+          Number(x?.finalPrice ?? x?.total ?? x?.serviceSnapshot?.priceAtBooking ?? 0) || 0
+        ),
+        employeeId: String(x?.employeeId || "").trim() || null,
+        employeeUid: String(x?.employeeUid || "").trim() || null,
+        employeeKey: String(x?.employeeKey || "").trim() || null,
+        employeeName: String(x?.employeeName || "").trim() || null,
+      } as BookingPayrollSource;
+    })
+    .filter(Boolean) as BookingPayrollSource[];
+}
+
 // ✅ أسبوع يبدأ السبت
 function startOfWeekSaturday(d: Date) {
   const day = d.getDay(); // 0 Sun .. 6 Sat
@@ -267,6 +338,7 @@ const DashboardExpenses: React.FC = () => {
 
   // ✅ data (Firestore)
   const [items, setItems] = useState<Expense[]>([]);
+  const [autoPayrollItems, setAutoPayrollItems] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
 
   // ✅ NEW: كرت تنبيه + فلترة "الناقص ملاحظات"
@@ -399,7 +471,53 @@ const DashboardExpenses: React.FC = () => {
     try {
       setLoading(true);
       const data = await listAllExpensesFS();
-      setItems(Array.isArray(data) ? data : []);
+      const manualItems = Array.isArray(data) ? data : [];
+      setItems(manualItems);
+
+      try {
+        const [staffSnap, allBookings, appSettings] = await Promise.all([
+          getDocs(collection(db, "salons", "main", "staff_public")),
+          listAllBookings(),
+          AppSettingsService.fetchRemote(),
+        ]);
+
+        const staffRows = normalizeStaffPayrollRows(
+          staffSnap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) }))
+        );
+        const bookingRows = normalizeBookingPayrollRows(allBookings as any[]);
+        const monthKeysSet = new Set<string>();
+        manualItems.forEach((x) => {
+          const mk = monthKeyFromIsoDate(String(x?.date || ""));
+          if (mk) monthKeysSet.add(mk);
+        });
+        bookingRows.forEach((x) => {
+          const mk = monthKeyFromIsoDate(String(x?.date || ""));
+          if (mk) monthKeysSet.add(mk);
+        });
+        monthKeysSet.add(todayISO().slice(0, 7));
+
+        const payrollRows = buildPayrollExpenseRowsForMonths({
+          staffList: staffRows,
+          bookings: bookingRows,
+          appSettings: appSettings || {},
+          monthKeys: Array.from(monthKeysSet),
+        });
+
+        const payrollItems: Expense[] = payrollRows.map((x) => ({
+          id: x.id,
+          title: x.title,
+          category: x.category,
+          amount: Number(x.amount || 0),
+          date: String(x.date || ""),
+          paymentMethod: (x.paymentMethod || "transfer") as PaymentMethod,
+          note: String(x.note || "").trim() || undefined,
+          createdAt: Number(x.createdAt || Date.now()),
+        }));
+        setAutoPayrollItems(payrollItems);
+      } catch (payrollErr) {
+        console.warn("auto payroll expenses load error:", payrollErr);
+        setAutoPayrollItems([]);
+      }
 
       // ✅ NEW: عداد "بدون ملاحظات" من Firebase (هذا الشهر)
       try {
@@ -412,6 +530,7 @@ const DashboardExpenses: React.FC = () => {
       console.error("listAllExpensesFS error:", e);
       setModalMsg(firebaseMsg(e));
       setItems([]);
+      setAutoPayrollItems([]);
     } finally {
       setLoading(false);
     }
@@ -437,6 +556,7 @@ const DashboardExpenses: React.FC = () => {
           if (mounted) {
             setUiRole("guest");
             setItems([]);
+            setAutoPayrollItems([]);
             setLoading(false);
             setModalMsg("لا يوجد مستخدم مسجل دخول. سجّل دخول الإدارة ثم جرّب.");
             setAuthReady(true);
@@ -476,15 +596,19 @@ const DashboardExpenses: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!authReady) {
-    return (
-      <div className="exp-page">
-        <div className="exp-card">
-          <h2>جاري التحقق من الصلاحيات...</h2>
-        </div>
-      </div>
-    );
-  }
+  const allItems = useMemo(() => {
+    const merged = new Map<string, Expense>();
+    [...items, ...autoPayrollItems].forEach((x) => {
+      const id = String(x?.id || "").trim();
+      if (!id) return;
+      merged.set(id, x);
+    });
+    return Array.from(merged.values()).sort((a, b) => {
+      const d = String(b.date || "").localeCompare(String(a.date || ""));
+      if (d !== 0) return d;
+      return Number(b.createdAt || 0) - Number(a.createdAt || 0);
+    });
+  }, [items, autoPayrollItems]);
 
   // ====== ملخص اليوم/الأسبوع/الشهر (لوحة خفيفة) ======
   const summary = useMemo(() => {
@@ -504,7 +628,7 @@ const DashboardExpenses: React.FC = () => {
     let monthTotal = 0;
     let prevMonthTotal = 0;
 
-    items.forEach((e) => {
+    allItems.forEach((e) => {
       const amt = Number(e.amount) || 0;
       const d = parseISODate(e.date);
       if (d) {
@@ -516,7 +640,7 @@ const DashboardExpenses: React.FC = () => {
     });
 
     return { todayTotal, weekTotal, monthTotal, prevMonthTotal };
-  }, [items]);
+  }, [allItems]);
 
   // ====== تنبيهات ذكية (سطرية خفيفة) ======
   const smartAlerts = useMemo(() => {
@@ -543,7 +667,7 @@ const DashboardExpenses: React.FC = () => {
     // 2) أعلى تصنيف هذا الشهر
     const monthKey = todayISO().slice(0, 7);
     const map = new Map<string, number>();
-    items.forEach((e) => {
+    allItems.forEach((e) => {
       if ((e.date || "").startsWith(monthKey)) {
         const k = e.category || "أخرى";
         map.set(k, (map.get(k) || 0) + (Number(e.amount) || 0));
@@ -558,7 +682,7 @@ const DashboardExpenses: React.FC = () => {
     }
 
     // 3) بدون ملاحظات (هذا الشهر)
-    const missingNotes = items.filter((e) => {
+    const missingNotes = allItems.filter((e) => {
       if (!e.date || !e.date.startsWith(monthKey)) return false;
       const n = String(e.note ?? "").trim();
       return !n;
@@ -569,7 +693,7 @@ const DashboardExpenses: React.FC = () => {
         icon: "⚠️",
         text: `${missingNotes} مصروف/مصروفات هذا الشهر بدون ملاحظات`,
       });
-    } else if (items.some((e) => (e.date || "").startsWith(monthKey))) {
+    } else if (allItems.some((e) => (e.date || "").startsWith(monthKey))) {
       alerts.push({
         icon: "✅",
         text: "كل مصروفات هذا الشهر تحتوي على ملاحظات",
@@ -577,12 +701,12 @@ const DashboardExpenses: React.FC = () => {
     }
 
     return alerts.slice(0, 4);
-  }, [items, summary.monthTotal, summary.prevMonthTotal]);
+  }, [allItems, summary.monthTotal, summary.prevMonthTotal]);
 
   // ====== الفلاتر (للسجل داخل المودال) ======
   const filtered = useMemo(() => {
     const queryText = q.trim().toLowerCase();
-    return items.filter((e) => {
+    return allItems.filter((e) => {
       if (from && e.date < from) return false;
       if (to && e.date > to) return false;
       if (fCategory !== "الكل" && e.category !== fCategory) return false;
@@ -605,7 +729,7 @@ const DashboardExpenses: React.FC = () => {
 
       return true;
     });
-  }, [items, from, to, fCategory, fPayment, q, onlyMissingNotes]);
+  }, [allItems, from, to, fCategory, fPayment, q, onlyMissingNotes]);
 
   const totalFiltered = useMemo(
     () => filtered.reduce((sum, e) => sum + (Number(e.amount) || 0), 0),
@@ -665,6 +789,10 @@ const DashboardExpenses: React.FC = () => {
   };
 
   const removeExpense = async (id: string) => {
+    if (isAutoPayrollExpenseId(id)) {
+      setModalMsg("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن حذفه يدويًا.");
+      return;
+    }
     setConfirmState({
       open: true,
       title: "تأكيد الحذف",
@@ -687,6 +815,10 @@ const DashboardExpenses: React.FC = () => {
 
   // ✅ بدء التعديل (كل الحقول)
   const startEdit = (e: Expense) => {
+    if (isAutoPayrollExpenseId(e.id)) {
+      setModalMsg("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن تعديله يدويًا.");
+      return;
+    }
     setEditId(e.id);
     setEditForm({
       title: e.title || "",
@@ -713,6 +845,10 @@ const DashboardExpenses: React.FC = () => {
 
   // 💾 حفظ التعديل (كل الحقول)
   const saveEdit = async (original: Expense) => {
+    if (isAutoPayrollExpenseId(original.id)) {
+      setModalMsg("هذا السجل محسوب تلقائيًا (راتب/أوفر تايم) ولا يمكن تعديله يدويًا.");
+      return;
+    }
     const amt = Number(editForm.amount);
 
     if (!editForm.title.trim()) return setModalMsg("اكتب اسم المصروف");
@@ -853,6 +989,16 @@ const DashboardExpenses: React.FC = () => {
     setModalMsg("تمت إضافة التصنيف ✅ (راح ننقله للإعدادات لاحقًا)");
   };
 
+  if (!authReady) {
+    return (
+      <div className="exp-page">
+        <div className="exp-card">
+          <h2>جاري التحقق من الصلاحيات...</h2>
+        </div>
+      </div>
+    );
+  }
+
   if (!allowed) {
     return (
       <div className="exp-page">
@@ -865,9 +1011,14 @@ const DashboardExpenses: React.FC = () => {
   }
 
   // ✅ خيارات الدروب داون (نفس الشكل)
+  const runtimeCategories = Array.from(
+    new Set(
+      [...categories, ...allItems.map((e) => String(e.category || "").trim()).filter(Boolean)]
+    )
+  );
   const categoryOptions: DDOption[] = [
     { value: "الكل", label: "الكل" },
-    ...categories.map((c) => ({ value: c, label: c })),
+    ...runtimeCategories.map((c) => ({ value: c, label: c })),
   ];
 
   const categoryOptionsNoAll: DDOption[] = categories.map((c) => ({
@@ -1169,7 +1320,7 @@ const DashboardExpenses: React.FC = () => {
               const monthKey = todayISO().slice(0, 7);
               const map = new Map<string, number>();
 
-              items.forEach((e) => {
+              allItems.forEach((e) => {
                 if ((e.date || "").startsWith(monthKey)) {
                   const cat = (e.category || "أخرى").trim() || "أخرى";
                   map.set(cat, (map.get(cat) || 0) + (Number(e.amount) || 0));
@@ -1225,7 +1376,7 @@ const DashboardExpenses: React.FC = () => {
             </div>
 
             {(() => {
-              const latest = [...items]
+              const latest = [...allItems]
                 .sort(
                   (a, b) =>
                     (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0)
@@ -1422,10 +1573,11 @@ const DashboardExpenses: React.FC = () => {
                       </tr>
                     ) : filtered.length ? (
                       filtered.map((e) => {
-                        const isEdit = editId === e.id;
+                        const isAutoPayroll = isAutoPayrollExpenseId(e.id);
+                        const isEdit = !isAutoPayroll && editId === e.id;
 
                         return (
-                          <tr key={e.id}>
+                          <tr key={e.id} className={isAutoPayroll ? "exp-row-auto-payroll" : ""}>
                             <td data-label="التاريخ">
                               {isEdit ? (
                                 <input
@@ -1456,7 +1608,10 @@ const DashboardExpenses: React.FC = () => {
                                   placeholder="اسم المصروف"
                                 />
                               ) : (
-                                e.title
+                                <div className="exp-row-title">
+                                  <span>{e.title}</span>
+                                  {isAutoPayroll ? <span className="exp-auto-pill">تلقائي</span> : null}
+                                </div>
                               )}
                             </td>
 
@@ -1541,7 +1696,9 @@ const DashboardExpenses: React.FC = () => {
                             </td>
 
                             <td data-label="إجراء">
-                              {isEdit ? (
+                              {isAutoPayroll ? (
+                                <span className="exp-auto-pill">تلقائي</span>
+                              ) : isEdit ? (
                                 <div className="exp-row-actions">
                                   <button
                                     className="exp-btn primary"

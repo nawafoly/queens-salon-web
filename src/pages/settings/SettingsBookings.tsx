@@ -11,6 +11,7 @@ import {
 
 import { auth, db } from "../../services/firebase";
 import { AppSettingsService } from "../../services/AppSettingsService";
+import { formatTime12 } from "../../helpers/timeDisplay";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/DashboardSettings.css";
@@ -61,6 +62,47 @@ function safeTimeHHMM(v: any, fallback: string) {
   if (mm < 0 || mm > 59) return fallback;
 
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function formatTime12Safe(v: any, fallback = "-") {
+  const raw = String(v || "").trim();
+  if (!raw) return fallback;
+  return formatTime12(raw, raw);
+}
+
+type DateCalendar = "gregory" | "hijri";
+function normalizeIsoDate(v: any) {
+  const s = String(v || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
+function formatDateByCalendar(v: any, calendar: DateCalendar = "gregory") {
+  const iso = normalizeIsoDate(v);
+  if (!iso) return "-";
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  const locale =
+    calendar === "hijri" ? "ar-SA-u-ca-islamic-umalqura" : "ar-SA-u-ca-gregory";
+  const raw = d.toLocaleDateString(locale, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const clean = String(raw || "")
+    .replace(/\s*(م|هـ|AD|AH)\.?$/iu, "")
+    .trim();
+  return `\u200E${clean}\u200E`;
+}
+
+function formatDateRangeByCalendar(fromDate: any, toDate: any, calendar: DateCalendar = "gregory") {
+  const fromIso = normalizeIsoDate(fromDate);
+  const toIso = normalizeIsoDate(toDate);
+  if (!fromIso && !toIso) return "-";
+  if (!fromIso) return formatDateByCalendar(toIso, calendar);
+  if (!toIso) return formatDateByCalendar(fromIso, calendar);
+  const start = fromIso <= toIso ? fromIso : toIso;
+  const end = fromIso <= toIso ? toIso : fromIso;
+  return `من ${formatDateByCalendar(start, calendar)} إلى ${formatDateByCalendar(end, calendar)}`;
 }
 
 function loadLocalSettings() {
@@ -177,6 +219,12 @@ export default function SettingsBookings() {
     blockedWeekdays: [],
     reason: "",
   });
+  const isEditingOverride = useMemo(
+    () =>
+      !!String(overrideDraft.id || "").trim() &&
+      bookingHourOverrides.some((x) => String(x.id) === String(overrideDraft.id)),
+    [overrideDraft.id, bookingHourOverrides]
+  );
 
   const seasonFill = (bookingSettings as any)?.seasonFill || {};
   const seasonFillEnabled = !!seasonFill.enabled;
@@ -305,8 +353,9 @@ export default function SettingsBookings() {
       return;
     }
 
+    const draftId = String(overrideDraft.id || "").trim();
     const entry: BookingHourOverride = {
-      id: `ovr_${Date.now()}`,
+      id: draftId || `ovr_${Date.now()}`,
       fromDate,
       toDate,
       mode: overrideDraft.mode === "closed" ? "closed" : "hours",
@@ -316,10 +365,10 @@ export default function SettingsBookings() {
       blockedWeekdays: (overrideDraft.blockedWeekdays || []).filter((d) => WEEKDAY_KEYS.includes(d)),
       reason: String(overrideDraft.reason || "").trim(),
     };
-
-    setBookingSettings({
-      bookingHourOverrides: [...bookingHourOverrides, entry],
-    });
+    const next = isEditingOverride
+      ? bookingHourOverrides.map((x) => (String(x.id) === String(entry.id) ? entry : x))
+      : [...bookingHourOverrides, entry];
+    setBookingSettings({ bookingHourOverrides: next });
     resetOverrideDraft();
   };
 
@@ -327,6 +376,30 @@ export default function SettingsBookings() {
     if (!hasAdminPower) return;
     const next = bookingHourOverrides.filter((x) => String(x.id) !== String(id));
     setBookingSettings({ bookingHourOverrides: next });
+    if (String(overrideDraft.id) === String(id)) {
+      resetOverrideDraft();
+    }
+  };
+
+  const editBookingHourOverride = (id: string) => {
+    if (!hasAdminPower) return;
+    const found = bookingHourOverrides.find((x) => String(x.id) === String(id));
+    if (!found) return;
+    setOverrideDraft({
+      id: String(found.id || ""),
+      fromDate: String(found.fromDate || ""),
+      toDate: String(found.toDate || ""),
+      mode: found.mode === "closed" ? "closed" : "hours",
+      start: String(found.start || "10:00"),
+      end: String(found.end || "22:00"),
+      includeWeekdays: Array.isArray(found.includeWeekdays)
+        ? found.includeWeekdays.filter((d) => WEEKDAY_KEYS.includes(d))
+        : [],
+      blockedWeekdays: Array.isArray(found.blockedWeekdays)
+        ? found.blockedWeekdays.filter((d) => WEEKDAY_KEYS.includes(d))
+        : [],
+      reason: String(found.reason || ""),
+    });
   };
 
   // ✅ helper: خذ آخر نسخة مؤكدة (state الحالي أولاً ثم cache)
@@ -380,8 +453,9 @@ export default function SettingsBookings() {
           return;
         }
 
+        const draftId = String(overrideDraft.id || "").trim();
         const draftEntry: BookingHourOverride = {
-          id: `ovr_${Date.now()}`,
+          id: draftId || `ovr_${Date.now()}`,
           fromDate: draftFromDate,
           toDate: draftToDate,
           mode: overrideDraft.mode === "closed" ? "closed" : "hours",
@@ -391,7 +465,12 @@ export default function SettingsBookings() {
           blockedWeekdays: (overrideDraft.blockedWeekdays || []).filter((d) => WEEKDAY_KEYS.includes(d)),
           reason: String(overrideDraft.reason || "").trim(),
         };
-        latestOverrides = [...latestOverrides, draftEntry];
+        const isEditOnSave = latestOverrides.some((x: any) => String(x?.id || "") === draftId);
+        latestOverrides = isEditOnSave
+          ? latestOverrides.map((x: any) =>
+              String(x?.id || "") === String(draftEntry.id) ? draftEntry : x
+            )
+          : [...latestOverrides, draftEntry];
       }
 
       const bhRaw = latestBooking?.businessHours || defaultBusinessHoursLocal();
@@ -843,8 +922,8 @@ export default function SettingsBookings() {
                       {dayHours.enabled === false
                         ? "اليوم مغلق"
                         : dayHours.start <= dayHours.end
-                          ? "دوام عادي"
-                          : "دوام يتجاوز منتصف الليل"}
+                          ? `دوام عادي: ${formatTime12Safe(dayHours.start)} - ${formatTime12Safe(dayHours.end)}`
+                          : `دوام يتجاوز منتصف الليل: ${formatTime12Safe(dayHours.start)} - ${formatTime12Safe(dayHours.end)}`}
                     </span>
                   </div>
                 );
@@ -1052,6 +1131,9 @@ export default function SettingsBookings() {
                 disabled={!hasAdminPower || overrideDraft.mode === "closed"}
                 onChange={(e) => setOverrideDraft((p) => ({ ...p, start: e.target.value }))}
               />
+              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                {formatTime12Safe(overrideDraft.start || "10:00")}
+              </div>
             </div>
             <div className="settings-field">
               <label>وقت النهاية</label>
@@ -1062,6 +1144,9 @@ export default function SettingsBookings() {
                 disabled={!hasAdminPower || overrideDraft.mode === "closed"}
                 onChange={(e) => setOverrideDraft((p) => ({ ...p, end: e.target.value }))}
               />
+              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                {formatTime12Safe(overrideDraft.end || "22:00")}
+              </div>
             </div>
             <div className="settings-field" style={{ gridColumn: "1 / -1" }}>
               <label>أيام مستهدفة داخل الفترة (اختياري)</label>
@@ -1120,7 +1205,7 @@ export default function SettingsBookings() {
               disabled={!hasAdminPower}
               onClick={addBookingHourOverride}
             >
-              إضافة استثناء
+              {isEditingOverride ? "حفظ التعديل" : "إضافة استثناء"}
             </button>
             <button
               type="button"
@@ -1128,7 +1213,7 @@ export default function SettingsBookings() {
               disabled={!hasAdminPower}
               onClick={resetOverrideDraft}
             >
-              تنظيف
+              {isEditingOverride ? "إلغاء التعديل" : "تنظيف"}
             </button>
           </div>
 
@@ -1140,7 +1225,17 @@ export default function SettingsBookings() {
                 <div key={x.id} className="settings-row" style={{ alignItems: "flex-start", gap: 10 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 900 }}>
-                      {x.fromDate} ← {x.toDate} | {x.mode === "closed" ? "مغلق بالكامل" : `ساعات: ${x.start} - ${x.end}`}
+                      {x.mode === "closed"
+                        ? "مغلق بالكامل"
+                        : `ساعات: ${formatTime12Safe(x.start || "10:00")} - ${formatTime12Safe(x.end || "22:00")}`}
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.92, marginTop: 4, display: "grid", gap: 2 }}>
+                      <div>
+                        الميلادي: {formatDateRangeByCalendar(x.fromDate, x.toDate, "gregory")}
+                      </div>
+                      <div>
+                        الهجري: {formatDateRangeByCalendar(x.fromDate, x.toDate, "hijri")}
+                      </div>
                     </div>
                     <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
                       الأيام المستهدفة: {(x.includeWeekdays || []).length
@@ -1157,6 +1252,14 @@ export default function SettingsBookings() {
                       </div>
                     ) : null}
                   </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline-dark btn-sm"
+                    disabled={!hasAdminPower}
+                    onClick={() => editBookingHourOverride(x.id)}
+                  >
+                    تعديل
+                  </button>
                   <button
                     type="button"
                     className="btn btn-outline-danger btn-sm"

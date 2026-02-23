@@ -2388,74 +2388,6 @@ export default function DashboardEmployees() {
           </div>
         )}
 
-        <div className="dash-card mt-3 staff-summary-card">
-          <div className="staff-summary-head">
-            <h3>ملخص الدوام الفعلي اليوم لكل موظفة</h3>
-            <span className="staff-summary-stamp">
-              {new Date(nowTick).toLocaleString("ar-SA", {
-                year: "numeric",
-                month: "2-digit",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          </div>
-          <div className="staff-summary-table-wrap">
-            <table className="staff-summary-table">
-              <thead>
-                <tr>
-                  <th>الموظفة</th>
-                  <th>الدوام الرسمي (أسبوعي)</th>
-                  <th>دوام الحجز الفعلي اليوم</th>
-                  <th>مصدر الدوام الفعلي</th>
-                  <th>دوام الموظفة الأساسي</th>
-                  <th>استثناء دوام الموظفة</th>
-                  <th>أيام الإجازة الأسبوعية</th>
-                  <th>التنبيهات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {staffScheduleSummary.map((row) => (
-                  <tr key={`summary_${row.id}`}>
-                    <td data-label="الموظفة">
-                      <b>{row.name}</b>
-                    </td>
-                    <td data-label="الدوام الرسمي (أسبوعي)">{row.salonWeeklyWindowLabel}</td>
-                    <td data-label="دوام الحجز الفعلي اليوم">{row.salonEffectiveWindowLabel}</td>
-                    <td data-label="مصدر الدوام الفعلي">
-                      <div>{row.salonSourceLabel}</div>
-                      {Array.isArray((row as any).salonSourceDetails?.notes) &&
-                      (row as any).salonSourceDetails.notes.length ? (
-                        <div className="staff-summary-subnote">
-                          {(row as any).salonSourceDetails.notes.join(" | ")}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td data-label="دوام الموظفة الأساسي">{row.staffBaseWindowLabel}</td>
-                    <td data-label="استثناء دوام الموظفة">{row.staffOverrideLabel}</td>
-                    <td data-label="أيام الإجازة الأسبوعية">{row.leaveDaysLabel}</td>
-                    <td data-label="التنبيهات">
-                      {row.warnings.length ? (
-                        <span className="staff-summary-warning">{row.warnings.join(" | ")}</span>
-                      ) : (
-                        <span className="staff-summary-ok">لا توجد إجازة حالية أو قريبة</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {staffScheduleSummary.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="staff-summary-empty">
-                      لا توجد موظفات لعرض الملخص حاليًا.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
         <div className="dash-card mt-3">
           <div className="dash-row">
             <div className="dash-field">
@@ -2515,28 +2447,194 @@ export default function DashboardEmployees() {
           {loading ? (
             <div className="emp-field-note">جاري تحميل الموظفات...</div>
           ) : filtered.length ? (
-            <div className="emp-list-grid">
+            <div className="dash-grid">
               {filtered.map((x) => (
-                <div key={x.id} className="emp-item">
-                  <div className="emp-item-head">
-                    <b>{x.name || "-"}</b>
-                    <span>{x.active ? "نشطة" : "غير نشطة"}</span>
-                  </div>
-                  <div className="emp-item-actions">
-                    <button className="exp-btn ghost sm" type="button" onClick={() => openEdit(x)}>
-                      <FontAwesomeIcon icon={faPen} /> تعديل
-                    </button>
-                    <button className="exp-btn ghost sm" type="button" onClick={() => toggleActiveQuick(x)}>
-                      <FontAwesomeIcon icon={x.active ? faToggleOn : faToggleOff} />{" "}
-                      {x.active ? "إيقاف" : "تفعيل"}
-                    </button>
-                    <button className="exp-btn ghost sm" type="button" onClick={() => toggleShowOnAboutQuick(x)}>
-                      ظهور "من نحن": {x.showOnAbout ? "نعم" : "لا"}
-                    </button>
-                    <button className="exp-btn ghost sm" type="button" onClick={() => remove(x.id)}>
-                      <FontAwesomeIcon icon={faTrash} /> حذف
-                    </button>
-                  </div>
+                <div
+                  key={x.id}
+                  className="staff-card staff-card-cover"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openEdit(x)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openEdit(x);
+                    }
+                  }}
+                >
+                  {(() => {
+                    const allSpecialties = normalizeSpecialties(x.specialties);
+                    const isExpanded = !!expandedSpecialtiesByStaff[x.id];
+                    const visibleSpecialties = isExpanded
+                      ? allSpecialties
+                      : allSpecialties.slice(0, STAFF_CHIPS_PREVIEW_COUNT);
+                    const hiddenCount = Math.max(0, allSpecialties.length - visibleSpecialties.length);
+                    const leaveUntil = normalizeLeaveUntil((x as any).leaveUntil);
+                    const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
+
+                    return (
+                      <>
+                        <div className="staff-top">
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <div className="staff-avatar-box">
+                              {String(x.avatarUrl || "").trim() ? (
+                                <img
+                                  src={resolveAvatarFromAssets(String(x.avatarUrl))}
+                                  alt={x.name || "موظفة"}
+                                  className="staff-avatar-img"
+                                />
+                              ) : (
+                                <FontAwesomeIcon icon={faUserTie} />
+                              )}
+                            </div>
+                            <div>
+                              <h4 style={{ margin: 0, fontWeight: 900 }}>{x.name}</h4>
+
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                                <span className={`staff-pill ${x.active ? "on" : "off"}`}>
+                                  {x.active ? "نشطة" : "غير نشطة"}
+                                </span>
+
+                                <span className={`staff-pill ${x.showOnAbout ? "on" : "off"}`}>
+                                  {x.showOnAbout ? "تظهر في من نحن" : "مخفية من من نحن"}
+                                </span>
+
+                                <span className={`staff-pill ${x.showOnBooking ? "on" : "off"}`}>
+                                  {x.showOnBooking ? "تظهر في الحجز" : "مخفية من الحجز"}
+                                </span>
+
+                                {x.active && !x.showOnBooking && (
+                                  <span className="staff-pill off" title="لن تظهر للعميلات في صفحة الحجز">
+                                    ⚠️ نشطة لكنها مخفية
+                                  </span>
+                                )}
+
+                                {(x as any).onLeave && !leaveExpired && (
+                                  <span className="staff-pill off">
+                                    في إجازة {leaveUntil ? `حتى ${fmtIsoDate(leaveUntil)}` : ""}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 6,
+                              flexWrap: "wrap",
+                              justifyContent: "flex-end",
+                            }}
+                          >
+                            <button
+                              className="exp-btn ghost sm"
+                              title={x.active ? "تعطيل الموظفة" : "تفعيل الموظفة"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleActiveQuick(x);
+                              }}
+                              disabled={loading}
+                              type="button"
+                            >
+                              <FontAwesomeIcon icon={x.active ? faToggleOn : faToggleOff} />
+                            </button>
+
+                            <button
+                              className="exp-btn ghost sm"
+                              title={x.showOnAbout ? "إخفاء من صفحة من نحن" : "إظهار في صفحة من نحن"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleShowOnAboutQuick(x);
+                              }}
+                              disabled={loading}
+                              type="button"
+                            >
+                              <FontAwesomeIcon icon={x.showOnAbout ? faToggleOn : faToggleOff} />
+                            </button>
+
+                            <button
+                              className="exp-btn ghost sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEdit(x);
+                              }}
+                              type="button"
+                            >
+                              <FontAwesomeIcon icon={faPen} />
+                            </button>
+
+                            <button
+                              className="exp-btn ghost sm text-danger"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                remove(x.id);
+                              }}
+                              type="button"
+                            >
+                              <FontAwesomeIcon icon={faTrash} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {x.bio ? (
+                          <div className="staff-bio">{x.bio}</div>
+                        ) : (
+                          <div className="staff-bio muted">بدون نبذة</div>
+                        )}
+
+                        <div className="staff-chips">
+                          {visibleSpecialties.map((sid) => {
+                            const label = serviceOptions.find((o) => o.id === sid)?.label ?? sid;
+                            return (
+                              <span className="staff-chip" key={sid}>
+                                {label}
+                              </span>
+                            );
+                          })}
+                          {hiddenCount > 0 && !isExpanded && (
+                            <button
+                              type="button"
+                              className="staff-chips-toggle"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedSpecialtiesByStaff((prev) => ({ ...prev, [x.id]: true }));
+                              }}
+                            >
+                              +{hiddenCount} أكثر
+                            </button>
+                          )}
+                          {isExpanded && allSpecialties.length > STAFF_CHIPS_PREVIEW_COUNT && (
+                            <button
+                              type="button"
+                              className="staff-chips-toggle"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedSpecialtiesByStaff((prev) => ({ ...prev, [x.id]: false }));
+                              }}
+                            >
+                              عرض أقل
+                            </button>
+                          )}
+                        </div>
+
+                        {authUser?.role === "owner" && (
+                          <div style={{ marginTop: 12 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                              <span className="staff-pill stat total">
+                                الحجوزات: <b>{statsLoading ? "..." : bookingStats[x.id]?.total ?? 0}</b>
+                              </span>
+                              <span className="staff-pill stat confirmed">
+                                مؤكد: <b>{statsLoading ? "..." : bookingStats[x.id]?.byStatus.confirmed ?? 0}</b>
+                              </span>
+                              <span className="staff-pill stat pending">
+                                انتظار: <b>{statsLoading ? "..." : bookingStats[x.id]?.byStatus.pending ?? 0}</b>
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -2553,7 +2651,7 @@ export default function DashboardEmployees() {
             size="lg"
             panelClassName="emp-modal"
           >
-            <div className="emp-modal-head">
+            <div className="modal-head">
               <h3>{editId ? `تعديل موظفة - ${editingStaff?.name || name || "-"}` : "إضافة موظفة"}</h3>
               <button className="exp-btn ghost sm" type="button" onClick={closeModal}>
                 <FontAwesomeIcon icon={faXmark} />
@@ -2564,14 +2662,137 @@ export default function DashboardEmployees() {
                 <button
                   key={tab.key}
                   type="button"
-                  className={`emp-tab ${modalTab === tab.key ? "is-active" : ""}`}
+                  className={`emp-modal-tab ${modalTab === tab.key ? "active" : ""}`}
                   onClick={() => setModalTab(tab.key)}
                 >
                   {tab.label}
                 </button>
               ))}
             </div>
-            <div className="emp-modal-body">
+            <div className="modal-body emp-modal-grid">
+              {modalStaffScheduleSummary && modalTab === "basic" ? (
+                <div className="emp-modal-live-summary">
+                  <div className="emp-modal-live-summary-head">
+                    <b>ملخص الدوام الفعلي اليوم للموظفة</b>
+                    <span className="emp-modal-live-summary-stamp">
+                      {new Date(nowTick).toLocaleString("ar-SA", {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                  <div className="emp-modal-live-summary-top">
+                    <span className="emp-modal-live-summary-name">{modalStaffScheduleSummary.name}</span>
+                    <span
+                      className={`emp-modal-live-status emp-modal-live-status-${
+                        modalStaffScheduleSummary.statusTone || "muted"
+                      }`}
+                    >
+                      {modalStaffScheduleSummary.statusNowLabel}
+                    </span>
+                  </div>
+                  <div className="emp-modal-live-calendar-grid">
+                    <span className="emp-modal-live-calendar-chip emp-modal-live-calendar-chip-greg">
+                      {modalStaffScheduleSummary.todayDateGregorianLabel}
+                    </span>
+                    <span className="emp-modal-live-calendar-chip emp-modal-live-calendar-chip-hijri">
+                      {modalStaffScheduleSummary.todayDateHijriLabel}
+                    </span>
+                  </div>
+
+                  <div className="emp-modal-live-grid">
+                    <div className="emp-modal-live-card">
+                      <span className="emp-modal-live-label">الدوام الرسمي (أسبوعي)</span>
+                      <b>{modalStaffScheduleSummary.salonWeeklyWindowLabel}</b>
+                      <span className="emp-modal-live-note">{modalStaffScheduleSummary.salonWeeklyDetails}</span>
+                    </div>
+                    <div className="emp-modal-live-card">
+                      <span className="emp-modal-live-label">دوام الحجز الفعلي اليوم</span>
+                      <b>{modalStaffScheduleSummary.salonEffectiveWindowLabel}</b>
+                      <span className="emp-modal-live-note">{modalStaffScheduleSummary.salonEffectiveDetails}</span>
+                    </div>
+                    <div className="emp-modal-live-card">
+                      <span className="emp-modal-live-label">دوام الموظفة الأساسي</span>
+                      <b>{modalStaffScheduleSummary.staffBaseWindowLabel}</b>
+                      <span className="emp-modal-live-note">{modalStaffScheduleSummary.staffBaseDetails}</span>
+                    </div>
+                    <div className="emp-modal-live-card">
+                      <span className="emp-modal-live-label">استثناء دوام الموظفة</span>
+                      <b>{modalStaffScheduleSummary.staffOverrideLabel}</b>
+                      <span className="emp-modal-live-note">{modalStaffScheduleSummary.staffOverrideDetails}</span>
+                    </div>
+                    <div className="emp-modal-live-card">
+                      <span className="emp-modal-live-label">أيام الإجازة الأسبوعية</span>
+                      <b>{modalStaffScheduleSummary.leaveDaysLabel}</b>
+                      <span className="emp-modal-live-note">{modalStaffScheduleSummary.leaveDaysDetails}</span>
+                    </div>
+                    <div className="emp-modal-live-card emp-modal-live-card-wide">
+                      <span className="emp-modal-live-label">مصدر الدوام الفعلي</span>
+                      <b>{modalStaffScheduleSummary.salonSourceLabel}</b>
+                      {Array.isArray((modalStaffScheduleSummary as any).salonSourceDetails?.groups) &&
+                      (modalStaffScheduleSummary as any).salonSourceDetails.groups.length ? (
+                        <div className="emp-modal-live-source-groups">
+                          {(modalStaffScheduleSummary as any).salonSourceDetails.groups.map(
+                            (group: any, idx: number) => (
+                              <div
+                                key={`modal_source_${group?.title || "source"}_${idx}`}
+                                className={`emp-modal-live-source-group ${
+                                  group?.tone === "active" ? "emp-modal-live-source-group-active" : ""
+                                }`}
+                              >
+                                <div className="emp-modal-live-source-group-title">
+                                  {group?.title || "مصدر الدوام"}
+                                </div>
+                                <div className="emp-modal-live-calendar-grid">
+                                  <span className="emp-modal-live-calendar-chip emp-modal-live-calendar-chip-greg">
+                                    م: {group?.gregorian || "-"}
+                                  </span>
+                                  <span className="emp-modal-live-calendar-chip emp-modal-live-calendar-chip-hijri">
+                                    هـ: {group?.hijri || "-"}
+                                  </span>
+                                </div>
+                                {Array.isArray(group?.details) && group.details.length ? (
+                                  <ul className="emp-modal-live-list">
+                                    {group.details.map((detail: string, detailIdx: number) => (
+                                      <li key={`modal_source_detail_${idx}_${detailIdx}`}>{detail}</li>
+                                    ))}
+                                  </ul>
+                                ) : null}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      ) : Array.isArray((modalStaffScheduleSummary as any).salonSourceDetails?.notes) &&
+                        (modalStaffScheduleSummary as any).salonSourceDetails.notes.length ? (
+                        <ul className="emp-modal-live-list">
+                          {(modalStaffScheduleSummary as any).salonSourceDetails.notes.map(
+                            (note: string, noteIdx: number) => (
+                              <li key={`modal_source_note_${noteIdx}`}>{note}</li>
+                            )
+                          )}
+                        </ul>
+                      ) : (
+                        <span className="emp-modal-live-empty">لا توجد تفاصيل إضافية.</span>
+                      )}
+                    </div>
+                    <div className="emp-modal-live-card emp-modal-live-card-wide">
+                      <span className="emp-modal-live-label">التنبيهات</span>
+                      {modalStaffScheduleSummary.warnings.length ? (
+                        <ul className="emp-modal-live-list emp-modal-live-list-warning">
+                          {modalStaffScheduleSummary.warnings.map((w, idx) => (
+                            <li key={`modal_warning_${idx}`}>{w}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="emp-modal-live-ok">لا توجد إجازة حالية أو قريبة</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               {editingStaff ? (
                 <div className={`emp-modal-section ${modalTab !== "stats" ? "is-hidden" : ""}`}>
                   <b className="emp-modal-section-title">الإحصائيات والإجازات</b>
@@ -2755,6 +2976,201 @@ export default function DashboardEmployees() {
                           modalPayrollMonthSummary?.invoiceCount || 0
                         } | إيرادها: ${fmtMoneySar(modalPayrollMonthSummary?.invoiceRevenue || 0)} ر.س`}
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="staff-leave-box">
+                    <div className="staff-leave-head">
+                      <span>إعدادات الإجازات للموظفة</span>
+                      <b>{parsePositiveInt(String((editingStaff as any).leaveBalanceDays || 0), 0)} يوم</b>
+                    </div>
+
+                    <div className="staff-leave-settings-grid">
+                      <div className="dash-field">
+                        <label className="emp-label emp-check-label">
+                          <input
+                            type="checkbox"
+                            checked={modalOnLeave}
+                            disabled={loading}
+                            onChange={(e) => setModalOnLeave(e.target.checked)}
+                          />
+                          في إجازة الآن
+                        </label>
+                      </div>
+
+                      <div className="dash-field">
+                        <label className="emp-label">تاريخ العودة</label>
+                        <input
+                          className="dash-input"
+                          type="date"
+                          value={modalLeaveUntil}
+                          disabled={loading}
+                          onChange={(e) => setModalLeaveUntil(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="dash-field staff-leave-settings-wide">
+                        <label className="emp-label">ملاحظة الإجازة (اختياري)</label>
+                        <input
+                          className="dash-input"
+                          value={modalLeaveNote}
+                          disabled={loading}
+                          onChange={(e) => setModalLeaveNote(e.target.value)}
+                          placeholder="مثال: عودة يوم الأحد"
+                        />
+                      </div>
+
+                      <div className="dash-field staff-leave-settings-wide">
+                        <label className="emp-label">الإجازة الأسبوعية الثابتة</label>
+                        <div className="emp-inline-actions">
+                          <select
+                            className="dash-select"
+                            value={String(modalLeaveWeekdayDraft || "")}
+                            disabled={loading}
+                            onChange={(e) => setModalLeaveWeekdayDraft(e.target.value as WeekdayKey | "")}
+                          >
+                            <option value="">اختاري اليوم</option>
+                            {WEEKDAY_OPTIONS.map((d) => (
+                              <option key={`modal_leave_day_${d.key}`} value={d.key}>
+                                {d.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="exp-btn ghost sm"
+                            disabled={loading || !normalizeWeekdayKey(modalLeaveWeekdayDraft)}
+                            onClick={() => {
+                              const next = normalizeWeekdayKey(modalLeaveWeekdayDraft);
+                              if (!next) return;
+                              setModalExceptionalLeaveWeekdays((prev) =>
+                                normalizeExceptionalLeaveWeekdays([...prev, next])
+                              );
+                              setModalLeaveWeekdayDraft("");
+                            }}
+                          >
+                            إضافة اليوم
+                          </button>
+                        </div>
+
+                        {modalExceptionalLeaveWeekdays.length > 0 ? (
+                          <div className="emp-tags-row">
+                            {modalExceptionalLeaveWeekdays.map((d) => (
+                              <button
+                                key={`modal_leave_chip_${d}`}
+                                type="button"
+                                className="exp-btn ghost sm"
+                                disabled={loading}
+                                onClick={() =>
+                                  setModalExceptionalLeaveWeekdays((prev) =>
+                                    prev.filter((day) => day !== d)
+                                  )
+                                }
+                                title="حذف يوم الإجازة الثابتة"
+                              >
+                                {WEEKDAY_OPTIONS.find((x) => x.key === d)?.label || d} ×
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="emp-field-note">لا توجد أيام إجازة أسبوعية ثابتة.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {modalLeaveExpired ? (
+                      <div className="emp-field-note danger">
+                        تاريخ الإجازة انتهى؛ بعد الحفظ سيتم اعتبار الموظفة غير مجازة.
+                      </div>
+                    ) : null}
+
+                    <div className="staff-leave-head">
+                      <span>تاريخ الاستحقاق القادم</span>
+                      <div>
+                        <input
+                          className="dash-input"
+                          type="date"
+                          value={leaveEntitlementDate}
+                          onChange={(e) => setLeaveEntitlementDate(e.target.value)}
+                        />
+                        <button
+                          className="exp-btn"
+                          type="button"
+                          onClick={saveEntitlementDate}
+                          disabled={loading}
+                        >
+                          حفظ الاستحقاق
+                        </button>
+                      </div>
+                    </div>
+
+                    {authUser?.role === "owner" ? (
+                      <div className="staff-leave-controls">
+                        <input
+                          className="dash-input staff-leave-input"
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={leaveAdjustDays}
+                          onChange={(e) => setLeaveAdjustDays(e.target.value)}
+                          placeholder="عدد الأيام"
+                        />
+                        <input
+                          className="dash-input"
+                          type="date"
+                          value={leaveAdjustDate}
+                          onChange={(e) => setLeaveAdjustDate(e.target.value)}
+                        />
+                        <input
+                          className="dash-input"
+                          value={leaveAdjustNote}
+                          onChange={(e) => setLeaveAdjustNote(e.target.value)}
+                          placeholder="ملاحظة (اختياري)"
+                        />
+                        <button
+                          className="exp-btn primary"
+                          type="button"
+                          disabled={loading}
+                          onClick={() => applyLeaveChange("add")}
+                        >
+                          إضافة رصيد
+                        </button>
+                        <button
+                          className="exp-btn ghost"
+                          type="button"
+                          disabled={loading}
+                          onClick={() => applyLeaveChange("deduct")}
+                        >
+                          تسجيل إجازة (خصم)
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <div className="leave-log-list">
+                      <div className="leave-log-title">سجل الإجازات</div>
+                      {(Array.isArray((editingStaff as any).leaveEntries)
+                        ? (editingStaff as any).leaveEntries
+                        : []
+                      )
+                        .slice()
+                        .sort((a: LeaveEntry, b: LeaveEntry) =>
+                          String(b.createdAtIso || "").localeCompare(String(a.createdAtIso || ""))
+                        )
+                        .slice(0, 12)
+                        .map((entry: LeaveEntry) => (
+                          <div className="leave-log-row" key={entry.id}>
+                            <span className={`leave-log-type ${entry.type === "deduct" ? "deduct" : "add"}`}>
+                              {entry.type === "deduct" ? "إجازة" : "إضافة"}
+                            </span>
+                            <span className="leave-log-days">{entry.days} يوم</span>
+                            <span className="leave-log-date">{fmtIsoDate(entry.date)}</span>
+                            <span className="leave-log-note">{String(entry.note || "-")}</span>
+                          </div>
+                        ))}
+                      {!Array.isArray((editingStaff as any).leaveEntries) ||
+                      (editingStaff as any).leaveEntries.length === 0 ? (
+                        <div className="leave-log-empty">لا يوجد سجل إجازات حتى الآن.</div>
+                      ) : null}
                     </div>
                   </div>
                 </div>

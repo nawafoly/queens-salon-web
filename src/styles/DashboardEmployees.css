@@ -39,6 +39,51 @@
   margin-top: 20px;
 }
 
+.emp-page-wrapper .emp-list-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.emp-page-wrapper .emp-item {
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.emp-page-wrapper .emp-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.emp-page-wrapper .emp-item-head b {
+  font-size: 16px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.emp-page-wrapper .emp-item-head span {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  background: #f3f4f6;
+  color: #334155;
+}
+
+.emp-page-wrapper .emp-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* Filters Row */
 .emp-page-wrapper .dash-row {
   display: grid;
@@ -591,6 +636,7 @@
 }
 
 .emp-modal .emp-modal-live-summary {
+  order: 2;
   border: 1px solid rgba(13, 13, 13, 0.08);
   border-radius: 14px;
   background: #ffffff;
@@ -1145,6 +1191,27 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 900;
 }
 
+.emp-page-wrapper .staff-leave-settings-grid,
+.emp-modal .staff-leave-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.emp-page-wrapper .staff-leave-settings-grid .dash-field,
+.emp-modal .staff-leave-settings-grid .dash-field {
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.emp-page-wrapper .staff-leave-settings-wide,
+.emp-modal .staff-leave-settings-wide {
+  grid-column: 1 / -1;
+}
+
 .emp-page-wrapper .staff-leave-controls,
 .emp-modal .staff-leave-controls {
   display: grid;
@@ -1185,6 +1252,11 @@ h1, h2, h3, h4, h5, h6 {
   .emp-page-wrapper .staff-leave-controls,
   .emp-modal .staff-leave-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .emp-page-wrapper .staff-leave-settings-grid,
+  .emp-modal .staff-leave-settings-grid {
+    grid-template-columns: 1fr;
   }
 
   .emp-page-wrapper .staff-leave-controls > :nth-child(3),

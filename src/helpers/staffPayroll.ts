@@ -176,10 +176,10 @@ function normalizeNameKey(v: any): string {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, "")
-    .replace(/[ط£ط¥ط¢]/g, "ط§")
-    .replace(/ظ‰/g, "ظٹ")
-    .replace(/ط¤/g, "ظˆ")
-    .replace(/ط¦/g, "ظٹ");
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي");
 }
 
 function normalizeWorkingHours(
@@ -590,7 +590,7 @@ export function buildPayrollExpenseRowsForMonths(args: {
 
   args.staffList.forEach((staff) => {
     const sid = String(staff.id || "").trim();
-    const sname = String(staff.name || "").trim() || sid || "ظ…ظˆط¸ظپط©";
+    const sname = String(staff.name || "").trim() || sid || "موظفة";
     if (!sid) return;
     months.forEach((monthKey) => {
       const rev = revenueMap.get(`${sid}|${monthKey}`) || {
@@ -612,9 +612,9 @@ export function buildPayrollExpenseRowsForMonths(args: {
           id: `auto_payroll_salary_${sid}_${monthKey}`,
           date,
           amount: summary.salaryAmount,
-          category: "ط±ظˆط§طھط¨ ط§ظ„ظ…ظˆط¸ظپط§طھ",
-          title: `ط±ط§طھط¨ ${sname} (${monthKey})`,
-          note: "ط§ط­طھط³ط§ط¨ طھظ„ظ‚ط§ط¦ظٹ ظ…ظ† ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ…ظˆط¸ظپط©.",
+          category: "رواتب الموظفات",
+          title: `راتب ${sname} (${monthKey})`,
+          note: "احتساب تلقائي من إعدادات الموظفة.",
           paymentMethod: "transfer",
           createdAt,
           staffId: sid,
@@ -638,8 +638,8 @@ export function buildPayrollExpenseRowsForMonths(args: {
           id: `auto_payroll_overtime_${sid}_${monthKey}`,
           date,
           amount: summary.overtimeAmount,
-          category: "ط£ظˆظپط± طھط§ظٹظ… ط§ظ„ظ…ظˆط¸ظپط§طھ",
-          title: `ط£ظˆظپط± طھط§ظٹظ… ${sname} (${monthKey})`,
+          category: "أوفر تايم الموظفات",
+          title: `أوفر تايم ${sname} (${monthKey})`,
           note: methodNote,
           paymentMethod: "transfer",
           createdAt,
