@@ -82,10 +82,11 @@ function countdownLabel(targetMs: number, nowMs: number): string {
 
 function buildPromoCandidates(): string[] {
   const out: string[] = [];
+  out.push("/tv-promo.mp4");
   for (let i = 1; i <= MAX_PROMO_VIDEOS; i += 1) {
-    out.push(i === 1 ? "/tv-promo.mp4" : `/tv-promo-${i}.mp4`);
+    out.push(`/tv-promo-${i}.mp4`);
   }
-  return out;
+  return Array.from(new Set(out));
 }
 
 async function checkFileExists(path: string): Promise<boolean> {
@@ -112,6 +113,8 @@ export default function DashboardQueueTv() {
   const [logoSrc, setLogoSrc] = useState(defaultLogo);
   const [videoPlaylist, setVideoPlaylist] = useState<string[]>(["/tv-promo.mp4"]);
   const [videoIndex, setVideoIndex] = useState(0);
+  const [videoErrorStreak, setVideoErrorStreak] = useState(0);
+  const [videoUnavailable, setVideoUnavailable] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoSrc = videoPlaylist[videoIndex] || videoPlaylist[0];
 
@@ -124,6 +127,8 @@ export default function DashboardQueueTv() {
       const found = candidates.filter((_, i) => checks[i]);
       setVideoPlaylist(found.length ? found : ["/tv-promo.mp4"]);
       setVideoIndex(0);
+      setVideoErrorStreak(0);
+      setVideoUnavailable(false);
     };
     loadPromoPlaylist();
     return () => {
@@ -245,23 +250,30 @@ export default function DashboardQueueTv() {
           playsInline
           preload="auto"
           controls={false}
-          onEnded={(e) => {
+          onCanPlay={() => {
+            setVideoErrorStreak(0);
+            setVideoUnavailable(false);
+          }}
+          onEnded={() => {
             setVideoIndex((prev) => (prev + 1) % Math.max(1, videoPlaylist.length));
           }}
           onError={() => {
+            setVideoErrorStreak((prev) => {
+              const next = prev + 1;
+              if (next >= Math.max(1, videoPlaylist.length)) {
+                setVideoUnavailable(true);
+              }
+              return next;
+            });
             setVideoIndex((prev) => (prev + 1) % Math.max(1, videoPlaylist.length));
           }}
         />
+        {videoUnavailable ? (
+          <div className="dashboard-tv-video-fallback">تعذر تشغيل الفيديو. تأكد من صيغة MP4 (H.264 + AAC).</div>
+        ) : null}
       </section>
 
       <section className="dashboard-tv-queue-card">
-        <div className="dashboard-tv-title-row">
-          <h3>شاشة الدور - حجوزات اليوم</h3>
-          <span>
-            {todayKey} • {new Intl.DateTimeFormat("ar-SA", { timeStyle: "medium" }).format(new Date(nowMs))}
-          </span>
-        </div>
-
         {loading ? <div className="dashboard-tv-empty">جاري تحميل حجوزات اليوم...</div> : null}
         {!loading && error ? <div className="dashboard-tv-empty">{error}</div> : null}
 
@@ -279,26 +291,40 @@ export default function DashboardQueueTv() {
                   <article key={row.id} className={`dashboard-tv-booking-card ${row.state === "current" ? "is-current" : "is-upcoming"}`}>
                     <div className="dashboard-tv-booking-head">
                       <h4>حجز {idx + 1}</h4>
-                      <span className="dashboard-tv-state-chip">{row.state === "current" ? "الحالي" : "قادم"}</span>
+                      <span
+                        className={`dashboard-tv-state-chip ${
+                          row.state === "current" ? "is-current" : "is-upcoming"
+                        }`}
+                      >
+                        {row.state === "current" ? "الحالي" : "قادم"}
+                      </span>
                     </div>
                     <div className="dashboard-tv-booking-main">
                       <div className="dashboard-tv-booking-id">{bookingNoOf(row.publicId)}</div>
                       <div className="dashboard-tv-kv-row">
-                        <span className="dashboard-tv-kv-label">العميلة</span>
-                        <b className="dashboard-tv-kv-value">{row.clientName || "—"}</b>
+                        <span className="dashboard-tv-kv-label">{"\u0627\u0644\u0639\u0645\u064a\u0644\u0629"}</span>
+                        <b className="dashboard-tv-kv-value">{row.clientName || "-"}</b>
                       </div>
                       <div className="dashboard-tv-kv-row">
-                        <span className="dashboard-tv-kv-label">الموظفة</span>
-                        <b className="dashboard-tv-kv-value">{row.employeeName || "—"}</b>
+                        <span className="dashboard-tv-kv-label">{"\u0627\u0644\u0645\u0648\u0638\u0641\u0629"}</span>
+                        <b className="dashboard-tv-kv-value">{row.employeeName || "-"}</b>
                       </div>
-                    </div>
-                    <div className="dashboard-tv-booking-foot">
-                      <span className="dashboard-tv-time-value">{formatTime12(row.time)}</span>
-                      {row.state === "current" ? (
-                        <small>ينتهي العرض بعد: {msToMinSec(row.startMs + SHOW_AFTER_TURN_MS - nowMs)}</small>
-                      ) : (
-                        <small>باقي: {countdownLabel(row.startMs, nowMs)}</small>
-                      )}
+                      <div className="dashboard-tv-kv-row">
+                        <span className="dashboard-tv-kv-label">{"\u0627\u0644\u0648\u0642\u062a"}</span>
+                        <b className="dashboard-tv-kv-value">{formatTime12(row.time)}</b>
+                      </div>
+                      <div className="dashboard-tv-kv-row">
+                        <span className="dashboard-tv-kv-label">
+                          {row.state === "current"
+                            ? "\u064a\u0646\u062a\u0647\u064a \u0628\u0639\u062f"
+                            : "\u0628\u0627\u0642\u064a"}
+                        </span>
+                        <b className="dashboard-tv-kv-value">
+                          {row.state === "current"
+                            ? msToMinSec(row.startMs + SHOW_AFTER_TURN_MS - nowMs)
+                            : countdownLabel(row.startMs, nowMs)}
+                        </b>
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -310,3 +336,5 @@ export default function DashboardQueueTv() {
     </div>
   );
 }
+
+

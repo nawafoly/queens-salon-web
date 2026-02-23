@@ -1222,3 +1222,12 @@ background: rgba(245, 245, 244, 0.83);
   margin-inline: 2px 4px;
   opacity: 0.45;
 }
+
+.dashboard-skin .dash-topbar.is-tv-queue-topbar .dash-topbar-title h2 {
+  font-size: 20px;
+}
+
+.dashboard-skin .dash-topbar-user.is-tv-clock .dash-topbar-name {
+  max-width: none;
+  font-size: 15px;
+}

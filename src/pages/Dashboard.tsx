@@ -1,6 +1,6 @@
 // ✅ src/pages/Dashboard.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Routes, Route, NavLink, useNavigate, Navigate } from "react-router-dom";
+import { Routes, Route, NavLink, useNavigate, Navigate, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faUsers,
@@ -651,7 +651,9 @@ const Dashboard: React.FC = () => {
   const [missingExpenseNotesCount, setMissingExpenseNotesCount] = useState(0);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [topbarNowMs, setTopbarNowMs] = useState<number>(() => Date.now());
 
+  const location = useLocation();
   const navigate = useNavigate();
 
   const totalIncome = incomeTotalFS;
@@ -1202,6 +1204,14 @@ const Dashboard: React.FC = () => {
     return () => window.removeEventListener("popstate", close);
   }, []);
 
+  const isTvQueuePage = location.pathname.startsWith("/dashboard/tv-queue");
+  useEffect(() => {
+    if (!isTvQueuePage) return;
+    setTopbarNowMs(Date.now());
+    const id = window.setInterval(() => setTopbarNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [isTvQueuePage]);
+
   if (dashError) {
     return (
       <div className="dashboard-loading" style={{ direction: "ltr", textAlign: "left" }}>
@@ -1218,6 +1228,9 @@ const Dashboard: React.FC = () => {
     .replace(/[\u200B-\u200F\u202A-\u202E]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+  const topbarClockText = `${new Date(topbarNowMs).toISOString().slice(0, 10)} • ${new Intl.DateTimeFormat("ar-SA", {
+    timeStyle: "medium",
+  }).format(new Date(topbarNowMs))}`;
 
 
   return (
@@ -1604,7 +1617,7 @@ const Dashboard: React.FC = () => {
 
           {/* Main Content */}
           <div className="col-md-9 col-lg-10 dashboard-main">
-            <div className="dash-topbar dash-topbar--sticky">
+            <div className={`dash-topbar dash-topbar--sticky ${isTvQueuePage ? "is-tv-queue-topbar" : ""}`}>
               <div className="dash-topbar-left">
                 <button
                   type="button"
@@ -1617,21 +1630,21 @@ const Dashboard: React.FC = () => {
                 </button>
 
                 <div className="dash-topbar-title">
-                  <h2>لوحة التحكم</h2>
+                  <h2>{isTvQueuePage ? "شاشة نداء الحجوزات" : "لوحة التحكم"}</h2>
                   <span>{settings.salonName}</span>
                 </div>
               </div>
 
               <div className="dash-topbar-right">
-                <div className="dash-topbar-user">
+                <div className={`dash-topbar-user ${isTvQueuePage ? "is-tv-clock" : ""}`}>
                   <span
                     className="dash-topbar-name"
                     dir="rtl"
                     style={{ unicodeBidi: "plaintext" }}
                   >
-                    {topbarName || "-"}
+                    {isTvQueuePage ? topbarClockText : topbarName || "-"}
                   </span>
-                  <span className="dash-topbar-role">{getRoleTitle(userInfo.role)}</span>
+                  {!isTvQueuePage ? <span className="dash-topbar-role">{getRoleTitle(userInfo.role)}</span> : null}
                 </div>
               </div>
             </div>

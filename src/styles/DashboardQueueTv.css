@@ -4,6 +4,16 @@
   gap: 14px;
   grid-template-rows: auto auto 1fr;
   min-height: calc(100vh - 32px);
+  padding: 14px;
+  border-radius: 22px;
+  background:
+    radial-gradient(1200px 420px at 8% -10%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 60%),
+    radial-gradient(900px 380px at 100% 0%, rgba(255, 210, 226, 0.35) 0%, rgba(255, 255, 255, 0) 62%),
+    linear-gradient(140deg, rgba(87, 115, 162, 0.22) 0%, rgba(118, 67, 82, 0.2) 48%, rgba(228, 205, 187, 0.26) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 18px 44px rgba(31, 23, 27, 0.2);
 }
 
 .dashboard-tv-header {
@@ -21,10 +31,12 @@
 
 .dashboard-tv-video-card,
 .dashboard-tv-queue-card {
-  background: #fff;
-  border: 1px solid rgba(64, 1, 13, 0.14);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 247, 252, 0.28) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.46);
   border-radius: 18px;
-  box-shadow: 0 12px 24px rgba(64, 1, 13, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 14px 34px rgba(44, 30, 36, 0.16);
   padding: 12px;
 }
 
@@ -57,9 +69,24 @@
   background: #111;
 }
 
+.dashboard-tv-video-fallback {
+  position: absolute;
+  inset: 12px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 16px;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(10, 10, 10, 0.75);
+}
+
 .dashboard-tv-queue-card {
   min-height: 0;
   overflow: auto;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.44) 0%, rgba(245, 235, 240, 0.22) 100%);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .dashboard-tv-title-row {
@@ -83,9 +110,15 @@
 }
 
 .dashboard-tv-summary {
-  margin-bottom: 10px;
-  color: #5b4a3f;
-  font-weight: 800;
+  margin-bottom: 8px;
+  color: #2e0a13;
+  font-weight: 900;
+  font-size: 1.02rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(99, 24, 44, 0.2);
+  border-radius: 10px;
+  padding: 6px 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .dashboard-tv-employee-grid {
@@ -253,105 +286,130 @@
 .dashboard-tv-booking-list {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
+  gap: 6px;
 }
 
 .dashboard-tv-booking-card {
-  border: 1px solid rgba(64, 1, 13, 0.16);
-  border-radius: 14px;
-  padding: 12px;
-  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.42) 0%, rgba(246, 233, 240, 0.24) 100%);
   display: grid;
-  gap: 10px;
+  gap: 6px;
+  color: #000;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 10px 22px rgba(44, 30, 36, 0.14);
 }
 
 .dashboard-tv-booking-card.is-current {
-  background: linear-gradient(180deg, #fff8ef 0%, #ffffff 100%);
+  background: linear-gradient(145deg, rgba(255, 238, 220, 0.58) 0%, rgba(255, 255, 255, 0.32) 100%);
+  border-color: rgba(255, 255, 255, 0.56);
 }
 
 .dashboard-tv-booking-card.is-upcoming {
-  background: #ffffff;
+  background: linear-gradient(145deg, rgba(230, 240, 255, 0.4) 0%, rgba(255, 255, 255, 0.3) 100%);
 }
 
 .dashboard-tv-booking-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  padding-bottom: 6px;
+  gap: 8px;
+  padding-bottom: 3px;
   border-bottom: 1px dashed rgba(64, 1, 13, 0.18);
 }
 
 .dashboard-tv-booking-head h4 {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 900;
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #4a1b2b;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.66);
+  border-radius: 999px;
+  padding: 5px 13px;
+  letter-spacing: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 4px 10px rgba(43, 24, 31, 0.1);
 }
 
 .dashboard-tv-state-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 66px;
-  padding: 4px 10px;
+  min-width: 68px;
+  padding: 5px 12px;
   border-radius: 999px;
-  font-size: 0.9rem;
-  font-weight: 900;
-  background: rgba(64, 1, 13, 0.1);
-  color: #40010d;
-  border: 1px solid rgba(64, 1, 13, 0.2);
+  font-size: 0.84rem;
+  font-weight: 800;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 4px 10px rgba(26, 26, 38, 0.08);
+}
+
+.dashboard-tv-state-chip.is-upcoming {
+  background: rgba(219, 234, 254, 0.58);
+  color: #244b7a;
+  border-color: rgba(138, 177, 232, 0.55);
+}
+
+.dashboard-tv-state-chip.is-current {
+  background: rgba(255, 244, 214, 0.62);
+  color: #7b5214;
+  border-color: rgba(240, 199, 122, 0.55);
 }
 
 .dashboard-tv-booking-main {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px 14px;
+  align-items: stretch;
 }
 
 .dashboard-tv-booking-id {
-  font-size: 1.65rem;
-  line-height: 1;
+  grid-column: auto;
+  text-align: center;
+  font-size: 1.16rem;
+  line-height: 1.2;
   font-weight: 900;
-  letter-spacing: 0.4px;
-  color: #1e0f14;
+  letter-spacing: 0.2px;
+  color: #000;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+}
+
+.dashboard-tv-booking-id::before {
+  content: "رقم الحجز";
+  font-size: 0.9rem;
+  color: #000;
+  font-weight: 800;
 }
 
 .dashboard-tv-kv-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .dashboard-tv-kv-label {
-  font-size: 0.95rem;
-  color: #6b5547;
+  font-size: 0.9rem;
+  color: #000;
   font-weight: 800;
 }
 
 .dashboard-tv-kv-value {
   margin: 0;
-  font-size: 1.05rem;
-  color: #201716;
+  font-size: 1rem;
+  color: #000;
   font-weight: 900;
-}
-
-.dashboard-tv-booking-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border-top: 1px dashed rgba(64, 1, 13, 0.16);
-  padding-top: 8px;
-}
-
-.dashboard-tv-time-value,
-.dashboard-tv-booking-foot small {
-  color: #5b4a3f;
-  font-weight: 800;
-}
-
-.dashboard-tv-booking-foot small {
-  font-size: 0.92rem;
 }
 
 @media (max-width: 640px) {
@@ -368,14 +426,16 @@
   }
 
   .dashboard-tv-booking-id {
-    font-size: 1.4rem;
+    font-size: 1.06rem;
   }
 
   .dashboard-tv-kv-row {
-    flex-wrap: wrap;
+    justify-items: start;
+    text-align: right;
   }
 
-  .dashboard-tv-booking-foot {
-    flex-wrap: wrap;
+  .dashboard-tv-booking-main {
+    grid-template-columns: 1fr;
   }
+
 }
