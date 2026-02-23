@@ -36,6 +36,12 @@ import {
   type BookingDocWithId,
   type BookingStatus,
 } from "../services/firestoreBookings";
+import {
+  computeStaffPayrollForMonth,
+  normalizePayrollConfig,
+  type StaffPayrollMethod,
+  type StaffOvertimeHoursBasis,
+} from "../helpers/staffPayroll";
 
 /* =========================
    Types
@@ -66,6 +72,14 @@ type StaffPublicDoc = {
   useCustomWorkingHours?: boolean;
   customWorkingHours?: Partial<Record<WeekdayKey, StaffWorkingDay>>;
   customWorkingHourOverrides?: StaffWorkingHourOverride[];
+  monthlySalary?: number;
+  overtimeMethod?: StaffPayrollMethod;
+  overtimeDaysPerMonth?: number;
+  overtimeBaseHoursPerDay?: number;
+  overtimeSeasonBaseHoursPerDay?: number;
+  overtimeHoursBasis?: StaffOvertimeHoursBasis;
+  overtimePercent?: number;
+  overtimeInvoicePercent?: number;
 
   specialties: string[];
   bio?: string;
@@ -123,6 +137,13 @@ type BookingHourOverride = {
   includeWeekdays?: WeekdayKey[];
   blockedWeekdays?: WeekdayKey[];
 };
+type SummarySourceGroup = {
+  title: string;
+  gregorian: string;
+  hijri: string;
+  details: string[];
+  tone: "active" | "other";
+};
 
 /* =========================
    Const
@@ -131,6 +152,7 @@ const SALON_ID = "main";
 const STAFF_CHIPS_PREVIEW_COUNT = 8;
 const DEFAULT_OPEN_TIME = "10:00";
 const DEFAULT_CLOSE_TIME = "22:00";
+const REVENUE_STATUSES = new Set<BookingStatus>(["confirmed", "completed"]);
 const STAFF_IMAGE_MODULES = import.meta.glob("../assets/images/*.{png,jpg,jpeg,webp,avif,svg}", {
   eager: true,
   import: "default",
@@ -317,6 +339,8 @@ type StaffBookingStats = {
     salonTotal: number;
     staffTotal: number;
     sharePct: number;
+    invoiceCount: number;
+    invoiceRevenue: number;
   };
 };
 
@@ -341,12 +365,55 @@ function todayIso() {
   return `${y}-${m}-${day}`;
 }
 
+function safeNonNegativeNumber(v: any, fallback = 0): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, n);
+}
+
+function fmtMoneySar(v: number): string {
+  return new Intl.NumberFormat("ar-SA", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(Number(v || 0));
+}
+
+function bookingAmountOf(b: any): number {
+  return Math.max(
+    0,
+    Number(b?.finalPrice ?? b?.total ?? b?.serviceSnapshot?.priceAtBooking ?? 0) || 0
+  );
+}
+
 function fmtIsoDate(v?: string) {
-  const s = String(v || "").trim();
+  const s = normalizeIsoDate(v);
   if (!s) return "-";
   const d = new Date(`${s}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return s;
-  return d.toLocaleDateString("ar-SA", { year: "numeric", month: "2-digit", day: "2-digit" });
+  if (Number.isNaN(d.getTime())) return `\u200E${s}\u200E`;
+  return fmtIsoDateByCalendar(s, "gregory");
+}
+
+type DateCalendar = "gregory" | "hijri";
+function fmtIsoDateByCalendar(v?: string, calendar: DateCalendar = "gregory") {
+  const s = normalizeIsoDate(v);
+  if (!s) return "-";
+  const d = new Date(`${s}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return `\u200E${s}\u200E`;
+  const locale =
+    calendar === "hijri" ? "ar-SA-u-ca-islamic-umalqura" : "ar-SA-u-ca-gregory";
+  const raw = d.toLocaleDateString(locale, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const clean = String(raw || "")
+    .replace(/\s*(م|هـ|AD|AH)\.?$/iu, "")
+    .trim();
+  return `\u200E${clean}\u200E`;
+}
+
+function fmtIsoDateHijri(v?: string) {
+  return fmtIsoDateByCalendar(v, "hijri");
 }
 
 function addDaysIso(dateIso: string, days: number) {
@@ -508,6 +575,32 @@ function normalizeIsoDate(v: any): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
 }
 
+function formatIsoDateRange(from?: string, to?: string): string {
+  return formatIsoDateRangeByCalendar(from, to, "gregory");
+}
+
+function formatIsoDateRangeByCalendar(
+  from?: string,
+  to?: string,
+  calendar: DateCalendar = "gregory"
+): string {
+  const a = normalizeIsoDate(from);
+  const b = normalizeIsoDate(to);
+  if (!a && !b) return "-";
+  if (!a) return fmtIsoDateByCalendar(b, calendar);
+  if (!b) return fmtIsoDateByCalendar(a, calendar);
+  const start = a <= b ? a : b;
+  const end = a <= b ? b : a;
+  return `من ${fmtIsoDateByCalendar(start, calendar)} إلى ${fmtIsoDateByCalendar(end, calendar)}`;
+}
+
+function formatIsoDateRangeDual(from?: string, to?: string) {
+  return {
+    gregorian: formatIsoDateRangeByCalendar(from, to, "gregory"),
+    hijri: formatIsoDateRangeByCalendar(from, to, "hijri"),
+  };
+}
+
 function normalizeWeekdayList(v: any): WeekdayKey[] {
   if (!Array.isArray(v)) return [];
   const allowed = new Set<WeekdayKey>(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
@@ -523,9 +616,11 @@ function readBookingHourOverrides(raw: any): BookingHourOverride[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .map((x: any) => {
-      const fromDate = normalizeIsoDate(x?.fromDate);
-      const toDate = normalizeIsoDate(x?.toDate);
-      if (!fromDate || !toDate) return null;
+      const fromDateRaw = normalizeIsoDate(x?.fromDate);
+      const toDateRaw = normalizeIsoDate(x?.toDate);
+      if (!fromDateRaw || !toDateRaw) return null;
+      const fromDate = fromDateRaw <= toDateRaw ? fromDateRaw : toDateRaw;
+      const toDate = fromDateRaw <= toDateRaw ? toDateRaw : fromDateRaw;
       return {
         fromDate,
         toDate,
@@ -621,6 +716,18 @@ export default function DashboardEmployees() {
   const [modalHourOverrideStart, setModalHourOverrideStart] = useState("10:00");
   const [modalHourOverrideEnd, setModalHourOverrideEnd] = useState("22:00");
   const [modalHourOverrideEnabled, setModalHourOverrideEnabled] = useState(true);
+  const [modalHourOverrideApplyWeekdays, setModalHourOverrideApplyWeekdays] = useState<WeekdayKey[]>([]);
+  const [modalHourOverrideOverwriteExisting, setModalHourOverrideOverwriteExisting] = useState(true);
+  const [modalHourOverrideUpdateExistingOnly, setModalHourOverrideUpdateExistingOnly] = useState(false);
+  const [modalHourOverrideEditingDate, setModalHourOverrideEditingDate] = useState("");
+  const [monthlySalary, setMonthlySalary] = useState("0");
+  const [overtimeMethod, setOvertimeMethod] = useState<StaffPayrollMethod>("hours_from_salary");
+  const [overtimeDaysPerMonth, setOvertimeDaysPerMonth] = useState("30");
+  const [overtimeBaseHoursPerDay, setOvertimeBaseHoursPerDay] = useState("8");
+  const [overtimeSeasonBaseHoursPerDay, setOvertimeSeasonBaseHoursPerDay] = useState("6");
+  const [overtimeHoursBasis, setOvertimeHoursBasis] = useState<StaffOvertimeHoursBasis>("regular");
+  const [overtimePercent, setOvertimePercent] = useState("25");
+  const [overtimeInvoicePercent, setOvertimeInvoicePercent] = useState("0");
 
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
@@ -660,6 +767,18 @@ export default function DashboardEmployees() {
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
+    setModalHourOverrideApplyWeekdays([]);
+    setModalHourOverrideOverwriteExisting(true);
+    setModalHourOverrideUpdateExistingOnly(false);
+    setModalHourOverrideEditingDate("");
+    setMonthlySalary("0");
+    setOvertimeMethod("hours_from_salary");
+    setOvertimeDaysPerMonth("30");
+    setOvertimeBaseHoursPerDay("8");
+    setOvertimeSeasonBaseHoursPerDay("6");
+    setOvertimeHoursBasis("regular");
+    setOvertimePercent("25");
+    setOvertimeInvoicePercent("0");
 
     setSpecialties([]);
     setLeaveAdjustDays("1");
@@ -697,6 +816,19 @@ export default function DashboardEmployees() {
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
+    setModalHourOverrideApplyWeekdays([]);
+    setModalHourOverrideOverwriteExisting(true);
+    setModalHourOverrideUpdateExistingOnly(false);
+    setModalHourOverrideEditingDate("");
+    const payrollCfg = normalizePayrollConfig(x as any);
+    setMonthlySalary(String(payrollCfg.monthlySalary || 0));
+    setOvertimeMethod(payrollCfg.method);
+    setOvertimeDaysPerMonth(String(payrollCfg.daysPerMonth || 30));
+    setOvertimeBaseHoursPerDay(String(payrollCfg.baseHoursPerDay || 8));
+    setOvertimeSeasonBaseHoursPerDay(String(payrollCfg.seasonBaseHoursPerDay || 6));
+    setOvertimeHoursBasis(payrollCfg.hoursBasis || "regular");
+    setOvertimePercent(String(payrollCfg.overtimePercent || 0));
+    setOvertimeInvoicePercent(String(payrollCfg.invoicePercent || 0));
 
     // ✅ جديد
     setShowOnAbout((x as any).showOnAbout !== false);
@@ -740,6 +872,7 @@ export default function DashboardEmployees() {
           adminLikeDocIds.push(d.id);
           return;
         }
+        const payrollCfg = normalizePayrollConfig(data);
         rows.push({
           id: d.id,
           name: data?.name ?? "",
@@ -757,6 +890,14 @@ export default function DashboardEmployees() {
           useCustomWorkingHours: !!data?.useCustomWorkingHours,
           customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
           customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
+          monthlySalary: payrollCfg.monthlySalary,
+          overtimeMethod: payrollCfg.method,
+          overtimeDaysPerMonth: payrollCfg.daysPerMonth,
+          overtimeBaseHoursPerDay: payrollCfg.baseHoursPerDay,
+          overtimeSeasonBaseHoursPerDay: payrollCfg.seasonBaseHoursPerDay,
+          overtimeHoursBasis: payrollCfg.hoursBasis,
+          overtimePercent: payrollCfg.overtimePercent,
+          overtimeInvoicePercent: payrollCfg.invoicePercent,
 
           specialties: normalizeSpecialties(data?.specialties),
           bio: data?.bio ?? "",
@@ -1064,7 +1205,14 @@ export default function DashboardEmployees() {
         const initStats = (): StaffBookingStats => ({
           total: 0,
           byStatus: { pending: 0, confirmed: 0, completed: 0, cancelled: 0 },
-          month: { key: thisMonth, salonTotal: 0, staffTotal: 0, sharePct: 0 },
+          month: {
+            key: thisMonth,
+            salonTotal: 0,
+            staffTotal: 0,
+            sharePct: 0,
+            invoiceCount: 0,
+            invoiceRevenue: 0,
+          },
         });
         const staffById = new Set(list.map((s) => s.id));
         const staffByKey = new Map<string, string>();
@@ -1087,6 +1235,8 @@ export default function DashboardEmployees() {
           const bMonth = monthKey(String((b as any).date || ""));
           const st = (String((b as any).status || "pending").toLowerCase() ||
             "pending") as BookingStatus;
+          const bookingAmount = bookingAmountOf(b);
+          const isRevenueStatus = REVENUE_STATUSES.has(st);
           if (bMonth === thisMonth && st !== "cancelled") salonMonthTotal += 1;
 
           const eid = String((b as any).employeeId || "").trim();
@@ -1110,6 +1260,10 @@ export default function DashboardEmployees() {
           m[staffId].byStatus[st] = (m[staffId].byStatus[st] || 0) + 1;
           if (bMonth === thisMonth && st !== "cancelled") {
             m[staffId].month.staffTotal += 1;
+          }
+          if (bMonth === thisMonth && isRevenueStatus) {
+            m[staffId].month.invoiceCount += 1;
+            m[staffId].month.invoiceRevenue += bookingAmount;
           }
         }
 
@@ -1197,6 +1351,22 @@ export default function DashboardEmployees() {
       if (!ok) return;
     }
 
+    let normalizedCustomHourOverrides = normalizeWorkingHourOverrides(modalCustomHourOverrides);
+    const hasHourOverrideDraft =
+      !!normalizeLeaveUntil(modalHourOverrideEditingDate) ||
+      !!normalizeLeaveUntil(modalHourOverrideFromDate);
+    if (modalUseCustomWorkingHours && hasHourOverrideDraft) {
+      const draftResult = buildModalWorkingHourOverrides(normalizedCustomHourOverrides);
+      if (draftResult.error) {
+        setErrorMsg(draftResult.error);
+        return;
+      }
+      if (draftResult.appliedCount > 0) {
+        normalizedCustomHourOverrides = draftResult.next;
+        setModalCustomHourOverrides(draftResult.next);
+      }
+    }
+
 
     setLoading(true);
     setErrorMsg("");
@@ -1208,7 +1378,6 @@ export default function DashboardEmployees() {
       modalExceptionalLeaveWeekdays
     );
     const normalizedCustomWorkingHours = normalizeWorkingHours(modalCustomWorkingHours);
-    const normalizedCustomHourOverrides = normalizeWorkingHourOverrides(modalCustomHourOverrides);
     const normalizedExceptionalDates = editId
       ? normalizeExceptionalLeaveDates((editingStaff as any)?.exceptionalLeaveDates)
       : [];
@@ -1227,6 +1396,18 @@ export default function DashboardEmployees() {
       useCustomWorkingHours: !!modalUseCustomWorkingHours,
       customWorkingHours: normalizedCustomWorkingHours,
       customWorkingHourOverrides: normalizedCustomHourOverrides,
+      monthlySalary: safeNonNegativeNumber(monthlySalary, 0),
+      overtimeMethod:
+        overtimeMethod === "invoice_percentage" ? "invoice_percentage" : "hours_from_salary",
+      overtimeDaysPerMonth: Math.max(1, safeNonNegativeNumber(overtimeDaysPerMonth, 30)),
+      overtimeBaseHoursPerDay: Math.max(1, safeNonNegativeNumber(overtimeBaseHoursPerDay, 8)),
+      overtimeSeasonBaseHoursPerDay: Math.max(
+        1,
+        safeNonNegativeNumber(overtimeSeasonBaseHoursPerDay, 6)
+      ),
+      overtimeHoursBasis: overtimeHoursBasis === "season" ? "season" : "regular",
+      overtimePercent: safeNonNegativeNumber(overtimePercent, 0),
+      overtimeInvoicePercent: safeNonNegativeNumber(overtimeInvoicePercent, 0),
 
       specialties,
       bio: bio.trim(),
@@ -1306,13 +1487,6 @@ export default function DashboardEmployees() {
     const booking = (appSettings as any)?.booking || {};
     const businessHours = (booking as any)?.businessHours || {};
     const bookingHourOverrides = readBookingHourOverrides((booking as any)?.bookingHourOverrides);
-    const overrideRanges = Array.from(
-      new Set(
-        bookingHourOverrides
-          .map((ov) => `${ov.fromDate} - ${ov.toDate}`)
-          .filter((x) => String(x || "").trim())
-      )
-    );
 
     const dayKey = weekday || "sat";
     const dayHoursBase = (businessHours as any)?.[dayKey] || {
@@ -1328,7 +1502,17 @@ export default function DashboardEmployees() {
     let salonOpen = salonWeeklyOpen;
     let salonClose = salonWeeklyClose;
     let salonSourceLabel = "أسبوعي";
-    let activeRange = "";
+    let activeSalonOverride:
+      | {
+          sourceIndex: number;
+          fromDate: string;
+          toDate: string;
+          mode: BookingHourOverrideMode;
+          windowLabel: string;
+          includeDays: WeekdayKey[];
+          blockedDays: WeekdayKey[];
+        }
+      | null = null;
 
     for (let i = bookingHourOverrides.length - 1; i >= 0; i--) {
       const ov = bookingHourOverrides[i];
@@ -1338,25 +1522,34 @@ export default function DashboardEmployees() {
       const blockedDays = Array.isArray(ov?.blockedWeekdays) ? ov.blockedWeekdays : [];
       if (blockedDays.includes(dayKey) || String(ov?.mode || "").trim() === "closed") {
         salonEnabled = false;
-        salonSourceLabel = `استثناء (${ov.fromDate} - ${ov.toDate})`;
-        activeRange = `${ov.fromDate} - ${ov.toDate}`;
+        salonSourceLabel = "استثناء فعلي";
+        activeSalonOverride = {
+          sourceIndex: i,
+          fromDate: ov.fromDate,
+          toDate: ov.toDate,
+          mode: "closed",
+          windowLabel: "إغلاق كامل اليوم",
+          includeDays: includeDays as WeekdayKey[],
+          blockedDays: blockedDays as WeekdayKey[],
+        };
       } else {
         salonEnabled = true;
         const ovStart = normalizeTimeHHMM(ov.start) || salonOpen;
         const ovEnd = normalizeTimeHHMM(ov.end) || salonClose;
         salonOpen = ovStart;
         salonClose = ovEnd;
-        salonSourceLabel = `استثناء (${ov.fromDate} - ${ov.toDate})`;
-        activeRange = `${ov.fromDate} - ${ov.toDate}`;
+        salonSourceLabel = "استثناء فعلي";
+        activeSalonOverride = {
+          sourceIndex: i,
+          fromDate: ov.fromDate,
+          toDate: ov.toDate,
+          mode: "hours",
+          windowLabel: formatWindow(ovStart, ovEnd),
+          includeDays: includeDays as WeekdayKey[],
+          blockedDays: blockedDays as WeekdayKey[],
+        };
       }
       break;
-    }
-    let salonSourceDetails = "";
-    if (activeRange) {
-      const others = overrideRanges.filter((r) => r !== activeRange);
-      if (others.length) salonSourceDetails = `استثناءات أخرى: ${others.join(" | ")}`;
-    } else if (overrideRanges.length) {
-      salonSourceDetails = `الاستثناءات المسجلة: ${overrideRanges.join(" | ")}`;
     }
     const salonWeeklyWindowLabel = salonWeeklyEnabled
       ? formatWindow(salonWeeklyOpen, salonWeeklyClose)
@@ -1367,6 +1560,112 @@ export default function DashboardEmployees() {
 
     const weekdayLabel = (key: WeekdayKey | "") =>
       WEEKDAY_OPTIONS.find((x) => x.key === key)?.label || "-";
+    const formatWeekdaySet = (days: WeekdayKey[]) =>
+      days.length ? days.map((d) => weekdayLabel(d)).join(" / ") : "-";
+    const formatOverrideMeta = (ov: BookingHourOverride) => {
+      const includeDays = Array.isArray(ov?.includeWeekdays) ? (ov.includeWeekdays as WeekdayKey[]) : [];
+      const blockedDays = Array.isArray(ov?.blockedWeekdays) ? (ov.blockedWeekdays as WeekdayKey[]) : [];
+      const includeLabel = includeDays.length ? formatWeekdaySet(includeDays) : "كل الأيام";
+      const blockedLabel = blockedDays.length ? formatWeekdaySet(blockedDays) : "";
+      const isClosed = String(ov?.mode || "").trim() === "closed";
+      const start = normalizeTimeHHMM(ov?.start) || DEFAULT_OPEN_TIME;
+      const end = normalizeTimeHHMM(ov?.end) || DEFAULT_CLOSE_TIME;
+      const modeLabel = isClosed ? "إغلاق كامل" : `ساعات ${formatWindow(start, end)}`;
+      return `${modeLabel} | الأيام المستهدفة: ${includeLabel}${
+        blockedLabel ? ` | أيام الإغلاق: ${blockedLabel}` : ""
+      }`;
+    };
+    const allOverrideDetails = bookingHourOverrides.map((ov, idx) => ({
+      sourceIndex: idx,
+      rangeDual: formatIsoDateRangeDual(ov.fromDate, ov.toDate),
+      meta: formatOverrideMeta(ov),
+    }));
+    const todayDateGregorian = fmtIsoDate(today);
+    const todayDateHijri = fmtIsoDateHijri(today);
+    const todayDateLabel = `${todayDateGregorian} م / ${todayDateHijri} هـ`;
+    const salonWeeklyDetails = salonWeeklyEnabled
+      ? "الدوام الأساسي مأخوذ من الجدول الأسبوعي."
+      : "اليوم مغلق في الجدول الأسبوعي.";
+    const salonEffectiveBaseDetails = activeSalonOverride
+      ? activeSalonOverride.mode === "closed"
+        ? "تم إغلاق الصالون اليوم عبر الاستثناء الفعلي."
+        : `تم تعديل ساعات الصالون اليوم عبر الاستثناء الفعلي (${activeSalonOverride.windowLabel}).`
+      : "لا يوجد استثناء فعلي اليوم على الصالون.";
+    const salonSourceDetails = (() => {
+      const notes: string[] = [];
+      const groups: SummarySourceGroup[] = [];
+      const buildGroup = (
+        title: string,
+        gregorian: string,
+        hijri: string,
+        details: string[],
+        tone: "active" | "other"
+      ): SummarySourceGroup => ({
+        title,
+        gregorian,
+        hijri,
+        details,
+        tone,
+      });
+
+      if (activeSalonOverride) {
+        const activeDual = formatIsoDateRangeDual(activeSalonOverride.fromDate, activeSalonOverride.toDate);
+        const activeDetails: string[] = [];
+        if (activeSalonOverride.mode === "closed") {
+          activeDetails.push("نوع الاستثناء: إغلاق كامل للحجوزات اليوم.");
+        } else {
+          activeDetails.push(`وقت الاستثناء الفعلي: ${activeSalonOverride.windowLabel}`);
+        }
+        if (activeSalonOverride.includeDays.length > 0) {
+          activeDetails.push(`الأيام المستهدفة: ${formatWeekdaySet(activeSalonOverride.includeDays)}`);
+        }
+        if (activeSalonOverride.blockedDays.length > 0) {
+          activeDetails.push(`أيام الإغلاق داخل النطاق: ${formatWeekdaySet(activeSalonOverride.blockedDays)}`);
+        }
+        groups.push(
+          buildGroup(
+            "الاستثناء الفعلي",
+            activeDual.gregorian,
+            activeDual.hijri,
+            activeDetails,
+            "active"
+          )
+        );
+
+        const others = allOverrideDetails.filter((x) => x.sourceIndex !== activeSalonOverride.sourceIndex);
+        if (others.length) {
+          notes.push(`استثناءات أخرى مسجلة (${others.length}):`);
+          others.forEach((x, idx) => {
+            groups.push(
+              buildGroup(
+                `الاستثناء ${idx + 1}`,
+                x.rangeDual.gregorian,
+                x.rangeDual.hijri,
+                [`تفاصيل الاستثناء ${idx + 1}: ${x.meta}`],
+                "other"
+              )
+            );
+          });
+        }
+      } else if (allOverrideDetails.length) {
+        notes.push("لا يوجد استثناء فعلي اليوم.");
+        notes.push(`الاستثناءات المسجلة (${allOverrideDetails.length}):`);
+        allOverrideDetails.forEach((x, idx) => {
+          groups.push(
+            buildGroup(
+              `الاستثناء ${idx + 1}`,
+              x.rangeDual.gregorian,
+              x.rangeDual.hijri,
+              [`تفاصيل الاستثناء ${idx + 1}: ${x.meta}`],
+              "other"
+            )
+          );
+        });
+      } else {
+        notes.push("لا توجد استثناءات مسجلة على دوام الصالون.");
+      }
+      return { notes, groups };
+    })();
 
     return list
       .map((staff) => {
@@ -1390,6 +1689,7 @@ export default function DashboardEmployees() {
               )
             : "مغلق هذا اليوم"
           : formatWindow(salonOpen, salonClose);
+        const staffBaseMatchesSalonWeekly = staffBaseWindowLabel === salonWeeklyWindowLabel;
 
         const staffOverrideLabel = overrideToday
           ? overrideToday.enabled === false
@@ -1399,6 +1699,16 @@ export default function DashboardEmployees() {
                 normalizeTimeHHMM(overrideToday.end) || salonClose
               )
           : "-";
+        const staffBaseDetails = useCustom
+          ? baseDay && baseDay.enabled !== false
+            ? "الدوام مأخوذ من الجدول الأسبوعي المخصص للموظفة."
+            : "اليوم مغلق في جدول الموظفة الأسبوعي المخصص."
+          : "لا يوجد جدول أسبوعي مخصص؛ يتم الاعتماد على دوام الصالون الفعلي.";
+        const staffOverrideDetails = overrideToday
+          ? overrideToday.enabled === false
+            ? `تم إغلاق دوام الموظفة بتاريخ ${todayDateLabel}.`
+            : `استثناء موظفة فعلي اليوم: ${staffOverrideLabel}.`
+          : "لا يوجد استثناء يومي خاص بالموظفة اليوم.";
 
         const leaveByDate = exceptionalDates.includes(today);
         const leaveByWeekday = weekday ? exceptionalWeekdays.includes(weekday) : false;
@@ -1444,8 +1754,28 @@ export default function DashboardEmployees() {
                   : nowInsideWindow
                     ? `تعمل الآن: ${formatWindow(intersection.start, intersection.end)}`
                     : `خارج الدوام الآن: ${formatWindow(intersection.start, intersection.end)}`;
+        const statusTone: "good" | "warn" | "muted" =
+          nowInsideWindow && !!intersection && !ended && !leaveActiveToday
+            ? "good"
+            : ended || leaveActiveToday || !salonEnabled || !effectiveEnabled || !intersection
+              ? "warn"
+              : "muted";
+        const salonEffectiveDetails = ended
+          ? "الموظفة مستبعدة من الحجز بعد انتهاء التوظيف."
+          : leaveActiveToday
+            ? "الموظفة في إجازة اليوم، لذلك لا يظهر حجز فعلي لها."
+            : !salonEnabled
+              ? "الحجوزات مغلقة اليوم على مستوى الصالون."
+              : !effectiveEnabled
+                ? "دوام الموظفة مغلق اليوم."
+                : !intersection
+                  ? "لا يوجد وقت مشترك بين دوام الصالون ودوام الموظفة."
+                  : `المدى المتاح للحجز مع الموظفة: ${formatWindow(intersection.start, intersection.end)}.`;
 
         const warnings: string[] = [];
+        if (leaveByDate) {
+          warnings.push(`اليوم ضمن إجازة استثنائية محددة بتاريخ ${todayDateLabel}.`);
+        }
         if ((staff as any).onLeave) {
           if (leaveUntil && leaveUntil >= today) {
             warnings.push(`في إجازة من ${fmtIsoDate(today)} إلى ${fmtIsoDate(leaveUntil)}.`);
@@ -1491,18 +1821,33 @@ export default function DashboardEmployees() {
         const leaveDaysLabel = exceptionalWeekdays.length
           ? exceptionalWeekdays.map((d) => weekdayLabel(d)).join(" / ")
           : "-";
+        const leaveDaysDetails = exceptionalWeekdays.length
+          ? leaveByWeekday
+            ? "اليوم يقع ضمن الإجازة الأسبوعية الثابتة."
+            : "اليوم ليس ضمن الإجازة الأسبوعية الثابتة."
+          : "لا توجد أيام إجازة أسبوعية ثابتة.";
 
         return {
           id: staff.id,
           name: String(staff.name || "-"),
           todayWeekdayLabel: weekdayLabel(weekday),
+          todayDateGregorianLabel: `${todayDateGregorian} م`,
+          todayDateHijriLabel: `${todayDateHijri} هـ`,
           salonWeeklyWindowLabel,
+          salonWeeklyDetails,
           salonEffectiveWindowLabel,
+          salonEffectiveDetails: `${salonEffectiveBaseDetails} ${salonEffectiveDetails}`,
           salonSourceLabel,
           salonSourceDetails,
           staffBaseWindowLabel,
+          staffBaseMatchesSalonWeekly,
+          staffBaseDetails,
           staffOverrideLabel,
+          staffOverrideDetails,
           leaveDaysLabel,
+          leaveDaysDetails,
+          statusNowLabel: actualNow,
+          statusTone,
           warnings,
         };
       })
@@ -1513,6 +1858,59 @@ export default function DashboardEmployees() {
     () => (editId ? list.find((x) => x.id === editId) || null : null),
     [editId, list]
   );
+  const modalStaffScheduleSummary = useMemo(
+    () => (editingStaff ? staffScheduleSummary.find((x) => x.id === editingStaff.id) || null : null),
+    [editingStaff, staffScheduleSummary]
+  );
+  const modalPayrollMonthSummary = useMemo(() => {
+    if (!editingStaff) return null;
+    const monthStats = bookingStats[editingStaff.id]?.month;
+    const staffCalc: StaffPublicDoc & { id: string } = {
+      ...editingStaff,
+      id: editingStaff.id,
+      name: String(name || editingStaff.name || "").trim() || editingStaff.name || editingStaff.id,
+      active: !!active,
+      useCustomWorkingHours: !!modalUseCustomWorkingHours,
+      customWorkingHours: normalizeWorkingHours(modalCustomWorkingHours),
+      customWorkingHourOverrides: normalizeWorkingHourOverrides(modalCustomHourOverrides),
+      monthlySalary: safeNonNegativeNumber(monthlySalary, 0),
+      overtimeMethod:
+        overtimeMethod === "invoice_percentage" ? "invoice_percentage" : "hours_from_salary",
+      overtimeDaysPerMonth: Math.max(1, safeNonNegativeNumber(overtimeDaysPerMonth, 30)),
+      overtimeBaseHoursPerDay: Math.max(1, safeNonNegativeNumber(overtimeBaseHoursPerDay, 8)),
+      overtimeSeasonBaseHoursPerDay: Math.max(
+        1,
+        safeNonNegativeNumber(overtimeSeasonBaseHoursPerDay, 6)
+      ),
+      overtimeHoursBasis: overtimeHoursBasis === "season" ? "season" : "regular",
+      overtimePercent: safeNonNegativeNumber(overtimePercent, 0),
+      overtimeInvoicePercent: safeNonNegativeNumber(overtimeInvoicePercent, 0),
+    };
+    return computeStaffPayrollForMonth({
+      staff: staffCalc as any,
+      monthKey: String(monthStats?.key || currentMonthKey()),
+      appSettings,
+      invoiceCount: Number(monthStats?.invoiceCount || 0),
+      invoiceRevenue: Number(monthStats?.invoiceRevenue || 0),
+    });
+  }, [
+    editingStaff,
+    bookingStats,
+    appSettings,
+    name,
+    active,
+    modalUseCustomWorkingHours,
+    modalCustomWorkingHours,
+    modalCustomHourOverrides,
+    monthlySalary,
+    overtimeMethod,
+    overtimeDaysPerMonth,
+    overtimeBaseHoursPerDay,
+    overtimeSeasonBaseHoursPerDay,
+    overtimeHoursBasis,
+    overtimePercent,
+    overtimeInvoicePercent,
+  ]);
   const modalTabs: Array<{ key: EmployeeModalTab; label: string }> = editingStaff
     ? [
         { key: "basic", label: "البيانات الأساسية" },
@@ -1531,6 +1929,59 @@ export default function DashboardEmployees() {
     const leaveUntil = normalizeLeaveUntil(modalLeaveUntil);
     return !!leaveUntil && leaveUntil < todayIso();
   }, [modalLeaveUntil]);
+  const modalHourOverrideTargetCount = useMemo(() => {
+    const fromInput = normalizeLeaveUntil(modalHourOverrideFromDate);
+    if (!fromInput) return 0;
+    const toInput = normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
+    const from = fromInput <= toInput ? fromInput : toInput;
+    const to = fromInput <= toInput ? toInput : fromInput;
+    let cursor = from;
+    let guard = 0;
+    let count = 0;
+    while (cursor && cursor <= to) {
+      const day = weekdayFromIso(cursor);
+      const allowed =
+        modalHourOverrideApplyWeekdays.length === 0 ||
+        (!!day && modalHourOverrideApplyWeekdays.includes(day));
+      if (allowed) count += 1;
+      cursor = addDaysIso(cursor, 1);
+      guard += 1;
+      if (guard > 120) break;
+    }
+    return count;
+  }, [modalHourOverrideFromDate, modalHourOverrideToDate, modalHourOverrideApplyWeekdays]);
+  const modalHourOverrideExistingTargetCount = useMemo(() => {
+    const fromInput = normalizeLeaveUntil(modalHourOverrideFromDate);
+    if (!fromInput) return 0;
+    const toInput = normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
+    const from = fromInput <= toInput ? fromInput : toInput;
+    const to = fromInput <= toInput ? toInput : fromInput;
+    const existingDates = new Set(
+      modalCustomHourOverrides.map((x) => normalizeLeaveUntil(x.date)).filter((x): x is string => !!x)
+    );
+    let cursor = from;
+    let guard = 0;
+    let count = 0;
+    while (cursor && cursor <= to) {
+      const day = weekdayFromIso(cursor);
+      const allowed =
+        modalHourOverrideApplyWeekdays.length === 0 ||
+        (!!day && modalHourOverrideApplyWeekdays.includes(day));
+      if (allowed && existingDates.has(cursor)) count += 1;
+      cursor = addDaysIso(cursor, 1);
+      guard += 1;
+      if (guard > 120) break;
+    }
+    return count;
+  }, [
+    modalHourOverrideFromDate,
+    modalHourOverrideToDate,
+    modalHourOverrideApplyWeekdays,
+    modalCustomHourOverrides,
+  ]);
+  const modalHourOverrideApplyCount = modalHourOverrideUpdateExistingOnly
+    ? modalHourOverrideExistingTargetCount
+    : modalHourOverrideTargetCount;
 
   const updateModalWorkingDay = (
     day: WeekdayKey,
@@ -1544,11 +1995,156 @@ export default function DashboardEmployees() {
       },
     }));
   };
+  const copyModalWorkingDayToAll = (sourceDay: WeekdayKey) => {
+    setModalCustomWorkingHours((prev) => {
+      const sourceRaw = prev[sourceDay] || { enabled: true, start: "10:00", end: "22:00" };
+      const source: StaffWorkingDay = {
+        enabled: sourceRaw.enabled !== false,
+        start: normalizeTimeHHMM(sourceRaw.start) || "10:00",
+        end: normalizeTimeHHMM(sourceRaw.end) || "22:00",
+      };
+      const next = { ...prev };
+      WEEKDAY_OPTIONS.forEach((d) => {
+        next[d.key] = { ...source };
+      });
+      return next;
+    });
+  };
 
-  const addModalWorkingHourOverride = () => {
+  const toggleModalHourOverrideWeekday = (day: WeekdayKey) => {
+    setModalHourOverrideApplyWeekdays((prev) =>
+      prev.includes(day) ? prev.filter((x) => x !== day) : [...prev, day]
+    );
+  };
+
+  const setModalHourOverrideRangeFromExisting = () => {
+    const rows = normalizeWorkingHourOverrides(modalCustomHourOverrides);
+    if (!rows.length) {
+      setErrorMsg("لا توجد استثناءات حالية لتعديلها.");
+      return false;
+    }
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+
+    // Prefill by the most repeated schedule pattern among existing overrides.
+    const patternMap = new Map<string, { count: number; row: StaffWorkingHourOverride }>();
+    rows.forEach((row) => {
+      const enabled = row.enabled !== false;
+      const start = normalizeTimeHHMM(row.start) || "10:00";
+      const end = normalizeTimeHHMM(row.end) || "22:00";
+      const key = `${enabled ? "1" : "0"}|${start}|${end}`;
+      const cur = patternMap.get(key);
+      if (cur) {
+        patternMap.set(key, { count: cur.count + 1, row: cur.row });
+      } else {
+        patternMap.set(key, { count: 1, row: { date: row.date, enabled, start, end } });
+      }
+    });
+    let seed = first;
+    let maxCount = -1;
+    patternMap.forEach((entry) => {
+      if (entry.count > maxCount) {
+        maxCount = entry.count;
+        seed = entry.row;
+      }
+    });
+
+    setModalHourOverrideFromDate(first.date);
+    setModalHourOverrideToDate(last.date);
+    setModalHourOverrideEnabled(seed.enabled !== false);
+    setModalHourOverrideStart(normalizeTimeHHMM(seed.start) || "10:00");
+    setModalHourOverrideEnd(normalizeTimeHHMM(seed.end) || "22:00");
+    setModalHourOverrideUpdateExistingOnly(true);
+    setModalHourOverrideOverwriteExisting(true);
+    setModalHourOverrideApplyWeekdays([]);
+    return true;
+  };
+
+  const fillModalHourOverrideFromBaseDay = () => {
+    const baseDate = normalizeLeaveUntil(modalHourOverrideFromDate) || todayIso();
+    const dayKey = weekdayFromIso(baseDate);
+    if (!dayKey) return;
+    let enabled = true;
+    let start = DEFAULT_OPEN_TIME;
+    let end = DEFAULT_CLOSE_TIME;
+
+    if (modalUseCustomWorkingHours) {
+      const row = modalCustomWorkingHours[dayKey];
+      if (row) {
+        enabled = row.enabled !== false;
+        start = normalizeTimeHHMM(row.start) || start;
+        end = normalizeTimeHHMM(row.end) || end;
+      }
+    } else {
+      const booking = (appSettings as any)?.booking || {};
+      const businessHours = (booking as any)?.businessHours || {};
+      const row = (businessHours as any)?.[dayKey];
+      if (row) {
+        enabled = row.enabled !== false;
+        start = normalizeTimeHHMM(row.start) || start;
+        end = normalizeTimeHHMM(row.end) || end;
+      }
+    }
+
+    setModalHourOverrideEnabled(enabled);
+    setModalHourOverrideStart(start);
+    setModalHourOverrideEnd(end);
+  };
+
+  const startModalWorkingHourOverrideEdit = (ov: StaffWorkingHourOverride) => {
+    const d = normalizeLeaveUntil(ov.date);
+    if (!d) return;
+    setModalHourOverrideEditingDate(d);
+    setModalHourOverrideFromDate(d);
+    setModalHourOverrideToDate(d);
+    setModalHourOverrideEnabled(ov.enabled !== false);
+    setModalHourOverrideStart(normalizeTimeHHMM(ov.start) || "10:00");
+    setModalHourOverrideEnd(normalizeTimeHHMM(ov.end) || "22:00");
+    setModalHourOverrideApplyWeekdays([]);
+    setModalHourOverrideOverwriteExisting(true);
+    setModalHourOverrideUpdateExistingOnly(false);
+  };
+
+  const cancelModalWorkingHourOverrideEdit = () => {
+    setModalHourOverrideEditingDate("");
+    setModalHourOverrideFromDate("");
+    setModalHourOverrideToDate("");
+    setModalHourOverrideStart("10:00");
+    setModalHourOverrideEnd("22:00");
+    setModalHourOverrideEnabled(true);
+    setModalHourOverrideApplyWeekdays([]);
+  };
+
+  const removeModalWorkingHourOverride = (dateIso: string) => {
+    const d = normalizeLeaveUntil(dateIso);
+    if (!d) return;
+    setModalCustomHourOverrides((prev) => prev.filter((x) => x.date !== d));
+    if (normalizeLeaveUntil(modalHourOverrideEditingDate) === d) {
+      cancelModalWorkingHourOverrideEdit();
+    }
+  };
+
+  const buildModalWorkingHourOverrides = (
+    sourceOverrides: StaffWorkingHourOverride[]
+  ): { next: StaffWorkingHourOverride[]; appliedCount: number; error?: string } => {
+    const base = normalizeWorkingHourOverrides(sourceOverrides);
+    const editingDate = normalizeLeaveUntil(modalHourOverrideEditingDate);
+    if (editingDate) {
+      const targetDate = normalizeLeaveUntil(modalHourOverrideFromDate) || editingDate;
+      const start = normalizeTimeHHMM(modalHourOverrideStart) || "10:00";
+      const end = normalizeTimeHHMM(modalHourOverrideEnd) || "22:00";
+      return {
+        next: normalizeWorkingHourOverrides([
+          ...base.filter((x) => x.date !== editingDate && x.date !== targetDate),
+          { date: targetDate, enabled: modalHourOverrideEnabled, start, end },
+        ]),
+        appliedCount: 1,
+      };
+    }
+
     const fromInput = normalizeLeaveUntil(modalHourOverrideFromDate);
     const toInput = normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
-    if (!fromInput) return;
+    if (!fromInput) return { next: base, appliedCount: 0 };
     const from = fromInput <= toInput ? fromInput : toInput;
     const to = fromInput <= toInput ? toInput : fromInput;
     const start = normalizeTimeHHMM(modalHourOverrideStart) || "10:00";
@@ -1558,25 +2154,69 @@ export default function DashboardEmployees() {
     let cursor = from;
     let guard = 0;
     while (cursor && cursor <= to) {
-      rows.push({ date: cursor, enabled: modalHourOverrideEnabled, start, end });
+      const day = weekdayFromIso(cursor);
+      const allowed =
+        modalHourOverrideApplyWeekdays.length === 0 ||
+        (!!day && modalHourOverrideApplyWeekdays.includes(day));
+      if (allowed) {
+        rows.push({ date: cursor, enabled: modalHourOverrideEnabled, start, end });
+      }
       cursor = addDaysIso(cursor, 1);
       guard += 1;
       if (guard > maxDays) {
-        setErrorMsg("نطاق التاريخ كبير جداً. الحد الأقصى 120 يوم.");
-        return;
+        return { next: base, appliedCount: 0, error: "نطاق التاريخ كبير جداً. الحد الأقصى 120 يوم." };
       }
     }
-    setModalCustomHourOverrides((prev) =>
-      normalizeWorkingHourOverrides([
-        ...prev.filter((x) => !rows.some((r) => r.date === x.date)),
-        ...rows,
-      ])
-    );
+    if (rows.length === 0) {
+      return { next: base, appliedCount: 0, error: "لا يوجد أيام مطابقة للفلاتر المختارة داخل النطاق." };
+    }
+
+    const rowsToApply = modalHourOverrideUpdateExistingOnly
+      ? rows.filter((r) => base.some((x) => x.date === r.date))
+      : rows;
+    if (modalHourOverrideUpdateExistingOnly && rowsToApply.length === 0) {
+      return { next: base, appliedCount: 0, error: "لا يوجد استثناءات حالية مطابقة للنطاق/الفلاتر لتعديلها." };
+    }
+
+    if (modalHourOverrideUpdateExistingOnly || modalHourOverrideOverwriteExisting) {
+      return {
+        next: normalizeWorkingHourOverrides([
+          ...base.filter((x) => !rowsToApply.some((r) => r.date === x.date)),
+          ...rowsToApply,
+        ]),
+        appliedCount: rowsToApply.length,
+      };
+    }
+
+    const existing = new Set(base.map((x) => x.date));
+    const toAdd = rowsToApply.filter((r) => !existing.has(r.date));
+    return {
+      next: normalizeWorkingHourOverrides([...base, ...toAdd]),
+      appliedCount: toAdd.length,
+    };
+  };
+
+  const addModalWorkingHourOverride = () => {
+    const result = buildModalWorkingHourOverrides(modalCustomHourOverrides);
+    if (result.error) {
+      setErrorMsg(result.error);
+      return;
+    }
+    if (result.appliedCount <= 0) {
+      return;
+    }
+    setModalCustomHourOverrides(result.next);
+    if (normalizeLeaveUntil(modalHourOverrideEditingDate)) {
+      cancelModalWorkingHourOverrideEdit();
+      return;
+    }
     setModalHourOverrideFromDate("");
     setModalHourOverrideToDate("");
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
+    setModalHourOverrideEditingDate("");
+    setModalHourOverrideUpdateExistingOnly(false);
   };
 
   const applyLeaveChange = async (mode: "add" | "deduct") => {
@@ -1785,8 +2425,11 @@ export default function DashboardEmployees() {
                     <td data-label="دوام الحجز الفعلي اليوم">{row.salonEffectiveWindowLabel}</td>
                     <td data-label="مصدر الدوام الفعلي">
                       <div>{row.salonSourceLabel}</div>
-                      {row.salonSourceDetails ? (
-                        <div className="staff-summary-subnote">{row.salonSourceDetails}</div>
+                      {Array.isArray((row as any).salonSourceDetails?.notes) &&
+                      (row as any).salonSourceDetails.notes.length ? (
+                        <div className="staff-summary-subnote">
+                          {(row as any).salonSourceDetails.notes.join(" | ")}
+                        </div>
                       ) : null}
                     </td>
                     <td data-label="دوام الموظفة الأساسي">{row.staffBaseWindowLabel}</td>
@@ -1794,9 +2437,7 @@ export default function DashboardEmployees() {
                     <td data-label="أيام الإجازة الأسبوعية">{row.leaveDaysLabel}</td>
                     <td data-label="التنبيهات">
                       {row.warnings.length ? (
-                        <span className="staff-summary-warning">
-                          {row.warnings.join(" | ")}
-                        </span>
+                        <span className="staff-summary-warning">{row.warnings.join(" | ")}</span>
                       ) : (
                         <span className="staff-summary-ok">لا توجد إجازة حالية أو قريبة</span>
                       )}
@@ -1818,15 +2459,26 @@ export default function DashboardEmployees() {
         <div className="dash-card mt-3">
           <div className="dash-row">
             <div className="dash-field">
-              <label className="emp-label">بحث بالاسم أو النبذة</label>
+              <label className="emp-label">بحث</label>
               <input
                 className="dash-input"
-                placeholder="ابحث هنا..."
                 value={qText}
                 onChange={(e) => setQText(e.target.value)}
+                placeholder="ابحث باسم الموظفة"
               />
             </div>
-
+            <div className="dash-field">
+              <label className="emp-label">الحالة</label>
+              <select
+                className="dash-select"
+                value={onlyActive}
+                onChange={(e) => setOnlyActive(e.target.value as "all" | "active" | "inactive")}
+              >
+                <option value="all">الكل</option>
+                <option value="active">نشطة فقط</option>
+                <option value="inactive">غير نشطة فقط</option>
+              </select>
+            </div>
             <div className="dash-field">
               <label className="emp-label">تصفية بالخدمة</label>
               <select
@@ -1835,345 +2487,274 @@ export default function DashboardEmployees() {
                 onChange={(e) => setSpecialtyFilter(e.target.value)}
               >
                 <option value="all">كل الخدمات</option>
-                {serviceOptions.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
+                {Array.from(new Set(serviceOptions.map((x) => String(x.id || "").trim()).filter(Boolean))).map(
+                  (sid) => (
+                    <option key={sid} value={sid}>
+                      {serviceOptions.find((x) => String(x.id || "").trim() === sid)?.label || sid}
+                    </option>
+                  )
+                )}
               </select>
             </div>
-
-            <div className="dash-field">
-              <label className="emp-label">الحالة</label>
-              <select
-                className="dash-select"
-                value={onlyActive}
-                onChange={(e) => setOnlyActive(e.target.value as any)}
+            <div className="dash-actions">
+              <button
+                className="exp-btn primary"
+                type="button"
+                onClick={() => {
+                  resetForm();
+                  setIsOpen(true);
+                }}
               >
-                <option value="all">الكل</option>
-                <option value="active">نشطة فقط</option>
-                <option value="inactive">غير نشطة</option>
-              </select>
+                إضافة موظفة
+              </button>
             </div>
           </div>
         </div>
 
-        <div className="dash-grid">
-          {filtered.map((x) => (
-            <div
-              key={x.id}
-              className="staff-card staff-card-cover"
-              role="button"
-              tabIndex={0}
-              onClick={() => openEdit(x)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  openEdit(x);
-                }
-              }}
-            >
-              {(() => {
-                const allSpecialties = normalizeSpecialties(x.specialties);
-                const isExpanded = !!expandedSpecialtiesByStaff[x.id];
-                const visibleSpecialties = isExpanded
-                  ? allSpecialties
-                  : allSpecialties.slice(0, STAFF_CHIPS_PREVIEW_COUNT);
-                const hiddenCount = Math.max(0, allSpecialties.length - visibleSpecialties.length);
-                const leaveUntil = normalizeLeaveUntil((x as any).leaveUntil);
-                const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
-                const effectiveOnLeave = !!(x as any).onLeave && !leaveExpired;
-
-                return (
-                  <>
-              <div className="staff-top">
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div className="staff-avatar-box">
-                    {String(x.avatarUrl || "").trim() ? (
-                      <img
-                        src={resolveAvatarFromAssets(String(x.avatarUrl))}
-                        alt={x.name || "موظفة"}
-                        className="staff-avatar-img"
-                      />
-                    ) : (
-                      <FontAwesomeIcon icon={faUserTie} />
-                    )}
+        <div className="dash-card mt-3">
+          {loading ? (
+            <div className="emp-field-note">جاري تحميل الموظفات...</div>
+          ) : filtered.length ? (
+            <div className="emp-list-grid">
+              {filtered.map((x) => (
+                <div key={x.id} className="emp-item">
+                  <div className="emp-item-head">
+                    <b>{x.name || "-"}</b>
+                    <span>{x.active ? "نشطة" : "غير نشطة"}</span>
                   </div>
-                  <div>
-                    <h4 style={{ margin: 0, fontWeight: 900 }}>{x.name}</h4>
-
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-                      <span className={`staff-pill ${x.active ? "on" : "off"}`}>
-                        {x.active ? "نشطة" : "غير نشطة"}
-                      </span>
-
-                      <span className={`staff-pill ${x.showOnAbout ? "on" : "off"}`}>
-                        {x.showOnAbout ? "تظهر في من نحن" : "مخفية من من نحن"}
-                      </span>
-
-                      <span className={`staff-pill ${x.showOnBooking ? "on" : "off"}`}>
-                        {x.showOnBooking ? "تظهر في الحجز" : "مخفية من الحجز"}
-                      </span>
-
-                      {/* ✅ تحذير إضافي إذا نشطة ومخفية */}
-                      {(x.active && !x.showOnBooking) && (
-                        <span className="staff-pill off" title="لن تظهر للعميلات في صفحة الحجز">
-                          ⚠️ نشطة لكنها مخفية
-                        </span>
-                      )}
-
-                    </div>
+                  <div className="emp-item-actions">
+                    <button className="exp-btn ghost sm" type="button" onClick={() => openEdit(x)}>
+                      <FontAwesomeIcon icon={faPen} /> تعديل
+                    </button>
+                    <button className="exp-btn ghost sm" type="button" onClick={() => toggleActiveQuick(x)}>
+                      <FontAwesomeIcon icon={x.active ? faToggleOn : faToggleOff} />{" "}
+                      {x.active ? "إيقاف" : "تفعيل"}
+                    </button>
+                    <button className="exp-btn ghost sm" type="button" onClick={() => toggleShowOnAboutQuick(x)}>
+                      ظهور "من نحن": {x.showOnAbout ? "نعم" : "لا"}
+                    </button>
+                    <button className="exp-btn ghost sm" type="button" onClick={() => remove(x.id)}>
+                      <FontAwesomeIcon icon={faTrash} /> حذف
+                    </button>
                   </div>
                 </div>
-
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  {/* ✅ تبديل سريع: نشط/غير نشط */}
-                  <button
-                    className="exp-btn ghost sm"
-                    title={x.active ? "تعطيل الموظفة" : "تفعيل الموظفة"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleActiveQuick(x);
-                    }}
-                    disabled={loading}
-                    type="button"
-                  >
-                    <FontAwesomeIcon icon={x.active ? faToggleOn : faToggleOff} />
-                  </button>
-
-                  {/* ✅ تبديل سريع: يظهر في About أو لا */}
-                  <button
-                    className="exp-btn ghost sm"
-                    title={x.showOnAbout ? "إخفاء من صفحة من نحن" : "إظهار في صفحة من نحن"}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleShowOnAboutQuick(x);
-                    }}
-                    disabled={loading}
-                    type="button"
-                  >
-                    <FontAwesomeIcon icon={x.showOnAbout ? faToggleOn : faToggleOff} />
-                  </button>
-
-                  <button
-                    className="exp-btn ghost sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEdit(x);
-                    }}
-                    type="button"
-                  >
-                    <FontAwesomeIcon icon={faPen} />
-                  </button>
-
-                  <button
-                    className="exp-btn ghost sm text-danger"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      remove(x.id);
-                    }}
-                    type="button"
-                  >
-                    <FontAwesomeIcon icon={faTrash} />
-                  </button>
-                </div>
-              </div>
-
-              {x.bio ? <div className="staff-bio">{x.bio}</div> : <div className="staff-bio muted">بدون نبذة</div>}
-
-              <div className="staff-chips">
-                {visibleSpecialties.map((sid) => {
-                  const label = serviceOptions.find((o) => o.id === sid)?.label ?? sid;
-                  return (
-                    <span className="staff-chip" key={sid}>
-                      {label}
-                    </span>
-                  );
-                })}
-                {hiddenCount > 0 && !isExpanded && (
-                  <button
-                    type="button"
-                    className="staff-chips-toggle"
-                    onClick={() =>
-                      setExpandedSpecialtiesByStaff((prev) => ({ ...prev, [x.id]: true }))
-                    }
-                  >
-                    +{hiddenCount} أكثر
-                  </button>
-                )}
-                {isExpanded && allSpecialties.length > STAFF_CHIPS_PREVIEW_COUNT && (
-                  <button
-                    type="button"
-                    className="staff-chips-toggle"
-                    onClick={() =>
-                      setExpandedSpecialtiesByStaff((prev) => ({ ...prev, [x.id]: false }))
-                    }
-                  >
-                    عرض أقل
-                  </button>
-                )}
-              </div>
-
-              {authUser?.role === "owner" && (
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <span className="staff-pill stat total">
-                      الحجوزات: <b>{statsLoading ? "..." : bookingStats[x.id]?.total ?? 0}</b>
-                    </span>
-                    <span className="staff-pill stat confirmed">
-                      مؤكد: <b>{statsLoading ? "..." : bookingStats[x.id]?.byStatus.confirmed ?? 0}</b>
-                    </span>
-                    <span className="staff-pill stat pending">
-                      انتظار: <b>{statsLoading ? "..." : bookingStats[x.id]?.byStatus.pending ?? 0}</b>
-                    </span>
-                  </div>
-                </div>
-              )}
-                  </>
-                );
-              })()}
+              ))}
             </div>
-          ))}
+          ) : (
+            <div className="emp-field-note">لا توجد موظفات مطابقة للفلاتر الحالية.</div>
+          )}
         </div>
 
         {isOpen && (
           <Modal
             open={isOpen}
             onClose={closeModal}
-            ariaLabel={editId ? "تعديل موظفة" : "إضافة موظفة"}
-            panelClassName="emp-modal"
+            ariaLabel="employee-editor"
             size="lg"
+            panelClassName="emp-modal"
           >
-            <div className="modal-head">
-              <b style={{ fontSize: "1.2rem" }}>
-                {editId
-                  ? `تعديل موظفة${String(name || editingStaff?.name || "").trim() ? ` - ${String(name || editingStaff?.name || "").trim()}` : ""}`
-                  : "إضافة موظفة"}
-              </b>
-              <button className="exp-btn ghost" onClick={closeModal} type="button">
+            <div className="emp-modal-head">
+              <h3>{editId ? `تعديل موظفة - ${editingStaff?.name || name || "-"}` : "إضافة موظفة"}</h3>
+              <button className="exp-btn ghost sm" type="button" onClick={closeModal}>
                 <FontAwesomeIcon icon={faXmark} />
               </button>
             </div>
-
-            <div className="modal-body emp-modal-grid">
-              <div className="emp-modal-tabs" role="tablist" aria-label="أقسام نموذج الموظفة">
-                {modalTabs.map((tab) => (
-                  <button
-                    key={`emp_tab_${tab.key}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={modalTab === tab.key}
-                    className={`emp-modal-tab ${modalTab === tab.key ? "active" : ""}`}
-                    onClick={() => setModalTab(tab.key)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+            <div className="emp-modal-tabs">
+              {modalTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`emp-tab ${modalTab === tab.key ? "is-active" : ""}`}
+                  onClick={() => setModalTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="emp-modal-body">
               {editingStaff ? (
                 <div className={`emp-modal-section ${modalTab !== "stats" ? "is-hidden" : ""}`}>
-                  <b className="emp-modal-section-title">إحصائيات الشهر والإجازات</b>
-
-                  <div className="staff-metrics">
-                    <div className="staff-metrics-grid">
-                      <div className="staff-metric">
-                        <span>حجوزاتها هذا الشهر</span>
-                        <b>{statsLoading ? "..." : bookingStats[editingStaff.id]?.month.staffTotal ?? 0}</b>
-                      </div>
-                      <div className="staff-metric">
-                        <span>إجمالي حجوزات الشهر (الصالون)</span>
-                        <b>{statsLoading ? "..." : bookingStats[editingStaff.id]?.month.salonTotal ?? 0}</b>
-                      </div>
-                      <div className="staff-metric accent">
-                        <span>نسبة الشغل من إجمالي الشهر</span>
-                        <b>{statsLoading ? "..." : `${bookingStats[editingStaff.id]?.month.sharePct ?? 0}%`}</b>
-                      </div>
-                      <div className="staff-metric">
-                        <span>رصيد الإجازات المتبقي</span>
-                        <b>{parsePositiveInt(String((editingStaff as any).leaveBalanceDays || 0), 0)} يوم</b>
-                      </div>
+                  <b className="emp-modal-section-title">الإحصائيات والإجازات</b>
+                  <div className="staff-payroll-box">
+                    <div className="staff-payroll-head">
+                      <b>الراتب + الأوفر تايم</b>
+                      <span>يدخل تلقائيًا ضمن المصروفات والتقارير</span>
                     </div>
-                    <div className="staff-month-hint">الشهر الحالي: {currentMonthKey()}</div>
-                  </div>
-
-                  <div className="staff-leave-box">
-                    <div className="staff-leave-head">
-                      <span>تاريخ الاستحقاق القادم</span>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div className="staff-payroll-form">
+                      <div className="dash-field">
+                        <label className="emp-label">الراتب الشهري (ريال)</label>
                         <input
                           className="dash-input"
-                          type="date"
-                          value={leaveEntitlementDate}
-                          onChange={(e) => setLeaveEntitlementDate(e.target.value)}
-                        />
-                        <button className="exp-btn" type="button" onClick={saveEntitlementDate} disabled={loading}>
-                          حفظ الاستحقاق
-                        </button>
-                      </div>
-                    </div>
-
-                    {authUser?.role === "owner" ? (
-                      <div className="staff-leave-controls">
-                        <input
-                          className="dash-input staff-leave-input"
                           type="number"
-                          min={1}
-                          step={1}
-                          value={leaveAdjustDays}
-                          onChange={(e) => setLeaveAdjustDays(e.target.value)}
-                          placeholder="عدد الأيام"
-                        />
-                        <input
-                          className="dash-input"
-                          type="date"
-                          value={leaveAdjustDate}
-                          onChange={(e) => setLeaveAdjustDate(e.target.value)}
-                        />
-                        <input
-                          className="dash-input"
-                          value={leaveAdjustNote}
-                          onChange={(e) => setLeaveAdjustNote(e.target.value)}
-                          placeholder="ملاحظة (اختياري)"
-                        />
-                        <button
-                          className="exp-btn primary"
-                          type="button"
+                          min={0}
+                          step="0.01"
+                          value={monthlySalary}
                           disabled={loading}
-                          onClick={() => applyLeaveChange("add")}
-                        >
-                          إضافة رصيد
-                        </button>
-                        <button
-                          className="exp-btn ghost"
-                          type="button"
-                          disabled={loading}
-                          onClick={() => applyLeaveChange("deduct")}
-                        >
-                          تسجيل إجازة (خصم)
-                        </button>
+                          onChange={(e) => setMonthlySalary(e.target.value)}
+                          placeholder="مثال: 5000"
+                        />
                       </div>
-                    ) : null}
-
-                    <div className="leave-log-list">
-                      <div className="leave-log-title">سجل الإجازات</div>
-                      {(Array.isArray((editingStaff as any).leaveEntries) ? (editingStaff as any).leaveEntries : [])
-                        .slice()
-                        .sort((a: LeaveEntry, b: LeaveEntry) => String(b.createdAtIso || "").localeCompare(String(a.createdAtIso || "")))
-                        .slice(0, 12)
-                        .map((entry: LeaveEntry) => (
-                          <div className="leave-log-row" key={entry.id}>
-                            <span className={`leave-log-type ${entry.type === "deduct" ? "deduct" : "add"}`}>
-                              {entry.type === "deduct" ? "إجازة" : "إضافة"}
-                            </span>
-                            <span className="leave-log-days">{entry.days} يوم</span>
-                            <span className="leave-log-date">{fmtIsoDate(entry.date)}</span>
-                            <span className="leave-log-note">{String(entry.note || "-")}</span>
+                      <div className="dash-field">
+                        <label className="emp-label">طريقة احتساب الأوفر تايم</label>
+                        <select
+                          className="dash-select"
+                          value={overtimeMethod}
+                          disabled={loading}
+                          onChange={(e) => setOvertimeMethod(e.target.value as StaffPayrollMethod)}
+                        >
+                          <option value="hours_from_salary">من الراتب + الساعات الإضافية</option>
+                          <option value="invoice_percentage">نسبة من فواتير الموظفة</option>
+                        </select>
+                      </div>
+                      {overtimeMethod === "hours_from_salary" ? (
+                        <>
+                          <div className="dash-field">
+                            <label className="emp-label">عدد الأيام للتقسيم الشهري</label>
+                            <input
+                              className="dash-input"
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={overtimeDaysPerMonth}
+                              disabled={loading}
+                              onChange={(e) => setOvertimeDaysPerMonth(e.target.value)}
+                              placeholder="مثال: 30"
+                            />
                           </div>
-                        ))}
-                      {!Array.isArray((editingStaff as any).leaveEntries) ||
-                      (editingStaff as any).leaveEntries.length === 0 ? (
-                        <div className="leave-log-empty">لا يوجد سجل إجازات حتى الآن.</div>
-                      ) : null}
+                          <div className="dash-field">
+                            <label className="emp-label">الساعات الأساسية اليومية (العادي)</label>
+                            <input
+                              className="dash-input"
+                              type="number"
+                              min={1}
+                              step="0.25"
+                              value={overtimeBaseHoursPerDay}
+                              disabled={loading}
+                              onChange={(e) => setOvertimeBaseHoursPerDay(e.target.value)}
+                              placeholder="مثال: 8"
+                            />
+                          </div>
+                          <div className="dash-field">
+                            <label className="emp-label">الساعات الأساسية اليومية (الموسم)</label>
+                            <input
+                              className="dash-input"
+                              type="number"
+                              min={1}
+                              step="0.25"
+                              value={overtimeSeasonBaseHoursPerDay}
+                              disabled={loading}
+                              onChange={(e) => setOvertimeSeasonBaseHoursPerDay(e.target.value)}
+                              placeholder="مثال: 6"
+                            />
+                          </div>
+                          <div className="dash-field">
+                            <label className="emp-label">أساس حساب الأوفر تايم</label>
+                            <select
+                              className="dash-select"
+                              value={overtimeHoursBasis}
+                              disabled={loading}
+                              onChange={(e) =>
+                                setOvertimeHoursBasis(
+                                  e.target.value === "season" ? "season" : "regular"
+                                )
+                              }
+                            >
+                              <option value="regular">الأيام العادية</option>
+                              <option value="season">الموسم</option>
+                            </select>
+                          </div>
+                          <div className="dash-field">
+                            <label className="emp-label">نسبة زيادة الأوفر تايم (%)</label>
+                            <input
+                              className="dash-input"
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={overtimePercent}
+                              disabled={loading}
+                              onChange={(e) => setOvertimePercent(e.target.value)}
+                              placeholder="مثال: 25"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="dash-field">
+                          <label className="emp-label">نسبة الأوفر تايم من فواتير الموظفة (%)</label>
+                          <input
+                            className="dash-input"
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={overtimeInvoicePercent}
+                            disabled={loading}
+                            onChange={(e) => setOvertimeInvoicePercent(e.target.value)}
+                            placeholder="مثال: 40"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div className="staff-payroll-preview">
+                      <div className="staff-payroll-preview-grid">
+                        <div className="staff-payroll-chip">
+                          <span>إجمالي الراتب الشهري</span>
+                          <b>{fmtMoneySar(modalPayrollMonthSummary?.salaryAmount || 0)} ر.س</b>
+                        </div>
+                        <div className="staff-payroll-chip">
+                          <span>مبلغ الأوفر تايم</span>
+                          <b>{fmtMoneySar(modalPayrollMonthSummary?.overtimeAmount || 0)} ر.س</b>
+                        </div>
+                        <div className="staff-payroll-chip accent">
+                          <span>إجمالي المستحق الشهري</span>
+                          <b>{fmtMoneySar(modalPayrollMonthSummary?.totalAmount || 0)} ر.س</b>
+                        </div>
+                        <div className="staff-payroll-chip">
+                          <span>ساعات الدوام المجدولة</span>
+                          <b>{fmtMoneySar(modalPayrollMonthSummary?.schedule.scheduledHours || 0)} ساعة</b>
+                        </div>
+                        <div className="staff-payroll-chip">
+                          <span>الساعات الأساسية المحتسبة</span>
+                          <b>{fmtMoneySar(modalPayrollMonthSummary?.schedule.baselineHours || 0)} ساعة</b>
+                        </div>
+                        <div className="staff-payroll-chip">
+                          <span>أساس الحساب</span>
+                          <b>
+                            {modalPayrollMonthSummary?.config.hoursBasis === "season"
+                              ? "الموسم"
+                              : "الأيام العادية"}
+                          </b>
+                        </div>
+                        <div className="staff-payroll-chip">
+                          <span>ساعات الأوفر تايم</span>
+                          <b>{fmtMoneySar(modalPayrollMonthSummary?.schedule.overtimeHours || 0)} ساعة</b>
+                        </div>
+                      </div>
+                      <div className="staff-payroll-note">
+                        {modalPayrollMonthSummary?.method === "invoice_percentage"
+                          ? `طريقة الحساب: نسبة من الفواتير (${modalPayrollMonthSummary.config.invoicePercent}%).`
+                          : `طريقة الحساب: (الراتب ÷ ${modalPayrollMonthSummary?.config.daysPerMonth || 0} يوم ÷ ${
+                              modalPayrollMonthSummary?.config.hoursBasis === "season"
+                                ? modalPayrollMonthSummary?.config.seasonBaseHoursPerDay || 0
+                                : modalPayrollMonthSummary?.config.baseHoursPerDay || 0
+                            } ساعة) ثم تطبيق نسبة ${
+                              modalPayrollMonthSummary?.config.overtimePercent || 0
+                            }% على ساعات الأوفر تايم.`}
+                      </div>
+                      <div className="staff-payroll-note">
+                        {`أساس الحساب المعتمد: ${
+                          modalPayrollMonthSummary?.config.hoursBasis === "season"
+                            ? "الموسم"
+                            : "الأيام العادية"
+                        } | الساعات المستخدمة يوميًا: ${
+                          modalPayrollMonthSummary?.config.hoursBasis === "season"
+                            ? modalPayrollMonthSummary?.config.seasonBaseHoursPerDay || 0
+                            : modalPayrollMonthSummary?.config.baseHoursPerDay || 0
+                        } ساعة.`}
+                      </div>
+                      <div className="staff-payroll-note">
+                        {`الشهر المحتسب: ${modalPayrollMonthSummary?.monthKey || currentMonthKey()} | فواتير الموظفة: ${
+                          modalPayrollMonthSummary?.invoiceCount || 0
+                        } | إيرادها: ${fmtMoneySar(modalPayrollMonthSummary?.invoiceRevenue || 0)} ر.س`}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2237,44 +2818,9 @@ export default function DashboardEmployees() {
               <div className={`emp-modal-section ${modalTab !== "booking" ? "is-hidden" : ""}`}>
                 <b className="emp-modal-section-title">إعدادات الحجز لهذه الموظفة</b>
                 <div className="emp-modal-fields emp-booking-settings">
-                  <div className="emp-booking-subtitle">الحالة العامة</div>
-                  <div className="dash-field booking-card">
-                    <label className="emp-label emp-check-label">
-                      <input
-                        type="checkbox"
-                        checked={modalOnLeave}
-                        disabled={loading}
-                        onChange={(e) => setModalOnLeave(e.target.checked)}
-                      />
-                      في إجازة
-                    </label>
-                  </div>
-
-                  <div className="dash-field booking-card">
-                    <label className="emp-label">تاريخ العودة (Date) — مثال: 21/02/2026</label>
-                    <input
-                      className="dash-input"
-                      type="date"
-                      value={modalLeaveUntil}
-                      disabled={loading}
-                      onChange={(e) => setModalLeaveUntil(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="dash-field booking-card">
-                    <label className="emp-label">ملاحظة للزبائن (اختياري)</label>
-                    <input
-                      className="dash-input"
-                      value={modalLeaveNote}
-                      disabled={loading}
-                      onChange={(e) => setModalLeaveNote(e.target.value)}
-                      placeholder="مثال: العودة يوم الأحد بإذن الله"
-                    />
-                  </div>
-
-                  <div className="dash-field booking-card">
-                    <label className="emp-label">آخر يوم دوام (في حال الاستقالة)</label>
-                    <input
+                  <div className="emp-booking-subtitle">حالة التوظيف</div>
+                  <div className="dash-field booking-card booking-full">
+                  <label className="emp-label">آخر يوم دوام (في الصالون) – استقالة أو موظفة موسمية</label>                    <input
                       className="dash-input"
                       type="date"
                       value={employmentEndDate}
@@ -2284,66 +2830,6 @@ export default function DashboardEmployees() {
                     <div className="emp-field-note danger">
                       بعد هذا التاريخ لن تظهر الموظفة نهائيًا في صفحة الحجز.
                     </div>
-                  </div>
-
-                  <div className="emp-booking-subtitle">الإجازات الأسبوعية</div>
-                  <div className="dash-field booking-card booking-full">
-                    <label className="emp-label">إجازة استثنائية (يوم محدد)</label>
-                    <div className="emp-inline-actions">
-                      <select
-                        className="dash-select"
-                        value={String(modalLeaveWeekdayDraft || "")}
-                        disabled={loading}
-                        onChange={(e) => setModalLeaveWeekdayDraft(e.target.value as WeekdayKey | "")}
-                      >
-                        <option value="">اختاري اليوم</option>
-                        {WEEKDAY_OPTIONS.map((d) => (
-                          <option key={`modal_${d.key}`} value={d.key}>
-                            {d.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="exp-btn ghost sm"
-                        disabled={loading || !normalizeWeekdayKey(modalLeaveWeekdayDraft)}
-                        onClick={() => {
-                          const next = normalizeWeekdayKey(modalLeaveWeekdayDraft);
-                          if (!next) return;
-                          setModalExceptionalLeaveWeekdays((prev) =>
-                            normalizeExceptionalLeaveWeekdays([...prev, next])
-                          );
-                          setModalLeaveWeekdayDraft("");
-                        }}
-                      >
-                        إضافة اليوم
-                      </button>
-                    </div>
-
-                    {modalExceptionalLeaveWeekdays.length > 0 ? (
-                      <div className="emp-tags-row">
-                        {modalExceptionalLeaveWeekdays.map((d) => (
-                          <button
-                            key={`modal_day_${d}`}
-                            type="button"
-                            className="exp-btn ghost sm"
-                            disabled={loading}
-                            onClick={() =>
-                              setModalExceptionalLeaveWeekdays((prev) =>
-                                prev.filter((day) => day !== d)
-                              )
-                            }
-                            title="حذف اليوم الاستثنائي"
-                          >
-                            {WEEKDAY_OPTIONS.find((x) => x.key === d)?.label || d} ×
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="emp-field-note danger">
-                        لا توجد أيام استثنائية حالياً.
-                      </div>
-                    )}
                   </div>
 
                   <div className="emp-booking-subtitle">ساعات الدوام الخاصة</div>
@@ -2362,6 +2848,9 @@ export default function DashboardEmployees() {
                   {modalUseCustomWorkingHours ? (
                     <div className="dash-field booking-card booking-full emp-working-hours-block">
                       <label className="emp-label">الساعات الأسبوعية</label>
+                      <div className="emp-field-note">
+                        عدلي يوم واحد ثم اضغطي "نسخ لكل الأيام" لتطبيق نفس الإعداد على كل الأسبوع.
+                      </div>
                       <div className="emp-working-week-grid">
                         {WEEKDAY_OPTIONS.map((d) => {
                           const row = modalCustomWorkingHours[d.key] || {
@@ -2401,6 +2890,15 @@ export default function DashboardEmployees() {
                                   updateModalWorkingDay(d.key, { end: e.target.value })
                                 }
                               />
+                              <button
+                                type="button"
+                                className="exp-btn ghost sm emp-working-copy-btn"
+                                disabled={loading}
+                                onClick={() => copyModalWorkingDayToAll(d.key)}
+                                title={`نسخ ساعات ${d.label} لكل الأيام`}
+                              >
+                                نسخ لكل الأيام
+                              </button>
                             </div>
                           );
                         })}
@@ -2411,7 +2909,46 @@ export default function DashboardEmployees() {
                   {modalUseCustomWorkingHours ? (
                     <div className="dash-field booking-card booking-full emp-working-override-block">
                       <label className="emp-label">استثناء ساعات يوم محدد</label>
-                      <div className="emp-working-override-grid">
+                        <div className="emp-working-override-grid">
+                          <div className="emp-working-override-tools">
+                            <div className="emp-working-override-presets">
+                              <button
+                                type="button"
+                                className="exp-btn ghost sm"
+                                disabled={loading}
+                              onClick={fillModalHourOverrideFromBaseDay}
+                            >
+                              نسخ ساعات يوم البداية
+                            </button>
+                            <label className="emp-mini-check">
+                              <input
+                                type="checkbox"
+                                checked={modalHourOverrideOverwriteExisting}
+                                disabled={loading || modalHourOverrideUpdateExistingOnly}
+                                onChange={(e) => setModalHourOverrideOverwriteExisting(e.target.checked)}
+                              />
+                              <span>استبدال أي استثناء موجود في نفس التاريخ</span>
+                            </label>
+                            <label className="emp-mini-check">
+                              <input
+                                type="checkbox"
+                                checked={modalHourOverrideUpdateExistingOnly}
+                                disabled={loading || !!modalHourOverrideEditingDate}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  if (checked) {
+                                    const ok = setModalHourOverrideRangeFromExisting();
+                                    if (!ok) setModalHourOverrideUpdateExistingOnly(false);
+                                    return;
+                                  }
+                                  setModalHourOverrideUpdateExistingOnly(false);
+                                }}
+                              />
+                              <span>تعديل الاستثناءات الحالية فقط</span>
+                            </label>
+                          </div>
+                        </div>
+
                         <div className="emp-working-override-form">
                           <div>
                             <label className="emp-label">من تاريخ</label>
@@ -2420,7 +2957,13 @@ export default function DashboardEmployees() {
                               type="date"
                               value={modalHourOverrideFromDate}
                               disabled={loading}
-                              onChange={(e) => setModalHourOverrideFromDate(e.target.value)}
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                setModalHourOverrideFromDate(next);
+                                if (modalHourOverrideEditingDate) {
+                                  setModalHourOverrideToDate(next);
+                                }
+                              }}
                             />
                           </div>
                           <div>
@@ -2429,7 +2972,7 @@ export default function DashboardEmployees() {
                               className="dash-input"
                               type="date"
                               value={modalHourOverrideToDate}
-                              disabled={loading}
+                              disabled={loading || !!modalHourOverrideEditingDate}
                               onChange={(e) => setModalHourOverrideToDate(e.target.value)}
                             />
                           </div>
@@ -2460,45 +3003,142 @@ export default function DashboardEmployees() {
                               disabled={loading}
                               onChange={(e) => setModalHourOverrideEnabled(e.target.checked)}
                             />
-                            <span>دوام</span>
+                            <span>دوام (إلغاء التحديد = إغلاق كامل)</span>
                           </label>
                           <button
                             type="button"
                             className="exp-btn ghost sm"
-                            disabled={loading || !normalizeLeaveUntil(modalHourOverrideFromDate)}
+                            disabled={
+                              loading ||
+                              !normalizeLeaveUntil(modalHourOverrideFromDate) ||
+                              (!modalHourOverrideEditingDate && modalHourOverrideApplyCount <= 0)
+                            }
                             onClick={addModalWorkingHourOverride}
                           >
-                            إضافة النطاق
+                            {modalHourOverrideEditingDate ? "حفظ التعديل" : "إضافة النطاق"}
                           </button>
+                          {modalHourOverrideEditingDate ? (
+                            <button
+                              type="button"
+                              className="exp-btn ghost sm"
+                              disabled={loading}
+                              onClick={cancelModalWorkingHourOverrideEdit}
+                            >
+                              إلغاء التعديل
+                            </button>
+                          ) : null}
+                        </div>
+                        {!modalHourOverrideEditingDate ? (
+                          <div className="emp-working-override-weekdays">
+                            <label className="emp-label">تطبيق على أيام محددة (اختياري)</label>
+                            <div className="emp-working-override-weekday-chips">
+                              {WEEKDAY_OPTIONS.map((d) => {
+                                const active = modalHourOverrideApplyWeekdays.includes(d.key);
+                                return (
+                                  <button
+                                    key={`ov_day_${d.key}`}
+                                    type="button"
+                                    className={`emp-weekday-chip ${active ? "active" : ""}`}
+                                    disabled={loading}
+                                    onClick={() => toggleModalHourOverrideWeekday(d.key)}
+                                  >
+                                    {d.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="emp-field-note">
+                              {modalHourOverrideApplyWeekdays.length
+                                ? `الأيام المختارة: ${modalHourOverrideApplyWeekdays
+                                    .map((d) => WEEKDAY_OPTIONS.find((x) => x.key === d)?.label || d)
+                                    .join(" / ")}`
+                                : "سيتم التطبيق على كل الأيام داخل النطاق."}
+                            </div>
+                          </div>
+                        ) : null}
+                        <div className="emp-working-override-summary">
+                          <div className="emp-field-note">
+                            {modalHourOverrideEditingDate
+                              ? `وضع التعديل: تحديث استثناء تاريخ ${fmtIsoDate(modalHourOverrideEditingDate)}.`
+                              : modalHourOverrideApplyCount > 0
+                                ? modalHourOverrideUpdateExistingOnly
+                                  ? `سيتم تعديل ${modalHourOverrideApplyCount} استثناء موجود ضمن النطاق.`
+                                  : `سيتم تطبيق الاستثناء على ${modalHourOverrideApplyCount} يوم.`
+                                : modalHourOverrideUpdateExistingOnly
+                                  ? "لا يوجد استثناءات حالية مطابقة للنطاق/الفلاتر."
+                                  : "لا يوجد أيام مطابقة للنطاق/الفلاتر الحالية."}
+                          </div>
+                          {!modalHourOverrideEditingDate ? (
+                            <div className="emp-field-note">
+                              {modalHourOverrideUpdateExistingOnly
+                                ? "الوضع الحالي: تعديل الموجود فقط بدون إنشاء أيام جديدة."
+                                : modalHourOverrideOverwriteExisting
+                                  ? "سيتم استبدال أي استثناء سابق على نفس التاريخ."
+                                  : "لن يتم استبدال الأيام التي لديها استثناء سابق."}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="emp-field-note">
-                          حددي من تاريخ إلى تاريخ لتطبيق نفس الساعات على كامل الفترة.
+                          ملاحظة: عند الضغط على "حفظ التغييرات" سيتم تطبيق مسودة الاستثناءات تلقائياً.
                         </div>
 
                         {modalCustomHourOverrides.length ? (
                           <div className="emp-override-list">
-                            {modalCustomHourOverrides.map((ov) => (
-                              <div key={`ov_${ov.date}`} className="emp-override-item">
-                                <span className="emp-override-item-text">
-                                  {fmtIsoDate(ov.date)} -{" "}
-                                  {ov.enabled === false
-                                    ? "إجازة هذا اليوم"
-                                    : `${ov.start || "10:00"} إلى ${ov.end || "22:00"}`}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="exp-btn ghost sm"
-                                  disabled={loading}
-                                  onClick={() =>
-                                    setModalCustomHourOverrides((prev) =>
-                                      prev.filter((x) => x.date !== ov.date)
-                                    )
-                                  }
+                            <div className="emp-override-list-head">
+                              <span>الاستثناءات الحالية: {modalCustomHourOverrides.length}</span>
+                              <button
+                                type="button"
+                                className="exp-btn ghost sm"
+                                disabled={loading}
+                                onClick={() => setModalCustomHourOverrides([])}
+                              >
+                                حذف الكل
+                              </button>
+                            </div>
+                            {modalCustomHourOverrides.map((ov) => {
+                              const isEditing =
+                                normalizeLeaveUntil(modalHourOverrideEditingDate) === ov.date;
+                              const itemStart = normalizeTimeHHMM(ov.start) || "10:00";
+                              const itemEnd = normalizeTimeHHMM(ov.end) || "22:00";
+                              const itemDay = weekdayFromIso(ov.date);
+                              const itemDayLabel =
+                                WEEKDAY_OPTIONS.find((x) => x.key === itemDay)?.label || "-";
+                              return (
+                                <div
+                                  key={`ov_${ov.date}`}
+                                  className={`emp-override-item ${isEditing ? "editing" : ""}`}
                                 >
-                                  حذف
-                                </button>
-                              </div>
-                            ))}
+                                  <div className="emp-override-item-main">
+                                    <span className="emp-override-item-date">
+                                      اليوم: {itemDayLabel} | التاريخ: {fmtIsoDate(ov.date)}
+                                    </span>
+                                    <span className="emp-override-item-time">
+                                      {ov.enabled === false
+                                        ? "الحالة: إغلاق كامل"
+                                        : `الوقت: ${formatWindow(itemStart, itemEnd)}`}
+                                    </span>
+                                  </div>
+                                  <div className="emp-override-item-actions">
+                                    <button
+                                      type="button"
+                                      className="exp-btn ghost sm"
+                                      disabled={loading}
+                                      onClick={() => startModalWorkingHourOverrideEdit(ov)}
+                                    >
+                                      تعديل
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="exp-btn ghost sm"
+                                      disabled={loading}
+                                      onClick={() => removeModalWorkingHourOverride(ov.date)}
+                                    >
+                                      حذف
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
                           <div className="emp-field-note">
@@ -2509,11 +3149,6 @@ export default function DashboardEmployees() {
                     </div>
                   ) : null}
 
-                  {modalLeaveExpired ? (
-                    <div style={{ color: "#b91c1c", fontSize: 13, fontWeight: 800 }}>
-                      تاريخ الإجازة انتهى؛ بعد الحفظ سيتم اعتبار الموظفة غير مجازة.
-                    </div>
-                  ) : null}
                 </div>
               </div>
 
