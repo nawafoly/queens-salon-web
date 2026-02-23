@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../services/firebase";
-import logo1 from "../assets/images/ssunnamed3.png";
+import defaultLogo from "../assets/images/ssunnamed.png";
 import "../styles/DashboardQueueTv.css";
 
 const SALON_ID = "main";
 const SHOW_AFTER_TURN_MS = 20 * 60 * 1000;
+const MAX_PROMO_VIDEOS = 12;
 
 type QueueBooking = {
   id: string;
@@ -79,13 +80,77 @@ function countdownLabel(targetMs: number, nowMs: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+function buildPromoCandidates(): string[] {
+  const out: string[] = [];
+  for (let i = 1; i <= MAX_PROMO_VIDEOS; i += 1) {
+    out.push(i === 1 ? "/tv-promo.mp4" : `/tv-promo-${i}.mp4`);
+  }
+  return out;
+}
+
+async function checkFileExists(path: string): Promise<boolean> {
+  try {
+    const head = await fetch(path, { method: "HEAD", cache: "no-store" });
+    if (head.ok) return true;
+  } catch {
+    // ignore and fallback to GET
+  }
+  try {
+    const res = await fetch(path, { method: "GET", cache: "no-store" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export default function DashboardQueueTv() {
   const [todayKey, setTodayKey] = useState<string>(() => todayISO());
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [bookings, setBookings] = useState<QueueBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const videoSrc = "/tv-promo.mp4";
+  const [logoSrc, setLogoSrc] = useState(defaultLogo);
+  const [videoPlaylist, setVideoPlaylist] = useState<string[]>(["/tv-promo.mp4"]);
+  const [videoIndex, setVideoIndex] = useState(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoSrc = videoPlaylist[videoIndex] || videoPlaylist[0];
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPromoPlaylist = async () => {
+      const candidates = buildPromoCandidates();
+      const checks = await Promise.all(candidates.map((p) => checkFileExists(p)));
+      if (cancelled) return;
+      const found = candidates.filter((_, i) => checks[i]);
+      setVideoPlaylist(found.length ? found : ["/tv-promo.mp4"]);
+      setVideoIndex(0);
+    };
+    loadPromoPlaylist();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const ensurePlaying = () => {
+      const p = el.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") ensurePlaying();
+    };
+    ensurePlaying();
+    el.addEventListener("ended", ensurePlaying);
+    el.addEventListener("canplay", ensurePlaying);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      el.removeEventListener("ended", ensurePlaying);
+      el.removeEventListener("canplay", ensurePlaying);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [videoSrc]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -163,12 +228,30 @@ export default function DashboardQueueTv() {
 
   return (
     <div className="dashboard-tv-page">
-      <div className="dashboard-tv-header">
-        <img src={logo1} alt="Malikat Salon" className="dashboard-tv-logo" />
-      </div>
-
       <section className="dashboard-tv-video-card">
-        <video className="dashboard-tv-video" src={videoSrc} autoPlay loop muted playsInline controls />
+        <img
+          src={logoSrc}
+          alt="Malikat Salon"
+          className="dashboard-tv-video-logo"
+          onError={() => setLogoSrc(defaultLogo)}
+        />
+        <video
+          key={videoSrc}
+          ref={videoRef}
+          className="dashboard-tv-video"
+          src={videoSrc}
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          controls={false}
+          onEnded={(e) => {
+            setVideoIndex((prev) => (prev + 1) % Math.max(1, videoPlaylist.length));
+          }}
+          onError={() => {
+            setVideoIndex((prev) => (prev + 1) % Math.max(1, videoPlaylist.length));
+          }}
+        />
       </section>
 
       <section className="dashboard-tv-queue-card">
@@ -196,15 +279,21 @@ export default function DashboardQueueTv() {
                   <article key={row.id} className={`dashboard-tv-booking-card ${row.state === "current" ? "is-current" : "is-upcoming"}`}>
                     <div className="dashboard-tv-booking-head">
                       <h4>حجز {idx + 1}</h4>
-                      <span>{row.state === "current" ? "الحالي" : "قادم"}</span>
+                      <span className="dashboard-tv-state-chip">{row.state === "current" ? "الحالي" : "قادم"}</span>
                     </div>
                     <div className="dashboard-tv-booking-main">
-                      <b>{bookingNoOf(row.publicId)}</b>
-                      <span>العميله: {row.clientName || "—"}</span>
-                      <span>عند الموظفه: {row.employeeName || "—"}</span>
+                      <div className="dashboard-tv-booking-id">{bookingNoOf(row.publicId)}</div>
+                      <div className="dashboard-tv-kv-row">
+                        <span className="dashboard-tv-kv-label">العميلة</span>
+                        <b className="dashboard-tv-kv-value">{row.clientName || "—"}</b>
+                      </div>
+                      <div className="dashboard-tv-kv-row">
+                        <span className="dashboard-tv-kv-label">الموظفة</span>
+                        <b className="dashboard-tv-kv-value">{row.employeeName || "—"}</b>
+                      </div>
                     </div>
                     <div className="dashboard-tv-booking-foot">
-                      <span>الوقت: {formatTime12(row.time)}</span>
+                      <span className="dashboard-tv-time-value">{formatTime12(row.time)}</span>
                       {row.state === "current" ? (
                         <small>ينتهي العرض بعد: {msToMinSec(row.startMs + SHOW_AFTER_TURN_MS - nowMs)}</small>
                       ) : (

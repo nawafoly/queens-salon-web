@@ -173,10 +173,81 @@ function servicesCol() {
   return collection(db, "salons", SALON_ID, "services");
 }
 
+function usersCol() {
+  return collection(db, "salons", SALON_ID, "users");
+}
+
 function normalizeSpecialties(v: any): string[] {
   if (Array.isArray(v)) return v.map(String).map((x) => x.trim()).filter(Boolean);
   if (typeof v === "string" && v.trim()) return [v.trim()];
   return [];
+}
+
+function normalizeRoleText(v: any) {
+  return String(v || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+function isAdministrativeRoleText(v: any) {
+  const r = normalizeRoleText(v);
+  if (!r) return false;
+  return [
+    "owner",
+    "admin",
+    "administrator",
+    "reception",
+    "receptionist",
+    "frontdesk",
+    "manager",
+    "pending",
+    "client",
+    "guest",
+    "اداري",
+    "إداري",
+    "مدير",
+    "ادارة",
+    "إدارة",
+  ].some((k) => r.includes(normalizeRoleText(k)));
+}
+
+function isAdministrativeStaffRecord(
+  id: string,
+  data: any,
+  linkedUserRoleByUid: Map<string, string>
+) {
+  const roleCandidates = [
+    data?.role,
+    data?.userRole,
+    data?.accountRole,
+    data?.type,
+    data?.accountType,
+    data?.userType,
+    data?.position,
+    data?.jobTitle,
+  ];
+  if (roleCandidates.some((x) => isAdministrativeRoleText(x))) return true;
+  if (data?.isAdmin === true || data?.isOwner === true || data?.isReception === true) return true;
+  if (data?.managementOnly === true || data?.isManagement === true) return true;
+
+  const linkedUid = String(data?.linkedUid || "").trim();
+  if (linkedUid) {
+    const linkedRole = linkedUserRoleByUid.get(linkedUid) || "";
+    if (isAdministrativeRoleText(linkedRole)) return true;
+  }
+
+  const name = String(data?.name || "").trim().toLowerCase();
+  const idKey = String(id || "").trim().toLowerCase();
+  const looksAdminByName =
+    /admin|owner|reception|manager|اداري|إداري|مدير|ادارة|إدارة/.test(name) ||
+    /admin|owner|reception|manager|اداري|إداري|مدير|ادارة|إدارة/.test(idKey);
+  if (looksAdminByName) return true;
+
+  const hasNoSpecialties = normalizeSpecialties(data?.specialties).length === 0;
+  if (hasNoSpecialties && (data?.showOnBooking === false || data?.active === false)) return true;
+
+  return false;
 }
 
 function safeKey(s: string) {
@@ -647,10 +718,29 @@ export default function DashboardEmployees() {
     setLoading(true);
     setErrorMsg("");
     try {
+      const adminLikeDocIds: string[] = [];
+      const linkedUserRoleByUid = new Map<string, string>();
+      try {
+        const userSnap = await getDocs(usersCol());
+        userSnap.docs.forEach((u) => {
+          const x = u.data() as any;
+          const uid = String(u.id || "").trim();
+          const role = String(x?.role || "").trim();
+          if (uid && role) linkedUserRoleByUid.set(uid, role);
+        });
+      } catch (e) {
+        console.warn("load users roles skipped:", e);
+      }
+
       const snap = await getDocs(staffPublicCol());
-      const rows = snap.docs.map((d) => {
+      const rows: StaffPublicUi[] = [];
+      snap.docs.forEach((d) => {
         const data = d.data() as any;
-        return {
+        if (isAdministrativeStaffRecord(d.id, data, linkedUserRoleByUid)) {
+          adminLikeDocIds.push(d.id);
+          return;
+        }
+        rows.push({
           id: d.id,
           name: data?.name ?? "",
           active: !!data?.active,
@@ -677,11 +767,26 @@ export default function DashboardEmployees() {
           leaveEntries: Array.isArray(data?.leaveEntries) ? data.leaveEntries : [],
           createdAt: data?.createdAt,
           updatedAt: data?.updatedAt,
-        } as StaffPublicUi;
+        } as StaffPublicUi);
       });
       rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
       setList(rows);
       setLeaveExceptionWeekdayByStaff({});
+
+      // Remove admin-like records from staff_public (not just hide) for management roles.
+      if (
+        adminLikeDocIds.length > 0 &&
+        (authUser?.role === "owner" || authUser?.role === "admin")
+      ) {
+        const uniqueIds = Array.from(new Set(adminLikeDocIds.filter(Boolean)));
+        const results = await Promise.allSettled(
+          uniqueIds.map((id) => deleteDoc(staffPublicDoc(id)))
+        );
+        const failed = results.filter((r) => r.status === "rejected").length;
+        if (failed > 0) {
+          setErrorMsg(`تم استبعاد ${uniqueIds.length - failed} سجل إداري، وتعذر حذف ${failed}.`);
+        }
+      }
     } catch {
       setErrorMsg("تعذر تحميل الموظفات");
       setList([]);

@@ -392,6 +392,33 @@ button,
 }
 
 /* ===========================
+   iPad Optimization (Global)
+   768px - 1366px
+   =========================== */
+@media (min-width: 768px) and (max-width: 1366px) {
+  .container,
+  .container-sm,
+  .container-md,
+  .container-lg,
+  .container-xl,
+  .container-xxl {
+    width: min(100%, 97vw);
+    max-width: min(100%, 97vw);
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .row {
+    --bs-gutter-x: 0.75rem;
+  }
+
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ===========================
    Global Utility Classes (QS)
    استخدمها في كل الصفحات
    =========================== */

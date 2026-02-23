@@ -1221,7 +1221,7 @@ const Dashboard: React.FC = () => {
 
 
   return (
-    <div className="dashboard-skin dashboard-page dashboard-skin-page">
+    <div className="dashboard-skin dashboard-page dashboard-skin-page is-sidebar-drawer">
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
       <style>
         {`
@@ -1609,7 +1609,7 @@ const Dashboard: React.FC = () => {
                 <button
                   type="button"
                   className="dash-topbar-toggle"
-                  onClick={() => setIsSidebarOpen(true)}
+                  onClick={() => setIsSidebarOpen((prev) => !prev)}
                   aria-label="فتح القائمة"
                   title="القائمة"
                 >

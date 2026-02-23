@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCalendarDays, faChartLine, faClockRotateLeft } from "@fortawesome/free-solid-svg-icons";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 
 import "../styles/DashboardReports.css";
 import { db } from "../services/firebase";
@@ -55,6 +55,20 @@ type RevenueDetailsRow = {
 
 const SALON_ID = "main";
 const REVENUE_STATUSES = new Set<BookingStatus>(["confirmed", "completed"]);
+const MONTHS_AR = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
+];
 
 function pad2(v: number) {
   return String(v).padStart(2, "0");
@@ -142,10 +156,77 @@ function inDateRange(dateIso: string, from: string, to: string) {
   return d >= from && d <= to;
 }
 
+function toMonthKey(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
+function monthLabelAr(monthKey: string) {
+  const y = Number(monthKey.slice(0, 4));
+  const m = Number(monthKey.slice(5, 7));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return monthKey;
+  return `${MONTHS_AR[m - 1]} ${y}`;
+}
+
+function formatDeltaPct(v: number) {
+  if (!Number.isFinite(v)) return "-";
+  const sign = v > 0 ? "+" : "";
+  return `${sign}${v.toFixed(1)}%`;
+}
+
+function calcDeltaPct(current: number, previous: number) {
+  if (!Number.isFinite(current) || !Number.isFinite(previous)) return 0;
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+function niceCeil(v: number) {
+  const x = Number(v || 0);
+  if (x <= 0) return 4;
+  const magnitude = 10 ** Math.floor(Math.log10(x));
+  const normalized = x / magnitude;
+  let nice = 1;
+  if (normalized <= 1) nice = 1;
+  else if (normalized <= 2) nice = 2;
+  else if (normalized <= 5) nice = 5;
+  else nice = 10;
+  return nice * magnitude;
+}
+
+function niceFloor(v: number) {
+  const x = Number(v || 0);
+  if (x >= 0) return 0;
+  return -niceCeil(Math.abs(x));
+}
+
+function formatAxisNumber(v: number) {
+  return Math.round(Number(v || 0)).toLocaleString("en-US");
+}
+
+function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number) {
+  const span = Math.abs(endDeg - startDeg);
+  // SVG arc cannot draw a full 360deg circle in a single arc command.
+  if (span >= 359.999) {
+    return [
+      `M ${cx - r} ${cy}`,
+      `A ${r} ${r} 0 1 0 ${cx + r} ${cy}`,
+      `A ${r} ${r} 0 1 0 ${cx - r} ${cy}`,
+      "Z",
+    ].join(" ");
+  }
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const x1 = cx + r * Math.cos(rad(startDeg));
+  const y1 = cy + r * Math.sin(rad(startDeg));
+  const x2 = cx + r * Math.cos(rad(endDeg));
+  const y2 = cy + r * Math.sin(rad(endDeg));
+  const large = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
+}
+
 export default function DashboardReports() {
   const [period, setPeriod] = useState<PeriodKey>("day");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [trendMode, setTrendMode] = useState<"month" | "day">("month");
 
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [incomeRows, setIncomeRows] = useState<IncomeRow[]>([]);
@@ -169,18 +250,9 @@ export default function DashboardReports() {
       if (pending <= 0) setLoading(false);
     };
 
-    const bookingsQ = query(
-      collection(db, "salons", SALON_ID, "bookings"),
-      orderBy("createdAt", "desc")
-    );
-    const incomeQ = query(
-      collection(db, "salons", SALON_ID, "income"),
-      orderBy("createdAt", "desc")
-    );
-    const expensesQ = query(
-      collection(db, "salons", SALON_ID, "expenses"),
-      orderBy("createdAt", "desc")
-    );
+    const bookingsQ = collection(db, "salons", SALON_ID, "bookings");
+    const incomeQ = collection(db, "salons", SALON_ID, "income");
+    const expensesQ = collection(db, "salons", SALON_ID, "expenses");
 
     const unsubBookings = onSnapshot(
       bookingsQ,
@@ -377,121 +449,240 @@ export default function DashboardReports() {
     return { revenue, expenses: expensesTotal, net };
   }, [bookingRevenueRows, manualIncomeRows, refundRows, expensesInRange]);
 
-  const chartModel = useMemo(() => {
-    const revByDate: Record<string, number> = {};
-    const expByDate: Record<string, number> = {};
+  const monthCompare = useMemo(() => {
+    const base = String(range.to || "").trim();
+    const baseDate = /^\d{4}-\d{2}-\d{2}$/.test(base) ? new Date(`${base}T00:00:00`) : new Date();
+    const safeBaseDate = Number.isFinite(baseDate.getTime()) ? baseDate : new Date();
+    const currentKey = toMonthKey(safeBaseDate);
+    const prevDate = new Date(safeBaseDate.getFullYear(), safeBaseDate.getMonth() - 1, 1);
+    const previousKey = toMonthKey(prevDate);
 
-    revenueRowsDetailed.forEach((r) => {
-      const key = String(r.date || "").trim();
-      if (!key) return;
-      revByDate[key] = (revByDate[key] || 0) + Number(r.amount || 0);
-    });
-    expensesInRange.forEach((e) => {
-      const key = String(e.date || "").trim();
-      if (!key) return;
-      expByDate[key] = (expByDate[key] || 0) + Number(e.amount || 0);
-    });
+    const bookingRevenueByMonth = (key: string) =>
+      bookings
+        .filter((b) => REVENUE_STATUSES.has(b.status) && String(b.date || "").startsWith(`${key}-`))
+        .reduce((s, x) => s + Number(x.amount || 0), 0);
 
-    const fromD = new Date(`${range.from}T00:00:00`);
-    const toD = new Date(`${range.to}T00:00:00`);
-    const labels: string[] = [];
-    const cursor = new Date(fromD);
-    while (cursor <= toD) {
-      labels.push(toIsoDate(cursor));
-      cursor.setDate(cursor.getDate() + 1);
-      if (labels.length > 500) break;
+    const manualRevenueByMonth = (key: string) =>
+      incomeRows
+        .filter((x) => {
+          if (!String(x.date || "").startsWith(`${key}-`)) return false;
+          const source = normalizeSource(x.source);
+          const isLinkedBooking = !!String(x.bookingId || "").trim() || source === "booking";
+          const isRefund = source === "refund" || x.amount < 0 || String(x.id || "").startsWith("refund_");
+          if (isLinkedBooking || isRefund) return false;
+          return Number(x.amount || 0) > 0;
+        })
+        .reduce((s, x) => s + Number(x.amount || 0), 0);
+
+    const refundsByMonth = (key: string) =>
+      incomeRows
+        .filter((x) => {
+          if (!String(x.date || "").startsWith(`${key}-`)) return false;
+          const source = normalizeSource(x.source);
+          return source === "refund" || x.amount < 0 || String(x.id || "").startsWith("refund_");
+        })
+        .reduce((s, x) => s + Number(x.amount || 0), 0);
+
+    const expensesByMonth = (key: string) =>
+      expenses
+        .filter((x) => String(x.date || "").startsWith(`${key}-`))
+        .reduce((s, x) => s + Number(x.amount || 0), 0);
+
+    const currentRevenue =
+      bookingRevenueByMonth(currentKey) + manualRevenueByMonth(currentKey) + refundsByMonth(currentKey);
+    const previousRevenue =
+      bookingRevenueByMonth(previousKey) + manualRevenueByMonth(previousKey) + refundsByMonth(previousKey);
+
+    const currentExpenses = expensesByMonth(currentKey);
+    const previousExpenses = expensesByMonth(previousKey);
+
+    const currentNet = currentRevenue - currentExpenses;
+    const previousNet = previousRevenue - previousExpenses;
+
+    return {
+      currentLabel: monthLabelAr(currentKey),
+      previousLabel: monthLabelAr(previousKey),
+      current: {
+        revenue: currentRevenue,
+        expenses: currentExpenses,
+        net: currentNet,
+      },
+      previous: {
+        revenue: previousRevenue,
+        expenses: previousExpenses,
+        net: previousNet,
+      },
+      delta: {
+        revenue: calcDeltaPct(currentRevenue, previousRevenue),
+        expenses: calcDeltaPct(currentExpenses, previousExpenses),
+        net: calcDeltaPct(currentNet, previousNet),
+      },
+    };
+  }, [range.to, bookings, incomeRows, expenses]);
+
+  const chartsModel = useMemo(() => {
+    const selectedYear = Number(String(range.to || "").slice(0, 4)) || new Date().getFullYear();
+    let points: Array<{ key: string; label: string; returns: number; investments: number }> = [];
+
+    if (trendMode === "month") {
+      const returnsMonthly = new Array(12).fill(0);
+      const investmentsMonthly = new Array(12).fill(0);
+
+      revenueRowsDetailed.forEach((row) => {
+        const d = String(row.date || "").trim();
+        if (!d || !d.startsWith(`${selectedYear}-`)) return;
+        const monthIdx = Number(d.slice(5, 7)) - 1;
+        if (monthIdx < 0 || monthIdx > 11) return;
+        returnsMonthly[monthIdx] += Number(row.amount || 0);
+      });
+
+      expensesInRange.forEach((row) => {
+        const d = String(row.date || "").trim();
+        if (!d || !d.startsWith(`${selectedYear}-`)) return;
+        const monthIdx = Number(d.slice(5, 7)) - 1;
+        if (monthIdx < 0 || monthIdx > 11) return;
+        investmentsMonthly[monthIdx] += Number(row.amount || 0);
+      });
+
+      points = MONTHS_AR.map((m, i) => ({
+        key: `${selectedYear}-${pad2(i + 1)}`,
+        label: m,
+        returns: returnsMonthly[i],
+        investments: investmentsMonthly[i],
+      }));
+    } else {
+      const from = String(range.from || "").trim();
+      const to = String(range.to || "").trim();
+      const fromDate = /^\d{4}-\d{2}-\d{2}$/.test(from) ? new Date(`${from}T00:00:00`) : new Date();
+      const toDate = /^\d{4}-\d{2}-\d{2}$/.test(to) ? new Date(`${to}T00:00:00`) : fromDate;
+      const start = fromDate <= toDate ? fromDate : toDate;
+      const end = fromDate <= toDate ? toDate : fromDate;
+      const dayKeys: string[] = [];
+      const cursor = new Date(start);
+      while (cursor <= end && dayKeys.length < 800) {
+        dayKeys.push(toIsoDate(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      if (!dayKeys.length) dayKeys.push(toIsoDate(new Date()));
+
+      const returnsByDay: Record<string, number> = {};
+      const investmentsByDay: Record<string, number> = {};
+      revenueRowsDetailed.forEach((row) => {
+        const d = String(row.date || "").trim();
+        if (!d) return;
+        returnsByDay[d] = (returnsByDay[d] || 0) + Number(row.amount || 0);
+      });
+      expensesInRange.forEach((row) => {
+        const d = String(row.date || "").trim();
+        if (!d) return;
+        investmentsByDay[d] = (investmentsByDay[d] || 0) + Number(row.amount || 0);
+      });
+
+      const hasMultiYear = dayKeys.some((d) => d.slice(0, 4) !== dayKeys[0].slice(0, 4));
+      points = dayKeys.map((d) => ({
+        key: d,
+        label: hasMultiYear ? d.slice(2) : d.slice(5),
+        returns: Number(returnsByDay[d] || 0),
+        investments: Number(investmentsByDay[d] || 0),
+      }));
     }
 
-    if (!labels.length) labels.push(range.from);
-
-    const points = labels.map((date) => {
-      const revenue = Number(revByDate[date] || 0);
-      const expense = Number(expByDate[date] || 0);
-      const net = revenue - expense;
-      return { date, revenue, expense, net };
-    });
-
-    const values = points.flatMap((p) => [0, p.revenue, p.expense, p.net]);
-    let minVal = Math.min(0, ...values);
-    let maxVal = Math.max(0, ...values);
-    if (maxVal === minVal) {
-      maxVal += 1;
-      minVal -= 1;
-    }
-
-    const width = Math.max(840, points.length * 38);
-    const height = 300;
-    const padX = 50;
-    const padY = 28;
-    const plotW = width - padX * 2;
-    const plotH = height - padY * 2;
-    const stepX = points.length > 1 ? plotW / (points.length - 1) : 0;
-
-    const yOf = (v: number) => padY + ((maxVal - v) / (maxVal - minVal)) * plotH;
-    const xOf = (idx: number) => padX + idx * stepX;
-    const yZero = yOf(0);
-
-    const toPath = (pick: (p: (typeof points)[number]) => number) =>
-      points
-        .map((p, i) => `${i === 0 ? "M" : "L"}${xOf(i).toFixed(2)} ${yOf(pick(p)).toFixed(2)}`)
+    const returnsSeries = points.map((p) => p.returns);
+    const investmentsSeries = points.map((p) => p.investments);
+    const denom = Math.max(1, points.length - 1);
+    const maxRaw = Math.max(0, ...returnsSeries, ...investmentsSeries);
+    const minRaw = Math.min(0, ...returnsSeries, ...investmentsSeries);
+    const maxY = niceCeil(Math.max(4, maxRaw));
+    const minY = niceFloor(minRaw);
+    const spanY = Math.max(1, maxY - minY);
+    const yTicks = Array.from({ length: 5 }, (_, i) => Math.round(maxY - (spanY * i) / 4));
+    const topWidth = 860;
+    const topHeight = 310;
+    const padR = 20;
+    const padT = 28;
+    const padB = 40;
+    const longestTickLabel = yTicks.reduce((max, v) => {
+      const len = formatAxisNumber(v).length;
+      return len > max ? len : max;
+    }, 1);
+    const padL = Math.max(72, 20 + longestTickLabel * 9);
+    const plotW = topWidth - padL - padR;
+    const plotH = topHeight - padT - padB;
+    const xOf = (i: number) => padL + (i * plotW) / denom;
+    const yOf = (v: number) => padT + plotH - ((v - minY) / spanY) * plotH;
+    const toPath = (series: number[]) =>
+      series
+        .map((v, i) => `${i === 0 ? "M" : "L"} ${xOf(i).toFixed(2)} ${yOf(v).toFixed(2)}`)
         .join(" ");
 
-    const barSlot = Math.max(16, Math.min(26, stepX * 0.72 || 22));
-    const barW = Math.max(6, Math.floor((barSlot - 4) / 2));
+    const statusOrder: BookingStatus[] = ["pending", "confirmed", "completed", "cancelled"];
+    const statusLabel: Record<BookingStatus, string> = {
+      pending: "نشط",
+      confirmed: "مؤكد",
+      completed: "مكتمل",
+      cancelled: "مرفوض",
+    };
+    const statusCount: Record<BookingStatus, number> = {
+      pending: 0,
+      confirmed: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+    bookings
+      .filter((b) => inDateRange(b.date, range.from, range.to))
+      .forEach((b) => {
+        const s = statusOrder.includes(b.status) ? b.status : "pending";
+        statusCount[s] += 1;
+      });
+    const statusBars = statusOrder.map((k) => ({
+      key: k,
+      label: statusLabel[k],
+      value: statusCount[k],
+    }));
 
-    const bars = points.map((p, i) => {
-      const cx = xOf(i);
-      const revY = yOf(p.revenue);
-      const expY = yOf(p.expense);
-      const netY = yOf(p.net);
-
+    const sourceRaw = [
+      { label: "الحجز", key: "booking", value: revenueRowsDetailed.filter((x) => x.source === "booking").length, color: "#40010D" },
+      { label: "يدوي", key: "manual", value: revenueRowsDetailed.filter((x) => x.source === "manual").length, color: "#0D0D0D" },
+      { label: "استرجاع", key: "refund", value: revenueRowsDetailed.filter((x) => x.source === "refund").length, color: "#888C8C" },
+    ];
+    const sourceTotal = sourceRaw.reduce((s, x) => s + x.value, 0);
+    const pie = sourceRaw.filter((x) => x.value > 0);
+    const pieTotal = pie.reduce((s, x) => s + x.value, 0);
+    let cursor = -90;
+    const pieSlices = pie.map((item) => {
+      const delta = (item.value / pieTotal) * 360;
+      const start = cursor;
+      const end = cursor + delta;
+      cursor = end;
       return {
-        date: p.date,
-        revenue: p.revenue,
-        expense: p.expense,
-        net: p.net,
-        revenueRect: {
-          x: cx - barW - 1,
-          y: Math.min(yZero, revY),
-          w: barW,
-          h: Math.max(1, Math.abs(yZero - revY)),
-        },
-        expenseRect: {
-          x: cx + 1,
-          y: Math.min(yZero, expY),
-          w: barW,
-          h: Math.max(1, Math.abs(yZero - expY)),
-        },
-        netDot: { x: cx, y: netY },
+        ...item,
+        start,
+        end,
       };
     });
 
-    const gridTicks = 5;
-    const gridLines = Array.from({ length: gridTicks }, (_, i) => {
-      const ratio = i / (gridTicks - 1);
-      const value = maxVal - ratio * (maxVal - minVal);
-      return { y: yOf(value), value };
-    });
-
-    const stride = Math.max(1, Math.ceil(points.length / 10));
-
     return {
-      points: bars,
-      width,
-      height,
-      padX,
-      yZero,
-      minVal,
-      maxVal,
-      gridLines,
-      revenuePath: toPath((p) => p.revenue),
-      expensePath: toPath((p) => p.expense),
-      netPath: toPath((p) => p.net),
+      selectedYear,
+      topWidth,
+      topHeight,
+      padL,
+      padR,
+      padT,
+      padB,
       xOf,
       yOf,
-      stride,
+      maxY,
+      yTicks,
+      returnsPath: toPath(returnsSeries),
+      investmentsPath: toPath(investmentsSeries),
+      points,
+      xTickStride: Math.max(1, Math.ceil(points.length / 12)),
+      statusBars,
+      statusMax: Math.max(4, ...statusBars.map((x) => x.value)),
+      pieSlices,
+      sourceTotal,
     };
-  }, [revenueRowsDetailed, expensesInRange, range.from, range.to]);
+  }, [trendMode, revenueRowsDetailed, expensesInRange, bookings, range.from, range.to]);
 
   const lastSyncLabel = useMemo(
     () =>
@@ -586,93 +777,207 @@ export default function DashboardReports() {
         </article>
       </div>
 
-      <section className="reports-v2__section">
+      <section className="reports-v2__month-compare">
         <div className="section-head">
-          <h2>
-            <FontAwesomeIcon icon={faChartLine} /> الرسم البياني المالي
-          </h2>
-          <span>يوميًا حسب الفلتر الحالي</span>
+          <h2>مقارنة الأشهر</h2>
+          <span>{monthCompare.currentLabel} مقابل {monthCompare.previousLabel}</span>
         </div>
-        <div className="reports-v2__legend">
-          <span><i className="lg lg-rev" /> الإيراد</span>
-          <span><i className="lg lg-exp" /> المصروف</span>
-          <span><i className="lg lg-net" /> الصافي</span>
+        <div className="month-compare-grid">
+          <article className="month-compare-card">
+            <h4>الإيرادات</h4>
+            <div className="month-compare-row">
+              <span>{monthCompare.currentLabel}</span>
+              <b>{formatMoney(monthCompare.current.revenue)}</b>
+            </div>
+            <div className="month-compare-row">
+              <span>{monthCompare.previousLabel}</span>
+              <b>{formatMoney(monthCompare.previous.revenue)}</b>
+            </div>
+            <div className={`month-compare-delta ${monthCompare.delta.revenue >= 0 ? "is-up" : "is-down"}`}>
+              {formatDeltaPct(monthCompare.delta.revenue)}
+            </div>
+          </article>
+
+          <article className="month-compare-card">
+            <h4>المصروفات</h4>
+            <div className="month-compare-row">
+              <span>{monthCompare.currentLabel}</span>
+              <b>{formatMoney(monthCompare.current.expenses)}</b>
+            </div>
+            <div className="month-compare-row">
+              <span>{monthCompare.previousLabel}</span>
+              <b>{formatMoney(monthCompare.previous.expenses)}</b>
+            </div>
+            <div className={`month-compare-delta ${monthCompare.delta.expenses >= 0 ? "is-up" : "is-down"}`}>
+              {formatDeltaPct(monthCompare.delta.expenses)}
+            </div>
+          </article>
+
+          <article className="month-compare-card">
+            <h4>صافي الربح</h4>
+            <div className="month-compare-row">
+              <span>{monthCompare.currentLabel}</span>
+              <b>{formatMoney(monthCompare.current.net)}</b>
+            </div>
+            <div className="month-compare-row">
+              <span>{monthCompare.previousLabel}</span>
+              <b>{formatMoney(monthCompare.previous.net)}</b>
+            </div>
+            <div className={`month-compare-delta ${monthCompare.delta.net >= 0 ? "is-up" : "is-down"}`}>
+              {formatDeltaPct(monthCompare.delta.net)}
+            </div>
+          </article>
         </div>
-        <div className="reports-v2__chart-wrap">
-          <svg
-            className="reports-v2__chart"
-            viewBox={`0 0 ${chartModel.width} ${chartModel.height}`}
-            preserveAspectRatio="none"
-          >
-            {chartModel.gridLines.map((g, idx) => (
-              <g key={`grid_${idx}`}>
-                <line
-                  x1={chartModel.padX}
-                  y1={g.y}
-                  x2={chartModel.width - chartModel.padX}
-                  y2={g.y}
-                  className="chart-grid"
-                />
-                <text x={8} y={g.y - 3} className="chart-y-label">
-                  {Math.round(g.value)}
-                </text>
-              </g>
-            ))}
+      </section>
 
-            <line
-              x1={chartModel.padX}
-              y1={chartModel.yZero}
-              x2={chartModel.width - chartModel.padX}
-              y2={chartModel.yZero}
-              className="chart-zero"
-            />
-            {chartModel.points.map((p) => (
-              <g key={`bars_${p.date}`}>
-                <rect
-                  x={p.revenueRect.x}
-                  y={p.revenueRect.y}
-                  width={p.revenueRect.w}
-                  height={p.revenueRect.h}
-                  className="bar-revenue"
-                />
-                <rect
-                  x={p.expenseRect.x}
-                  y={p.expenseRect.y}
-                  width={p.expenseRect.w}
-                  height={p.expenseRect.h}
-                  className="bar-expense"
-                />
-              </g>
-            ))}
-            <path d={chartModel.revenuePath} className="line-revenue" />
-            <path d={chartModel.expensePath} className="line-expense" />
-            <path d={chartModel.netPath} className="line-net" />
-            {chartModel.points.map((p) => (
-              <circle
-                key={`net_dot_${p.date}`}
-                cx={p.netDot.x}
-                cy={p.netDot.y}
-                r={2.8}
-                className="dot-net"
-              />
-            ))}
+      <section className="reports-v2__charts-board">
+        <article className="chart-card chart-card--wide">
+          <div className="chart-card__head">
+            <div>
+              <h2>
+                اتجاه التدفقات {trendMode === "month" ? "الشهرية" : "اليومية"}
+                {trendMode === "month" ? ` (${chartsModel.selectedYear})` : ""}
+              </h2>
+              <p>العوائد مقابل المصروفات</p>
+            </div>
+            <div className="chart-switch" dir="rtl">
+              <button
+                type="button"
+                className={`chart-switch__btn ${trendMode === "day" ? "is-active" : ""}`}
+                onClick={() => setTrendMode("day")}
+              >
+                يومي
+              </button>
+              <button
+                type="button"
+                className={`chart-switch__btn ${trendMode === "month" ? "is-active" : ""}`}
+                onClick={() => setTrendMode("month")}
+              >
+                شهري
+              </button>
+            </div>
+          </div>
+          <div className="top-chart-wrap">
+            <svg viewBox={`0 0 ${chartsModel.topWidth} ${chartsModel.topHeight}`} className="top-chart" preserveAspectRatio="none">
+              {chartsModel.yTicks.map((tickVal, i) => {
+                const y = chartsModel.padT + ((chartsModel.topHeight - chartsModel.padT - chartsModel.padB) * i) / 4;
+                return (
+                  <g key={`yg_${i}`}>
+                    <line
+                      x1={chartsModel.padL}
+                      y1={y}
+                      x2={chartsModel.topWidth - chartsModel.padR}
+                      y2={y}
+                      className="grid-line"
+                    />
+                    <text x={chartsModel.padL - 8} y={y + 4} textAnchor="end" className="axis-y">
+                      {formatAxisNumber(tickVal)}
+                    </text>
+                  </g>
+                );
+              })}
+              {chartsModel.points.map((p, i) => (
+                <g key={`x_${p.key}`}>
+                  <line
+                    x1={chartsModel.xOf(i)}
+                    y1={chartsModel.padT}
+                    x2={chartsModel.xOf(i)}
+                    y2={chartsModel.topHeight - chartsModel.padB}
+                    className="grid-line grid-line--v"
+                  />
+                  {i % chartsModel.xTickStride === 0 || i === chartsModel.points.length - 1 ? (
+                    <text x={chartsModel.xOf(i)} y={chartsModel.topHeight - 10} textAnchor="middle" className="axis-x">
+                      {p.label}
+                    </text>
+                  ) : null}
+                </g>
+              ))}
+              <path d={chartsModel.returnsPath} className="trend-line trend-line--returns" />
+              <path d={chartsModel.investmentsPath} className="trend-line trend-line--investments" />
+              {chartsModel.points.map((p, i) => (
+                <circle key={`ret_pt_${i}`} cx={chartsModel.xOf(i)} cy={chartsModel.yOf(p.returns)} r={3.2} className="trend-dot trend-dot--returns" />
+              ))}
+              {chartsModel.points.map((p, i) => (
+                <circle key={`inv_pt_${i}`} cx={chartsModel.xOf(i)} cy={chartsModel.yOf(p.investments)} r={3.2} className="trend-dot trend-dot--investments" />
+              ))}
+            </svg>
+          </div>
+          <div className="trend-legend">
+            <span className="legend-item legend-item--returns">العوائد</span>
+            <span className="legend-item legend-item--investments">المصروفات</span>
+          </div>
+        </article>
 
-            {chartModel.points.map((p, i) => {
-              if (i % chartModel.stride !== 0 && i !== chartModel.points.length - 1) return null;
+        <article className="chart-card">
+          <div className="chart-card__head">
+            <h3>حالة الحجوزات (حسب الفترة)</h3>
+          </div>
+          <div className="mini-chart-wrap">
+            <svg viewBox="0 0 520 280" className="mini-chart">
+              {Array.from({ length: 5 }).map((_, i) => {
+                const y = 24 + (220 * i) / 4;
+                return (
+                  <line key={`sg_${i}`} x1={40} y1={y} x2={500} y2={y} className="grid-line" />
+                );
+              })}
+              {chartsModel.statusBars.map((b, i) => {
+                const x = 70 + i * 110;
+                const h = (Math.max(0, b.value) / chartsModel.statusMax) * 180;
+                const y = 240 - h;
+                return (
+                  <g key={`sb_${b.key}`}>
+                    <rect x={x} y={y} width={62} height={h} rx={8} className="status-bar" />
+                    <text x={x + 31} y={258} textAnchor="middle" className="axis-x">{b.label}</text>
+                    <text x={x + 31} y={Math.max(18, y - 6)} textAnchor="middle" className="axis-y">{b.value}</text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        </article>
+
+        <article className="chart-card">
+          <div className="chart-card__head">
+            <h3>توزيع مصادر الإيرادات</h3>
+          </div>
+          <div className="mini-chart-wrap">
+            <svg viewBox="0 0 520 260" className="mini-chart mini-chart--pie">
+              <g transform="translate(260,130)">
+                {chartsModel.pieSlices.map((s) => (
+                  <path
+                    key={`pie_${s.key}`}
+                    d={arcPath(0, 0, 84, s.start, s.end)}
+                    fill={s.color}
+                    stroke="#ffffff"
+                    strokeWidth="2.5"
+                  />
+                ))}
+                {chartsModel.pieSlices.length === 0 ? (
+                  <>
+                    <circle r="78" fill="rgba(136, 140, 140, 0.18)" stroke="rgba(13, 13, 13, 0.16)" />
+                    <text textAnchor="middle" y="5" className="axis-x">No data</text>
+                  </>
+                ) : null}
+              </g>
+            </svg>
+          </div>
+          <div className="pie-legend" dir="rtl">
+            {chartsModel.pieSlices.map((s) => {
+              const ratio = chartsModel.sourceTotal > 0 ? Math.round((s.value / chartsModel.sourceTotal) * 100) : 0;
               return (
-                <text
-                  key={`x_lbl_${p.date}_${i}`}
-                  x={chartModel.xOf(i)}
-                  y={chartModel.height - 4}
-                  textAnchor="middle"
-                  className="chart-x-label"
-                >
-                  {p.date.slice(5)}
-                </text>
+                <div key={`pie_legend_${s.key}`} className="pie-legend__item">
+                  <span className="pie-legend__dot" style={{ backgroundColor: s.color }} />
+                  <span className="pie-legend__label">{s.label}</span>
+                  <span className="pie-legend__value">{s.value}</span>
+                  <span className="pie-legend__ratio">({ratio}%)</span>
+                </div>
               );
             })}
-          </svg>
-        </div>
+            {chartsModel.pieSlices.length === 0 ? (
+              <div className="pie-legend__empty">لا توجد بيانات في الفترة المحددة</div>
+            ) : null}
+          </div>
+        </article>
       </section>
 
       {loadErr ? <div className="reports-v2__error">{loadErr}</div> : null}

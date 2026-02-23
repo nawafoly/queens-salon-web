@@ -607,7 +607,7 @@
    ✅ Sidebar behavior fix
 ========================= */
 /* Desktop */
-@media (min-width: 992px) {
+@media (min-width: 1200px) {
   .dash-topbar-toggle { display: none !important; }
   .dash-side-overlay { display: none !important; }
 
@@ -620,7 +620,7 @@
 }
 
 /* Mobile / Tablet */
-@media (max-width: 991px) {
+@media (max-width: 1199px) {
   .dash-topbar-toggle { display: inline-flex !important; }
 
   .dashboard-sidebar {
@@ -690,7 +690,7 @@
 }
 
 /* Booking Modal grid responsive */
-@media (max-width: 992px) {
+@media (max-width: 1199px) {
   .dash-booking-modal .dash-details-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

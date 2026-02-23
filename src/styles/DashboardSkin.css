@@ -305,6 +305,37 @@
   overflow: visible;
 }
 
+/* Sidebar Drawer Mode: hide sidebar by default and open it with topbar toggle */
+.dashboard-skin.is-sidebar-drawer .dashboard-inner {
+  display: block;
+}
+
+.dashboard-skin.is-sidebar-drawer .dashboard-main {
+  width: 100%;
+  min-width: 0;
+}
+
+.dashboard-skin.is-sidebar-drawer .dashboard-sidebar {
+  position: fixed !important;
+  top: 12px;
+  bottom: 12px;
+  right: 12px;
+  left: auto;
+  width: min(320px, calc(100vw - 24px));
+  z-index: 9999;
+  transform: translateX(110%);
+  transition: transform .18s ease;
+  overflow-y: auto;
+}
+
+.dashboard-skin.is-sidebar-drawer .dashboard-sidebar.is-open {
+  transform: translateX(0);
+}
+
+.dashboard-skin.is-sidebar-drawer .dash-topbar-toggle {
+  display: inline-flex;
+}
+
 .dashboard-skin .sidebar-header {
   display: grid;
   place-items: center;
@@ -1143,14 +1174,17 @@ background: rgba(245, 245, 244, 0.83);
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   direction: rtl;
   min-width: 0;
   max-width: 100%;
-  background: rgba(255, 255, 255, 0.52);
-  border: 1px solid rgba(13, 13, 13, 0.10);
-  border-radius: 10px;
-  padding: 4px 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .dashboard-skin .dash-topbar-name,
@@ -1159,13 +1193,32 @@ background: rgba(245, 245, 244, 0.83);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
 }
 
 .dashboard-skin .dash-topbar-name {
   max-width: 180px;
+  font-weight: 900;
+  color: #40010D;
+  letter-spacing: 0.2px;
 }
 
 .dashboard-skin .dash-topbar-role {
+  position: relative;
   max-width: 120px;
-  opacity: 0.85;
+  opacity: 1;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  color: #40010D;
+  font-weight: 900;
+}
+
+.dashboard-skin .dash-topbar-role::before {
+  content: "/";
+  margin-inline: 2px 4px;
+  opacity: 0.45;
 }

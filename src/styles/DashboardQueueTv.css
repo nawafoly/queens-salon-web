@@ -2,6 +2,8 @@
   direction: rtl;
   display: grid;
   gap: 14px;
+  grid-template-rows: auto auto 1fr;
+  min-height: calc(100vh - 32px);
 }
 
 .dashboard-tv-header {
@@ -26,11 +28,38 @@
   padding: 12px;
 }
 
+.dashboard-tv-video-card {
+  position: relative;
+}
+
+.dashboard-tv-video-logo {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: clamp(86px, 8vw, 126px);
+  height: auto;
+  object-fit: contain;
+  z-index: 2;
+  opacity: 0.92;
+  filter: drop-shadow(0 4px 10px rgba(13, 13, 13, 0.2));
+  pointer-events: none;
+}
+
 .dashboard-tv-video {
   width: 100%;
+  display: block;
   border-radius: 12px;
-  max-height: 320px;
-  background: #000;
+  aspect-ratio: 21 / 8;
+  min-height: 175px;
+  max-height: min(32vh, 340px);
+  object-fit: cover;
+  object-position: center;
+  background: #111;
+}
+
+.dashboard-tv-queue-card {
+  min-height: 0;
+  overflow: auto;
 }
 
 .dashboard-tv-title-row {
@@ -230,23 +259,27 @@
 .dashboard-tv-booking-card {
   border: 1px solid rgba(64, 1, 13, 0.16);
   border-radius: 14px;
-  padding: 10px;
+  padding: 12px;
   background: #fff;
+  display: grid;
+  gap: 10px;
 }
 
 .dashboard-tv-booking-card.is-current {
-  background: #fff5e9;
+  background: linear-gradient(180deg, #fff8ef 0%, #ffffff 100%);
 }
 
 .dashboard-tv-booking-card.is-upcoming {
-  background: #f8fbff;
+  background: #ffffff;
 }
 
 .dashboard-tv-booking-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed rgba(64, 1, 13, 0.18);
 }
 
 .dashboard-tv-booking-head h4 {
@@ -255,31 +288,94 @@
   font-weight: 900;
 }
 
-.dashboard-tv-booking-head span {
+.dashboard-tv-state-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 66px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.9rem;
   font-weight: 900;
+  background: rgba(64, 1, 13, 0.1);
+  color: #40010d;
+  border: 1px solid rgba(64, 1, 13, 0.2);
 }
 
 .dashboard-tv-booking-main {
   display: grid;
-  gap: 3px;
+  gap: 8px;
 }
 
-.dashboard-tv-booking-main b {
-  font-size: 1.1rem;
+.dashboard-tv-booking-id {
+  font-size: 1.65rem;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  color: #1e0f14;
 }
 
-.dashboard-tv-booking-main span {
+.dashboard-tv-kv-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dashboard-tv-kv-label {
+  font-size: 0.95rem;
+  color: #6b5547;
   font-weight: 800;
+}
+
+.dashboard-tv-kv-value {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #201716;
+  font-weight: 900;
 }
 
 .dashboard-tv-booking-foot {
-  margin-top: 6px;
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px dashed rgba(64, 1, 13, 0.16);
+  padding-top: 8px;
 }
 
-.dashboard-tv-booking-foot span,
+.dashboard-tv-time-value,
 .dashboard-tv-booking-foot small {
   color: #5b4a3f;
   font-weight: 800;
+}
+
+.dashboard-tv-booking-foot small {
+  font-size: 0.92rem;
+}
+
+@media (max-width: 640px) {
+  .dashboard-tv-video-logo {
+    top: 16px;
+    left: 16px;
+    width: clamp(72px, 20vw, 102px);
+  }
+
+  .dashboard-tv-video {
+    aspect-ratio: 16 / 7;
+    min-height: 145px;
+    max-height: 26vh;
+  }
+
+  .dashboard-tv-booking-id {
+    font-size: 1.4rem;
+  }
+
+  .dashboard-tv-kv-row {
+    flex-wrap: wrap;
+  }
+
+  .dashboard-tv-booking-foot {
+    flex-wrap: wrap;
+  }
 }
