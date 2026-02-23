@@ -279,10 +279,6 @@ export default function DashboardQueueTv() {
 
         {!loading && !error ? (
           <>
-            <div className="dashboard-tv-summary">
-              إجمالي الظاهر الآن: {todayQueue.length} حجز
-            </div>
-
             {!todayQueue.length ? (
               <div className="dashboard-tv-empty">لا توجد حجوزات فعالة لعرضها الآن.</div>
             ) : (
