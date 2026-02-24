@@ -114,7 +114,11 @@ type StaffWorkingHourOverride = {
   enabled?: boolean;
   start?: string;
   end?: string;
+  note?: string;
 };
+type WorkingHourOverrideMode = "single" | "range" | "specific";
+type WorkingHourOverrideQuickMode = "full" | "closed" | "plus1" | "plus2" | "manual";
+type WorkingHourOverrideApplyMethod = "replace" | "merge";
 
 type StaffPublicUi = StaffPublicDoc & { id: string };
 
@@ -520,12 +524,16 @@ function normalizeWorkingHours(v: any): Record<WeekdayKey, StaffWorkingDay> {
 function normalizeWorkingHourOverrides(v: any): StaffWorkingHourOverride[] {
   const rows = Array.isArray(v) ? v : [];
   return rows
-    .map((row: any) => ({
-      date: normalizeLeaveUntil(row?.date),
-      enabled: row?.enabled !== false,
-      start: normalizeTimeHHMM(row?.start) || "10:00",
-      end: normalizeTimeHHMM(row?.end) || "22:00",
-    }))
+    .map((row: any) => {
+      const note = String(row?.note || "").trim();
+      return {
+        date: normalizeLeaveUntil(row?.date),
+        enabled: row?.enabled !== false,
+        start: normalizeTimeHHMM(row?.start) || "10:00",
+        end: normalizeTimeHHMM(row?.end) || "22:00",
+        ...(note ? { note } : {}),
+      };
+    })
     .filter((row) => row.date)
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
@@ -568,6 +576,14 @@ function formatWindow(start: string, end: string) {
     return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${isPM ? "م" : "ص"}`;
   };
   return `${to12(start)} - ${to12(end)}`;
+}
+
+function durationHours(enabled: boolean, start: string, end: string): number {
+  if (!enabled) return 0;
+  const s = toMinutes(start);
+  let e = toMinutes(end);
+  if (e <= s) e += 1440;
+  return Math.max(0, (e - s) / 60);
 }
 
 function normalizeIsoDate(v: any): string {
@@ -716,6 +732,12 @@ export default function DashboardEmployees() {
   const [modalHourOverrideStart, setModalHourOverrideStart] = useState("10:00");
   const [modalHourOverrideEnd, setModalHourOverrideEnd] = useState("22:00");
   const [modalHourOverrideEnabled, setModalHourOverrideEnabled] = useState(true);
+  const [modalHourOverrideMode, setModalHourOverrideMode] = useState<WorkingHourOverrideMode>("single");
+  const [modalHourOverrideQuickMode, setModalHourOverrideQuickMode] =
+    useState<WorkingHourOverrideQuickMode>("manual");
+  const [modalHourOverrideApplyMethod, setModalHourOverrideApplyMethod] =
+    useState<WorkingHourOverrideApplyMethod>("replace");
+  const [modalHourOverrideNote, setModalHourOverrideNote] = useState("");
   const [modalHourOverrideApplyWeekdays, setModalHourOverrideApplyWeekdays] = useState<WeekdayKey[]>([]);
   const [modalHourOverrideOverwriteExisting, setModalHourOverrideOverwriteExisting] = useState(true);
   const [modalHourOverrideUpdateExistingOnly, setModalHourOverrideUpdateExistingOnly] = useState(false);
@@ -767,6 +789,10 @@ export default function DashboardEmployees() {
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
+    setModalHourOverrideMode("single");
+    setModalHourOverrideQuickMode("manual");
+    setModalHourOverrideApplyMethod("replace");
+    setModalHourOverrideNote("");
     setModalHourOverrideApplyWeekdays([]);
     setModalHourOverrideOverwriteExisting(true);
     setModalHourOverrideUpdateExistingOnly(false);
@@ -816,6 +842,10 @@ export default function DashboardEmployees() {
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
+    setModalHourOverrideMode("single");
+    setModalHourOverrideQuickMode("manual");
+    setModalHourOverrideApplyMethod("replace");
+    setModalHourOverrideNote("");
     setModalHourOverrideApplyWeekdays([]);
     setModalHourOverrideOverwriteExisting(true);
     setModalHourOverrideUpdateExistingOnly(false);
@@ -1351,11 +1381,13 @@ export default function DashboardEmployees() {
       if (!ok) return;
     }
 
+    // احفظ فقط الاستثناءات التي تم إضافتها فعلياً في القائمة.
+    // لا نطبق المسودة تلقائياً عند الحفظ حتى لا تعيد القيم القديمة.
     let normalizedCustomHourOverrides = normalizeWorkingHourOverrides(modalCustomHourOverrides);
-    const hasHourOverrideDraft =
+    const hasPendingOverrideDraft =
       !!normalizeLeaveUntil(modalHourOverrideEditingDate) ||
-      !!normalizeLeaveUntil(modalHourOverrideFromDate);
-    if (modalUseCustomWorkingHours && hasHourOverrideDraft) {
+      (!!normalizeLeaveUntil(modalHourOverrideFromDate) && modalHourOverridePreview.affectedDays > 0);
+    if (modalUseCustomWorkingHours && hasPendingOverrideDraft) {
       const draftResult = buildModalWorkingHourOverrides(normalizedCustomHourOverrides);
       if (draftResult.error) {
         setErrorMsg(draftResult.error);
@@ -1434,9 +1466,9 @@ export default function DashboardEmployees() {
       }
       closeModal();
       await load();
-    } catch (e) {
+    } catch (e: any) {
       console.warn("save staff_public error:", e);
-      setErrorMsg("تعذر حفظ الموظفة");
+      setErrorMsg(String(e?.message || "���� ��� �������"));
     } finally {
       setLoading(false);
     }
@@ -1932,7 +1964,10 @@ export default function DashboardEmployees() {
   const modalHourOverrideTargetCount = useMemo(() => {
     const fromInput = normalizeLeaveUntil(modalHourOverrideFromDate);
     if (!fromInput) return 0;
-    const toInput = normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
+    const toInput =
+      modalHourOverrideMode === "single"
+        ? fromInput
+        : normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
     const from = fromInput <= toInput ? fromInput : toInput;
     const to = fromInput <= toInput ? toInput : fromInput;
     let cursor = from;
@@ -1941,7 +1976,7 @@ export default function DashboardEmployees() {
     while (cursor && cursor <= to) {
       const day = weekdayFromIso(cursor);
       const allowed =
-        modalHourOverrideApplyWeekdays.length === 0 ||
+        modalHourOverrideMode !== "specific" ||
         (!!day && modalHourOverrideApplyWeekdays.includes(day));
       if (allowed) count += 1;
       cursor = addDaysIso(cursor, 1);
@@ -1949,11 +1984,14 @@ export default function DashboardEmployees() {
       if (guard > 120) break;
     }
     return count;
-  }, [modalHourOverrideFromDate, modalHourOverrideToDate, modalHourOverrideApplyWeekdays]);
+  }, [modalHourOverrideFromDate, modalHourOverrideToDate, modalHourOverrideApplyWeekdays, modalHourOverrideMode]);
   const modalHourOverrideExistingTargetCount = useMemo(() => {
     const fromInput = normalizeLeaveUntil(modalHourOverrideFromDate);
     if (!fromInput) return 0;
-    const toInput = normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
+    const toInput =
+      modalHourOverrideMode === "single"
+        ? fromInput
+        : normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
     const from = fromInput <= toInput ? fromInput : toInput;
     const to = fromInput <= toInput ? toInput : fromInput;
     const existingDates = new Set(
@@ -1965,7 +2003,7 @@ export default function DashboardEmployees() {
     while (cursor && cursor <= to) {
       const day = weekdayFromIso(cursor);
       const allowed =
-        modalHourOverrideApplyWeekdays.length === 0 ||
+        modalHourOverrideMode !== "specific" ||
         (!!day && modalHourOverrideApplyWeekdays.includes(day));
       if (allowed && existingDates.has(cursor)) count += 1;
       cursor = addDaysIso(cursor, 1);
@@ -1977,11 +2015,72 @@ export default function DashboardEmployees() {
     modalHourOverrideFromDate,
     modalHourOverrideToDate,
     modalHourOverrideApplyWeekdays,
+    modalHourOverrideMode,
     modalCustomHourOverrides,
   ]);
   const modalHourOverrideApplyCount = modalHourOverrideUpdateExistingOnly
     ? modalHourOverrideExistingTargetCount
     : modalHourOverrideTargetCount;
+  const modalHourOverridePreview = useMemo(() => {
+    const fromInput = normalizeLeaveUntil(modalHourOverrideFromDate);
+    if (!fromInput) return { affectedDays: 0, totalHours: 0, baseHours: 0, diffHours: 0 };
+    const toInput =
+      modalHourOverrideMode === "single"
+        ? fromInput
+        : normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
+    const from = fromInput <= toInput ? fromInput : toInput;
+    const to = fromInput <= toInput ? toInput : fromInput;
+    const nextEnabled =
+      modalHourOverrideQuickMode === "closed" ? false : modalHourOverrideEnabled;
+    const nextHours = durationHours(
+      nextEnabled,
+      normalizeTimeHHMM(modalHourOverrideStart) || "10:00",
+      normalizeTimeHHMM(modalHourOverrideEnd) || "22:00"
+    );
+    const existingDates = new Set(modalCustomHourOverrides.map((x) => x.date));
+    let cursor = from;
+    let guard = 0;
+    let affected = 0;
+    let total = 0;
+    let base = 0;
+    while (cursor && cursor <= to) {
+      const day = weekdayFromIso(cursor);
+      const allowed =
+        modalHourOverrideMode !== "specific" ||
+        (!!day && modalHourOverrideApplyWeekdays.includes(day));
+      if (allowed) {
+        const canApply = modalHourOverrideUpdateExistingOnly
+          ? existingDates.has(cursor)
+          : modalHourOverrideApplyMethod === "replace" || !existingDates.has(cursor);
+        if (canApply) {
+          const baseDay = day ? modalCustomWorkingHours[day] : undefined;
+          const baseEnabled = (baseDay?.enabled ?? true) !== false;
+          const baseStart = normalizeTimeHHMM(baseDay?.start) || "10:00";
+          const baseEnd = normalizeTimeHHMM(baseDay?.end) || "22:00";
+          base += durationHours(baseEnabled, baseStart, baseEnd);
+          total += nextHours;
+          affected += 1;
+        }
+      }
+      cursor = addDaysIso(cursor, 1);
+      guard += 1;
+      if (guard > 120) break;
+    }
+    return { affectedDays: affected, totalHours: total, baseHours: base, diffHours: total - base };
+  }, [
+    modalHourOverrideFromDate,
+    modalHourOverrideToDate,
+    modalHourOverrideMode,
+    modalHourOverrideQuickMode,
+    modalHourOverrideEnabled,
+    modalHourOverrideStart,
+    modalHourOverrideEnd,
+    modalHourOverrideApplyWeekdays,
+    modalHourOverrideApplyMethod,
+    modalHourOverrideUpdateExistingOnly,
+    modalCustomHourOverrides,
+    modalCustomWorkingHours,
+  ]);
 
   const updateModalWorkingDay = (
     day: WeekdayKey,
@@ -2100,6 +2199,10 @@ export default function DashboardEmployees() {
     setModalHourOverrideEnabled(ov.enabled !== false);
     setModalHourOverrideStart(normalizeTimeHHMM(ov.start) || "10:00");
     setModalHourOverrideEnd(normalizeTimeHHMM(ov.end) || "22:00");
+    setModalHourOverrideMode("single");
+    setModalHourOverrideQuickMode("manual");
+    setModalHourOverrideApplyMethod("replace");
+    setModalHourOverrideNote(String(ov.note || ""));
     setModalHourOverrideApplyWeekdays([]);
     setModalHourOverrideOverwriteExisting(true);
     setModalHourOverrideUpdateExistingOnly(false);
@@ -2112,6 +2215,10 @@ export default function DashboardEmployees() {
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
+    setModalHourOverrideMode("single");
+    setModalHourOverrideQuickMode("manual");
+    setModalHourOverrideApplyMethod("replace");
+    setModalHourOverrideNote("");
     setModalHourOverrideApplyWeekdays([]);
   };
 
@@ -2133,22 +2240,33 @@ export default function DashboardEmployees() {
       const targetDate = normalizeLeaveUntil(modalHourOverrideFromDate) || editingDate;
       const start = normalizeTimeHHMM(modalHourOverrideStart) || "10:00";
       const end = normalizeTimeHHMM(modalHourOverrideEnd) || "22:00";
+      const note = String(modalHourOverrideNote || "").trim() || undefined;
       return {
         next: normalizeWorkingHourOverrides([
           ...base.filter((x) => x.date !== editingDate && x.date !== targetDate),
-          { date: targetDate, enabled: modalHourOverrideEnabled, start, end },
+          {
+            date: targetDate,
+            enabled: modalHourOverrideQuickMode === "closed" ? false : modalHourOverrideEnabled,
+            start,
+            end,
+            ...(note ? { note } : {}),
+          },
         ]),
         appliedCount: 1,
       };
     }
 
     const fromInput = normalizeLeaveUntil(modalHourOverrideFromDate);
-    const toInput = normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
+    const toInput =
+      modalHourOverrideMode === "single"
+        ? fromInput
+        : normalizeLeaveUntil(modalHourOverrideToDate) || fromInput;
     if (!fromInput) return { next: base, appliedCount: 0 };
     const from = fromInput <= toInput ? fromInput : toInput;
     const to = fromInput <= toInput ? toInput : fromInput;
     const start = normalizeTimeHHMM(modalHourOverrideStart) || "10:00";
     const end = normalizeTimeHHMM(modalHourOverrideEnd) || "22:00";
+    const note = String(modalHourOverrideNote || "").trim() || undefined;
     const maxDays = 120;
     const rows: StaffWorkingHourOverride[] = [];
     let cursor = from;
@@ -2156,10 +2274,25 @@ export default function DashboardEmployees() {
     while (cursor && cursor <= to) {
       const day = weekdayFromIso(cursor);
       const allowed =
-        modalHourOverrideApplyWeekdays.length === 0 ||
+        modalHourOverrideMode !== "specific" ||
         (!!day && modalHourOverrideApplyWeekdays.includes(day));
       if (allowed) {
-        rows.push({ date: cursor, enabled: modalHourOverrideEnabled, start, end });
+        let rowStart = start;
+        let rowEnd = end;
+        let rowEnabled = modalHourOverrideEnabled;
+        if (modalHourOverrideQuickMode === "closed") {
+          rowEnabled = false;
+        } else if (modalHourOverrideQuickMode === "plus1" || modalHourOverrideQuickMode === "plus2") {
+          const plusMin = modalHourOverrideQuickMode === "plus1" ? 60 : 120;
+          rowEnd = minutesToHHMM(toMinutes(end) + plusMin);
+        }
+        rows.push({
+          date: cursor,
+          enabled: rowEnabled,
+          start: rowStart,
+          end: rowEnd,
+          ...(note ? { note } : {}),
+        });
       }
       cursor = addDaysIso(cursor, 1);
       guard += 1;
@@ -2178,7 +2311,7 @@ export default function DashboardEmployees() {
       return { next: base, appliedCount: 0, error: "لا يوجد استثناءات حالية مطابقة للنطاق/الفلاتر لتعديلها." };
     }
 
-    if (modalHourOverrideUpdateExistingOnly || modalHourOverrideOverwriteExisting) {
+    if (modalHourOverrideUpdateExistingOnly || modalHourOverrideApplyMethod === "replace") {
       return {
         next: normalizeWorkingHourOverrides([
           ...base.filter((x) => !rowsToApply.some((r) => r.date === x.date)),
@@ -2215,6 +2348,10 @@ export default function DashboardEmployees() {
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
+    setModalHourOverrideMode("single");
+    setModalHourOverrideQuickMode("manual");
+    setModalHourOverrideApplyMethod("replace");
+    setModalHourOverrideNote("");
     setModalHourOverrideEditingDate("");
     setModalHourOverrideUpdateExistingOnly(false);
   };
@@ -3327,6 +3464,32 @@ export default function DashboardEmployees() {
                       <label className="emp-label">استثناء ساعات يوم محدد</label>
                         <div className="emp-working-override-grid">
                           <div className="emp-working-override-tools">
+                            <div className="emp-working-override-mode-tabs">
+                              <button
+                                type="button"
+                                className={`exp-btn ghost sm ${modalHourOverrideMode === "single" ? "is-active" : ""}`}
+                                disabled={loading || !!modalHourOverrideEditingDate}
+                                onClick={() => setModalHourOverrideMode("single")}
+                              >
+                                تعديل يوم واحد
+                              </button>
+                              <button
+                                type="button"
+                                className={`exp-btn ghost sm ${modalHourOverrideMode === "range" ? "is-active" : ""}`}
+                                disabled={loading || !!modalHourOverrideEditingDate}
+                                onClick={() => setModalHourOverrideMode("range")}
+                              >
+                                تعديل فترة
+                              </button>
+                              <button
+                                type="button"
+                                className={`exp-btn ghost sm ${modalHourOverrideMode === "specific" ? "is-active" : ""}`}
+                                disabled={loading || !!modalHourOverrideEditingDate}
+                                onClick={() => setModalHourOverrideMode("specific")}
+                              >
+                                أيام محددة
+                              </button>
+                            </div>
                             <div className="emp-working-override-presets">
                               <button
                                 type="button"
@@ -3336,28 +3499,101 @@ export default function DashboardEmployees() {
                             >
                               نسخ ساعات يوم البداية
                             </button>
+                            <button
+                              type="button"
+                              className={`exp-btn ghost sm ${modalHourOverrideQuickMode === "full" ? "is-active" : ""}`}
+                              disabled={loading}
+                              onClick={() => {
+                                fillModalHourOverrideFromBaseDay();
+                                setModalHourOverrideQuickMode("full");
+                              }}
+                            >
+                              دوام كامل
+                            </button>
+                            <button
+                              type="button"
+                              className={`exp-btn ghost sm ${modalHourOverrideQuickMode === "closed" ? "is-active" : ""}`}
+                              disabled={loading}
+                              onClick={() => setModalHourOverrideQuickMode("closed")}
+                            >
+                              إغلاق
+                            </button>
+                            <button
+                              type="button"
+                              className={`exp-btn ghost sm ${modalHourOverrideQuickMode === "plus1" ? "is-active" : ""}`}
+                              disabled={loading}
+                              onClick={() => setModalHourOverrideQuickMode("plus1")}
+                            >
+                              +1 ساعة
+                            </button>
+                            <button
+                              type="button"
+                              className={`exp-btn ghost sm ${modalHourOverrideQuickMode === "plus2" ? "is-active" : ""}`}
+                              disabled={loading}
+                              onClick={() => setModalHourOverrideQuickMode("plus2")}
+                            >
+                              +2 ساعة
+                            </button>
+                            <button
+                              type="button"
+                              className={`exp-btn ghost sm ${modalHourOverrideQuickMode === "manual" ? "is-active" : ""}`}
+                              disabled={loading}
+                              onClick={() => setModalHourOverrideQuickMode("manual")}
+                            >
+                              يدوي
+                            </button>
+                            <button
+                              type="button"
+                              className="exp-btn ghost sm"
+                              disabled={loading}
+                              onClick={() => {
+                                setModalHourOverrideQuickMode("manual");
+                                setModalHourOverrideEnabled(true);
+                                setModalHourOverrideStart("10:00");
+                                setModalHourOverrideEnd("16:00");
+                              }}
+                            >
+                              رمضان 6 ساعات
+                            </button>
+                            <button
+                              type="button"
+                              className="exp-btn ghost sm"
+                              disabled={loading}
+                              onClick={() => {
+                                setModalHourOverrideQuickMode("manual");
+                                setModalHourOverrideEnabled(true);
+                                setModalHourOverrideStart("10:00");
+                                setModalHourOverrideEnd("18:00");
+                              }}
+                            >
+                              موسم 8 ساعات
+                            </button>
                             <label className="emp-mini-check">
                               <input
-                                type="checkbox"
-                                checked={modalHourOverrideOverwriteExisting}
-                                disabled={loading || modalHourOverrideUpdateExistingOnly}
-                                onChange={(e) => setModalHourOverrideOverwriteExisting(e.target.checked)}
+                                type="radio"
+                                name="overrideApplyMethod"
+                                checked={modalHourOverrideApplyMethod === "replace"}
+                                disabled={loading}
+                                onChange={() => {
+                                  setModalHourOverrideApplyMethod("replace");
+                                  setModalHourOverrideOverwriteExisting(true);
+                                  setModalHourOverrideUpdateExistingOnly(false);
+                                }}
                               />
                               <span>استبدال أي استثناء موجود في نفس التاريخ</span>
                             </label>
                             <label className="emp-mini-check">
                               <input
-                                type="checkbox"
-                                checked={modalHourOverrideUpdateExistingOnly}
-                                disabled={loading || !!modalHourOverrideEditingDate}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  if (checked) {
-                                    const ok = setModalHourOverrideRangeFromExisting();
-                                    if (!ok) setModalHourOverrideUpdateExistingOnly(false);
-                                    return;
-                                  }
-                                  setModalHourOverrideUpdateExistingOnly(false);
+                                type="radio"
+                                name="overrideApplyMethod"
+                                checked={modalHourOverrideApplyMethod === "merge"}
+                                disabled={loading}
+                                onChange={() => {
+                                  const ok = setModalHourOverrideRangeFromExisting();
+                                  if (!ok) return;
+                                  setModalHourOverrideApplyMethod("replace");
+                                  setModalHourOverrideOverwriteExisting(true);
+                                  setModalHourOverrideUpdateExistingOnly(true);
                                 }}
                               />
                               <span>تعديل الاستثناءات الحالية فقط</span>
@@ -3376,29 +3612,31 @@ export default function DashboardEmployees() {
                               onChange={(e) => {
                                 const next = e.target.value;
                                 setModalHourOverrideFromDate(next);
-                                if (modalHourOverrideEditingDate) {
+                                if (modalHourOverrideEditingDate || modalHourOverrideMode === "single") {
                                   setModalHourOverrideToDate(next);
                                 }
                               }}
                             />
                           </div>
-                          <div>
-                            <label className="emp-label">إلى تاريخ</label>
-                            <input
-                              className="dash-input"
-                              type="date"
-                              value={modalHourOverrideToDate}
-                              disabled={loading || !!modalHourOverrideEditingDate}
-                              onChange={(e) => setModalHourOverrideToDate(e.target.value)}
-                            />
-                          </div>
+                          {modalHourOverrideMode !== "single" ? (
+                            <div>
+                              <label className="emp-label">إلى تاريخ</label>
+                              <input
+                                className="dash-input"
+                                type="date"
+                                value={modalHourOverrideToDate}
+                                disabled={loading || !!modalHourOverrideEditingDate}
+                                onChange={(e) => setModalHourOverrideToDate(e.target.value)}
+                              />
+                            </div>
+                          ) : null}
                           <div>
                             <label className="emp-label">من الساعة</label>
                             <input
                               className="dash-input"
                               type="time"
                               value={modalHourOverrideStart}
-                              disabled={loading || !modalHourOverrideEnabled}
+                              disabled={loading || modalHourOverrideQuickMode !== "manual" || !modalHourOverrideEnabled}
                               onChange={(e) => setModalHourOverrideStart(e.target.value)}
                             />
                           </div>
@@ -3408,7 +3646,7 @@ export default function DashboardEmployees() {
                               className="dash-input"
                               type="time"
                               value={modalHourOverrideEnd}
-                              disabled={loading || !modalHourOverrideEnabled}
+                              disabled={loading || modalHourOverrideQuickMode !== "manual" || !modalHourOverrideEnabled}
                               onChange={(e) => setModalHourOverrideEnd(e.target.value)}
                             />
                           </div>
@@ -3416,18 +3654,28 @@ export default function DashboardEmployees() {
                             <input
                               type="checkbox"
                               checked={modalHourOverrideEnabled}
-                              disabled={loading}
+                              disabled={loading || modalHourOverrideQuickMode !== "manual"}
                               onChange={(e) => setModalHourOverrideEnabled(e.target.checked)}
                             />
                             <span>دوام (إلغاء التحديد = إغلاق كامل)</span>
                           </label>
+                          <div>
+                            <label className="emp-label">ملاحظة / سبب</label>
+                            <input
+                              className="dash-input"
+                              value={modalHourOverrideNote}
+                              disabled={loading}
+                              onChange={(e) => setModalHourOverrideNote(e.target.value)}
+                              placeholder="مثال: رمضان / موسم"
+                            />
+                          </div>
                           <button
                             type="button"
                             className="exp-btn ghost sm"
                             disabled={
                               loading ||
                               !normalizeLeaveUntil(modalHourOverrideFromDate) ||
-                              (!modalHourOverrideEditingDate && modalHourOverrideApplyCount <= 0)
+                              (!modalHourOverrideEditingDate && modalHourOverridePreview.affectedDays <= 0)
                             }
                             onClick={addModalWorkingHourOverride}
                           >
@@ -3443,8 +3691,14 @@ export default function DashboardEmployees() {
                               إلغاء التعديل
                             </button>
                           ) : null}
+                          <div className="emp-field-note">
+                            طريقة التطبيق: {modalHourOverrideUpdateExistingOnly ? "تعديل الاستثناءات الحالية فقط" : "استبدال"}
+                          </div>
+                          <div className="emp-field-note">
+                            المعاينة: {modalHourOverridePreview.affectedDays} يوم | الساعات الجديدة {modalHourOverridePreview.totalHours.toFixed(1)} | الفرق {modalHourOverridePreview.diffHours >= 0 ? "+" : ""}{modalHourOverridePreview.diffHours.toFixed(1)} ساعة
+                          </div>
                         </div>
-                        {!modalHourOverrideEditingDate ? (
+                        {!modalHourOverrideEditingDate && modalHourOverrideMode === "specific" ? (
                           <div className="emp-working-override-weekdays">
                             <label className="emp-label">تطبيق على أيام محددة (اختياري)</label>
                             <div className="emp-working-override-weekday-chips">
@@ -3533,6 +3787,7 @@ export default function DashboardEmployees() {
                                         ? "الحالة: إغلاق كامل"
                                         : `الوقت: ${formatWindow(itemStart, itemEnd)}`}
                                     </span>
+                                    {ov.note ? <span className="emp-override-item-time">ملاحظة: {ov.note}</span> : null}
                                   </div>
                                   <div className="emp-override-item-actions">
                                     <button
@@ -3678,3 +3933,4 @@ export default function DashboardEmployees() {
     </div>
   );
 }
+

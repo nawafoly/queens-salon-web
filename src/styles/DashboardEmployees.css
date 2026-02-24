@@ -1562,11 +1562,24 @@ h1, h2, h3, h4, h5, h6 {
   gap: 8px;
 }
 
+.emp-modal .emp-working-override-mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .emp-modal .emp-working-override-presets {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+.emp-modal .emp-working-override-presets .exp-btn.is-active,
+.emp-modal .emp-working-override-mode-tabs .exp-btn.is-active {
+  border-color: #40010d;
+  background: rgba(64, 1, 13, 0.1);
+  color: #40010d;
 }
 
 .emp-modal .emp-working-override-form {
@@ -1615,6 +1628,14 @@ h1, h2, h3, h4, h5, h6 {
 .emp-modal .emp-working-override-summary {
   display: grid;
   gap: 3px;
+}
+
+.emp-modal .emp-working-override-apply-method,
+.emp-modal .emp-working-override-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .emp-modal .emp-override-list {
@@ -1678,6 +1699,38 @@ h1, h2, h3, h4, h5, h6 {
   gap: 6px;
 }
 
+.emp-modal .emp-override-table-wrap {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 10px;
+}
+
+.emp-modal .emp-override-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+}
+
+.emp-modal .emp-override-table th,
+.emp-modal .emp-override-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(13, 13, 13, 0.08);
+  text-align: right;
+  vertical-align: middle;
+  font-size: 12px;
+}
+
+.emp-modal .emp-override-table th {
+  font-weight: 900;
+  color: #334155;
+  background: #f8fafc;
+}
+
+.emp-modal .emp-override-table tr.is-editing td {
+  background: rgba(64, 1, 13, 0.05);
+}
+
 @media (max-width: 780px) {
   .emp-modal .emp-booking-settings {
     grid-template-columns: 1fr;
@@ -1714,5 +1767,9 @@ h1, h2, h3, h4, h5, h6 {
 
   .emp-modal .emp-override-item-actions .exp-btn {
     width: auto;
+  }
+
+  .emp-modal .emp-override-table {
+    min-width: 560px;
   }
 }

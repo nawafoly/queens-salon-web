@@ -203,6 +203,7 @@ function normalizeStaffPayrollRows(rows: any[]): StaffPayrollSource[] {
         overtimeDaysPerMonth: Number(x?.overtimeDaysPerMonth ?? 30) || 30,
         overtimeBaseHoursPerDay: Number(x?.overtimeBaseHoursPerDay ?? 8) || 8,
         overtimeSeasonBaseHoursPerDay: Number(x?.overtimeSeasonBaseHoursPerDay ?? 6) || 6,
+        autoSeasonOvertimeBasis: x?.autoSeasonOvertimeBasis === true,
         overtimeHoursBasis:
           String(x?.overtimeHoursBasis || "").trim() === "season" ? "season" : "regular",
         overtimePercent: Number(x?.overtimePercent ?? 0) || 0,

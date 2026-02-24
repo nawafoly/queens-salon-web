@@ -38,6 +38,7 @@ export type StaffPayrollSource = {
   overtimeDaysPerMonth?: number;
   overtimeBaseHoursPerDay?: number;
   overtimeSeasonBaseHoursPerDay?: number;
+  autoSeasonOvertimeBasis?: boolean;
   overtimeHoursBasis?: StaffOvertimeHoursBasis;
   overtimePercent?: number;
   overtimeInvoicePercent?: number;
@@ -51,6 +52,15 @@ export type BookingPayrollSource = {
   employeeUid?: string | null;
   employeeKey?: string | null;
   employeeName?: string | null;
+};
+
+export type AttendanceViolationType = "absent" | "late" | "leave";
+
+export type AttendancePayrollSource = {
+  date: string;
+  type: AttendanceViolationType;
+  minutes?: number;
+  absentFullDay?: boolean;
 };
 
 export type PayrollSettingsSource = {
@@ -73,6 +83,7 @@ export type NormalizedPayrollConfig = {
   daysPerMonth: number;
   baseHoursPerDay: number;
   seasonBaseHoursPerDay: number;
+  autoSeasonOvertimeBasis: boolean;
   hoursBasis: StaffOvertimeHoursBasis;
   overtimePercent: number;
   invoicePercent: number;
@@ -91,6 +102,9 @@ export type PayrollMonthSummary = {
   monthKey: string;
   salaryAmount: number;
   overtimeAmount: number;
+  attendanceDeductionHours: number;
+  attendanceDeductionAmount: number;
+  finalPayable: number;
   totalAmount: number;
   method: StaffPayrollMethod;
   invoiceCount: number;
@@ -401,6 +415,7 @@ export function normalizePayrollConfig(raw: any): NormalizedPayrollConfig {
     daysPerMonth: Math.max(1, safeNumber(raw?.overtimeDaysPerMonth, 30)),
     baseHoursPerDay: Math.max(1, safeNumber(raw?.overtimeBaseHoursPerDay, 8)),
     seasonBaseHoursPerDay: Math.max(1, safeNumber(raw?.overtimeSeasonBaseHoursPerDay, 6)),
+    autoSeasonOvertimeBasis: raw?.autoSeasonOvertimeBasis === true,
     hoursBasis,
     overtimePercent: Math.max(0, safeNumber(raw?.overtimePercent, 0)),
     invoicePercent: Math.max(0, safeNumber(raw?.overtimeInvoicePercent, 0)),
@@ -431,8 +446,6 @@ export function computeScheduledHoursSummaryForMonth(args: {
   let workedDays = 0;
   let seasonDays = 0;
   let scheduledHours = 0;
-  let baselineHours = 0;
-  let overtimeHours = 0;
   const selectedBase =
     args.config.hoursBasis === "season" ? args.config.seasonBaseHoursPerDay : args.config.baseHoursPerDay;
 
@@ -440,12 +453,20 @@ export function computeScheduledHoursSummaryForMonth(args: {
     const dateIso = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const dayHours = resolveStaffDayHours(dateIso, args.staff, args.appSettings);
     if (dayHours <= 0) continue;
+    const seasonDay = isSeasonDate(args.appSettings, dateIso);
+    const baseForDay = args.config.autoSeasonOvertimeBasis
+      ? seasonDay
+        ? args.config.seasonBaseHoursPerDay
+        : args.config.baseHoursPerDay
+      : selectedBase;
     workedDays += 1;
     scheduledHours += dayHours;
-    if (isSeasonDate(args.appSettings, dateIso)) seasonDays += 1;
-    baselineHours += selectedBase;
-    overtimeHours += Math.max(0, dayHours - selectedBase);
+    if (seasonDay) seasonDays += 1;
   }
+
+  // Accounting baseline is monthly (daysPerMonth), not only worked/open days.
+  const baselineHours = args.config.daysPerMonth * selectedBase;
+  const overtimeHours = Math.max(0, scheduledHours - baselineHours);
 
   return {
     workedDays,
@@ -527,6 +548,7 @@ export function computeStaffPayrollForMonth(args: {
   appSettings: PayrollSettingsSource | any;
   invoiceCount?: number;
   invoiceRevenue?: number;
+  attendanceRows?: AttendancePayrollSource[];
 }): PayrollMonthSummary {
   const cfg = normalizePayrollConfig(args.staff);
   const invoiceCount = Math.max(0, Number(args.invoiceCount || 0));
@@ -543,22 +565,62 @@ export function computeStaffPayrollForMonth(args: {
   let overtimeRate = 0;
   const rateBaseHours =
     cfg.hoursBasis === "season" ? cfg.seasonBaseHoursPerDay : cfg.baseHoursPerDay;
+  const deductionHourlyRate = cfg.monthlySalary / cfg.daysPerMonth / rateBaseHours;
 
   if (cfg.method === "invoice_percentage") {
     overtimeAmount = invoiceRevenue * (cfg.invoicePercent / 100);
   } else {
-    hourlyRate = cfg.monthlySalary / cfg.daysPerMonth / rateBaseHours;
+    hourlyRate = deductionHourlyRate;
     overtimeRate = hourlyRate * (1 + cfg.overtimePercent / 100);
     overtimeAmount = schedule.overtimeHours * overtimeRate;
   }
 
+  let attendanceDeductionHours = 0;
+  const attendanceRows = Array.isArray(args.attendanceRows) ? args.attendanceRows : [];
+  if (attendanceRows.length > 0) {
+    const byDate = new Map<string, AttendancePayrollSource>();
+    attendanceRows.forEach((row) => {
+      const d = normalizeIsoDate(row?.date);
+      if (!d || monthKeyFromDate(d) !== args.monthKey) return;
+      byDate.set(d, row);
+    });
+
+    const start = monthStartDate(args.monthKey);
+    if (start) {
+      const y = start.getFullYear();
+      const m = start.getMonth();
+      const endDay = new Date(y, m + 1, 0).getDate();
+      for (let day = 1; day <= endDay; day++) {
+        const dateIso = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const entry = byDate.get(dateIso);
+        if (!entry) continue;
+        const dayHours = resolveStaffDayHours(dateIso, args.staff, args.appSettings);
+        if (dayHours <= 0) continue;
+        if (entry.type === "absent" && entry.absentFullDay === true) {
+          attendanceDeductionHours += dayHours;
+          continue;
+        }
+        if (entry.type === "late" || entry.type === "leave") {
+          const mins = Math.max(0, Number(entry.minutes || 0));
+          const deduction = Math.min(dayHours, mins / 60);
+          attendanceDeductionHours += deduction;
+        }
+      }
+    }
+  }
+
+  const attendanceDeductionAmount = attendanceDeductionHours * deductionHourlyRate;
   const salaryAmount = cfg.monthlySalary;
   const totalAmount = salaryAmount + overtimeAmount;
+  const finalPayable = salaryAmount - attendanceDeductionAmount + overtimeAmount;
 
   return {
     monthKey: args.monthKey,
     salaryAmount: round2(salaryAmount),
     overtimeAmount: round2(overtimeAmount),
+    attendanceDeductionHours: round2(attendanceDeductionHours),
+    attendanceDeductionAmount: round2(attendanceDeductionAmount),
+    finalPayable: round2(finalPayable),
     totalAmount: round2(totalAmount),
     method: cfg.method,
     invoiceCount,
@@ -631,7 +693,9 @@ export function buildPayrollExpenseRowsForMonths(args: {
             ? `طريقة: نسبة من الفواتير | النسبة: ${summary.config.invoicePercent}% | فواتير الشهر: ${round2(
                 summary.invoiceRevenue
               )}`
-            : `طريقة: من الراتب | أساس الساعات: ${basisLabel} | ساعات الأوفرتايم: ${
+            : `طريقة: من الراتب | أساس الساعات: ${
+                summary.config.autoSeasonOvertimeBasis ? "تلقائي حسب الموسم" : basisLabel
+              } | ساعات الأوفرتايم: ${
                 summary.schedule.overtimeHours
               } | النسبة: ${summary.config.overtimePercent}%`;
         out.push({
