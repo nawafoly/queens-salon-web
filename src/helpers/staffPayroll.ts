@@ -132,6 +132,7 @@ export type PayrollExpenseRow = {
 
 const DEFAULT_OPEN_TIME = "10:00";
 const DEFAULT_CLOSE_TIME = "22:00";
+export const PAYROLL_CLOSE_DAY = 27;
 const REVENUE_STATUSES = new Set(["confirmed", "completed"]);
 
 function round2(v: number) {
@@ -277,6 +278,19 @@ function monthStartDate(monthKey: string): Date | null {
   return new Date(y, m - 1, 1);
 }
 
+function shiftMonthKey(monthKey: string, delta: number): string {
+  const start = monthStartDate(monthKey);
+  if (!start || !Number.isFinite(delta)) return "";
+  const next = new Date(start.getFullYear(), start.getMonth() + delta, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function firstDayOfMonthIso(monthKey: string): string {
+  const start = monthStartDate(monthKey);
+  if (!start) return "";
+  return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
 export function monthKeyFromDate(dateIso: string): string {
   const s = normalizeIsoDate(dateIso);
   return s ? s.slice(0, 7) : "";
@@ -313,6 +327,56 @@ function lastDayOfMonthIso(monthKey: string): string {
   return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(
     end.getDate()
   ).padStart(2, "0")}`;
+}
+
+export function payrollCycleKeyFromDate(dateIso: string, closeDay = PAYROLL_CLOSE_DAY): string {
+  const d = normalizeIsoDate(dateIso);
+  if (!d) return "";
+  const monthKey = monthKeyFromDate(d);
+  const day = Number(d.slice(8, 10));
+  if (!monthKey || !Number.isFinite(day)) return "";
+  if (day > closeDay) return shiftMonthKey(monthKey, 1) || monthKey;
+  return monthKey;
+}
+
+export function payrollCycleRangeForMonthKey(
+  monthKey: string,
+  closeDay = PAYROLL_CLOSE_DAY
+): { from: string; to: string } | null {
+  const currentStart = monthStartDate(monthKey);
+  if (!currentStart) return null;
+
+  const currentYear = currentStart.getFullYear();
+  const currentMonth = currentStart.getMonth(); // 0-based
+  const currentLastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const cycleEndDay = Math.max(1, Math.min(closeDay, currentLastDay));
+  const to = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(
+    cycleEndDay
+  ).padStart(2, "0")}`;
+
+  const prevStart = new Date(currentYear, currentMonth - 1, 1);
+  const prevYear = prevStart.getFullYear();
+  const prevMonth = prevStart.getMonth();
+  const prevLastDay = new Date(prevYear, prevMonth + 1, 0).getDate();
+  const cycleStartDay = Math.max(1, Math.min(closeDay + 1, prevLastDay));
+  const from = `${prevYear}-${String(prevMonth + 1).padStart(2, "0")}-${String(
+    cycleStartDay
+  ).padStart(2, "0")}`;
+
+  return { from, to };
+}
+
+function calendarMonthDays(monthKey: string): string[] {
+  const start = monthStartDate(monthKey);
+  if (!start) return [];
+  const y = start.getFullYear();
+  const m = start.getMonth();
+  const endDay = new Date(y, m + 1, 0).getDate();
+  const out: string[] = [];
+  for (let day = 1; day <= endDay; day++) {
+    out.push(`${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  }
+  return out;
 }
 
 function isSeasonDate(appSettings: PayrollSettingsSource | any, dateIso: string): boolean {
@@ -542,6 +606,54 @@ function buildStaffMonthRevenueMap(
   return out;
 }
 
+type DailyBookingStats = {
+  invoiceCount: number;
+  invoiceRevenue: number;
+};
+
+function buildStaffDailyBookingStatsMap(
+  staffList: StaffPayrollSource[],
+  bookings: BookingPayrollSource[],
+  monthKeys: string[]
+) {
+  const monthSet = new Set(monthKeys);
+  const staffById = new Set(staffList.map((s) => String(s.id || "").trim()).filter(Boolean));
+  const staffByKey = new Map<string, string>();
+  const staffByName = new Map<string, string>();
+
+  staffList.forEach((s) => {
+    const sid = String(s.id || "").trim();
+    if (!sid) return;
+    staffByKey.set(sid, sid);
+    staffByKey.set(
+      String(s.name || "")
+        .trim()
+        .replace(/\s+/g, "_"),
+      sid
+    );
+    const n = normalizeNameKey(s.name);
+    if (n) staffByName.set(n, sid);
+  });
+
+  const out = new Map<string, DailyBookingStats>();
+  bookings.forEach((b) => {
+    const dateIso = normalizeIsoDate(String(b.date || ""));
+    if (!dateIso) return;
+    const mk = monthKeyFromDate(dateIso);
+    if (!mk || !monthSet.has(mk)) return;
+    const status = String(b.status || "").trim().toLowerCase();
+    if (!REVENUE_STATUSES.has(status)) return;
+    const staffId = matchBookingToStaffId(b, staffById, staffByKey, staffByName);
+    if (!staffId) return;
+    const key = `${staffId}|${dateIso}`;
+    const prev = out.get(key) || { invoiceCount: 0, invoiceRevenue: 0 };
+    prev.invoiceCount += 1;
+    prev.invoiceRevenue += Math.max(0, Number(b.amount || 0));
+    out.set(key, prev);
+  });
+  return out;
+}
+
 export function computeStaffPayrollForMonth(args: {
   staff: StaffPayrollSource;
   monthKey: string;
@@ -647,38 +759,40 @@ export function buildPayrollExpenseRowsForMonths(args: {
   ).sort((a, b) => a.localeCompare(b));
   if (!months.length) return [];
 
-  const revenueMap = buildStaffMonthRevenueMap(args.staffList, args.bookings, months);
+  const dailyBookingMap = buildStaffDailyBookingStatsMap(args.staffList, args.bookings, months);
   const out: PayrollExpenseRow[] = [];
 
   args.staffList.forEach((staff) => {
     const sid = String(staff.id || "").trim();
     const sname = String(staff.name || "").trim() || sid || "موظفة";
     if (!sid) return;
-    months.forEach((monthKey) => {
-      const rev = revenueMap.get(`${sid}|${monthKey}`) || {
-        invoiceCount: 0,
-        invoiceRevenue: 0,
-      };
-      const summary = computeStaffPayrollForMonth({
-        staff,
-        monthKey,
-        appSettings: args.appSettings,
-        invoiceCount: rev.invoiceCount,
-        invoiceRevenue: rev.invoiceRevenue,
-      });
-      const date = lastDayOfMonthIso(monthKey);
-      const createdAt = Date.parse(`${date}T12:00:00`) || Date.now();
+    const cfg = normalizePayrollConfig(staff);
+    const selectedBase =
+      cfg.hoursBasis === "season" ? cfg.seasonBaseHoursPerDay : cfg.baseHoursPerDay;
+    const rateBaseHours = Math.max(1, selectedBase);
+    const hourlyRate = cfg.monthlySalary / cfg.daysPerMonth / rateBaseHours;
+    const overtimeRate = hourlyRate * (1 + cfg.overtimePercent / 100);
 
-      if (summary.salaryAmount > 0) {
+    months.forEach((monthKey) => {
+      const cycleRange = payrollCycleRangeForMonthKey(monthKey, PAYROLL_CLOSE_DAY);
+      const cycleFrom = cycleRange?.from || "";
+      const cycleTo = cycleRange?.to || `${monthKey}-${String(PAYROLL_CLOSE_DAY).padStart(2, "0")}`;
+      const salaryDate = cycleTo;
+      const salaryCreatedAt = Date.parse(`${salaryDate}T12:00:00`) || Date.now();
+
+      if (cfg.monthlySalary > 0) {
         out.push({
           id: `auto_payroll_salary_${sid}_${monthKey}`,
-          date,
-          amount: summary.salaryAmount,
+          date: salaryDate,
+          amount: round2(cfg.monthlySalary),
           category: "رواتب الموظفات",
           title: `راتب ${sname} (${monthKey})`,
-          note: "احتساب تلقائي من إعدادات الموظفة.",
+          note:
+            cycleFrom && cycleTo
+              ? `إغلاق دورة الرواتب (${monthKey}) من ${cycleFrom} إلى ${cycleTo}. يوم الصرف الثابت: ${PAYROLL_CLOSE_DAY}.`
+              : `إغلاق دورة الرواتب (${monthKey}) يوم ${PAYROLL_CLOSE_DAY}.`,
           paymentMethod: "transfer",
-          createdAt,
+          createdAt: salaryCreatedAt,
           staffId: sid,
           staffName: sname,
           kind: "salary",
@@ -686,33 +800,65 @@ export function buildPayrollExpenseRowsForMonths(args: {
         });
       }
 
-      if (summary.overtimeAmount > 0) {
-        const basisLabel = summary.config.hoursBasis === "season" ? "موسم" : "عادي";
-        const methodNote =
-          summary.method === "invoice_percentage"
-            ? `طريقة: نسبة من الفواتير | النسبة: ${summary.config.invoicePercent}% | فواتير الشهر: ${round2(
-                summary.invoiceRevenue
-              )}`
-            : `طريقة: من الراتب | أساس الساعات: ${
-                summary.config.autoSeasonOvertimeBasis ? "تلقائي حسب الموسم" : basisLabel
-              } | ساعات الأوفرتايم: ${
-                summary.schedule.overtimeHours
-              } | النسبة: ${summary.config.overtimePercent}%`;
+      const days = calendarMonthDays(monthKey);
+      days.forEach((dateIso) => {
+        const cycleKey = payrollCycleKeyFromDate(dateIso, PAYROLL_CLOSE_DAY) || monthKey;
+        const cycleForDay = payrollCycleRangeForMonthKey(cycleKey, PAYROLL_CLOSE_DAY);
+        const dayBooking = dailyBookingMap.get(`${sid}|${dateIso}`) || {
+          invoiceCount: 0,
+          invoiceRevenue: 0,
+        };
+        let overtimeAmount = 0;
+        let overtimeNote = "";
+
+        if (cfg.method === "invoice_percentage") {
+          const dayRevenue = dayBooking.invoiceRevenue;
+          if (dayRevenue <= 0) return;
+          overtimeAmount = round2(dayRevenue * (cfg.invoicePercent / 100));
+          if (overtimeAmount <= 0) return;
+          overtimeNote = `طريقة: نسبة من الفواتير | النسبة: ${cfg.invoicePercent}% | إيراد اليوم: ${round2(
+            dayRevenue
+          )} | دورة الرواتب: ${cycleKey}${
+            cycleForDay ? ` (${cycleForDay.from} إلى ${cycleForDay.to})` : ""
+          }`;
+        } else {
+          if (dayBooking.invoiceCount <= 0) return;
+          const dayHours = resolveStaffDayHours(dateIso, staff, args.appSettings);
+          if (dayHours <= 0) return;
+          const baseForDay = cfg.autoSeasonOvertimeBasis
+            ? isSeasonDate(args.appSettings, dateIso)
+              ? cfg.seasonBaseHoursPerDay
+              : cfg.baseHoursPerDay
+            : selectedBase;
+          const overtimeHours = Math.max(0, dayHours - baseForDay);
+          if (overtimeHours <= 0) return;
+          overtimeAmount = round2(overtimeHours * overtimeRate);
+          if (overtimeAmount <= 0) return;
+          overtimeNote = `طريقة: من الراتب | فواتير اليوم: ${dayBooking.invoiceCount} | ساعات اليوم: ${round2(
+            dayHours
+          )} | الحد الأساسي: ${round2(baseForDay)} | ساعات الأوفر تايم: ${round2(
+            overtimeHours
+          )} | النسبة: ${cfg.overtimePercent}% | دورة الرواتب: ${cycleKey}${
+            cycleForDay ? ` (${cycleForDay.from} إلى ${cycleForDay.to})` : ""
+          }`;
+        }
+
+        const createdAt = Date.parse(`${dateIso}T12:00:00`) || Date.now();
         out.push({
-          id: `auto_payroll_overtime_${sid}_${monthKey}`,
-          date,
-          amount: summary.overtimeAmount,
+          id: `auto_payroll_overtime_${sid}_${dateIso}`,
+          date: dateIso,
+          amount: overtimeAmount,
           category: "أوفر تايم الموظفات",
-          title: `أوفر تايم ${sname} (${monthKey})`,
-          note: methodNote,
+          title: `أوفر تايم ${sname} (${dateIso})`,
+          note: overtimeNote,
           paymentMethod: "transfer",
           createdAt,
           staffId: sid,
           staffName: sname,
           kind: "overtime",
-          monthKey,
+          monthKey: cycleKey,
         });
-      }
+      });
     });
   });
 
@@ -721,4 +867,3 @@ export function buildPayrollExpenseRowsForMonths(args: {
     return a.title.localeCompare(b.title, "ar");
   });
 }
-

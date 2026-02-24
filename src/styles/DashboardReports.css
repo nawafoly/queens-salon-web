@@ -138,6 +138,51 @@
   font-weight: 800;
 }
 
+.reports-v2__payroll-cycle {
+  margin-top: 12px;
+  background: var(--card);
+  border: 1px solid rgba(13, 13, 13, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(13, 13, 13, 0.08);
+  padding: 12px;
+}
+
+.reports-v2__payroll-cycle-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.payroll-chip {
+  border: 1px solid rgba(13, 13, 13, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 10px;
+}
+
+.payroll-chip h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #515659;
+}
+
+.payroll-chip strong {
+  display: block;
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 900;
+  color: #40010d;
+}
+
+.payroll-chip p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6e7372;
+  font-weight: 700;
+}
+
 .reports-v2__kpis {
   margin-top: 12px;
   display: grid;
@@ -221,6 +266,12 @@
   color: #9f1239;
   background: rgba(159, 18, 57, 0.1);
   border: 1px solid rgba(159, 18, 57, 0.22);
+}
+
+.month-compare-delta.is-flat {
+  color: #4b5563;
+  background: rgba(75, 85, 99, 0.1);
+  border: 1px solid rgba(75, 85, 99, 0.2);
 }
 
 .kpi {
@@ -626,6 +677,10 @@
     grid-template-columns: 1fr;
   }
 
+  .reports-v2__payroll-cycle-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .reports-v2__range-caption {
     width: 100%;
     margin-inline-start: 0;
@@ -662,6 +717,10 @@
   }
 
   .reports-v2__kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-v2__payroll-cycle-grid {
     grid-template-columns: 1fr;
   }
 

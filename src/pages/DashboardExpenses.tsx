@@ -3,7 +3,7 @@
 // ✅ src/pages/DashboardExpenses.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFileCsv, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faFileCsv } from "@fortawesome/free-solid-svg-icons";
 /**
  * ✅ قاعدة الاستيراد:
  * - المشترك/العام أولاً
@@ -19,6 +19,9 @@ import { AppSettingsService } from "../services/AppSettingsService";
 import { listAllBookings } from "../services/firestoreBookings";
 import {
   buildPayrollExpenseRowsForMonths,
+  PAYROLL_CLOSE_DAY,
+  payrollCycleKeyFromDate,
+  payrollCycleRangeForMonthKey,
   type StaffPayrollSource,
   type BookingPayrollSource,
 } from "../helpers/staffPayroll";
@@ -160,15 +163,6 @@ function loadLegacyExpenses(): Expense[] {
   }
 }
 
-function parseISODate(iso: string) {
-  // iso: YYYY-MM-DD
-  const [y, m, d] = String(iso || "")
-    .split("-")
-    .map((x) => Number(x));
-  if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d);
-}
-
 function isIsoDate(v: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(v || "").trim());
 }
@@ -177,8 +171,77 @@ function monthKeyFromIsoDate(v: string) {
   return isIsoDate(v) ? String(v).slice(0, 7) : "";
 }
 
+function shiftMonthKey(monthKey: string, delta: number): string {
+  const s = String(monthKey || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(s)) return "";
+  const y = Number(s.slice(0, 4));
+  const m = Number(s.slice(5, 7));
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return "";
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthRangeFromMonthKey(monthKey: string): { from: string; to: string } | null {
+  const s = String(monthKey || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(s)) return null;
+  const y = Number(s.slice(0, 4));
+  const m = Number(s.slice(5, 7));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return null;
+  const endDay = new Date(y, m, 0).getDate();
+  return {
+    from: `${y}-${String(m).padStart(2, "0")}-01`,
+    to: `${y}-${String(m).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`,
+  };
+}
+
+function inIsoDateRange(dateIso: string, fromIso: string, toIso: string): boolean {
+  const d = String(dateIso || "").trim();
+  const from = String(fromIso || "").trim();
+  const to = String(toIso || "").trim();
+  if (!isIsoDate(d) || !isIsoDate(from) || !isIsoDate(to)) return false;
+  return d >= from && d <= to;
+}
+
 function isAutoPayrollExpenseId(id: string) {
   return String(id || "").startsWith("auto_payroll_");
+}
+
+function payrollKindFromExpense(e: Expense): "salary" | "overtime" | "manual" {
+  const kind = String(e?.payrollKind || "").trim();
+  if (kind === "salary" || kind === "overtime") return kind;
+  const id = String(e?.id || "").trim();
+  if (id.startsWith("auto_payroll_salary_")) return "salary";
+  if (id.startsWith("auto_payroll_overtime_")) return "overtime";
+  return "manual";
+}
+
+function extractStaffNameFromExpenseTitle(title: string): string {
+  const t = String(title || "").trim();
+  const m = t.match(/^(?:راتب|أوفر تايم)\s+(.+?)\s+\(\d{4}-\d{2}(?:-\d{2})?\)$/);
+  if (m?.[1]) return m[1].trim();
+  return "";
+}
+
+function expenseTypeLabel(e: Expense): string {
+  const kind = payrollKindFromExpense(e);
+  if (kind === "salary") return "راتب";
+  if (kind === "overtime") return "أوفر تايم";
+  return "تشغيلي";
+}
+
+function expenseEmployeeLabel(e: Expense): string {
+  if (payrollKindFromExpense(e) === "manual") return "-";
+  const staffName = String(e.staffName || "").trim();
+  if (staffName) return staffName;
+  const parsed = extractStaffNameFromExpenseTitle(String(e.title || ""));
+  return parsed || "-";
+}
+
+function expenseSourceLabel(e: Expense): string {
+  const kind = payrollKindFromExpense(e);
+  if (kind === "salary" || kind === "overtime") return "رواتب";
+  const category = String(e.category || "").trim();
+  return category || "تشغيل";
 }
 
 function normalizeStaffPayrollRows(rows: any[]): StaffPayrollSource[] {
@@ -232,24 +295,6 @@ function normalizeBookingPayrollRows(rows: any[]): BookingPayrollSource[] {
       } as BookingPayrollSource;
     })
     .filter(Boolean) as BookingPayrollSource[];
-}
-
-// ✅ أسبوع يبدأ السبت
-function startOfWeekSaturday(d: Date) {
-  const day = d.getDay(); // 0 Sun .. 6 Sat
-  const diff = (day - 6 + 7) % 7; // days since Saturday
-  const s = new Date(d);
-  s.setHours(0, 0, 0, 0);
-  s.setDate(s.getDate() - diff);
-  return s;
-}
-
-function isSameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
 }
 
 /* =========================================
@@ -364,8 +409,8 @@ const DashboardExpenses: React.FC = () => {
     onConfirm?: () => void;
   }>({ open: false });
 
-  // ✅ سجل المصروفات (Modal)
-  const [recordOpen, setRecordOpen] = useState(false);
+  const [recordMode, setRecordMode] = useState<"calendar" | "payroll_cycle">("calendar");
+  const [selectedMonthKey, setSelectedMonthKey] = useState(todayISO().slice(0, 7));
 
   // ✅ form
   const [title, setTitle] = useState("");
@@ -380,9 +425,7 @@ const DashboardExpenses: React.FC = () => {
   // ✅ quick add category
   const [newCategory, setNewCategory] = useState("");
 
-  // ✅ filters (للسجل داخل المودال)
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  // ✅ filters
   const [fCategory, setFCategory] = useState("الكل");
   const [fPayment, setFPayment] = useState("الكل");
   const [q, setQ] = useState("");
@@ -496,12 +539,20 @@ const DashboardExpenses: React.FC = () => {
           if (mk) monthKeysSet.add(mk);
         });
         monthKeysSet.add(todayISO().slice(0, 7));
+        const expandedMonthKeys = new Set<string>();
+        monthKeysSet.forEach((mk) => {
+          expandedMonthKeys.add(mk);
+          const prev = shiftMonthKey(mk, -1);
+          const next = shiftMonthKey(mk, 1);
+          if (prev) expandedMonthKeys.add(prev);
+          if (next) expandedMonthKeys.add(next);
+        });
 
         const payrollRows = buildPayrollExpenseRowsForMonths({
           staffList: staffRows,
           bookings: bookingRows,
           appSettings: appSettings || {},
-          monthKeys: Array.from(monthKeysSet),
+          monthKeys: Array.from(expandedMonthKeys),
         });
 
         const payrollItems: Expense[] = payrollRows.map((x) => ({
@@ -513,6 +564,15 @@ const DashboardExpenses: React.FC = () => {
           paymentMethod: (x.paymentMethod || "transfer") as PaymentMethod,
           note: String(x.note || "").trim() || undefined,
           createdAt: Number(x.createdAt || Date.now()),
+          addedBy: "النظام (رواتب)",
+          createdByName: "النظام (رواتب)",
+          sourceKind: "auto_payroll",
+          sourceType: "payroll",
+          sourceRefId: String(x.id || "").trim() || undefined,
+          staffId: String(x.staffId || "").trim() || undefined,
+          staffName: String(x.staffName || "").trim() || undefined,
+          monthKey: String(x.monthKey || "").trim() || undefined,
+          payrollKind: x.kind,
         }));
         setAutoPayrollItems(payrollItems);
       } catch (payrollErr) {
@@ -611,142 +671,66 @@ const DashboardExpenses: React.FC = () => {
     });
   }, [items, autoPayrollItems]);
 
-  // ====== ملخص اليوم/الأسبوع/الشهر (لوحة خفيفة) ======
-  const summary = useMemo(() => {
-    const now = new Date();
-    const startWeek = startOfWeekSaturday(now);
-    const endWeek = new Date(startWeek);
-    endWeek.setDate(endWeek.getDate() + 7);
-
-    const monthKey = todayISO().slice(0, 7); // YYYY-MM
-    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthKey = `${prevMonthDate.getFullYear()}-${String(
-      prevMonthDate.getMonth() + 1
-    ).padStart(2, "0")}`;
-
-    let todayTotal = 0;
-    let weekTotal = 0;
-    let monthTotal = 0;
-    let prevMonthTotal = 0;
-
-    allItems.forEach((e) => {
-      const amt = Number(e.amount) || 0;
-      const d = parseISODate(e.date);
-      if (d) {
-        if (isSameDay(d, now)) todayTotal += amt;
-        if (d >= startWeek && d < endWeek) weekTotal += amt;
+  const selectedCalendarRange = useMemo(() => {
+    const fallbackMonth = todayISO().slice(0, 7);
+    return (
+      monthRangeFromMonthKey(selectedMonthKey) ||
+      monthRangeFromMonthKey(fallbackMonth) || {
+        from: todayISO(),
+        to: todayISO(),
       }
-      if ((e.date || "").startsWith(monthKey)) monthTotal += amt;
-      if ((e.date || "").startsWith(prevMonthKey)) prevMonthTotal += amt;
-    });
+    );
+  }, [selectedMonthKey]);
 
-    return { todayTotal, weekTotal, monthTotal, prevMonthTotal };
-  }, [allItems]);
+  const selectedPayrollCycleRange = useMemo(() => {
+    return (
+      payrollCycleRangeForMonthKey(selectedMonthKey, PAYROLL_CLOSE_DAY) || selectedCalendarRange
+    );
+  }, [selectedMonthKey, selectedCalendarRange]);
 
-  // ====== تنبيهات ذكية (سطرية خفيفة) ======
-  const smartAlerts = useMemo(() => {
-    const alerts: { icon: string; text: string }[] = [];
+  const activeRange = useMemo(
+    () => (recordMode === "payroll_cycle" ? selectedPayrollCycleRange : selectedCalendarRange),
+    [recordMode, selectedPayrollCycleRange, selectedCalendarRange]
+  );
 
-    // 1) مقارنة الشهر الحالي بالسابق
-    if (summary.prevMonthTotal > 0) {
-      const diff = summary.monthTotal - summary.prevMonthTotal;
-      const pct = (diff / summary.prevMonthTotal) * 100;
-      const dir = diff >= 0 ? "أعلى" : "أقل";
-      alerts.push({
-        icon: diff >= 0 ? "📈" : "📉",
-        text: `مصروفات هذا الشهر ${dir} من الشهر الماضي بـ ${Math.abs(
-          pct
-        ).toFixed(0)}%`,
-      });
-    } else if (summary.monthTotal > 0) {
-      alerts.push({
-        icon: "ℹ️",
-        text: "الشهر الماضي: لا توجد مصروفات مسجلة للمقارنة",
-      });
-    }
+  const activePayrollCycleKey = useMemo(
+    () => payrollCycleKeyFromDate(activeRange.to, PAYROLL_CLOSE_DAY) || selectedMonthKey,
+    [activeRange.to, selectedMonthKey]
+  );
 
-    // 2) أعلى تصنيف هذا الشهر
-    const monthKey = todayISO().slice(0, 7);
-    const map = new Map<string, number>();
-    allItems.forEach((e) => {
-      if ((e.date || "").startsWith(monthKey)) {
-        const k = e.category || "أخرى";
-        map.set(k, (map.get(k) || 0) + (Number(e.amount) || 0));
-      }
-    });
-    const top = Array.from(map.entries()).sort((a, b) => b[1] - a[1])[0];
-    if (top) {
-      alerts.push({
-        icon: "📌",
-        text: `أعلى تصنيف هذا الشهر: ${top[0]} (${money(top[1])} ريال)`,
-      });
-    }
+  const missingNotesInActiveRange = useMemo(
+    () =>
+      allItems.filter((e) => {
+        if (!inIsoDateRange(String(e.date || ""), activeRange.from, activeRange.to)) return false;
+        return !String(e.note ?? "").trim();
+      }).length,
+    [allItems, activeRange.from, activeRange.to]
+  );
 
-    // 3) بدون ملاحظات (هذا الشهر)
-    const missingNotes = allItems.filter((e) => {
-      if (!e.date || !e.date.startsWith(monthKey)) return false;
-      const n = String(e.note ?? "").trim();
-      return !n;
-    }).length;
-
-    if (missingNotes > 0) {
-      alerts.push({
-        icon: "⚠️",
-        text: `${missingNotes} مصروف/مصروفات هذا الشهر بدون ملاحظات`,
-      });
-    } else if (allItems.some((e) => (e.date || "").startsWith(monthKey))) {
-      alerts.push({
-        icon: "✅",
-        text: "كل مصروفات هذا الشهر تحتوي على ملاحظات",
-      });
-    }
-
-    return alerts.slice(0, 4);
-  }, [allItems, summary.monthTotal, summary.prevMonthTotal]);
-
-  // ====== الفلاتر (للسجل داخل المودال) ======
+  // ====== الفلاتر (للسجل الكامل) ======
   const filtered = useMemo(() => {
     const queryText = q.trim().toLowerCase();
     return allItems.filter((e) => {
-      if (from && e.date < from) return false;
-      if (to && e.date > to) return false;
+      if (!inIsoDateRange(String(e.date || ""), activeRange.from, activeRange.to)) return false;
       if (fCategory !== "الكل" && e.category !== fCategory) return false;
       if (fPayment !== "الكل" && String(e.paymentMethod) !== String(fPayment))
         return false;
 
       if (queryText) {
-        const hay = `${e.title} ${e.category} ${e.note || ""}`.toLowerCase();
+        const hay = `${e.title} ${e.category} ${e.note || ""} ${expenseEmployeeLabel(
+          e
+        )} ${expenseSourceLabel(e)}`.toLowerCase();
         if (!hay.includes(queryText)) return false;
       }
 
-      // ✅ فلترة الناقص ملاحظة فقط (هذا الشهر فقط)
       if (onlyMissingNotes) {
-        const monthKey = todayISO().slice(0, 7);
-        if (!(e.date || "").startsWith(monthKey)) return false;
-
         const n = String(e.note ?? "").trim();
         if (n) return false;
       }
 
       return true;
     });
-  }, [allItems, from, to, fCategory, fPayment, q, onlyMissingNotes]);
-
-  const totalFiltered = useMemo(
-    () => filtered.reduce((sum, e) => sum + (Number(e.amount) || 0), 0),
-    [filtered]
-  );
-
-  const byCategoryFiltered = useMemo(() => {
-    const map = new Map<string, number>();
-    filtered.forEach((e) => {
-      map.set(e.category, (map.get(e.category) || 0) + (Number(e.amount) || 0));
-    });
-
-    return Array.from(map.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [filtered]);
+  }, [allItems, activeRange.from, activeRange.to, fCategory, fPayment, q, onlyMissingNotes]);
 
   // ====== فورم الإضافة ======
   const resetForm = () => {
@@ -958,15 +942,22 @@ const DashboardExpenses: React.FC = () => {
 
     const rows = filtered.map((e) => ({
       التاريخ: e.date,
-      المصروف: e.title,
+      النوع: expenseTypeLabel(e),
+      الوصف: e.title || e.note || "",
+      الموظفة: expenseEmployeeLabel(e),
       التصنيف: e.category,
       المبلغ: e.amount,
+      المصدر: expenseSourceLabel(e),
       طريقة_الدفع: e.paymentMethod,
       ملاحظات: e.note || "",
+      دورة_الرواتب:
+        payrollKindFromExpense(e) === "manual"
+          ? ""
+          : String(e.monthKey || payrollCycleKeyFromDate(e.date, PAYROLL_CLOSE_DAY) || ""),
     }));
 
     const csv = toCsv(rows);
-    const filename = `expenses_${from || "all"}_${to || "all"}.csv`;
+    const filename = `expenses_${recordMode}_${selectedMonthKey}_${activeRange.from}_${activeRange.to}.csv`;
     downloadTextFile(filename, csv);
   };
 
@@ -1037,6 +1028,11 @@ const DashboardExpenses: React.FC = () => {
     label: String(p),
   }));
 
+  const recordModeOptions: DDOption[] = [
+    { value: "calendar", label: "شهر تقويمي (1-آخر الشهر)" },
+    { value: "payroll_cycle", label: `دورة رواتب (${PAYROLL_CLOSE_DAY + 1}-${PAYROLL_CLOSE_DAY})` },
+  ];
+
   return (
     <div className="exp-page">
       {/* ✅ Header ثابت: الأزرار تظهر دائمًا (حل اختفاء التصدير) */}
@@ -1066,18 +1062,6 @@ const DashboardExpenses: React.FC = () => {
           </button>
 
           <button
-            className="reports-btn"
-            type="button"
-            onClick={() => {
-              setOnlyMissingNotes(false);
-              setRecordOpen(true);
-            }}
-            disabled={loading}
-          >
-            عرض السجل
-          </button>
-
-          <button
             className="reports-btn primary"
             type="button"
             onClick={() => {
@@ -1092,103 +1076,111 @@ const DashboardExpenses: React.FC = () => {
         </div>
       </div>
 
-      {/* ✅ Alert Card (يظهر إذا فيه ناقص ملاحظات) - بدون ما يتحكم في الأزرار */}
-      {missingNotesCountFS > 0 ? (
-        <div className="exp-alert-card">
-          <div className="exp-alert-left">
-            <div className="exp-alert-ico">⚠️</div>
-            <div className="exp-alert-texts">
-              <div className="exp-alert-title">تنبيه</div>
-              <div className="exp-alert-desc">
-                عندك <b>{missingNotesCountFS}</b> مصروف هذا الشهر بدون ملاحظات.
-              </div>
-            </div>
+      <div className="exp-card exp-card--controls">
+        <h3 className="exp-card-title">سجل المصروفات الكامل</h3>
+        <div className="exp-control-points">
+          <div>
+            إغلاق دورة الرواتب ثابت يوم <b>{PAYROLL_CLOSE_DAY}</b> من كل شهر.
           </div>
+          <div>
+            الفترة المعروضة الآن: <b>{activeRange.from}</b> إلى <b>{activeRange.to}</b>.
+          </div>
+          <div>
+            دورة الرواتب المرجعية: <b>{activePayrollCycleKey}</b> | بدون ملاحظات داخل الفترة:{" "}
+            <b>{missingNotesInActiveRange}</b> | هذا الشهر: <b>{missingNotesCountFS}</b>.
+          </div>
+          <div>
+            أي أوفر تايم بعد يوم {PAYROLL_CLOSE_DAY} (مثل 28-31) يترحل تلقائيًا لدورة الشهر التالي، مع الاحتفاظ
+            بتاريخ يومه الفعلي.
+          </div>
+        </div>
 
-          <div className="exp-alert-right">
-            <button
-              className="reports-btn"
-              type="button"
-              onClick={() => {
-                setOnlyMissingNotes(true);
-                setFrom("");
-                setTo("");
-                setFCategory("الكل");
-                setFPayment("الكل");
-                setQ("");
-                setRecordOpen(true);
+        <div className="exp-filters exp-filters--controls">
+          <label>
+            وضع العرض
+            <DashDropdown
+              value={recordMode}
+              onChange={(v) => setRecordMode(v === "payroll_cycle" ? "payroll_cycle" : "calendar")}
+              options={recordModeOptions}
+              disabled={loading}
+            />
+          </label>
+
+          <label>
+            الشهر المرجعي
+            <input
+              type="month"
+              value={selectedMonthKey}
+              onChange={(e) => {
+                const next = String(e.target.value || "").trim();
+                if (/^\d{4}-\d{2}$/.test(next)) setSelectedMonthKey(next);
               }}
-            >
-              عرض المصروفات بدون ملاحظات
-            </button>
+            />
+          </label>
 
+          <label>
+            التصنيف
+            <DashDropdown
+              value={fCategory}
+              onChange={(v) => setFCategory(v)}
+              options={categoryOptions}
+              disabled={loading}
+            />
+          </label>
+
+          <label>
+            الدفع
+            <DashDropdown
+              value={fPayment}
+              onChange={(v) => setFPayment(v)}
+              options={paymentOptions}
+              disabled={loading}
+            />
+          </label>
+
+          <label className="span-2">
+            بحث
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="الوصف / الموظفة / المصدر / الملاحظات..."
+            />
+          </label>
+
+          <div className="span-2 exp-actions">
             <button
-              className="reports-btn primary"
+              className={`exp-btn ${onlyMissingNotes ? "" : "primary"}`}
+              type="button"
+              onClick={() => setOnlyMissingNotes(false)}
+            >
+              جميع المصروفات
+            </button>
+            <button
+              className={`exp-btn ${onlyMissingNotes ? "primary" : ""}`}
+              type="button"
+              onClick={() => setOnlyMissingNotes(true)}
+            >
+              بدون ملاحظات
+            </button>
+            <button
+              className="exp-btn"
               type="button"
               onClick={() => {
                 setOnlyMissingNotes(false);
-                setRecordOpen(true);
+                setFCategory("الكل");
+                setFPayment("الكل");
+                setQ("");
               }}
             >
-              عرض كل المصروفات
+              تصفير الفلاتر
             </button>
           </div>
         </div>
-      ) : null}
-
-      {/* ===== Summary Cards (3 فقط) ===== */}
-      <div className="exp-stats" style={{ marginTop: 12 }}>
-        <div className="exp-stat">
-          <div className="k">مصروفات اليوم</div>
-          <div className="v">{money(summary.todayTotal)} ريال</div>
-        </div>
-
-        <div className="exp-stat">
-          <div className="k">مصروفات هذا الأسبوع (يبدأ السبت)</div>
-          <div className="v">{money(summary.weekTotal)} ريال</div>
-        </div>
-
-        <div className="exp-stat">
-          <div className="k">مصروفات هذا الشهر</div>
-          <div className="v">{money(summary.monthTotal)} ريال</div>
-        </div>
-      </div>
-
-      {/* ===== Smart Alerts (سطرية خفيفة) ===== */}
-      <div className="exp-card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginBottom: 10 }}>تنبيهات ذكية</h3>
-
-        {smartAlerts.length === 0 ? (
-          <div style={{ fontSize: 13, opacity: 0.8 }}>
-            لا توجد تنبيهات حالياً — أضف مصروفات وستظهر التحليلات تلقائيًا.
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 8 }}>
-            {smartAlerts.map((a, i) => (
-              <div
-                key={`al_${i}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "10px 12px",
-                  border: "1px solid rgba(0,0,0,0.08)",
-                  borderRadius: 14,
-                  background: "#fff",
-                  fontSize: 13,
-                }}
-              >
-                <span style={{ width: 22, textAlign: "center" }}>{a.icon}</span>
-                <span>{a.text}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ===== Main Grid ===== */}
-      <div className="exp-grid" style={{ marginTop: 12 }}>
-        <div className="exp-card">
+      <div className="exp-grid exp-grid--main">
+        <div className="exp-card exp-card--form">
           <h3>إضافة مصروف</h3>
 
           <div className="exp-form">
@@ -1307,507 +1299,211 @@ const DashboardExpenses: React.FC = () => {
           </div>
         </div>
 
-        {/* ✅ لوحة ملخص بدل الفراغ */}
-        <div className="exp-card">
-          <h3 style={{ marginBottom: 10 }}>ملخص سريع</h3>
-
-          {/* أعلى 3 تصنيفات (هذا الشهر) */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 16, marginBottom: 8 }}>
-              أعلى 3 تصنيفات (هذا الشهر)
-            </div>
-
-            {(() => {
-              const monthKey = todayISO().slice(0, 7);
-              const map = new Map<string, number>();
-
-              allItems.forEach((e) => {
-                if ((e.date || "").startsWith(monthKey)) {
-                  const cat = (e.category || "أخرى").trim() || "أخرى";
-                  map.set(cat, (map.get(cat) || 0) + (Number(e.amount) || 0));
-                }
-              });
-
-              const top3 = Array.from(map.entries())
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 3);
-
-              if (!top3.length)
-                return <div style={{ fontSize: 13, opacity: 0.75 }}>—</div>;
-
-              return (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {top3.map(([name, value]) => (
-                    <div
-                      key={name}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        flexWrap: "wrap",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        padding: "10px 12px",
-                        border: "1px solid rgba(0,0,0,0.08)",
-                        borderRadius: 14,
-                        background: "#fff",
-                        fontSize: 13,
-                      }}
-                    >
-                      <span>{name}</span>
-                      <b style={{ whiteSpace: "nowrap" }}>{money(value)} ريال</b>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
+        <div className="exp-card exp-card--table">
+          <div className="exp-table-head">
+            <h3 className="exp-card-title">جميع المصروفات</h3>
+            <span className="exp-results-count">{filtered.length}</span>
           </div>
+          <div className="exp-table-wrap exp-table-wrap--main">
+            <table className="exp-table">
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>النوع</th>
+                  <th>الوصف</th>
+                  <th>الموظفة</th>
+                  <th>المبلغ</th>
+                  <th>المصدر</th>
+                  <th>ملاحظات</th>
+                  <th>إجراء</th>
+                </tr>
+              </thead>
 
-          {/* آخر 5 مصروفات */}
-          <div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 8,
-              }}
-            >
-              <div style={{ fontSize: 16 }}>آخر 5 مصروفات</div>
-            </div>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="empty">
+                      جاري تحميل المصروفات...
+                    </td>
+                  </tr>
+                ) : filtered.length ? (
+                  filtered.map((e) => {
+                    const isAutoPayroll = isAutoPayrollExpenseId(e.id);
+                    const isEdit = !isAutoPayroll && editId === e.id;
+                    return (
+                      <tr key={e.id} className={isAutoPayroll ? "exp-row-auto-payroll" : ""}>
+                        <td data-label="التاريخ">
+                          {isEdit ? (
+                            <input
+                              type="date"
+                              value={editForm.date}
+                              onChange={(ev) =>
+                                setEditForm((p) => ({
+                                  ...p,
+                                  date: ev.target.value,
+                                }))
+                              }
+                            />
+                          ) : (
+                            e.date
+                          )}
+                        </td>
 
-            {(() => {
-              const latest = [...allItems]
-                .sort(
-                  (a, b) =>
-                    (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0)
-                )
-                .slice(0, 5);
+                        <td data-label="النوع">{expenseTypeLabel(e)}</td>
 
-              if (!latest.length) {
-                return (
-                  <div style={{ fontSize: 13, opacity: 0.75 }}>
-                    لا يوجد مصروفات بعد.
-                  </div>
-                );
-              }
+                        <td data-label="الوصف" className="strong">
+                          {isEdit ? (
+                            <input
+                              value={editForm.title}
+                              onChange={(ev) =>
+                                setEditForm((p) => ({
+                                  ...p,
+                                  title: ev.target.value,
+                                }))
+                              }
+                              placeholder="الوصف"
+                            />
+                          ) : (
+                            <div className="exp-row-title">
+                              <span>{e.title || e.note || "-"}</span>
+                              {isAutoPayroll ? <span className="exp-auto-pill">تلقائي</span> : null}
+                            </div>
+                          )}
+                        </td>
 
-              return (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {latest.map((e) => (
-                    <div
-                      key={e.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        flexWrap: "wrap",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        padding: "10px 12px",
-                        border: "1px solid rgba(0,0,0,0.08)",
-                        borderRadius: 14,
-                        background: "#fff",
-                        fontSize: 13,
-                      }}
-                    >
-                      <div style={{ display: "grid", gap: 2, minWidth: 0, flex: "1 1 180px" }}>
-                        <b>{e.title}</b>
-                        <span style={{ opacity: 0.75 }}>
-                          {e.date} • {e.category}
-                        </span>
-                      </div>
-                      <b style={{ whiteSpace: "nowrap" }}>{money(Number(e.amount) || 0)} ريال</b>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
+                        <td data-label="الموظفة">{expenseEmployeeLabel(e)}</td>
+
+                        <td data-label="المبلغ" className="amount">
+                          {isEdit ? (
+                            <input
+                              inputMode="decimal"
+                              value={editForm.amount}
+                              onChange={(ev) =>
+                                setEditForm((p) => ({
+                                  ...p,
+                                  amount: ev.target.value,
+                                }))
+                              }
+                              placeholder="0"
+                            />
+                          ) : (
+                            <>{money(e.amount)} ريال</>
+                          )}
+                        </td>
+
+                        <td data-label="المصدر">
+                          {isEdit ? (
+                            <div style={{ display: "grid", gap: 6 }}>
+                              <DashDropdown
+                                value={editForm.category}
+                                onChange={(v) => setEditForm((p) => ({ ...p, category: v }))}
+                                options={
+                                  categoryOptionsNoAll.length
+                                    ? categoryOptionsNoAll
+                                    : [{ value: "أخرى", label: "أخرى" }]
+                                }
+                                disabled={loading}
+                              />
+                              <DashDropdown
+                                value={editForm.paymentMethod}
+                                onChange={(v) =>
+                                  setEditForm((p) => ({
+                                    ...p,
+                                    paymentMethod: v,
+                                  }))
+                                }
+                                options={
+                                  paymentOptionsNoAll.length
+                                    ? paymentOptionsNoAll
+                                    : [
+                                        { value: "كاش", label: "كاش" },
+                                        { value: "شبكة", label: "شبكة" },
+                                        { value: "تحويل", label: "تحويل" },
+                                      ]
+                                }
+                                disabled={loading}
+                              />
+                            </div>
+                          ) : (
+                            expenseSourceLabel(e)
+                          )}
+                        </td>
+
+                        <td data-label="ملاحظات" className="muted">
+                          {isEdit ? (
+                            <input
+                              value={editForm.note}
+                              onChange={(ev) =>
+                                setEditForm((p) => ({
+                                  ...p,
+                                  note: ev.target.value,
+                                }))
+                              }
+                              placeholder="ملاحظة..."
+                            />
+                          ) : (
+                            e.note || "—"
+                          )}
+                        </td>
+
+                        <td data-label="إجراء">
+                          {isAutoPayroll ? (
+                            <span className="exp-auto-pill">تلقائي</span>
+                          ) : isEdit ? (
+                            <div className="exp-row-actions">
+                              <button
+                                className="exp-btn primary"
+                                type="button"
+                                disabled={loading}
+                                onClick={() => saveEdit(e)}
+                              >
+                                حفظ
+                              </button>
+                              <button
+                                className="exp-btn"
+                                type="button"
+                                disabled={loading}
+                                onClick={cancelEdit}
+                              >
+                                إلغاء
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="exp-row-actions">
+                              <button
+                                className="exp-btn"
+                                type="button"
+                                disabled={loading}
+                                onClick={() => startEdit(e)}
+                              >
+                                تعديل
+                              </button>
+                              <button
+                                className="exp-btn danger"
+                                type="button"
+                                disabled={loading}
+                                onClick={() => removeExpense(e.id)}
+                              >
+                                حذف
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={8} className="empty">
+                      ما فيه مصروفات ضمن الفترة الحالية.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
-
-      {/* ===== سجل المصروفات (Modal كبير) ===== */}
-      {recordOpen ? (
-        <Modal
-          open={recordOpen}
-          onClose={() => setRecordOpen(false)}
-          ariaLabel="سجل المصروفات"
-          panelClassName="dash-modal expenses-record-modal"
-          size="lg"
-        >
-            <div className="dash-modal-header">
-              <div>
-                <h3 style={{ margin: 0 }}>سجل المصروفات</h3>
-                <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
-                  فلترة + بحث + جدول عريض + توزيع حسب التصنيف
-                </div>
-              </div>
-
-              <button
-                className="dash-close"
-                type="button"
-                onClick={() => setRecordOpen(false)}
-                aria-label="إغلاق"
-              >
-                <FontAwesomeIcon icon={faXmark} />
-              </button>
-            </div>
-
-            <div className="dash-modal-body">
-              <div className="ep-filter-row">
-                <button
-                  className="exp-btn"
-                  onClick={loadExpenses}
-                  disabled={loading}
-                  type="button"
-                >
-                  تحديث
-                </button>
-
-                <button
-                  className="reports-btn"
-                  type="button"
-                  onClick={exportCsv}
-                  disabled={loading}
-                  title="CSV"
-                >
-                  <FontAwesomeIcon icon={faFileCsv} /> تصدير
-                </button>
-              </div>
-
-            <div style={{ marginTop: 14 }}>
-              <div className="exp-filters">
-                <label>
-                  من
-                  <input
-                    type="date"
-                    value={from}
-                    onChange={(e) => setFrom(e.target.value)}
-                  />
-                </label>
-
-                <label>
-                  إلى
-                  <input
-                    type="date"
-                    value={to}
-                    onChange={(e) => setTo(e.target.value)}
-                  />
-                </label>
-
-                <label>
-                  التصنيف
-                  <DashDropdown
-                    value={fCategory}
-                    onChange={(v) => setFCategory(v)}
-                    options={categoryOptions}
-                    disabled={loading}
-                  />
-                </label>
-
-                <label>
-                  الدفع
-                  <DashDropdown
-                    value={fPayment}
-                    onChange={(v) => setFPayment(v)}
-                    options={paymentOptions}
-                    disabled={loading}
-                  />
-                </label>
-
-                <label className="span-2">
-                  بحث
-                  <input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="اسم/تصنيف/ملاحظة..."
-                  />
-                </label>
-
-                <div className="span-2 exp-actions">
-                  <button
-                    className="exp-btn"
-                    type="button"
-                    onClick={() => {
-                      setFrom("");
-                      setTo("");
-                      setFCategory("الكل");
-                      setFPayment("الكل");
-                      setQ("");
-                    }}
-                  >
-                    تصفير الفلاتر
-                  </button>
-
-                  <div
-                    style={{
-                      marginInlineStart: "auto",
-                      fontSize: 13,
-                      opacity: 0.85,
-                    }}
-                  >
-                    الإجمالي بعد الفلترة: <b>{money(totalFiltered)} ريال</b>
-                  </div>
-                </div>
-              </div>
-
-              <div className="exp-table-wrap" style={{ marginTop: 10 }}>
-                <table className="exp-table">
-                  <thead>
-                    <tr>
-                      <th>التاريخ</th>
-                      <th>المصروف</th>
-                      <th>التصنيف</th>
-                      <th>الدفع</th>
-                      <th>المبلغ</th>
-                      <th>ملاحظات</th>
-                      <th>إجراء</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {loading ? (
-                      <tr>
-                        <td colSpan={7} className="empty">
-                          جاري تحميل المصروفات...
-                        </td>
-                      </tr>
-                    ) : filtered.length ? (
-                      filtered.map((e) => {
-                        const isAutoPayroll = isAutoPayrollExpenseId(e.id);
-                        const isEdit = !isAutoPayroll && editId === e.id;
-
-                        return (
-                          <tr key={e.id} className={isAutoPayroll ? "exp-row-auto-payroll" : ""}>
-                            <td data-label="التاريخ">
-                              {isEdit ? (
-                                <input
-                                  type="date"
-                                  value={editForm.date}
-                                  onChange={(ev) =>
-                                    setEditForm((p) => ({
-                                      ...p,
-                                      date: ev.target.value,
-                                    }))
-                                  }
-                                />
-                              ) : (
-                                e.date
-                              )}
-                            </td>
-
-                            <td data-label="المصروف" className="strong">
-                              {isEdit ? (
-                                <input
-                                  value={editForm.title}
-                                  onChange={(ev) =>
-                                    setEditForm((p) => ({
-                                      ...p,
-                                      title: ev.target.value,
-                                    }))
-                                  }
-                                  placeholder="اسم المصروف"
-                                />
-                              ) : (
-                                <div className="exp-row-title">
-                                  <span>{e.title}</span>
-                                  {isAutoPayroll ? <span className="exp-auto-pill">تلقائي</span> : null}
-                                </div>
-                              )}
-                            </td>
-
-                            <td data-label="التصنيف">
-                              {isEdit ? (
-                                <DashDropdown
-                                  value={editForm.category}
-                                  onChange={(v) =>
-                                    setEditForm((p) => ({ ...p, category: v }))
-                                  }
-                                  options={
-                                    categoryOptionsNoAll.length
-                                      ? categoryOptionsNoAll
-                                      : [{ value: "أخرى", label: "أخرى" }]
-                                  }
-                                  disabled={loading}
-                                />
-                              ) : (
-                                e.category
-                              )}
-                            </td>
-
-                            <td data-label="الدفع">
-                              {isEdit ? (
-                                <DashDropdown
-                                  value={editForm.paymentMethod}
-                                  onChange={(v) =>
-                                    setEditForm((p) => ({
-                                      ...p,
-                                      paymentMethod: v,
-                                    }))
-                                  }
-                                  options={
-                                    paymentOptionsNoAll.length
-                                      ? paymentOptionsNoAll
-                                      : [
-                                          { value: "كاش", label: "كاش" },
-                                          { value: "شبكة", label: "شبكة" },
-                                          { value: "تحويل", label: "تحويل" },
-                                        ]
-                                  }
-                                  disabled={loading}
-                                />
-                              ) : (
-                                String(e.paymentMethod)
-                              )}
-                            </td>
-
-                            <td data-label="المبلغ" className="amount">
-                              {isEdit ? (
-                                <input
-                                  inputMode="decimal"
-                                  value={editForm.amount}
-                                  onChange={(ev) =>
-                                    setEditForm((p) => ({
-                                      ...p,
-                                      amount: ev.target.value,
-                                    }))
-                                  }
-                                  placeholder="0"
-                                />
-                              ) : (
-                                <>{money(e.amount)} ريال</>
-                              )}
-                            </td>
-
-                            <td data-label="ملاحظات" className="muted">
-                              {isEdit ? (
-                                <input
-                                  value={editForm.note}
-                                  onChange={(ev) =>
-                                    setEditForm((p) => ({
-                                      ...p,
-                                      note: ev.target.value,
-                                    }))
-                                  }
-                                  placeholder="ملاحظة..."
-                                />
-                              ) : (
-                                e.note || "—"
-                              )}
-                            </td>
-
-                            <td data-label="إجراء">
-                              {isAutoPayroll ? (
-                                <span className="exp-auto-pill">تلقائي</span>
-                              ) : isEdit ? (
-                                <div className="exp-row-actions">
-                                  <button
-                                    className="exp-btn primary"
-                                    type="button"
-                                    disabled={loading}
-                                    onClick={() => saveEdit(e)}
-                                  >
-                                    حفظ
-                                  </button>
-                                  <button
-                                    className="exp-btn"
-                                    type="button"
-                                    disabled={loading}
-                                    onClick={cancelEdit}
-                                  >
-                                    إلغاء
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="exp-row-actions">
-                                  <button
-                                    className="exp-btn"
-                                    type="button"
-                                    disabled={loading}
-                                    onClick={() => startEdit(e)}
-                                  >
-                                    تعديل
-                                  </button>
-                                  <button
-                                    className="exp-btn danger"
-                                    type="button"
-                                    disabled={loading}
-                                    onClick={() => removeExpense(e.id)}
-                                  >
-                                    حذف
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan={7} className="empty">
-                          ما فيه مصروفات حسب الفلاتر الحالية.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="exp-breakdown" style={{ marginTop: 12 }}>
-                <div className="bd-head">
-                  <div>
-                    <div className="bd-title">توزيع المصروفات حسب التصنيف</div>
-                    <div className="bd-sub">
-                      الإجمالي بعد الفلترة: <b>{money(totalFiltered)} ريال</b>
-                    </div>
-                  </div>
-                  <div className="bd-pill">
-                    {byCategoryFiltered.length} تصنيف
-                  </div>
-                </div>
-
-                <div className="bd-list">
-                  {byCategoryFiltered.length ? (
-                    byCategoryFiltered.map((c) => {
-                      const pct =
-                        totalFiltered > 0
-                          ? Math.round((c.value / totalFiltered) * 100)
-                          : 0;
-
-                      return (
-                        <div key={c.name} className="bd-item">
-                          <div className="bd-row">
-                            <div className="bd-left">
-                              <span className="bd-dot" />
-                              <span className="bd-name">{c.name}</span>
-                            </div>
-
-                            <div className="bd-right">
-                              <span className="bd-amount">
-                                {money(c.value)} ريال
-                              </span>
-                              <span className="bd-pct">{pct}%</span>
-                            </div>
-                          </div>
-
-                          <div className="bd-bar">
-                            <div
-                              className="bd-fill"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="bd-empty">—</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
 
       {/* ✅ Alert Modal */}
       {modalMsg ? (

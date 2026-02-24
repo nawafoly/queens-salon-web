@@ -8,6 +8,9 @@ import { db } from "../services/firebase";
 import { AppSettingsService } from "../services/AppSettingsService";
 import {
   buildPayrollExpenseRowsForMonths,
+  PAYROLL_CLOSE_DAY,
+  payrollCycleKeyFromDate,
+  payrollCycleRangeForMonthKey,
   type BookingPayrollSource,
   type StaffPayrollSource,
 } from "../helpers/staffPayroll";
@@ -87,6 +90,25 @@ function toIsoDate(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+function normalizeIsoDate(v: any, fallbackMs?: number): string {
+  const raw = String(v ?? "").trim();
+  if (isIsoDate(raw)) return raw;
+
+  const datePrefixMatch = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (datePrefixMatch?.[1]) return datePrefixMatch[1];
+
+  if (raw) {
+    const parsed = new Date(raw);
+    if (Number.isFinite(parsed.getTime())) return toIsoDate(parsed);
+  }
+
+  if (Number.isFinite(Number(fallbackMs)) && Number(fallbackMs) > 0) {
+    const fromFallback = new Date(Number(fallbackMs));
+    if (Number.isFinite(fromFallback.getTime())) return toIsoDate(fromFallback);
+  }
+  return "";
+}
+
 function parseMillis(v: any): number {
   if (v == null) return 0;
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
@@ -145,6 +167,15 @@ function previousMonthKey(monthKey: string) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 }
 
+function nextMonthKey(monthKey: string) {
+  if (!/^\d{4}-\d{2}$/.test(String(monthKey || ""))) return "";
+  const y = Number(monthKey.slice(0, 4));
+  const m = Number(monthKey.slice(5, 7));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return "";
+  const d = new Date(y, m, 1);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
 function monthKeysBetween(fromIso: string, toIso: string): string[] {
   const from = isIsoDate(fromIso) ? fromIso : "";
   const to = isIsoDate(toIso) ? toIso : "";
@@ -163,6 +194,16 @@ function monthKeysBetween(fromIso: string, toIso: string): string[] {
     guard += 1;
   }
   return out;
+}
+
+function monthRangeFromKey(monthKey: string) {
+  if (!/^\d{4}-\d{2}$/.test(String(monthKey || "").trim())) return null;
+  const y = Number(monthKey.slice(0, 4));
+  const m = Number(monthKey.slice(5, 7));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return null;
+  const start = new Date(y, m - 1, 1);
+  const end = new Date(y, m, 0);
+  return { from: toIsoDate(start), to: toIsoDate(end) };
 }
 
 function normalizeStaffPayrollRows(rows: any[]): StaffPayrollSource[] {
@@ -215,7 +256,7 @@ function normalizeBookingPayrollRows(rows: BookingRow[]): BookingPayrollSource[]
     .filter(Boolean) as BookingPayrollSource[];
 }
 
-function getRange(period: PeriodKey, customFrom: string, customTo: string) {
+function getRange(period: PeriodKey, customFrom: string, customTo: string, selectedMonth: string) {
   const now = new Date();
   const today = toIsoDate(now);
 
@@ -229,8 +270,10 @@ function getRange(period: PeriodKey, customFrom: string, customTo: string) {
   }
 
   if (period === "month") {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { from: toIsoDate(start), to: today };
+    const monthRange =
+      monthRangeFromKey(String(selectedMonth || "").trim()) ||
+      monthRangeFromKey(toMonthKey(now));
+    return monthRange || { from: today, to: today };
   }
 
   if (period === "year") {
@@ -247,7 +290,7 @@ function getRange(period: PeriodKey, customFrom: string, customTo: string) {
 }
 
 function inDateRange(dateIso: string, from: string, to: string) {
-  const d = String(dateIso || "").trim();
+  const d = normalizeIsoDate(dateIso);
   if (!d) return false;
   return d >= from && d <= to;
 }
@@ -263,7 +306,8 @@ function monthLabelAr(monthKey: string) {
   return `${MONTHS_AR[m - 1]} ${y}`;
 }
 
-function formatDeltaPct(v: number) {
+function formatDeltaPct(v: number | null) {
+  if (v == null) return "—";
   if (!Number.isFinite(v)) return "-";
   const sign = v > 0 ? "+" : "";
   return `${sign}${v.toFixed(1)}%`;
@@ -271,8 +315,14 @@ function formatDeltaPct(v: number) {
 
 function calcDeltaPct(current: number, previous: number) {
   if (!Number.isFinite(current) || !Number.isFinite(previous)) return 0;
-  if (previous === 0) return current === 0 ? 0 : 100;
+  if (previous === 0) return current === 0 ? 0 : null;
   return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+function deltaClass(v: number | null) {
+  if (v == null) return "is-flat";
+  if (Math.abs(v) < 0.0001) return "is-flat";
+  return v > 0 ? "is-up" : "is-down";
 }
 
 function niceCeil(v: number) {
@@ -319,7 +369,8 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
 }
 
 export default function DashboardReports() {
-  const [period, setPeriod] = useState<PeriodKey>("day");
+  const [period, setPeriod] = useState<PeriodKey>("month");
+  const [selectedMonth, setSelectedMonth] = useState(toMonthKey(new Date()));
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [trendMode, setTrendMode] = useState<"month" | "day">("month");
@@ -334,8 +385,8 @@ export default function DashboardReports() {
   const [loadErr, setLoadErr] = useState("");
 
   const range = useMemo(
-    () => getRange(period, customFrom, customTo),
-    [period, customFrom, customTo]
+    () => getRange(period, customFrom, customTo, selectedMonth),
+    [period, customFrom, customTo, selectedMonth]
   );
 
   useEffect(() => {
@@ -363,13 +414,14 @@ export default function DashboardReports() {
       (snap) => {
         const rows: BookingRow[] = snap.docs.map((d) => {
           const raw = d.data() as any;
-          const date = String(raw?.date || "").trim();
+          const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
+          const date = normalizeIsoDate(raw?.date, createdAtMs);
           return {
             id: d.id,
             publicId: String(raw?.publicId || raw?.trackPublicId || "").trim(),
             date,
             time: String(raw?.time || "").trim(),
-            status: String(raw?.status || "pending").trim() as BookingStatus,
+            status: String(raw?.status || "pending").trim().toLowerCase() as BookingStatus,
             amount: Number(raw?.finalPrice ?? raw?.total ?? raw?.serviceSnapshot?.priceAtBooking ?? 0) || 0,
             employeeId: String(raw?.employeeId || "").trim() || null,
             employeeUid: String(raw?.employeeUid || "").trim() || null,
@@ -400,7 +452,7 @@ export default function DashboardReports() {
         const rows: IncomeRow[] = snap.docs.map((d) => {
           const raw = d.data() as any;
           const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
-          const date = String(raw?.date || "").trim() || (createdAtMs ? toIsoDate(new Date(createdAtMs)) : "");
+          const date = normalizeIsoDate(raw?.date, createdAtMs);
           const time = createdAtMs
             ? new Intl.DateTimeFormat("ar-SA", {
                 hour: "2-digit",
@@ -443,16 +495,19 @@ export default function DashboardReports() {
           const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
           return {
             id: d.id,
-            date:
-              String(raw?.date || "").trim() ||
-              (createdAtMs ? toIsoDate(new Date(createdAtMs)) : ""),
+            date: normalizeIsoDate(raw?.date, createdAtMs),
             amount: Number(raw?.amount ?? 0) || 0,
             category: String(raw?.category || "أخرى").trim() || "أخرى",
             title: String(raw?.title || "").trim(),
             note: String(raw?.note || "").trim(),
             addedBy: String(
-              raw?.createdByName || raw?.addedBy || raw?.createdBy || raw?.createdByUid || "-"
-            ).trim() || "-",
+              raw?.createdByName ||
+                raw?.addedBy ||
+                raw?.createdBy ||
+                raw?.createdByEmail ||
+                raw?.createdByUid ||
+                "الإدارة"
+            ).trim() || "الإدارة",
             createdAtMs,
           };
         });
@@ -578,7 +633,15 @@ export default function DashboardReports() {
       if (prev) set.add(prev);
     }
     set.add(toMonthKey(new Date()));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    const expanded = new Set<string>();
+    set.forEach((mk) => {
+      expanded.add(mk);
+      const prev = previousMonthKey(mk);
+      const next = nextMonthKey(mk);
+      if (prev) expanded.add(prev);
+      if (next) expanded.add(next);
+    });
+    return Array.from(expanded).sort((a, b) => a.localeCompare(b));
   }, [bookings, expenses, range.from, range.to]);
 
   const autoPayrollExpenses = useMemo<ExpenseRow[]>(() => {
@@ -616,6 +679,57 @@ export default function DashboardReports() {
     () => expensesWithPayroll.filter((x) => inDateRange(x.date, range.from, range.to)),
     [expensesWithPayroll, range.from, range.to]
   );
+
+  const payrollCycleMonthKey = useMemo(() => {
+    if (period === "month" && /^\d{4}-\d{2}$/.test(String(selectedMonth || "").trim())) {
+      return String(selectedMonth || "").trim();
+    }
+    return monthKeyFromIsoDate(String(range.to || "").trim()) || toMonthKey(new Date());
+  }, [period, selectedMonth, range.to]);
+
+  const payrollCycleRange = useMemo(() => {
+    return (
+      payrollCycleRangeForMonthKey(payrollCycleMonthKey, PAYROLL_CLOSE_DAY) || {
+        from: range.from,
+        to: range.to,
+      }
+    );
+  }, [payrollCycleMonthKey, range.from, range.to]);
+
+  const expensesInPayrollCycle = useMemo(
+    () =>
+      expensesWithPayroll.filter((x) =>
+        inDateRange(x.date, payrollCycleRange.from, payrollCycleRange.to)
+      ),
+    [expensesWithPayroll, payrollCycleRange.from, payrollCycleRange.to]
+  );
+
+  const payrollCycleTotals = useMemo(() => {
+    let salary = 0;
+    let overtime = 0;
+    let other = 0;
+    expensesInPayrollCycle.forEach((row) => {
+      const amount = Number(row.amount || 0);
+      const id = String(row.id || "");
+      if (id.startsWith("auto_payroll_salary_")) {
+        salary += amount;
+        return;
+      }
+      if (id.startsWith("auto_payroll_overtime_")) {
+        overtime += amount;
+        return;
+      }
+      other += amount;
+    });
+    return {
+      cycleKey:
+        payrollCycleKeyFromDate(payrollCycleRange.to, PAYROLL_CLOSE_DAY) || payrollCycleMonthKey,
+      salary,
+      overtime,
+      other,
+      total: salary + overtime + other,
+    };
+  }, [expensesInPayrollCycle, payrollCycleRange.to, payrollCycleMonthKey]);
 
   const revenueRowsDetailed = useMemo<RevenueDetailsRow[]>(() => {
     const fromBookings: RevenueDetailsRow[] = bookingRevenueRows.map((b) => ({
@@ -672,12 +786,13 @@ export default function DashboardReports() {
   }, [bookingRevenueRows, manualIncomeRows, refundRows, expensesInRange]);
 
   const monthCompare = useMemo(() => {
-    const base = String(range.to || "").trim();
-    const baseDate = /^\d{4}-\d{2}-\d{2}$/.test(base) ? new Date(`${base}T00:00:00`) : new Date();
-    const safeBaseDate = Number.isFinite(baseDate.getTime()) ? baseDate : new Date();
-    const currentKey = toMonthKey(safeBaseDate);
-    const prevDate = new Date(safeBaseDate.getFullYear(), safeBaseDate.getMonth() - 1, 1);
-    const previousKey = toMonthKey(prevDate);
+    const monthFromRange = monthKeyFromIsoDate(String(range.to || "").trim());
+    const monthFromPicker = String(selectedMonth || "").trim();
+    const currentKey =
+      period === "month" && /^\d{4}-\d{2}$/.test(monthFromPicker)
+        ? monthFromPicker
+        : monthFromRange || toMonthKey(new Date());
+    const previousKey = previousMonthKey(currentKey) || currentKey;
 
     const bookingRevenueByMonth = (key: string) =>
       bookings
@@ -740,7 +855,7 @@ export default function DashboardReports() {
         net: calcDeltaPct(currentNet, previousNet),
       },
     };
-  }, [range.to, bookings, incomeRows, expensesWithPayroll]);
+  }, [period, selectedMonth, range.to, bookings, incomeRows, expensesWithPayroll]);
 
   const chartsModel = useMemo(() => {
     const selectedYear = Number(String(range.to || "").slice(0, 4)) || new Date().getFullYear();
@@ -922,7 +1037,8 @@ export default function DashboardReports() {
           <h1>اللوحة المالية</h1>
           <p>
             المصدر الرسمي: إيراد الحجوزات من الحجوزات (مؤكد/مكتمل) + دخل يدوي/استرجاع من income، والمصروفات من
-            expenses + الرواتب/الأوفر تايم المحسوبة تلقائيًا.
+            expenses + الرواتب/الأوفر تايم المحسوبة تلقائيًا. العرض الشهري هنا تقويمي (1-آخر الشهر)، بينما الرواتب
+            تُغلق بدورة 28-27.
           </p>
           <small className="reports-v2__sync">
             <FontAwesomeIcon icon={faClockRotateLeft} /> آخر مزامنة: {lastSyncLabel}
@@ -967,6 +1083,22 @@ export default function DashboardReports() {
           فترة مخصصة
         </button>
 
+        {period === "month" && (
+          <div className="reports-v2__custom-range">
+            <label>
+              الشهر
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => {
+                  const next = String(e.target.value || "").trim();
+                  if (/^\d{4}-\d{2}$/.test(next)) setSelectedMonth(next);
+                }}
+              />
+            </label>
+          </div>
+        )}
+
         {period === "custom" && (
           <div className="reports-v2__custom-range">
             <label>
@@ -985,6 +1117,37 @@ export default function DashboardReports() {
         </div>
       </div>
 
+      <section className="reports-v2__payroll-cycle">
+        <div className="section-head">
+          <h2>دورة الرواتب (28-27)</h2>
+          <span>الإغلاق المحاسبي ثابت يوم {PAYROLL_CLOSE_DAY}</span>
+        </div>
+        <div className="reports-v2__payroll-cycle-grid">
+          <article className="payroll-chip">
+            <h4>الدورة</h4>
+            <strong>{payrollCycleTotals.cycleKey}</strong>
+            <p>
+              من {payrollCycleRange.from} إلى {payrollCycleRange.to}
+            </p>
+          </article>
+          <article className="payroll-chip">
+            <h4>رواتب</h4>
+            <strong>{formatMoney(payrollCycleTotals.salary)}</strong>
+            <p>مصروفات الرواتب التلقائية داخل الدورة</p>
+          </article>
+          <article className="payroll-chip">
+            <h4>أوفر تايم</h4>
+            <strong>{formatMoney(payrollCycleTotals.overtime)}</strong>
+            <p>مسجل يوميًا بتاريخ يومه الفعلي</p>
+          </article>
+          <article className="payroll-chip">
+            <h4>إجمالي مصروفات الدورة</h4>
+            <strong>{formatMoney(payrollCycleTotals.total)}</strong>
+            <p>رواتب + أوفر تايم + باقي المصروفات</p>
+          </article>
+        </div>
+      </section>
+
       <div className="reports-v2__kpis">
         <article className="kpi kpi-revenue">
           <h3>إجمالي الإيرادات</h3>
@@ -1002,8 +1165,7 @@ export default function DashboardReports() {
 
       <section className="reports-v2__month-compare">
         <div className="section-head">
-          <h2>مقارنة الأشهر</h2>
-          <span>{monthCompare.currentLabel} مقابل {monthCompare.previousLabel}</span>
+          <h2>مقارنة الأشهر (تقويميًا) - {monthCompare.currentLabel} مقابل {monthCompare.previousLabel}</h2>
         </div>
         <div className="month-compare-grid">
           <article className="month-compare-card">
@@ -1016,7 +1178,7 @@ export default function DashboardReports() {
               <span>{monthCompare.previousLabel}</span>
               <b>{formatMoney(monthCompare.previous.revenue)}</b>
             </div>
-            <div className={`month-compare-delta ${monthCompare.delta.revenue >= 0 ? "is-up" : "is-down"}`}>
+            <div className={`month-compare-delta ${deltaClass(monthCompare.delta.revenue)}`}>
               {formatDeltaPct(monthCompare.delta.revenue)}
             </div>
           </article>
@@ -1031,7 +1193,7 @@ export default function DashboardReports() {
               <span>{monthCompare.previousLabel}</span>
               <b>{formatMoney(monthCompare.previous.expenses)}</b>
             </div>
-            <div className={`month-compare-delta ${monthCompare.delta.expenses >= 0 ? "is-up" : "is-down"}`}>
+            <div className={`month-compare-delta ${deltaClass(monthCompare.delta.expenses)}`}>
               {formatDeltaPct(monthCompare.delta.expenses)}
             </div>
           </article>
@@ -1046,7 +1208,7 @@ export default function DashboardReports() {
               <span>{monthCompare.previousLabel}</span>
               <b>{formatMoney(monthCompare.previous.net)}</b>
             </div>
-            <div className={`month-compare-delta ${monthCompare.delta.net >= 0 ? "is-up" : "is-down"}`}>
+            <div className={`month-compare-delta ${deltaClass(monthCompare.delta.net)}`}>
               {formatDeltaPct(monthCompare.delta.net)}
             </div>
           </article>

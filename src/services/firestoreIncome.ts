@@ -42,6 +42,29 @@ function toMillis(v: any): number {
   return Number.isFinite(t) ? t : 0;
 }
 
+function toIsoDate(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function normalizeIsoDate(rawDate: any, fallbackMs: number): string {
+  const direct = String(rawDate ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
+
+  const withPrefix = direct.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (withPrefix?.[1]) return withPrefix[1];
+
+  if (direct) {
+    const parsed = Date.parse(direct);
+    if (Number.isFinite(parsed)) return toIsoDate(new Date(parsed));
+  }
+
+  if (fallbackMs > 0) return toIsoDate(new Date(fallbackMs));
+  return "";
+}
+
 /** ✅ تطبيع طريقة الدفع (يدعم العربي + القديم) */
 function normalizePaymentMethod(x: any): PaymentMethod {
   const s = String(x ?? "").toLowerCase().trim();
@@ -61,11 +84,12 @@ function normalizePaymentMethod(x: any): PaymentMethod {
 }
 
 function normalizeIncome(raw: any, id: string): IncomeItem {
-  const createdAtMs = toMillis(raw?.createdAt);
+  const createdAtMs = toMillis(raw?.createdAt || raw?.updatedAt);
+  const date = normalizeIsoDate(raw?.date, createdAtMs);
 
   return {
     id,
-    date: String(raw?.date ?? "").trim(), // YYYY-MM-DD
+    date, // YYYY-MM-DD
     amount: Number(raw?.amount ?? 0),
     method: normalizePaymentMethod(raw?.method),
     source: String(raw?.source ?? "دخل").trim(),

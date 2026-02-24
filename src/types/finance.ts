@@ -29,6 +29,18 @@ export type Expense = {
 
   /** optional extras */
   bookingId?: string;
+  addedBy?: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdByUid?: string;
+  createdByEmail?: string;
+  sourceKind?: string;
+  sourceRefId?: string;
+  sourceType?: string;
+  staffId?: string;
+  staffName?: string;
+  monthKey?: string;
+  payrollKind?: "salary" | "overtime";
 };
 
 /** إيراد */
@@ -69,4 +81,3 @@ export type FinanceSettings = {
   currency: string;
   incomeBookingStatuses: BookingIncomeStatus[];
 };
-
