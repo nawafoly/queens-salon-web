@@ -210,6 +210,14 @@ type FlatService = {
   source: "firestore" | "pricing";
 };
 
+type PriceLookupItem = {
+  id: string;
+  name: string;
+  price: number;
+  imageUrl: string;
+  searchText: string;
+};
+
 type CategoryOption = { id: string; name: string };
 type PickerScope = "services" | "packages";
 
@@ -955,7 +963,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [servicePicker, setServicePicker] = useState<string>("");
   const [pickerScope, setPickerScope] = useState<PickerScope>("services");
 
-  const [showHairGuide, setShowHairGuide] = useState(false);
+  const [priceLookupQuery, setPriceLookupQuery] = useState("");
+  const [priceLookupLoading, setPriceLookupLoading] = useState(false);
+  const [priceLookupServices, setPriceLookupServices] = useState<PriceLookupItem[]>([]);
+  const [priceLookupImageModal, setPriceLookupImageModal] = useState<{
+    open: boolean;
+    name: string;
+    imageUrl: string;
+  }>({
+    open: false,
+    name: "",
+    imageUrl: "",
+  });
 
   const [hairGuideUrl, setHairGuideUrl] = useState<string>(hairGuideImg);
   const [isOwner, setIsOwner] = useState(false);
@@ -2977,6 +2996,71 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }
 
   // =========================
+  // Read-only: price lookup list
+  // =========================
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPriceLookupServices() {
+      try {
+        setPriceLookupLoading(true);
+        const snap = await getDocs(collection(db, "salons", SALON_ID, "services"));
+        if (cancelled) return;
+
+        const rows = snap.docs
+          .map((d) => {
+            const raw = d.data() as any;
+            const name = readDisplayLabel(raw, String(d.id || ""));
+            const priceRaw =
+              (raw as any)?.["السعر"] ??
+              raw?.price ??
+              raw?.basePrice ??
+              raw?.finalPrice ??
+              0;
+            const price = Number(String(priceRaw).replace(/[^\d.]/g, "")) || 0;
+            const imageUrl = String(
+              raw?.imageUrl ??
+                raw?.imageURL ??
+                raw?.image ??
+                raw?.photoUrl ??
+                raw?.photoURL ??
+                ""
+            ).trim();
+            const variantTerms = Array.isArray(raw?.variants)
+              ? raw.variants
+                  .map((v: any) => String(v?.name || v?.label || v?.title || "").trim())
+                  .filter(Boolean)
+                  .join(" ")
+              : "";
+
+            return {
+              id: String(d.id || "").trim(),
+              active: raw?.active === true,
+              name: String(name || "").trim(),
+              price,
+              imageUrl,
+              searchText: normalizeSearchText(`${name} ${variantTerms}`),
+            };
+          })
+          .filter((x) => x.active && x.id && x.name)
+          .map(({ active, ...rest }) => rest)
+          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
+
+        setPriceLookupServices(rows);
+      } catch {
+        if (!cancelled) setPriceLookupServices([]);
+      } finally {
+        if (!cancelled) setPriceLookupLoading(false);
+      }
+    }
+
+    loadPriceLookupServices();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // =========================
   // Load sections
   // =========================
   useEffect(() => {
@@ -3167,8 +3251,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   // =========================
   // One source services list
   // =========================
-  const HAIR_SECTION_IDS = new Set(["hair", "الشعر", "hair_section", "قص", "قص_شعر"]);
-
   const servicesFlat: FlatService[] = useMemo(() => {
     if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
       const secMap = new Map<string, string>();
@@ -3429,21 +3511,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       .filter((x) => x.id);
   }, [servicesFlat, bookingDate, appSettings]);
 
-  const isHairSection = useMemo(() => {
-    const id = String(selectedSectionId || "").trim().toLowerCase();
-    if (HAIR_SECTION_IDS.has(id)) return true;
+  const priceLookupNeedle = useMemo(
+    () => normalizeSearchText(String(priceLookupQuery || "").trim()),
+    [priceLookupQuery]
+  );
 
-    const sec = sectionOptions.find((s) => String(s.id) === String(selectedSectionId));
-    const title = String(sec?.title || "").toLowerCase();
-
-    return (
-      title.includes("شعر") ||
-      title.includes("hair") ||
-      title.includes("صبغ") ||
-      title.includes("استشوار") ||
-      title.includes("تساريح")
-    );
-  }, [selectedSectionId, sectionOptions]);
+  const priceLookupResults = useMemo(() => {
+    if (!priceLookupNeedle) return priceLookupServices;
+    return priceLookupServices.filter((s) => String(s.searchText || "").includes(priceLookupNeedle));
+  }, [priceLookupServices, priceLookupNeedle]);
 
   const futureStaffOptions = useMemo(() => {
     const sid = String(resolvedFutureServiceId || "").trim();
@@ -3793,7 +3869,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       setServicePicker("");
       setSelectedCategory("");
       setSelectedSectionId("");
-      setShowHairGuide(false);
       setDiscountMsg("");
       return;
     }
@@ -3856,7 +3931,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setServicePicker("");
     setSelectedCategory("");
     setSelectedSectionId("");
-    setShowHairGuide(false);
 
     setDiscountMsg("");
   };
@@ -4595,7 +4669,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setPickerScope(String(sid || "").trim() === PACKAGE_SECTION_ID ? "packages" : "services");
     setSelectedCategory("");
     setServicePicker("");
-    setShowHairGuide(false);
   };
 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -5894,6 +5967,40 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           </div>
         </div>
       </Modal>
+      <Modal
+        open={priceLookupImageModal.open}
+        onClose={() => {
+          setPriceLookupImageModal({ open: false, name: "", imageUrl: "" });
+        }}
+        ariaLabel="عرض صورة الخدمة"
+        size="lg"
+      >
+        <div className="p-3">
+          <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-2">
+            <h5 className="mb-0" style={{ fontWeight: 800 }}>
+              {priceLookupImageModal.name || "صورة الخدمة"}
+            </h5>
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm"
+              onClick={() => setPriceLookupImageModal({ open: false, name: "", imageUrl: "" })}
+            >
+              إغلاق
+            </button>
+          </div>
+          {priceLookupImageModal.imageUrl ? (
+            <img
+              src={priceLookupImageModal.imageUrl}
+              alt={priceLookupImageModal.name || "service image"}
+              className="bk-price-preview-image"
+            />
+          ) : (
+            <div className="alert alert-secondary mb-0" style={{ borderRadius: 12 }}>
+              لا توجد صورة لهذه الخدمة.
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <div className="container bk-internal-container">
         <div className="mb-3 bk-page-header">
@@ -5917,267 +6024,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             Form
         ========================= */}
         <form ref={internalBookingFormRef} onSubmit={handleSubmit}>
-          <div className="row g-3 bk-sections-grid">
-            {/* اختيار الخدمة */}
-            <div className="col-12 col-lg-6 order-1">
-              <div className="card p-3 bk-panel bk-service-section">
-                <div className="d-flex align-items-center justify-content-between mb-2">
-                  <div style={{ fontWeight: 800 }}>
-                    <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
-                    اختيار الخدمة
-                  </div>
-                  {isHairSection ? (
-                    <button
-                      type="button"
-                      className="btn btn-outline-light btn-sm"
-                      onClick={() => setShowHairGuide((p) => !p)}
-                      style={{ borderRadius: 12 }}
-                    >
-                      دليل أطوال الشعر
-                    </button>
-                  ) : null}
-                </div>
-
-                <div className="row g-2 mb-3 bk-service-client-fields">
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">اسم العميلة</label>
-                    <input
-                      name="name"
-                      value={formData.name}
-                      onChange={handleChange}
-                      className="form-control"
-                      placeholder="مثال: ريفال"
-                      required
-                    />
-                  </div>
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">رقم الجوال</label>
-                    <input
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleChange}
-                      className="form-control"
-                      placeholder="05xxxxxxxx"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {showHairGuide ? (
-                  <div className="mb-3 bk-service-hair-guide">
-                    <div className="d-flex gap-2 flex-wrap align-items-center mb-2">
-                      <span className="badge text-bg-secondary" style={{ borderRadius: 999 }}>
-                        دليل أطوال الشعر
-                      </span>
-
-                      {isOwner ? (
-                        <label
-                          className="btn btn-outline-info btn-sm mb-0"
-                          style={{ borderRadius: 12, cursor: "pointer" }}
-                        >
-                          {uploadingGuide ? "جاري الرفع..." : "رفع صورة جديدة"}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            style={{ display: "none" }}
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) uploadHairGuide(f);
-                            }}
-                            disabled={uploadingGuide}
-                          />
-                        </label>
-                      ) : (
-                        <span className="text-muted" style={{ fontSize: 12 }}>
-                          رفع الصورة للإدارة فقط
-                        </span>
-                      )}
-                    </div>
-
-                    <div
-                      className="p-2"
-                      style={{
-                        borderRadius: 14,
-                        background: "rgba(255,255,255,0.06)",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <img
-                        src={hairGuideUrl}
-                        alt="hair guide"
-                        style={{ width: "100%", borderRadius: 12, display: "block" }}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="mb-3 pb-3 bk-client-search-block bk-service-date-block">
-                  <div className="row g-2 align-items-end">
-                    <div className="col-12">
-                      <label htmlFor="bookingDateInternal" className="form-label">تاريخ الحجز</label>
-                      <div
-                        className="input-group booking-date-group"
-                        role="button"
-                        tabIndex={0}
-                        onClick={openBookingDatePicker}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            openBookingDatePicker();
-                          }
-                        }}
-                      >
-                        <input
-                          ref={dateRef}
-                          id="bookingDateInternal"
-                          type="date"
-                          className="form-control"
-                          value={bookingDate}
-                          min={todayISO()}
-                          onClick={openBookingDatePicker}
-                          onFocus={openBookingDatePicker}
-                          onChange={(e) => {
-                            const next = String(e.target.value || "").trim();
-                            applyBookingDate(next);
-                          }}
-                        />
-                      </div>
-                      {bookingDate && !selectedDayOpen && (
-                        <div className="bk-day-closed-banner" role="alert">
-                          تنبيه: يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة في الصالون، اختاري تاريخًا آخر للحجز.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="row g-2 bk-service-picker-block">
-                  <div className="col-12">
-                    <div className="d-flex gap-2">
-                      <button
-                        type="button"
-                        className={`btn btn-sm ${pickerScope === "services" ? "btn-dark" : "btn-outline-dark"}`}
-                        onClick={() => {
-                          setPickerScope("services");
-                          setServicePicker("");
-                          setSelectedSectionId("");
-                          setSelectedCategory("");
-                          setShowHairGuide(false);
-                        }}
-                      >
-                        الخدمات
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn btn-sm ${pickerScope === "packages" ? "btn-dark" : "btn-outline-dark"}`}
-                        onClick={() => {
-                          setPickerScope("packages");
-                          setServicePicker("");
-                          setSelectedSectionId(PACKAGE_SECTION_ID);
-                          setSelectedCategory("");
-                          setShowHairGuide(false);
-                        }}
-                      >
-                        البكجات
-                      </button>
-                    </div>
-                  </div>
-
-                  {pickerScope === "services" ? (
-                    <>
-                      <div className="col-12">
-                        <label className="form-label">القسم</label>
-                        <select
-                          className="form-select"
-                          value={selectedSectionId}
-                          onChange={handleSectionChange}
-                        >
-                          <option value="">اختاري قسم...</option>
-                          {sectionOptions
-                            .filter((s) => String(s.id || "").trim() !== PACKAGE_SECTION_ID)
-                            .map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {toArabicCatalogLabel(String(s.title || s.id))}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-
-                      <div className="col-12">
-                        <label className="form-label">التصنيف</label>
-                        <select
-                          className="form-select"
-                          value={selectedCategory}
-                          onChange={handleCategoryChange}
-                          disabled={!selectedSectionId}
-                        >
-                          <option value="">الكل</option>
-                          {categoryOptions.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {toArabicCatalogLabel(String(c.name || c.id))}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="col-12">
-                        <label className="form-label">الخدمة</label>
-                        <select
-                          className="form-select"
-                          value={servicePicker}
-                          onChange={(e) => setServicePicker(String(e.target.value || ""))}
-                          disabled={!selectedSectionId}
-                        >
-                          <option value="">اختاري خدمة...</option>
-                          {servicesGrouped.map(([catName, arr]) => (
-                            <optgroup key={catName} label={toArabicCatalogLabel(String(catName || ""))}>
-                              {arr.map((sv) => (
-                                <option key={sv.id} value={sv.id}>
-                                  {toArabicCatalogLabel(String(sv.name || sv.id))} - {servicePickerPriceText(sv)}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </select>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="col-12">
-                      <label className="form-label">البكج</label>
-                      <select
-                        className="form-select"
-                        value={servicePicker}
-                        onChange={(e) => setServicePicker(String(e.target.value || ""))}
-                        disabled={!packageOptions.length}
-                      >
-                        <option value="">اختاري باكيج...</option>
-                        {!packageOptions.length && <option value="" disabled>لا توجد باكيجات متاحة</option>}
-                        {packageOptions.map((pkg) => (
-                          <option key={pkg.id} value={pkg.id}>
-                            {pkg.title} - {pkg.priceText}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  <div className="col-12 d-grid mt-1">
-                    <button
-                      type="button"
-                      className="btn btn-primary bk-add-cart-btn"
-                      style={{ borderRadius: 12 }}
-                      disabled={!servicePicker || !selectedDayOpen}
-                      onClick={() => addServiceToCart(servicePicker)}
-                    >
-                      + إضافة للسلة
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+          <div className="row g-3">
             {/* بيانات العميلة */}
-            <div className="col-12 col-lg-6 order-4">
+            <div className="col-12">
               <div className="card p-3 bk-panel bk-client-section">
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                   <div style={{ fontWeight: 800 }}>
@@ -6465,6 +6314,328 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
               </div>
             </div>
+            <div className="col-12">
+              <div className="row g-3 bk-sections-grid">
+            {/* اختيار الخدمة */}
+            <div className="col-12 col-lg-6 order-1">
+              <div className="card p-3 bk-panel bk-service-section">
+                <div className="d-flex align-items-center justify-content-between mb-2">
+                  <div style={{ fontWeight: 800 }}>
+                    <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
+                    اختيار الخدمة
+                  </div>
+                </div>
+
+                <div className="row g-2 mb-3 bk-service-client-fields">
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">اسم العميلة</label>
+                    <input
+                      name="name"
+                      value={formData.name}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="مثال: ريفال"
+                      required
+                    />
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">رقم الجوال</label>
+                    <input
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      className="form-control"
+                      placeholder="05xxxxxxxx"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-3 pb-3 bk-client-search-block bk-service-date-block">
+                  <div className="row g-2 align-items-end">
+                    <div className="col-12">
+                      <label htmlFor="bookingDateInternal" className="form-label">تاريخ الحجز</label>
+                      <div
+                        className="input-group booking-date-group"
+                        role="button"
+                        tabIndex={0}
+                        onClick={openBookingDatePicker}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openBookingDatePicker();
+                          }
+                        }}
+                      >
+                        <input
+                          ref={dateRef}
+                          id="bookingDateInternal"
+                          type="date"
+                          className="form-control"
+                          value={bookingDate}
+                          min={todayISO()}
+                          onClick={openBookingDatePicker}
+                          onFocus={openBookingDatePicker}
+                          onChange={(e) => {
+                            const next = String(e.target.value || "").trim();
+                            applyBookingDate(next);
+                          }}
+                        />
+                      </div>
+                      {bookingDate && !selectedDayOpen && (
+                        <div className="bk-day-closed-banner" role="alert">
+                          تنبيه: يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة في الصالون، اختاري تاريخًا آخر للحجز.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="row g-2 bk-service-picker-block">
+                  <div className="col-12">
+                    <div className="d-flex gap-2">
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${pickerScope === "services" ? "btn-dark" : "btn-outline-dark"}`}
+                        onClick={() => {
+                          setPickerScope("services");
+                          setServicePicker("");
+                          setSelectedSectionId("");
+                          setSelectedCategory("");
+                        }}
+                      >
+                        الخدمات
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${pickerScope === "packages" ? "btn-dark" : "btn-outline-dark"}`}
+                        onClick={() => {
+                          setPickerScope("packages");
+                          setServicePicker("");
+                          setSelectedSectionId(PACKAGE_SECTION_ID);
+                          setSelectedCategory("");
+                        }}
+                      >
+                        البكجات
+                      </button>
+                    </div>
+                  </div>
+
+                  {pickerScope === "services" ? (
+                    <>
+                      <div className="col-12">
+                        <label className="form-label">القسم</label>
+                        <select
+                          className="form-select"
+                          value={selectedSectionId}
+                          onChange={handleSectionChange}
+                        >
+                          <option value="">اختاري قسم...</option>
+                          {sectionOptions
+                            .filter((s) => String(s.id || "").trim() !== PACKAGE_SECTION_ID)
+                            .map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {toArabicCatalogLabel(String(s.title || s.id))}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      <div className="col-12">
+                        <label className="form-label">التصنيف</label>
+                        <select
+                          className="form-select"
+                          value={selectedCategory}
+                          onChange={handleCategoryChange}
+                          disabled={!selectedSectionId}
+                        >
+                          <option value="">الكل</option>
+                          {categoryOptions.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {toArabicCatalogLabel(String(c.name || c.id))}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="col-12">
+                        <label className="form-label">الخدمة</label>
+                        <select
+                          className="form-select"
+                          value={servicePicker}
+                          onChange={(e) => setServicePicker(String(e.target.value || ""))}
+                          disabled={!selectedSectionId}
+                        >
+                          <option value="">اختاري خدمة...</option>
+                          {servicesGrouped.map(([catName, arr]) => (
+                            <optgroup key={catName} label={toArabicCatalogLabel(String(catName || ""))}>
+                              {arr.map((sv) => (
+                                <option key={sv.id} value={sv.id}>
+                                  {toArabicCatalogLabel(String(sv.name || sv.id))} - {servicePickerPriceText(sv)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="col-12">
+                      <label className="form-label">البكج</label>
+                      <select
+                        className="form-select"
+                        value={servicePicker}
+                        onChange={(e) => setServicePicker(String(e.target.value || ""))}
+                        disabled={!packageOptions.length}
+                      >
+                        <option value="">اختاري باكيج...</option>
+                        {!packageOptions.length && <option value="" disabled>لا توجد باكيجات متاحة</option>}
+                        {packageOptions.map((pkg) => (
+                          <option key={pkg.id} value={pkg.id}>
+                            {pkg.title} - {pkg.priceText}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="col-12 d-grid mt-1">
+                    <button
+                      type="button"
+                      className="btn btn-primary bk-add-cart-btn"
+                      style={{ borderRadius: 12 }}
+                      disabled={!servicePicker || !selectedDayOpen}
+                      onClick={() => addServiceToCart(servicePicker)}
+                    >
+                      + إضافة للسلة
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* عرض قائمة الأسعار (قراءة فقط) */}
+            <div className="col-12 col-lg-6 order-2 bk-price-side-col">
+              <div className="row g-3 bk-price-guide-row">
+                <div className="col-12 col-lg-6">
+                  <div className="card p-3 bk-panel bk-price-list-section">
+                    <div className="mb-2" style={{ fontWeight: 800 }}>عرض قائمة الأسعار</div>
+
+                    <div className="mb-3">
+                      <input
+                        className="form-control"
+                        value={priceLookupQuery}
+                        onChange={(e) => setPriceLookupQuery(String(e.target.value || ""))}
+                        placeholder="ابحث عن خدمة..."
+                      />
+                    </div>
+
+                    {priceLookupLoading ? (
+                      <div className="alert alert-secondary mb-0" style={{ borderRadius: 12 }}>
+                        جاري تحميل قائمة الأسعار...
+                      </div>
+                    ) : priceLookupResults.length ? (
+                      <div className="bk-price-list-grid" role="list">
+                        {priceLookupResults.map((row) => (
+                          <div key={row.id} className="bk-price-list-item" role="listitem">
+                            {row.imageUrl ? (
+                              <img
+                                src={row.imageUrl}
+                                alt={row.name}
+                                className="bk-price-list-thumb"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="bk-price-list-thumb bk-price-list-thumb-empty">
+                                بدون صورة
+                              </div>
+                            )}
+
+                            <div>
+                              <div className="bk-price-list-name">{toArabicCatalogLabel(String(row.name || row.id))}</div>
+                              <div className="bk-price-list-price">
+                                {Number(row.price || 0).toFixed(0)} ريال
+                              </div>
+                            </div>
+
+                            <div className="bk-price-list-actions">
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary btn-sm"
+                                style={{ borderRadius: 10 }}
+                                disabled={!row.imageUrl}
+                                onClick={() => {
+                                  setPriceLookupImageModal({
+                                    open: true,
+                                    name: toArabicCatalogLabel(String(row.name || row.id)),
+                                    imageUrl: String(row.imageUrl || ""),
+                                  });
+                                }}
+                              >
+                                عرض الصورة
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="alert alert-secondary mb-0" style={{ borderRadius: 12 }}>
+                        لا توجد نتائج مطابقة.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="col-12 col-lg-6">
+                  <div className="card p-3 bk-panel bk-service-hair-guide">
+                    <div className="d-flex gap-2 flex-wrap align-items-center mb-2">
+                      <span className="badge text-bg-secondary" style={{ borderRadius: 999 }}>
+                        دليل أطوال الشعر
+                      </span>
+
+                      {isOwner ? (
+                        <label
+                          className="btn btn-outline-info btn-sm mb-0"
+                          style={{ borderRadius: 12, cursor: "pointer" }}
+                        >
+                          {uploadingGuide ? "جاري الرفع..." : "رفع صورة جديدة"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) uploadHairGuide(f);
+                            }}
+                            disabled={uploadingGuide}
+                          />
+                        </label>
+                      ) : (
+                        <span className="text-muted" style={{ fontSize: 12 }}>
+                          رفع الصورة للإدارة فقط
+                        </span>
+                      )}
+                    </div>
+
+                    <div
+                      className="p-2"
+                      style={{
+                        borderRadius: 14,
+                        background: "rgba(255,255,255,0.06)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <img
+                        src={hairGuideUrl}
+                        alt="hair guide"
+                        style={{ width: "100%", borderRadius: 12, display: "block" }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
 
             {/* السلة */}
             <div className="col-12 col-lg-6 order-2">
@@ -6942,10 +7113,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 {/* Manual Discount */}
                 <div className="mt-2">
                   <div className="row g-2 align-items-end bk-discount-editor">
-                    <div className="col-12 col-md-5">
+                    <div className="col-12 col-md-6 bk-discount-editor-col">
                       <label className="form-label">نوع الخصم</label>
                       <select
-                        className="form-select"
+                        className="form-select bk-discount-type-select"
                         value={manualDiscountType}
                         onChange={(e) => setManualDiscountType(String(e.target.value || "") as "" | "fixed" | "percent")}
                         disabled={isLoading}
@@ -6956,7 +7127,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       </select>
                     </div>
 
-                    <div className="col-12 col-md-4">
+                    <div className="col-12 col-md-6 bk-discount-editor-col">
                       <label className="form-label">قيمة الخصم</label>
                       <input
                         type="number"
@@ -6971,16 +7142,16 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       />
                     </div>
 
-                    <div className="col-12 col-md-3">
-                      {discountMsg ? (
+                    {discountMsg ? (
+                      <div className="col-12 bk-discount-editor-msg-col">
                         <div
                           className="alert alert-secondary mb-0 py-2 bk-discount-msg"
                           style={{ borderRadius: 12, fontSize: 13 }}
                         >
                           {discountMsg}
                         </div>
-                      ) : null}
-                    </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -7174,6 +7345,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               </div>
             </div>
           </div>
+            </div>
+          </div>
         </form>
 
         </div>
@@ -7182,8 +7355,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 };
 
 export default BookingInternal;
-
-
 
 
 
