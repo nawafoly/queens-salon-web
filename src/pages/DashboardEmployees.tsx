@@ -1468,7 +1468,7 @@ export default function DashboardEmployees() {
       await load();
     } catch (e: any) {
       console.warn("save staff_public error:", e);
-      setErrorMsg(String(e?.message || "ÊÚĞÑ ÍİÙ ÇáãæÙİÉ"));
+      setErrorMsg(String(e?.message || "ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø§Ù„Ù…ÙˆØ¸ÙØ©"));
     } finally {
       setLoading(false);
     }
