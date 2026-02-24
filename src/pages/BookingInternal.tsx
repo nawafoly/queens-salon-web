@@ -214,6 +214,7 @@ type PriceLookupItem = {
   id: string;
   name: string;
   price: number;
+  seasonPrice?: number;
   imageUrl: string;
   searchText: string;
 };
@@ -730,6 +731,55 @@ function toArabicCatalogLabel(raw: string) {
   }
 
   return original;
+}
+
+type PriceLookupIcon = {
+  emoji: string;
+  label: string;
+};
+
+function pickPriceLookupIcon(serviceName: string): PriceLookupIcon {
+  const hay = normalizeSearchText(String(serviceName || ""));
+  const has = (keys: string[]) =>
+    keys.some((k) => {
+      const n = normalizeSearchText(k);
+      return !!n && hay.includes(n);
+    });
+
+  if (has(["قص", "حلاقة", "اطراف", "أطراف", "غرة", "trim", "cut", "hair cut"])) {
+    return { emoji: "✂️", label: "قص" };
+  }
+  if (has(["صبغ", "صبغة", "لون", "ألوان", "هايلايت", "balayage", "color", "dye"])) {
+    return { emoji: "🎨", label: "صبغات" };
+  }
+  if (has(["استشوار", "سشوار", "سيشوار", "blow dry", "blowdry", "dryer"])) {
+    return { emoji: "💨", label: "استشوار" };
+  }
+  if (has(["تسريحة", "تساريح", "تصفيف", "فير", "updo", "styling", "style"])) {
+    return { emoji: "👑", label: "تساريح" };
+  }
+  if (has(["مكياج", "ميك اب", "ميكاب", "makeup", "bridal"])) {
+    return { emoji: "💄", label: "مكياج" };
+  }
+  if (has(["رموش", "حواجب", "لاش", "eyelash", "lash", "brow"])) {
+    return { emoji: "👁️", label: "رموش" };
+  }
+  if (has(["أظافر", "اظافر", "مناكير", "بدكير", "بديكير", "nail", "manicure", "pedicure"])) {
+    return { emoji: "💅", label: "أظافر" };
+  }
+  if (has(["بشرة", "عناية", "facial", "skin", "clean"])) {
+    return { emoji: "✨", label: "عناية" };
+  }
+  if (has(["مساج", "تدليك", "حمام", "spa", "massage", "body"])) {
+    return { emoji: "🧖", label: "عناية جسم" };
+  }
+  if (has(["واكس", "ليزر", "ازالة", "إزالة", "thread", "wax", "laser"])) {
+    return { emoji: "🪒", label: "إزالة شعر" };
+  }
+  if (has(["باكيج", "عرض", "package", "bundle", "offer"])) {
+    return { emoji: "🎁", label: "باكيج" };
+  }
+  return { emoji: "🛍️", label: "خدمة" };
 }
 
 function normalizeKsaPhone(raw: string) {
@@ -3018,6 +3068,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               raw?.finalPrice ??
               0;
             const price = Number(String(priceRaw).replace(/[^\d.]/g, "")) || 0;
+            const seasonPriceRaw =
+              raw?.seasonPrice ??
+              (raw as any)?.["سعر_الموسم"] ??
+              raw?.season_price ??
+              raw?.seasonPriceValue ??
+              0;
+            const seasonPriceNum = Number(String(seasonPriceRaw).replace(/[^\d.]/g, "")) || 0;
+            const seasonPrice = seasonPriceNum > 0 ? seasonPriceNum : undefined;
             const imageUrl = String(
               raw?.imageUrl ??
                 raw?.imageURL ??
@@ -3038,6 +3096,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               active: raw?.active === true,
               name: String(name || "").trim(),
               price,
+              seasonPrice,
               imageUrl,
               searchText: normalizeSearchText(`${name} ${variantTerms}`),
             };
@@ -6536,47 +6595,38 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       </div>
                     ) : priceLookupResults.length ? (
                       <div className="bk-price-list-grid" role="list">
-                        {priceLookupResults.map((row) => (
-                          <div key={row.id} className="bk-price-list-item" role="listitem">
-                            {row.imageUrl ? (
-                              <img
-                                src={row.imageUrl}
-                                alt={row.name}
-                                className="bk-price-list-thumb"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div className="bk-price-list-thumb bk-price-list-thumb-empty">
-                                بدون صورة
-                              </div>
-                            )}
+                        {priceLookupResults.map((row) => {
+                          const displayName = toArabicCatalogLabel(String(row.name || row.id));
+                          const icon = pickPriceLookupIcon(displayName);
+                          const seasonPrice = Number(row.seasonPrice || 0);
 
-                            <div>
-                              <div className="bk-price-list-name">{toArabicCatalogLabel(String(row.name || row.id))}</div>
-                              <div className="bk-price-list-price">
-                                {Number(row.price || 0).toFixed(0)} ريال
-                              </div>
-                            </div>
-
-                            <div className="bk-price-list-actions">
-                              <button
-                                type="button"
-                                className="btn btn-outline-secondary btn-sm"
-                                style={{ borderRadius: 10 }}
-                                disabled={!row.imageUrl}
-                                onClick={() => {
-                                  setPriceLookupImageModal({
-                                    open: true,
-                                    name: toArabicCatalogLabel(String(row.name || row.id)),
-                                    imageUrl: String(row.imageUrl || ""),
-                                  });
-                                }}
+                          return (
+                            <div key={row.id} className="bk-price-list-item" role="listitem">
+                              <div
+                                className="bk-price-list-thumb bk-price-list-icon"
+                                title={icon.label}
+                                role="img"
+                                aria-label={icon.label}
                               >
-                                عرض الصورة
-                              </button>
+                                <span>{icon.emoji}</span>
+                              </div>
+
+                              <div>
+                                <div className="bk-price-list-name">{displayName}</div>
+                                <div className="bk-price-list-price">
+                                  {Number(row.price || 0).toFixed(0)} ريال
+                                </div>
+                              </div>
+
+                              <div className="bk-price-list-season">
+                                <div className="bk-price-list-season-label">سعر الموسم</div>
+                                <div className={`bk-price-list-season-value ${seasonPrice > 0 ? "" : "is-empty"}`}>
+                                  {seasonPrice > 0 ? `${seasonPrice.toFixed(0)} ريال` : "غير محدد"}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="alert alert-secondary mb-0" style={{ borderRadius: 12 }}>

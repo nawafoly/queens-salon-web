@@ -190,19 +190,19 @@
   width: 56px;
   height: 56px;
   border-radius: 10px;
-  object-fit: cover;
   background: #f2e6da;
   border: 1px solid #e0cdbd;
 }
 
-.bk-internal .bk-price-list-thumb-empty {
+.bk-internal .bk-price-list-icon {
   display: grid;
   place-items: center;
-  font-size: 0.7rem;
-  color: #745f4e;
-  text-align: center;
-  line-height: 1.2;
-  padding: 0.2rem;
+  line-height: 1;
+}
+
+.bk-internal .bk-price-list-icon > span {
+  font-size: 1.45rem;
+  transform: translateY(-1px);
 }
 
 .bk-internal .bk-price-list-name {
@@ -217,9 +217,29 @@
   margin-top: 0.15rem;
 }
 
-.bk-internal .bk-price-list-actions {
-  display: flex;
-  justify-content: flex-end;
+.bk-internal .bk-price-list-season {
+  display: grid;
+  justify-items: end;
+  gap: 0.12rem;
+  min-width: 96px;
+}
+
+.bk-internal .bk-price-list-season-label {
+  font-size: 0.72rem;
+  color: #7f6956;
+  font-weight: 700;
+}
+
+.bk-internal .bk-price-list-season-value {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #3f2c21;
+  white-space: nowrap;
+}
+
+.bk-internal .bk-price-list-season-value.is-empty {
+  color: #a08a78;
+  font-weight: 700;
 }
 
 .bk-internal .bk-price-preview-image {
@@ -567,9 +587,9 @@
     grid-template-columns: 52px minmax(0, 1fr);
   }
 
-  .bk-internal .bk-price-list-actions {
+  .bk-internal .bk-price-list-season {
     grid-column: 1 / -1;
-    justify-content: flex-start;
+    justify-items: start;
   }
 }
 
