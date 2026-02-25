@@ -1,17 +1,19 @@
-/* =========================
-   Dashboard Overview (MALIKAT SALON Unified)
-   File: src/styles/DashboardOverview.css
-   ✅ Scoped inside .overview-page
-   ✅ Works within DashboardSkin (no independent background)
-   Palette:
-   #0D0D0D, #515659, #6E7372, #888C8C, #40010D, #F5F5F4
-========================= */
-
-/* ✅ Overview يعيش داخل DashboardSkin (بدون خلفية ولا min-height) */
+/* Professional overview redesign */
 .dashboard-skin .overview-page {
-  background: transparent;
-  min-height: auto;
-  padding: 0;
+  --ov-bg: #f5f5f4;
+  --ov-surface: #ffffff;
+  --ov-border: rgba(13, 13, 13, 0.1);
+  --ov-text: #0d0d0d;
+  --ov-muted: #6e7372;
+  --ov-brand: #40010d;
+  --ov-brand-soft: rgba(64, 1, 13, 0.08);
+  --ov-success: #16a34a;
+  --ov-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+
+  background: var(--ov-bg);
+  border: 1px solid var(--ov-border);
+  border-radius: 20px;
+  padding: 14px;
   overflow-x: hidden;
   font-family: "Tajawal", sans-serif;
 }
@@ -20,49 +22,39 @@
   box-sizing: border-box;
 }
 
-/* ✅ نخلي العرض تحت تحكم DashboardSkin (.dashboard-inner) */
 .dashboard-skin .overview-header,
 .dashboard-skin .overview-content {
   width: 100%;
   margin: 0;
 }
 
-/* =========================
-   Header
-========================= */
 .dashboard-skin .overview-header {
-  margin: 0 0 12px 0;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 18px;
+  margin-bottom: 14px;
   padding: 14px 16px;
-  backdrop-filter: blur(10px);
-
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.06);
+  background: #fff;
+  border: 1px solid var(--ov-border);
+  border-radius: 16px;
+  box-shadow: var(--ov-shadow);
 }
 
 .dashboard-skin .overview-title h1 {
-  margin: 0 0 6px 0;
-  font-size: 22px;
+  margin: 0 0 6px;
+  font-size: 24px;
   font-weight: 900;
-  color: #0D0D0D;
+  color: var(--ov-text);
 }
 
 .dashboard-skin .overview-title p {
   margin: 0;
   font-size: 13px;
-  color: rgba(13, 13, 13, 0.68);
+  color: var(--ov-muted);
 }
 
-/* Content */
 .dashboard-skin .overview-content {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
-/* =========================
-   Stat Cards
-========================= */
 .dashboard-skin .overview-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -73,20 +65,40 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-/* Card */
+.dashboard-skin .ov-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.dashboard-skin .ov-side-stack {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.dashboard-skin .ov-card--schedule {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.dashboard-skin .ov-card--schedule .table-responsive {
+  flex: 1 1 auto;
+}
+
 .dashboard-skin .ov-stat-card {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 18px;
-  padding: 14px 16px;
-  backdrop-filter: blur(10px);
-
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
-
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: var(--ov-shadow);
   display: flex;
   align-items: center;
   gap: 12px;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  min-height: 102px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
 
 .dashboard-skin .ov-stat-card[role="button"] {
@@ -95,103 +107,181 @@
 
 .dashboard-skin .ov-stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.08);
-  border-color: rgba(64, 1, 13, 0.18);
+  border-color: rgba(64, 1, 13, 0.22);
+  box-shadow: 0 14px 26px rgba(15, 23, 42, 0.08);
 }
 
 .dashboard-skin .ov-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
-
-  background: rgba(64, 1, 13, 0.10);
-  border: 1px solid rgba(64, 1, 13, 0.14);
-  color: #40010D;
-
-  font-size: 18px;
+  background: var(--ov-brand-soft);
+  color: var(--ov-brand);
+  border: 1px solid rgba(64, 1, 13, 0.18);
+  font-size: 17px;
+  flex: 0 0 auto;
 }
 
 .dashboard-skin .ov-info h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: 34px;
+  line-height: 1;
   font-weight: 900;
-  color: #0D0D0D;
+  color: var(--ov-text);
+  letter-spacing: -0.4px;
 }
 
 .dashboard-skin .ov-info p {
-  margin: 4px 0 0 0;
-  font-size: 13px;
-  color: rgba(13, 13, 13, 0.66);
+  margin: 7px 0 0;
+  font-size: 12px;
+  color: var(--ov-muted);
+  font-weight: 700;
 }
 
-/* =========================
-   Section Card
-========================= */
 .dashboard-skin .ov-card {
   background: #fff;
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 22px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--ov-border);
+  border-radius: 16px;
+  box-shadow: var(--ov-shadow);
   overflow: hidden;
 }
 
-.dashboard-skin .ov-card-inner {
-  padding: 10px 12px 12px 12px;
+.dashboard-skin .ov-fin-summary-body {
+  padding: 12px 14px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-skin .ov-fin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ov-muted);
+  border: 1px solid rgba(64, 1, 13, 0.09);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: rgba(245, 245, 244, 0.55);
+}
+
+.dashboard-skin .ov-fin-row strong {
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.dashboard-skin .ov-fin-row.is-net {
+  border-color: rgba(64, 1, 13, 0.2);
+  background: rgba(64, 1, 13, 0.06);
+}
+
+.dashboard-skin .ov-fin-row .is-income {
+  color: #0f8a43;
+}
+
+.dashboard-skin .ov-fin-row .is-expense {
+  color: #b42318;
+}
+
+.dashboard-skin .ov-recent-list {
+  padding: 6px 10px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.dashboard-skin .ov-recent-item {
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dashboard-skin .ov-recent-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-skin .ov-recent-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #0d0d0d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dashboard-skin .ov-recent-date {
+  font-size: 11px;
+  color: var(--ov-muted);
+}
+
+.dashboard-skin .ov-recent-amount {
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.dashboard-skin .ov-recent-amount.is-plus {
+  color: #0f8a43;
+}
+
+.dashboard-skin .ov-recent-amount.is-minus {
+  color: #b42318;
 }
 
 .dashboard-skin .ov-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-
+  gap: 12px;
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(13, 13, 13, 0.06);
-
-  background:
-    radial-gradient(520px 220px at 14% 10%, rgba(64, 1, 13, 0.10), transparent 60%),
-    radial-gradient(420px 220px at 86% 20%, rgba(136, 140, 140, 0.14), transparent 55%),
-    linear-gradient(180deg, #ffffff 0%, #f5f5f4 100%);
+  border-bottom: 1px solid var(--ov-border);
+  background: #fff;
 }
 
 .dashboard-skin .ov-card-head h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 900;
-  color: #0D0D0D;
+  color: var(--ov-text);
 }
 
 .dashboard-skin .ov-card-head-main {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
 }
 
 .dashboard-skin .ov-actions-hint {
   font-size: 12px;
-  color: rgba(13, 13, 13, 0.60);
+  color: var(--ov-muted);
 }
 
 .dashboard-skin .ov-date-filter {
   display: grid;
   gap: 6px;
-  min-width: 190px;
+  min-width: 210px;
 }
 
 .dashboard-skin .ov-date-filter label {
   font-size: 12px;
   font-weight: 800;
-  color: rgba(13, 13, 13, 0.74);
+  color: var(--ov-muted);
 }
 
 .dashboard-skin .ov-date-filter input[type="date"] {
-  height: 40px;
-  border: 1px solid rgba(64, 1, 13, 0.2);
-  border-radius: 12px;
+  height: 42px;
+  border: 1px solid #d7deea;
+  border-radius: 10px;
   background: #fff;
-  color: #0D0D0D;
+  color: var(--ov-text);
   color-scheme: light;
   padding: 0 10px;
   font-weight: 800;
@@ -201,7 +291,7 @@
 
 .dashboard-skin .ov-date-filter input[type="date"]:focus {
   border-color: rgba(64, 1, 13, 0.45);
-  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.08);
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.12);
 }
 
 .dashboard-skin .ov-date-filter input[type="date"]::-webkit-calendar-picker-indicator {
@@ -210,9 +300,6 @@
   cursor: pointer;
 }
 
-/* =========================
-   Table
-========================= */
 .dashboard-skin .ov-table {
   width: 100%;
   border-collapse: separate;
@@ -221,93 +308,40 @@
 }
 
 .dashboard-skin .ov-table thead th {
-  background: rgba(64, 1, 13, 0.06);
-  color: #0D0D0D;
-  font-size: 13px;
+  background: rgba(64, 1, 13, 0.08);
+  color: #0d0d0d;
+  font-size: 12px;
   font-weight: 900;
-  padding: 12px 12px;
-
-  border-bottom: 1px solid rgba(13, 13, 13, 0.06);
+  padding: 12px;
+  border-bottom: 1px solid var(--ov-border);
   white-space: nowrap;
   text-align: right;
 }
 
 .dashboard-skin .ov-table tbody td {
-  padding: 12px 12px;
+  padding: 12px;
   font-size: 13px;
-  color: rgba(13, 13, 13, 0.92);
-
-  border-bottom: 1px solid rgba(13, 13, 13, 0.06);
-  vertical-align: middle;
+  color: #1f2937;
+  border-bottom: 1px solid #ecf0f6;
   text-align: right;
+  vertical-align: middle;
 }
 
 .dashboard-skin .ov-table tbody tr:nth-child(even) td {
   background: rgba(245, 245, 244, 0.55);
 }
 
-.dashboard-skin .ov-row-click {
-  cursor: pointer;
-}
-
-.dashboard-skin .ov-row-click:hover td {
-  background: rgba(64, 1, 13, 0.05);
-}
-
 .dashboard-skin .ov-empty {
   text-align: center !important;
-  padding: 16px !important;
-  color: rgba(13, 13, 13, 0.66);
-}
-
-.dashboard-skin .ov-latest-mobile {
-  display: none;
-}
-
-.dashboard-skin .ov-mobile-booking {
-  width: 100%;
-  border: 1px solid rgba(13, 13, 13, 0.1);
-  background: #fff;
-  border-radius: 14px;
-  padding: 10px 12px;
-  margin: 8px 0;
-  text-align: right;
-}
-
-.dashboard-skin .ov-mobile-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.dashboard-skin .ov-mobile-service {
-  font-size: 13px;
-  font-weight: 800;
-  color: #111;
-  margin-bottom: 6px;
-}
-
-.dashboard-skin .ov-mobile-customer {
-  font-size: 13px;
-  color: rgba(13, 13, 13, 0.86);
-  margin-bottom: 6px;
-}
-
-.dashboard-skin .ov-mobile-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  color: rgba(13, 13, 13, 0.72);
+  padding: 18px !important;
+  color: var(--ov-muted);
 }
 
 .dashboard-skin .ov-hour-cell {
-  width: 150px;
+  width: 148px;
   white-space: nowrap;
   font-weight: 900;
-  color: #40010D !important;
+  color: #40010d !important;
 }
 
 .dashboard-skin .ov-hour-bookings {
@@ -323,14 +357,14 @@
   border-radius: 999px;
   padding: 6px 10px;
   font-size: 12px;
-  color: rgba(13, 13, 13, 0.66);
+  color: var(--ov-muted);
   background: rgba(245, 245, 244, 0.5);
 }
 
 .dashboard-skin .ov-hour-booking-pill {
   border: 1px solid rgba(64, 1, 13, 0.18);
   background: rgba(64, 1, 13, 0.06);
-  color: #0D0D0D !important;
+  color: var(--ov-text) !important;
   border-radius: 999px;
   padding: 6px 10px;
   display: inline-flex;
@@ -339,28 +373,31 @@
   font-size: 12px;
   font-weight: 800;
   cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+  transition: all 0.16s ease;
 }
 
 .dashboard-skin .ov-hour-booking-pill:hover {
-  border-color: rgba(64, 1, 13, 0.35);
   background: rgba(64, 1, 13, 0.12);
+  border-color: rgba(64, 1, 13, 0.3);
   transform: translateY(-1px);
 }
 
 .dashboard-skin .ov-hour-booking-name {
   font-weight: 900;
-  color: #0D0D0D !important;
-  -webkit-text-fill-color: #0D0D0D;
+  color: #111827 !important;
 }
 
 .dashboard-skin .ov-hour-booking-time {
-  color: rgba(13, 13, 13, 0.72);
+  color: var(--ov-muted);
+}
+
+.dashboard-skin .ov-latest-mobile {
+  display: none;
 }
 
 .dashboard-skin .ov-hour-mobile-row {
-  border: 1px solid rgba(13, 13, 13, 0.09);
-  border-radius: 14px;
+  border: 1px solid var(--ov-border);
+  border-radius: 12px;
   background: #fff;
   padding: 10px;
   margin: 8px 0;
@@ -369,13 +406,13 @@
 .dashboard-skin .ov-hour-mobile-title {
   font-size: 13px;
   font-weight: 900;
-  color: #40010D;
+  color: #40010d;
   margin-bottom: 8px;
 }
 
 .dashboard-skin .ov-hour-mobile-empty {
   font-size: 12px;
-  color: rgba(13, 13, 13, 0.66);
+  color: var(--ov-muted);
 }
 
 .dashboard-skin .ov-hour-mobile-list {
@@ -385,10 +422,10 @@
 
 .dashboard-skin .ov-hour-mobile-booking {
   width: 100%;
-  border: 1px solid rgba(64, 1, 13, 0.16);
+  border: 1px solid rgba(64, 1, 13, 0.18);
   border-radius: 12px;
-  background: rgba(64, 1, 13, 0.05);
-  color: #0D0D0D !important;
+  background: rgba(64, 1, 13, 0.06);
+  color: var(--ov-text) !important;
   padding: 8px 10px;
   text-align: right;
 }
@@ -399,7 +436,7 @@
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 4px;
-  color: #0D0D0D !important;
+  color: var(--ov-text) !important;
 }
 
 .dashboard-skin .ov-hour-mobile-meta {
@@ -408,108 +445,65 @@
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
-  color: rgba(13, 13, 13, 0.72);
+  color: var(--ov-muted);
 }
 
-/* =========================
-   Quick Actions
-========================= */
 .dashboard-skin .ov-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+  padding: 12px;
 }
 
 .dashboard-skin .ov-action {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 18px;
-  padding: 14px 16px;
-  backdrop-filter: blur(10px);
-
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.06);
-
+  background: #fff;
+  border: 1px solid var(--ov-border);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
   display: grid;
-  grid-template-columns: 44px 1fr;
-  gap: 12px;
+  grid-template-columns: 42px 1fr;
+  gap: 10px;
   align-items: center;
-
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  transition: all 0.16s ease;
 }
 
 .dashboard-skin .ov-action:hover {
   transform: translateY(-2px);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.08);
-  border-color: rgba(64, 1, 13, 0.18);
+  border-color: rgba(64, 1, 13, 0.22);
 }
 
 .dashboard-skin .ov-action-ico {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
-
-  background: rgba(64, 1, 13, 0.10);
-  border: 1px solid rgba(64, 1, 13, 0.14);
-  color: #40010D;
-
-  font-size: 18px;
+  background: var(--ov-brand-soft);
+  border: 1px solid rgba(64, 1, 13, 0.18);
+  color: var(--ov-brand);
+  font-size: 17px;
 }
 
 .dashboard-skin .ov-action-body h4 {
-  margin: 0 0 4px 0;
+  margin: 0 0 3px;
   font-size: 15px;
   font-weight: 900;
-  color: #0D0D0D;
+  color: var(--ov-text);
 }
 
 .dashboard-skin .ov-action-body p {
   margin: 0;
-  font-size: 13px;
-  color: rgba(13, 13, 13, 0.66);
+  font-size: 12px;
+  color: var(--ov-muted);
 }
 
 .dashboard-skin .ov-action .exp-btn {
   grid-column: 1 / -1;
   justify-self: start;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
-/* =========================
-   ✅ Sidebar Links FIX (Scoped)
-========================= */
-.dashboard-skin .dashboard-sidebar a {
-  color: inherit !important;
-  text-decoration: none !important;
-}
-
-.dashboard-skin .dashboard-sidebar .sidebar-nav .nav-link {
-  display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  padding: 10px 12px !important;
-  border-radius: 14px !important;
-  font-weight: 800 !important;
-  font-size: 14px !important;
-  line-height: 1.2 !important;
-  background: transparent !important;
-}
-
-.dashboard-skin .dashboard-sidebar .sidebar-nav .nav-link:hover {
-  background: rgba(64, 1, 13, 0.08) !important;
-  transform: translateY(-1px);
-}
-
-.dashboard-skin .dashboard-sidebar .sidebar-nav .nav-link.active {
-  background: rgba(64, 1, 13, 0.10) !important;
-  border: 1px solid rgba(64, 1, 13, 0.16) !important;
-  color: #0D0D0D !important;
-}
-
-/* =========================
-   Responsive
-========================= */
 @media (max-width: 1100px) {
   .dashboard-skin .overview-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -522,13 +516,31 @@
   .dashboard-skin .ov-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .dashboard-skin .ov-main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin .ov-side-stack {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 768px) {
+  .dashboard-skin .overview-page {
+    padding: 10px;
+    border-radius: 14px;
+  }
+
   .dashboard-skin .overview-grid,
   .dashboard-skin .overview-grid-3,
-  .dashboard-skin .ov-actions {
+  .dashboard-skin .ov-actions,
+  .dashboard-skin .ov-side-stack {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin .ov-info h3 {
+    font-size: 28px;
   }
 
   .dashboard-skin .ov-card .table-responsive {
@@ -537,7 +549,7 @@
 
   .dashboard-skin .ov-latest-mobile {
     display: block;
-    padding: 8px 10px 12px 10px;
+    padding: 8px 10px 12px;
   }
 
   .dashboard-skin .ov-card-head {

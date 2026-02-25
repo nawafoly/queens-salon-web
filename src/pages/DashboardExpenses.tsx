@@ -1306,6 +1306,16 @@ const DashboardExpenses: React.FC = () => {
           </div>
           <div className="exp-table-wrap exp-table-wrap--main">
             <table className="exp-table">
+              <colgroup>
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "20%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "22%" }} />
+                <col style={{ width: "10%" }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>التاريخ</th>
@@ -1351,7 +1361,7 @@ const DashboardExpenses: React.FC = () => {
 
                         <td data-label="النوع">{expenseTypeLabel(e)}</td>
 
-                        <td data-label="الوصف" className="strong">
+                        <td data-label="الوصف" className="strong exp-cell-title">
                           {isEdit ? (
                             <input
                               value={editForm.title}
@@ -1365,15 +1375,19 @@ const DashboardExpenses: React.FC = () => {
                             />
                           ) : (
                             <div className="exp-row-title">
-                              <span>{e.title || e.note || "-"}</span>
-                              {isAutoPayroll ? <span className="exp-auto-pill">تلقائي</span> : null}
+                              <span
+                                className="exp-title-text"
+                                title={e.title || e.note || "-"}
+                              >
+                                {e.title || e.note || "-"}
+                              </span>
                             </div>
                           )}
                         </td>
 
-                        <td data-label="الموظفة">{expenseEmployeeLabel(e)}</td>
+                        <td data-label="الموظفة" className="exp-cell-employee">{expenseEmployeeLabel(e)}</td>
 
-                        <td data-label="المبلغ" className="amount">
+                        <td data-label="المبلغ" className="amount exp-cell-amount">
                           {isEdit ? (
                             <input
                               inputMode="decimal"
@@ -1391,7 +1405,7 @@ const DashboardExpenses: React.FC = () => {
                           )}
                         </td>
 
-                        <td data-label="المصدر">
+                        <td data-label="المصدر" className="exp-cell-source">
                           {isEdit ? (
                             <div style={{ display: "grid", gap: 6 }}>
                               <DashDropdown
@@ -1429,7 +1443,7 @@ const DashboardExpenses: React.FC = () => {
                           )}
                         </td>
 
-                        <td data-label="ملاحظات" className="muted">
+                        <td data-label="ملاحظات" className="muted exp-cell-note">
                           {isEdit ? (
                             <input
                               value={editForm.note}
@@ -1442,7 +1456,9 @@ const DashboardExpenses: React.FC = () => {
                               placeholder="ملاحظة..."
                             />
                           ) : (
-                            e.note || "—"
+                            <span className="exp-note-text" title={e.note || "—"}>
+                              {e.note || "—"}
+                            </span>
                           )}
                         </td>
 

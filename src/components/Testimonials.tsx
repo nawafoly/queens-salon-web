@@ -295,7 +295,7 @@ const Testimonials: React.FC = () => {
           className="bs-field bs-textarea-small bs-textarea-dark"
           value={v}
           onChange={(e) => setV(e.target.value)}
-          placeholder="رد الإدارة..."
+          placeholder="رد خدمة عملاء ملكات..."
           rows={2}
         />
         <button
@@ -381,7 +381,7 @@ const Testimonials: React.FC = () => {
 
                 {t.adminReply && (
                   <div className="bs-admin-reply">
-                    <div className="bs-admin-reply-title">رد الإدارة:</div>
+                    <div className="bs-admin-reply-title">خدمة عملاء ملكات:</div>
                     <div className="bs-admin-reply-text">{t.adminReply}</div>
                   </div>
                 )}

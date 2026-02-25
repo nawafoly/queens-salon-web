@@ -329,52 +329,93 @@
 .exp-table-wrap {
   width: 100%;
   max-width: 100%;
-  border: 1px solid var(--exp-border);
-  border-radius: 14px;
+  border: 1px solid rgba(73, 53, 40, 0.12);
+  border-radius: 16px;
   background: #fff;
-  overflow: auto;
+  overflow: visible;
+  box-shadow: 0 10px 22px rgba(30, 20, 14, 0.05);
 }
 
 .exp-table-wrap--main {
-  max-height: min(70vh, 820px);
+  max-height: none;
 }
 
 .exp-table {
   width: 100%;
-  min-width: 980px;
+  min-width: 0;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
 }
 
 .exp-table th,
 .exp-table td {
-  padding: 11px 12px;
+  padding: 14px 12px;
   border-bottom: 1px solid rgba(61, 45, 33, 0.08);
   vertical-align: middle;
   text-align: right;
+  overflow-wrap: normal;
+  word-break: normal;
+  font-size: 14px;
+}
+
+/* Keep key columns on one line for readability */
+.exp-table th:nth-child(1),
+.exp-table td:nth-child(1), /* التاريخ */
+.exp-table th:nth-child(2),
+.exp-table td:nth-child(2), /* النوع */
+.exp-table th:nth-child(4),
+.exp-table td:nth-child(4), /* الموظفة */
+.exp-table th:nth-child(5),
+.exp-table td:nth-child(5), /* المبلغ */
+.exp-table th:nth-child(6),
+.exp-table td:nth-child(6), /* المصدر */
+.exp-table th:nth-child(8),
+.exp-table td:nth-child(8)  /* إجراء */ {
+  white-space: nowrap;
+}
+
+/* Allow long text only where needed */
+.exp-table th:nth-child(3),
+.exp-table td:nth-child(3), /* الوصف */
+.exp-table th:nth-child(7),
+.exp-table td:nth-child(7)  /* ملاحظات */ {
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-height: 1.55;
+}
+
+.exp-table td:nth-child(8),
+.exp-table th:nth-child(8) {
+  text-align: center;
 }
 
 .exp-table thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: rgba(245, 237, 230, 0.94);
+  background: #f6f1eb;
   color: #2c221d;
   font-size: 13px;
   font-weight: 900;
   white-space: nowrap;
 }
 
+.exp-table tbody td {
+  background: #fff;
+}
+
 .exp-table tbody tr:nth-child(even) td {
-  background: rgba(250, 247, 243, 0.48);
+  background: #fcfbfa;
 }
 
 .exp-table tbody tr:hover td {
-  background: rgba(91, 31, 38, 0.05);
+  background: #f8f3ef;
 }
 
 .exp-row-auto-payroll td {
-  background: rgba(228, 233, 241, 0.64) !important;
+  background: #f3f6fb !important;
 }
 
 .exp-row-title {
@@ -382,6 +423,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
 }
 
 .exp-auto-pill {
@@ -389,21 +431,26 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid rgba(42, 35, 30, 0.16);
-  background: rgba(42, 35, 30, 0.07);
-  color: #2f2723;
+  border: 1px solid rgba(73, 53, 40, 0.2);
+  background: rgba(73, 53, 40, 0.08);
+  color: #2b221d;
   font-size: 11px;
   font-weight: 900;
-  padding: 3px 8px;
+  padding: 4px 10px;
 }
 
 .exp-row-actions {
-  display: grid;
-  gap: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
 }
 
 .exp-row-actions .exp-btn {
-  width: 100%;
+  width: 96px;
+  min-height: 34px;
+  border-radius: 11px;
+  font-size: 13px;
 }
 
 .strong {
@@ -414,10 +461,40 @@
   white-space: nowrap;
   color: var(--exp-brand);
   font-weight: 900;
+  font-size: 22px;
 }
 
 .muted {
   color: var(--exp-muted);
+}
+
+.exp-cell-title,
+.exp-cell-note {
+  min-width: 0;
+}
+
+.exp-title-text,
+.exp-note-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.5;
+}
+
+.exp-cell-employee,
+.exp-cell-source {
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.exp-cell-title .exp-title-text {
+  font-weight: 900;
+  color: #1f1814;
+}
+
+.exp-cell-note .exp-note-text {
+  color: #6f655e;
 }
 
 .empty {
@@ -432,7 +509,7 @@
   }
 
   .exp-table {
-    min-width: 860px;
+    min-width: 0;
   }
 }
 

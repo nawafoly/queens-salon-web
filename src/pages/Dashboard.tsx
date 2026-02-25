@@ -221,6 +221,15 @@ function bookingNoOf(b: Partial<Booking> | null | undefined) {
   return up;
 }
 
+function financeSourceLabelAr(raw: unknown): string {
+  const s = String(raw || "").toLowerCase().trim();
+  if (s === "booking") return "حجز";
+  if (s === "invoice") return "فاتورة";
+  if (s === "manual") return "يدوي";
+  if (s === "income" || s === "revenue") return "إيراد";
+  return String(raw || "").trim() || "إيراد";
+}
+
 /** ✅ تحويل حجز Firestore لشكل Booking اللي تستخدمه الواجهة */
 async function mapFirestoreToUiBooking(b: BookingDocWithId): Promise<Booking> {
   const serviceId = (b as any)?.serviceId || b.serviceName || "";
@@ -272,6 +281,19 @@ type OverviewProps = {
     expenses: number;
     profit: number;
   };
+  financeToday: {
+    income: number;
+    expenses: number;
+    net: number;
+  };
+  recentFinanceTransactions: Array<{
+    id: string;
+    type: "income" | "expense";
+    title: string;
+    amount: number;
+    date: string;
+    createdAt: number;
+  }>;
 };
 
 const DashboardOverview: React.FC<OverviewProps> = ({
@@ -284,6 +306,8 @@ const DashboardOverview: React.FC<OverviewProps> = ({
   onOpenBooking,
   onQuickAction,
   financial,
+  financeToday,
+  recentFinanceTransactions,
 }) => {
   const todayISO = useMemo(() => formatLocalDateISO(new Date()), []);
   const scheduleDateInputRef = useRef<HTMLInputElement | null>(null);
@@ -341,6 +365,13 @@ const DashboardOverview: React.FC<OverviewProps> = ({
   const formatHourLabel = (hour: number) => {
     const normalized = ((hour % 24) + 24) % 24;
     return formatTime12(`${String(normalized).padStart(2, "0")}:00`);
+  };
+
+  const formatFinanceDate = (iso: string) => {
+    const v = String(iso || "").trim();
+    const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return v || "-";
+    return `${m[3]}/${m[2]}/${m[1]}`;
   };
 
   return (
@@ -439,110 +470,159 @@ const DashboardOverview: React.FC<OverviewProps> = ({
           </div>
         </div>
 
-        <div className="ov-card">
-          <div className="ov-card-head">
-            <div className="ov-card-head-main">
-              <h3>جدول الحجوزات حسب الساعة</h3>
-              <span className="ov-actions-hint">{scheduleHint}</span>
+        <div className="ov-main-grid">
+          <div className="ov-card ov-card--schedule">
+            <div className="ov-card-head">
+              <div className="ov-card-head-main">
+                <h3>جدول الحجوزات حسب الساعة</h3>
+                <span className="ov-actions-hint">{scheduleHint}</span>
+              </div>
+              <div className="ov-date-filter" onClick={openScheduleDatePicker}>
+                <label htmlFor="ov-schedule-date">تاريخ الجدول</label>
+                <input
+                  ref={scheduleDateInputRef}
+                  id="ov-schedule-date"
+                  type="date"
+                  min={todayISO}
+                  value={selectedScheduleDate}
+                  onChange={(e) => onSelectedScheduleDateChange(String(e.target.value || todayISO))}
+                  onFocus={openScheduleDatePicker}
+                  onClick={openScheduleDatePicker}
+                />
+              </div>
             </div>
-            <div className="ov-date-filter" onClick={openScheduleDatePicker}>
-              <label htmlFor="ov-schedule-date">تاريخ الجدول</label>
-              <input
-                ref={scheduleDateInputRef}
-                id="ov-schedule-date"
-                type="date"
-                min={todayISO}
-                value={selectedScheduleDate}
-                onChange={(e) => onSelectedScheduleDateChange(String(e.target.value || todayISO))}
-                onFocus={openScheduleDatePicker}
-                onClick={openScheduleDatePicker}
-              />
-            </div>
-          </div>
 
-          <div className="table-responsive">
-            <table className="ov-table">
-              <thead>
-                <tr>
-                  <th>الساعة</th>
-                  <th>الحجوزات داخل الساعة</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {hourRows.length === 0 ? (
+            <div className="table-responsive">
+              <table className="ov-table">
+                <thead>
                   <tr>
-                    <td className="ov-empty" colSpan={2}>
-                      لا توجد حجوزات في التاريخ المحدد
-                    </td>
+                    <th>الساعة</th>
+                    <th>الحجوزات داخل الساعة</th>
                   </tr>
-                ) : (
-                  hourRows.map((row) => (
-                    <tr key={`h_${row.hour}`}>
-                      <td className="ov-hour-cell">{formatHourLabel(row.hour)}</td>
-                      <td>
-                        {row.bookings.length === 0 ? (
-                          <span className="ov-hour-empty-chip">لا يوجد حجز</span>
-                        ) : (
-                          <div className="ov-hour-bookings">
-                            {row.bookings.map((b) => (
-                              <button
-                                key={`${row.hour}_${b.id}`}
-                                type="button"
-                                className="ov-hour-booking-pill"
-                                onClick={() => onOpenBooking(b)}
-                                title="عرض تفاصيل الحجز"
-                              >
-                                <span className="ov-hour-booking-name">{b.customerName}</span>
-                                <span className="ov-hour-booking-time">{formatTime12(b.time)}</span>
-                                <span className={`status-badge ${b.status}`}>
-                                  {statusLabel[b.status]}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                </thead>
+
+                <tbody>
+                  {hourRows.length === 0 ? (
+                    <tr>
+                      <td className="ov-empty" colSpan={2}>
+                        لا توجد حجوزات في التاريخ المحدد
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    hourRows.map((row) => (
+                      <tr key={`h_${row.hour}`}>
+                        <td className="ov-hour-cell">{formatHourLabel(row.hour)}</td>
+                        <td>
+                          {row.bookings.length === 0 ? (
+                            <span className="ov-hour-empty-chip">لا يوجد حجز</span>
+                          ) : (
+                            <div className="ov-hour-bookings">
+                              {row.bookings.map((b) => (
+                                <button
+                                  key={`${row.hour}_${b.id}`}
+                                  type="button"
+                                  className="ov-hour-booking-pill"
+                                  onClick={() => onOpenBooking(b)}
+                                  title="عرض تفاصيل الحجز"
+                                >
+                                  <span className="ov-hour-booking-name">{b.customerName}</span>
+                                  <span className="ov-hour-booking-time">{formatTime12(b.time)}</span>
+                                  <span className={`status-badge ${b.status}`}>
+                                    {statusLabel[b.status]}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="ov-latest-mobile">
+              {hourRows.length === 0 ? (
+                <div className="ov-empty">لا توجد حجوزات في التاريخ المحدد</div>
+              ) : (
+                hourRows.map((row) => (
+                  <div key={`m_h_${row.hour}`} className="ov-hour-mobile-row">
+                    <div className="ov-hour-mobile-title">{formatHourLabel(row.hour)}</div>
+                    {row.bookings.length === 0 ? (
+                      <div className="ov-hour-mobile-empty">لا يوجد حجز</div>
+                    ) : (
+                      <div className="ov-hour-mobile-list">
+                        {row.bookings.map((b) => (
+                          <button
+                            key={`m_${row.hour}_${b.id}`}
+                            type="button"
+                            className="ov-hour-mobile-booking"
+                            onClick={() => onOpenBooking(b)}
+                          >
+                            <div className="ov-hour-mobile-top">
+                              <strong>{b.customerName}</strong>
+                              <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
+                            </div>
+                            <div className="ov-hour-mobile-meta">
+                              <span>{formatTime12(b.time)}</span>
+                              <span>{b.serviceName || b.serviceId || "-"}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
-          <div className="ov-latest-mobile">
-            {hourRows.length === 0 ? (
-              <div className="ov-empty">لا توجد حجوزات في التاريخ المحدد</div>
-            ) : (
-              hourRows.map((row) => (
-                <div key={`m_h_${row.hour}`} className="ov-hour-mobile-row">
-                  <div className="ov-hour-mobile-title">{formatHourLabel(row.hour)}</div>
-                  {row.bookings.length === 0 ? (
-                    <div className="ov-hour-mobile-empty">لا يوجد حجز</div>
-                  ) : (
-                    <div className="ov-hour-mobile-list">
-                      {row.bookings.map((b) => (
-                        <button
-                          key={`m_${row.hour}_${b.id}`}
-                          type="button"
-                          className="ov-hour-mobile-booking"
-                          onClick={() => onOpenBooking(b)}
-                        >
-                          <div className="ov-hour-mobile-top">
-                            <strong>{b.customerName}</strong>
-                            <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
-                          </div>
-                          <div className="ov-hour-mobile-meta">
-                            <span>{formatTime12(b.time)}</span>
-                            <span>{b.serviceName || b.serviceId || "-"}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+          <div className="ov-side-stack">
+            <div className="ov-card ov-fin-summary">
+              <div className="ov-card-head">
+                <h3>ملخص اليوم</h3>
+              </div>
+              <div className="ov-fin-summary-body">
+                <div className="ov-fin-row">
+                  <span>دخل اليوم</span>
+                  <strong className="is-income">{financeToday.income.toLocaleString()} ر.س</strong>
                 </div>
-              ))
-            )}
+                <div className="ov-fin-row">
+                  <span>مصروف اليوم</span>
+                  <strong className="is-expense">{financeToday.expenses.toLocaleString()} ر.س</strong>
+                </div>
+                <div className="ov-fin-row is-net">
+                  <span>الصافي</span>
+                  <strong className={financeToday.net >= 0 ? "is-income" : "is-expense"}>
+                    {financeToday.net.toLocaleString()} ر.س
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="ov-card ov-recent-card">
+              <div className="ov-card-head">
+                <h3>آخر العمليات</h3>
+              </div>
+              <div className="ov-recent-list">
+                {recentFinanceTransactions.length === 0 ? (
+                  <div className="ov-empty">لا توجد عمليات حديثة</div>
+                ) : (
+                  recentFinanceTransactions.map((t) => (
+                    <div className="ov-recent-item" key={t.id}>
+                      <div className="ov-recent-main">
+                        <div className="ov-recent-title" title={t.title}>{t.title}</div>
+                        <div className="ov-recent-date">{formatFinanceDate(t.date)}</div>
+                      </div>
+                      <div className={`ov-recent-amount ${t.type === "income" ? "is-plus" : "is-minus"}`}>
+                        {t.type === "income" ? "+" : "-"}{Math.abs(t.amount).toLocaleString()} ر.س
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -648,6 +728,17 @@ const Dashboard: React.FC = () => {
 
   const [expensesTotalFS, setExpensesTotalFS] = useState(0);
   const [incomeTotalFS, setIncomeTotalFS] = useState(0);
+  const [financeToday, setFinanceToday] = useState({ income: 0, expenses: 0, net: 0 });
+  const [recentFinanceTransactions, setRecentFinanceTransactions] = useState<
+    Array<{
+      id: string;
+      type: "income" | "expense";
+      title: string;
+      amount: number;
+      date: string;
+      createdAt: number;
+    }>
+  >([]);
 
   const [missingExpenseNotesCount, setMissingExpenseNotesCount] = useState(0);
 
@@ -676,6 +767,8 @@ const Dashboard: React.FC = () => {
       setTodayScheduleBookings([]);
       setExpensesTotalFS(0);
       setIncomeTotalFS(0);
+      setFinanceToday({ income: 0, expenses: 0, net: 0 });
+      setRecentFinanceTransactions([]);
       return;
     }
 
@@ -765,9 +858,55 @@ const Dashboard: React.FC = () => {
           0
         );
         setExpensesTotalFS(expensesTotal);
+
+        const incomeToday = incomes
+          .filter((x: any) => String(x?.date || "").trim() === todayStr)
+          .reduce((sum: number, x: any) => sum + (Number(x?.amount) || 0), 0);
+
+        const expensesToday = expenses
+          .filter((x: any) => String((x as any)?.date || "").trim() === todayStr)
+          .reduce((sum: number, x: any) => sum + (Number((x as any)?.amount) || 0), 0);
+
+        setFinanceToday({
+          income: incomeToday,
+          expenses: expensesToday,
+          net: incomeToday - expensesToday,
+        });
+
+        const recentIncomeTx = incomes.map((x: any) => ({
+          id: `inc_${String(x?.id || "")}`,
+          type: "income" as const,
+          title:
+            String(x?.note || "").trim() ||
+            financeSourceLabelAr(x?.source),
+          amount: Number(x?.amount || 0),
+          date: String(x?.date || ""),
+          createdAt: Number(x?.createdAt || 0) || Date.now(),
+        }));
+
+        const recentExpenseTx = expenses.map((x: any) => {
+          const rawTitle = String((x as any)?.title || (x as any)?.category || "مصروف").trim() || "مصروف";
+          const title = /^booking$/i.test(rawTitle) ? "حجز" : rawTitle;
+          return {
+          id: `exp_${String((x as any)?.id || "")}`,
+          type: "expense" as const,
+          title,
+          amount: Number((x as any)?.amount || 0),
+          date: String((x as any)?.date || ""),
+          createdAt: Number((x as any)?.createdAt || 0) || Date.now(),
+          };
+        });
+
+        const mergedRecent = [...recentIncomeTx, ...recentExpenseTx]
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, 7);
+
+        setRecentFinanceTransactions(mergedRecent);
       } else {
         setIncomeTotalFS(0);
         setExpensesTotalFS(0);
+        setFinanceToday({ income: 0, expenses: 0, net: 0 });
+        setRecentFinanceTransactions([]);
       }
 
       step = "ui:setStats/setTodayScheduleBookings";
@@ -807,6 +946,8 @@ const Dashboard: React.FC = () => {
       setTodayScheduleBookings([]);
       setExpensesTotalFS(0);
       setIncomeTotalFS(0); // ✅ FIX (كان ناقص)
+      setFinanceToday({ income: 0, expenses: 0, net: 0 });
+      setRecentFinanceTransactions([]);
     }
   };
 
@@ -1144,7 +1285,7 @@ const Dashboard: React.FC = () => {
       case "owner":
         return "المالكة";
       case "admin":
-        return "مديرة الصالون";
+        return "خدمة عملاء ملكات";
       case "reception":
         return "موظفة الاستقبال";
       case "staff":
@@ -1683,6 +1824,8 @@ const Dashboard: React.FC = () => {
                           expenses: totalExpenses,
                           profit: netProfit,
                         }}
+                        financeToday={financeToday}
+                        recentFinanceTransactions={recentFinanceTransactions}
                       />
                     )
                   }
@@ -1719,6 +1862,8 @@ const Dashboard: React.FC = () => {
                           expenses: totalExpenses,
                           profit: netProfit,
                         }}
+                        financeToday={financeToday}
+                        recentFinanceTransactions={recentFinanceTransactions}
                       />
                     }
                   />
