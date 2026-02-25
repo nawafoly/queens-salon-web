@@ -40,6 +40,7 @@ import DashboardIncome from "../pages/DashboardIncome";
 import DashboardLogs from "../pages/DashboardLogs";
 import DashboardQueueTv from "../pages/DashboardQueueTv";
 import DashboardDayAudit from "../pages/DashboardDayAudit";
+import DashboardAdminProfile from "../pages/DashboardAdminProfile";
 
 import DashboardStaff from "../pages/DashboardStaff";
 
@@ -1579,7 +1580,18 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-
+                {hasAdminPower && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/admin-profile"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faUser} />
+                      الملف الشخصي
+                    </NavLink>
+                  </li>
+                )}
 
                 {hasAdminPower && canSeeSection("settings") && (
                   <li>
@@ -1764,6 +1776,10 @@ const Dashboard: React.FC = () => {
 
                 {hasAdminPower && canSeeSection("settings") && (
                   <Route path="settings/*" element={<DashboardSettings />} />
+                )}
+
+                {hasAdminPower && (
+                  <Route path="admin-profile" element={<DashboardAdminProfile />} />
                 )}
 
                 {hasAdminPower && canSeeSection("logs") && (

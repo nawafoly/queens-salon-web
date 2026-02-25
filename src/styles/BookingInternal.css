@@ -1294,6 +1294,96 @@
   font-weight: 700;
 }
 
+.bk-internal .bk-price-shortcuts-title {
+  font-weight: 800;
+  color: #0d0d0d;
+}
+
+.bk-internal .bk-price-shortcuts-count {
+  font-size: 0.78rem;
+  color: #6e6259;
+}
+
+.bk-internal .bk-price-shortcuts-alert {
+  border-radius: 10px;
+  font-size: 0.82rem;
+}
+
+.bk-internal .bk-price-shortcuts-grid {
+  border: 1px solid #e8dfd6;
+  border-radius: 12px;
+  background: #fffaf4;
+  padding: 0.45rem;
+  display: grid;
+  gap: 0.45rem;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.bk-internal .bk-price-shortcut-item {
+  border: 1px solid #e3d5c8;
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.55rem 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.bk-internal .bk-price-shortcut-main {
+  min-width: 0;
+}
+
+.bk-internal .bk-price-shortcut-name {
+  font-weight: 800;
+  color: #2f241f;
+  line-height: 1.35;
+}
+
+.bk-internal .bk-price-shortcut-meta {
+  font-size: 0.75rem;
+  color: #78695d;
+  margin-top: 0.18rem;
+}
+
+.bk-internal .bk-price-shortcut-side {
+  display: grid;
+  justify-items: end;
+  gap: 0.3rem;
+}
+
+.bk-internal .bk-price-shortcut-price {
+  font-weight: 900;
+  color: #7e5437;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.bk-internal .bk-price-shortcut-btn {
+  border-radius: 999px;
+  min-width: 114px;
+}
+
+.bk-internal .bk-price-shortcut-static {
+  font-size: 0.74rem;
+  color: #6e6259;
+  border: 1px solid #decfbe;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: #faf4ec;
+}
+
+.bk-internal .bk-price-shortcut-empty {
+  border: 1px dashed #dcc6b5;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.7rem;
+  text-align: center;
+  color: #78695d;
+  font-size: 0.84rem;
+}
+
 @media (max-width: 992px) {
   .bk-internal .booking-page {
     padding-top: 1.25rem !important;
@@ -1351,6 +1441,24 @@
   .bk-internal .bk-time-debug-row {
     grid-template-columns: 1fr;
     gap: 0.2rem;
+  }
+
+  .bk-internal .bk-price-shortcuts-grid {
+    max-height: 300px;
+  }
+
+  .bk-internal .bk-price-shortcut-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .bk-internal .bk-price-shortcut-side {
+    width: 100%;
+    justify-items: stretch;
+  }
+
+  .bk-internal .bk-price-shortcut-btn {
+    width: 100%;
   }
 
   .bk-internal .bk-cart-actions {
