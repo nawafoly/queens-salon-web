@@ -4312,6 +4312,39 @@ function findCartOverlap(items: CartItem[]) {
     return Math.max(0, basePrice - appliedDiscountTotal);
   }, [basePrice, appliedDiscountTotal]);
 
+  const previewCreatedAtLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("ar-SA", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date()),
+    []
+  );
+
+  const bookingPreviewItems = useMemo(
+    () =>
+      (formData.items || []).map((it, idx) => ({
+        id: String(it.id || `row-${idx}`),
+        index: idx + 1,
+        serviceName: String(it.serviceName || "").trim() || "-",
+        staffName: String(it.employeeName || "").trim() || "-",
+        date: String(it.date || bookingDate || "").trim() || "-",
+        timeLabel: formatTime12ForClient(String(it.time || "").trim()),
+        durationMin: Math.max(0, Number(it.durationMin || 0)),
+        priceLabel: `${Number(it.basePrice || 0).toFixed(0)} ريال`,
+        toolsNote: buildItemToolsNote(it),
+        locked: !!it.locked,
+      })),
+    [formData.items, bookingDate]
+  );
+
+  const lockedPreviewCount = useMemo(
+    () => bookingPreviewItems.filter((x) => x.locked).length,
+    [bookingPreviewItems]
+  );
+  const totalPreviewCount = bookingPreviewItems.length;
+  const allPreviewLocked = totalPreviewCount > 0 && lockedPreviewCount === totalPreviewCount;
+
   // =========================
   // Coupon
   // =========================
@@ -5926,9 +5959,14 @@ function findCartOverlap(items: CartItem[]) {
                 </div>
 
 
-                {/* âœ… الخدمات المختارة (السلة) */}
-                <div className="mb-4">
-                  <label className="form-label" style={{ fontWeight: 'bold' }}>الخدمات المختارة</label>
+	                {/* âœ… الخدمات المختارة (السلة) */}
+	                <div className="mb-4">
+	                  <div className="booking-cart-head">
+	                    <label className="form-label mb-0" style={{ fontWeight: 'bold' }}>
+	                      السلة (اختيار الموظفة والوقت)
+	                    </label>
+	                    <span className="booking-cart-count">عدد الخدمات: {(formData.items || []).length}</span>
+	                  </div>
 
                   {!!(formData.items || []).length ? (
                     <div className="mt-2">
@@ -6117,11 +6155,11 @@ function findCartOverlap(items: CartItem[]) {
                             ? suggested
                             : (availableSlotsForItem[0]?.value24 || "");
 
-                        // âœ… شكل الكرت وهو مقفول (تم التأكيد)
-                        if (isLocked) {
-                          return (
-                            <>
-                              {showPackageRunHeader ? (
+	                        // âœ… شكل الكرت وهو مقفول (تم التأكيد)
+	                        if (isLocked) {
+	                          return (
+	                            <>
+	                              {showPackageRunHeader ? (
                                 <div
                                   className="mb-2 p-2"
                                   style={{
@@ -6137,76 +6175,66 @@ function findCartOverlap(items: CartItem[]) {
                                     {packageName || "باكيج"} • {packageRunCount} خدمات
                                   </div>
                                 </div>
-                              ) : null}
-                              <div className="mb-3" style={{ background: '#f0fff4', borderLeft: '4px solid #28a745', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                                <div className="d-flex justify-content-between align-items-start">
-                                  <div>
-                                    <p style={{ margin: 0, fontWeight: 'bold', color: '#155724', fontSize: '1.1rem' }}>
-                                      {showAsPackageBlock ? "تم تأكيد هذا البكج:" : "تم تأكيد هذه الخدمة:"} {cardTitle}
-                                    </p>
-                                    <p style={{ margin: '5px 0 0 0', color: '#155724' }}>مع الموظفة <strong>{it.employeeName}</strong> الساعة <strong>{formatTime12ForClient(it.time)}</strong></p>
-                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.8 }}>المدة: {dur} دقيقة | السعر: {cardPriceText}</p>
-                                    <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
-                                      القسم: {serviceSectionLabel}
-                                    </p>
-                                    <p style={{ margin: '3px 0 0 0', fontSize: '0.85rem', color: '#155724', opacity: 0.85 }}>
-                                      التصنيف: {serviceCategoryLabel}
-                                    </p>
-                                    {packageServiceNames.length > 0 ? (
-                                      <div style={{ margin: '8px 0 0 0' }}>
-                                        <div style={{ fontSize: '0.8rem', color: '#155724', opacity: 0.9, fontWeight: 700, marginBottom: 4 }}>
-                                          تفاصيل الباكيج
-                                        </div>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                          {packageServiceNames.map((name) => (
-                                            <span
-                                              key={name}
-                                              style={{
-                                                fontSize: '0.78rem',
-                                                color: '#155724',
-                                                background: 'rgba(21,87,36,0.08)',
-                                                border: '1px solid rgba(21,87,36,0.2)',
-                                                borderRadius: 999,
-                                                padding: '2px 10px',
-                                                lineHeight: 1.6,
-                                              }}
-                                            >
-                                              {name}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                    {toolsEligible ? (
-                                      <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: '#155724', opacity: 0.9 }}>
-                                        {toolsSummary}
-                                      </p>
-                                    ) : null}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="btn btn-link p-0"
-                                    style={{ color: '#155724', textDecoration: 'underline', fontWeight: 'bold' }}
-                                    onClick={() => {
-                                      const list = formData.items || [];
-                                      const idx = list.findIndex(x => x.id === it.id);
-                                      setFormData(prev => ({
-                                        ...prev,
-                                        items: (prev.items || []).map((x, i) => {
-                                          if (i === idx) return { ...x, locked: false };
-                                          if (i > idx) return { ...x, locked: false, time: "", employeeId: "", employeeUid: "", employeeName: "" };
-                                          return x;
-                                        })
-                                      }));
-                                    }}
-                                  >
-                                    تعديل
-                                  </button>
-                                </div>
-                              </div>
-                            </>
-                          );
-                        }
+	                              ) : null}
+	                              <div className="booking-cart-item-locked mb-3">
+	                                <div className="booking-cart-item-locked__head">
+	                                  <div className="booking-cart-item-locked__meta">
+	                                    <div className="booking-cart-item-locked__title-row">
+	                                      <span className="booking-cart-item-locked__title">{cardTitle}</span>
+	                                      <span className="booking-cart-item-locked__index">{rowIdx + 1}</span>
+	                                    </div>
+	                                    <div className="booking-cart-item-locked__sub">
+	                                      {dur} دقيقة - {String(it.date || bookingDate || "-")}
+	                                    </div>
+	                                  </div>
+	                                  <div className="booking-cart-item-locked__price">{cardPriceText}</div>
+	                                </div>
+
+	                                <div className="booking-cart-item-locked__actions">
+	                                  <button
+	                                    type="button"
+	                                    className="btn btn-outline-secondary btn-sm"
+	                                    onClick={() => {
+	                                      const list = formData.items || [];
+	                                      const idx = list.findIndex((x) => x.id === it.id);
+	                                      setFormData((prev) => ({
+	                                        ...prev,
+	                                        items: (prev.items || []).map((x, i) => {
+	                                          if (i === idx) return { ...x, locked: false };
+	                                          if (i > idx) {
+	                                            return {
+	                                              ...x,
+	                                              locked: false,
+	                                              time: "",
+	                                              employeeId: "",
+	                                              employeeUid: "",
+	                                              employeeName: "",
+	                                            };
+	                                          }
+	                                          return x;
+	                                        }),
+	                                      }));
+	                                    }}
+	                                  >
+	                                    عرض
+	                                  </button>
+	                                  <button
+	                                    type="button"
+	                                    className="btn btn-outline-danger btn-sm"
+	                                    onClick={() => removeServiceFromCart(it.id)}
+	                                  >
+	                                    حذف
+	                                  </button>
+	                                </div>
+
+	                                <div className="booking-cart-item-locked__note">
+	                                  <span className="booking-cart-item-locked__badge">✅ مؤكد</span>
+	                                  <span>تم إغلاق البطاقة لتخفيف الزحمة البصرية.</span>
+	                                </div>
+	                              </div>
+	                            </>
+	                          );
+	                        }
 
                         // âœ… شكل الكرت وهو مفتوح (جاري الاختيار)
                         return (
@@ -6535,13 +6563,83 @@ function findCartOverlap(items: CartItem[]) {
                     <div className="p-4 text-center" style={{ border: '2px dashed #ddd', borderRadius: '12px', background: '#fdfdfd' }}>
                       <p className="text-muted m-0">اختاري خدمة من القائمة أعلاه للبدء ᑅ ᐧ ᑀ </p>
                     </div>
-                  )}
-                </div>
+	                  )}
+	                </div>
 
-                {futureGateLoading ? (
-                  <div className="small text-muted mb-2">
-                    <FontAwesomeIcon icon={faSpinner} spin /> جاري التحقق من توفر اليوم المختار...
-                  </div>
+	                {totalPreviewCount > 0 && !allPreviewLocked ? (
+	                  <div className="booking-pre-save-pending mb-3">
+	                    ملخص الحجز يظهر بعد تأكيد الموظفة والوقت لكل خدمة.
+	                  </div>
+	                ) : null}
+
+	                {allPreviewLocked ? (
+	                  <div className="booking-pre-save-summary mb-3">
+	                    <div className="booking-pre-save-summary__head">
+	                      <div className="booking-pre-save-summary__title">ملخص الحجز قبل الحفظ</div>
+	                      <div className="booking-pre-save-summary__count">
+	                        مؤكد: <span dir="ltr">{lockedPreviewCount} / {totalPreviewCount}</span>
+	                      </div>
+	                    </div>
+	                    <div className="booking-pre-save-summary__meta">
+	                      <div><strong>العميلة:</strong> {String(formData.name || "").trim() || "-"}</div>
+	                      <div><strong>الجوال:</strong> {phone10Digits(String(formData.phone || "").trim()) || "-"}</div>
+	                      <div><strong>وقت إنشاء الحجز:</strong> {previewCreatedAtLabel}</div>
+	                    </div>
+
+	                    {appliedDiscountTotal > 0 ? (
+	                      <div className="booking-pre-save-summary__discount">
+	                        <div className="booking-pre-save-summary__discount-title">
+	                          الخصم المطبق ({appliedCoupons.length})
+	                        </div>
+	                        <div className="booking-pre-save-summary__discount-lines">
+	                          <div className="booking-pre-save-summary__discount-line is-before">
+	                            <span>قبل الخصم</span>
+	                            <strong>{basePrice.toFixed(0)} ريال</strong>
+	                          </div>
+	                          <div className="booking-pre-save-summary__discount-line is-discount">
+	                            <span>قيمة الخصم</span>
+	                            <strong>-{Number(appliedDiscountTotal || 0).toFixed(0)} ريال</strong>
+	                          </div>
+	                          <div className="booking-pre-save-summary__discount-line is-after">
+	                            <span>بعد الخصم</span>
+	                            <strong>{finalPrice.toFixed(0)} ريال</strong>
+	                          </div>
+	                        </div>
+	                      </div>
+	                    ) : null}
+
+	                    <div className="booking-pre-save-summary__rows">
+	                      {bookingPreviewItems.map((row) => (
+	                        <div key={`preview-${row.id}`} className="booking-pre-save-summary__row">
+	                          <div className="booking-pre-save-summary__row-head">
+	                            <span className="booking-pre-save-summary__row-index">#{row.index}</span>
+	                            <span className="booking-pre-save-summary__row-service">{row.serviceName}</span>
+	                          </div>
+	                          <div className="booking-pre-save-summary__row-meta">
+	                            <span><strong>الموظفة:</strong> {row.staffName}</span>
+	                            <span><strong>التاريخ:</strong> {row.date}</span>
+	                            <span><strong>الوقت:</strong> {row.timeLabel}</span>
+	                            <span><strong>المدة:</strong> {row.durationMin} د</span>
+	                            <span><strong>السعر:</strong> {row.priceLabel}</span>
+	                            {row.toolsNote ? (
+	                              <span><strong>ملاحظة:</strong> {row.toolsNote}</span>
+	                            ) : null}
+	                          </div>
+	                        </div>
+	                      ))}
+	                    </div>
+
+	                    <div className="booking-pre-save-summary__total">
+	                      <span>الإجمالي النهائي</span>
+	                      <strong>{finalPrice.toFixed(0)} ريال</strong>
+	                    </div>
+	                  </div>
+	                ) : null}
+
+	                {futureGateLoading ? (
+	                  <div className="small text-muted mb-2">
+	                    <FontAwesomeIcon icon={faSpinner} spin /> جاري التحقق من توفر اليوم المختار...
+	                  </div>
                 ) : null}
 
                 {showFutureSearch ? (
