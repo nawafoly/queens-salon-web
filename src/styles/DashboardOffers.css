@@ -45,7 +45,7 @@
 
 /* Header */
 .offers-header {
-  width: min(1180px, calc(100% - 28px));
+  width: min(1800px, 98vw);
   margin: 0 auto 14px auto;
   display: flex;
   align-items: flex-start;
@@ -71,7 +71,7 @@
 
 /* Card */
 .offers-card {
-  width: min(1180px, calc(100% - 28px));
+  width: min(1800px, 98vw);
   margin: 0 auto 14px auto;
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(13, 13, 13, 0.07);
@@ -134,7 +134,7 @@
 
 /* ===== Stats ===== */
 .offers-stats {
-  width: min(1180px, calc(100% - 28px));
+  width: min(1800px, 98vw);
   margin: 0 auto 14px auto;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -165,7 +165,7 @@
 
 /* ===== Table Card ===== */
 .offers-table-card {
-  width: min(1180px, calc(100% - 28px));
+  width: min(1800px, 98vw);
   margin: 0 auto 18px auto;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(13, 13, 13, 0.07);

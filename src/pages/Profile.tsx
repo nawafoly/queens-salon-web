@@ -303,12 +303,6 @@ const Profile: React.FC = () => {
     const token = localStorage.getItem("authToken");
     const firebaseOk = !!firebaseUser;
 
-    const localRole = String(localStorage.getItem("userRole") || "").toLowerCase().trim();
-    if (localRole && localRole !== "client") {
-      navigate("/dashboard-pending", { replace: true });
-      return;
-    }
-
     if (!token && !firebaseOk) {
       navigate("/login", { replace: true });
     }

@@ -17,7 +17,7 @@ import "../styles/Login.css";
 
 // ✅ Firebase Auth
 import { auth, db } from "../services/firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 
 // ✅ Firestore
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -235,36 +235,33 @@ const Login: React.FC = () => {
 
   const navigate = useNavigate();
 
-  // ✅ لو الجلسة موجودة بالفعل: وجّه حسب الدور
+  // ✅ لو الجلسة موجودة بالفعل: وجّه حسب الدور من Auth + Firestore
   useEffect(() => {
-    const redirectIfLoggedIn = () => {
-      const role = String(localStorage.getItem("userRole") || "")
-        .toLowerCase()
-        .trim() as UiRole;
-      const token = localStorage.getItem("authToken");
-
-      if (!token || !role || role === "guest") return;
+    let alive = true;
+    const redirectByRole = async (u: any) => {
+      if (!u || !alive) return;
+      const profile = await createOrLoadUserProfile(u);
+      const role = String(profile?.role || "").toLowerCase().trim() as UiRole;
 
       if (role === "pending") {
         navigate("/dashboard-pending", { replace: true });
         return;
       }
-
-
       if (canAccessDashboard(role)) {
         navigate("/dashboard/overview", { replace: true });
         return;
       }
-
-      if (role === "client") {
-        navigate("/profile", { replace: true });
-      }
+      if (role === "client") navigate("/profile", { replace: true });
     };
 
-    redirectIfLoggedIn();
-    const onAuthChanged = () => redirectIfLoggedIn();
-    window.addEventListener("authChanged", onAuthChanged);
-    return () => window.removeEventListener("authChanged", onAuthChanged);
+    redirectByRole(auth.currentUser).catch(() => {});
+    const unsub = onAuthStateChanged(auth, (u) => {
+      redirectByRole(u).catch(() => {});
+    });
+    return () => {
+      alive = false;
+      unsub();
+    };
   }, [navigate]);
 
   // مساعدة: التحقق من الجوال والإيميل

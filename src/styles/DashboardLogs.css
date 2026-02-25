@@ -1,5 +1,12 @@
 /* src/styles/DashboardLogs.css - premium logs dashboard */
 
+.logs-page .container {
+  width: min(1800px, 98vw);
+  max-width: min(1800px, 98vw);
+  padding-left: clamp(8px, 1.2vw, 18px);
+  padding-right: clamp(8px, 1.2vw, 18px);
+}
+
 .logs-card {
   border-radius: 24px;
   overflow: hidden;

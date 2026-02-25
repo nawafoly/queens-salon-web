@@ -1045,17 +1045,8 @@ const Dashboard: React.FC = () => {
         if (!profile) {
           step = "profile:fallback";
 
-          const cachedRole = String(localStorage.getItem("userRole") || "")
-            .toLowerCase()
-            .trim();
-
           const fallbackRole: UiRole =
-            cachedRole === "owner" ||
-              cachedRole === "admin" ||
-              cachedRole === "reception" ||
-              cachedRole === "staff"
-              ? (cachedRole as UiRole)
-              : "staff";
+            "staff";
 
           const fallbackName =
             localStorage.getItem("userName") ||
@@ -1240,6 +1231,7 @@ const Dashboard: React.FC = () => {
     try {
       await signOut(auth);
     } finally {
+      setUserInfo(null);
       localStorage.removeItem("authToken");
       localStorage.removeItem("userRole");
       localStorage.removeItem("userName");
@@ -1878,7 +1870,7 @@ const Dashboard: React.FC = () => {
                 )}
 
                 {(hasAdminPower || isReception) && canSeeSection("bookings") && (
-                  <Route path="bookings" element={<DashboardBookings />} />
+                  <Route path="bookings" element={<DashboardBookings currentRole={userInfo.role} />} />
                 )}
 
                 {(hasAdminPower || isReception) && canSeeSection("bookings") && (
@@ -1891,7 +1883,7 @@ const Dashboard: React.FC = () => {
 
                 {(hasAdminPower || (isReception && allowStaffViewClients)) &&
                   canSeeSection("clients") && (
-                    <Route path="clients" element={<DashboardClients />} />
+                    <Route path="clients" element={<DashboardClients currentRole={userInfo.role} />} />
                   )}
 
                 {hasAdminPower && (

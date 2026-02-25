@@ -131,6 +131,8 @@ type ServiceOption = {
 };
 
 type EmployeeModalTab = "stats" | "basic" | "booking" | "services" | "profile";
+type EmployeeSplitTab = "basic" | "booking" | "services" | "profile" | "payroll" | "stats";
+type EmployeeMode = "view" | "edit";
 type BookingHourOverrideMode = "hours" | "closed";
 type BookingHourOverride = {
   fromDate: string;
@@ -185,6 +187,16 @@ function getAuthUser(): AuthUser | null {
   } catch {
     return null;
   }
+}
+
+function getNameInitials(name: string): string {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "؟";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 }
 
 function staffPublicCol() {
@@ -334,6 +346,23 @@ function resolveAvatarFromAssets(raw: string): string {
   }
 
   return v;
+}
+
+function toArabicSectionLabel(sectionId: string, fallbackLabel?: string): string {
+  const rawLabel = String(fallbackLabel || "").trim();
+  if (rawLabel && !/[A-Za-z]/.test(rawLabel)) return rawLabel;
+
+  const key = String(sectionId || "").trim().toLowerCase();
+  if (key === "hair-care") return "العناية بالشعر";
+  if (key === "nails") return "العناية بالأظافر";
+  if (key === "makeup") return "المكياج";
+  if (key === "skin-care") return "العناية بالبشرة";
+  if (key === "spa") return "السبا";
+  if (key === "massage") return "المساج";
+  if (key === "eyelashes" || key === "lashes") return "الرموش";
+  if (key === "eyebrows" || key === "brows") return "الحواجب";
+  if (key === "henna") return "الحناء";
+  return "قسم غير محدد";
 }
 type StaffBookingStats = {
   total: number;
@@ -706,6 +735,10 @@ export default function DashboardEmployees() {
   const [isOpen, setIsOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [modalTab, setModalTab] = useState<EmployeeModalTab>("basic");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<EmployeeSplitTab>("basic");
+  const [mode, setMode] = useState<EmployeeMode>("view");
+  const [activeStatsSubTab, setActiveStatsSubTab] = useState<"payroll" | "stats">("payroll");
 
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
@@ -814,6 +847,10 @@ export default function DashboardEmployees() {
   };
 
   const openEdit = (x: StaffPublicUi) => {
+    setSelectedEmployeeId(x.id);
+    setActiveTab("basic");
+    setActiveStatsSubTab("payroll");
+    setMode("view");
     setEditId(x.id);
     setModalTab("basic");
     setName(x.name ?? "");
@@ -1331,6 +1368,16 @@ export default function DashboardEmployees() {
     };
   }, [authUser?.role, list]);
 
+  useEffect(() => {
+    if (!selectedEmployeeId) return;
+    const exists = list.some((x) => x.id === selectedEmployeeId);
+    if (exists) return;
+    setSelectedEmployeeId(null);
+    setEditId(null);
+    setIsOpen(false);
+    setMode("view");
+  }, [list, selectedEmployeeId]);
+
   const sectionOptions = useMemo(() => {
     const m = new Map<string, { id: string; label: string }>();
     for (const s of serviceOptions) {
@@ -1464,7 +1511,11 @@ export default function DashboardEmployees() {
       } else {
         await updateDoc(staffPublicDoc(editId), payload as any);
       }
-      closeModal();
+      if (!selectedEmployeeId) {
+        closeModal();
+      } else {
+        setMode("view");
+      }
       await load();
     } catch (e: any) {
       console.warn("save staff_public error:", e);
@@ -1481,6 +1532,12 @@ export default function DashboardEmployees() {
     setErrorMsg("");
     try {
       await deleteDoc(staffPublicDoc(id));
+      if (selectedEmployeeId === id) {
+        setSelectedEmployeeId(null);
+        setEditId(null);
+        setIsOpen(false);
+        setMode("view");
+      }
       await load();
     } catch (e) {
       console.warn("delete staff_public error:", e);
@@ -1507,6 +1564,29 @@ export default function DashboardEmployees() {
     }
     return rows;
   }, [list, onlyActive, specialtyFilter, qText]);
+  const selectedEmployee = useMemo(
+    () => (selectedEmployeeId ? list.find((x) => x.id === selectedEmployeeId) || null : null),
+    [list, selectedEmployeeId]
+  );
+  const selectedEmployeeLeaveUntil = normalizeLeaveUntil((selectedEmployee as any)?.leaveUntil);
+  const selectedEmployeeLeaveExpired =
+    !!selectedEmployeeLeaveUntil && selectedEmployeeLeaveUntil < todayIso();
+  const selectedEmployeeOnLeave =
+    !!(selectedEmployee as any)?.onLeave && !selectedEmployeeLeaveExpired;
+  const selectedEmployeeStatusLabel = selectedEmployeeOnLeave
+    ? selectedEmployeeLeaveUntil
+      ? `في إجازة حتى ${fmtIsoDate(selectedEmployeeLeaveUntil)}`
+      : "في إجازة"
+    : selectedEmployee?.active
+      ? "نشطة"
+      : "غير نشطة";
+  const selectedEmployeeStatusClass = selectedEmployeeOnLeave
+    ? "warn"
+    : selectedEmployee?.active
+      ? "on"
+      : "off";
+  const showPayrollSubTab = !selectedEmployeeId || activeStatsSubTab === "payroll";
+  const showStatsSubTab = !selectedEmployeeId || activeStatsSubTab === "stats";
 
   const staffScheduleSummary = useMemo(() => {
     const now = new Date(nowTick);
@@ -2525,7 +2605,9 @@ export default function DashboardEmployees() {
           </div>
         )}
 
-        <div className="dash-card mt-3">
+        <div className="emp-split-shell mt-3">
+          <div className="emp-split-col emp-split-col--list">
+        <div className="dash-card">
           <div className="dash-row">
             <div className="dash-field">
               <label className="emp-label">بحث</label>
@@ -2581,219 +2663,225 @@ export default function DashboardEmployees() {
         </div>
 
         <div className="dash-card mt-3">
+          <div className="emp-list-title">
+            <b>الموظفات ({filtered.length})</b>
+            <span>موظفاتي</span>
+          </div>
           {loading ? (
             <div className="emp-field-note">جاري تحميل الموظفات...</div>
           ) : filtered.length ? (
-            <div className="dash-grid">
-              {filtered.map((x) => (
-                <div
-                  key={x.id}
-                  className="staff-card staff-card-cover"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openEdit(x)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      openEdit(x);
-                    }
-                  }}
-                >
-                  {(() => {
-                    const allSpecialties = normalizeSpecialties(x.specialties);
-                    const isExpanded = !!expandedSpecialtiesByStaff[x.id];
-                    const visibleSpecialties = isExpanded
-                      ? allSpecialties
-                      : allSpecialties.slice(0, STAFF_CHIPS_PREVIEW_COUNT);
-                    const hiddenCount = Math.max(0, allSpecialties.length - visibleSpecialties.length);
-                    const leaveUntil = normalizeLeaveUntil((x as any).leaveUntil);
-                    const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
+            <div className="emp-staff-list">
+              {filtered.map((x) => {
+                const specialtyIds = normalizeSpecialties(x.specialties);
+                const mainService = serviceOptions.find((o) => o.id === specialtyIds[0]);
+                const sectionId = String(mainService?.sectionId || "").trim();
+                const department = sectionId
+                  ? toArabicSectionLabel(
+                      sectionId,
+                      sectionOptions.find((s) => s.id === sectionId)?.label || ""
+                    )
+                  : "قسم غير محدد";
+                const leaveUntil = normalizeLeaveUntil((x as any).leaveUntil);
+                const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
+                const onLeave = !!(x as any).onLeave && !leaveExpired;
+                const statusLabel = onLeave ? "في إجازة" : x.active ? "نشطة" : "غير نشطة";
+                const statusClass = onLeave ? "warn" : x.active ? "on" : "off";
+                const total = bookingStats[x.id]?.total ?? 0;
+                const confirmed = bookingStats[x.id]?.byStatus.confirmed ?? 0;
+                const kpi = total > 0 ? Math.round((confirmed / total) * 100) : 0;
+                const kpiLabel = statsLoading ? "..." : `${kpi}%`;
+                const isSelected = selectedEmployeeId === x.id;
 
-                    return (
-                      <>
-                        <div className="staff-top">
-                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                            <div className="staff-avatar-box">
-                              {String(x.avatarUrl || "").trim() ? (
-                                <img
-                                  src={resolveAvatarFromAssets(String(x.avatarUrl))}
-                                  alt={x.name || "موظفة"}
-                                  className="staff-avatar-img"
-                                />
-                              ) : (
-                                <FontAwesomeIcon icon={faUserTie} />
-                              )}
-                            </div>
-                            <div>
-                              <h4 style={{ margin: 0, fontWeight: 900 }}>{x.name}</h4>
+                return (
+                  <button
+                    key={x.id}
+                    type="button"
+                    className={`emp-staff-row ${isSelected ? "is-selected" : ""}`}
+                    onClick={() => openEdit(x)}
+                  >
+                    <div className="emp-staff-avatar">
+                      {x.avatarUrl ? (
+                        <img src={x.avatarUrl} alt={String(x.name || "صورة الموظفة")} />
+                      ) : (
+                        getNameInitials(String(x.name || ""))
+                      )}
+                    </div>
 
-                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-                                <span className={`staff-pill ${x.active ? "on" : "off"}`}>
-                                  {x.active ? "نشطة" : "غير نشطة"}
-                                </span>
+                    <div className="emp-staff-main">
+                      <div className="emp-staff-headline">
+                        <b>{x.name || "—"}</b>
+                        <span className={`staff-pill ${statusClass}`}>{statusLabel}</span>
+                      </div>
+                      <div className="emp-staff-dept">{department}</div>
+                    </div>
 
-                                <span className={`staff-pill ${x.showOnAbout ? "on" : "off"}`}>
-                                  {x.showOnAbout ? "تظهر في من نحن" : "مخفية من من نحن"}
-                                </span>
-
-                                <span className={`staff-pill ${x.showOnBooking ? "on" : "off"}`}>
-                                  {x.showOnBooking ? "تظهر في الحجز" : "مخفية من الحجز"}
-                                </span>
-
-                                {x.active && !x.showOnBooking && (
-                                  <span className="staff-pill off" title="لن تظهر للعميلات في صفحة الحجز">
-                                    ⚠️ نشطة لكنها مخفية
-                                  </span>
-                                )}
-
-                                {(x as any).onLeave && !leaveExpired && (
-                                  <span className="staff-pill off">
-                                    في إجازة {leaveUntil ? `حتى ${fmtIsoDate(leaveUntil)}` : ""}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 6,
-                              flexWrap: "wrap",
-                              justifyContent: "flex-end",
-                            }}
-                          >
-                            <button
-                              className="exp-btn ghost sm"
-                              title={x.active ? "تعطيل الموظفة" : "تفعيل الموظفة"}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleActiveQuick(x);
-                              }}
-                              disabled={loading}
-                              type="button"
-                            >
-                              <FontAwesomeIcon icon={x.active ? faToggleOn : faToggleOff} />
-                            </button>
-
-                            <button
-                              className="exp-btn ghost sm"
-                              title={x.showOnAbout ? "إخفاء من صفحة من نحن" : "إظهار في صفحة من نحن"}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleShowOnAboutQuick(x);
-                              }}
-                              disabled={loading}
-                              type="button"
-                            >
-                              <FontAwesomeIcon icon={x.showOnAbout ? faToggleOn : faToggleOff} />
-                            </button>
-
-                            <button
-                              className="exp-btn ghost sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openEdit(x);
-                              }}
-                              type="button"
-                            >
-                              <FontAwesomeIcon icon={faPen} />
-                            </button>
-
-                            <button
-                              className="exp-btn ghost sm text-danger"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                remove(x.id);
-                              }}
-                              type="button"
-                            >
-                              <FontAwesomeIcon icon={faTrash} />
-                            </button>
-                          </div>
-                        </div>
-
-                        {x.bio ? (
-                          <div className="staff-bio">{x.bio}</div>
-                        ) : (
-                          <div className="staff-bio muted">بدون نبذة</div>
-                        )}
-
-                        <div className="staff-chips">
-                          {visibleSpecialties.map((sid) => {
-                            const label = serviceOptions.find((o) => o.id === sid)?.label ?? sid;
-                            return (
-                              <span className="staff-chip" key={sid}>
-                                {label}
-                              </span>
-                            );
-                          })}
-                          {hiddenCount > 0 && !isExpanded && (
-                            <button
-                              type="button"
-                              className="staff-chips-toggle"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpandedSpecialtiesByStaff((prev) => ({ ...prev, [x.id]: true }));
-                              }}
-                            >
-                              +{hiddenCount} أكثر
-                            </button>
-                          )}
-                          {isExpanded && allSpecialties.length > STAFF_CHIPS_PREVIEW_COUNT && (
-                            <button
-                              type="button"
-                              className="staff-chips-toggle"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpandedSpecialtiesByStaff((prev) => ({ ...prev, [x.id]: false }));
-                              }}
-                            >
-                              عرض أقل
-                            </button>
-                          )}
-                        </div>
-
-                        {authUser?.role === "owner" && (
-                          <div style={{ marginTop: 12 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                              <span className="staff-pill stat total">
-                                الحجوزات: <b>{statsLoading ? "..." : bookingStats[x.id]?.total ?? 0}</b>
-                              </span>
-                              <span className="staff-pill stat confirmed">
-                                مؤكد: <b>{statsLoading ? "..." : bookingStats[x.id]?.byStatus.confirmed ?? 0}</b>
-                              </span>
-                              <span className="staff-pill stat pending">
-                                انتظار: <b>{statsLoading ? "..." : bookingStats[x.id]?.byStatus.pending ?? 0}</b>
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              ))}
+                    <div className="emp-staff-kpi">
+                      <span>الأداء</span>
+                      <b>{kpiLabel}</b>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <div className="emp-field-note">لا توجد موظفات مطابقة للفلاتر الحالية.</div>
           )}
         </div>
+          </div>
+
+          <div className="emp-split-col emp-split-col--details">
+            {!selectedEmployeeId ? (
+              <div className="dash-card emp-split-empty">
+                <b>لا توجد موظفة محددة</b>
+                <p>اختاري موظفة من القائمة لعرض التفاصيل.</p>
+              </div>
+            ) : (
+              <div className="dash-card emp-split-head-card">
+                <div className="emp-split-head">
+                  <div>
+                    <b>{selectedEmployee?.name || "—"}</b>
+                    <div className="emp-inline-actions">
+                      <span className={`staff-pill ${selectedEmployeeStatusClass}`}>
+                        {selectedEmployeeStatusLabel}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="emp-inline-actions">
+                    {mode === "edit" ? (
+                      <>
+                        <button
+                          className="exp-btn primary sm"
+                          type="button"
+                          onClick={save}
+                          disabled={loading}
+                        >
+                          حفظ
+                        </button>
+                        <button
+                          className="exp-btn ghost sm"
+                          type="button"
+                          onClick={() => {
+                            const currentTab = activeTab;
+                            const currentModalTab = modalTab;
+                            const currentStatsTab = activeStatsSubTab;
+                            if (selectedEmployee) {
+                              openEdit(selectedEmployee);
+                              setActiveTab(currentTab);
+                              setModalTab(currentModalTab);
+                              setActiveStatsSubTab(currentStatsTab);
+                            }
+                            setMode("view");
+                          }}
+                        >
+                          إلغاء
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className="exp-btn ghost sm"
+                          type="button"
+                          onClick={() => setMode("edit")}
+                        >
+                          <FontAwesomeIcon icon={faPen} /> تعديل
+                        </button>
+                        <button
+                          className="exp-btn ghost sm text-danger"
+                          type="button"
+                          onClick={() => selectedEmployeeId && remove(selectedEmployeeId)}
+                        >
+                          <FontAwesomeIcon icon={faTrash} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="emp-split-tabs">
+                  <button
+                    type="button"
+                    className={`emp-split-tab ${activeTab === "basic" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveTab("basic");
+                      setModalTab("basic");
+                    }}
+                  >
+                    البيانات الأساسية
+                  </button>
+                  <button
+                    type="button"
+                    className={`emp-split-tab ${activeTab === "booking" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveTab("booking");
+                      setModalTab("booking");
+                    }}
+                  >
+                    الحجز والدوام
+                  </button>
+                  <button
+                    type="button"
+                    className={`emp-split-tab ${activeTab === "services" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveTab("services");
+                      setModalTab("services");
+                    }}
+                  >
+                    الخدمات
+                  </button>
+                  <button
+                    type="button"
+                    className={`emp-split-tab ${activeTab === "profile" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveTab("profile");
+                      setModalTab("profile");
+                    }}
+                  >
+                    الملف
+                  </button>
+                  <button
+                    type="button"
+                    className={`emp-split-tab ${activeTab === "payroll" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveTab("payroll");
+                      setActiveStatsSubTab("payroll");
+                      setModalTab("stats");
+                    }}
+                  >
+                    الراتب والأوفر تايم
+                  </button>
+                  <button
+                    type="button"
+                    className={`emp-split-tab ${activeTab === "stats" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveTab("stats");
+                      setActiveStatsSubTab("stats");
+                      setModalTab("stats");
+                    }}
+                  >
+                    الإحصائيات والإجازات
+                  </button>
+                </div>
+              </div>
+            )}
 
         {isOpen && (
           <Modal
             open={isOpen}
             onClose={closeModal}
-            ariaLabel="employee-editor"
+            ariaLabel="محرر الموظفة"
             size="lg"
             panelClassName="emp-modal"
+            inline
+            closeOnOverlayClick={false}
           >
+            {!selectedEmployeeId && (
             <div className="modal-head">
               <h3>{editId ? `تعديل موظفة - ${editingStaff?.name || name || "-"}` : "إضافة موظفة"}</h3>
               <button className="exp-btn ghost sm" type="button" onClick={closeModal}>
                 <FontAwesomeIcon icon={faXmark} />
               </button>
             </div>
+            )}
+            {!selectedEmployeeId && (
             <div className="emp-modal-tabs">
               {modalTabs.map((tab) => (
                 <button
@@ -2806,6 +2894,11 @@ export default function DashboardEmployees() {
                 </button>
               ))}
             </div>
+            )}
+            <fieldset
+              className="emp-inline-fieldset"
+              disabled={!!selectedEmployeeId && mode !== "edit"}
+            >
             <div className="modal-body emp-modal-grid">
               {modalStaffScheduleSummary && modalTab === "basic" ? (
                 <div className="emp-modal-live-summary">
@@ -2933,6 +3026,7 @@ export default function DashboardEmployees() {
               {editingStaff ? (
                 <div className={`emp-modal-section ${modalTab !== "stats" ? "is-hidden" : ""}`}>
                   <b className="emp-modal-section-title">الإحصائيات والإجازات</b>
+                  {showPayrollSubTab ? (
                   <div className="staff-payroll-box">
                     <div className="staff-payroll-head">
                       <b>الراتب + الأوفر تايم</b>
@@ -3115,7 +3209,9 @@ export default function DashboardEmployees() {
                       </div>
                     </div>
                   </div>
+                  ) : null}
 
+                  {showStatsSubTab ? (
                   <div className="staff-leave-box">
                     <div className="staff-leave-head">
                       <span>إعدادات الإجازات للموظفة</span>
@@ -3310,6 +3406,7 @@ export default function DashboardEmployees() {
                       ) : null}
                     </div>
                   </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -3919,18 +4016,24 @@ export default function DashboardEmployees() {
               </div>
             </div>
 
-            <div className="modal-foot">
-              <button className="exp-btn" onClick={closeModal} type="button">
-                إلغاء
-              </button>
-              <button className="exp-btn primary" onClick={save} disabled={loading} type="button">
-                {loading ? "جاري الحفظ..." : "حفظ التغييرات"}
-              </button>
-            </div>
+            {(mode === "edit" || !selectedEmployeeId) && (
+              <div className="modal-foot">
+                <button className="exp-btn" onClick={closeModal} type="button">
+                  إلغاء
+                </button>
+                <button className="exp-btn primary" onClick={save} disabled={loading} type="button">
+                  {loading ? "جاري الحفظ..." : "حفظ التغييرات"}
+                </button>
+              </div>
+            )}
+            </fieldset>
           </Modal>
         )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+
 

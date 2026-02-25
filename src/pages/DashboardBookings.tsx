@@ -13,8 +13,6 @@ import {
   faPlus,
 } from "@fortawesome/free-solid-svg-icons";
 
-// ✅ Firestore Auth
-import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../services/firebase";
 
 import {
@@ -127,42 +125,7 @@ function saveNotesMap(map: Record<string, string>) {
   localStorage.setItem(NOTES_KEY, JSON.stringify(map));
 }
 
-function getUiRole(): UiRole {
-  try {
-    const authUserRaw = localStorage.getItem("auth_user");
-    if (authUserRaw) {
-      const au = JSON.parse(authUserRaw);
-      const r = String(au?.role || "").toLowerCase().trim();
-      if (r === "owner") return "owner";
-      if (r === "admin") return "admin";
-      if (r === "reception") return "reception";
-      if (r === "staff") return "staff";
-      if (r === "client") return "client";
-    }
-  } catch {
-    // ignore
-  }
-  const raw = (localStorage.getItem("userRole") || "").toLowerCase().trim();
-  if (raw === "owner") return "owner";
-  if (raw === "admin") return "admin";
-  if (raw === "reception") return "reception";
-  if (raw === "staff") return "staff";
-  if (raw === "client") return "client";
-  return "guest";
-}
-
 function getAuthUserSafe(): { displayName: string; email: string } {
-  try {
-    const raw = localStorage.getItem("auth_user");
-    if (raw) {
-      const au = JSON.parse(raw);
-      const displayName = String(au?.name || au?.displayName || "").trim();
-      const email = String(au?.email || "").trim();
-      return { displayName, email };
-    }
-  } catch {
-    // ignore
-  }
   const u = auth.currentUser;
   const displayName = String(u?.displayName || "").trim();
   const email = String(u?.email || "").trim();
@@ -510,7 +473,11 @@ type RefundDraft = {
 /* =========================
    Component
 ========================= */
-export default function DashboardBookings() {
+type DashboardBookingsProps = {
+  currentRole?: UiRole;
+};
+
+export default function DashboardBookings({ currentRole = "guest" }: DashboardBookingsProps) {
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [error, setError] = useState("");
@@ -543,7 +510,7 @@ export default function DashboardBookings() {
   });
   const saveHintTimerRef = useRef<number | null>(null);
 
-  const uiRole = getUiRole();
+  const uiRole = currentRole;
   const authUser = getAuthUserSafe();
   const closeBookingModal = useCallback(() => setSelectedBooking(null), []);
   const closeCancelModal = useCallback(() => setCancelTarget(null), []);

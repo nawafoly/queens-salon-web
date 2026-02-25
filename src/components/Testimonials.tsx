@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Modal from "./Modal";
 import "../styles/Testimonials.css";
 
-import { getAuth } from "firebase/auth";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
   addDoc,
   collection,
@@ -89,50 +89,54 @@ const Testimonials: React.FC = () => {
     ));
 
   useEffect(() => {
-    const u = auth.currentUser;
-    const p = readUserProfileV1();
+    let seq = 0;
+    const unsub = onAuthStateChanged(auth, (u) => {
+      const currentSeq = ++seq;
+      const p = readUserProfileV1();
 
-    const displayName =
-      safeStr(u?.displayName) ||
-      safeStr(p?.name) ||
-      safeStr(localStorage.getItem("userName")) ||
-      "عميلة";
+      const displayName =
+        safeStr(u?.displayName) ||
+        safeStr(p?.name) ||
+        safeStr(localStorage.getItem("userName")) ||
+        "عميلة";
 
-    const photo =
-      safeStr(u?.photoURL) ||
-      safeStr(p?.photoURL) ||
-      safeStr(p?.avatarUrl) ||
-      "";
+      const photo =
+        safeStr(u?.photoURL) ||
+        safeStr(p?.photoURL) ||
+        safeStr(p?.avatarUrl) ||
+        "";
 
-    const vip =
-      Boolean(p?.vip) ||
-      String(localStorage.getItem("vip") || "").toLowerCase() === "true";
+      const vip =
+        Boolean(p?.vip) ||
+        String(localStorage.getItem("vip") || "").toLowerCase() === "true";
 
-    setUserName(displayName);
-    setUserPhoto(photo);
-    setUserVip(vip);
+      setUserName(displayName);
+      setUserPhoto(photo);
+      setUserVip(vip);
 
-    (async () => {
-      try {
-        if (!u?.uid) {
-          setIsOwner(false);
-          return;
-        }
-
-        const email = String(u.email || "").toLowerCase();
-        if (email && OWNER_EMAILS.includes(email)) {
-          setIsOwner(true);
-          return;
-        }
-
-        const userRef = doc(db, "salons", SALON_ID, "users", u.uid);
-        const snap = await getDoc(userRef);
-        const role = String((snap.data() as any)?.role || "").toLowerCase();
-        setIsOwner(role === "owner");
-      } catch {
+      if (!u?.uid) {
         setIsOwner(false);
+        return;
       }
-    })();
+
+      (async () => {
+        try {
+          const email = String(u.email || "").toLowerCase();
+          if (email && OWNER_EMAILS.includes(email)) {
+            if (currentSeq === seq) setIsOwner(true);
+            return;
+          }
+
+          const userRef = doc(db, "salons", SALON_ID, "users", u.uid);
+          const snap = await getDoc(userRef);
+          const role = String((snap.data() as any)?.role || "").toLowerCase();
+          if (currentSeq === seq) setIsOwner(role === "owner");
+        } catch {
+          if (currentSeq === seq) setIsOwner(false);
+        }
+      })();
+    });
+    return () => unsub();
   }, [auth]);
 
   useEffect(() => {

@@ -76,19 +76,6 @@ function loadSettings(): AppSettings {
   }
 }
 
-/** ✅ قراءة الدور من localStorage بشكل آمن */
-function getUiRole(): UiRole {
-  const raw = (localStorage.getItem("userRole") || "").toLowerCase().trim();
-
-  if (raw === "owner") return "owner";
-  if (raw === "admin") return "admin";
-  if (raw === "reception") return "reception";
-  if (raw === "staff") return "staff";
-  if (raw === "client") return "client";
-
-  return "guest";
-}
-
 type ClientRow = {
   key: string; // identifier
   name: string;
@@ -275,9 +262,13 @@ function getField(row: any, candidates: string[]) {
   return "";
 }
 
-const DashboardClients: React.FC = () => {
+type DashboardClientsProps = {
+  currentRole?: UiRole;
+};
+
+const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "guest" }) => {
   // ✅ Role + Settings (NEW)
-  const [uiRole, setUiRole] = useState<UiRole>(() => getUiRole());
+  const uiRole = currentRole;
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
 
   const [bookings, setBookings] = useState<BookingDocWithId[]>([]);
@@ -409,16 +400,12 @@ const DashboardClients: React.FC = () => {
     };
   }, [sortOpen]);
 
-  // ✅ مراقبة تغييرات الدور + الإعدادات (NEW)
+  // ✅ مراقبة تغييرات الإعدادات
   useEffect(() => {
-    const onAuthChanged = () => setUiRole(getUiRole());
-    window.addEventListener("authChanged", onAuthChanged);
-
     const onSettingsChanged = () => setSettings(loadSettings());
     window.addEventListener("settingsChanged", onSettingsChanged);
 
     return () => {
-      window.removeEventListener("authChanged", onAuthChanged);
       window.removeEventListener("settingsChanged", onSettingsChanged);
     };
   }, []);

@@ -75,14 +75,13 @@ const DashboardAdminProfile: React.FC = () => {
         const snap = await getDoc(ref);
 
         if (!snap.exists()) {
-          const cachedRole = normalizeRole(localStorage.getItem("userRole"));
           setDocExists(false);
           setProfile({
             displayName: user.displayName || "",
             phone: "",
             email: user.email || "",
             photoURL: user.photoURL || "",
-            role: cachedRole,
+            role: "guest",
           });
           setMsg("لم يتم العثور على ملف المستخدم الإداري في المسار المعتمد.");
           return;

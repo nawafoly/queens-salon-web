@@ -5,11 +5,11 @@ import logoNavbar from "../assets/images/ssunnamed.png";
 import "../styles/navbar.css";
 import UserIcon from "./icons/UserIcon";
 
-import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import { signOut, type User as FirebaseUser } from "firebase/auth";
 import { auth } from "../services/firebase";
 
-type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
-const KNOWN_ROLES: UiRole[] = ["owner", "admin", "reception", "staff", "client", "guest"];
+type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "pending" | "guest";
+const KNOWN_ROLES: UiRole[] = ["owner", "admin", "reception", "staff", "client", "pending", "guest"];
 
 function normalizeRole(role: any): UiRole {
   const r = String(role || "").toLowerCase().trim();
@@ -19,14 +19,18 @@ function normalizeRole(role: any): UiRole {
   return "guest";
 }
 
-const Navbar: React.FC = () => {
+type NavbarProps = {
+  authUser: FirebaseUser | null;
+  currentRole: UiRole;
+  currentUserName: string;
+};
+
+const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const [userName, setUserName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<UiRole>("guest");
-
-  const [authUser, setAuthUser] = useState<User | null>(null);
 
   // ✅ scroll states
   const [hasScrolled, setHasScrolled] = useState(false);
@@ -43,56 +47,15 @@ const Navbar: React.FC = () => {
   const isInDashboard = location.pathname.startsWith("/dashboard");
   const isChatPage = location.pathname.startsWith("/chat");
 
-  const syncAuthFromStorage = () => {
-    let profile: any = null;
-    try {
-      profile = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
-    } catch {
-      profile = null;
-    }
-
-    const name =
-      (profile?.name ? String(profile.name).trim() : "") ||
-      (localStorage.getItem("userName") ? String(localStorage.getItem("userName")).trim() : "") ||
-      (() => {
-        try {
-          const cu = JSON.parse(localStorage.getItem("currentUser") || "null");
-          return cu?.name ? String(cu.name).trim() : "";
-        } catch {
-          return "";
-        }
-      })() ||
-      null;
-
-    const rawRole =
-      (profile?.role ? String(profile.role).trim() : "") ||
-      localStorage.getItem("userRole") ||
-      "guest";
-
-    setUserName(name);
-    setUserRole(normalizeRole(rawRole));
-  };
-
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setAuthUser(user);
-      syncAuthFromStorage();
-      if (!user) setIsDropdownOpen(false);
-    });
-    return () => unsub();
-  }, []);
+    const roleNow = normalizeRole(currentRole);
+    const nameNow =
+      String(currentUserName || "").trim() || String(authUser?.displayName || "").trim() || null;
 
-  useEffect(() => {
-    syncAuthFromStorage();
-    const onAuthChanged = () => syncAuthFromStorage();
-    window.addEventListener("authChanged", onAuthChanged);
-    const onStorage = () => syncAuthFromStorage();
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener("authChanged", onAuthChanged);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
+    setUserRole(roleNow);
+    setUserName(nameNow);
+    if (!authUser) setIsDropdownOpen(false);
+  }, [authUser, currentRole, currentUserName]);
 
   useEffect(() => {
     setIsDropdownOpen(false);

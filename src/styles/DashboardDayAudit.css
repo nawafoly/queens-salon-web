@@ -1,5 +1,9 @@
 .day-audit-page {
   direction: rtl;
+  width: min(1800px, 98vw);
+  max-width: min(1800px, 98vw);
+  margin: 0 auto;
+  padding: clamp(10px, 1.2vw, 18px);
 }
 
 .day-audit-card {
@@ -8,7 +12,8 @@
   border-radius: 16px;
   padding: 16px;
   box-shadow: 0 12px 24px rgba(64, 1, 13, 0.08);
-  max-width: 760px;
+  max-width: 100%;
+  width: 100%;
 }
 
 .day-audit-card h2 {
@@ -74,4 +79,3 @@
     padding: 0;
   }
 }
-

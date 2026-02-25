@@ -660,7 +660,7 @@ export default function DashboardLogs() {
 
   if (!authUser) {
     return (
-      <div className="dashboard-page">
+      <div className="dashboard-page logs-page">
         <div className="container">
           <div className="dash-card">
             <h3>غير مصرح</h3>
@@ -673,7 +673,7 @@ export default function DashboardLogs() {
 
   if (!canManage) {
     return (
-      <div className="dashboard-page">
+      <div className="dashboard-page logs-page">
         <div className="container">
           <div className="dash-card">
             <h3>صلاحيات غير كافية</h3>
@@ -685,7 +685,7 @@ export default function DashboardLogs() {
   }
 
   return (
-    <div className="dashboard-page">
+    <div className="dashboard-page logs-page">
       <div className="container">
         <div className="dash-topbar dash-topbar--sticky">
           <div className="dash-topbar-title">

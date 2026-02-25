@@ -14,6 +14,7 @@ type ModalProps = {
   size?: ModalSize;
   closeOnOverlayClick?: boolean;
   initialFocusRef?: React.RefObject<HTMLElement>;
+  inline?: boolean;
 };
 
 let openCount = 0;
@@ -71,6 +72,7 @@ const Modal: React.FC<ModalProps> = ({
   size = "md",
   closeOnOverlayClick = true,
   initialFocusRef,
+  inline = false,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -88,6 +90,7 @@ const Modal: React.FC<ModalProps> = ({
   }, [size]);
 
   useEffect(() => {
+    if (inline) return;
     if (!open) return;
 
     openCount += 1;
@@ -149,7 +152,7 @@ const Modal: React.FC<ModalProps> = ({
       unlockBodyScroll();
       lastFocusedRef.current?.focus();
     };
-  }, [open, initialFocusRef]);
+  }, [open, initialFocusRef, inline]);
 
   if (!open) return null;
   if (typeof document === "undefined") return null;
@@ -161,11 +164,12 @@ const Modal: React.FC<ModalProps> = ({
     .filter(Boolean)
     .join(" ");
 
-  return createPortal(
+  const content = (
     <div
       ref={overlayRef}
       className={overlayClasses}
       onClick={(e) => {
+        if (inline) return;
         if (!closeOnOverlayClick) return;
         if (e.target === overlayRef.current) onClose();
       }}
@@ -175,15 +179,17 @@ const Modal: React.FC<ModalProps> = ({
         ref={panelRef}
         className={panelClasses}
         role="dialog"
-        aria-modal="true"
+        aria-modal={inline ? undefined : true}
         aria-label={ariaLabel}
         tabIndex={-1}
       >
         {children}
       </div>
-    </div>,
-    document.body
+    </div>
   );
+
+  if (inline) return content;
+  return createPortal(content, document.body);
 };
 
 export default Modal;

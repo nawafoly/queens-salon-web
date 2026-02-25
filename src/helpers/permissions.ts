@@ -62,11 +62,10 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
 };
 
 /**
- * قراءة الدور الحالي من localStorage
- * (يتم كتابته من Login.tsx بعد الربط مع staff_public)
+ * تحويل نص الدور إلى قيمة آمنة
  */
-export function getUserRole(): UserRole {
-  const raw = (localStorage.getItem("userRole") || "").toLowerCase().trim();
+export function getUserRole(rawRole?: string): UserRole {
+  const raw = String(rawRole || "").toLowerCase().trim();
 
   // pending (بانتظار التفعيل)
   if (
@@ -103,7 +102,6 @@ export function getUserRole(): UserRole {
  * التحقق من صلاحية معيّنة
  */
 export function can(permission: Permission, role?: UserRole): boolean {
-  const r = role ?? getUserRole();
+  const r = role ?? "guest";
   return ROLE_PERMISSIONS[r]?.includes(permission) ?? false;
 }
-

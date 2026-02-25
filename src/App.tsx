@@ -1,6 +1,7 @@
-// src/App.tsx
+﻿// src/App.tsx
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 
 import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
@@ -10,6 +11,7 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import WelcomeModal from "./components/WelcomeModal";
 import ChatBot from "./components/ChatBot";
+import LoadingBrand from "./components/LoadingBrand";
 
 // Pages
 import Home from "./pages/Home";
@@ -31,6 +33,8 @@ import SuccessInternal from "./pages/SuccessInternal";
 
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
+import { auth } from "./services/firebase";
+import { createOrLoadUserProfile } from "./services/userProfile";
 
 // Pending Dashboard
 import DashboardPending from "./pages/DashboardPending";
@@ -110,6 +114,8 @@ function ScrollToTop() {
    App Component
 ================================ */
 const App: React.FC = () => {
+  const [authReady, setAuthReady] = useState(false);
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
   const [userName, setUserName] = useState("");
   const [userRole, setUserRole] = useState<UiRole>("guest");
@@ -125,36 +131,64 @@ const App: React.FC = () => {
     if (flag === "true") {
       setShowWelcome(true);
       setUserName(getNameFromStorage());
-      setUserRole(normalizeRole(localStorage.getItem("userRole") || "guest"));
       localStorage.removeItem("showWelcome");
     }
   };
 
-  const getRoleFromStorage = (): UiRole => {
-    return normalizeRole(localStorage.getItem("userRole") || "guest");
-  };
-
   useEffect(() => {
     readWelcomeFromStorage();
-    setUserRole(getRoleFromStorage());
     setUserName(getNameFromStorage());
+  }, []);
 
+  useEffect(() => {
+    let seq = 0;
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      const currentSeq = ++seq;
+      setAuthUser(user);
+
+      if (!user) {
+        setUserRole("guest");
+        setUserName("");
+        setAuthReady(true);
+        return;
+      }
+
+      try {
+        const profile = await createOrLoadUserProfile(user);
+        if (currentSeq !== seq) return;
+        setUserRole(normalizeRole(profile.role));
+        setUserName(profile.name || user.displayName || "");
+      } catch {
+        if (currentSeq !== seq) return;
+        // Fail-closed: never keep admin permissions if profile lookup fails.
+        setUserRole("guest");
+        setUserName(user.displayName || "");
+      } finally {
+        if (currentSeq !== seq) return;
+        setAuthReady(true);
+      }
+    });
+
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
     const onAuthChanged = () => {
       readWelcomeFromStorage();
-      setUserRole(getRoleFromStorage());
-      setUserName(getNameFromStorage());
+      if (!authUser) setUserName(getNameFromStorage());
     };
 
     window.addEventListener("authChanged", onAuthChanged);
     return () => window.removeEventListener("authChanged", onAuthChanged);
-  }, []);
+  }, [authUser]);
 
   /* ================================
      Guards
   ================================ */
 
   const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
-    const role = getRoleFromStorage();
+    if (!authReady) return <LoadingBrand text="ط¬ط§ط±ظٹ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ط¬ظ„ط³ط©..." />;
+    const role = userRole;
 
     if (isPendingRole(role))
       return <Navigate to="/dashboard-pending" replace />;
@@ -165,7 +199,8 @@ const App: React.FC = () => {
   };
 
   const ClientGuard = ({ children }: { children: React.ReactNode }) => {
-    const role = getRoleFromStorage();
+    if (!authReady) return <LoadingBrand text="ط¬ط§ط±ظٹ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ط¬ظ„ط³ط©..." />;
+    const role = userRole;
 
     if (isClientRole(role)) return <>{children}</>;
     if (isPendingRole(role))
@@ -175,13 +210,15 @@ const App: React.FC = () => {
   };
 
   const ProfileGuard = ({ children }: { children: React.ReactNode }) => {
-    const role = getRoleFromStorage();
+    if (!authReady) return <LoadingBrand text="ط¬ط§ط±ظٹ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ط¬ظ„ط³ط©..." />;
+    const role = userRole;
     if (role === "guest") return <Navigate to="/login" replace />;
     return <>{children}</>;
   };
 
   const PendingGuard = ({ children }: { children: React.ReactNode }) => {
-    const role = getRoleFromStorage();
+    if (!authReady) return <LoadingBrand text="ط¬ط§ط±ظٹ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ط¬ظ„ط³ط©..." />;
+    const role = userRole;
 
     if (isPendingRole(role)) return <>{children}</>;
     if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
@@ -191,7 +228,7 @@ const App: React.FC = () => {
 
   return (
     <div className="app">
-      {!isInDashboard && <Navbar />}
+      {!isInDashboard && <Navbar authUser={authUser} currentRole={userRole} currentUserName={userName} />}
 
       <main className="main-content">
         <ScrollToTop />
@@ -202,10 +239,10 @@ const App: React.FC = () => {
           <Route path="/services" element={<Services />} />
           <Route path="/about" element={<About />} />
 
-          {/* ✅ Client Booking (Public) */}
+          {/* âœ… Client Booking (Public) */}
           <Route path="/booking" element={<Booking />} />
 
-          {/* ✅ OLD path (keep for backward compatibility) -> redirect into dashboard route */}
+          {/* âœ… OLD path (keep for backward compatibility) -> redirect into dashboard route */}
           <Route path="/booking/internal" element={<Navigate to="/dashboard/booking-internal" replace />} />
 
           {/* Checkout */}
@@ -246,7 +283,7 @@ const App: React.FC = () => {
             }
           />
 
-          {/* ✅ Dashboard Booking Internal (Protected) */}
+          {/* âœ… Dashboard Booking Internal (Protected) */}
           <Route
             path="/dashboard/booking-internal"
             element={
@@ -306,3 +343,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
