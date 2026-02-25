@@ -30,6 +30,9 @@ export type StaffPayrollSource = {
   id: string;
   name: string;
   active?: boolean;
+  employmentEndDate?: string;
+  exceptionalLeaveDates?: string[];
+  exceptionalLeaveWeekdays?: WeekdayKey[];
   useCustomWorkingHours?: boolean;
   customWorkingHours?: Partial<Record<WeekdayKey, StaffWorkingDay>>;
   customWorkingHourOverrides?: StaffWorkingHourOverride[];
@@ -96,6 +99,13 @@ export type ScheduledHoursSummary = {
   baselineHours: number;
   overtimeHours: number;
   basis: StaffOvertimeHoursBasis;
+  periodFrom: string;
+  periodTo: string;
+  averageHoursPerWorkedDay: number;
+  dailyHourBuckets: Array<{
+    hoursPerDay: number;
+    days: number;
+  }>;
 };
 
 export type PayrollMonthSummary = {
@@ -269,6 +279,26 @@ function normalizeBookingHourOverrides(src: any): BookingHourOverride[] {
     .filter(Boolean) as BookingHourOverride[];
 }
 
+function normalizeIsoDateList(src: any): string[] {
+  if (!Array.isArray(src)) return [];
+  const out = new Set<string>();
+  src.forEach((x) => {
+    const d = normalizeIsoDate(x);
+    if (d) out.add(d);
+  });
+  return Array.from(out.values()).sort((a, b) => a.localeCompare(b));
+}
+
+function normalizeWeekdayList(src: any): WeekdayKey[] {
+  if (!Array.isArray(src)) return [];
+  const out = new Set<WeekdayKey>();
+  src.forEach((x) => {
+    const d = normalizeWeekdayKey(x);
+    if (d) out.add(d);
+  });
+  return Array.from(out.values());
+}
+
 function monthStartDate(monthKey: string): Date | null {
   const s = String(monthKey || "").trim();
   if (!/^\d{4}-\d{2}$/.test(s)) return null;
@@ -276,6 +306,18 @@ function monthStartDate(monthKey: string): Date | null {
   const m = Number(s.slice(5, 7));
   if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return null;
   return new Date(y, m - 1, 1);
+}
+
+function addDaysIso(dateIso: string, days: number): string {
+  const d0 = normalizeIsoDate(dateIso);
+  if (!d0) return "";
+  const d = new Date(`${d0}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + Math.trunc(days || 0));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(
+    2,
+    "0"
+  )}`;
 }
 
 function shiftMonthKey(monthKey: string, delta: number): string {
@@ -492,8 +534,10 @@ export function computeScheduledHoursSummaryForMonth(args: {
   appSettings: PayrollSettingsSource | any;
   config: NormalizedPayrollConfig;
 }): ScheduledHoursSummary {
-  const start = monthStartDate(args.monthKey);
-  if (!start) {
+  const cycleRange = payrollCycleRangeForMonthKey(args.monthKey, PAYROLL_CLOSE_DAY);
+  const periodFrom = cycleRange?.from || firstDayOfMonthIso(args.monthKey);
+  const periodTo = cycleRange?.to || lastDayOfMonthIso(args.monthKey);
+  if (!periodFrom || !periodTo) {
     return {
       workedDays: 0,
       seasonDays: 0,
@@ -501,44 +545,78 @@ export function computeScheduledHoursSummaryForMonth(args: {
       baselineHours: 0,
       overtimeHours: 0,
       basis: args.config.hoursBasis,
+      periodFrom: "",
+      periodTo: "",
+      averageHoursPerWorkedDay: 0,
+      dailyHourBuckets: [],
     };
   }
 
-  const y = start.getFullYear();
-  const m = start.getMonth();
-  const endDay = new Date(y, m + 1, 0).getDate();
+  const leaveDateSet = new Set(normalizeIsoDateList(args.staff.exceptionalLeaveDates));
+  const leaveWeekdaySet = new Set(normalizeWeekdayList(args.staff.exceptionalLeaveWeekdays));
+  const employmentEndDate = normalizeIsoDate(args.staff.employmentEndDate);
+  const dailyHoursBucketMap = new Map<string, number>();
   let workedDays = 0;
   let seasonDays = 0;
   let scheduledHours = 0;
+  let baselineHours = 0;
   const selectedBase =
     args.config.hoursBasis === "season" ? args.config.seasonBaseHoursPerDay : args.config.baseHoursPerDay;
 
-  for (let day = 1; day <= endDay; day++) {
-    const dateIso = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const dayHours = resolveStaffDayHours(dateIso, args.staff, args.appSettings);
-    if (dayHours <= 0) continue;
-    const seasonDay = isSeasonDate(args.appSettings, dateIso);
-    const baseForDay = args.config.autoSeasonOvertimeBasis
-      ? seasonDay
-        ? args.config.seasonBaseHoursPerDay
-        : args.config.baseHoursPerDay
-      : selectedBase;
-    workedDays += 1;
-    scheduledHours += dayHours;
-    if (seasonDay) seasonDays += 1;
+  let cursor = periodFrom;
+  let guard = 0;
+  while (cursor && cursor <= periodTo && guard < 380) {
+    const day = weekdayFromIso(cursor);
+    if (!day) {
+      cursor = addDaysIso(cursor, 1);
+      guard += 1;
+      continue;
+    }
+    const outOfEmploymentRange = !!employmentEndDate && cursor > employmentEndDate;
+    const excludedByLeave = leaveDateSet.has(cursor) || leaveWeekdaySet.has(day);
+    if (!outOfEmploymentRange && !excludedByLeave) {
+      const dayHours = resolveStaffDayHours(cursor, args.staff, args.appSettings);
+      if (dayHours > 0) {
+        const seasonDay = isSeasonDate(args.appSettings, cursor);
+        const baseForDay = args.config.autoSeasonOvertimeBasis
+          ? seasonDay
+            ? args.config.seasonBaseHoursPerDay
+            : args.config.baseHoursPerDay
+          : selectedBase;
+        const roundedDayHours = round2(dayHours);
+        const key = roundedDayHours.toFixed(2);
+        dailyHoursBucketMap.set(key, (dailyHoursBucketMap.get(key) || 0) + 1);
+        workedDays += 1;
+        scheduledHours += dayHours;
+        baselineHours += baseForDay;
+        if (seasonDay) seasonDays += 1;
+      }
+    }
+    cursor = addDaysIso(cursor, 1);
+    guard += 1;
   }
 
-  // Accounting baseline is monthly (daysPerMonth), not only worked/open days.
-  const baselineHours = args.config.daysPerMonth * selectedBase;
-  const overtimeHours = Math.max(0, scheduledHours - baselineHours);
+  const scheduledHoursRounded = round2(scheduledHours);
+  const baselineHoursRounded = round2(baselineHours);
+  const overtimeHours = Math.max(0, scheduledHoursRounded - baselineHoursRounded);
+  const dailyHourBuckets = Array.from(dailyHoursBucketMap.entries())
+    .map(([hoursText, days]) => ({
+      hoursPerDay: Number(hoursText) || 0,
+      days,
+    }))
+    .sort((a, b) => a.hoursPerDay - b.hoursPerDay);
 
   return {
     workedDays,
     seasonDays,
-    scheduledHours: round2(scheduledHours),
-    baselineHours: round2(baselineHours),
+    scheduledHours: scheduledHoursRounded,
+    baselineHours: baselineHoursRounded,
     overtimeHours: round2(overtimeHours),
     basis: args.config.hoursBasis,
+    periodFrom,
+    periodTo,
+    averageHoursPerWorkedDay: workedDays > 0 ? round2(scheduledHoursRounded / workedDays) : 0,
+    dailyHourBuckets,
   };
 }
 

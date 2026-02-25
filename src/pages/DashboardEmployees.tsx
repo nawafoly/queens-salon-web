@@ -39,6 +39,8 @@ import {
 import {
   computeStaffPayrollForMonth,
   normalizePayrollConfig,
+  PAYROLL_CLOSE_DAY,
+  payrollCycleKeyFromDate,
   type StaffPayrollMethod,
   type StaffOvertimeHoursBasis,
 } from "../helpers/staffPayroll";
@@ -409,6 +411,18 @@ function fmtMoneySar(v: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(Number(v || 0));
+}
+
+function formatDailyHourBucketsLabel(
+  buckets?: Array<{
+    hoursPerDay?: number;
+    days?: number;
+  }>
+): string {
+  if (!Array.isArray(buckets) || !buckets.length) return "لا يوجد أيام محتسبة";
+  return buckets
+    .map((row) => `${fmtMoneySar(Number(row?.days || 0))} يوم × ${fmtMoneySar(Number(row?.hoursPerDay || 0))} ساعة`)
+    .join(" + ");
 }
 
 function bookingAmountOf(b: any): number {
@@ -1977,6 +1991,9 @@ export default function DashboardEmployees() {
   const modalPayrollMonthSummary = useMemo(() => {
     if (!editingStaff) return null;
     const monthStats = bookingStats[editingStaff.id]?.month;
+    const cycleMonthKey =
+      payrollCycleKeyFromDate(todayIso(), PAYROLL_CLOSE_DAY) ||
+      String(monthStats?.key || currentMonthKey());
     const staffCalc: StaffPublicDoc & { id: string } = {
       ...editingStaff,
       id: editingStaff.id,
@@ -2000,7 +2017,7 @@ export default function DashboardEmployees() {
     };
     return computeStaffPayrollForMonth({
       staff: staffCalc as any,
-      monthKey: String(monthStats?.key || currentMonthKey()),
+      monthKey: cycleMonthKey,
       appSettings,
       invoiceCount: Number(monthStats?.invoiceCount || 0),
       invoiceRevenue: Number(monthStats?.invoiceRevenue || 0),
@@ -2022,6 +2039,7 @@ export default function DashboardEmployees() {
     overtimeHoursBasis,
     overtimePercent,
     overtimeInvoicePercent,
+    nowTick,
   ]);
   const modalTabs: Array<{ key: EmployeeModalTab; label: string }> = editingStaff
     ? [
@@ -3211,6 +3229,22 @@ export default function DashboardEmployees() {
                   </div>
                   ) : null}
 
+                  {showPayrollSubTab && modalPayrollMonthSummary ? (
+                    <div className="staff-payroll-note">
+                      {`تفصيل الساعات المجدولة (ديناميكي): من ${
+                        modalPayrollMonthSummary.schedule.periodFrom || "-"
+                      } إلى ${
+                        modalPayrollMonthSummary.schedule.periodTo || "-"
+                      } | الأيام المحتسبة: ${fmtMoneySar(
+                        modalPayrollMonthSummary.schedule.workedDays || 0
+                      )} | متوسط ساعات اليوم: ${fmtMoneySar(
+                        modalPayrollMonthSummary.schedule.averageHoursPerWorkedDay || 0
+                      )} ساعة | التوزيع: ${formatDailyHourBucketsLabel(
+                        modalPayrollMonthSummary.schedule.dailyHourBuckets as any
+                      )}`}
+                    </div>
+                  ) : null}
+
                   {showStatsSubTab ? (
                   <div className="staff-leave-box">
                     <div className="staff-leave-head">
@@ -4035,5 +4069,3 @@ export default function DashboardEmployees() {
     </div>
   );
 }
-
-

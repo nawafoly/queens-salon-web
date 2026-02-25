@@ -59,7 +59,6 @@ import { pricingSections } from "./Pricing";
 
 // Staff
 import {
-  listActiveStaffBySpecialty,
   listActiveStaffAll,
   type StaffPublicWithId,
 } from "../services/firestoreStaffPublic";
@@ -221,6 +220,10 @@ type PriceLookupItem = {
 
 type CategoryOption = { id: string; name: string };
 type PickerScope = "services" | "packages";
+type FsSectionCatalogCacheRow = {
+  categories: CategoryDoc[];
+  services: ServiceDoc[];
+};
 
 const QUICK_CLIENT_HISTORY_KEY = "internal_quick_clients_history_v1";
 
@@ -229,6 +232,8 @@ const DEFAULT_SERVICE_DURATION_MIN = 60;
 const PACKAGE_SECTION_ID = "service-packages";
 const PACKAGE_SECTION_TITLE = "البكيجات";
 const ALLOW_OVERTIME_MIN = 20;
+const TAKEN_TIMES_CACHE_TTL_MS = 20_000;
+const BOOKED_META_CACHE_TTL_MS = 20_000;
 const MANI_PEDI_SECTION_KEYWORDS = [
   "manicure",
   "pedicure",
@@ -1007,6 +1012,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [fsCategories, setFsCategories] = useState<CategoryDoc[]>([]);
   const [fsServices, setFsServices] = useState<ServiceDoc[]>([]);
   const [fsPackages, setFsPackages] = useState<ServicePackageDoc[]>([]);
+  const fsSectionCatalogCacheRef = useRef<Record<string, FsSectionCatalogCacheRow>>({});
+  const fsSectionCatalogInFlightRef = useRef<
+    Record<string, Promise<FsSectionCatalogCacheRow>>
+  >({});
 
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
@@ -1052,6 +1061,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
   const busyQueryKeyByItemRef = useRef<Record<string, string>>({});
+  const takenTimesCacheRef = useRef<Record<string, { ts: number; values: string[] }>>({});
+  const takenTimesInFlightRef = useRef<Record<string, Promise<Set<string>>>>({});
+  const bookedMetaCacheRef = useRef<Record<string, { ts: number; values: Record<string, string> }>>({});
+  const bookedMetaInFlightRef = useRef<Record<string, Promise<Record<string, string>>>>({});
   const [expandedConfirmedCartItems, setExpandedConfirmedCartItems] = useState<
     Record<string, true>
   >({});
@@ -1084,6 +1097,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [staffErrorByService, setStaffErrorByService] = useState<
     Record<string, string>
   >({});
+  const staffAllCacheRef = useRef<StaffPublicWithId[] | null>(null);
+  const staffByResolverCacheRef = useRef<Record<string, StaffPublicWithId[]>>({});
+  const staffByResolverInFlightRef = useRef<Record<string, Promise<StaffPublicWithId[]>>>({});
 
   const resolvedFutureServiceId = useMemo(() => {
     const picked = String(servicePicker || "").trim();
@@ -3119,6 +3135,88 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     };
   }, []);
 
+  const loadSectionCatalogFromFirestore = async (
+    sectionIdRaw: string
+  ): Promise<FsSectionCatalogCacheRow> => {
+    const sectionId = String(sectionIdRaw || "").trim();
+    if (!sectionId || sectionId === PACKAGE_SECTION_ID) {
+      return { categories: [], services: [] };
+    }
+
+    const cached = fsSectionCatalogCacheRef.current[sectionId];
+    if (cached) return cached;
+
+    const inFlight = fsSectionCatalogInFlightRef.current[sectionId];
+    if (inFlight) return inFlight;
+
+    const loadPromise: Promise<FsSectionCatalogCacheRow> = (async () => {
+      const catsCol = collection(db, "salons", SALON_ID, "service_categories");
+
+      let catsSnap;
+      try {
+        catsSnap = await getDocs(
+          query(
+            catsCol,
+            where("sectionId", "==", sectionId),
+            orderBy("order", "asc")
+          )
+        );
+      } catch {
+        catsSnap = await getDocs(query(catsCol, where("sectionId", "==", sectionId)));
+      }
+
+      const safeCats: any[] = catsSnap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        .filter((c) => String((c as any)?.["الاسم"] ?? c?.name ?? "").trim())
+        .filter((c) => c?.active !== false);
+
+      const catIds = safeCats
+        .map((c: any) => String(c.categoryId ?? c.key ?? c.id ?? "").trim())
+        .filter(Boolean);
+
+      const colRef = collection(db, "salons", SALON_ID, "services");
+      const merged: any[] = [];
+
+      if (catIds.length === 0) {
+        const snap = await getDocs(query(colRef, where("sectionId", "==", sectionId)));
+        snap.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
+      } else {
+        const chunks: string[][] = [];
+        for (let i = 0; i < catIds.length; i += 10) {
+          chunks.push(catIds.slice(i, i + 10));
+        }
+
+        const snaps = await Promise.all(
+          chunks.map((arr) => getDocs(query(colRef, where("categoryId", "in", arr))))
+        );
+        snaps.forEach((sn) => {
+          sn.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
+        });
+
+        const secSnap = await getDocs(query(colRef, where("sectionId", "==", sectionId)));
+        secSnap.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
+      }
+
+      const uniq = new Map<string, any>();
+      merged.forEach((x) => uniq.set(String(x.id), x));
+      const activeOnly = Array.from(uniq.values()).filter((x) => x?.active !== false);
+
+      const payload: FsSectionCatalogCacheRow = {
+        categories: safeCats as CategoryDoc[],
+        services: activeOnly as ServiceDoc[],
+      };
+      fsSectionCatalogCacheRef.current[sectionId] = payload;
+      return payload;
+    })();
+
+    fsSectionCatalogInFlightRef.current[sectionId] = loadPromise;
+    try {
+      return await loadPromise;
+    } finally {
+      delete fsSectionCatalogInFlightRef.current[sectionId];
+    }
+  };
+
   // =========================
   // Load sections
   // =========================
@@ -3135,10 +3233,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         if (cancelled) return;
 
         setFsPackages(Array.isArray(packs) ? packs : []);
+        const safeSections = Array.isArray(secs) ? secs : [];
 
-        if ((secs && secs.length > 0) || (packs && packs.length > 0)) {
+        if (safeSections.length > 0 || (packs && packs.length > 0)) {
           setCatalogMode("firestore");
-          setFsSections(secs);
+          setFsSections(safeSections);
+          // Warm up cache in background so section/category/service open faster.
+          safeSections
+            .map((s: any) => String((s as any)?.id || "").trim())
+            .filter(Boolean)
+            .forEach((sid) => {
+              void loadSectionCatalogFromFirestore(sid);
+            });
         } else {
           setCatalogMode("pricing");
           setFsSections([]);
@@ -3184,75 +3290,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
       try {
         setCatalogLoading(true);
-
-        const catsCol = collection(db, "salons", SALON_ID, "service_categories");
-
-        let catsSnap;
-        try {
-          catsSnap = await getDocs(
-            query(
-              catsCol,
-              where("sectionId", "==", selectedSectionId),
-              orderBy("order", "asc")
-            )
-          );
-        } catch {
-          catsSnap = await getDocs(
-            query(catsCol, where("sectionId", "==", selectedSectionId))
-          );
-        }
-
+        const payload = await loadSectionCatalogFromFirestore(String(selectedSectionId || "").trim());
         if (cancelled) return;
-
-        const safeCats: any[] = catsSnap.docs
-          .map((d) => ({ id: d.id, ...(d.data() as any) }))
-          .filter((c) => String((c as any)?.["الاسم"] ?? c?.name ?? "").trim())
-          .filter((c) => c?.active !== false);
-
-        setFsCategories(safeCats as any);
-
-        const catIds = safeCats
-          .map((c: any) => String(c.categoryId ?? c.key ?? c.id ?? "").trim())
-          .filter(Boolean);
-
-        const colRef = collection(db, "salons", SALON_ID, "services");
-
-        if (catIds.length === 0) {
-          const snap = await getDocs(
-            query(colRef, where("sectionId", "==", selectedSectionId))
-          );
-          if (cancelled) return;
-
-          const merged = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-          const activeOnly = merged.filter((x) => x?.active !== false);
-
-          setFsServices(activeOnly);
-          return;
-        }
-
-        const chunks: string[][] = [];
-        for (let i = 0; i < catIds.length; i += 10) chunks.push(catIds.slice(i, i + 10));
-
-        const snaps = await Promise.all(
-          chunks.map((arr) => getDocs(query(colRef, where("categoryId", "in", arr))))
-        );
-
-        const secSnap = await getDocs(
-          query(colRef, where("sectionId", "==", selectedSectionId))
-        );
-        if (cancelled) return;
-
-        const merged: any[] = [];
-        snaps.forEach((sn) =>
-          sn.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }))
-        );
-        secSnap.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
-
-        const uniq = new Map<string, any>();
-        merged.forEach((x) => uniq.set(String(x.id), x));
-        const activeOnly = Array.from(uniq.values()).filter((x) => x?.active !== false);
-
-        setFsServices(activeOnly);
+        setFsCategories(Array.isArray(payload.categories) ? payload.categories : []);
+        setFsServices(Array.isArray(payload.services) ? payload.services : []);
       } catch {
         if (!cancelled) {
           setFsCategories([]);
@@ -3613,12 +3654,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       if (!sid) return;
       const hasCache = Object.prototype.hasOwnProperty.call(staffByService, sid);
       if (hasCache) return;
+      const sv = getServiceById(sid);
+      const resolverKey = buildStaffResolverKey(sid, sv);
+      const cachedRows = staffByResolverCacheRef.current[resolverKey];
+      if (Array.isArray(cachedRows)) {
+        setStaffByService((p) => ({ ...p, [sid]: cachedRows as any }));
+        return;
+      }
 
       try {
         setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
         setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
-
-        const sv = getServiceById(sid);
         const res = await listStaffForService(sid, sv);
 
         if (cancelled) return;
@@ -3669,12 +3715,54 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setFutureStaffNameQuery("");
   }, [futureAnyStaff, futureSelectedEmployeeKey, futureStaffNameQuery]);
 
+  const serviceByIdMap = useMemo(() => {
+    const out = new Map<string, FlatService>();
+    (servicesFlat || []).forEach((sv) => {
+      const id = String((sv as any)?.id || "").trim();
+      if (id && !out.has(id)) out.set(id, sv);
+    });
+    return out;
+  }, [servicesFlat]);
+
   function getServiceById(id: string) {
-    return servicesFlat.find((sv) => sv.id === id) || null;
+    const key = String(id || "").trim();
+    if (!key) return null;
+    return serviceByIdMap.get(key) || null;
   }
 
   function normalizeSpecialty(v: string) {
     return String(v || "").trim().toLowerCase();
+  }
+
+  function normalizeStaffSpecialties(st: any) {
+    return Array.isArray(st?.specialties)
+      ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
+      : [];
+  }
+
+  function buildStaffResolverKey(serviceId: string, target: FlatService | null) {
+    const sid = normalizeSpecialty(serviceId);
+    if (target?.kind === "package") {
+      const needed = Array.from(
+        new Set(
+          [
+            ...(target.packageServiceIds || []),
+            ...((target.packageServices || []).map((x: any) => String(x?.serviceId || "").trim())),
+          ]
+            .map((x) => normalizeSpecialty(String(x || "")))
+            .filter(Boolean)
+        )
+      ).sort();
+      return needed.length ? `pkg:${needed.join("|")}` : `pkg:${sid}`;
+    }
+    return `srv:${sid}`;
+  }
+
+  async function getAllActiveStaffCached() {
+    if (Array.isArray(staffAllCacheRef.current)) return staffAllCacheRef.current;
+    const all = await listActiveStaffAll(SALON_ID);
+    staffAllCacheRef.current = Array.isArray(all) ? all : [];
+    return staffAllCacheRef.current;
   }
 
   async function listStaffForService(serviceId: string, service?: FlatService | null) {
@@ -3682,29 +3770,61 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     if (!sid) return [] as StaffPublicWithId[];
 
     const target = service || getServiceById(sid);
-    if (target?.kind === "package") {
-      const needed = (target.packageServiceIds || []).map(normalizeSpecialty).filter(Boolean);
-      if (!needed.length) return [];
-      const all = await listActiveStaffAll(SALON_ID);
-      return (all || []).filter((st: any) => {
-        const specs = Array.isArray(st?.specialties)
-          ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
-          : [];
-        return needed.every((n) => specs.includes(n));
-      });
-    }
+    const resolverKey = buildStaffResolverKey(sid, target);
 
-    const res = await listActiveStaffBySpecialty({
-      salonId: SALON_ID,
-      specialty: sid,
-    });
-    return (res || []).filter((st: any) => {
-      const specs = Array.isArray(st?.specialties)
-        ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
-        : [];
-      return specs.includes(normalizeSpecialty(sid));
-    });
+    const cached = staffByResolverCacheRef.current[resolverKey];
+    if (Array.isArray(cached)) return cached;
+
+    const inFlight = staffByResolverInFlightRef.current[resolverKey];
+    if (inFlight) return inFlight;
+
+    const loadPromise: Promise<StaffPublicWithId[]> = (async () => {
+      const all = await getAllActiveStaffCached();
+      if (target?.kind === "package") {
+        const needed = Array.from(
+          new Set(
+            [
+              ...(target.packageServiceIds || []),
+              ...((target.packageServices || []).map((x: any) => String(x?.serviceId || "").trim())),
+            ]
+              .map((x) => normalizeSpecialty(String(x || "")))
+              .filter(Boolean)
+          )
+        );
+        if (!needed.length) return [] as StaffPublicWithId[];
+
+        const strict = (all || []).filter((st: any) => {
+          const specs = normalizeStaffSpecialties(st);
+          return needed.every((n) => specs.includes(n));
+        });
+        if (strict.length) return strict;
+
+        // Fallback: at least one package service specialty.
+        return (all || []).filter((st: any) => {
+          const specs = normalizeStaffSpecialties(st);
+          return needed.some((n) => specs.includes(n));
+        });
+      }
+
+      const wanted = normalizeSpecialty(sid);
+      if (!wanted) return [] as StaffPublicWithId[];
+      return (all || []).filter((st: any) => normalizeStaffSpecialties(st).includes(wanted));
+    })();
+
+    staffByResolverInFlightRef.current[resolverKey] = loadPromise;
+    try {
+      const rows = await loadPromise;
+      staffByResolverCacheRef.current[resolverKey] = rows;
+      return rows;
+    } finally {
+      delete staffByResolverInFlightRef.current[resolverKey];
+    }
   }
+
+  useEffect(() => {
+    void getAllActiveStaffCached();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isToolsOptionEligibleForService = (sv: FlatService | null) => {
     if (!sv) return false;
@@ -4105,12 +4225,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       for (const sid of serviceIds) {
         if (cancelled) return;
         if (staffByService[sid] && Array.isArray(staffByService[sid])) continue;
+        const sv = getServiceById(sid);
+        const resolverKey = buildStaffResolverKey(sid, sv);
+        const cachedRows = staffByResolverCacheRef.current[resolverKey];
+        if (Array.isArray(cachedRows)) {
+          setStaffByService((p) => ({ ...p, [sid]: cachedRows }));
+          continue;
+        }
 
         try {
           setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
           setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
-
-          const sv = getServiceById(sid);
           const res = await listStaffForService(sid, sv);
 
           if (cancelled) return;
@@ -4164,6 +4289,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     employeeUidFallback?: string;
     employeeNameFallback?: string;
     dateISO: string;
+    forceFresh?: boolean;
   }) {
     const {
       salonId,
@@ -4172,9 +4298,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       employeeUidFallback,
       employeeNameFallback,
       dateISO,
+      forceFresh,
     } = args;
-    const takenFs = new Set<string>();
-    const colSlots = collection(db, "salons", salonId, "booking_slots");
 
     const lookup = buildEmployeeLookupKeys({
       employeeKey,
@@ -4182,43 +4307,180 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       employeeUidFallback,
       employeeNameFallback,
     });
+    const cacheKey = `${String(salonId || "").trim()}__${String(dateISO || "").trim()}__${lookup.slotKeys.join("|")}`;
+    const now = Date.now();
 
-    const primaryReads: Promise<any>[] = [
-      ...lookup.primaryEmployeeKeyKeys.map((k) =>
-        getDocs(query(colSlots, where("employeeKey", "==", k), where("date", "==", dateISO)))
-      ),
-      ...lookup.primaryEmployeeIdKeys.map((k) =>
-        getDocs(query(colSlots, where("employeeId", "==", k), where("date", "==", dateISO)))
-      ),
-    ];
+    if (!forceFresh) {
+      const cached = takenTimesCacheRef.current[cacheKey];
+      if (cached && now - Number(cached.ts || 0) <= TAKEN_TIMES_CACHE_TTL_MS) {
+        return new Set<string>(cached.values || []);
+      }
+      const inFlight = takenTimesInFlightRef.current[cacheKey];
+      if (inFlight) {
+        const rows = await inFlight;
+        return new Set<string>(rows);
+      }
+    }
 
-    const primarySnaps = await Promise.all(primaryReads);
-    primarySnaps.forEach((snap) => {
-      snap.docs.forEach((d: any) => {
-        const t = String((d.data() as any)?.time || "").trim();
-        if (t) takenFs.add(t);
+    const pending = (async () => {
+      const takenFs = new Set<string>();
+      const colSlots = collection(db, "salons", salonId, "booking_slots");
+
+      const primaryReads: Promise<any>[] = [
+        ...lookup.primaryEmployeeKeyKeys.map((k) =>
+          getDocs(query(colSlots, where("employeeKey", "==", k), where("date", "==", dateISO)))
+        ),
+        ...lookup.primaryEmployeeIdKeys.map((k) =>
+          getDocs(query(colSlots, where("employeeId", "==", k), where("date", "==", dateISO)))
+        ),
+      ];
+
+      const primarySnaps = await Promise.all(primaryReads);
+      primarySnaps.forEach((snap) => {
+        snap.docs.forEach((d: any) => {
+          const t = String((d.data() as any)?.time || "").trim();
+          if (t) takenFs.add(t);
+        });
       });
-    });
 
-    const fallbackReads: Promise<any>[] = [
-      ...lookup.fallbackEmployeeKeyKeys.map((k) =>
-        getDocs(query(colSlots, where("employeeKey", "==", k), where("date", "==", dateISO)))
-      ),
-      ...lookup.fallbackEmployeeIdKeys.map((k) =>
-        getDocs(query(colSlots, where("employeeId", "==", k), where("date", "==", dateISO)))
-      ),
-    ];
-    if (!fallbackReads.length) return takenFs;
+      const fallbackReads: Promise<any>[] = [
+        ...lookup.fallbackEmployeeKeyKeys.map((k) =>
+          getDocs(query(colSlots, where("employeeKey", "==", k), where("date", "==", dateISO)))
+        ),
+        ...lookup.fallbackEmployeeIdKeys.map((k) =>
+          getDocs(query(colSlots, where("employeeId", "==", k), where("date", "==", dateISO)))
+        ),
+      ];
+      if (fallbackReads.length) {
+        const snaps = await Promise.all(fallbackReads);
+        snaps.forEach((snap) => {
+          snap.docs.forEach((d: any) => {
+            const t = String((d.data() as any)?.time || "").trim();
+            if (t) takenFs.add(t);
+          });
+        });
+      }
 
-    const snaps = await Promise.all(fallbackReads);
-    snaps.forEach((snap) => {
-      snap.docs.forEach((d: any) => {
-        const t = String((d.data() as any)?.time || "").trim();
-        if (t) takenFs.add(t);
-      });
-    });
+      takenTimesCacheRef.current[cacheKey] = {
+        ts: Date.now(),
+        values: Array.from(takenFs),
+      };
+      return takenFs;
+    })();
 
-    return takenFs;
+    takenTimesInFlightRef.current[cacheKey] = pending;
+    try {
+      const rows = await pending;
+      return new Set<string>(rows);
+    } finally {
+      delete takenTimesInFlightRef.current[cacheKey];
+    }
+  }
+
+  async function collectBookedMetaForEmployeeDay(args: {
+    salonId: string;
+    employeeKey: string;
+    employeeIdFallback: string;
+    dateISO: string;
+    forceFresh?: boolean;
+  }) {
+    const {
+      salonId,
+      employeeKey,
+      employeeIdFallback,
+      dateISO,
+      forceFresh,
+    } = args;
+    const empKey = String(employeeKey || "").trim();
+    const empId = String(employeeIdFallback || "").trim();
+    if (!empKey && !empId) return {} as Record<string, string>;
+
+    const cacheKey = `${String(salonId || "").trim()}__${String(dateISO || "").trim()}__${empKey}__${empId}`;
+    const now = Date.now();
+
+    if (!forceFresh) {
+      const cached = bookedMetaCacheRef.current[cacheKey];
+      if (cached && now - Number(cached.ts || 0) <= BOOKED_META_CACHE_TTL_MS) {
+        return { ...(cached.values || {}) };
+      }
+      const inFlight = bookedMetaInFlightRef.current[cacheKey];
+      if (inFlight) {
+        const rows = await inFlight;
+        return { ...rows };
+      }
+    }
+
+    const pending = (async () => {
+      const out: Record<string, string> = {};
+      try {
+        const colBookings = collection(db, "salons", salonId, "bookings");
+        let bSnap;
+
+        if (empKey) {
+          bSnap = await getDocs(
+            query(
+              colBookings,
+              where("employeeKey", "==", empKey),
+              where("date", "==", dateISO),
+              limit(250)
+            )
+          );
+        } else {
+          bSnap = await getDocs(
+            query(
+              colBookings,
+              where("employeeId", "==", empId),
+              where("date", "==", dateISO),
+              limit(250)
+            )
+          );
+        }
+
+        if (bSnap.empty && empId) {
+          bSnap = await getDocs(
+            query(
+              colBookings,
+              where("employeeId", "==", empId),
+              where("date", "==", dateISO),
+              limit(250)
+            )
+          );
+        }
+
+        bSnap.docs.forEach((d) => {
+          const data = d.data() as any;
+          const t = String(data?.time || "").trim();
+          const status = String(data?.status || "").toLowerCase();
+          if (!t) return;
+          if (["cancelled", "canceled", "rejected"].includes(status)) return;
+
+          const clientName = String(data?.clientName || data?.name || "").trim();
+          const clientPhone = phone10Digits(data?.clientPhone || data?.phone || "");
+          const channel = String(data?.channel || data?.source || "").trim();
+          const who = [clientName || "ط¨ط¯ظˆظ† ط§ط³ظ…", clientPhone ? `(${clientPhone})` : ""]
+            .filter(Boolean)
+            .join(" ");
+          const ch = channel ? ` - ${channel}` : "";
+          out[t] = `ظ…ط­ط¬ظˆط² - ${who}${ch}`;
+        });
+      } catch {
+        // ignore
+      }
+
+      bookedMetaCacheRef.current[cacheKey] = {
+        ts: Date.now(),
+        values: { ...out },
+      };
+      return out;
+    })();
+
+    bookedMetaInFlightRef.current[cacheKey] = pending;
+    try {
+      const rows = await pending;
+      return { ...rows };
+    } finally {
+      delete bookedMetaInFlightRef.current[cacheKey];
+    }
   }
 
   function resolveBookableStartTimes(args: {
@@ -4354,43 +4616,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       function getBookedMetaForDay(empKey: string, employeeId: string, date: string) {
         const cacheKey = `${date}__${empKey}__${employeeId}`;
         if (!bookedMetaCache.has(cacheKey)) {
-          const pending = (async () => {
-            const out: Record<string, string> = {};
-            try {
-              const colBookings = collection(db, "salons", SALON_ID, "bookings");
-              let bSnap = await getDocs(
-                query(colBookings, where("employeeKey", "==", empKey), where("date", "==", date), limit(250))
-              );
-              if (bSnap.empty) {
-                bSnap = await getDocs(
-                  query(colBookings, where("employeeId", "==", employeeId), where("date", "==", date), limit(250))
-                );
-              }
-
-              bSnap.docs.forEach((d) => {
-                const data = d.data() as any;
-                const t = String(data?.time || "").trim();
-                const status = String(data?.status || "").toLowerCase();
-                if (!t) return;
-
-                if (["cancelled", "canceled", "rejected"].includes(status)) return;
-
-                const clientName = String(data?.clientName || data?.name || "").trim();
-                const clientPhone = phone10Digits(data?.clientPhone || data?.phone || "");
-                const channel = String(data?.channel || data?.source || "").trim();
-
-                const who = [clientName || "بدون اسم", clientPhone ? `(${clientPhone})` : ""]
-                  .filter(Boolean)
-                  .join(" ");
-                const ch = channel ? ` — ${channel}` : "";
-
-                out[t] = `محجوز — ${who}${ch}`;
-              });
-            } catch {
-              // ignore
-            }
-            return out;
-          })();
+          const pending = collectBookedMetaForEmployeeDay({
+            salonId: SALON_ID,
+            employeeKey: empKey,
+            employeeIdFallback: employeeId,
+            dateISO: date,
+          });
           bookedMetaCache.set(cacheKey, pending);
         }
         return bookedMetaCache.get(cacheKey)!;
@@ -4419,7 +4650,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             const shouldReset = !prev || prevQueryKey !== queryKey;
             return {
               ...(prev || emptyBusyState()),
-              loading: true,
+              loading: shouldReset,
               hint: shouldReset ? "" : prev?.hint || "",
               disabledStartTimes: shouldReset
                 ? new Set(baseSlots.map((s) => s.value24))
@@ -4456,10 +4687,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             focusFutureSearchForCartItem(it);
             return;
           }
-          const [takenFs, bookedMetaByTime] = await Promise.all([
-            getTakenFsForDay(it, empKey, employeeId, date),
-            getBookedMetaForDay(empKey, employeeId, date),
-          ]);
+          const takenFs = await getTakenFsForDay(it, empKey, employeeId, date);
+          const bookedMetaByTime: Record<string, string> = {};
 
           if (cancelled) return;
 
@@ -4625,6 +4854,25 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             },
           }));
           busyQueryKeyByItemRef.current[itemId] = queryKey;
+          void getBookedMetaForDay(empKey, employeeId, date)
+            .then((meta) => {
+              if (cancelled) return;
+              if (busyQueryKeyByItemRef.current[itemId] !== queryKey) return;
+              setBusyByItem((p) => {
+                const prev = p[itemId];
+                if (!prev) return p;
+                return {
+                  ...p,
+                  [itemId]: {
+                    ...prev,
+                    bookedMetaByTime: meta || {},
+                  },
+                };
+              });
+            })
+            .catch(() => {
+              // ignore
+            });
 
           const currentTime = String(it.time || "").trim();
           if (currentTime && disabled.has(currentTime)) {
@@ -4740,6 +4988,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }, [formData.items]);
 
   const finalPrice = useMemo(() => applied.finalPrice, [applied.finalPrice]);
+  const baseSlotsForUi = useMemo(
+    () =>
+      timeSlots.length > 0
+        ? timeSlots
+        : generateSalonTimeSlots(openTime, closeTime, slotStepMin),
+    [timeSlots, openTime, closeTime, slotStepMin]
+  );
 
   useEffect(() => {
     const rawValue = Number(manualDiscountValue);
@@ -4859,22 +5114,16 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     }
 
     try {
-      const lockKeys = buildEmployeeLookupKeys({
+      const takenFs = await collectTakenTimesForEmployeeDay({
+        salonId: SALON_ID,
         employeeKey,
         employeeIdFallback,
         employeeUidFallback: String(it.employeeUid || "").trim(),
         employeeNameFallback: String(it.employeeName || "").trim(),
-      }).slotKeys;
-      const snaps = await Promise.all(
-        lockKeys.flatMap((lockKey) =>
-          timesToCheck.map((t) => {
-            const slotId = buildSlotId(SALON_ID, lockKey, date, t);
-            return getDoc(doc(db, "salons", SALON_ID, "booking_slots", slotId));
-          })
-        )
-      );
+        dateISO: date,
+      });
 
-      const anyTaken = snaps.some((s) => s.exists());
+      const anyTaken = timesToCheck.some((t) => takenFs.has(t));
       if (anyTaken) return { ok: false, msg: "هذا الوقت محجوز بالفعل لهذه الموظفة. اختاري وقتًا آخر." };
 
       return { ok: true, msg: "" };
@@ -4992,22 +5241,16 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     }
 
     try {
-      const lockKeys = buildEmployeeLookupKeys({
+      const takenFs = await collectTakenTimesForEmployeeDay({
+        salonId: SALON_ID,
         employeeKey,
         employeeIdFallback,
         employeeUidFallback: String(temp.employeeUid || "").trim(),
         employeeNameFallback: String(temp.employeeName || "").trim(),
-      }).slotKeys;
-      const snaps = await Promise.all(
-        lockKeys.flatMap((lockKey) =>
-          timesToCheck.map((t) => {
-            const slotId = buildSlotId(SALON_ID, lockKey, date, t);
-            return getDoc(doc(db, "salons", SALON_ID, "booking_slots", slotId));
-          })
-        )
-      );
+        dateISO: date,
+      });
 
-      const anyTaken = snaps.some((s) => s.exists());
+      const anyTaken = timesToCheck.some((t) => takenFs.has(t));
       if (anyTaken) {
         openModal({
           title: "وقت غير متاح",
@@ -5764,10 +6007,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const previewCreatedAtLabel = new Intl.DateTimeFormat("ar-SA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date());
+  const previewCreatedAtLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("ar-SA", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date()),
+    []
+  );
 
   const bookingPreviewItems = (formData.items || []).map((it, idx) => {
     const sv = getServiceById(String(it.serviceId || "").trim());
@@ -5799,6 +6046,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       locked: !!it.locked,
     };
   });
+  const lockedPreviewCount = bookingPreviewItems.filter((x) => x.locked).length;
+  const totalPreviewCount = bookingPreviewItems.length;
+  const allPreviewLocked = totalPreviewCount > 0 && lockedPreviewCount === totalPreviewCount;
 
   return (
     <div className="bk-page-wrapper bk-internal">
@@ -6727,19 +6977,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         });
                         const hasWorkingHours = filterStaffSlotsByWorkingHours(st as any, {
                           dateISO,
-                          slots:
-                            timeSlots.length > 0
-                              ? timeSlots
-                              : generateSalonTimeSlots(openTime, closeTime, slotStepMin),
+                          slots: baseSlotsForUi,
                           fallbackOpenTime: openTime,
                           fallbackCloseTime: closeTime,
                         }).length > 0;
                         return { staff: st, dayAvailable, hasWorkingHours };
                       });
-                      const baseSlotsForUi =
-                        timeSlots.length > 0
-                          ? timeSlots
-                          : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
                       const selectedStaffForTime = visibleStaff.find(
                         (x) => String((x as any)?.id || "").trim() === String(it.employeeId || "").trim()
                       );
@@ -6754,14 +6997,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       const availableTimeSlots = slotsForSelectedStaff.filter(
                         (s) => !busy.disabledStartTimes?.has(s.value24)
                       );
-                      const blockedReasonEntries = Object.entries(
-                        busy.disabledReasonByStart || {}
-                      )
-                        .filter(([t]) => busy.disabledStartTimes?.has(t));
-                      const blockedReasonSummaries = summarizeBlockedReasons(
-                        blockedReasonEntries,
-                        slotStepMin
-                      );
+                      const shouldSummarizeBlockedReasons =
+                        !busy.loading &&
+                        !!String(it.employeeId || "").trim() &&
+                        Object.keys(busy.disabledReasonByStart || {}).length > 0;
+                      const blockedReasonEntries = shouldSummarizeBlockedReasons
+                        ? Object.entries(busy.disabledReasonByStart || {}).filter(([t]) =>
+                            busy.disabledStartTimes?.has(t)
+                          )
+                        : [];
+                      const blockedReasonSummaries = shouldSummarizeBlockedReasons
+                        ? summarizeBlockedReasons(blockedReasonEntries, slotStepMin)
+                        : [];
                       const blockedReasonPreview = blockedReasonSummaries.slice(0, 10);
                       const blockedReasonHiddenCount = Math.max(
                         0,
@@ -7097,12 +7344,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   </div>
                 )}
 
-                {(bookingPreviewItems || []).length ? (
+                {totalPreviewCount > 0 && !allPreviewLocked ? (
+                  <div className="bk-cart-preview-pending mt-2">
+                    ملخص الحجز يظهر بعد تأكيد الموظفة والوقت لكل خدمة.
+                  </div>
+                ) : null}
+
+                {allPreviewLocked ? (
                   <div className="bk-cart-confirmed-preview mt-2">
                     <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
                       <div className="bk-cart-confirmed-title mb-0">ملخص الحجز قبل الحفظ</div>
                       <div className="small text-muted">
-                        مؤكد: {bookingPreviewItems.filter((x) => x.locked).length} / {bookingPreviewItems.length}
+                        مؤكد: <span dir="ltr">{lockedPreviewCount} / {totalPreviewCount}</span>
                       </div>
                     </div>
                     <div className="bk-cart-confirmed-meta">
@@ -7139,8 +7392,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                             <span className="bk-cart-summary-service">{row.serviceName}</span>
                           </div>
                           <div className="bk-cart-summary-line-meta">
-                            <span><strong>القسم:</strong> {row.sectionLabel}</span>
-                            <span><strong>الصنف:</strong> {row.categoryLabel}</span>
                             <span><strong>الموظفة:</strong> {row.staffName}</span>
                             <span><strong>التاريخ:</strong> {row.date}</span>
                             <span><strong>الوقت:</strong> {row.timeLabel}</span>
@@ -7405,6 +7656,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 };
 
 export default BookingInternal;
+
 
 
 

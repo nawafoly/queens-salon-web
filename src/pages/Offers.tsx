@@ -537,7 +537,7 @@ const Offers = () => {
                           <Link
                             to={{
                               pathname: "/booking",
-                              search: `?coupon=${encodeURIComponent(String(offer.code || "").trim())}`,
+                              search: `?coupon=${encodeURIComponent(String(offer.code || "").trim())}&fromOffer=1`,
                             }}
                             className="btn btn-primary w-100 btn-lg rounded-pill"
                           >

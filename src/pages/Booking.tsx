@@ -65,7 +65,6 @@ import {
 
 // âœ… Staff Public (Firestore)
 import {
-  listActiveStaffBySpecialty,
   listActiveStaffAll,
   type StaffPublicWithId,
 } from "../services/firestoreStaffPublic";
@@ -82,6 +81,7 @@ import {
   type ServicePackageDoc,
   type PackageServiceItem,
 } from "../services/firestorePackages";
+import { pricingSections } from "./Pricing";
 
 // âœ… Create booking (Firestore)
 import { createBooking } from "../services/firestoreBookings";
@@ -164,12 +164,29 @@ interface BookingFormData {
   items: CartItem[];
 }
 
-type AppliedOfferResult = {
-  offer: FsOffer | null;
+type CouponMessageKind = "success" | "error" | "";
+
+type AppliedCouponEntry = {
+  code: string;
+  offerId: string;
+  offerTitle: string;
   discountAmount: number;
-  finalPrice: number;
-  reason?: string;
+  applicableItemIds: string[];
 };
+
+function extractMinPrice(priceText: string): number {
+  const cleaned = String(priceText || "").replace(/[^\d\-]/g, "");
+  if (!cleaned) return 0;
+
+  const parts = cleaned
+    .split("-")
+    .filter(Boolean)
+    .map((n) => Number(n))
+    .filter((n) => Number.isFinite(n));
+
+  if (!parts.length) return 0;
+  return Math.min(...parts);
+}
 
 function readDisplayLabel(raw: any, fallback = ""): string {
   const obj = raw && typeof raw === "object" ? raw : {};
@@ -343,6 +360,10 @@ type FlatService = {
 
 type CategoryOption = { id: string; name: string };
 type PickerScope = "services" | "offers_packages";
+type FsSectionCatalogCacheRow = {
+  categories: CategoryDoc[];
+  services: ServiceDoc[];
+};
 
 const SALON_ID = "main";
 const DEFAULT_SERVICE_DURATION_MIN = 60;
@@ -521,6 +542,10 @@ function calcDiscount(basePrice: number, offer: FsOffer) {
     discountAmount: discount,
     finalPrice: Math.max(0, basePrice - discount),
   };
+}
+
+function normalizeCouponCode(raw: string) {
+  return String(raw || "").trim().toUpperCase();
 }
 
 /**
@@ -883,8 +908,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   }, [(booking as any)?.bufferMin]);
   const maniPediToolsFee = MANI_PEDI_TOOLS_FEE_FIXED;
 
-  console.log("[Booking] slotStepMin, bufferMin from settings:", slotStepMin, bufferMin, booking);
-
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
 
   useEffect(() => {
@@ -925,6 +948,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+    if (typeof document !== "undefined") {
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      const mainContent = document.querySelector<HTMLElement>(".main-content");
+      if (mainContent) mainContent.scrollTop = 0;
+    }
+  }, [location.pathname]);
+
   // =========================
   // Catalog mode
   // =========================
@@ -937,6 +972,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [fsServices, setFsServices] = useState<ServiceDoc[]>([]);
   const [fsPackages, setFsPackages] = useState<ServicePackageDoc[]>([]);
   const [sequenceOffers, setSequenceOffers] = useState<FsOffer[]>([]);
+  const fsSectionCatalogCacheRef = useRef<Record<string, FsSectionCatalogCacheRow>>({});
+  const fsSectionCatalogInFlightRef = useRef<
+    Record<string, Promise<FsSectionCatalogCacheRow>>
+  >({});
 
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
@@ -1039,13 +1078,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const [couponCode, setCouponCode] = useState("");
-  const [applied, setApplied] = useState<AppliedOfferResult>({
-    offer: null,
-    discountAmount: 0,
-    finalPrice: 0,
-  });
+  const [appliedCoupons, setAppliedCoupons] = useState<AppliedCouponEntry[]>([]);
   const [offerMsg, setOfferMsg] = useState("");
+  const [offerMsgKind, setOfferMsgKind] = useState<CouponMessageKind>("");
+  const [offerLandingMsg, setOfferLandingMsg] = useState("");
   const [manualOverride, setManualOverride] = useState(false);
+
+  const clearAppliedCoupons = () => {
+    setAppliedCoupons([]);
+    setOfferMsg("");
+    setOfferMsgKind("");
+    setManualOverride(false);
+  };
 
   // âœ… busy/disabled per item
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
@@ -1108,6 +1152,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [staffByService, setStaffByService] = useState<Record<string, StaffPublicWithId[]>>({});
   const [staffLoadingByService, setStaffLoadingByService] = useState<Record<string, boolean>>({});
   const [staffErrorByService, setStaffErrorByService] = useState<Record<string, string>>({});
+  const staffAllCacheRef = useRef<StaffPublicWithId[] | null>(null);
+  const staffByResolverCacheRef = useRef<Record<string, StaffPublicWithId[]>>({});
+  const staffByResolverInFlightRef = useRef<Record<string, Promise<StaffPublicWithId[]>>>({});
 
   // âœ… Modal بدل alert
   const [uiModal, setUiModal] = useState<UiModalState>({
@@ -1342,6 +1389,89 @@ function findCartOverlap(items: CartItem[]) {
     }
   }
 
+  const loadSectionCatalogFromFirestore = async (
+    sectionIdRaw: string
+  ): Promise<FsSectionCatalogCacheRow> => {
+    const sectionId = String(sectionIdRaw || "").trim();
+    if (!sectionId || sectionId === PACKAGE_SECTION_ID) {
+      return { categories: [], services: [] };
+    }
+
+    const cached = fsSectionCatalogCacheRef.current[sectionId];
+    if (cached) return cached;
+
+    const inFlight = fsSectionCatalogInFlightRef.current[sectionId];
+    if (inFlight) return inFlight;
+
+    const loadPromise: Promise<FsSectionCatalogCacheRow> = (async () => {
+      const catsCol = collection(db, "salons", SALON_ID, "service_categories");
+
+      let catsSnap;
+      try {
+        catsSnap = await getDocs(
+          query(
+            catsCol,
+            where("sectionId", "==", sectionId),
+            orderBy("order", "asc")
+          )
+        );
+      } catch {
+        // fallback if no order index
+        catsSnap = await getDocs(query(catsCol, where("sectionId", "==", sectionId)));
+      }
+
+      const safeCats: any[] = catsSnap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        .filter((c) => String((c as any)?.["الاسم"] ?? c?.name ?? "").trim())
+        .filter((c) => c?.active !== false);
+
+      const catIds = safeCats
+        .map((c: any) => String(c.categoryId ?? c.key ?? c.id ?? "").trim())
+        .filter(Boolean);
+
+      const colRef = collection(db, "salons", SALON_ID, "services");
+      const merged: any[] = [];
+
+      if (catIds.length === 0) {
+        const snap = await getDocs(query(colRef, where("sectionId", "==", sectionId)));
+        snap.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
+      } else {
+        const chunks: string[][] = [];
+        for (let i = 0; i < catIds.length; i += 10) {
+          chunks.push(catIds.slice(i, i + 10));
+        }
+
+        const snaps = await Promise.all(
+          chunks.map((arr) => getDocs(query(colRef, where("categoryId", "in", arr))))
+        );
+        snaps.forEach((sn) => {
+          sn.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
+        });
+
+        const secSnap = await getDocs(query(colRef, where("sectionId", "==", sectionId)));
+        secSnap.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
+      }
+
+      const uniq = new Map<string, any>();
+      merged.forEach((x) => uniq.set(String(x.id), x));
+      const activeOnly = Array.from(uniq.values()).filter((x) => x?.active !== false);
+
+      const payload: FsSectionCatalogCacheRow = {
+        categories: safeCats as CategoryDoc[],
+        services: activeOnly as ServiceDoc[],
+      };
+      fsSectionCatalogCacheRef.current[sectionId] = payload;
+      return payload;
+    })();
+
+    fsSectionCatalogInFlightRef.current[sectionId] = loadPromise;
+    try {
+      return await loadPromise;
+    } finally {
+      delete fsSectionCatalogInFlightRef.current[sectionId];
+    }
+  };
+
   // =========================
   // Load sections
   // =========================
@@ -1360,7 +1490,17 @@ function findCartOverlap(items: CartItem[]) {
         setFsPackages(Array.isArray(packs) ? packs : []);
 
         setCatalogMode("firestore");
-        setFsSections(Array.isArray(secs) ? secs : []);
+        const safeSections = Array.isArray(secs) ? secs : [];
+        setFsSections(safeSections);
+
+        // Warm up section catalog cache in the background so section/category/service
+        // dropdowns open faster when user starts picking.
+        safeSections
+          .map((s: any) => String(s?.id || "").trim())
+          .filter(Boolean)
+          .forEach((sid) => {
+            void loadSectionCatalogFromFirestore(sid);
+          });
       } catch {
         if (!cancelled) {
           setCatalogMode("firestore");
@@ -1402,93 +1542,12 @@ function findCartOverlap(items: CartItem[]) {
       }
 
       try {
-        // reset previous section lists so user doesn't see stale options
-        setFsCategories([]);
-        setFsServices([]);
         setCatalogLoading(true);
         setCategoryLoading(true);
-
-        // 1) Categories
-        const catsCol = collection(db, "salons", SALON_ID, "service_categories");
-
-        let catsSnap;
-        try {
-          catsSnap = await getDocs(
-            query(
-              catsCol,
-              where("sectionId", "==", selectedSectionId),
-              orderBy("order", "asc")
-            )
-          );
-        } catch {
-          // fallback if no order index
-          catsSnap = await getDocs(
-            query(catsCol, where("sectionId", "==", selectedSectionId))
-          );
-        }
-
+        const payload = await loadSectionCatalogFromFirestore(String(selectedSectionId || "").trim());
         if (cancelled) return;
-
-        const safeCats: any[] = catsSnap.docs
-          .map((d) => ({ id: d.id, ...(d.data() as any) }))
-          .filter((c) => String((c as any)?.["الاسم"] ?? c?.name ?? "").trim())
-          .filter((c) => c?.active !== false);
-
-        setFsCategories(safeCats as any);
-        setCategoryLoading(false);
-
-        const catIds = safeCats
-          .map((c: any) => String(c.categoryId ?? c.key ?? c.id ?? "").trim())
-          .filter(Boolean);
-
-        // 2) Services
-        const colRef = collection(db, "salons", SALON_ID, "services");
-
-        if (catIds.length === 0) {
-          const snap = await getDocs(
-            query(colRef, where("sectionId", "==", selectedSectionId))
-          );
-          if (cancelled) return;
-
-          const merged = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-          const activeOnly = merged.filter((x) => x?.active !== false);
-
-          setFsServices(activeOnly);
-          return;
-        }
-
-        // chunked "in" query
-        const chunks: string[][] = [];
-        for (let i = 0; i < catIds.length; i += 10) {
-          chunks.push(catIds.slice(i, i + 10));
-        }
-
-        const snaps = await Promise.all(
-          chunks.map((arr) => getDocs(query(colRef, where("categoryId", "in", arr))))
-        );
-
-        // also load those with sectionId only
-        const secSnap = await getDocs(
-          query(colRef, where("sectionId", "==", selectedSectionId))
-        );
-
-        if (cancelled) return;
-
-        const merged: any[] = [];
-        snaps.forEach((sn) => {
-          sn.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
-        });
-        secSnap.docs.forEach((d) => {
-          merged.push({ id: d.id, ...(d.data() as any) });
-        });
-
-        // unique by id
-        const uniq = new Map<string, any>();
-        merged.forEach((x) => uniq.set(String(x.id), x));
-
-        const activeOnly = Array.from(uniq.values()).filter((x) => x?.active !== false);
-
-        setFsServices(activeOnly);
+        setFsCategories(Array.isArray(payload.categories) ? payload.categories : []);
+        setFsServices(Array.isArray(payload.services) ? payload.services : []);
       } catch {
         if (!cancelled) {
           setFsCategories([]);
@@ -1556,7 +1615,30 @@ function findCartOverlap(items: CartItem[]) {
   const HAIR_SECTION_IDS = new Set(["hair", "الشعر", "hair_section", "قص", "قص_شعر"]);
 
   const servicesFlat: FlatService[] = useMemo(() => {
-    if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
+    const packageRows: FlatService[] =
+      catalogMode === "firestore"
+        ? (fsPackages || []).map((pkg) => ({
+            id: `pkg:${String(pkg.id)}`,
+            kind: "package" as const,
+            sectionId: PACKAGE_SECTION_ID,
+            sectionTitle: PACKAGE_SECTION_TITLE,
+            categoryId: PACKAGE_SECTION_ID,
+            category: PACKAGE_SECTION_TITLE,
+            name: String(pkg.name || "").trim(),
+            priceText: `${Number(pkg.finalPrice || 0)} ريال`,
+            basePrice: Number(pkg.finalPrice || 0),
+            durationMin: Number(pkg.totalDurationMin || DEFAULT_SERVICE_DURATION_MIN),
+            packageId: String(pkg.id || "").trim(),
+            packageServiceIds: Array.isArray(pkg.serviceIds)
+              ? pkg.serviceIds.map((x) => String(x || "").trim()).filter(Boolean)
+              : [],
+            packageServices: Array.isArray(pkg.services) ? pkg.services : [],
+            packageBaseTotalPrice: Number(pkg.baseTotalPrice || 0),
+            source: "firestore" as const,
+          }))
+        : [];
+
+    if (catalogMode === "firestore" && fsSections.length > 0) {
       const secMap = new Map<string, string>();
       fsSections.forEach((s: any) =>
         secMap.set(String(s.id), readDisplayLabel(s, String(s.id || "")))
@@ -1659,34 +1741,43 @@ function findCartOverlap(items: CartItem[]) {
         };
       });
 
-      const packageRows: FlatService[] = (fsPackages || []).map((pkg) => ({
-        id: `pkg:${String(pkg.id)}`,
-        kind: "package" as const,
-        sectionId: PACKAGE_SECTION_ID,
-        sectionTitle: PACKAGE_SECTION_TITLE,
-        categoryId: PACKAGE_SECTION_ID,
-        category: PACKAGE_SECTION_TITLE,
-        name: String(pkg.name || "").trim(),
-        priceText: `${Number(pkg.finalPrice || 0)} ريال`,
-        basePrice: Number(pkg.finalPrice || 0),
-        durationMin: Number(pkg.totalDurationMin || DEFAULT_SERVICE_DURATION_MIN),
-        packageId: String(pkg.id || "").trim(),
-        packageServiceIds: Array.isArray(pkg.serviceIds)
-          ? pkg.serviceIds.map((x) => String(x || "").trim()).filter(Boolean)
-          : [],
-        packageServices: Array.isArray(pkg.services) ? pkg.services : [],
-        packageBaseTotalPrice: Number(pkg.baseTotalPrice || 0),
-        source: "firestore" as const,
-      }));
-
       return [...list, ...packageRows];
     }
 
-    return [];
+    const out: FlatService[] = [];
+    Object.entries(pricingSections).forEach(([sectionId, section]) => {
+      const sectionTitle = String(section?.title || sectionId).trim();
+      (section?.services || []).forEach((cat: any, catIdx: number) => {
+        const catName = String(cat?.category || "").trim() || "عام";
+        (cat?.items || []).forEach((it: any, itemIdx: number) => {
+          const itemName = String(it?.name || "").trim();
+          if (!itemName) return;
+
+          const priceTextRaw = String(it?.price || "").trim();
+          const basePrice = extractMinPrice(priceTextRaw);
+
+          out.push({
+            id: `${sectionId}-${catIdx}-${itemIdx}`,
+            kind: "service" as const,
+            sectionId,
+            sectionTitle,
+            categoryId: "",
+            category: catName,
+            name: `${catName} - ${itemName}`,
+            priceText: priceTextRaw || `${basePrice} ريال`,
+            basePrice,
+            durationMin: DEFAULT_SERVICE_DURATION_MIN,
+            source: "pricing" as const,
+          });
+        });
+      });
+    });
+
+    return [...out, ...packageRows];
   }, [catalogMode, fsSections, fsCategories, fsServicesFiltered, selectedSectionId, fsPackages]);
 
   const sectionOptions = useMemo(() => {
-    if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
+    if (catalogMode === "firestore" && fsSections.length > 0) {
       const rows = fsSections.map((s: any) => ({
         id: String(s.id),
         title: readDisplayLabel(s, String(s?.id || "").trim()),
@@ -1697,11 +1788,16 @@ function findCartOverlap(items: CartItem[]) {
       return rows;
     }
 
-    return [];
+    return Object.entries(pricingSections)
+      .map(([id, sec]) => ({
+        id: String(id || "").trim(),
+        title: String(sec?.title || "").trim(),
+      }))
+      .filter((x) => x.id && x.title);
   }, [catalogMode, fsSections, fsPackages]);
 
   const sectionOptionsSafe = useMemo(() => {
-    if (catalogMode === "firestore" && (fsSections.length > 0 || fsPackages.length > 0)) {
+    if (catalogMode === "firestore" && fsSections.length > 0) {
       const rows = fsSections
         .map((s: any) => ({
           id: String(s?.id || "").trim(),
@@ -1751,7 +1847,13 @@ function findCartOverlap(items: CartItem[]) {
         .map((n) => ({ id: n, name: n }));
     }
 
-    return [];
+    const cats = servicesFlat
+      .filter((s) => String(s.sectionId || "").trim() === String(selectedSectionId || "").trim())
+      .map((s) => ({ id: String(s.category || "").trim(), name: String(s.category || "").trim() }))
+      .filter((x) => x.id && x.name);
+
+    const seen = new Set<string>();
+    return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
   }, [catalogMode, fsSections.length, fsCategories, fsServices, servicesFlat, selectedSectionId]);
 
   const categoryOptionsSafe: CategoryOption[] = useMemo(() => {
@@ -1876,13 +1978,19 @@ function findCartOverlap(items: CartItem[]) {
   useEffect(() => {
     const params = new URLSearchParams(location.search || "");
     const coupon = String(params.get("coupon") || "").trim();
+    const fromOffer = String(params.get("fromOffer") || "").trim() === "1";
     if (!coupon) return;
 
-    setCouponCode(coupon.toUpperCase());
-    setOfferMsg("تم تعبئة كود الخصم تلقائيًا. أضيفي خدمة ثم اضغطي تطبيق.");
+    setCouponCode(normalizeCouponCode(coupon));
+    setOfferMsg("تم تعبئة كود الخصم تلقائيًا.");
+    setOfferMsgKind("success");
+    if (fromOffer) {
+      setOfferLandingMsg("تم استخدام العرض، أكمل تعبئة بيانات الحجز لإتمام حجزك.");
+    }
     setManualOverride(false);
 
     params.delete("coupon");
+    params.delete("fromOffer");
     const nextSearch = params.toString();
     navigate(
       {
@@ -1962,11 +2070,48 @@ function findCartOverlap(items: CartItem[]) {
 
   const normalizeSpecialty = (v: string) => String(v || "").trim().toLowerCase();
 
+  const normalizeStaffSpecialties = (st: any) =>
+    Array.isArray(st?.specialties)
+      ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
+      : [];
+
+  const buildStaffResolverKey = (serviceId: string, target: FlatService | null) => {
+    const sid = normalizeSpecialty(serviceId);
+    if (target?.kind === "package") {
+      const keys = Array.from(
+        new Set(
+          [
+            ...(target.packageServiceIds || []),
+            ...((target.packageServices || []).map((x: any) => String(x?.serviceId || "").trim())),
+          ]
+            .map((x) => normalizeSpecialty(String(x || "")))
+            .filter(Boolean)
+        )
+      ).sort();
+      return keys.length ? `pkg:${keys.join("|")}` : `pkg:${sid}`;
+    }
+    return `srv:${sid}`;
+  };
+
+  const getAllActiveStaffCached = async () => {
+    if (Array.isArray(staffAllCacheRef.current)) return staffAllCacheRef.current;
+    const all = await listActiveStaffAll(SALON_ID);
+    staffAllCacheRef.current = Array.isArray(all) ? all : [];
+    return staffAllCacheRef.current;
+  };
+
   const listStaffForService = async (serviceId: string, service?: FlatService | null) => {
     const sid = String(serviceId || "").trim();
     if (!sid) return [] as StaffPublicWithId[];
 
     const target = service || getServiceById(sid);
+    const resolverKey = buildStaffResolverKey(sid, target);
+    const cached = staffByResolverCacheRef.current[resolverKey];
+    if (Array.isArray(cached)) return cached;
+
+    const inFlight = staffByResolverInFlightRef.current[resolverKey];
+    if (inFlight) return inFlight;
+
     const wanted = new Set<string>();
     wanted.add(normalizeSpecialty(sid));
     wanted.add(normalizeSpecialty(String(target?.sectionId || "")));
@@ -1984,32 +2129,44 @@ function findCartOverlap(items: CartItem[]) {
     const wantedKeys = Array.from(wanted).filter(Boolean);
     if (!wantedKeys.length) return [] as StaffPublicWithId[];
 
-    const all = await listActiveStaffAll(SALON_ID);
-    const matchesAny = (all || []).filter((st: any) => {
-      const specs = Array.isArray(st?.specialties)
-        ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
-        : [];
-      return wantedKeys.some((k) => specs.includes(k));
-    });
+    const loadPromise: Promise<StaffPublicWithId[]> = (async () => {
+      const all = await getAllActiveStaffCached();
+      const matchesAny = (all || []).filter((st: any) => {
+        const specs = normalizeStaffSpecialties(st);
+        return wantedKeys.some((k) => specs.includes(k));
+      });
 
-    // للبكجات: جرّب المطابقة الصارمة أولاً (كل serviceId)، وإذا ما فيه نتائج ارجع لأي تطابق.
-    if (target?.kind === "package") {
-      const strictIds = Array.from(
-        new Set((target.packageServiceIds || []).map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean))
-      );
-      if (strictIds.length) {
-        const strict = (all || []).filter((st: any) => {
-          const specs = Array.isArray(st?.specialties)
-            ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
-            : [];
-          return strictIds.every((id) => specs.includes(id));
-        });
-        if (strict.length) return strict;
+      // للبكجات: جرّب المطابقة الصارمة أولاً (كل serviceId)، وإذا ما فيه نتائج ارجع لأي تطابق.
+      if (target?.kind === "package") {
+        const strictIds = Array.from(
+          new Set((target.packageServiceIds || []).map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean))
+        );
+        if (strictIds.length) {
+          const strict = (all || []).filter((st: any) => {
+            const specs = normalizeStaffSpecialties(st);
+            return strictIds.every((id) => specs.includes(id));
+          });
+          if (strict.length) return strict;
+        }
       }
-    }
 
-    return matchesAny;
+      return matchesAny;
+    })();
+
+    staffByResolverInFlightRef.current[resolverKey] = loadPromise;
+    try {
+      const rows = await loadPromise;
+      staffByResolverCacheRef.current[resolverKey] = rows;
+      return rows;
+    } finally {
+      delete staffByResolverInFlightRef.current[resolverKey];
+    }
   };
+
+  useEffect(() => {
+    void getAllActiveStaffCached();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isToolsOptionEligibleForService = (sv: FlatService | null) => {
     if (!sv) return false;
@@ -2379,9 +2536,7 @@ function findCartOverlap(items: CartItem[]) {
 
       setServicePicker("");
       setOfferStartTime("");
-      setManualOverride(false);
-      setOfferMsg("");
-      setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+      clearAppliedCoupons();
       return;
     }
 
@@ -2497,9 +2652,7 @@ function findCartOverlap(items: CartItem[]) {
       setSelectedSectionId("");
       setShowHairGuide(false);
       setOfferStartTime("");
-      setManualOverride(false);
-      setOfferMsg("");
-      setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+      clearAppliedCoupons();
       return;
     }
 
@@ -2563,9 +2716,7 @@ function findCartOverlap(items: CartItem[]) {
     setSelectedSectionId("");
     setShowHairGuide(false);
 
-    setManualOverride(false);
-    setOfferMsg("");
-    setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+    clearAppliedCoupons();
   };
 
   const removeServiceFromCart = (itemId: string) => {
@@ -2611,9 +2762,7 @@ function findCartOverlap(items: CartItem[]) {
       });
     }
 
-    setManualOverride(false);
-    setOfferMsg("");
-    setApplied({ offer: null, discountAmount: 0, finalPrice: 0 });
+    clearAppliedCoupons();
   };
 
   useEffect(() => {
@@ -2708,27 +2857,32 @@ function findCartOverlap(items: CartItem[]) {
       for (const sid of serviceIds) {
         if (cancelled) return;
         if (staffByService[sid] && Array.isArray(staffByService[sid])) continue;
+        const fromCart = (formData.items || []).find((x) => String(x.serviceId || "").trim() === sid);
+        const sv =
+          getServiceById(sid) ||
+          ({
+            id: sid,
+            kind: "service",
+            sectionId: String(fromCart?.serviceSectionId || "").trim(),
+            sectionTitle: String(fromCart?.serviceSectionTitle || "").trim(),
+            categoryId: String(fromCart?.serviceCategoryId || "").trim() || undefined,
+            category: String(fromCart?.serviceCategoryName || "").trim(),
+            name: String(fromCart?.serviceName || sid).trim(),
+            priceText: String(fromCart?.priceText || "").trim(),
+            basePrice: Number(fromCart?.basePrice || 0),
+            durationMin: Number(fromCart?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+            source: "firestore",
+          } as FlatService);
+        const resolverKey = buildStaffResolverKey(sid, sv);
+        const cachedRows = staffByResolverCacheRef.current[resolverKey];
+        if (Array.isArray(cachedRows)) {
+          setStaffByService((p) => ({ ...p, [sid]: cachedRows }));
+          continue;
+        }
 
         try {
           setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
           setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
-
-          const fromCart = (formData.items || []).find((x) => String(x.serviceId || "").trim() === sid);
-          const sv =
-            getServiceById(sid) ||
-            ({
-              id: sid,
-              kind: "service",
-              sectionId: String(fromCart?.serviceSectionId || "").trim(),
-              sectionTitle: String(fromCart?.serviceSectionTitle || "").trim(),
-              categoryId: String(fromCart?.serviceCategoryId || "").trim() || undefined,
-              category: String(fromCart?.serviceCategoryName || "").trim(),
-              name: String(fromCart?.serviceName || sid).trim(),
-              priceText: String(fromCart?.priceText || "").trim(),
-              basePrice: Number(fromCart?.basePrice || 0),
-              durationMin: Number(fromCart?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-              source: "firestore",
-            } as FlatService);
           const res = await listStaffForService(sid, sv);
 
           if (cancelled) return;
@@ -2784,12 +2938,17 @@ function findCartOverlap(items: CartItem[]) {
       if (!sid) return;
       const hasCache = Object.prototype.hasOwnProperty.call(staffByService, sid);
       if (hasCache) return;
+      const sv = getServiceById(sid);
+      const resolverKey = buildStaffResolverKey(sid, sv);
+      const cachedRows = staffByResolverCacheRef.current[resolverKey];
+      if (Array.isArray(cachedRows)) {
+        setStaffByService((p) => ({ ...p, [sid]: cachedRows as any }));
+        return;
+      }
 
       try {
         setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
         setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
-
-        const sv = getServiceById(sid);
         const res = await listStaffForService(sid, sv);
 
         if (cancelled) return;
@@ -2989,7 +3148,7 @@ function findCartOverlap(items: CartItem[]) {
         const perService: StaffPublicWithId[][] = [];
         for (const sid of serviceIds) {
           try {
-            const rows = await listActiveStaffBySpecialty({ salonId: SALON_ID, specialty: sid });
+            const rows = await listStaffForService(sid, getServiceById(sid));
             const filtered = (rows || []).filter((st: any) => {
               if ((st as any)?.showOnBooking === false) return false;
               if (!String((st as any)?.name || "").trim()) return false;
@@ -4145,48 +4304,68 @@ function findCartOverlap(items: CartItem[]) {
     return (formData.items || []).reduce((sum, it) => sum + Number(it.basePrice || 0), 0);
   }, [formData.items]);
 
+  const appliedDiscountTotal = useMemo(() => {
+    return (appliedCoupons || []).reduce((sum, row) => sum + Math.max(0, Number(row.discountAmount || 0)), 0);
+  }, [appliedCoupons]);
+
   const finalPrice = useMemo(() => {
-    if (applied.offer) return applied.finalPrice;
-    return basePrice;
-  }, [basePrice, applied]);
+    return Math.max(0, basePrice - appliedDiscountTotal);
+  }, [basePrice, appliedDiscountTotal]);
 
   // =========================
   // Coupon
   // =========================
   const handleApplyCoupon = async () => {
-    const code = couponCode.trim();
+    const code = normalizeCouponCode(couponCode);
     if (!code) {
-      setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
-      setOfferMsg("");
-      setManualOverride(false);
+      clearAppliedCoupons();
       return;
     }
+
+    if ((appliedCoupons || []).some((x) => normalizeCouponCode(x.code) === code)) {
+      setOfferMsgKind("error");
+      setOfferMsg("تم استخدام هذا الكود مسبقًا في نفس الفاتورة.");
+      return;
+    }
+
+    const reservedItemIds = new Set(
+      (appliedCoupons || [])
+        .flatMap((x) => (Array.isArray(x.applicableItemIds) ? x.applicableItemIds : []))
+        .map((id) => String(id || "").trim())
+        .filter(Boolean)
+    );
 
     try {
       const offer = await findActiveOfferByCode(SALON_ID, code);
       if (!offer) {
-        setManualOverride(false);
-        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
+        setOfferMsgKind("error");
         setOfferMsg("الكود غير صحيح أو منتهي");
         return;
       }
 
       const applicable = (formData.items || []).filter((it) => {
+        const itemId = String(it.id || "").trim();
         const sid = String(it.serviceId || "").trim();
-        return sid && offerAppliesToService(offer, sid);
+        return itemId && sid && !reservedItemIds.has(itemId) && offerAppliesToService(offer, sid);
       });
 
       if (!applicable.length) {
-        setManualOverride(false);
-        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
-        setOfferMsg("هذا الكود لا ينطبق على الخدمات المختارة");
+        const hasAnyMatching = (formData.items || []).some((it) => {
+          const sid = String(it.serviceId || "").trim();
+          return sid && offerAppliesToService(offer, sid);
+        });
+        setOfferMsgKind("error");
+        setOfferMsg(
+          hasAnyMatching
+            ? "هذا الكود ينطبق على خدمات تم خصمها بالفعل بكود آخر."
+            : "هذا الكود لا ينطبق على الخدمات المختارة."
+        );
         return;
       }
 
       const missingDate = applicable.find((it) => !String(it.date || "").trim());
       if (missingDate) {
-        setManualOverride(false);
-        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
+        setOfferMsgKind("error");
         setOfferMsg("اختاري تاريخ الحجز للخدمات قبل تطبيق الكود");
         return;
       }
@@ -4199,29 +4378,67 @@ function findCartOverlap(items: CartItem[]) {
         .find((x) => !x.check.ok);
 
       if (badDate) {
-        setManualOverride(false);
-        setApplied({ offer: null, discountAmount: 0, finalPrice: basePrice });
+        setOfferMsgKind("error");
         setOfferMsg(badDate.check.reason || "هذا العرض غير متاح لتاريخ الحجز المختار");
         return;
       }
 
       const applicableTotal = applicable.reduce((s, it) => s + Number(it.basePrice || 0), 0);
       const { discountAmount } = calcDiscount(applicableTotal, offer);
-      const nextFinal = Math.max(0, basePrice - discountAmount);
+      const safeDiscount = Math.max(0, Number(discountAmount || 0));
+      if (!safeDiscount) {
+        setOfferMsgKind("error");
+        setOfferMsg("هذا الكود لا يضيف خصمًا على الخدمات المختارة.");
+        return;
+      }
 
-      setApplied({
-        offer,
-        discountAmount,
-        finalPrice: nextFinal,
-        reason: "تم تطبيق الخصم",
+      const nextEntry: AppliedCouponEntry = {
+        code,
+        offerId: String((offer as any)?.id || "").trim(),
+        offerTitle: String((offer as any)?.title || "").trim() || code,
+        discountAmount: safeDiscount,
+        applicableItemIds: applicable
+          .map((it) => String(it.id || "").trim())
+          .filter(Boolean),
+      };
+
+      setAppliedCoupons((prev) => {
+        const dedup = new Map<string, AppliedCouponEntry>();
+        for (const row of [...prev, nextEntry]) {
+          const key = normalizeCouponCode(row.code);
+          if (!key) continue;
+          if (!dedup.has(key)) dedup.set(key, { ...row, code: key });
+        }
+        return Array.from(dedup.values());
       });
-
+      setCouponCode("");
       setManualOverride(true);
-      setOfferMsg(`تم تطبيق الخصم: ${(offer as any).title}`);
+      setOfferMsgKind("success");
+      setOfferMsg(
+        `تم تطبيق الكود (${nextEntry.code}) على ${nextEntry.applicableItemIds.length} خدمة. إجمالي الخصم ${safeDiscount} ريال.`
+      );
     } catch (e: any) {
       console.error("apply coupon error:", e?.code, e?.message, e);
+      setOfferMsgKind("error");
       setOfferMsg("صار خطأ في التحقق من الكود");
     }
+  };
+
+  const handleRemoveCoupon = (codeRaw: string) => {
+    const code = normalizeCouponCode(codeRaw);
+    if (!code) return;
+    setAppliedCoupons((prev) => prev.filter((x) => normalizeCouponCode(x.code) !== code));
+    setManualOverride(false);
+    setOfferMsgKind("success");
+    setOfferMsg(`تمت إزالة الكود (${code}).`);
+  };
+
+  const handleClearAllCoupons = () => {
+    setCouponCode("");
+    setAppliedCoupons([]);
+    setManualOverride(false);
+    setOfferMsgKind("success");
+    setOfferMsg("تمت إزالة جميع الأكواد المطبقة.");
   };
 
   // =========================
@@ -4477,16 +4694,20 @@ function findCartOverlap(items: CartItem[]) {
     setIsLoading(true);
 
     try {
-      const normalizedCode = couponCode.trim();
-      let finalApplied: AppliedOfferResult = applied;
+      const typedCode = normalizeCouponCode(couponCode);
+      const normalizedCodes = [...(appliedCoupons || []).map((x) => normalizeCouponCode(x.code)), typedCode]
+        .filter(Boolean)
+        .filter((code, idx, arr) => arr.indexOf(code) === idx);
 
-      if (normalizedCode) {
-        const offer = await findActiveOfferByCode(SALON_ID, normalizedCode);
+      const finalCoupons: AppliedCouponEntry[] = [];
+      const reservedItemIds = new Set<string>();
 
+      for (const code of normalizedCodes) {
+        const offer = await findActiveOfferByCode(SALON_ID, code);
         if (!offer) {
           openModal({
             title: "كود الخصم غير صحيح",
-            message: "الكود غير صحيح أو غير متاح حالياً.",
+            message: `الكود (${code}) غير صحيح أو غير متاح حالياً.`,
             variant: "danger",
             confirmText: "حسنًا",
           });
@@ -4494,14 +4715,21 @@ function findCartOverlap(items: CartItem[]) {
         }
 
         const applicable = items.filter((it) => {
+          const itemId = String(it.id || "").trim();
           const sid = String(it.serviceId || "").trim();
-          return sid && offerAppliesToService(offer, sid);
+          return itemId && sid && !reservedItemIds.has(itemId) && offerAppliesToService(offer, sid);
         });
 
         if (!applicable.length) {
+          const hasAnyMatching = items.some((it) => {
+            const sid = String(it.serviceId || "").trim();
+            return sid && offerAppliesToService(offer, sid);
+          });
           openModal({
             title: "الكود لا ينطبق",
-            message: "هذا الكود لا ينطبق على الخدمات المختارة.",
+            message: hasAnyMatching
+              ? `الكود (${code}) ينطبق على خدمات تم خصمها مسبقًا بكود آخر.`
+              : `الكود (${code}) لا ينطبق على الخدمات المختارة.`,
             variant: "danger",
             confirmText: "حسنًا",
           });
@@ -4538,36 +4766,51 @@ function findCartOverlap(items: CartItem[]) {
 
         const applicableTotal = applicable.reduce((s, it) => s + Number(it.basePrice || 0), 0);
         const { discountAmount } = calcDiscount(applicableTotal, offer);
+        const safeDiscount = Math.max(0, Number(discountAmount || 0));
+        if (!safeDiscount) {
+          openModal({
+            title: "الكود لا يضيف خصمًا",
+            message: `الكود (${code}) لا يضيف خصمًا على الخدمات المختارة.`,
+            variant: "danger",
+            confirmText: "حسنًا",
+          });
+          return;
+        }
 
-        finalApplied = {
-          offer,
-          discountAmount,
-          finalPrice: Math.max(0, basePrice - discountAmount),
-          reason: "تم تطبيق الخصم",
-        };
-
-        setApplied(finalApplied);
-        setManualOverride(true);
+        const applicableItemIds = applicable.map((it) => String(it.id || "").trim()).filter(Boolean);
+        finalCoupons.push({
+          code,
+          offerId: String((offer as any)?.id || "").trim(),
+          offerTitle: String((offer as any)?.title || "").trim() || code,
+          discountAmount: safeDiscount,
+          applicableItemIds,
+        });
+        applicableItemIds.forEach((id) => reservedItemIds.add(id));
       }
 
-
-      const discountTotal = Number(finalApplied.discountAmount || 0);
-
-      const offerObj = finalApplied.offer;
-      const applicableIdx: number[] = offerObj
-        ? items
-          .map((it, idx) => ({ it, idx }))
-          .filter(({ it }) => offerAppliesToService(offerObj, String(it.serviceId || "").trim()))
-          .map(({ idx }) => idx)
-        : [];
+      setAppliedCoupons(finalCoupons);
+      setManualOverride(finalCoupons.length > 0);
 
       const perItemDiscounts = items.map(() => 0);
+      const couponByItemId = new Map<string, AppliedCouponEntry>();
 
-      if (discountTotal > 0 && applicableIdx.length) {
+      for (const couponEntry of finalCoupons) {
+        const couponItemIds = new Set(
+          (couponEntry.applicableItemIds || []).map((id) => String(id || "").trim()).filter(Boolean)
+        );
+        const applicableIdx = items
+          .map((it, idx) => ({ it, idx }))
+          .filter(({ it }) => couponItemIds.has(String(it.id || "").trim()))
+          .map(({ idx }) => idx);
+        if (!applicableIdx.length) continue;
+
         const applicableItems = applicableIdx.map((i) => items[i]);
-        const allocated = allocateDiscount(applicableItems, discountTotal);
+        const allocated = allocateDiscount(applicableItems, Number(couponEntry.discountAmount || 0));
         applicableIdx.forEach((originalIndex, j) => {
-          perItemDiscounts[originalIndex] = Number(allocated[j] || 0);
+          const itemDiscount = Number(allocated[j] || 0);
+          perItemDiscounts[originalIndex] = Number(perItemDiscounts[originalIndex] || 0) + itemDiscount;
+          const itemId = String(items[originalIndex]?.id || "").trim();
+          if (itemId && itemDiscount > 0) couponByItemId.set(itemId, couponEntry);
         });
       }
 
@@ -4587,10 +4830,15 @@ function findCartOverlap(items: CartItem[]) {
       }
 
       const userNote = String(formData.note || "").trim();
-      const offerNote = finalApplied.offer
-        ? `Offer: ${(finalApplied.offer as any)?.title || normalizedCode || "-"} | discount=${Number(
-          finalApplied.discountAmount || 0
-        ).toFixed(0)}`
+      const offerNote = finalCoupons.length
+        ? finalCoupons
+            .map(
+              (x) =>
+                `Offer: ${x.offerTitle || x.code || "-"} | code=${x.code || "-"} | discount=${Number(
+                  x.discountAmount || 0
+                ).toFixed(0)}`
+            )
+            .join(" || ")
         : "";
 
       const noteFinal = [userNote, offerNote].filter(Boolean).join(" | ") || undefined;
@@ -4667,6 +4915,7 @@ function findCartOverlap(items: CartItem[]) {
         const it = items[idx];
         const itemDiscount = Number(perItemDiscounts[idx] || 0);
         const itemFinal = Math.max(0, Number(it.basePrice || 0) - itemDiscount);
+        const itemCoupon = couponByItemId.get(String(it.id || "").trim()) || null;
         const toolsNote = buildItemToolsNote(it);
         const itemNote = [noteFinal, toolsNote].filter(Boolean).join(" | ") || undefined;
 
@@ -4810,9 +5059,9 @@ function findCartOverlap(items: CartItem[]) {
             endTime: String(plan.sequenceEnd || "").trim(),
             total: Number(itemFinal || 0),
             finalPrice: Number(itemFinal || 0),
-            couponCode: normalizedCode || "",
-            offerId: (finalApplied.offer as any)?.id || null,
-            offerTitle: (finalApplied.offer as any)?.title || null,
+            couponCode: itemCoupon?.code || "",
+            offerId: itemCoupon?.offerId || null,
+            offerTitle: itemCoupon?.offerTitle || null,
             discountAmount: itemDiscount,
             durationMin: parentDurationMin,
             status: "pending",
@@ -4906,6 +5155,22 @@ function findCartOverlap(items: CartItem[]) {
               const d = Number(perItemDiscounts[row.idx] || 0);
               return sum + Math.max(0, Number(row.item.basePrice || 0) - d);
             }, 0);
+            const runCouponMap = new Map<string, AppliedCouponEntry>();
+            sortedRun.forEach(({ item }) => {
+              const rowCoupon = couponByItemId.get(String(item.id || "").trim());
+              if (!rowCoupon) return;
+              const key = normalizeCouponCode(rowCoupon.code);
+              if (!key || runCouponMap.has(key)) return;
+              runCouponMap.set(key, rowCoupon);
+            });
+            const runCouponEntries = Array.from(runCouponMap.values());
+            const runCouponCode = runCouponEntries.map((x) => x.code).filter(Boolean).join(",");
+            const runOfferId = runCouponEntries.length === 1 ? runCouponEntries[0].offerId || null : null;
+            const runOfferTitle = runCouponEntries.length === 1
+              ? runCouponEntries[0].offerTitle || null
+              : runCouponEntries.length
+                ? "عروض متعددة"
+                : null;
 
             const employeeIdsInRun = Array.from(
               new Set(
@@ -5073,9 +5338,9 @@ function findCartOverlap(items: CartItem[]) {
               endTime: parentEndTime || null,
               total: Number(runFinalTotal || 0),
               finalPrice: Number(runFinalTotal || 0),
-              couponCode: normalizedCode || "",
-              offerId: (finalApplied.offer as any)?.id || null,
-              offerTitle: (finalApplied.offer as any)?.title || null,
+              couponCode: runCouponCode,
+              offerId: runOfferId,
+              offerTitle: runOfferTitle,
               discountAmount: runDiscountTotal,
               durationMin: parentDurationMin,
               status: "pending",
@@ -5147,9 +5412,9 @@ function findCartOverlap(items: CartItem[]) {
           time: String(it.time || "").trim(),
           total: Number(itemFinal || 0),
           finalPrice: Number(itemFinal || 0),
-          couponCode: normalizedCode || "",
-          offerId: (finalApplied.offer as any)?.id || null,
-          offerTitle: (finalApplied.offer as any)?.title || null,
+          couponCode: itemCoupon?.code || "",
+          offerId: itemCoupon?.offerId || null,
+          offerTitle: itemCoupon?.offerTitle || null,
           discountAmount: itemDiscount,
           durationMin,
           toolsSource: String(it.toolsSource || "").trim() || null,
@@ -5350,6 +5615,12 @@ function findCartOverlap(items: CartItem[]) {
                 />
               </div>
 
+              {offerLandingMsg && (
+                <div className="alert alert-success py-2 mb-3" role="status" aria-live="polite">
+                  {offerLandingMsg}
+                </div>
+              )}
+
               <form className="booking-form" onSubmit={handleSubmit}>
 
                 <div className="row">
@@ -5501,7 +5772,7 @@ function findCartOverlap(items: CartItem[]) {
                             className={`form-select dash-select ${selectedSectionId ? "" : "is-empty"}`}
                             value={selectedSectionId}
                             onChange={handleSectionChange}
-                            disabled={catalogLoading}
+                            disabled={catalogLoading && !sectionOptionsSafe.length}
                           >
                             <option value="">اختاري القسم</option>
                             {!sectionOptionsSafe.length && <option value="" disabled>لا توجد أقسام متاحة</option>}
@@ -5517,7 +5788,7 @@ function findCartOverlap(items: CartItem[]) {
                             className={`form-select dash-select ${selectedCategory ? "" : "is-empty"}`}
                             value={selectedCategory}
                             onChange={handleCategoryChange}
-                            disabled={!selectedSectionId || categoryLoading}
+                            disabled={!selectedSectionId || (categoryLoading && !categoryOptionsSafe.length)}
                           >
                             <option value="">اختاري التصنيف</option>
                             {!!selectedSectionId && !categoryOptionsSafe.length && <option value="" disabled>لا توجد تصنيفات</option>}
@@ -6471,27 +6742,64 @@ function findCartOverlap(items: CartItem[]) {
 
                 <div className="mb-4">
                   <label className="form-label">كود الخصم (اختياري)</label>
-                  <div className="input-group">
+                  <div className="input-group bk-coupon-actions">
                     <input
                       type="text"
                       className="form-control"
                       value={couponCode}
-                      onChange={(e) => setCouponCode(e.target.value)}
+                      onChange={(e) => {
+                        setCouponCode(e.target.value);
+                        if (offerMsg) {
+                          setOfferMsg("");
+                          setOfferMsgKind("");
+                        }
+                      }}
                       placeholder="اكتبي الكود هنا"
                       disabled={!formData.items?.length || isLoading}
                     />
                     <button
                       type="button"
-                      className="btn btn-dark"
+                      className="btn bk-coupon-btn bk-coupon-btn--apply"
                       onClick={handleApplyCoupon}
                       disabled={!formData.items?.length || isLoading}
                     >
-                      تطبيق
+                      تطبيق الكود
+                    </button>
+                    <button
+                      type="button"
+                      className="btn bk-coupon-btn bk-coupon-btn--remove"
+                      onClick={handleClearAllCoupons}
+                      disabled={(!appliedCoupons.length && !couponCode.trim()) || isLoading}
+                    >
+                      إزالة الكل
                     </button>
                   </div>
                   {offerMsg && (
-                    <div className={`small mt-2 ${offerMsg.includes("?") ? "text-success" : "text-danger"}`}>
+                    <div className={`bk-coupon-feedback mt-2 ${offerMsgKind === "success" ? "is-success" : "is-error"}`}>
                       {offerMsg}
+                    </div>
+                  )}
+                  {appliedCoupons.length > 0 && (
+                    <div className="bk-coupon-applied-list mt-2">
+                      {appliedCoupons.map((entry) => (
+                        <div key={entry.code} className="bk-coupon-applied-item">
+                          <div className="bk-coupon-applied-main">
+                            <span className="bk-coupon-applied-code">{entry.code}</span>
+                            <span className="bk-coupon-applied-title">{entry.offerTitle || "عرض"}</span>
+                            <span className="bk-coupon-applied-meta">
+                              خصم {Number(entry.discountAmount || 0)} ريال
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm bk-coupon-applied-remove"
+                            onClick={() => handleRemoveCoupon(entry.code)}
+                            disabled={isLoading}
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -6499,17 +6807,17 @@ function findCartOverlap(items: CartItem[]) {
                 <div className="booking-summary mb-4 qs-black">
                   <div className="d-flex justify-content-between">
                     <span>السعر</span>
-                    <strong>{basePrice ? `${basePrice} ريال` : "—"}</strong>
+                    <strong>{basePrice} ريال</strong>
                   </div>
-                  {applied.offer && (
+                  {appliedDiscountTotal > 0 && (
                     <div className="d-flex justify-content-between mt-1">
-                      <span>الخصم</span>
-                      <strong>-{Number(applied.discountAmount || 0)} ريال</strong>
+                      <span>الخصم ({appliedCoupons.length} كود)</span>
+                      <strong>-{Number(appliedDiscountTotal || 0)} ريال</strong>
                     </div>
                   )}
                   <div className="d-flex justify-content-between mt-2">
                     <span>الإجمالي</span>
-                    <strong>{finalPrice ? `${finalPrice} ريال` : "—"}</strong>
+                    <strong>{finalPrice} ريال</strong>
                   </div>
                 </div>
 
@@ -6534,4 +6842,3 @@ function findCartOverlap(items: CartItem[]) {
 };
 
 export default Booking;
-

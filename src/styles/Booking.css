@@ -743,6 +743,93 @@ textarea.form-control {
   box-shadow: none;
 }
 
+.booking-page .bk-coupon-feedback {
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 900;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  border: 1px solid transparent;
+}
+
+.booking-page .bk-coupon-feedback.is-success {
+  color: #135f2b;
+  background: linear-gradient(180deg, #f0fff4 0%, #e6f7ec 100%);
+  border-color: rgba(19, 95, 43, 0.28);
+  box-shadow: 0 8px 18px rgba(20, 120, 58, 0.14);
+}
+
+.booking-page .bk-coupon-feedback.is-error {
+  color: #8b1d1d;
+  background: linear-gradient(180deg, #fff6f6 0%, #ffebeb 100%);
+  border-color: rgba(139, 29, 29, 0.26);
+  box-shadow: 0 8px 18px rgba(139, 29, 29, 0.12);
+}
+
+.booking-page .bk-coupon-applied-list {
+  display: grid;
+  gap: 8px;
+}
+
+.booking-page .bk-coupon-applied-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 8px 10px;
+}
+
+.booking-page .bk-coupon-applied-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.booking-page .bk-coupon-applied-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #40010d;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+}
+
+.booking-page .bk-coupon-applied-title {
+  color: #141414;
+  font-weight: 800;
+}
+
+.booking-page .bk-coupon-applied-meta {
+  color: rgba(13, 13, 13, 0.72);
+  font-weight: 800;
+  font-size: 0.87rem;
+}
+
+.booking-page .bk-coupon-applied-remove {
+  border: 1px solid rgba(13, 13, 13, 0.16);
+  background: #fff;
+  color: #0d0d0d;
+  border-radius: 10px;
+  font-weight: 800;
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.booking-page .bk-coupon-applied-remove:hover {
+  border-color: rgba(64, 1, 13, 0.28);
+  color: #40010d;
+}
+
 .booking-logo {
   width: 247px;
   height: 122px;
@@ -1106,4 +1193,3 @@ textarea.form-control {
 .booking-page .bk-service-adder select optgroup {
   color: #0d0d0d !important;
 }
-

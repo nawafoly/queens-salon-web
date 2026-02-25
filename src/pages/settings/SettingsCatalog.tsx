@@ -1,465 +1,336 @@
-
-// ✅ src/pages/settings/SettingsCatalog.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
 import {
+  collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
-  collection,
   orderBy,
   query,
-  setDoc,
-  deleteDoc,
   serverTimestamp,
+  setDoc,
 } from "firebase/firestore";
-
 import { db } from "../../services/firebase";
 import { AppSettingsService } from "../../services/AppSettingsService";
-import {
-  listAllPackages,
-  upsertPackage,
-  removePackage,
-  type ServicePackageDoc,
-} from "../../services/firestorePackages";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/DashboardSettings.css";
 import "../../styles/stylesSettings/SettingsCatalog.css";
 
 const SALON_ID = "main";
+const SECTIONS = ["salons", SALON_ID, "service_sections"] as const;
+const CATEGORIES = ["salons", SALON_ID, "service_categories"] as const;
+const SERVICES = ["salons", SALON_ID, "services"] as const;
 
-const SERVICE_SECTIONS_COLLECTION = ["salons", SALON_ID, "service_sections"] as const;
-const SERVICE_CATEGORIES_COLLECTION = ["salons", SALON_ID, "service_categories"] as const;
-const SERVICES_COLLECTION = ["salons", SALON_ID, "services"] as const;
-
-/* =========================
-   Helpers (IDs ثابتة)
-========================= */
 function buildId(raw: string) {
-  const s = String(raw || "").trim().toLowerCase();
-
-  // يدعم العربي + الأرقام + _ -
-  const cleaned = s
-    .replace(/\s+/g, "_")
-    .replace(/[^\p{L}\p{N}_-]/gu, ""); // ✅ Unicode letters/numbers
-
-  return cleaned.replace(/^_+|_+$/g, "");
-}
-
-function sectionIdFromName(name: string) {
-  const n = String(name || "")
+  return String(raw || "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/[ـ]/g, "");
-
-  const map: Record<string, string> = {
-    "شعر": "hair-care",
-    "العناية بالشعر": "hair-care",
-    "قسم الشعر": "hair-care",
-    "hair": "hair-care",
-    "hair care": "hair-care",
-
-    "بشرة": "skin-care",
-    "العناية بالبشرة": "skin-care",
-    "قسم البشرة": "skin-care",
-    "skin": "skin-care",
-    "skin care": "skin-care",
-
-    "اظافر": "nail-care",
-    "أظافر": "nail-care",
-    "العناية بالأظافر": "nail-care",
-    "نيلز": "nail-care",
-    "nails": "nail-care",
-    "nail care": "nail-care",
-
-    "مكياج": "makeup",
-    "ميك اب": "makeup",
-    "makeup": "makeup",
-
-    "مساج": "massage",
-    "massage": "massage",
-
-    "باقات": "special-packages",
-    "باقة": "special-packages",
-    "packages": "special-packages",
-    "special packages": "special-packages",
-
-    // ✅ أقسام جديدة
-    "خدمات": "services",
-    "الخدمات": "services",
-
-    "خدمات منزلية": "home-services",
-    "الخدمات المنزلية": "home-services",
-    "home services": "home-services",
-
-    "الصبغات والمعالجات": "hair-color-treatments",
-    "صبغات ومعالجات": "hair-color-treatments",
-    "قسم الصبغات والمعالجات": "hair-color-treatments",
-    "hair color treatments": "hair-color-treatments",
-  };
-
-  return map[n] || buildId(name);
+    .replace(/\s+/g, "_")
+    .replace(/[^\p{L}\p{N}_-]/gu, "")
+    .replace(/^_+|_+$/g, "");
 }
-
-function clampInt(v: any, def = 0) {
+function clampInt(v: any, fallback = 0) {
   const n = Number(v);
-  if (!Number.isFinite(n)) return def;
-  return Math.trunc(n);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+function toMillisSafe(v: any) {
+  if (!v) return 0;
+  if (typeof v?.toMillis === "function") return v.toMillis();
+  if (typeof v?.seconds === "number") return Number(v.seconds) * 1000;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function fmtTs(v: any) {
+  const ms = toMillisSafe(v);
+  if (!ms) return "—";
+  return new Intl.DateTimeFormat("ar-SA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(ms));
+}
+function money(v: number) {
+  return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 }).format(Math.max(0, Number(v || 0)));
 }
 
-/* =========================
-   Types
-========================= */
-type ServiceSectionRow = {
-  id: string;
-  name: string;
-  active: boolean;
-  order: number;
-  updatedAt?: any;
-  createdAt?: any;
-};
-
-type ServiceCategoryRow = {
-  id: string;
-  sectionId: string;
-  name: string;
-  active: boolean;
-  order: number;
-  updatedAt?: any;
-  createdAt?: any;
-};
-
+type SectionRow = { id: string; name: string; active: boolean; order: number; createdAt?: any; updatedAt?: any };
+type CategoryRow = { id: string; sectionId: string; name: string; active: boolean; order: number; createdAt?: any; updatedAt?: any };
 type ServiceRow = {
   id: string;
-  categoryId: string;
   sectionId: string;
+  categoryId: string;
   name: string;
   durationMin: number;
   price: number;
   seasonPrice?: number | null;
   active: boolean;
-  updatedAt?: any;
   createdAt?: any;
+  updatedAt?: any;
 };
 
-type PackageDraft = {
-  id: string;
-  name: string;
-  description: string;
-  imageUrl: string;
-  active: boolean;
-  serviceIds: string[];
-  finalPrice: number;
-  warnDiscountOverPercent: number;
-};
-
-const MAX_PACKAGE_DISCOUNT_WARN_PERCENT = 70;
-const MAX_PACKAGE_IMAGE_MB = 2;
-
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("FILE_READ_FAILED"));
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.readAsDataURL(file);
-  });
-}
+type ListMode = "sections" | "services";
+type DetailsMode = "view" | "edit";
+type DetailsTab = "overview" | "pricing" | "variants" | "audit";
+type FilterStatus = "all" | "active" | "inactive";
+type ComposerMode = null | "section" | "service";
 
 export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const navigate = useNavigate();
   const { hasAdminPower } = props;
 
   const [catalogMsg, setCatalogMsg] = useState("");
-
-  // ✅ Autosave timers per service (debounce)
-  const autosaveTimersRef = React.useRef<Record<string, any>>({});
-  const [autosaveMsg, setAutosaveMsg] = useState<Record<string, string>>({});
-
-  // ✅ Season Pricing (global)
-  const [seasonPricingEnabled, setSeasonPricingEnabled] = useState(false);
-  const [seasonPricingFrom, setSeasonPricingFrom] = useState("");
-  const [seasonPricingTo, setSeasonPricingTo] = useState("");
-  const [seasonLoading, setSeasonLoading] = useState(false);
-
   const [secLoading, setSecLoading] = useState(false);
   const [catLoading, setCatLoading] = useState(false);
   const [srvLoading, setSrvLoading] = useState(false);
+  const [seasonLoading, setSeasonLoading] = useState(false);
 
-  const [sectionsCatalog, setSectionsCatalog] = useState<ServiceSectionRow[]>([]);
-  const [categoriesCatalog, setCategoriesCatalog] = useState<ServiceCategoryRow[]>([]);
-  const [servicesCatalog, setServicesCatalog] = useState<ServiceRow[]>([]);
-  const [packagesCatalog, setPackagesCatalog] = useState<ServicePackageDoc[]>([]);
-  const [editingPackageId, setEditingPackageId] = useState<string>("");
-  const [packagePickedImageName, setPackagePickedImageName] = useState("");
-  const [packageDraft, setPackageDraft] = useState<PackageDraft>({
-    id: "",
+  const [sections, setSections] = useState<SectionRow[]>([]);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [services, setServices] = useState<ServiceRow[]>([]);
+
+  const [activeListMode, setActiveListMode] = useState<ListMode>("sections");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<DetailsMode>("view");
+  const [activeTab, setActiveTab] = useState<DetailsTab>("overview");
+  const [sectionServiceCategoryId, setSectionServiceCategoryId] = useState("");
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<FilterStatus>("all");
+  const [serviceSectionFilter, setServiceSectionFilter] = useState("all");
+
+  const [composerMode, setComposerMode] = useState<ComposerMode>(null);
+  const [newSection, setNewSection] = useState({ name: "", order: 1, active: true });
+  const [newService, setNewService] = useState({
+    sectionId: "",
+    categoryId: "",
     name: "",
-    description: "",
-    imageUrl: "",
+    durationMin: 60,
+    price: 0,
+    seasonPrice: null as number | null,
     active: true,
-    serviceIds: [],
-    finalPrice: 0,
-    warnDiscountOverPercent: MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
   });
-
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [newServiceName, setNewServiceName] = useState("");
 
-  const [selectedSectionIdForCats, setSelectedSectionIdForCats] = useState<string>("");
-  const [selectedCategoryIdForServices, setSelectedCategoryIdForServices] = useState<string>("");
+  const [sectionDraft, setSectionDraft] = useState<SectionRow | null>(null);
+  const [serviceDraft, setServiceDraft] = useState<ServiceRow | null>(null);
+  const [openedServiceIdInSection, setOpenedServiceIdInSection] = useState<string | null>(null);
+  const [openedServiceModeInSection, setOpenedServiceModeInSection] = useState<DetailsMode>("view");
+  const [openedServiceDraftInSection, setOpenedServiceDraftInSection] = useState<ServiceRow | null>(null);
+  const openedServicePanelRef = useRef<HTMLDivElement | null>(null);
+  const [variantsServicesCategoryId, setVariantsServicesCategoryId] = useState("");
+  const variantsServicesPanelRef = useRef<HTMLDivElement | null>(null);
+  const [variantsPanelRenderKey, setVariantsPanelRenderKey] = useState(0);
+  const [serviceViewRenderKey, setServiceViewRenderKey] = useState(0);
 
-  const showCatalogMsg = (msg: string, ms = 1800) => {
+  const [seasonPricingEnabled, setSeasonPricingEnabled] = useState(false);
+  const [seasonPricingFrom, setSeasonPricingFrom] = useState("");
+  const [seasonPricingTo, setSeasonPricingTo] = useState("");
+
+  const showMsg = (msg: string, ms = 1800) => {
     setCatalogMsg(msg);
     if (ms > 0) setTimeout(() => setCatalogMsg(""), ms);
   };
 
+  const sectionById = useMemo(() => new Map(sections.map((x) => [x.id, x] as const)), [sections]);
+  const categoryById = useMemo(() => new Map(categories.map((x) => [x.id, x] as const)), [categories]);
+  const nextSectionOrder = useMemo(
+    () => (sections.length ? Math.max(...sections.map((s) => Number(s.order || 0))) + 1 : 1),
+    [sections]
+  );
+
+  const selectedSectionLive = useMemo(() => {
+    if (!selectedId) return null;
+    if (activeListMode === "sections") return sections.find((x) => x.id === selectedId) || null;
+    const srv = services.find((x) => x.id === selectedId) || null;
+    return srv ? sectionById.get(String(srv.sectionId || "").trim()) || null : null;
+  }, [activeListMode, selectedId, sections, services, sectionById]);
+
+  const selectedServiceLive = useMemo(() => {
+    if (activeListMode !== "services" || !selectedId) return null;
+    return services.find((x) => x.id === selectedId) || null;
+  }, [activeListMode, selectedId, services]);
+
+  const selectedSectionId = String(selectedSectionLive?.id || "").trim();
+  const categoriesInSection = useMemo(
+    () =>
+      categories
+        .filter((c) => String(c.sectionId || "").trim() === selectedSectionId)
+        .sort((a, b) => Number(a.order || 0) - Number(b.order || 0)),
+    [categories, selectedSectionId]
+  );
+  const servicesInSelectedCategory = useMemo(() => {
+    const cid = String(sectionServiceCategoryId || "").trim();
+    if (!cid) return [];
+    return services
+      .filter(
+        (s) =>
+          String(s.sectionId || "").trim() === selectedSectionId &&
+          String(s.categoryId || "").trim() === cid
+      )
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
+  }, [services, selectedSectionId, sectionServiceCategoryId]);
+  const selectedCategoryForServices = useMemo(
+    () => categoriesInSection.find((c) => c.id === sectionServiceCategoryId) || null,
+    [categoriesInSection, sectionServiceCategoryId]
+  );
+  const servicesInVariantsCategory = useMemo(() => {
+    const cid = String(variantsServicesCategoryId || "").trim();
+    if (!cid) return [];
+    return services
+      .filter(
+        (s) =>
+          String(s.sectionId || "").trim() === selectedSectionId &&
+          String(s.categoryId || "").trim() === cid
+      )
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
+  }, [services, selectedSectionId, variantsServicesCategoryId]);
+  const selectedCategoryForVariantsServices = useMemo(
+    () => categoriesInSection.find((c) => c.id === variantsServicesCategoryId) || null,
+    [categoriesInSection, variantsServicesCategoryId]
+  );
+  const openedServiceLiveInSection = useMemo(() => {
+    if (!openedServiceIdInSection) return null;
+    return (
+      services.find(
+        (s) =>
+          s.id === openedServiceIdInSection &&
+          String(s.sectionId || "").trim() === selectedSectionId
+      ) || null
+    );
+  }, [services, openedServiceIdInSection, selectedSectionId]);
+  const composerCategories = useMemo(
+    () =>
+      categories
+        .filter((c) => String(c.sectionId || "").trim() === String(newService.sectionId || "").trim())
+        .sort((a, b) => Number(a.order || 0) - Number(b.order || 0)),
+    [categories, newService.sectionId]
+  );
+
+  const filteredSections = useMemo(() => {
+    const q = String(search || "").trim().toLowerCase();
+    return sections
+      .filter((s) => (statusFilter === "all" ? true : statusFilter === "active" ? s.active : !s.active))
+      .filter((s) => !q || String(s.id).toLowerCase().includes(q) || String(s.name).toLowerCase().includes(q))
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+  }, [sections, search, statusFilter]);
+
+  const filteredServices = useMemo(() => {
+    const q = String(search || "").trim().toLowerCase();
+    return services
+      .filter((s) => (statusFilter === "all" ? true : statusFilter === "active" ? s.active : !s.active))
+      .filter((s) => (serviceSectionFilter === "all" ? true : String(s.sectionId || "").trim() === serviceSectionFilter))
+      .filter((s) => {
+        if (!q) return true;
+        const sec = String(sectionById.get(String(s.sectionId || "").trim())?.name || "").toLowerCase();
+        const cat = String(categoryById.get(String(s.categoryId || "").trim())?.name || "").toLowerCase();
+        return (
+          String(s.id || "").toLowerCase().includes(q) ||
+          String(s.name || "").toLowerCase().includes(q) ||
+          sec.includes(q) ||
+          cat.includes(q)
+        );
+      })
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
+  }, [services, search, statusFilter, serviceSectionFilter, sectionById, categoryById]);
+
   useEffect(() => {
-    loadCatalog();
-    loadSeasonSettings();
+    void loadCatalog();
+    void loadSeasonSettings();
   }, []);
 
-  const loadSeasonSettings = async () => {
-    try {
-      const settings = await AppSettingsService.fetchRemote();
-      if (settings?.catalogSeasonPricing) {
-        setSeasonPricingEnabled(!!settings.catalogSeasonPricing.enabled);
-        setSeasonPricingFrom(settings.catalogSeasonPricing.from || "");
-        setSeasonPricingTo(settings.catalogSeasonPricing.to || "");
-      }
-    } catch (e) {
-      console.error("Error loading season settings:", e);
+  useEffect(() => {
+    if (!selectedId) return;
+    const exists = activeListMode === "sections" ? sections.some((x) => x.id === selectedId) : services.some((x) => x.id === selectedId);
+    if (!exists) setSelectedId(null);
+  }, [activeListMode, selectedId, sections, services]);
+
+  useEffect(() => {
+    setMode("view");
+    setActiveTab(activeListMode === "sections" ? "variants" : "overview");
+    if (activeListMode === "sections") {
+      const row = selectedId ? sections.find((x) => x.id === selectedId) || null : null;
+      setSectionDraft(row ? { ...row } : null);
+      setServiceDraft(null);
+    } else {
+      const row = selectedId ? services.find((x) => x.id === selectedId) || null : null;
+      setServiceDraft(row ? { ...row } : null);
+      setSectionDraft(null);
     }
-  };
+  }, [activeListMode, selectedId]);
 
-  /* =========================
-     ✅ Counts (UI improvements)
-  ========================= */
-  const countsBySection = useMemo(() => {
-    const catCount = new Map<string, number>();
-    const srvCount = new Map<string, number>();
+  useEffect(() => {
+    if (composerMode !== "section") return;
+    setNewSection((prev) => (String(prev.name || "").trim() ? prev : { ...prev, order: nextSectionOrder }));
+  }, [composerMode, nextSectionOrder]);
 
-    for (const c of categoriesCatalog) {
-      const sid = String(c.sectionId || "").trim();
-      if (!sid) continue;
-      catCount.set(sid, (catCount.get(sid) || 0) + 1);
+  useEffect(() => {
+    if (activeListMode !== "sections") return;
+    if (!selectedSectionId || !categoriesInSection.length) {
+      setSectionServiceCategoryId("");
+      return;
     }
+    const exists = categoriesInSection.some((c) => c.id === sectionServiceCategoryId);
+    if (!exists) setSectionServiceCategoryId(categoriesInSection[0].id);
+  }, [activeListMode, selectedSectionId, categoriesInSection, sectionServiceCategoryId]);
 
-    for (const s of servicesCatalog) {
-      const cid = String(s.categoryId || "").trim();
-      if (!cid) continue;
-      srvCount.set(cid, (srvCount.get(cid) || 0) + 1);
+  useEffect(() => {
+    if (!variantsServicesCategoryId) return;
+    const exists = categoriesInSection.some((c) => c.id === variantsServicesCategoryId);
+    if (!exists) setVariantsServicesCategoryId("");
+  }, [categoriesInSection, variantsServicesCategoryId]);
+
+  useEffect(() => {
+    if (!openedServiceLiveInSection) {
+      setOpenedServiceDraftInSection(null);
+      setOpenedServiceModeInSection("view");
+      return;
     }
-
-    return { catCount, srvCount };
-  }, [categoriesCatalog, servicesCatalog]);
-
-  /* =========================
-     ✅ Section modal
-  ========================= */
-  const [secSearch, setSecSearch] = useState("");
-  const [secModalOpen, setSecModalOpen] = useState(false);
-  const [secMode, setSecMode] = useState<"add" | "edit">("add");
-
-  const [secForm, setSecForm] = useState<{
-    id: string;
-    name: string;
-    active: boolean;
-    order: number;
-  }>({
-    id: "",
-    name: "",
-    active: true,
-    order: 1,
-  });
-
-  const closeSecModal = () => setSecModalOpen(false);
-
-  const openAddSection = () => {
-    const nextOrder =
-      sectionsCatalog.length > 0
-        ? Math.max(...sectionsCatalog.map((s) => Number(s.order || 0))) + 1
-        : 1;
-
-    setSecMode("add");
-    setSecForm({
-      id: "",
-      name: "",
-      active: true,
-      order: nextOrder,
-    });
-    setSecModalOpen(true);
-  };
-
-  const saveSectionRow = async (row: ServiceSectionRow) => {
-    if (!hasAdminPower) return;
-    const name = String(row.name || "").trim();
-    if (!name) return showCatalogMsg("❌ اسم القسم لا يمكن يكون فارغ", 2000);
-
-    try {
-      setSecLoading(true);
-      await setDoc(
-        doc(db, ...SERVICE_SECTIONS_COLLECTION, row.id),
-        {
-          name,
-          active: row.active !== false,
-          order: Number(row.order || 0),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      showCatalogMsg("✅ تم حفظ القسم");
-    } catch (e) {
-      console.error("saveSectionRow error:", e);
-      showCatalogMsg("❌ تعذر حفظ القسم", 2500);
-    } finally {
-      setSecLoading(false);
+    if (openedServiceModeInSection === "view") {
+      setOpenedServiceDraftInSection({ ...openedServiceLiveInSection });
     }
-  };
+  }, [openedServiceLiveInSection, openedServiceModeInSection]);
 
-  const deleteSection = async (id: string) => {
-    if (!hasAdminPower) return;
-    if (!window.confirm("هل أنت متأكد من حذف هذا القسم؟ سيتم حذف القسم فقط ولن يتم حذف التصنيفات المرتبطة به تلقائياً.")) return;
+  useEffect(() => {
+    if (activeListMode === "sections" && activeTab === "pricing") setActiveTab("variants");
+  }, [activeListMode, activeTab]);
 
-    try {
-      setSecLoading(true);
-      await deleteDoc(doc(db, ...SERVICE_SECTIONS_COLLECTION, id));
-      showCatalogMsg("✅ تم حذف القسم بنجاح");
-      await loadCatalog();
-    } catch (e) {
-      console.error("deleteSection error:", e);
-      showCatalogMsg("❌ تعذر حذف القسم", 2500);
-    } finally {
-      setSecLoading(false);
-    }
-  };
-
-  const saveSectionFromModal = async () => {
-    if (!hasAdminPower) return;
-
-    const name = String(secForm.name || "").trim();
-    if (!name) return showCatalogMsg("❌ اسم القسم لا يمكن يكون فارغ", 2000);
-
-    const orderNum = Number.isFinite(Number(secForm.order)) ? Number(secForm.order) : 0;
-
-    const id = secMode === "add" ? sectionIdFromName(name) : String(secForm.id || "").trim();
-    if (!id) return showCatalogMsg("❌ تعذر توليد ID للقسم", 2200);
-
-    const ref = doc(db, ...SERVICE_SECTIONS_COLLECTION, id);
-
-    try {
-      setSecLoading(true);
-
-      if (secMode === "add") {
-        const exists = await getDoc(ref);
-        if (exists.exists()) {
-          return showCatalogMsg("❌ هذا القسم موجود مسبقًا (بنفس الـ ID)", 2500);
-        }
-      }
-
-      await setDoc(
-        ref,
-        {
-          name,
-          active: secForm.active !== false,
-          order: orderNum,
-          ...(secMode === "add" ? { createdAt: serverTimestamp() } : {}),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      showCatalogMsg(secMode === "add" ? `✅ تم إنشاء القسم (id: ${id})` : "✅ تم حفظ القسم");
-      closeSecModal();
-
-      await loadCatalog();
-      setSelectedSectionIdForCats(id);
-    } catch (e) {
-      console.error("saveSectionFromModal error:", e);
-      showCatalogMsg("❌ تعذر حفظ القسم", 2500);
-    } finally {
-      setSecLoading(false);
-    }
-  };
-
-  /* =========================
-     Load all catalog
-  ========================= */
   const loadCatalog = async () => {
     setCatalogMsg("");
     try {
       setSecLoading(true);
       setCatLoading(true);
       setSrvLoading(true);
-
-      const qSec = query(collection(db, ...SERVICE_SECTIONS_COLLECTION), orderBy("order", "asc"));
-      const secSnap = await getDocs(qSec);
-
-      const secList: ServiceSectionRow[] = secSnap.docs
-        .map((d) => {
-          const x = d.data() as any;
-          return {
-            id: d.id,
-            name: String(x?.name || ""),
-            active: x?.active !== false,
-            order: clampInt(x?.order ?? 0, 0),
-            updatedAt: x?.updatedAt,
-            createdAt: x?.createdAt,
-          };
-        })
-        .filter((s) => s.name.trim());
-
-      const qCat = query(collection(db, ...SERVICE_CATEGORIES_COLLECTION), orderBy("order", "asc"));
-      const catSnap = await getDocs(qCat);
-
-      const catList: ServiceCategoryRow[] = catSnap.docs
-        .map((d) => {
-          const x = d.data() as any;
-          return {
-            id: d.id,
-            sectionId: String(x?.sectionId || ""),
-            name: String(x?.name || ""),
-            active: x?.active !== false,
-            order: clampInt(x?.order ?? 0, 0),
-            updatedAt: x?.updatedAt,
-            createdAt: x?.createdAt,
-          };
-        })
-        .filter((c) => c.name.trim());
-
-      const qSrv = query(collection(db, ...SERVICES_COLLECTION), orderBy("name", "asc"));
-      const srvSnap = await getDocs(qSrv);
-
-      const srvList: ServiceRow[] = srvSnap.docs
-        .map((d) => {
-          const x = d.data() as any;
-          return {
-            id: d.id,
-            categoryId: String(x?.categoryId || ""),
-            sectionId: String(x?.sectionId || ""),
-            name: String(x?.name || ""),
-            durationMin: clampInt(x?.durationMin ?? 60, 5),
-            price: Number(x?.price || 0),
-            seasonPrice: x?.seasonPrice === null || x?.seasonPrice === undefined ? null : Number(x.seasonPrice),
-            active: x?.active !== false,
-            updatedAt: x?.updatedAt,
-            createdAt: x?.createdAt,
-          };
-        })
-        .filter((s) => s.name.trim());
-
-      const pkgList = await listAllPackages(SALON_ID);
-
-      setSectionsCatalog(secList);
-      setCategoriesCatalog(catList);
-      setServicesCatalog(srvList);
-      setPackagesCatalog(pkgList || []);
-
+      const [secSnap, catSnap, srvSnap] = await Promise.all([
+        getDocs(query(collection(db, ...SECTIONS), orderBy("order", "asc"))),
+        getDocs(query(collection(db, ...CATEGORIES), orderBy("order", "asc"))),
+        getDocs(query(collection(db, ...SERVICES), orderBy("name", "asc"))),
+      ]);
+      setSections(
+        secSnap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          .map((x: any) => ({ id: x.id, name: String(x?.name || ""), active: x?.active !== false, order: clampInt(x?.order ?? 0, 0), createdAt: x?.createdAt, updatedAt: x?.updatedAt }))
+          .filter((x: SectionRow) => String(x.name || "").trim())
+      );
+      setCategories(
+        catSnap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          .map((x: any) => ({ id: x.id, sectionId: String(x?.sectionId || ""), name: String(x?.name || ""), active: x?.active !== false, order: clampInt(x?.order ?? 0, 0), createdAt: x?.createdAt, updatedAt: x?.updatedAt }))
+          .filter((x: CategoryRow) => String(x.name || "").trim())
+      );
+      setServices(
+        srvSnap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          .map((x: any) => ({ id: x.id, sectionId: String(x?.sectionId || ""), categoryId: String(x?.categoryId || ""), name: String(x?.name || ""), durationMin: clampInt(x?.durationMin ?? 60, 5), price: Number(x?.price || 0), seasonPrice: x?.seasonPrice === null || x?.seasonPrice === undefined ? null : Number(x.seasonPrice), active: x?.active !== false, createdAt: x?.createdAt, updatedAt: x?.updatedAt }))
+          .filter((x: ServiceRow) => String(x.name || "").trim())
+      );
     } catch (e) {
       console.error("loadCatalog error:", e);
-      showCatalogMsg("❌ تعذر تحميل الكتالوج", 3000);
+      showMsg("❌ تعذر تحميل الكتالوج", 3000);
     } finally {
       setSecLoading(false);
       setCatLoading(false);
@@ -467,236 +338,455 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     }
   };
 
-  /* =========================
-     Categories helpers/actions
-  ========================= */
-  const categoriesInSelectedSection = useMemo(() => {
-    const sid = String(selectedSectionIdForCats || "").trim();
-    if (!sid) return [];
-    return categoriesCatalog.filter((c) => String(c.sectionId || "").trim() === sid);
-  }, [categoriesCatalog, selectedSectionIdForCats]);
+  const loadSeasonSettings = async () => {
+    try {
+      const settings = await AppSettingsService.fetchRemote();
+      if (settings?.catalogSeasonPricing) {
+        setSeasonPricingEnabled(!!settings.catalogSeasonPricing.enabled);
+        setSeasonPricingFrom(String(settings.catalogSeasonPricing.from || ""));
+        setSeasonPricingTo(String(settings.catalogSeasonPricing.to || ""));
+      }
+    } catch (e) {
+      console.error("loadSeasonSettings error:", e);
+    }
+  };
 
-  const createCategoryUnderSection = async () => {
-    if (!hasAdminPower) return;
+  const saveSeasonPricing = async () => {
+    const from = String(seasonPricingFrom || "").trim();
+    const to = String(seasonPricingTo || "").trim();
 
-    const sectionId = String(selectedSectionIdForCats || "").trim();
-    const name = String(newCategoryName || "").trim();
-
-    if (!sectionId) return showCatalogMsg("❌ اختر قسم أولاً قبل إضافة تصنيف", 2200);
-    if (!name) return;
-
-    const id = buildId(`${sectionId}_${name}`);
+    if (seasonPricingEnabled) {
+      if (!from || !to) return showMsg("❌ حددي تاريخ (من/إلى) لموسم الأسعار", 2200);
+      if (from > to) return showMsg("❌ تاريخ (من) لازم يكون قبل أو يساوي (إلى)", 2200);
+    }
 
     try {
+      setSeasonLoading(true);
+      const latest = await AppSettingsService.fetchRemote().catch(() => ({} as any));
+      await AppSettingsService.saveRemote({
+        ...(latest || {}),
+        catalogSeasonPricing: {
+          enabled: !!seasonPricingEnabled,
+          from,
+          to,
+          startDate: from,
+          endDate: to,
+        },
+      });
+      showMsg("✅ تم حفظ موسم الأسعار", 1800);
+    } catch (e) {
+      console.error("saveSeasonPricing error:", e);
+      showMsg("❌ تعذر حفظ موسم الأسعار", 2500);
+    } finally {
+      setSeasonLoading(false);
+    }
+  };
+
+  const saveSectionRow = async (row: SectionRow) => {
+    const name = String(row.name || "").trim();
+    if (!name) return showMsg("❌ اسم القسم لا يمكن يكون فارغ", 2000);
+    try {
+      setSecLoading(true);
+      await setDoc(
+        doc(db, ...SECTIONS, row.id),
+        { name, active: row.active !== false, order: Number(row.order || 0), updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      showMsg("✅ تم حفظ القسم");
+      return true;
+    } catch (e) {
+      console.error("saveSectionRow error:", e);
+      showMsg("❌ تعذر حفظ القسم", 2500);
+      return false;
+    } finally {
+      setSecLoading(false);
+    }
+  };
+
+  const saveServiceRow = async (row: ServiceRow) => {
+    const name = String(row.name || "").trim();
+    if (!name) return showMsg("❌ اسم الخدمة لا يمكن يكون فارغ", 2000);
+    const categoryId = String(row.categoryId || "").trim();
+    if (!categoryId) return showMsg("❌ الخدمة لازم تكون مرتبطة بتصنيف", 2000);
+    const cat = categories.find((c) => String(c.id || "").trim() === categoryId);
+    const sectionId = String(cat?.sectionId || "").trim();
+    if (!sectionId) return showMsg("❌ التصنيف المختار غير مربوط بقسم", 2000);
+    try {
+      setSrvLoading(true);
+      await setDoc(
+        doc(db, ...SERVICES, row.id),
+        {
+          categoryId,
+          sectionId,
+          name,
+          durationMin: Math.max(5, Number(row.durationMin || 0)),
+          price: Math.max(0, Number(row.price || 0)),
+          seasonPrice:
+            row.seasonPrice === null || row.seasonPrice === undefined || String(row.seasonPrice) === ""
+              ? null
+              : Math.max(0, Number(row.seasonPrice)),
+          active: row.active !== false,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      showMsg("✅ تم حفظ الخدمة");
+      return true;
+    } catch (e) {
+      console.error("saveServiceRow error:", e);
+      showMsg("❌ تعذر حفظ الخدمة", 2500);
+      return false;
+    } finally {
+      setSrvLoading(false);
+    }
+  };
+
+  const createSection = async () => {
+    const name = String(newSection.name || "").trim();
+    if (!name) return showMsg("❌ اسم القسم مطلوب", 2000);
+    const id = buildId(name);
+    if (!id) return showMsg("❌ تعذر توليد ID للقسم", 2200);
+    try {
+      setSecLoading(true);
+      const ref = doc(db, ...SECTIONS, id);
+      if ((await getDoc(ref)).exists()) return showMsg("❌ القسم موجود مسبقًا", 2500);
+      await setDoc(ref, {
+        name,
+        active: newSection.active !== false,
+        order: Number(newSection.order || 0),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      showMsg(`✅ تم إنشاء القسم (id: ${id})`);
+      await loadCatalog();
+      setActiveListMode("sections");
+      setSelectedId(id);
+      setComposerMode(null);
+      setNewSection({ name: "", order: nextSectionOrder, active: true });
+    } catch (e) {
+      console.error("createSection error:", e);
+      showMsg("❌ تعذر إنشاء القسم", 2500);
+    } finally {
+      setSecLoading(false);
+    }
+  };
+
+  const deleteSection = async (id: string) => {
+    const linkedServices = services.filter((s) => String(s.sectionId || "").trim() === id).length;
+    if (linkedServices > 0) return showMsg("❌ لا يمكن حذف القسم لأن عليه خدمات. انقليها أولًا.", 3200);
+    const linkedCats = categories.filter((c) => String(c.sectionId || "").trim() === id).length;
+    if (linkedCats > 0) return showMsg("❌ لا يمكن حذف القسم لأن عليه تصنيفات.", 3200);
+    if (!window.confirm("هل أنت متأكد من حذف هذا القسم؟")) return;
+    try {
+      setSecLoading(true);
+      await deleteDoc(doc(db, ...SECTIONS, id));
+      showMsg("✅ تم حذف القسم");
+      await loadCatalog();
+      setSelectedId(null);
+    } catch (e) {
+      console.error("deleteSection error:", e);
+      showMsg("❌ تعذر حذف القسم", 2500);
+    } finally {
+      setSecLoading(false);
+    }
+  };
+
+  const createCategory = async () => {
+    const sid = String(selectedSectionId || "").trim();
+    const name = String(newCategoryName || "").trim();
+    if (!sid) return showMsg("❌ اختر قسمًا أولًا", 2200);
+    if (!name) return showMsg("❌ اسم التصنيف مطلوب", 2200);
+    const id = buildId(`${sid}_${name}`);
+    try {
       setCatLoading(true);
-
-      const nextOrder =
-        categoriesCatalog.filter((c) => c.sectionId === sectionId).length > 0
-          ? Math.max(...categoriesCatalog.filter((c) => c.sectionId === sectionId).map((c) => Number(c.order || 0))) + 1
-          : 1;
-
-      await setDoc(doc(db, ...SERVICE_CATEGORIES_COLLECTION, id), {
-        sectionId,
+      const rows = categories.filter((c) => String(c.sectionId || "").trim() === sid);
+      const nextOrder = rows.length ? Math.max(...rows.map((x) => Number(x.order || 0))) + 1 : 1;
+      await setDoc(doc(db, ...CATEGORIES, id), {
+        sectionId: sid,
         name,
         active: true,
         order: nextOrder,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-
+      showMsg("✅ تم إضافة التصنيف");
       setNewCategoryName("");
-      showCatalogMsg(`✅ تم إضافة التصنيف (id: ${id})`);
       await loadCatalog();
-      setSelectedCategoryIdForServices(id);
+      setNewService((prev) =>
+        String(prev.sectionId || "").trim() === sid && !String(prev.categoryId || "").trim()
+          ? { ...prev, categoryId: id }
+          : prev
+      );
     } catch (e) {
-      console.error("createCategoryUnderSection error:", e);
-      showCatalogMsg("❌ تعذر إضافة التصنيف", 2500);
+      console.error("createCategory error:", e);
+      showMsg("❌ تعذر إضافة التصنيف", 2500);
     } finally {
       setCatLoading(false);
     }
   };
 
-  const saveCategoryRow = async (row: ServiceCategoryRow) => {
-    if (!hasAdminPower) return;
-
+  const saveCategory = async (row: CategoryRow) => {
     const name = String(row.name || "").trim();
-    if (!name) return showCatalogMsg("❌ اسم التصنيف لا يمكن يكون فارغ", 2000);
-
+    if (!name) return showMsg("❌ اسم التصنيف لا يمكن يكون فارغ", 2000);
     try {
+      setCatLoading(true);
       await setDoc(
-        doc(db, ...SERVICE_CATEGORIES_COLLECTION, row.id),
-        {
-          name,
-          active: row.active !== false,
-          order: Number(row.order || 0),
-          updatedAt: serverTimestamp(),
-        },
+        doc(db, ...CATEGORIES, row.id),
+        { name, active: row.active !== false, order: Number(row.order || 0), updatedAt: serverTimestamp() },
         { merge: true }
       );
-      showCatalogMsg("✅ تم حفظ التصنيف");
+      showMsg("✅ تم حفظ التصنيف");
     } catch (e) {
-      console.error("saveCategoryRow error:", e);
-      showCatalogMsg("❌ تعذر حفظ التصنيف", 2500);
+      console.error("saveCategory error:", e);
+      showMsg("❌ تعذر حفظ التصنيف", 2500);
+    } finally {
+      setCatLoading(false);
     }
   };
 
   const deleteCategory = async (id: string) => {
-    if (!hasAdminPower) return;
+    const linkedServices = services.filter((s) => String(s.categoryId || "").trim() === id).length;
+    if (linkedServices > 0) return showMsg("❌ لا يمكن حذف التصنيف لأن عليه خدمات.", 3000);
     if (!window.confirm("هل أنت متأكد من حذف هذا التصنيف؟")) return;
-
     try {
       setCatLoading(true);
-      await deleteDoc(doc(db, ...SERVICE_CATEGORIES_COLLECTION, id));
-      showCatalogMsg("✅ تم حذف التصنيف بنجاح");
+      await deleteDoc(doc(db, ...CATEGORIES, id));
+      showMsg("✅ تم حذف التصنيف");
       await loadCatalog();
     } catch (e) {
       console.error("deleteCategory error:", e);
-      showCatalogMsg("❌ تعذر حذف التصنيف", 2500);
+      showMsg("❌ تعذر حذف التصنيف", 2500);
     } finally {
       setCatLoading(false);
     }
   };
 
-  /* =========================
-     Services helpers/actions
-  ========================= */
-  const servicesInSelectedCategory = useMemo(() => {
-    const cid = String(selectedCategoryIdForServices || "").trim();
-    if (!cid) return [];
-    return servicesCatalog.filter((s) => String(s.categoryId || "").trim() === cid);
-  }, [servicesCatalog, selectedCategoryIdForServices]);
-
-  const createServiceUnderCategory = async () => {
-    if (!hasAdminPower) return;
-
-    const categoryId = String(selectedCategoryIdForServices || "").trim();
-    const name = String(newServiceName || "").trim();
-
-    if (!categoryId) return showCatalogMsg("❌ اختر تصنيف أولاً قبل إضافة خدمة", 2200);
-    if (!name) return;
-
-    const cat = categoriesCatalog.find((c) => String(c.id) === categoryId);
+  const createService = async () => {
+    const name = String(newService.name || "").trim();
+    const categoryId = String(newService.categoryId || "").trim();
+    if (!name) return showMsg("❌ اسم الخدمة مطلوب", 2000);
+    if (!categoryId) return showMsg("❌ اختر تصنيفًا أولًا", 2200);
+    const cat = categories.find((c) => String(c.id || "").trim() === categoryId);
     const sectionId = String(cat?.sectionId || "").trim();
-    if (!sectionId) return showCatalogMsg("❌ التصنيف المختار غير مربوط بقسم", 2200);
-
+    if (!sectionId) return showMsg("❌ التصنيف المختار غير صالح", 2200);
     const id = buildId(`${categoryId}_${name}`);
-
     try {
       setSrvLoading(true);
-
-      await setDoc(doc(db, ...SERVICES_COLLECTION, id), {
+      await setDoc(doc(db, ...SERVICES, id), {
         categoryId,
         sectionId,
         name,
-        durationMin: 60,
-        price: 0,
-        seasonPrice: null,
-        active: true,
+        durationMin: Math.max(5, Number(newService.durationMin || 60)),
+        price: Math.max(0, Number(newService.price || 0)),
+        seasonPrice:
+          newService.seasonPrice === null || newService.seasonPrice === undefined || String(newService.seasonPrice) === ""
+            ? null
+            : Math.max(0, Number(newService.seasonPrice)),
+        active: newService.active !== false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-
-      setNewServiceName("");
-      showCatalogMsg(`✅ تم إضافة الخدمة (id: ${id})`);
+      showMsg(`✅ تم إضافة الخدمة (id: ${id})`);
       await loadCatalog();
+      setActiveListMode("sections");
+      setSelectedId(sectionId);
+      setActiveTab("variants");
+      setSectionServiceCategoryId(categoryId);
+      setVariantsServicesCategoryId(categoryId);
+      setOpenedServiceIdInSection(id);
+      setOpenedServiceModeInSection("view");
+      setComposerMode(null);
+      setNewService({ sectionId: "", categoryId: "", name: "", durationMin: 60, price: 0, seasonPrice: null, active: true });
     } catch (e) {
-      console.error("createServiceUnderCategory error:", e);
-      showCatalogMsg("❌ تعذر إضافة الخدمة", 2500);
+      console.error("createService error:", e);
+      showMsg("❌ تعذر إضافة الخدمة", 2500);
     } finally {
       setSrvLoading(false);
     }
   };
 
-  const saveServiceRow = async (row: ServiceRow) => {
-    if (!hasAdminPower) return;
-
-    const name = String(row.name || "").trim();
-    if (!name) return showCatalogMsg("❌ اسم الخدمة لا يمكن يكون فارغ", 2000);
-
-    const durationMin = Math.max(5, Number(row.durationMin || 0));
-    const price = Math.max(0, Number(row.price || 0));
-    const seasonPrice =
-      row.seasonPrice === null || row.seasonPrice === undefined || String(row.seasonPrice) === ""
-        ? null
-        : Math.max(0, Number(row.seasonPrice));
-
-    const categoryId = String(row.categoryId || "").trim();
-
-    if (!categoryId) return showCatalogMsg("❌ الخدمة لازم تكون مرتبطة بتصنيف", 2000);
-
-    const cat = categoriesCatalog.find((c) => String(c.id) === categoryId);
-    const sectionId = String(cat?.sectionId || "").trim();
-    if (!sectionId) return showCatalogMsg("❌ التصنيف المختار غير مربوط بقسم", 2000);
-
-    try {
-      await setDoc(
-        doc(db, ...SERVICES_COLLECTION, row.id),
-        {
-          categoryId,
-          sectionId,
-          name,
-          durationMin,
-          price,
-          seasonPrice,
-          active: row.active !== false,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      showCatalogMsg("✅ تم حفظ الخدمة");
-    } catch (e) {
-      console.error("saveServiceRow error:", e);
-      showCatalogMsg("❌ تعذر حفظ الخدمة", 2500);
-    }
-  };
-
-  const deleteService = async (id: string) => {
-    if (!hasAdminPower) return;
-    if (!window.confirm("هل أنت متأكد من حذف هذه الخدمة؟")) return;
-
+  const deleteService = async (id: string, options?: { clearSelection?: boolean }) => {
+    if (!window.confirm("هل أنت متأكد من حذف هذه الخدمة؟")) return false;
     try {
       setSrvLoading(true);
-      await deleteDoc(doc(db, ...SERVICES_COLLECTION, id));
-      showCatalogMsg("✅ تم حذف الخدمة بنجاح");
+      await deleteDoc(doc(db, ...SERVICES, id));
+      showMsg("✅ تم حذف الخدمة");
       await loadCatalog();
+      if (options?.clearSelection ?? activeListMode === "services") setSelectedId(null);
+      return true;
     } catch (e) {
       console.error("deleteService error:", e);
-      showCatalogMsg("❌ تعذر حذف الخدمة", 2500);
+      showMsg("❌ تعذر حذف الخدمة", 2500);
+      return false;
     } finally {
       setSrvLoading(false);
     }
   };
 
-  // ✅ Auto-save service after user stops typing (debounce)
-  const scheduleServiceAutosave = (nextRow: ServiceRow) => {
-    if (!hasAdminPower) return;
+  const startServiceComposer = (sectionId?: string, preferredCategoryId?: string) => {
+    const sid = String(sectionId || selectedSectionId || sections[0]?.id || "").trim();
+    if (!sid) return showMsg("❌ اختر قسمًا أولًا", 2200);
 
-    const id = String(nextRow.id || "").trim();
-    if (!id) return;
+    const cats = categories
+      .filter((c) => String(c.sectionId || "").trim() === sid)
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
 
-    if (autosaveTimersRef.current[id]) {
-      clearTimeout(autosaveTimersRef.current[id]);
+    const desired = String(preferredCategoryId || "").trim();
+    const resolvedCategoryId =
+      desired && cats.some((c) => c.id === desired) ? desired : String(cats[0]?.id || "").trim();
+
+    if (!resolvedCategoryId) {
+      setActiveListMode("sections");
+      setSelectedId(sid);
+      setActiveTab("variants");
+      return showMsg("❌ أضف تصنيفًا أولًا قبل إضافة خدمة", 2600);
     }
 
-    setAutosaveMsg((p) => ({ ...p, [id]: "جارٍ الحفظ…" }));
+    setNewService({
+      sectionId: sid,
+      categoryId: resolvedCategoryId,
+      name: "",
+      durationMin: 60,
+      price: 0,
+      seasonPrice: null,
+      active: true,
+    });
+    setComposerMode("service");
+  };
 
-    autosaveTimersRef.current[id] = setTimeout(async () => {
-      try {
-        await saveServiceRow(nextRow);
-        setAutosaveMsg((p) => ({ ...p, [id]: "✅ تم الحفظ" }));
+  const openServiceInSection = (serviceId: string) => {
+    setOpenedServiceIdInSection(serviceId);
+    setOpenedServiceModeInSection("view");
+    setServiceViewRenderKey((k) => k + 1);
+    setTimeout(() => openedServicePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
 
-        setTimeout(() => {
-          setAutosaveMsg((p) => {
-            const copy = { ...p };
-            delete copy[id];
-            return copy;
-          });
-        }, 1200);
-      } catch (e) {
-        console.error("autosave error:", e);
-        setAutosaveMsg((p) => ({ ...p, [id]: "❌ تعذر الحفظ" }));
+  const openVariantsServicesPanel = (categoryId: string) => {
+    const cid = String(categoryId || "").trim();
+    if (!cid) return;
+    setActiveTab("variants");
+    setVariantsServicesCategoryId(cid);
+    setSectionServiceCategoryId(cid);
+    setOpenedServiceIdInSection(null);
+    setOpenedServiceModeInSection("view");
+    setVariantsPanelRenderKey((k) => k + 1);
+    setTimeout(() => variantsServicesPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
+
+  const cancelOpenedServiceEdit = () => {
+    setOpenedServiceDraftInSection(openedServiceLiveInSection ? { ...openedServiceLiveInSection } : null);
+    setOpenedServiceModeInSection("view");
+  };
+
+  const saveOpenedServiceEdit = async () => {
+    if (!openedServiceDraftInSection) return;
+    const ok = await saveServiceRow(openedServiceDraftInSection);
+    if (!ok) return;
+    await loadCatalog();
+    setOpenedServiceModeInSection("view");
+  };
+
+  const toggleOpenedServiceActive = async () => {
+    if (!openedServiceLiveInSection) return;
+    const ok = await saveServiceRow({
+      ...openedServiceLiveInSection,
+      active: !(openedServiceLiveInSection.active !== false),
+    });
+    if (!ok) return;
+    await loadCatalog();
+  };
+
+  const deleteOpenedService = async () => {
+    if (!openedServiceLiveInSection) return;
+    const ok = await deleteService(openedServiceLiveInSection.id, { clearSelection: false });
+    if (!ok) return;
+    setOpenedServiceIdInSection(null);
+    setOpenedServiceDraftInSection(null);
+    setOpenedServiceModeInSection("view");
+  };
+
+  const hasSelection = activeListMode === "sections" ? !!selectedSectionLive : !!selectedServiceLive;
+  const detailName = activeListMode === "sections" ? String(selectedSectionLive?.name || "—") : String(selectedServiceLive?.name || "—");
+  const detailActive = activeListMode === "sections" ? selectedSectionLive?.active !== false : selectedServiceLive?.active !== false;
+  const openedServiceViewCard = openedServiceLiveInSection ? (
+    <div key={`service-view-${openedServiceLiveInSection.id}-${serviceViewRenderKey}`} ref={openedServicePanelRef} className="scatalog-ref__service-view">
+      <div className="scatalog-ref__subhead">
+        <div className="scatalog-ref__service-view-title">
+          <b>عرض الخدمة</b>
+          <span>{openedServiceLiveInSection.id}</span>
+        </div>
+        <div className="scatalog-ref__detail-actions">
+          {openedServiceModeInSection === "edit" ? (
+            <>
+              <button className="exp-btn primary" type="button" onClick={() => void saveOpenedServiceEdit()}>حفظ</button>
+              <button className="exp-btn ghost" type="button" onClick={cancelOpenedServiceEdit}>إلغاء</button>
+            </>
+          ) : (
+            <>
+              <button className="exp-btn ghost" type="button" onClick={() => setOpenedServiceModeInSection("edit")}>تعديل</button>
+              <button className="exp-btn ghost" type="button" onClick={() => void toggleOpenedServiceActive()}>{openedServiceLiveInSection.active ? "تعطيل" : "تفعيل"}</button>
+              <button className="exp-btn danger" type="button" onClick={() => void deleteOpenedService()}>حذف</button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="scatalog-ref__grid-2">
+        <div className="settings-field"><label>اسم الخدمة</label><input className="settings-input" value={(openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.name : openedServiceLiveInSection.name) || ""} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => setOpenedServiceDraftInSection((p) => (p ? { ...p, name: e.target.value } : p))} /></div>
+        <div className="settings-field"><label>ID</label><input className="settings-input" value={openedServiceLiveInSection.id} disabled /></div>
+        <div className="settings-field"><label>التصنيف</label><select className="settings-input" value={String(openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.categoryId || "" : openedServiceLiveInSection.categoryId || "")} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => { const cid = String(e.target.value || "").trim(); const cat = categoryById.get(cid); setOpenedServiceDraftInSection((p) => (p ? { ...p, categoryId: cid, sectionId: String(cat?.sectionId || p.sectionId || "").trim() } : p)); }}>{categoriesInSection.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <label className="scatalog-ref__check"><input className="settings-check" type="checkbox" checked={openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.active !== false : openedServiceLiveInSection.active !== false} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => setOpenedServiceDraftInSection((p) => (p ? { ...p, active: e.target.checked } : p))} /><span>نشطة</span></label>
+        <div className="settings-field"><label>السعر</label><input className="settings-input" type="number" min={0} value={openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.price ?? 0 : openedServiceLiveInSection.price} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => setOpenedServiceDraftInSection((p) => (p ? { ...p, price: Math.max(0, Number(e.target.value || 0)) } : p))} /></div>
+        <div className="settings-field"><label>المدة (دقيقة)</label><input className="settings-input" type="number" min={5} value={openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.durationMin ?? 60 : openedServiceLiveInSection.durationMin} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => setOpenedServiceDraftInSection((p) => (p ? { ...p, durationMin: Math.max(5, Number(e.target.value || 0)) } : p))} /></div>
+        <div className="settings-field"><label>سعر الموسم</label><input className="settings-input" type="number" min={0} value={(openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.seasonPrice : openedServiceLiveInSection.seasonPrice) ?? ""} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => { const raw = e.target.value; const val = raw === "" ? null : Math.max(0, Number(raw)); setOpenedServiceDraftInSection((p) => (p ? { ...p, seasonPrice: val } : p)); }} /></div>
+      </div>
+    </div>
+  ) : null;
+
+  const startEdit = () => {
+    if (!hasSelection) return;
+    if (activeListMode === "sections" && selectedSectionLive) setSectionDraft({ ...selectedSectionLive });
+    if (activeListMode === "services" && selectedServiceLive) setServiceDraft({ ...selectedServiceLive });
+    setMode("edit");
+  };
+  const cancelEdit = () => {
+    if (activeListMode === "sections") setSectionDraft(selectedSectionLive ? { ...selectedSectionLive } : null);
+    else setServiceDraft(selectedServiceLive ? { ...selectedServiceLive } : null);
+    setMode("view");
+  };
+  const saveEdit = async () => {
+    if (mode !== "edit") return;
+    if (activeListMode === "sections" && sectionDraft) {
+      const ok = await saveSectionRow(sectionDraft);
+      if (ok) {
+        await loadCatalog();
+        setMode("view");
       }
-    }, 1000);
+      return;
+    }
+    if (activeListMode === "services" && serviceDraft) {
+      const ok = await saveServiceRow(serviceDraft);
+      if (ok) {
+        await loadCatalog();
+        setMode("view");
+      }
+    }
+  };
+  const toggleSelectedActive = async () => {
+    if (activeListMode === "sections" && selectedSectionLive) {
+      const ok = await saveSectionRow({ ...selectedSectionLive, active: !(selectedSectionLive.active !== false) });
+      if (ok) await loadCatalog();
+      return;
+    }
+    if (activeListMode === "services" && selectedServiceLive) {
+      const ok = await saveServiceRow({ ...selectedServiceLive, active: !(selectedServiceLive.active !== false) });
+      if (ok) await loadCatalog();
+    }
+  };
+  const deleteSelected = async () => {
+    if (!selectedId) return;
+    if (activeListMode === "sections") await deleteSection(selectedId);
+    else await deleteService(selectedId, { clearSelection: true });
   };
 
   if (!hasAdminPower) {
@@ -710,763 +800,287 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     );
   }
 
-  const filteredSections = useMemo(() => {
-    const q = String(secSearch || "").trim().toLowerCase();
-    if (!q) return sectionsCatalog;
-
-    return sectionsCatalog.filter((s) => {
-      const id = String(s.id || "").toLowerCase();
-      const name = String(s.name || "").toLowerCase();
-      return id.includes(q) || name.includes(q);
-    });
-  }, [sectionsCatalog, secSearch]);
-
-  const activeServicesForPackages = useMemo(() => {
-    return servicesCatalog.filter((s) => s.active !== false && String(s.id || "").trim() && String(s.name || "").trim());
-  }, [servicesCatalog]);
-
-  const packageServiceMap = useMemo(() => {
-    const m = new Map<string, ServiceRow>();
-    activeServicesForPackages.forEach((s) => m.set(String(s.id), s));
-    return m;
-  }, [activeServicesForPackages]);
-
-  const packageComputed = useMemo(() => {
-    const picked = (packageDraft.serviceIds || [])
-      .map((id) => packageServiceMap.get(String(id || "").trim()))
-      .filter(Boolean) as ServiceRow[];
-
-    const baseTotalPrice = picked.reduce((sum, s) => sum + Math.max(0, Number(s.price || 0)), 0);
-    const totalDurationMin = picked.reduce((sum, s) => sum + Math.max(0, Number(s.durationMin || 0)), 0);
-    const finalPrice = Math.max(0, Number(packageDraft.finalPrice || 0));
-    const discountAmount = Math.max(0, baseTotalPrice - finalPrice);
-    const discountPercent = baseTotalPrice > 0 ? (discountAmount / baseTotalPrice) * 100 : 0;
-    const warnOver = Math.max(0, Number(packageDraft.warnDiscountOverPercent || 0));
-    const isHighDiscount = warnOver > 0 && discountPercent > warnOver;
-
-    return {
-      picked,
-      baseTotalPrice,
-      totalDurationMin,
-      finalPrice,
-      discountAmount,
-      discountPercent,
-      warnOver,
-      isHighDiscount,
-      suggestedPrice: baseTotalPrice > 0 ? Math.max(0, Math.round(baseTotalPrice * (1 - warnOver / 100))) : 0,
-    };
-  }, [packageDraft, packageServiceMap]);
-
-  const resetPackageDraft = () => {
-    setEditingPackageId("");
-    setPackagePickedImageName("");
-    setPackageDraft({
-      id: "",
-      name: "",
-      description: "",
-      imageUrl: "",
-      active: true,
-      serviceIds: [],
-      finalPrice: 0,
-      warnDiscountOverPercent: MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
-    });
-  };
-
-  const openPackageForEdit = (pkg: ServicePackageDoc) => {
-    setEditingPackageId(String(pkg.id || "").trim());
-    setPackagePickedImageName(String(pkg.imageUrl || "").trim() ? "تم اختيار صورة" : "");
-    setPackageDraft({
-      id: String(pkg.id || "").trim(),
-      name: String(pkg.name || "").trim(),
-      description: String(pkg.description || "").trim(),
-      imageUrl: String(pkg.imageUrl || "").trim(),
-      active: pkg.active !== false,
-      serviceIds: Array.isArray(pkg.serviceIds) ? pkg.serviceIds : [],
-      finalPrice: Math.max(0, Number(pkg.finalPrice || 0)),
-      warnDiscountOverPercent: Math.max(
-        0,
-        Number(pkg.warnDiscountOverPercent || MAX_PACKAGE_DISCOUNT_WARN_PERCENT)
-      ),
-    });
-  };
-
-  const toggleDraftServiceId = (serviceId: string) => {
-    const id = String(serviceId || "").trim();
-    if (!id) return;
-    setPackageDraft((prev) => {
-      const exists = prev.serviceIds.includes(id);
-      return {
-        ...prev,
-        serviceIds: exists ? prev.serviceIds.filter((x) => x !== id) : [...prev.serviceIds, id],
-      };
-    });
-  };
-
-  const onPickPackageImage = async (file: File | null) => {
-    if (!file) return;
-    const sizeMb = file.size / (1024 * 1024);
-    if (sizeMb > MAX_PACKAGE_IMAGE_MB) {
-      showCatalogMsg(`❌ حجم صورة الباكيج يجب أن يكون أقل من ${MAX_PACKAGE_IMAGE_MB}MB`, 2600);
-      return;
-    }
-    try {
-      const b64 = await fileToBase64(file);
-      setPackagePickedImageName(file.name);
-      setPackageDraft((prev) => ({ ...prev, imageUrl: b64 }));
-    } catch {
-      showCatalogMsg("❌ تعذر قراءة ملف الصورة", 2200);
-    }
-  };
-
-  const savePackageDraft = async () => {
-    if (!hasAdminPower) return;
-
-    const name = String(packageDraft.name || "").trim();
-    if (!name) return showCatalogMsg("❌ اسم الباكيج مطلوب", 2200);
-    if (!packageComputed.picked.length) return showCatalogMsg("❌ اختَر خدمة واحدة على الأقل", 2200);
-    if (packageComputed.totalDurationMin <= 0) return showCatalogMsg("❌ مدة الباكيج غير صحيحة", 2200);
-
-    const id =
-      String(packageDraft.id || "").trim() ||
-      buildId(`pkg_${name}`);
-
-    const services = packageComputed.picked.map((s) => ({
-      serviceId: String(s.id || "").trim(),
-      serviceName: String(s.name || "").trim(),
-      sectionId: String(s.sectionId || "").trim() || undefined,
-      categoryId: String(s.categoryId || "").trim() || undefined,
-      price: Math.max(0, Number(s.price || 0)),
-      durationMin: Math.max(0, Number(s.durationMin || 0)),
-    }));
-
-    try {
-      await upsertPackage(
-        {
-          id,
-          name,
-          description: String(packageDraft.description || "").trim() || undefined,
-          imageUrl: String(packageDraft.imageUrl || "").trim() || undefined,
-          active: packageDraft.active !== false,
-          serviceIds: services.map((x) => x.serviceId),
-          services,
-          baseTotalPrice: packageComputed.baseTotalPrice,
-          totalDurationMin: packageComputed.totalDurationMin,
-          finalPrice: packageComputed.finalPrice,
-          discountAmount: packageComputed.discountAmount,
-          discountPercent: packageComputed.discountPercent,
-          warnDiscountOverPercent: packageComputed.warnOver || MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
-        },
-        SALON_ID
-      );
-      showCatalogMsg("✅ تم حفظ الباكيج");
-      await loadCatalog();
-      resetPackageDraft();
-    } catch (e) {
-      console.error("savePackageDraft error:", e);
-      showCatalogMsg("❌ تعذر حفظ الباكيج", 2500);
-    }
-  };
-
-  const deletePackageById = async (idRaw: string) => {
-    if (!hasAdminPower) return;
-    const id = String(idRaw || "").trim();
-    if (!id) return;
-    if (!window.confirm("هل أنت متأكد من حذف هذا الباكيج؟")) return;
-    try {
-      await removePackage(id, SALON_ID);
-      showCatalogMsg("✅ تم حذف الباكيج");
-      await loadCatalog();
-      if (editingPackageId === id) resetPackageDraft();
-    } catch (e) {
-      console.error("deletePackageById error:", e);
-      showCatalogMsg("❌ تعذر حذف الباكيج", 2500);
-    }
-  };
-
-  const saveSeasonPricing = async () => {
-    if (!hasAdminPower) return;
-
-    const from = String(seasonPricingFrom || "").trim();
-    const to = String(seasonPricingTo || "").trim();
-
-    if (seasonPricingEnabled) {
-      if (!from || !to) return showCatalogMsg("❌ حدد تاريخ (من/إلى) لموسم الأسعار", 2200);
-      if (from > to) return showCatalogMsg("❌ تاريخ (من) لازم يكون قبل أو يساوي (إلى)", 2200);
-    }
-
-    try {
-      setSeasonLoading(true);
-      const latest = await AppSettingsService.fetchRemote().catch(() => ({} as any));
-
-      const next = {
-        ...(latest || {}),
-        catalogSeasonPricing: {
-          enabled: !!seasonPricingEnabled,
-          from,
-          to,
-          startDate: from,
-          endDate: to,
-        },
-      };
-
-      await AppSettingsService.saveRemote(next);
-      showCatalogMsg("✅ تم حفظ موسم الأسعار", 1800);
-    } catch (e) {
-      console.error(e);
-      showCatalogMsg("❌ تعذر حفظ موسم الأسعار", 2500);
-    } finally {
-      setSeasonLoading(false);
-    }
-  };
-
   return (
     <div className="dashboard-section settings-page scatalog" dir="rtl">
       <div className="settings-wrap">
-        <div className="scatalog__header ">
+        <div className="scatalog__header">
           <div>
-            <h1 className="qs-black ">إدارة الكتالوج</h1>
-            <p className="settings-hint">تنظيم الخدمات: قسم ← تصنيف ← خدمة</p>
+            <h1 className="qs-black">إدارة الكتالوج</h1>
+            <p className="settings-hint">Split Layout لإدارة الأقسام والخدمات داخل نفس اللوحة.</p>
           </div>
           <div className="scatalog__actions">
-            <button className="dash-btn" type="button" onClick={() => navigate("/dashboard/settings/advanced")}>
-              رجوع
-            </button>
-            <button
-              type="button"
-              className={`exp-btn ${secLoading || catLoading || srvLoading ? "is-disabled" : ""}`}
-              disabled={secLoading || catLoading || srvLoading}
-              onClick={loadCatalog}
-            >
-              تحديث
-            </button>
+            <button className="dash-btn" type="button" onClick={() => navigate("/dashboard/settings/advanced")}>رجوع</button>
+            <button type="button" className={`exp-btn ${secLoading || catLoading || srvLoading || seasonLoading ? "is-disabled" : ""}`} disabled={secLoading || catLoading || srvLoading || seasonLoading} onClick={() => void loadCatalog()}>تحديث</button>
           </div>
         </div>
+        {catalogMsg && <div className="scatalog__msg">{catalogMsg}</div>}
 
-        {catalogMsg && (
-          <div className="scatalog__msg">
-            {catalogMsg}
-          </div>
-        )}
-
-        {/* ✅ Season Pricing */}
-        <div className="scatalog__card" style={{ marginTop: 10 }}>
-          <h3 className="settings-title">وضع الموسم للأسعار</h3>
-
-          <div className="settings-list">
-            <label className="scatalog__check">
-              <input
-                className="settings-check"
-                type="checkbox"
-                checked={seasonPricingEnabled}
-                disabled={!hasAdminPower}
-                onChange={() => setSeasonPricingEnabled((p) => !p)}
-              />
-              <span>تفعيل موسم الأسعار</span>
-            </label>
-          </div>
-
-          <div className="scatalog__row" style={{ marginTop: 15 }}>
-            <div className="settings-field">
-              <label>من تاريخ</label>
-              <input
-                className="settings-input"
-                type="date"
-                value={seasonPricingFrom}
-                disabled={!hasAdminPower || !seasonPricingEnabled}
-                onChange={(e) => setSeasonPricingFrom(e.target.value)}
-              />
+        <div className="scatalog-ref__split">
+          <aside className="scatalog-ref__left">
+            <div className="scatalog-ref__filters">
+              <input className="settings-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث في الأقسام..." />
+              <select className="settings-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}>
+                <option value="all">كل الحالات</option><option value="active">نشط</option><option value="inactive">غير نشط</option>
+              </select>
             </div>
 
-            <div className="settings-field">
-              <label>إلى تاريخ</label>
-              <input
-                className="settings-input"
-                type="date"
-                value={seasonPricingTo}
-                disabled={!hasAdminPower || !seasonPricingEnabled}
-                onChange={(e) => setSeasonPricingTo(e.target.value)}
-              />
+            <div className="scatalog-ref__switch scatalog-ref__switch--single">
+              <button type="button" className={`scatalog-ref__switch-btn ${activeListMode === "sections" ? "active" : ""}`} onClick={() => setActiveListMode("sections")}>الأقسام</button>
             </div>
-            
-            <button
-              type="button"
-              className={`exp-btn primary ${seasonLoading ? "is-disabled" : ""}`}
-              disabled={!hasAdminPower || seasonLoading}
-              onClick={saveSeasonPricing}
-              style={{height: "fit-content"}}
-            >
-              حفظ الموسم
-            </button>
-          </div>
-        </div>
 
-        {/* 1) Sections */}
-        <div className="scatalog__card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
-            <h3 className="settings-title">١) الأقسام الرئيسية</h3>
-            <button type="button" className="exp-btn primary" onClick={openAddSection}>
-              + إضافة قسم جديد
-            </button>
-          </div>
+            <div className="scatalog-ref__left-actions">
+              <button type="button" className="exp-btn" onClick={() => { setNewSection({ name: "", order: nextSectionOrder, active: true }); setComposerMode("section"); }}>+ إضافة قسم</button>
+              <button type="button" className="exp-btn primary" onClick={() => startServiceComposer()}>+ إضافة خدمة</button>
+            </div>
 
-          <div className="settings-field" style={{ marginBottom: 15 }}>
-            <input
-              className="settings-input"
-              placeholder="بحث في الأقسام..."
-              value={secSearch}
-              onChange={(e) => setSecSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="scatalog__grid-header scatalog__grid--sections">
-            <div>ID</div>
-            <div>اسم القسم</div>
-            <div>الترتيب</div>
-            <div>مفعل؟</div>
-            <div>حفظ</div>
-            <div>حذف</div>
-            <div>التصنيفات</div>
-          </div>
-
-          <div className="settings-list">
-            {filteredSections.map((s) => (
-              <React.Fragment key={s.id}>
-                {/* Desktop View */}
-                <div className={`scatalog__grid-row scatalog__grid--sections ${selectedSectionIdForCats === s.id ? "is-selected" : ""}`}>
-                  <div style={{ fontSize: 10, opacity: 0.6 }}>{s.id}</div>
-                  <input
-                    className="settings-input"
-                    value={s.name}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: v } : x)));
-                    }}
-                  />
-                  <input
-                    className="settings-input"
-                    type="number"
-                    value={s.order}
-                    onChange={(e) => {
-                      const v = Number(e.target.value || 0);
-                      setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, order: v } : x)));
-                    }}
-                  />
-                  <div style={{textAlign: "center"}}>
-                    <input
-                      type="checkbox"
-                      checked={s.active}
-                      onChange={() => {
-                        setSectionsCatalog((prev) =>
-                          prev.map((x) => (x.id === s.id ? { ...x, active: !x.active } : x))
-                        );
-                      }}
-                    />
-                  </div>
-                  <button type="button" className="exp-btn primary" onClick={() => saveSectionRow(s)}>حفظ</button>
-                  <button type="button" className="exp-btn danger" onClick={() => deleteSection(s.id)}>حذف</button>
-                  <button type="button" className="exp-btn" onClick={() => setSelectedSectionIdForCats(s.id)}>
-                    فتح ({countsBySection.catCount.get(s.id) || 0})
-                  </button>
+            {composerMode === "section" && (
+              <div className="scatalog-ref__composer">
+                <b>إضافة قسم</b>
+                <input className="settings-input" placeholder="اسم القسم" value={newSection.name} onChange={(e) => setNewSection((p) => ({ ...p, name: e.target.value }))} />
+                <div className="scatalog-ref__inline-2">
+                  <input className="settings-input" type="number" value={newSection.order} onChange={(e) => setNewSection((p) => ({ ...p, order: Number(e.target.value || 0) }))} />
+                  <label className="scatalog-ref__check"><input className="settings-check" type="checkbox" checked={newSection.active} onChange={(e) => setNewSection((p) => ({ ...p, active: e.target.checked }))} /><span>نشط</span></label>
                 </div>
-
-                {/* Mobile View */}
-                <div className="scatalog__mobile-card">
-                  <div className="scatalog__mobile-card-header">
-                    <div className="scatalog__mobile-card-title">{s.name}</div>
-                    <div className="scatalog__mobile-card-id">{s.id}</div>
-                  </div>
-                  <div className="scatalog__mobile-grid">
-                    <div className="scatalog__mobile-field">
-                      <label className="scatalog__mobile-label">الاسم</label>
-                      <input
-                        className="settings-input"
-                        value={s.name}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, name: v } : x)));
-                        }}
-                      />
-                    </div>
-                    <div className="scatalog__mobile-field">
-                      <label className="scatalog__mobile-label">الترتيب</label>
-                      <input
-                        className="settings-input"
-                        type="number"
-                        value={s.order}
-                        onChange={(e) => {
-                          const v = Number(e.target.value || 0);
-                          setSectionsCatalog((prev) => prev.map((x) => (x.id === s.id ? { ...x, order: v } : x)));
-                        }}
-                      />
-                    </div>
-                    <label className="scatalog__check">
-                      <input
-                        type="checkbox"
-                        checked={s.active}
-                        onChange={() => {
-                          setSectionsCatalog((prev) =>
-                            prev.map((x) => (x.id === s.id ? { ...x, active: !x.active } : x))
-                          );
-                        }}
-                      />
-                      <span>مفعل</span>
-                    </label>
-                  </div>
-                  <div className="scatalog__mobile-actions">
-                    <button type="button" className="exp-btn primary" onClick={() => saveSectionRow(s)}>حفظ</button>
-                    <button type="button" className="exp-btn" onClick={() => setSelectedSectionIdForCats(s.id)}>فتح</button>
-                    <button type="button" className="exp-btn danger" onClick={() => deleteSection(s.id)}>حذف</button>
-                  </div>
-                </div>
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-
-        {/* Section Modal */}
-        {secModalOpen && (
-          <div className="dashboard-modal-overlay" onClick={closeSecModal}>
-            <div className="dashboard-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
-              <h3>{secMode === "add" ? "إضافة قسم جديد" : "تعديل القسم"}</h3>
-              <div className="settings-grid" style={{ marginTop: 15 }}>
-                <div className="settings-field">
-                  <label>اسم القسم</label>
-                  <input
-                    className="settings-input"
-                    value={secForm.name}
-                    onChange={(e) => setSecForm({ ...secForm, name: e.target.value })}
-                    autoFocus
-                  />
-                </div>
-                <div className="settings-field">
-                  <label>الترتيب</label>
-                  <input
-                    className="settings-input"
-                    type="number"
-                    value={secForm.order}
-                    onChange={(e) => setSecForm({ ...secForm, order: Number(e.target.value || 0) })}
-                  />
+                <div className="scatalog-ref__composer-actions">
+                  <button className="dash-btn" type="button" onClick={() => setComposerMode(null)}>إلغاء</button>
+                  <button className="exp-btn primary" type="button" onClick={() => void createSection()}>إنشاء</button>
                 </div>
               </div>
-              <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                <button className="dash-btn" onClick={closeSecModal}>إلغاء</button>
-                <button className="exp-btn primary" onClick={saveSectionFromModal}>
-                  {secMode === "add" ? "إنشاء" : "حفظ"}
+            )}
+
+            {composerMode === "service" && (
+              <div className="scatalog-ref__composer">
+                <b>إضافة خدمة</b>
+                <select className="settings-input" value={newService.sectionId} onChange={(e) => { const sid = String(e.target.value || "").trim(); const cats = categories.filter((c) => String(c.sectionId || "").trim() === sid).sort((a, b) => Number(a.order || 0) - Number(b.order || 0)); setNewService((p) => ({ ...p, sectionId: sid, categoryId: String(cats[0]?.id || "") })); }}>
+                  <option value="">— اختر القسم —</option>
+                  {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <select className="settings-input" value={newService.categoryId} onChange={(e) => setNewService((p) => ({ ...p, categoryId: e.target.value }))}>
+                  <option value="">— اختر التصنيف —</option>
+                  {composerCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <input className="settings-input" placeholder="اسم الخدمة" value={newService.name} onChange={(e) => setNewService((p) => ({ ...p, name: e.target.value }))} />
+                <div className="scatalog-ref__inline-2">
+                  <input className="settings-input" type="number" min={5} value={newService.durationMin} onChange={(e) => setNewService((p) => ({ ...p, durationMin: Math.max(5, Number(e.target.value || 0)) }))} />
+                  <input className="settings-input" type="number" min={0} value={newService.price} onChange={(e) => setNewService((p) => ({ ...p, price: Math.max(0, Number(e.target.value || 0)) }))} />
+                </div>
+                <div className="scatalog-ref__composer-actions">
+                  <button className="dash-btn" type="button" onClick={() => setComposerMode(null)}>إلغاء</button>
+                  <button className={`exp-btn primary ${!String(newService.sectionId || "").trim() || !String(newService.categoryId || "").trim() ? "is-disabled" : ""}`} type="button" disabled={!String(newService.sectionId || "").trim() || !String(newService.categoryId || "").trim()} onClick={() => void createService()}>إنشاء</button>
+                </div>
+              </div>
+            )}
+
+            <div className="scatalog-ref__list-title">{`الأقسام (${filteredSections.length})`}</div>
+            <div className="scatalog-ref__list">
+              {filteredSections.length ? filteredSections.map((s) => (
+                <button key={s.id} type="button" className={`scatalog-ref__row ${selectedId === s.id ? "is-selected" : ""}`} onClick={() => setSelectedId(s.id)}>
+                  <div><b>{s.name}</b><span>ID: {s.id}</span></div>
+                  <div><span>{categories.filter((c) => c.sectionId === s.id).length} تصنيف</span><span>{services.filter((x) => x.sectionId === s.id).length} خدمة</span><span className={`scatalog-ref__pill ${s.active ? "on" : "off"}`}>{s.active ? "نشط" : "معطل"}</span></div>
                 </button>
-              </div>
+              )) : <div className="settings-note">لا توجد أقسام مطابقة.</div>}
             </div>
-          </div>
-        )}
+          </aside>
 
-        {/* 2) Categories */}
-        <div className="scatalog__card">
-          <h3 className="settings-title">٢) التصنيفات (تحت القسم المختار)</h3>
-
-          <div className="scatalog__row" style={{ margin: "15px 0" }}>
-            <div className="settings-field">
-              <label>اختر القسم</label>
-              <select
-                className="settings-input"
-                value={selectedSectionIdForCats}
-                onChange={(e) => setSelectedSectionIdForCats(e.target.value)}
-              >
-                <option value="">— اختر القسم —</option>
-                {sectionsCatalog.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="settings-field">
-              <label>إضافة تصنيف جديد</label>
-              <div style={{display: "flex", gap: 8}}>
-                <input
-                  className="settings-input"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="مثال: قص / استشوار"
-                  onKeyDown={(e) => e.key === "Enter" && createCategoryUnderSection()}
-                />
-                <button type="button" className="exp-btn primary" onClick={createCategoryUnderSection}>إنشاء</button>
-              </div>
-            </div>
-          </div>
-
-          <div className="scatalog__grid-header scatalog__grid--cats">
-            <div>ID</div>
-            <div>اسم التصنيف</div>
-            <div>الترتيب</div>
-            <div>مفعل؟</div>
-            <div>حفظ</div>
-            <div>حذف</div>
-            <div>الخدمات</div>
-          </div>
-
-          <div className="settings-list">
-            {categoriesInSelectedSection.map((c) => (
-              <React.Fragment key={c.id}>
-                {/* Desktop */}
-                <div className={`scatalog__grid-row scatalog__grid--cats ${selectedCategoryIdForServices === c.id ? "is-selected" : ""}`}>
-                  <div style={{ fontSize: 10, opacity: 0.6 }}>{c.id}</div>
-                  <input
-                    className="settings-input"
-                    value={c.name}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setCategoriesCatalog((prev) => prev.map((x) => (x.id === c.id ? { ...x, name: v } : x)));
-                    }}
-                  />
-                  <input
-                    className="settings-input"
-                    type="number"
-                    value={c.order}
-                    onChange={(e) => {
-                      const v = Number(e.target.value || 0);
-                      setCategoriesCatalog((prev) => prev.map((x) => (x.id === c.id ? { ...x, order: v } : x)));
-                    }}
-                  />
-                  <div style={{textAlign: "center"}}>
-                    <input
-                      type="checkbox"
-                      checked={c.active}
-                      onChange={() => {
-                        setCategoriesCatalog((prev) =>
-                          prev.map((x) => (x.id === c.id ? { ...x, active: !x.active } : x))
-                        );
-                      }}
-                    />
-                  </div>
-                  <button type="button" className="exp-btn primary" onClick={() => saveCategoryRow(c)}>حفظ</button>
-                  <button type="button" className="exp-btn danger" onClick={() => deleteCategory(c.id)}>حذف</button>
-                  <button type="button" className="exp-btn" onClick={() => setSelectedCategoryIdForServices(c.id)}>
-                    فتح ({countsBySection.srvCount.get(c.id) || 0})
-                  </button>
-                </div>
-
-                {/* Mobile */}
-                <div className="scatalog__mobile-card">
-                  <div className="scatalog__mobile-card-header">
-                    <div className="scatalog__mobile-card-title">{c.name}</div>
-                    <div className="scatalog__mobile-card-id">{c.id}</div>
-                  </div>
-                  <div className="scatalog__mobile-grid">
-                    <div className="scatalog__mobile-field">
-                      <label className="scatalog__mobile-label">الاسم</label>
-                      <input
-                        className="settings-input"
-                        value={c.name}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setCategoriesCatalog((prev) => prev.map((x) => (x.id === c.id ? { ...x, name: v } : x)));
-                        }}
-                      />
-                    </div>
-                    <div className="scatalog__mobile-field">
-                      <label className="scatalog__mobile-label">الترتيب</label>
-                      <input
-                        className="settings-input"
-                        type="number"
-                        value={c.order}
-                        onChange={(e) => {
-                          const v = Number(e.target.value || 0);
-                          setCategoriesCatalog((prev) => prev.map((x) => (x.id === c.id ? { ...x, order: v } : x)));
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="scatalog__mobile-actions">
-                    <button type="button" className="exp-btn primary" onClick={() => saveCategoryRow(c)}>حفظ</button>
-                    <button type="button" className="exp-btn" onClick={() => setSelectedCategoryIdForServices(c.id)}>فتح</button>
-                    <button type="button" className="exp-btn danger" onClick={() => deleteCategory(c.id)}>حذف</button>
+          <section className="scatalog-ref__right">
+            {!hasSelection ? (
+              <div className="scatalog-ref__empty"><b>اختر قسم/خدمة لعرض التفاصيل</b><p>اختيار عنصر من القائمة يفتح التفاصيل هنا مباشرة.</p></div>
+            ) : (
+              <>
+                <div className="scatalog-ref__detail-head">
+                  <div><h2>{detailName}</h2><span className={`scatalog-ref__pill ${detailActive ? "on" : "off"}`}>{detailActive ? "نشط" : "غير نشط"}</span></div>
+                  <div className="scatalog-ref__detail-actions">
+                    {mode === "edit" ? (
+                      <>
+                        <button className="exp-btn primary" type="button" onClick={() => void saveEdit()}>حفظ</button>
+                        <button className="exp-btn ghost" type="button" onClick={cancelEdit}>إلغاء</button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="exp-btn ghost" type="button" onClick={startEdit}>تعديل</button>
+                        <button className="exp-btn ghost" type="button" onClick={() => void toggleSelectedActive()}>{detailActive ? "تعطيل" : "تفعيل"}</button>
+                        <button className="exp-btn danger" type="button" onClick={() => void deleteSelected()}>حذف</button>
+                      </>
+                    )}
                   </div>
                 </div>
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
 
-        {/* 3) Services */}
-        <div className="scatalog__card">
-          <h3 className="settings-title">٣) الخدمات (تحت التصنيف المختار)</h3>
+                <div className="scatalog-ref__tabs">
+                  {(activeListMode === "sections"
+                    ? [["variants", "التصنيفات"], ["overview", "نظرة عامة"], ["audit", "السجل"]]
+                    : [["overview", "نظرة عامة"], ["pricing", "السعر والمدة"], ["variants", "Variants"], ["audit", "السجل"]]
+                  ).map(([k, label]) => (
+                    <button key={k} type="button" className={`scatalog-ref__tab ${activeTab === (k as DetailsTab) ? "active" : ""}`} onClick={() => setActiveTab(k as DetailsTab)}>{label}</button>
+                  ))}
+                </div>
 
-          <div className="scatalog__row" style={{ margin: "15px 0" }}>
-            <div className="settings-field">
-              <label>اختر التصنيف</label>
-              <select
-                className="settings-input"
-                value={selectedCategoryIdForServices}
-                onChange={(e) => setSelectedCategoryIdForServices(e.target.value)}
-              >
-                <option value="">— اختر التصنيف —</option>
-                {categoriesInSelectedSection.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
+                <div className="scatalog-ref__content">
+                  {activeListMode === "sections" && selectedSectionLive && (
+                    <>
+                      {activeTab === "overview" && (
+                        <div className="scatalog-ref__grid-2">
+                          <div className="settings-field"><label>اسم القسم</label><input className="settings-input" value={(mode === "edit" ? sectionDraft?.name : selectedSectionLive.name) || ""} disabled={mode !== "edit"} onChange={(e) => setSectionDraft((p) => (p ? { ...p, name: e.target.value } : p))} /></div>
+                          <div className="settings-field"><label>الترتيب</label><input className="settings-input" type="number" value={mode === "edit" ? sectionDraft?.order ?? 0 : selectedSectionLive.order} disabled={mode !== "edit"} onChange={(e) => setSectionDraft((p) => (p ? { ...p, order: Number(e.target.value || 0) } : p))} /></div>
+                          <div className="settings-field"><label>ID</label><input className="settings-input" value={selectedSectionLive.id} disabled /></div>
+                          <label className="scatalog-ref__check"><input className="settings-check" type="checkbox" checked={mode === "edit" ? sectionDraft?.active !== false : selectedSectionLive.active !== false} disabled={mode !== "edit"} onChange={(e) => setSectionDraft((p) => (p ? { ...p, active: e.target.checked } : p))} /><span>القسم نشط</span></label>
+                        </div>
+                      )}
 
-            <div className="settings-field">
-              <label>إضافة خدمة جديدة</label>
-              <div style={{display: "flex", gap: 8}}>
-                <input
-                  className="settings-input"
-                  value={newServiceName}
-                  onChange={(e) => setNewServiceName(e.target.value)}
-                  placeholder="مثال: قص شعر قصير"
-                  onKeyDown={(e) => e.key === "Enter" && createServiceUnderCategory()}
-                />
-                <button type="button" className="exp-btn primary" onClick={createServiceUnderCategory}>إضافة</button>
-              </div>
-            </div>
-          </div>
+                      {activeTab === "pricing" && (
+                        <div className="scatalog-ref__stack">
+                          <div className="scatalog-ref__subhead">
+                            <b>الخدمات حسب التصنيف</b>
+                            <button
+                              className={`exp-btn primary ${!sectionServiceCategoryId ? "is-disabled" : ""}`}
+                              type="button"
+                              disabled={!sectionServiceCategoryId}
+                              onClick={() => startServiceComposer(selectedSectionLive.id, sectionServiceCategoryId)}
+                            >
+                              + إضافة خدمة
+                            </button>
+                          </div>
+                          {!categoriesInSection.length ? (
+                            <div className="settings-note">لا توجد تصنيفات في هذا القسم. أضف تصنيفًا أولًا.</div>
+                          ) : (
+                            <>
+                              <div className="settings-field">
+                                <label>اختر تصنيف</label>
+                                <select
+                                  className="settings-input"
+                                  value={sectionServiceCategoryId}
+                                  onChange={(e) => setSectionServiceCategoryId(String(e.target.value || "").trim())}
+                                >
+                                  {categoriesInSection.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                  ))}
+                                </select>
+                              </div>
 
-          <div className="scatalog__grid-header scatalog__grid--services">
-            <div>ID</div>
-            <div>اسم الخدمة</div>
-            <div>المدة (د)</div>
-            <div>السعر</div>
-            <div>الموسم</div>
-            <div>مفعل</div>
-            <div>حفظ</div>
-            <div>حذف</div>
-          </div>
+                              {servicesInSelectedCategory.length ? servicesInSelectedCategory.map((s) => (
+                                <div key={s.id} className="scatalog-ref__linked-row">
+                                  <div><b>{s.name}</b><span>{selectedCategoryForServices?.name || "بدون تصنيف"}</span></div>
+                                  <div><span>{money(s.price)} ر.س</span><span>{s.durationMin} د</span><button className="dash-btn" type="button" onClick={() => openServiceInSection(s.id)}>فتح الخدمة</button></div>
+                                </div>
+                              )) : <div className="settings-note">لا توجد خدمات داخل التصنيف المحدد.</div>}
 
-          <div className="settings-list">
-            {servicesInSelectedCategory.map((s) => (
-              <React.Fragment key={s.id}>
-                {/* Desktop */}
-                <div className="scatalog__grid-row scatalog__grid--services">
-                  <div className="scatalog__cell-id">{s.id}</div>
-                  <input
-                    className="settings-input"
-                    value={s.name}
-                    onChange={(e) => {
-                      const next = { ...s, name: e.target.value };
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
-                      scheduleServiceAutosave(next);
-                    }}
-                  />
-                  <input
-                    className="settings-input"
-                    type="number"
-                    value={s.durationMin}
-                    onChange={(e) => {
-                      const next = { ...s, durationMin: Number(e.target.value || 0) };
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
-                      scheduleServiceAutosave(next);
-                    }}
-                  />
-                  <input
-                    className="settings-input"
-                    type="number"
-                    value={s.price}
-                    onChange={(e) => {
-                      const next = { ...s, price: Number(e.target.value || 0) };
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
-                      scheduleServiceAutosave(next);
-                    }}
-                  />
-                  <input
-                    className="settings-input"
-                    type="number"
-                    value={s.seasonPrice === null ? "" : s.seasonPrice}
-                    placeholder="-"
-                    onChange={(e) => {
-                      const val = e.target.value === "" ? null : Number(e.target.value);
-                      const next = { ...s, seasonPrice: val };
-                      setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
-                      scheduleServiceAutosave(next);
-                    }}
-                  />
-                  <div style={{textAlign: "center"}}>
-                    <input
-                      type="checkbox"
-                      checked={s.active}
-                      onChange={() => {
-                        const next = { ...s, active: !s.active };
-                        setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
-                        scheduleServiceAutosave(next);
-                      }}
-                    />
-                  </div>
-                  <button type="button" className="exp-btn primary" onClick={() => saveServiceRow(s)}>حفظ</button>
-                  <button type="button" className="exp-btn danger" onClick={() => deleteService(s.id)}>حذف</button>
-                  {autosaveMsg[s.id] && (
-                    <div className="scatalog__autosave-msg" style={{gridColumn: "1 / -1"}}>{autosaveMsg[s.id]}</div>
+                              {openedServiceViewCard}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {activeTab === "variants" && (
+                        <div className="scatalog-ref__stack">
+                          <div className="scatalog-ref__subhead"><b>التصنيفات</b></div>
+                          <div className="scatalog-ref__inline-create">
+                            <input className="settings-input" value={newCategoryName} placeholder="اسم تصنيف جديد" disabled={mode !== "edit"} onChange={(e) => setNewCategoryName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && mode === "edit") void createCategory(); }} />
+                            <button className="exp-btn primary" type="button" disabled={mode !== "edit"} onClick={() => void createCategory()}>إضافة</button>
+                          </div>
+                          {categoriesInSection.length ? categoriesInSection.map((c) => (
+                            <div key={c.id} className={`scatalog-ref__cat-row ${variantsServicesCategoryId === c.id ? "is-services-open" : ""}`}>
+                              <input className="settings-input" value={c.name} disabled={mode !== "edit"} onChange={(e) => setCategories((prev) => prev.map((x) => (x.id === c.id ? { ...x, name: e.target.value } : x)))} />
+                              <input className="settings-input" type="number" value={c.order} disabled={mode !== "edit"} onChange={(e) => setCategories((prev) => prev.map((x) => (x.id === c.id ? { ...x, order: Number(e.target.value || 0) } : x)))} />
+                              <label className="scatalog-ref__check"><input className="settings-check" type="checkbox" checked={c.active !== false} disabled={mode !== "edit"} onChange={(e) => setCategories((prev) => prev.map((x) => (x.id === c.id ? { ...x, active: e.target.checked } : x)))} /><span>نشط</span></label>
+                              <button className={`dash-btn ${variantsServicesCategoryId === c.id ? "scatalog-ref__btn-active" : ""}`} type="button" onClick={() => openVariantsServicesPanel(c.id)}>
+                                {variantsServicesCategoryId === c.id ? "الخدمات المفتوحة" : "الخدمات"}
+                              </button>
+                              <button className="exp-btn" type="button" disabled={mode !== "edit"} onClick={() => void saveCategory(c)}>حفظ</button>
+                              <button className="exp-btn danger" type="button" disabled={mode !== "edit"} onClick={() => void deleteCategory(c.id)}>حذف</button>
+                            </div>
+                          )) : <div className="settings-note">لا توجد تصنيفات.</div>}
+                        </div>
+                      )}
+
+                      {activeTab === "audit" && (
+                        <div className="scatalog-ref__audit">
+                          <div><span>تاريخ الإنشاء</span><b>{fmtTs(selectedSectionLive.createdAt)}</b></div>
+                          <div><span>آخر تحديث</span><b>{fmtTs(selectedSectionLive.updatedAt)}</b></div>
+                          <div><span>Section ID</span><b dir="ltr">{selectedSectionLive.id}</b></div>
+                          <div className="settings-note">سجل التعديلات التفصيلي قريبًا.</div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {activeListMode === "services" && selectedServiceLive && (
+                    <>
+                      {activeTab === "overview" && (
+                        <div className="scatalog-ref__grid-2">
+                          <div className="settings-field"><label>اسم الخدمة</label><input className="settings-input" value={(mode === "edit" ? serviceDraft?.name : selectedServiceLive.name) || ""} disabled={mode !== "edit"} onChange={(e) => setServiceDraft((p) => (p ? { ...p, name: e.target.value } : p))} /></div>
+                          <div className="settings-field"><label>ID</label><input className="settings-input" value={selectedServiceLive.id} disabled /></div>
+                          <div className="settings-field"><label>القسم</label><select className="settings-input" value={String(mode === "edit" ? serviceDraft?.sectionId || "" : selectedServiceLive.sectionId || "")} disabled={mode !== "edit"} onChange={(e) => { const sid = String(e.target.value || "").trim(); const cats = categories.filter((c) => String(c.sectionId || "").trim() === sid).sort((a, b) => Number(a.order || 0) - Number(b.order || 0)); setServiceDraft((p) => (p ? { ...p, sectionId: sid, categoryId: String(cats[0]?.id || "") } : p)); }}>{sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                          <div className="settings-field"><label>التصنيف</label><select className="settings-input" value={String(mode === "edit" ? serviceDraft?.categoryId || "" : selectedServiceLive.categoryId || "")} disabled={mode !== "edit"} onChange={(e) => { const cid = String(e.target.value || "").trim(); const cat = categoryById.get(cid); setServiceDraft((p) => (p ? { ...p, categoryId: cid, sectionId: String(cat?.sectionId || p.sectionId || "").trim() } : p)); }}>{categories.filter((c) => String(c.sectionId || "").trim() === String(mode === "edit" ? serviceDraft?.sectionId || selectedServiceLive.sectionId : selectedServiceLive.sectionId)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                          <label className="scatalog-ref__check"><input className="settings-check" type="checkbox" checked={mode === "edit" ? serviceDraft?.active !== false : selectedServiceLive.active !== false} disabled={mode !== "edit"} onChange={(e) => setServiceDraft((p) => (p ? { ...p, active: e.target.checked } : p))} /><span>الخدمة نشطة</span></label>
+                        </div>
+                      )}
+
+                      {activeTab === "pricing" && (
+                        <div className="scatalog-ref__grid-2">
+                          <div className="settings-field"><label>السعر</label><input className="settings-input" type="number" min={0} value={mode === "edit" ? serviceDraft?.price ?? 0 : selectedServiceLive.price} disabled={mode !== "edit"} onChange={(e) => setServiceDraft((p) => (p ? { ...p, price: Math.max(0, Number(e.target.value || 0)) } : p))} /></div>
+                          <div className="settings-field"><label>المدة (دقيقة)</label><input className="settings-input" type="number" min={5} value={mode === "edit" ? serviceDraft?.durationMin ?? 60 : selectedServiceLive.durationMin} disabled={mode !== "edit"} onChange={(e) => setServiceDraft((p) => (p ? { ...p, durationMin: Math.max(5, Number(e.target.value || 0)) } : p))} /></div>
+                          <div className="settings-field"><label>سعر الموسم</label><input className="settings-input" type="number" min={0} value={(mode === "edit" ? serviceDraft?.seasonPrice : selectedServiceLive.seasonPrice) ?? ""} disabled={mode !== "edit"} onChange={(e) => { const raw = e.target.value; const val = raw === "" ? null : Math.max(0, Number(raw)); setServiceDraft((p) => (p ? { ...p, seasonPrice: val } : p)); }} /></div>
+                        </div>
+                      )}
+
+                      {activeTab === "variants" && <div className="settings-note">Variants قريبًا في مرحلة لاحقة.</div>}
+
+                      {activeTab === "audit" && (
+                        <div className="scatalog-ref__audit">
+                          <div><span>تاريخ الإنشاء</span><b>{fmtTs(selectedServiceLive.createdAt)}</b></div>
+                          <div><span>آخر تحديث</span><b>{fmtTs(selectedServiceLive.updatedAt)}</b></div>
+                          <div><span>Service ID</span><b dir="ltr">{selectedServiceLive.id}</b></div>
+                          <div><span>Category ID</span><b dir="ltr">{selectedServiceLive.categoryId || "—"}</b></div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
+              </>
+            )}
 
-                {/* Mobile */}
-                <div className="scatalog__mobile-card">
-                  <div className="scatalog__mobile-card-header">
-                    <div className="scatalog__mobile-card-title">{s.name}</div>
-                    <div className="scatalog__mobile-card-id">{s.id}</div>
-                  </div>
-                  <div className="scatalog__mobile-grid">
-                    <div className="scatalog__mobile-field">
-                      <label className="scatalog__mobile-label">الاسم</label>
-                      <input
-                        className="settings-input"
-                        value={s.name}
-                        onChange={(e) => {
-                          const next = { ...s, name: e.target.value };
-                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
-                          scheduleServiceAutosave(next);
-                        }}
-                      />
-                    </div>
-                    <div className="scatalog__mobile-field">
-                      <label className="scatalog__mobile-label">السعر</label>
-                      <input
-                        className="settings-input"
-                        type="number"
-                        value={s.price}
-                        onChange={(e) => {
-                          const next = { ...s, price: Number(e.target.value || 0) };
-                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
-                          scheduleServiceAutosave(next);
-                        }}
-                      />
-                    </div>
-                    <div className="scatalog__mobile-field">
-                      <label className="scatalog__mobile-label">المدة (د)</label>
-                      <input
-                        className="settings-input"
-                        type="number"
-                        value={s.durationMin}
-                        onChange={(e) => {
-                          const next = { ...s, durationMin: Number(e.target.value || 0) };
-                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
-                          scheduleServiceAutosave(next);
-                        }}
-                      />
-                    </div>
-                    <div className="scatalog__mobile-field">
-                      <label className="scatalog__mobile-label">سعر الموسم</label>
-                      <input
-                        className="settings-input"
-                        type="number"
-                        value={s.seasonPrice === null ? "" : s.seasonPrice}
-                        placeholder="-"
-                        onChange={(e) => {
-                          const val = e.target.value === "" ? null : Number(e.target.value);
-                          const next = { ...s, seasonPrice: val };
-                          setServicesCatalog((prev) => prev.map((x) => (x.id === s.id ? next : x)));
-                          scheduleServiceAutosave(next);
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="scatalog__mobile-actions">
-                    <button type="button" className="exp-btn primary" onClick={() => saveServiceRow(s)}>حفظ</button>
-                    <button type="button" className="exp-btn danger" onClick={() => deleteService(s.id)}>حذف</button>
-                  </div>
-                  {autosaveMsg[s.id] && <div className="scatalog__autosave-msg">{autosaveMsg[s.id]}</div>}
+            {activeListMode === "sections" && selectedSectionLive && activeTab === "variants" && !!variantsServicesCategoryId && (
+              <section key={`variants-services-${variantsServicesCategoryId}-${variantsPanelRenderKey}`} ref={variantsServicesPanelRef} className="scatalog-ref__right-extra">
+              <div className="scatalog-ref__subhead">
+                <b>الخدمات حسب التصنيف: {selectedCategoryForVariantsServices?.name || "—"}</b>
+                <button
+                  className={`exp-btn primary ${!variantsServicesCategoryId ? "is-disabled" : ""}`}
+                  type="button"
+                  disabled={!variantsServicesCategoryId}
+                  onClick={() => startServiceComposer(selectedSectionLive.id, variantsServicesCategoryId)}
+                >
+                  + إضافة خدمة
+                </button>
+              </div>
+              <div className="scatalog-ref__context-pill">
+                <span>التصنيف النشط</span>
+                <b>{selectedCategoryForVariantsServices?.name || "—"}</b>
+                <span>{servicesInVariantsCategory.length} خدمة</span>
+              </div>
+
+              {servicesInVariantsCategory.length ? servicesInVariantsCategory.map((s) => (
+                <div key={s.id} className={`scatalog-ref__linked-row ${openedServiceIdInSection === s.id ? "is-opened" : ""}`}>
+                  <div><b>{s.name}</b><span>{selectedCategoryForVariantsServices?.name || "بدون تصنيف"}</span></div>
+                  <div><span>{money(s.price)} ر.س</span><span>{s.durationMin} د</span><button className={`dash-btn ${openedServiceIdInSection === s.id ? "scatalog-ref__btn-active" : ""}`} type="button" onClick={() => openServiceInSection(s.id)}>{openedServiceIdInSection === s.id ? "الخدمة مفتوحة" : "فتح الخدمة"}</button></div>
                 </div>
-              </React.Fragment>
-            ))}
-          </div>
+              )) : <div className="settings-note">لا توجد خدمات داخل التصنيف المحدد.</div>}
+
+              {openedServiceViewCard}
+              </section>
+            )}
+          </section>
         </div>
 
+        <div className="scatalog-ref__season">
+          <div className="scatalog-ref__subhead">
+            <b>موسم الأسعار</b>
+            <button type="button" className={`exp-btn primary ${seasonLoading ? "is-disabled" : ""}`} disabled={seasonLoading} onClick={() => void saveSeasonPricing()}>حفظ الموسم</button>
+          </div>
+          <label className="scatalog-ref__check"><input className="settings-check" type="checkbox" checked={seasonPricingEnabled} onChange={() => setSeasonPricingEnabled((p) => !p)} /><span>تفعيل موسم الأسعار</span></label>
+          <div className="scatalog-ref__inline-2">
+            <div className="settings-field"><label>من تاريخ</label><input className="settings-input" type="date" value={seasonPricingFrom} disabled={!seasonPricingEnabled} onChange={(e) => setSeasonPricingFrom(e.target.value)} /></div>
+            <div className="settings-field"><label>إلى تاريخ</label><input className="settings-input" type="date" value={seasonPricingTo} disabled={!seasonPricingEnabled} onChange={(e) => setSeasonPricingTo(e.target.value)} /></div>
+          </div>
+        </div>
       </div>
     </div>
   );

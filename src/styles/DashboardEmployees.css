@@ -208,8 +208,13 @@
 .emp-page-wrapper .qs-modal-overlay {
   position: static;
   inset: auto;
+  display: block;
   background: transparent;
+  backdrop-filter: none;
   padding: 0;
+  overflow: visible;
+  overscroll-behavior: auto;
+  touch-action: auto;
 }
 
 .emp-page-wrapper .qs-modal-panel.emp-modal {
@@ -218,6 +223,11 @@
   min-height: 0;
   max-height: none;
   border-radius: 14px;
+}
+
+.emp-page-wrapper .qs-modal-panel.emp-modal .modal-body.emp-modal-grid {
+  overflow: visible;
+  overscroll-behavior: auto;
 }
 
 /* Grid Layout */
