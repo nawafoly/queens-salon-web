@@ -187,7 +187,7 @@ const App: React.FC = () => {
   ================================ */
 
   const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
-    if (!authReady) return <LoadingBrand text="ط¬ط§ط±ظٹ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ط¬ظ„ط³ط©..." />;
+    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
 
     if (isPendingRole(role))
@@ -199,7 +199,7 @@ const App: React.FC = () => {
   };
 
   const ClientGuard = ({ children }: { children: React.ReactNode }) => {
-    if (!authReady) return <LoadingBrand text="ط¬ط§ط±ظٹ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ط¬ظ„ط³ط©..." />;
+    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
 
     if (isClientRole(role)) return <>{children}</>;
@@ -210,14 +210,14 @@ const App: React.FC = () => {
   };
 
   const ProfileGuard = ({ children }: { children: React.ReactNode }) => {
-    if (!authReady) return <LoadingBrand text="ط¬ط§ط±ظٹ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ط¬ظ„ط³ط©..." />;
+    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
     if (role === "guest") return <Navigate to="/login" replace />;
     return <>{children}</>;
   };
 
   const PendingGuard = ({ children }: { children: React.ReactNode }) => {
-    if (!authReady) return <LoadingBrand text="ط¬ط§ط±ظٹ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ط¬ظ„ط³ط©..." />;
+    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
 
     if (isPendingRole(role)) return <>{children}</>;
@@ -227,7 +227,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="app">
+    <div className={`app ${isInDashboard ? "is-dashboard" : "is-public"}`}>
       {!isInDashboard && <Navbar authUser={authUser} currentRole={userRole} currentUserName={userName} />}
 
       <main className="main-content">
@@ -343,4 +343,5 @@ const App: React.FC = () => {
 };
 
 export default App;
+
 

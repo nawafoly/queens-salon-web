@@ -311,12 +311,12 @@
   min-height: 52px;
 
   border-radius: 999px;
-  border: 1px solid rgba(64,1,13,0.55);
+  border: 1px solid rgba(37,49,64,0.55);
 
   background: linear-gradient(
     135deg,
-    #40010D 0%,
-    #5a0213 100%
+    #253140 0%,
+    #2f3e51 100%
   );
 
   color: #ffffff;
@@ -325,7 +325,7 @@
   letter-spacing: .2px;
 
   box-shadow:
-    0 14px 34px rgba(64,1,13,0.35),
+    0 14px 34px rgba(37,49,64,0.35),
     inset 0 1px 0 rgba(255,255,255,0.18);
 
   cursor: pointer;

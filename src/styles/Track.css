@@ -48,6 +48,10 @@
   text-align: center;
 }
 
+.track-page .track-title {
+  color: #253140 !important;
+}
+
 .track-logo {
   width: 260px;
   height: 120px;

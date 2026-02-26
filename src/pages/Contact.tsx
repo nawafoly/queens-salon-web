@@ -425,15 +425,9 @@ const Contact: React.FC = () => {
               </div>
             </div>
 
-            <section style={{ background: "#fff", padding: "32px 0" }}>
+            <section className="contact-map-section">
               <div className="container ">
-                <h3
-                  style={{
-                    textAlign: "center",
-                    marginBottom: 16,
-                    color: "#40010de6",
-                  }}
-                >
+                <h3 className="contact-map-title">
                   موقع صالون ملكات
                 </h3>
 

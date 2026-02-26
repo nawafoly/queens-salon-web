@@ -1577,19 +1577,10 @@ function findCartOverlap(items: CartItem[]) {
     if (!selectedSectionId) return [];
 
     const sid = String(selectedSectionId || "").trim();
-    const cid = String(selectedCategory || "").trim();
 
     // لو ما فيه تصنيفات، فلتر بالقسم بس
     if (!fsCategories.length) {
-      const base = fsServices.filter((s: any) => String(s.sectionId || "").trim() === sid);
-      if (!cid) return base;
-
-      return base.filter((s: any) => {
-        const catName = String(
-          s.category ?? s.categoryName ?? (s as any)?.["التصنيف"] ?? ""
-        ).trim();
-        return catName === cid;
-      });
+      return fsServices.filter((s: any) => String(s.sectionId || "").trim() === sid);
     }
 
     // لو فيه تصنيفات، تأكد إن الخدمة تتبع تصنيف داخل هذا القسم
@@ -1602,12 +1593,9 @@ function findCartOverlap(items: CartItem[]) {
 
     return fsServices.filter((s: any) => {
       const catId = String(s.categoryId || "").trim();
-      if (!catIdsInSection.has(catId)) return false;
-
-      if (!cid) return true;
-      return catId === cid;
+      return catIdsInSection.has(catId);
     });
-  }, [catalogMode, fsServices, fsCategories, selectedSectionId, selectedCategory]);
+  }, [catalogMode, fsServices, fsCategories, selectedSectionId]);
 
   // =========================
   // One source services list
@@ -4466,14 +4454,6 @@ function findCartOverlap(items: CartItem[]) {
     setOfferMsg(`تمت إزالة الكود (${code}).`);
   };
 
-  const handleClearAllCoupons = () => {
-    setCouponCode("");
-    setAppliedCoupons([]);
-    setManualOverride(false);
-    setOfferMsgKind("success");
-    setOfferMsg("تمت إزالة جميع الأكواد المطبقة.");
-  };
-
   // =========================
   // Helper: توزيع الخصم على العناصر
   // =========================
@@ -5903,20 +5883,22 @@ function findCartOverlap(items: CartItem[]) {
 
                   {/* âœ… دليل أطوال الشعر */}
                   {selectedSectionId && isHairSection && (
-                    <div className="mt-3" style={{ border: '1px dashed rgba(13,13,13,0.18)', borderRadius: 14, padding: 12 }}>
+                    <div className="mt-3 booking-hair-guide-panel">
                       <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                        <div style={{ fontWeight: 900, color: '#0D0D0D' }}>
-                          دليل أطوال الشعر
-                          <div className="small text-muted" style={{ fontWeight: 700 }}>اختاري طول الشعر من الصورة قبل إكمال الحجز</div>
+                        <div className="booking-hair-guide-panel__title-wrap">
+                          <div className="booking-hair-guide-panel__title">دليل أطوال الشعر</div>
                         </div>
 
                         <div className="d-flex align-items-center gap-2">
                           <button
                             type="button"
-                            className="btn btn-outline-dark btn-sm"
+                            className={`btn btn-sm booking-hair-guide-toggle ${showHairGuide ? "btn-outline-dark is-close" : "booking-hair-guide-panel__btn-secondary"}`}
                             onClick={() => setShowHairGuide(v => !v)}
+                            aria-label={showHairGuide ? "إغلاق الصورة" : "عرض الصورة"}
                           >
-                            {showHairGuide ? "إخفاء الصورة" : "عرض الصورة"}
+                            {showHairGuide ? (
+                              <span className="booking-hair-guide-close-icon">✕</span>
+                            ) : "عرض الصورة"}
                           </button>
 
                           {isOwner && (
@@ -5934,7 +5916,7 @@ function findCartOverlap(items: CartItem[]) {
                               />
                               <button
                                 type="button"
-                                className="btn btn-dark btn-sm"
+                                className="btn btn-sm booking-hair-guide-panel__btn-primary"
                                 disabled={uploadingGuide}
                                 onClick={() => document.getElementById("hairGuideUploadInput")?.click()}
                               >
@@ -5946,11 +5928,11 @@ function findCartOverlap(items: CartItem[]) {
                       </div>
 
                       {showHairGuide && (
-                        <div className="mt-3 text-center">
+                        <div className="mt-3 text-center booking-hair-guide-panel__image-wrap">
                           <img
                             src={hairGuideUrl}
                             alt="دليل أطوال الشعر"
-                            style={{ width: '100%', maxWidth: 520, borderRadius: 16, boxShadow: '0 10px 28px rgba(0,0,0,0.14)' }}
+                            className="booking-hair-guide-panel__image"
                           />
                         </div>
                       )}
@@ -6862,14 +6844,6 @@ function findCartOverlap(items: CartItem[]) {
                       disabled={!formData.items?.length || isLoading}
                     >
                       تطبيق الكود
-                    </button>
-                    <button
-                      type="button"
-                      className="btn bk-coupon-btn bk-coupon-btn--remove"
-                      onClick={handleClearAllCoupons}
-                      disabled={(!appliedCoupons.length && !couponCode.trim()) || isLoading}
-                    >
-                      إزالة الكل
                     </button>
                   </div>
                   {offerMsg && (

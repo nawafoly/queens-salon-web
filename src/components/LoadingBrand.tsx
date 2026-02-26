@@ -1,6 +1,6 @@
 import React from "react";
 import "../styles/LoadingBrand.css";
-import logo from "../assets/images/ssunnamed3.png"; // تأكد من صحة المسار في مشروعك
+import logo from "../assets/images/ssunnamed.png";
 
 /**
  * Props for the LoadingBrand component.

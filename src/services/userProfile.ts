@@ -31,6 +31,7 @@ export type UserProfile = {
   phone: string;
   city: string;
   birthdate: string;
+  avatarUrl?: string;
 
   role: UiRole;
 
@@ -269,6 +270,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       phone: safeStr(data?.phone),
       city: safeStr(data?.city),
       birthdate: safeStr(data?.birthdate),
+      avatarUrl: safeStr(data?.avatarUrl),
       role,
       active,
       membershipId: safeStr(data?.membershipId),

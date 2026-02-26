@@ -1,6 +1,6 @@
 // src/pages/Login.tsx
 import React, { useEffect, useState } from "react";
-import logoBelak from "../assets/images/ssunnamed3.png";
+import logoBelak from "../assets/images/ssunnamed2.png";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -49,6 +49,8 @@ interface RegisterFormData {
 const SALON_ID = "main";
 const USERS_COL = ["salons", SALON_ID, "users"] as const;
 const STAFF_PUBLIC_COL = ["salons", SALON_ID, "staff_public"] as const;
+const PUBLIC_DEV_BASE = "https://pub-6ee7ebda32364985aa26e0386b7fbe28.r2.dev";
+const PUBLIC_DEV_BASE_CLEAN = PUBLIC_DEV_BASE.replace(/\/+$/, "");
 
 type AdminRole = "owner" | "admin" | "reception" | "staff" | "pending";
 
@@ -77,6 +79,29 @@ function normalizeAdminRole(raw: any): AdminRole {
     return "reception";
   if (r === "staff") return "staff";
   return "pending";
+}
+
+function resolveStableAvatarUrl(raw: unknown): string {
+  const input = String(raw || "").trim();
+  if (!input) return "";
+  if (input.startsWith(`${PUBLIC_DEV_BASE_CLEAN}/`)) return input;
+
+  const lower = input.toLowerCase();
+  const isPresigned =
+    lower.includes("cloudflarestorage.com") || lower.includes("x-amz-");
+  if (!isPresigned) return input;
+
+  try {
+    const u = new URL(input);
+    const parts = u.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+    if (!parts.length) return "";
+
+    const miscIdx = parts.findIndex((p) => p === "misc");
+    const key = miscIdx >= 0 ? parts.slice(miscIdx).join("/") : parts.join("/");
+    return key ? `${PUBLIC_DEV_BASE_CLEAN}/${key}` : "";
+  } catch {
+    return "";
+  }
 }
 
 /**
@@ -241,6 +266,12 @@ const Login: React.FC = () => {
     const redirectByRole = async (u: any) => {
       if (!u || !alive) return;
       const profile = await createOrLoadUserProfile(u);
+      const stableAvatar = resolveStableAvatarUrl((profile as any)?.avatarUrl);
+      if (stableAvatar) {
+        localStorage.setItem("userAvatar", stableAvatar);
+      } else {
+        localStorage.removeItem("userAvatar");
+      }
       const role = String(profile?.role || "").toLowerCase().trim() as UiRole;
 
       if (role === "pending") {
@@ -329,13 +360,20 @@ const Login: React.FC = () => {
 
     // ✅ أهم نقطة: بروفايل العميلة (user_profile_v1) للـ client فقط
     if (uiRole === "client") {
+      const stableAvatar = resolveStableAvatarUrl((profile as any)?.avatarUrl);
       localStorage.setItem(
         "user_profile_v1",
         JSON.stringify({
           ...(profile as any),
           name: finalName,
+          avatarUrl: stableAvatar || (profile as any)?.avatarUrl || "",
         })
       );
+      if (stableAvatar) {
+        localStorage.setItem("userAvatar", stableAvatar);
+      } else {
+        localStorage.removeItem("userAvatar");
+      }
     } else {
       // ❌ ممنوع أي كاش عميلة للحسابات الإدارية
       localStorage.removeItem("user_profile_v1");
@@ -994,7 +1032,6 @@ const Login: React.FC = () => {
                     style={{
                       background: "none",
                       border: "none",
-                      color: "#e8b4a2",
                       fontWeight: "bold",
                       marginRight: 5,
                     }}
@@ -1016,7 +1053,6 @@ const Login: React.FC = () => {
                     style={{
                       background: "none",
                       border: "none",
-                      color: "#e8b4a2",
                       fontWeight: "bold",
                       marginRight: 5,
                     }}

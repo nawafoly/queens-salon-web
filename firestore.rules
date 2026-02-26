@@ -198,7 +198,7 @@ service cloud.firestore {
           exists(myUserPathInSalon(salonId))
           && (get(myUserPathInSalon(salonId)).data.role is string)
           && normRole(get(myUserPathInSalon(salonId)).data.role)
-            in ["owner","admin","reception","staff","accountant"]
+            in ["owner","admin","reception"]
         )
       );
 
@@ -214,8 +214,15 @@ service cloud.firestore {
       allow update: if signedIn() && (
         (
           request.auth.uid == uid
-          && (!("role" in request.resource.data) || request.resource.data.role == resource.data.role)
+          // client can only update own profile, without escalating privileges
+          && request.resource.data.role == resource.data.role
           && (!("active" in request.resource.data) || request.resource.data.active == resource.data.active)
+          && (!("isAdmin" in request.resource.data) || request.resource.data.isAdmin == resource.data.isAdmin)
+          && (!("owner" in request.resource.data) || request.resource.data.owner == resource.data.owner)
+          && (!("permissions" in request.resource.data) || request.resource.data.permissions == resource.data.permissions)
+          && (!("canManageUsers" in request.resource.data) || request.resource.data.canManageUsers == resource.data.canManageUsers)
+          && (!("canManageBookings" in request.resource.data) || request.resource.data.canManageBookings == resource.data.canManageBookings)
+          && (!("canManageStaff" in request.resource.data) || request.resource.data.canManageStaff == resource.data.canManageStaff)
         )
         || isBootstrapAdmin()
         || (
@@ -589,11 +596,20 @@ service cloud.firestore {
         isBootstrapAdmin() || roleForSalon(salonId) in ["owner", "admin"]
       );
 
-      // Create from operation logic only (service-layer / trusted app flow)
-      // disallow update/delete to keep immutable audit trail
+      // Create only:
+      // - staff/admin flows (existing behavior)
+      // - client logs with strict constraints (own uid + limited actions)
+      // Keep immutable audit trail (no update/delete)
       allow create: if signedIn() && !isAnonymous() && (
         isBootstrapAdmin()
-        || roleForSalon(salonId) in ["owner", "admin", "reception", "staff", "client"]
+        || roleForSalon(salonId) in ["owner", "admin", "reception", "staff"]
+        || (
+          roleForSalon(salonId) == "client"
+          && (request.resource.data.userId is string)
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.entityType == "client"
+          && request.resource.data.action in ["user_login", "client_updated"]
+        )
       );
 
       allow update, delete: if false;

@@ -1179,10 +1179,10 @@
 
 .success-primary {
   color: #ffffff !important;
-  background: linear-gradient(135deg, #ea580c, #f97316) !important;
+  background: linear-gradient(135deg, #253140, #2f3e51) !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
   box-shadow:
-    0 14px 28px rgba(234, 88, 12, 0.34),
+    0 14px 28px rgba(37, 49, 64, 0.34),
     0 1px 0 rgba(255, 255, 255, 0.16) inset !important;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
@@ -1194,10 +1194,10 @@
 .success-primary:disabled {
   opacity: 1 !important;
   color: #ffffff !important;
-  background: linear-gradient(135deg, #ea580c, #f97316) !important;
+  background: linear-gradient(135deg, #253140, #2f3e51) !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
   box-shadow:
-    0 10px 22px rgba(234, 88, 12, 0.24),
+    0 10px 22px rgba(37, 49, 64, 0.24),
     0 1px 0 rgba(255, 255, 255, 0.16) inset !important;
 }
 
@@ -1206,10 +1206,10 @@
 .success-page .success-actions .success-btn.success-primary:disabled,
 .success-page .success-actions .success-btn.success-primary:hover {
   color: #ffffff !important;
-  background: linear-gradient(135deg, #40010d, #5b0f20) !important;
+  background: linear-gradient(135deg, #253140, #2f3e51) !important;
   border: 1px solid rgba(255, 255, 255, 0.22) !important;
   box-shadow:
-    0 12px 26px rgba(64, 1, 13, 0.34),
+    0 12px 26px rgba(37, 49, 64, 0.34),
     0 1px 0 rgba(255, 255, 255, 0.18) inset !important;
   opacity: 1 !important;
 }

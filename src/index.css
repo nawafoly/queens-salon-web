@@ -153,6 +153,69 @@ body {
   min-height: 100vh;
 }
 
+/* Public pages: unify primary button color to #253140 (exclude dashboard routes). */
+.app:not(.is-dashboard) {
+  --qs-accent: #253140;
+  --qs-accent-hover: #1f2a38;
+  --qs-wine: #253140;
+  --qs-burgundy: #253140;
+  --primary-color: #253140;
+  --bs-primary-color: #253140;
+}
+
+/* Any title using the wine utility should use #253140 on public pages */
+.app:not(.is-dashboard) .qs-wine:not(.contact-title-gradient) {
+  color: #253140 !important;
+}
+
+/* Contact heading gradient */
+.app:not(.is-dashboard) .contact-title-gradient {
+  background: linear-gradient(90deg, #0d0d0d, #253140);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  display: inline-block;
+}
+
+/* Public-specific custom buttons that do not use .btn-primary */
+.app:not(.is-dashboard) .about-page .qs-cv-btn {
+  background: #253140;
+  box-shadow: 0 12px 24px rgba(37, 49, 64, 0.22);
+}
+
+.app:not(.is-dashboard) .about-page .qs-cv-btn:hover {
+  background: #1f2a38;
+  box-shadow: 0 16px 30px rgba(37, 49, 64, 0.3);
+}
+
+/* Testimonials custom palette + primary actions */
+.app:not(.is-dashboard) .bs-testimonials {
+  --brand-primary: #253140;
+  --brand-primary-soft: rgba(37, 49, 64, 0.85);
+}
+
+.app:not(.is-dashboard) .bs-testimonials .bs-btn.primary,
+.app:not(.is-dashboard) .bs-testimonials .bs-send-btn,
+.app:not(.is-dashboard) .bs-testimonials .btn-confirm-large {
+  background: #253140;
+}
+
+.app:not(.is-dashboard) .bs-testimonials .bs-btn.primary:hover,
+.app:not(.is-dashboard) .bs-testimonials .bs-send-btn:hover:not(:disabled),
+.app:not(.is-dashboard) .bs-testimonials .btn-confirm-large:hover {
+  background: #1f2a38;
+}
+
+/* Track page CTA ("تتبع") inherits success styles with orange overrides; force brand color */
+.app:not(.is-dashboard) .track-page .success-primary,
+.app:not(.is-dashboard) .track-page .success-page .success-actions .success-btn.success-primary,
+.app:not(.is-dashboard) .track-page .success-page .success-actions .success-btn.success-primary:hover,
+.app:not(.is-dashboard) .track-page .success-page .success-actions .success-btn.success-primary:disabled {
+  background: linear-gradient(135deg, #253140, #2f3e51) !important;
+  border-color: #253140 !important;
+}
+
 .main-content {
   flex: 1;
 }

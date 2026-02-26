@@ -34,7 +34,7 @@
 /* Text */
 .welcome-text {
   font-size: 1rem;
-  color: #666;
+  color: #4f5f70;
   margin-bottom: 1.6rem;
   line-height: 1.6;
 }
@@ -85,7 +85,8 @@
 }
 
 .welcome-title {
-  color: #40010D;              /* خمري Queens */
+  color: #253140;
   font-weight: 900;
   letter-spacing: 0.3px;
 }
+

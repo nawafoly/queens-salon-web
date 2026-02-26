@@ -118,6 +118,32 @@ function formatDateAr(dateISO: string) {
 
 // ===== Firestore helpers =====
 const SALON_ID = "main";
+const PUBLIC_DEV_BASE = "https://pub-6ee7ebda32364985aa26e0386b7fbe28.r2.dev";
+const PUBLIC_DEV_BASE_CLEAN = PUBLIC_DEV_BASE.replace(/\/+$/, "");
+
+function resolveStableAvatarUrl(raw: unknown): string {
+  const input = String(raw || "").trim();
+  if (!input) return "";
+  if (input.startsWith(`${PUBLIC_DEV_BASE_CLEAN}/`)) return input;
+
+  const lower = input.toLowerCase();
+  const isPresigned =
+    lower.includes("cloudflarestorage.com") || lower.includes("x-amz-");
+
+  if (!isPresigned) return input;
+
+  try {
+    const u = new URL(input);
+    const parts = u.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+    if (!parts.length) return "";
+
+    const miscIdx = parts.findIndex((p) => p === "misc");
+    const key = miscIdx >= 0 ? parts.slice(miscIdx).join("/") : parts.join("/");
+    return key ? `${PUBLIC_DEV_BASE_CLEAN}/${key}` : "";
+  } catch {
+    return "";
+  }
+}
 
 type FsBooking = {
   userId?: string | null;
@@ -225,6 +251,18 @@ const Profile: React.FC = () => {
   // Firebase / Local mode
   // =======================
   useEffect(() => {
+    const cachedAvatar = String(localStorage.getItem("userAvatar") || "").trim();
+    if (!cachedAvatar) return;
+    const stableAvatar = resolveStableAvatarUrl(cachedAvatar);
+    if (!stableAvatar) {
+      localStorage.removeItem("userAvatar");
+      return;
+    }
+    setUserData((prev) => ({ ...prev, avatar: stableAvatar }));
+    localStorage.setItem("userAvatar", stableAvatar);
+  }, []);
+
+  useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user || null);
 
@@ -236,6 +274,7 @@ const Profile: React.FC = () => {
         try {
           const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
           if (cached) {
+            const stableAvatar = resolveStableAvatarUrl(cached.avatarUrl);
             setUserData((prev) => ({
               ...prev,
               name: cached.name || prev.name,
@@ -243,9 +282,9 @@ const Profile: React.FC = () => {
               email: cached.email || prev.email,
               city: cached.city || prev.city,
               birthdate: cached.birthdate || prev.birthdate,
-              avatar: cached.avatarUrl || prev.avatar || "",
+              avatar: stableAvatar || prev.avatar || "",
             }));
-            if (cached.avatarUrl) localStorage.setItem("userAvatar", String(cached.avatarUrl));
+            if (stableAvatar) localStorage.setItem("userAvatar", stableAvatar);
           }
         } catch (e) {
           console.error("Error restoring cached profile:", e);
@@ -270,6 +309,8 @@ const Profile: React.FC = () => {
         }
 
         setProfileDoc(p);
+        const stableAvatar = resolveStableAvatarUrl((p as any)?.avatarUrl);
+        const fallbackAvatar = resolveStableAvatarUrl(localStorage.getItem("userAvatar"));
         setUserData((prev) => ({
           ...prev,
           name: p.name || prev.name,
@@ -277,12 +318,14 @@ const Profile: React.FC = () => {
           email: p.email || prev.email,
           city: p.city || prev.city,
           birthdate: p.birthdate || prev.birthdate,
+          avatar: stableAvatar || fallbackAvatar || "",
         }));
 
         localStorage.setItem("user_profile_v1", JSON.stringify(p));
         if (p?.name) localStorage.setItem("userName", String(p.name));
         if (p?.email) localStorage.setItem("userEmail", String(p.email));
         if (p?.phone) localStorage.setItem("userPhone", normalizeKsaPhone(String(p.phone)));
+        if (stableAvatar) localStorage.setItem("userAvatar", stableAvatar);
 
         window.dispatchEvent(new Event("authChanged"));
       } catch (e) {
@@ -456,11 +499,11 @@ const Profile: React.FC = () => {
         throw new Error(`presign failed: ${presignRes.status} ${t}`);
       }
 
-      const { url } = await presignRes.json();
-      if (!url) throw new Error("presign missing url");
+      const { putUrl } = await presignRes.json();
+      if (!putUrl) throw new Error("presign missing putUrl");
 
       // 3) رفع الملف مباشرة إلى R2
-      const putRes = await fetch(url, {
+      const putRes = await fetch(putUrl, {
         method: "PUT",
         headers: {
           "Content-Type": file.type || "image/jpeg",
@@ -474,16 +517,7 @@ const Profile: React.FC = () => {
       }
 
       // 4) رابط العرض
-      const publicBase =
-        (import.meta as any).env?.VITE_R2_PUBLIC_BASE || "";
-
-      if (!publicBase) {
-        throw new Error(
-          "Missing VITE_R2_PUBLIC_BASE (public base url for R2)"
-        );
-      }
-
-      const publicUrl = `${publicBase.replace(/\/+$/, "")}/${key}`;
+      const publicUrl = `${PUBLIC_DEV_BASE.replace(/\/+$/, "")}/${key}`;
 
       // 5) تحديث UI
       setUserData((prev) => ({
@@ -823,11 +857,6 @@ const Profile: React.FC = () => {
           </div>
         </div>
 
-        {/* Logout Button */}
-        <div className="p-logout-container">
-          <button className="p-btn-logout" onClick={handleLogout}>تسجيل الخروج</button>
-        </div>
-
       </div>
 
       {/* ===== Edit Modal (Modernized) ===== */}
@@ -858,6 +887,7 @@ const Profile: React.FC = () => {
             </div>
             <div className="p-modal-footer-modern">
               <button className="p-btn-save-modern" onClick={handleSaveProfile}>حفظ التغييرات</button>
+              <button className="p-btn-logout-modal" onClick={handleLogout}>تسجيل الخروج</button>
             </div>
           </div>
         </div>

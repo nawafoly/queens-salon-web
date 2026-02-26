@@ -12,7 +12,7 @@
   min-height: 90vh;
 
   background:
-    radial-gradient(900px 520px at 12% 18%, rgba(64, 1, 13, 0.10), transparent 60%),
+    radial-gradient(900px 520px at 12% 18%, rgba(37, 49, 64, 0.10), transparent 60%),
     radial-gradient(820px 480px at 88% 24%, rgba(136, 140, 140, 0.12), transparent 55%),
     linear-gradient(180deg, #ffffff 0%, #f5f5f4 100%);
 }
@@ -20,15 +20,19 @@
 .contact-title {
   font-size: 2.2rem;
   font-weight: 900;
+  color: #253140;
+  text-align: center !important;
+  width: 100%;
+  display: block;
+  margin-inline: auto;
   margin: 0;
 }
 
 /* ✅ بدل ما نخرب text-center لكل الموقع */
 .contact-title-gradient {
-  background: linear-gradient(90deg, #0d0d0d, #40010d);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  background: none;
+  color: #253140;
+  -webkit-text-fill-color: #253140;
   letter-spacing: 0.4px;
 }
 
@@ -42,18 +46,29 @@
 .contact-form-container,
 .contact-info-container {
   background: rgba(255, 255, 255, 0.92);
-  border-radius: 18px;
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  box-shadow: 0 12px 42px rgba(13, 13, 13, 0.08);
+  border-radius: 20px;
+  border: 1px solid rgba(37, 49, 64, 0.12);
+  box-shadow: 0 18px 44px rgba(20, 28, 36, 0.10);
   padding: 2.3rem 2rem 2rem;
   backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+}
+
+.contact-form-container::before,
+.contact-info-container::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(37, 49, 64, 0.18), rgba(37, 49, 64, 0.65), rgba(37, 49, 64, 0.18));
 }
 
 .contact-form-title,
 .contact-info-title {
-  color: #0d0d0d;
+  color: #1a2531;
   font-size: 1.3rem;
-  font-weight: 900;
+  font-weight: 800;
   margin-bottom: 1.4rem;
 }
 
@@ -80,7 +95,7 @@
 }
 
 .form-label {
-  font-weight: 900;
+  font-weight: 800;
   color: rgba(13, 13, 13, 0.85);
   margin-bottom: 0.4rem;
   font-size: 1rem;
@@ -90,9 +105,9 @@
 .form-control-enhanced {
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid rgba(13, 13, 13, 0.12);
+  border: 1px solid rgba(37, 49, 64, 0.14);
   border-radius: 14px;
-  background: rgba(245, 245, 244, 0.95);
+  background: rgba(248, 249, 251, 0.95);
   color: #0d0d0d;
   font-size: 1rem;
   font-family: inherit;
@@ -112,20 +127,20 @@
 
 .form-control-enhanced:focus,
 .form-control-enhanced:focus-visible {
-  border-color: rgba(64, 1, 13, 0.35);
+  border-color: rgba(37, 49, 64, 0.35);
   background: #fff;
-  box-shadow: 0 0 0 0.18rem rgba(64, 1, 13, 0.14);
+  box-shadow: 0 0 0 0.18rem rgba(37, 49, 64, 0.14);
 }
 
 /* زر الإرسال */
 .btn-submit-enhanced {
-  background: #40010d;
+  background: #253140;
   color: #fff !important;
-  font-weight: 900;
+  font-weight: 800;
   font-size: 1.05rem;
   padding: 0.85rem 1.25rem;
   border-radius: 999px;
-  border: 1px solid rgba(64, 1, 13, 0.18);
+  border: 1px solid rgba(37, 49, 64, 0.2);
 
   display: inline-flex;
   align-items: center;
@@ -135,13 +150,13 @@
   margin-top: 0.4rem;
 
   transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-  box-shadow: 0 14px 34px rgba(64, 1, 13, 0.18);
+  box-shadow: 0 14px 34px rgba(37, 49, 64, 0.22);
 }
 
 .btn-submit-enhanced:hover {
-  background: #2f0009;
+  background: #1f2a38;
   transform: translateY(-1px);
-  box-shadow: 0 18px 42px rgba(64, 1, 13, 0.22);
+  box-shadow: 0 18px 42px rgba(37, 49, 64, 0.30);
 }
 
 /* ===== Info ===== */
@@ -150,11 +165,19 @@
   align-items: flex-start;
   gap: 1rem;
   margin-bottom: 1.4rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.contact-info-item:hover {
+  background: rgba(37, 49, 64, 0.05);
+  transform: translateY(-1px);
 }
 
 .contact-info-icon {
   font-size: 1.55rem;
-  color: rgba(64, 1, 13, 0.85);
+  color: rgba(37, 49, 64, 0.92);
   min-width: 36px;
   text-align: center;
 }
@@ -188,7 +211,7 @@
 
 .working-hours .day {
   font-weight: 900;
-  color: rgba(64, 1, 13, 0.90);
+  color: rgba(37, 49, 64, 0.95);
   white-space: nowrap;
 }
 
@@ -201,8 +224,21 @@
   width: 100%;
   border-radius: 14px;
   min-height: 220px;
-  box-shadow: 0 12px 34px rgba(13, 13, 13, 0.10);
-  border: 1px solid rgba(13, 13, 13, 0.08);
+  box-shadow: 0 12px 30px rgba(20, 28, 36, 0.12);
+  border: 1px solid rgba(37, 49, 64, 0.12);
+}
+
+.contact-map-section {
+  background: #fff;
+  padding: 32px 0;
+}
+
+.contact-map-title {
+  text-align: center;
+  margin-bottom: 16px;
+  color: #253140;
+  font-weight: 800;
+  letter-spacing: 0.2px;
 }
 
 /* ===== Responsive ===== */
@@ -222,8 +258,15 @@
   }
 
   .contact-title {
-    font-size: 1.35rem;
-  }
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #253140;
+  text-align: center !important;
+  width: 100%;
+  display: block;
+  margin-inline: auto;
+  margin: 0;
+}
 
   .contact-subtitle {
     font-size: 1rem;
@@ -249,4 +292,5 @@
     min-height: 150px;
   }
 }
+
 

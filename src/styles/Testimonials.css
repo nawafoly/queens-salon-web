@@ -28,7 +28,7 @@
 .bs-testimonials-title {
   font-size: 1.8rem;
   font-weight: 900;
-  color: var(--qs-black);
+  color: #253140;
   margin: 0;
 }
 
@@ -541,4 +541,3 @@
   color: #40010d;
   letter-spacing: 0.3px;
 }
-

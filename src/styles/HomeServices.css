@@ -58,7 +58,7 @@
   text-align: center;
   font-size: clamp(1.6rem, 3.4vw, 2.25rem);
   font-weight: 900;
-  color: var(--qs-black);
+  color: #253140;
   margin: 0 0 12px;
   letter-spacing: -0.4px;
 }
@@ -290,4 +290,3 @@
     border-radius: 20px;
   }
 }
-

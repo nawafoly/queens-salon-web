@@ -29,7 +29,7 @@
 .login-title {
   font-size: 1.8rem;
   font-weight: bold;
-  color: var(--text-color);
+  color: #253140;
 }
 
 .login-subtitle {
@@ -147,8 +147,8 @@
 .login-page{
   /* لو المتغيرات مو معرفة, هنا نضمن قيم ثابتة */
   --text-color: #111827;          /* داكن واضح */
-  --primary-color: #40010D;       /* خمري Queens */
-  --secondary-color: #2a0008;     /* أغمق للهفر */
+  --primary-color: #253140;       /* خمري Queens */
+  --secondary-color: #1f2a38;     /* أغمق للهفر */
   --gray: #f5f5f4;                /* off-white */
 
   color: var(--text-color);
@@ -185,8 +185,8 @@
 /* الفوكس */
 .form-control-login:focus{
   outline: none;
-  border-color: rgba(64,1,13,0.35);
-  box-shadow: 0 0 0 4px rgba(64,1,13,0.10);
+  border-color: rgba(37,49,64,0.35);
+  box-shadow: 0 0 0 4px rgba(37,49,64,0.10);
 }
 
 /* زر إظهار/إخفاء الباسورد */
@@ -194,7 +194,7 @@
   color: rgba(17,24,39,0.75);
 }
 .password-toggle:hover{
-  color: rgba(64,1,13,0.85);
+  color: rgba(37,49,64,0.85);
 }
 
 /* زر تسجيل الدخول */
@@ -210,15 +210,15 @@
 /* روابط */
 .register-link,
 .back-home-link{
-  color: rgba(64,1,13,0.95);
+  color: #253140;
 }
 
 /* forgot password وضوح أفضل */
 .forgot-password-link{
-  color: rgba(64,1,13,0.70);
+  color: #253140;
 }
 .forgot-password-link:hover{
-  color: rgba(64,1,13,0.95);
+  color: #253140;
 }
 
 /* demo box */
@@ -227,4 +227,5 @@
   border: 1px solid rgba(13,13,13,0.08);
   color: rgba(17,24,39,0.85);
 }
+
 
