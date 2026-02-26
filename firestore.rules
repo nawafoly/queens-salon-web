@@ -651,7 +651,21 @@ service cloud.firestore {
     // catch-all لأي كولكشن ثانية داخل salon (اختياري)
     match /salons/{salonId}/{colName}/{docId} {
       allow read, write: if signedIn() && (
-        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
+        colName != "staff_public"
+        && colName != "service_sections"
+        && colName != "service_categories"
+        && colName != "services"
+        && colName != "booking_slots"
+        && colName != "booking_tracks"
+        && colName != "testimonials"
+        && colName != "settings"
+        && colName != "bookings"
+        && colName != "users"
+        && colName != "user_invites"
+        && colName != "income"
+        && colName != "expenses"
+        && colName != "logs"
+        && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"])
       );
     }
   }

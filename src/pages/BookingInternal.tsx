@@ -2,6 +2,21 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import type React from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconType } from "react-icons";
+import {
+  FiScissors,
+  FiDroplet,
+  FiWind,
+  FiStar,
+  FiPenTool,
+  FiEye,
+  FiEdit3,
+  FiSun,
+  FiHeart,
+  FiZap,
+  FiGift,
+  FiShoppingBag,
+} from "react-icons/fi";
 import logo from "../assets/images/ssunnamed2.png";
 import hairGuideImg from "../assets/images/hair-length-guide.png";
 
@@ -250,6 +265,7 @@ const MANI_PEDI_SECTION_KEYWORDS = [
   "بوديكير",
 ];
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+type DateCalendar = "gregory" | "hijri";
 type BookingHourOverrideMode = "hours" | "closed";
 type BookingHourOverride = {
   id?: string;
@@ -592,6 +608,29 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function normalizeIsoDate(v: any) {
+  const s = String(v || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
+function formatDateByCalendar(v: any, calendar: DateCalendar = "gregory") {
+  const iso = normalizeIsoDate(v);
+  if (!iso) return "-";
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  const locale =
+    calendar === "hijri" ? "ar-SA-u-ca-islamic-umalqura" : "ar-SA-u-ca-gregory";
+  const raw = d.toLocaleDateString(locale, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const clean = String(raw || "")
+    .replace(/\s*(م|هـ|AD|AH)\.?$/iu, "")
+    .trim();
+  return `\u200E${clean}\u200E`;
+}
+
 function addDaysISO(startISO: string, addDays: number) {
   const d = new Date(startISO + "T00:00:00");
   d.setDate(d.getDate() + addDays);
@@ -599,6 +638,85 @@ function addDaysISO(startISO: string, addDays: number) {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function hijriNumericParts(iso: string): { day: number; month: number; year: number } | null {
+  const dateISO = normalizeIsoDate(iso);
+  if (!dateISO) return null;
+  const d = new Date(`${dateISO}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-u-ca-islamic-umalqura", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+  }).formatToParts(d);
+  const day = Number(parts.find((p) => p.type === "day")?.value || NaN);
+  const month = Number(parts.find((p) => p.type === "month")?.value || NaN);
+  const year = Number(parts.find((p) => p.type === "year")?.value || NaN);
+  if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year)) return null;
+  return { day, month, year };
+}
+
+function findHijriMonthStartISO(anchorISO: string) {
+  const anchor = normalizeIsoDate(anchorISO) || todayISO();
+  const base = hijriNumericParts(anchor);
+  if (!base) return anchor;
+  let cursor = anchor;
+  for (let i = 0; i < 35; i++) {
+    const prev = addDaysISO(cursor, -1);
+    const prevParts = hijriNumericParts(prev);
+    if (!prevParts || prevParts.month !== base.month || prevParts.year !== base.year) {
+      return cursor;
+    }
+    cursor = prev;
+  }
+  return cursor;
+}
+
+function buildHijriMonthDays(anchorISO: string) {
+  const start = findHijriMonthStartISO(anchorISO);
+  const base = hijriNumericParts(start);
+  if (!base) return [] as Array<{ iso: string; hijriDay: number }>;
+  const out: Array<{ iso: string; hijriDay: number }> = [];
+  let cursor = start;
+  for (let i = 0; i < 35; i++) {
+    const p = hijriNumericParts(cursor);
+    if (!p || p.month !== base.month || p.year !== base.year) break;
+    out.push({ iso: cursor, hijriDay: p.day });
+    cursor = addDaysISO(cursor, 1);
+  }
+  return out;
+}
+
+function shiftHijriMonthStartISO(currentMonthStartISO: string, delta: number) {
+  const currentStart = findHijriMonthStartISO(currentMonthStartISO);
+  if (delta === 0) return currentStart;
+  if (delta > 0) {
+    let nextStart = currentStart;
+    for (let i = 0; i < delta; i++) {
+      const days = buildHijriMonthDays(nextStart);
+      if (!days.length) return nextStart;
+      nextStart = addDaysISO(days[days.length - 1].iso, 1);
+    }
+    return findHijriMonthStartISO(nextStart);
+  }
+  let prevStart = currentStart;
+  for (let i = 0; i < Math.abs(delta); i++) {
+    prevStart = findHijriMonthStartISO(addDaysISO(prevStart, -1));
+  }
+  return prevStart;
+}
+
+function toHijriMonthYearLabel(iso: string) {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d
+    .toLocaleDateString("ar-SA-u-ca-islamic-umalqura", {
+      month: "long",
+      year: "numeric",
+    })
+    .replace(/\s*(م|هـ|AD|AH)\.?$/iu, "")
+    .trim();
 }
 
 function safeInt(v: any, fallback: number) {
@@ -739,7 +857,7 @@ function toArabicCatalogLabel(raw: string) {
 }
 
 type PriceLookupIcon = {
-  emoji: string;
+  Icon: IconType;
   label: string;
 };
 
@@ -752,39 +870,39 @@ function pickPriceLookupIcon(serviceName: string): PriceLookupIcon {
     });
 
   if (has(["قص", "حلاقة", "اطراف", "أطراف", "غرة", "trim", "cut", "hair cut"])) {
-    return { emoji: "✂️", label: "قص" };
+    return { Icon: FiScissors, label: "قص" };
   }
   if (has(["صبغ", "صبغة", "لون", "ألوان", "هايلايت", "balayage", "color", "dye"])) {
-    return { emoji: "🎨", label: "صبغات" };
+    return { Icon: FiDroplet, label: "صبغات" };
   }
   if (has(["استشوار", "سشوار", "سيشوار", "blow dry", "blowdry", "dryer"])) {
-    return { emoji: "💨", label: "استشوار" };
+    return { Icon: FiWind, label: "استشوار" };
   }
   if (has(["تسريحة", "تساريح", "تصفيف", "فير", "updo", "styling", "style"])) {
-    return { emoji: "👑", label: "تساريح" };
+    return { Icon: FiStar, label: "تساريح" };
   }
   if (has(["مكياج", "ميك اب", "ميكاب", "makeup", "bridal"])) {
-    return { emoji: "💄", label: "مكياج" };
+    return { Icon: FiPenTool, label: "مكياج" };
   }
   if (has(["رموش", "حواجب", "لاش", "eyelash", "lash", "brow"])) {
-    return { emoji: "👁️", label: "رموش" };
+    return { Icon: FiEye, label: "رموش" };
   }
   if (has(["أظافر", "اظافر", "مناكير", "بدكير", "بديكير", "nail", "manicure", "pedicure"])) {
-    return { emoji: "💅", label: "أظافر" };
+    return { Icon: FiEdit3, label: "أظافر" };
   }
   if (has(["بشرة", "عناية", "facial", "skin", "clean"])) {
-    return { emoji: "✨", label: "عناية" };
+    return { Icon: FiSun, label: "عناية" };
   }
   if (has(["مساج", "تدليك", "حمام", "spa", "massage", "body"])) {
-    return { emoji: "🧖", label: "عناية جسم" };
+    return { Icon: FiHeart, label: "عناية جسم" };
   }
   if (has(["واكس", "ليزر", "ازالة", "إزالة", "thread", "wax", "laser"])) {
-    return { emoji: "🪒", label: "إزالة شعر" };
+    return { Icon: FiZap, label: "إزالة شعر" };
   }
   if (has(["باكيج", "عرض", "package", "bundle", "offer"])) {
-    return { emoji: "🎁", label: "باكيج" };
+    return { Icon: FiGift, label: "باكيج" };
   }
-  return { emoji: "🛍️", label: "خدمة" };
+  return { Icon: FiShoppingBag, label: "خدمة" };
 }
 
 function normalizeKsaPhone(raw: string) {
@@ -895,6 +1013,7 @@ const emptyBusyState = (): BusyState => ({
 const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) => {
   const navigate = useNavigate();
   const dateRef = useRef<HTMLInputElement>(null);
+  const hijriPickerRef = useRef<HTMLDivElement>(null);
 
   // =========================
   // Settings (live)
@@ -908,6 +1027,30 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const sequentialBooking = !!(booking as any)?.sequentialBooking;
   // ✅ الاستقبال يختار التاريخ أول
   const [bookingDate, setBookingDate] = useState<string>(() => todayISO());
+  const [bookingDateCalendar, setBookingDateCalendar] = useState<DateCalendar>("gregory");
+  const [hijriPickerOpen, setHijriPickerOpen] = useState(false);
+  const [hijriViewMonthISO, setHijriViewMonthISO] = useState<string>(() =>
+    findHijriMonthStartISO(todayISO())
+  );
+  const bookingDateInputDisplay = useMemo(() => {
+    if (!bookingDate) return "";
+    return formatDateByCalendar(bookingDate, bookingDateCalendar);
+  }, [bookingDate, bookingDateCalendar]);
+  const hijriMonthTitle = useMemo(() => toHijriMonthYearLabel(hijriViewMonthISO), [hijriViewMonthISO]);
+  const hijriMonthDays = useMemo(() => buildHijriMonthDays(hijriViewMonthISO), [hijriViewMonthISO]);
+
+  useEffect(() => {
+    if (!hijriPickerOpen) return;
+    const onDocClick = (ev: MouseEvent) => {
+      const root = hijriPickerRef.current;
+      if (!root) return;
+      const target = ev.target as Node | null;
+      if (target && root.contains(target)) return;
+      setHijriPickerOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [hijriPickerOpen]);
 
   const businessHours = (booking as any)?.businessHours || {};
   const bookingHourOverrides = useMemo(
@@ -4904,6 +5047,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   // Handlers
   // =========================
   function openBookingDatePicker() {
+    if (bookingDateCalendar === "hijri") {
+      const base = normalizeIsoDate(bookingDate) || todayISO();
+      setHijriViewMonthISO(findHijriMonthStartISO(base));
+      setHijriPickerOpen(true);
+      return;
+    }
     const el = dateRef.current;
     if (!el) return;
     try {
@@ -4916,6 +5065,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   function applyBookingDate(v: string) {
     setBookingDate(v);
+    if (bookingDateCalendar === "hijri") setHijriPickerOpen(false);
 
     setFormData((prev) => ({
       ...prev,
@@ -6664,6 +6814,29 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   <div className="row g-2 align-items-end">
                     <div className="col-12">
                       <label htmlFor="bookingDateInternal" className="form-label">تاريخ الحجز</label>
+                      <div className="bk-date-calendar-toggle" role="group" aria-label="نوع التقويم">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${bookingDateCalendar === "gregory" ? "btn-dark" : "btn-outline-dark"}`}
+                          onClick={() => {
+                            setBookingDateCalendar("gregory");
+                            setHijriPickerOpen(false);
+                          }}
+                        >
+                          ميلادي
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${bookingDateCalendar === "hijri" ? "btn-dark" : "btn-outline-dark"}`}
+                          onClick={() => {
+                            setBookingDateCalendar("hijri");
+                            const base = normalizeIsoDate(bookingDate) || todayISO();
+                            setHijriViewMonthISO(findHijriMonthStartISO(base));
+                          }}
+                        >
+                          هجري
+                        </button>
+                      </div>
                       <div
                         className="input-group booking-date-group"
                         role="button"
@@ -6677,20 +6850,80 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         }}
                       >
                         <input
-                          ref={dateRef}
                           id="bookingDateInternal"
-                          type="date"
-                          className="form-control"
-                          value={bookingDate}
-                          min={todayISO()}
+                          type="text"
+                          className="form-control bk-date-display-input"
+                          value={bookingDateInputDisplay}
+                          placeholder={bookingDateCalendar === "hijri" ? "اختري التاريخ الهجري" : "اختري التاريخ الميلادي"}
+                          readOnly
                           onClick={openBookingDatePicker}
                           onFocus={openBookingDatePicker}
-                          onChange={(e) => {
-                            const next = String(e.target.value || "").trim();
-                            applyBookingDate(next);
-                          }}
                         />
+                        {bookingDateCalendar === "gregory" && (
+                          <input
+                            key={`bookingDateInternalPicker-${bookingDateCalendar}`}
+                            ref={dateRef}
+                            id="bookingDateInternalPicker"
+                            type="date"
+                            className="bk-date-picker-native"
+                            lang="ar-SA-u-ca-gregory"
+                            value={bookingDate}
+                            min={todayISO()}
+                            onClick={openBookingDatePicker}
+                            onFocus={openBookingDatePicker}
+                            onChange={(e) => {
+                              const next = String(e.target.value || "").trim();
+                              applyBookingDate(next);
+                            }}
+                          />
+                        )}
                       </div>
+                      {bookingDateCalendar === "hijri" && hijriPickerOpen && (
+                        <div className="bk-hijri-picker" ref={hijriPickerRef}>
+                          <div className="bk-hijri-picker-head">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-dark"
+                              onClick={() => setHijriViewMonthISO((p) => shiftHijriMonthStartISO(p, -1))}
+                            >
+                              السابق
+                            </button>
+                            <strong>{hijriMonthTitle || "التقويم الهجري"}</strong>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-dark"
+                              onClick={() => setHijriViewMonthISO((p) => shiftHijriMonthStartISO(p, 1))}
+                            >
+                              التالي
+                            </button>
+                          </div>
+                          <div className="bk-hijri-picker-grid bk-hijri-picker-weekdays">
+                            {["س", "ح", "ن", "ث", "ر", "خ", "ج"].map((w) => (
+                              <span key={w}>{w}</span>
+                            ))}
+                          </div>
+                          <div className="bk-hijri-picker-grid">
+                            {hijriMonthDays.map((cell) => {
+                              const isPast = cell.iso < todayISO();
+                              const isActive = cell.iso === bookingDate;
+                              return (
+                                <button
+                                  key={cell.iso}
+                                  type="button"
+                                  className={[
+                                    "bk-hijri-day",
+                                    isActive ? "is-active" : "",
+                                  ].join(" ").trim()}
+                                  disabled={isPast}
+                                  onClick={() => applyBookingDate(cell.iso)}
+                                >
+                                  {String(cell.hijriDay)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       {bookingDate && !selectedDayOpen && (
                         <div className="bk-day-closed-banner" role="alert">
                           تنبيه: يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة في الصالون، اختاري تاريخًا آخر للحجز.
@@ -6858,7 +7091,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 role="img"
                                 aria-label={icon.label}
                               >
-                                <span>{icon.emoji}</span>
+                                <icon.Icon className="bk-price-list-icon-svg" aria-hidden="true" />
                               </div>
 
                               <div>

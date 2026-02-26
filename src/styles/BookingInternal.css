@@ -181,17 +181,17 @@
   background: #fff;
   padding: 0.55rem;
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.65rem;
 }
 
 .bk-internal .bk-price-list-thumb {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
-  background: #f2e6da;
-  border: 1px solid #e0cdbd;
+  width: 24px;
+  height: 24px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
 }
 
 .bk-internal .bk-price-list-icon {
@@ -200,9 +200,12 @@
   line-height: 1;
 }
 
-.bk-internal .bk-price-list-icon > span {
-  font-size: 1.45rem;
-  transform: translateY(-1px);
+.bk-internal .bk-price-list-icon-svg {
+  width: 1.22rem;
+  height: 1.22rem;
+  stroke-width: 1.8;
+  color: #4b3d33;
+  opacity: 0.92;
 }
 
 .bk-internal .bk-price-list-name {
@@ -508,6 +511,91 @@
 .bk-internal .booking-date-group,
 .bk-internal .booking-date-group * {
   cursor: pointer;
+}
+
+.bk-internal .booking-date-group {
+  position: relative;
+}
+
+.bk-internal .bk-date-calendar-toggle {
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.bk-internal .bk-date-display-input {
+  background: #fff;
+  color: #2f241f;
+  font-weight: 700;
+}
+
+.bk-internal .bk-date-picker-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.bk-internal .bk-hijri-picker {
+  margin-top: 0.5rem;
+  border: 1px solid #dfd4c6;
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.55rem;
+}
+
+.bk-internal .bk-hijri-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.bk-internal .bk-hijri-picker-head strong {
+  font-size: 0.95rem;
+  color: #2f241f;
+}
+
+.bk-internal .bk-hijri-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.3rem;
+}
+
+.bk-internal .bk-hijri-picker-weekdays {
+  margin-bottom: 0.35rem;
+  color: #7a6659;
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.bk-internal .bk-hijri-day {
+  border: 1px solid #e5d8c9;
+  background: #fff;
+  color: #2f241f;
+  border-radius: 8px;
+  min-height: 34px;
+  font-weight: 700;
+}
+
+.bk-internal .bk-hijri-day.is-out {
+  color: #aa9b8f;
+  background: #faf6f2;
+}
+
+.bk-internal .bk-hijri-day.is-active {
+  background: #1f1f2a;
+  color: #fff;
+  border-color: #1f1f2a;
+}
+
+.bk-internal .bk-hijri-day:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .bk-internal .bk-booking-value {
