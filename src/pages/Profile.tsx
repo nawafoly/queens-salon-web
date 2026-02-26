@@ -1,6 +1,26 @@
-// src/pages/Profile.tsx
+﻿// src/pages/Profile.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  LuArrowLeft,
+  LuAward,
+  LuCalendarCheck,
+  LuCalendarDays,
+  LuCalendarRange,
+  LuClock3,
+  LuHourglass,
+  LuIdCard,
+  LuInstagram,
+  LuImage,
+  LuMapPin,
+  LuPhone,
+  LuQrCode,
+  LuReceipt,
+  LuScissors,
+  LuSettings,
+  LuStar,
+  LuUser,
+} from "react-icons/lu";
 import "../styles/Profile.css";
 
 import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
@@ -21,6 +41,9 @@ const SUPPORT_MSG = "مرحباً، أحتاج مساعدة في حسابي في
 function getWhatsAppLink(phoneDigits: string, msg: string) {
   return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(msg)}`;
 }
+
+const INSTAGRAM_URL = "https://instagram.com/";
+
 
 // =======================
 // خدمات (عرض فقط) - مؤقتاً
@@ -219,6 +242,9 @@ const Profile: React.FC = () => {
   const [profileDoc, setProfileDoc] = useState<UserProfile | null>(null);
 
   const [authChecked, setAuthChecked] = useState(false);
+  const [showQrCamera, setShowQrCamera] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
 
   const cachedProfile = useMemo(() => {
     try {
@@ -450,10 +476,30 @@ const Profile: React.FC = () => {
     return raw.slice(-6).toUpperCase();
   }, [firebaseUid, userData.phone]);
 
-  const progress = useMemo(() => {
-    const base = kpis.completed * 10;
-    return Math.min(base, 100);
-  }, [kpis.completed]);
+  const loyalty = useMemo(() => {
+    const completedBookings = bookings.filter((b) => statusKey(b.status) === "completed");
+    const completedCount = completedBookings.length;
+    const pointsFromBookings = completedCount * 50;
+    const points = pointsFromBookings;
+
+    const pointsPerLevel = 300;
+    const level = Math.max(1, Math.floor(points / pointsPerLevel) + 1);
+    const levelStart = (level - 1) * pointsPerLevel;
+    const nextLevelPoints = level * pointsPerLevel;
+    const pointsIntoLevel = points - levelStart;
+    const progress = Math.max(0, Math.min(100, Math.round((pointsIntoLevel / pointsPerLevel) * 100)));
+    const pointsToNext = Math.max(0, nextLevelPoints - points);
+    const loyaltyTitle = level >= 5 ? "VIP" : level >= 3 ? "ذهبي" : level >= 2 ? "فضي" : "برونزي";
+
+    return {
+      points,
+      level,
+      loyaltyTitle,
+      progress,
+      pointsToNext,
+      completedCount,
+    };
+  }, [bookings]);
 
   // =======================
   // Avatar
@@ -550,6 +596,60 @@ const Profile: React.FC = () => {
   const copyMembershipId = () => {
     navigator.clipboard.writeText(membershipId).then(() => {
       alert(`تم نسخ رقم العضوية: ${membershipId}`);
+    });
+  };
+
+  const handleBottomQr = () => {
+    setActiveTab("qr");
+  };
+
+  const handleBottomBookings = () => {
+    setActiveTab("bookings");
+  };
+
+  const handleBottomProfile = () => {
+    setActiveTab("profile");
+  };
+
+  const closeQrCamera = () => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current = null;
+    }
+    setShowQrCamera(false);
+  };
+
+  const openQrCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+      cameraStreamRef.current = stream;
+      setShowQrCamera(true);
+
+      window.setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      }, 0);
+    } catch (err) {
+      console.error("Camera open failed:", err);
+      alert("تعذر فتح الكاميرا. تأكد من السماح بالوصول للكاميرا.");
+    }
+  };
+
+  const handleRepeatLastBooking = () => {
+    if (!lastBooking) {
+      alert("ما فيه حجز مكتمل سابق للتكرار حالياً.");
+      return;
+    }
+    navigate("/booking", {
+      state: {
+        repeatFromBookingId: lastBooking.id,
+        prefillServiceName: lastBooking.service,
+      },
     });
   };
 
@@ -653,6 +753,7 @@ const Profile: React.FC = () => {
   // =======================
   // UI helpers: search + filter
   // =======================
+  const [activeTab, setActiveTab] = useState<"profile" | "qr" | "bookings">("profile");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [q, setQ] = useState("");
 
@@ -701,11 +802,11 @@ const Profile: React.FC = () => {
         {/* Top Navigation / Header */}
         <div className="p-nav-header">
           <button className="p-icon-btn" onClick={() => navigate("/", { replace: true })}>
-            <span className="p-icon-back"></span>
+            <LuArrowLeft />
           </button>
           <h1 className="p-nav-title">الملف الشخصي</h1>
           <button className="p-icon-btn" onClick={() => setShowEditModal(true)}>
-            <span className="p-icon-settings"></span>
+            <LuSettings />
           </button>
         </div>
 
@@ -723,82 +824,136 @@ const Profile: React.FC = () => {
         <div className="p-profile-hero">
           <div className="p-avatar-wrapper">
             <div className="p-avatar-main">
-              {userData.avatar ? <img src={userData.avatar} alt="avatar" /> : <span>👩‍🦰</span>}
+              {userData.avatar ? <img src={userData.avatar} alt="avatar" /> : <span><LuImage /></span>}
             </div>
-            <button className="p-avatar-edit" onClick={() => fileInputRef.current?.click()}>+</button>
+            {!userData.avatar ? (
+              <button className="p-avatar-edit" onClick={() => fileInputRef.current?.click()}>+</button>
+            ) : null}
             <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
           </div>
           <h2 className="p-user-name-hero">{userData.name || "عميلة"}</h2>
-          <div className="p-user-info-chips">
-            {userData.city && <span className="p-info-chip">📍 {userData.city}</span>}
-            {userData.phone && <span className="p-info-chip">📱 {normalizeKsaPhone(userData.phone)}</span>}
-          </div>
         </div>
 
-        {/* ===== Stats Grid (Inspired by image) ===== */}
-        <div className="p-stats-grid">
-          <div className="p-stat-card">
-            <div className="p-stat-icon p-icon-total">⚡</div>
-            <div className="p-stat-content">
-              <span className="p-stat-value">{kpis.total}</span>
-              <span className="p-stat-label">الحجوزات</span>
+        {activeTab === "profile" ? (
+        <>
+          <div className="p-stats-grid">
+            <div className="p-stat-card">
+              <div className="p-stat-icon p-icon-total"><LuCalendarDays /></div>
+              <div className="p-stat-content">
+                <span className="p-stat-value">{kpis.total}</span>
+                <span className="p-stat-label">الحجوزات</span>
+              </div>
+            </div>
+            <div className="p-stat-card">
+              <div className="p-stat-icon p-icon-confirmed"><LuCalendarCheck /></div>
+              <div className="p-stat-content">
+                <span className="p-stat-value">{kpis.confirmed}</span>
+                <span className="p-stat-label">مؤكدة</span>
+              </div>
+            </div>
+            <div className="p-stat-card">
+              <div className="p-stat-icon p-icon-pending"><LuHourglass /></div>
+              <div className="p-stat-content">
+                <span className="p-stat-value">{kpis.pending}</span>
+                <span className="p-stat-label">انتظار</span>
+              </div>
+            </div>
+            <div className="p-stat-card">
+              <div className="p-stat-icon p-icon-completed"><LuAward /></div>
+              <div className="p-stat-content">
+                <span className="p-stat-value">{kpis.completed}</span>
+                <span className="p-stat-label">مكتملة</span>
+              </div>
             </div>
           </div>
-          <div className="p-stat-card">
-            <div className="p-stat-icon p-icon-confirmed">✅</div>
-            <div className="p-stat-content">
-              <span className="p-stat-value">{kpis.confirmed}</span>
-              <span className="p-stat-label">مؤكدة</span>
+          <section className="p-quick-booking">
+            <div className="p-quick-booking-head">
+              <h3>ابدئي حجزك بسرعة</h3>
+              <p>اختاري حجز جديد أو كرري آخر موعد لك.</p>
             </div>
-          </div>
-          <div className="p-stat-card">
-            <div className="p-stat-icon p-icon-pending">⏳</div>
-            <div className="p-stat-content">
-              <span className="p-stat-value">{kpis.pending}</span>
-              <span className="p-stat-label">انتظار</span>
+            <div className="p-quick-booking-actions">
+              <button
+                className="p-link-action p-link-action-wide"
+                onClick={() => navigate("/booking")}
+                type="button"
+                aria-label="حجز جديد"
+              >
+                <span className="p-link-action-plus">+</span>
+                <span>حجز جديد</span>
+              </button>
+              <button
+                className="p-link-action p-link-action-soft"
+                onClick={handleRepeatLastBooking}
+                type="button"
+                aria-label="تكرار آخر حجز"
+              >
+                <span>تكرار آخر حجز</span>
+              </button>
+              <button
+                className="p-link-action p-link-action-ghost"
+                onClick={openQrCamera}
+                type="button"
+                aria-label="QR"
+              >
+                <span>QR</span>
+              </button>
             </div>
-          </div>
-          <div className="p-stat-card">
-            <div className="p-stat-icon p-icon-completed">⭐</div>
-            <div className="p-stat-content">
-              <span className="p-stat-value">{kpis.completed}</span>
-              <span className="p-stat-label">مكتملة</span>
-            </div>
-          </div>
-        </div>
+          </section>
+        </>
+        ) : null}
 
         {/* ===== Achievement / Loyalty Section (Inspired by image) ===== */}
+        {activeTab === "qr" ? (
         <div className="p-section-container">
           <div className="p-section-header">
-            <h3>مستوى العضوية</h3>
-            <span className="p-badge-id-hero" onClick={copyMembershipId}>ID: {membershipId} 📋</span>
+            <h3>النقاط والولاء</h3>
+            <span className="p-badge-id-hero" onClick={copyMembershipId}><LuIdCard className="p-inline-icon" /> ID: {membershipId}</span>
           </div>
-          <div className="p-loyalty-card-new">
-            <div className="p-loyalty-info-new">
-              <div className="p-level-badge">Lv. {Math.floor(kpis.completed / 5) + 1}</div>
-              <div className="p-progress-text">{progress}% نحو المستوى التالي</div>
+
+          <div className="p-points-card">
+            <div className="p-points-head">
+              <h4>رصيد النقاط</h4>
+              <span className="p-points-badge">Points</span>
+            </div>
+            <div className="p-points-value-row">
+              <strong>{loyalty.points}</strong>
+              <span>نقطة متاحة</span>
+            </div>
+            <div className="p-points-meta">
+              <span>حجوزات مكتملة محتسبة: {loyalty.completedCount}</span>
+              <span>متبقي {loyalty.pointsToNext} نقطة للمستوى التالي</span>
+            </div>
+          </div>
+
+          <div className="p-loyalty-card">
+            <div className="p-loyalty-head">
+              <h4>حالة الولاء</h4>
+              <div className="p-level-badge">Lv. {loyalty.level}</div>
+            </div>
+            <div className="p-loyalty-tier-line">
+              <span>التصنيف الحالي: {loyalty.loyaltyTitle}</span>
+              <span>{loyalty.progress}%</span>
             </div>
             <div className="p-progress-bar-container">
-              <div className="p-progress-bar-fill" style={{ width: `${progress}%` }}></div>
+              <div className="p-progress-bar-fill" style={{ width: `${loyalty.progress}%` }}></div>
             </div>
+            <p className="p-loyalty-note">كلما زادت نقاطك ينتقل حسابك لمستوى أعلى تلقائيًا.</p>
           </div>
         </div>
+        ) : null}
 
         {/* ===== Next Booking Card (Inspired by image) ===== */}
+        {activeTab === "bookings" ? (
         <div className="p-section-container">
           <div className="p-section-header">
             <h3>الحجز القادم</h3>
-            <button className="p-link-action" onClick={() => navigate("/booking")} type="button" aria-label="حجز جديد">
-              <span className="p-link-action-plus">+</span>
-              <span>حجز جديد</span>
-            </button>
           </div>
           {!upcomingBooking ? (
-            <div className="p-empty-state">لا يوجد حجز قادم حالياً ✨</div>
+            <div className="p-empty-state">لا يوجد حجز قادم حالياً <LuStar className="p-inline-icon" /></div>
           ) : (
             <div className="p-modern-booking-card">
               <div className="p-booking-main-info">
-                <div className="p-booking-service-icon">✂️</div>
+                <div className="p-booking-service-icon"><LuScissors /></div>
                 <div className="p-booking-details">
                   <span className="p-booking-service-name">{upcomingBooking.service}</span>
                   <span className="p-booking-employee-name">مع {upcomingBooking.employee || "موظفة ملكات"}</span>
@@ -808,8 +963,8 @@ const Profile: React.FC = () => {
                 </div>
               </div>
               <div className="p-booking-footer-info">
-                <div className="p-footer-item">📅 {formatDateAr(upcomingBooking.date)}</div>
-                <div className="p-footer-item">⏰ {formatTime12(upcomingBooking.time, "—")}</div>
+                <div className="p-footer-item"><LuCalendarDays className="p-inline-icon" /> {formatDateAr(upcomingBooking.date)}</div>
+                <div className="p-footer-item"><LuClock3 className="p-inline-icon" /> {formatTime12(upcomingBooking.time, "-")}</div>
               </div>
               <div className="p-booking-actions-modern">
                 <button className="p-btn-modern primary" onClick={() => navigate("/track")}>تتبع الحجز</button>
@@ -818,8 +973,10 @@ const Profile: React.FC = () => {
             </div>
           )}
         </div>
+        ) : null}
 
         {/* ===== My Bookings (List view for mobile) ===== */}
+        {activeTab === "bookings" ? (
         <div className="p-section-container">
           <div className="p-section-header">
             <h3>سجل الحجوزات</h3>
@@ -840,15 +997,15 @@ const Profile: React.FC = () => {
             ) : (
               bookingsFiltered.map((b) => (
                 <div key={b.id} className="p-list-item-modern">
-                  <div className="p-list-icon">✨</div>
+                  <div className="p-list-icon"><LuReceipt /></div>
                   <div className="p-list-content">
                     <div className="p-list-row-top">
                       <span className="p-list-service">{b.service}</span>
                       <span className={`p-list-status status-${statusKey(b.status)}`}>{statusLabelAr(b.status)}</span>
                     </div>
                     <div className="p-list-row-bottom">
-                      <span>📅 {formatDateAr(b.date)}</span>
-                      <span>⏰ {formatTime12(b.time, "—")}</span>
+                      <span><LuCalendarDays className="p-inline-icon" /> {formatDateAr(b.date)}</span>
+                      <span><LuClock3 className="p-inline-icon" /> {formatTime12(b.time, "-")}</span>
                     </div>
                   </div>
                 </div>
@@ -856,8 +1013,41 @@ const Profile: React.FC = () => {
             )}
           </div>
         </div>
+        ) : null}
+
+        {activeTab === "bookings" ? (
+        <div className="p-section-container">
+          <div className="p-section-header">
+            <h3>العروض الخاصة</h3>
+          </div>
+          <div className="p-empty-state">قريبًا: عروض مخصصة للعميلات المميزات <LuStar className="p-inline-icon" /></div>
+        </div>
+        ) : null}
 
       </div>
+
+      <nav className="p-bottom-nav" aria-label="Profile quick navigation">
+        <button className={`p-bottom-item ${activeTab === "qr" ? "is-active" : ""}`} type="button" onClick={handleBottomQr} aria-label="Loyalty">
+          <LuAward />
+        </button>
+        <button className={`p-bottom-item ${activeTab === "bookings" ? "is-active" : ""}`} type="button" onClick={handleBottomBookings} aria-label="Bookings">
+          <LuCalendarCheck />
+        </button>
+        <button
+          className={`p-bottom-center ${activeTab === "profile" ? "is-active" : ""}`}
+          type="button"
+          onClick={handleBottomProfile}
+          aria-label="Profile Home"
+        >
+          <LuQrCode />
+        </button>
+        <a className="p-bottom-item is-instagram" href={INSTAGRAM_URL} target="_blank" rel="noreferrer" aria-label="Instagram">
+          <LuInstagram />
+        </a>
+        <button className="p-bottom-item" type="button" onClick={() => setShowEditModal(true)} aria-label="Settings">
+          <LuSettings />
+        </button>
+      </nav>
 
       {/* ===== Edit Modal (Modernized) ===== */}
       {showEditModal ? (
@@ -869,19 +1059,19 @@ const Profile: React.FC = () => {
             </div>
             <div className="p-modal-body-modern">
               <div className="p-input-group-modern">
-                <label>الاسم</label>
+                <label className="p-label-with-icon"><LuUser /> الاسم</label>
                 <input value={editForm.name} onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))} />
               </div>
               <div className="p-input-group-modern">
-                <label>الجوال</label>
+                <label className="p-label-with-icon"><LuPhone /> الجوال</label>
                 <input value={editForm.phone} onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))} />
               </div>
               <div className="p-input-group-modern">
-                <label>المدينة</label>
+                <label className="p-label-with-icon"><LuMapPin /> المدينة</label>
                 <input value={editForm.city} onChange={(e) => setEditForm((p) => ({ ...p, city: e.target.value }))} />
               </div>
               <div className="p-input-group-modern">
-                <label>تاريخ الميلاد</label>
+                <label className="p-label-with-icon"><LuCalendarRange /> تاريخ الميلاد</label>
                 <input type="date" value={editForm.birthdate} onChange={(e) => setEditForm((p) => ({ ...p, birthdate: e.target.value }))} />
               </div>
             </div>
@@ -892,6 +1082,19 @@ const Profile: React.FC = () => {
           </div>
         </div>
       ) : null}
+
+      {showQrCamera ? (
+        <div className="p-camera-overlay" onClick={closeQrCamera}>
+          <div className="p-camera-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="p-camera-head">
+              <h3>QR</h3>
+              <button className="p-close-modal" onClick={closeQrCamera}>✕</button>
+            </div>
+            <video ref={videoRef} className="p-camera-video" autoPlay playsInline muted />
+          </div>
+        </div>
+      ) : null}
+
     </div>
   );
 };

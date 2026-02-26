@@ -36,9 +36,62 @@ function norm(v: any) {
 }
 
 function normalizeArray(v: any): string[] {
-  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
-  if (typeof v === "string" && v.trim()) return [v.trim()];
+  if (Array.isArray(v)) {
+    return v
+      .map((x) => {
+        if (x && typeof x === "object") {
+          const obj = x as any;
+          return String(obj.serviceId || obj.id || obj.name || obj.value || "").trim();
+        }
+        return String(x || "").trim();
+      })
+      .filter(Boolean);
+  }
+  if (typeof v === "string" && v.trim()) {
+    const s = v.trim();
+    // Handle CSV-like payloads stored as a single string.
+    if (/[,\u060C;|]/.test(s)) {
+      return s
+        .split(/[,\u060C;|]/g)
+        .map((x) => String(x || "").trim())
+        .filter(Boolean);
+    }
+    // Handle serialized JSON array payloads.
+    if (s.startsWith("[") && s.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed)) {
+          return parsed.map((x) => String(x || "").trim()).filter(Boolean);
+        }
+      } catch {
+        // ignore and return raw string fallback
+      }
+    }
+    return [s];
+  }
   return [];
+}
+
+function extractSpecialties(raw: any): string[] {
+  const data = raw && typeof raw === "object" ? raw : {};
+  const direct = normalizeArray(data?.specialties);
+  const serviceIds = normalizeArray(data?.serviceIds);
+  const servicesIds = normalizeArray(data?.servicesIds);
+  const providedServices = normalizeArray(data?.providedServices);
+  const nestedServiceIds = Array.isArray(data?.services)
+    ? data.services
+        .map((x: any) => String(x?.serviceId || x?.id || x?.name || "").trim())
+        .filter(Boolean)
+    : [];
+  return Array.from(
+    new Set([
+      ...direct,
+      ...serviceIds,
+      ...servicesIds,
+      ...providedServices,
+      ...nestedServiceIds,
+    ])
+  );
 }
 
 function normalizeIsoDates(v: any): string[] {
@@ -133,7 +186,7 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
       return {
         id: d.id,
         name: String(data?.name ?? "").trim(),
-        specialties: normalizeArray(data?.specialties),
+        specialties: extractSpecialties(data),
         active: data?.active !== false,
         employmentEndDate: resolveEmploymentEndDate(data) || undefined,
         linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
@@ -183,7 +236,7 @@ export async function listActiveStaffBySpecialty(args: {
       return {
         id: d.id,
         name: String(data?.name ?? "").trim(),
-        specialties: normalizeArray(data?.specialties),
+        specialties: extractSpecialties(data),
         active: data?.active !== false,
         employmentEndDate: resolveEmploymentEndDate(data) || undefined,
         linkedUid: String(data?.linkedUid ?? "").trim() || undefined,

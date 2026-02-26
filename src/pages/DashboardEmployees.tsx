@@ -1,5 +1,5 @@
 // src/pages/DashboardEmployees.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
   getDocs,
@@ -131,6 +131,40 @@ type ServiceOption = {
   categoryId?: string;
   active?: boolean;
 };
+
+function normalizeLookupText(v: any): string {
+  return String(v || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function canonicalizeSpecialties(raw: any, options: ServiceOption[]): string[] {
+  const values = normalizeSpecialties(raw);
+  if (!values.length) return [];
+
+  const idSet = new Set(options.map((o) => String(o.id || "").trim()).filter(Boolean));
+  const byLabel = new Map<string, string>();
+  options.forEach((o) => {
+    const id = String(o.id || "").trim();
+    const labelKey = normalizeLookupText(o.label);
+    if (id && labelKey && !byLabel.has(labelKey)) byLabel.set(labelKey, id);
+  });
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  values.forEach((v) => {
+    const rawValue = String(v || "").trim();
+    if (!rawValue) return;
+    const nextId = idSet.has(rawValue) ? rawValue : byLabel.get(normalizeLookupText(rawValue)) || "";
+    const finalValue = nextId || rawValue;
+    if (!seen.has(finalValue)) {
+      seen.add(finalValue);
+      out.push(finalValue);
+    }
+  });
+  return out;
+}
 
 type EmployeeModalTab = "stats" | "basic" | "booking" | "services" | "profile";
 type EmployeeSplitTab = "basic" | "booking" | "services" | "profile" | "payroll" | "stats";
@@ -733,6 +767,7 @@ export default function DashboardEmployees() {
   const [errorMsg, setErrorMsg] = useState("");
 
   const [statsLoading, setStatsLoading] = useState(false);
+  const specialtiesMigrationDoneRef = useRef(false);
   const [bookingStats, setBookingStats] =
     useState<Record<string, StaffBookingStats>>({});
   const [leaveAdjustDays, setLeaveAdjustDays] = useState("1");
@@ -914,7 +949,7 @@ export default function DashboardEmployees() {
     // ✅ جديد
     setShowOnAbout((x as any).showOnAbout !== false);
 
-    setSpecialties(normalizeSpecialties(x.specialties));
+    setSpecialties(canonicalizeSpecialties(x.specialties, serviceOptions));
     setLeaveAdjustDays("1");
     setLeaveAdjustDate(todayIso());
     setLeaveAdjustNote("");
@@ -980,7 +1015,7 @@ export default function DashboardEmployees() {
           overtimePercent: payrollCfg.overtimePercent,
           overtimeInvoicePercent: payrollCfg.invoicePercent,
 
-          specialties: normalizeSpecialties(data?.specialties),
+          specialties: canonicalizeSpecialties(data?.specialties, serviceOptions),
           bio: data?.bio ?? "",
           avatarUrl: resolveAvatarFromAssets(pickAvatarUrl(data)),
           cvUrl: data?.cvUrl ?? "",
@@ -1256,6 +1291,46 @@ export default function DashboardEmployees() {
   }, []);
 
   useEffect(() => {
+    if (specialtiesMigrationDoneRef.current) return;
+    if (!serviceOptions.length || !list.length) return;
+    specialtiesMigrationDoneRef.current = true;
+
+    const run = async () => {
+      const updates: Array<{ id: string; specialties: string[] }> = [];
+      list.forEach((row) => {
+        const before = normalizeSpecialties(row.specialties);
+        const after = canonicalizeSpecialties(before, serviceOptions);
+        if (JSON.stringify(before) !== JSON.stringify(after)) {
+          updates.push({ id: row.id, specialties: after });
+        }
+      });
+
+      if (!updates.length) return;
+
+      try {
+        await Promise.all(
+          updates.map((u) =>
+            updateDoc(staffPublicDoc(u.id), {
+              specialties: u.specialties,
+              updatedAt: serverTimestamp(),
+            })
+          )
+        );
+        setList((prev) =>
+          prev.map((r) => {
+            const hit = updates.find((u) => u.id === r.id);
+            return hit ? { ...r, specialties: hit.specialties } : r;
+          })
+        );
+      } catch (e) {
+        console.warn("specialties migration failed:", e);
+      }
+    };
+
+    void run();
+  }, [list, serviceOptions]);
+
+  useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
@@ -1426,11 +1501,12 @@ export default function DashboardEmployees() {
   const save = async () => {
     if (!canManage) return;
     const cleanName = name.trim();
+    const specialtiesFixed = canonicalizeSpecialties(specialties, serviceOptions);
     if (!cleanName) {
       setErrorMsg("اكتب اسم الموظفة");
       return;
     }
-    if (specialties.length === 0) {
+    if (specialtiesFixed.length === 0) {
       setErrorMsg("اختَر خدمة واحدة على الأقل");
       return;
     }
@@ -1502,7 +1578,7 @@ export default function DashboardEmployees() {
       overtimePercent: safeNonNegativeNumber(overtimePercent, 0),
       overtimeInvoicePercent: safeNonNegativeNumber(overtimeInvoicePercent, 0),
 
-      specialties,
+      specialties: specialtiesFixed,
       bio: bio.trim(),
       avatarUrl: avatarUrl.trim(),
       cvUrl: cvUrl.trim(),

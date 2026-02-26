@@ -516,7 +516,7 @@ const Login: React.FC = () => {
         setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
         void writeAuditLog({
           action: "user_login",
-          entityType: "user",
+          entityType: "client",
           entityId: authUser.uid,
           description: "تم تسجيل الدخول كعميلة",
           source: "client_app",
@@ -547,7 +547,7 @@ const Login: React.FC = () => {
           setSuccessMsg("تم تسجيل الدخول بنجاح ✅");
           void writeAuditLog({
             action: "user_login",
-            entityType: "user",
+            entityType: "client",
             entityId: String(user.phone),
             description: "تم تسجيل الدخول (Legacy) عبر رقم الجوال",
             source: "client_app",

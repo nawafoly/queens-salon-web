@@ -604,7 +604,7 @@ service cloud.firestore {
         isBootstrapAdmin()
         || roleForSalon(salonId) in ["owner", "admin", "reception", "staff"]
         || (
-          roleForSalon(salonId) == "client"
+          roleForSalon(salonId) in ["client", "guest"]
           && (request.resource.data.userId is string)
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.entityType == "client"
@@ -636,7 +636,11 @@ service cloud.firestore {
         && !isAnonymous()
         && (request.resource.data.uid is string)
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.approved == false;
+        && (
+          request.resource.data.approved == false
+          || request.resource.data.approved == true
+        )
+        && (!("hidden" in request.resource.data) || request.resource.data.hidden == false);
 
       // الإدارة فقط: اعتماد/إخفاء/رد/حذف
       allow update, delete: if signedIn() && (

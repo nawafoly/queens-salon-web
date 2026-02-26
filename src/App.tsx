@@ -125,6 +125,8 @@ const App: React.FC = () => {
   const isInDashboard =
     location.pathname.startsWith("/dashboard") ||
     location.pathname.startsWith("/dashboard-pending");
+  const isProfilePage =
+    location.pathname === "/profile" || location.pathname === "/client";
 
   const readWelcomeFromStorage = () => {
     const flag = localStorage.getItem("showWelcome");
@@ -228,7 +230,9 @@ const App: React.FC = () => {
 
   return (
     <div className={`app ${isInDashboard ? "is-dashboard" : "is-public"}`}>
-      {!isInDashboard && <Navbar authUser={authUser} currentRole={userRole} currentUserName={userName} />}
+      {!isInDashboard && !isProfilePage && (
+        <Navbar authUser={authUser} currentRole={userRole} currentUserName={userName} />
+      )}
 
       <main className="main-content">
         <ScrollToTop />
@@ -326,8 +330,8 @@ const App: React.FC = () => {
         </Routes>
       </main>
 
-      {!isInDashboard && <Footer />}
-      {!isInDashboard && <ChatBot />}
+      {!isInDashboard && !isProfilePage && <Footer />}
+      {!isInDashboard && !isProfilePage && <ChatBot />}
 
       <WelcomeModal
         show={showWelcome}

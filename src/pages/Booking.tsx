@@ -1,6 +1,6 @@
 ﻿// src/pages/Booking.tsx
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { Fragment, useEffect, useMemo, useState, useRef } from "react";
 import type React from "react"; // âœ… ADD: عشان React.ChangeEvent / React.FormEvent
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -2056,12 +2056,65 @@ function findCartOverlap(items: CartItem[]) {
     return servicesFlat.find((sv) => sv.id === id) || null;
   };
 
-  const normalizeSpecialty = (v: string) => String(v || "").trim().toLowerCase();
+  const serviceIdByName = useMemo(() => {
+    const map = new Map<string, string>();
+    (servicesFlat || []).forEach((sv) => {
+      const id = String(sv.id || "").trim();
+      const nameKey = String(sv.name || "").trim().toLowerCase();
+      if (id && nameKey && !map.has(nameKey)) map.set(nameKey, id);
+    });
+    return map;
+  }, [servicesFlat]);
 
-  const normalizeStaffSpecialties = (st: any) =>
-    Array.isArray(st?.specialties)
-      ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
-      : [];
+  const resolveCanonicalServiceId = (rawId: string, rawName?: string) => {
+    const id = String(rawId || "").trim();
+    if (id && getServiceById(id)) return id;
+
+    const idAsName = id ? serviceIdByName.get(id.toLowerCase()) : "";
+    if (idAsName) return idAsName;
+
+    const byName = String(rawName || "").trim();
+    if (byName) {
+      const hit = serviceIdByName.get(byName.toLowerCase());
+      if (hit) return hit;
+    }
+    return id;
+  };
+
+  const normalizeSpecialty = (v: string) =>
+    String(v || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_\-–—/|]+/g, " ")
+      .replace(/[^\p{L}\p{N}\s:]/gu, " ")
+      .replace(/\s+/g, " ");
+
+  const serviceIdBySpecialtyLabel = useMemo(() => {
+    const map = new Map<string, string>();
+    (servicesFlat || []).forEach((sv) => {
+      const id = String(sv.id || "").trim();
+      const nameKey = normalizeSpecialty(String(sv.name || ""));
+      if (id && nameKey && !map.has(nameKey)) map.set(nameKey, id);
+    });
+    (formData.items || []).forEach((it) => {
+      const id = String(it.serviceId || "").trim();
+      const nameKey = normalizeSpecialty(String(it.serviceName || ""));
+      if (id && nameKey && !map.has(nameKey)) map.set(nameKey, id);
+    });
+    return map;
+  }, [servicesFlat, formData.items]);
+
+  const normalizeStaffSpecialties = (st: any) => {
+    if (!Array.isArray(st?.specialties)) return [];
+    return st.specialties
+      .map((x: any) => String(x || "").trim())
+      .filter(Boolean)
+      .map((raw: string) => {
+        const n = normalizeSpecialty(raw);
+        const mapped = serviceIdBySpecialtyLabel.get(n) || n;
+        return normalizeSpecialty(mapped);
+      });
+  };
 
   const buildStaffResolverKey = (serviceId: string, target: FlatService | null) => {
     const sid = normalizeSpecialty(serviceId);
@@ -2102,6 +2155,7 @@ function findCartOverlap(items: CartItem[]) {
 
     const wanted = new Set<string>();
     wanted.add(normalizeSpecialty(sid));
+    wanted.add(normalizeSpecialty(String(target?.name || "")));
     wanted.add(normalizeSpecialty(String(target?.sectionId || "")));
     wanted.add(normalizeSpecialty(String(target?.categoryId || "")));
 
@@ -2109,6 +2163,7 @@ function findCartOverlap(items: CartItem[]) {
       (target.packageServiceIds || []).forEach((x: any) => wanted.add(normalizeSpecialty(String(x || ""))));
       (target.packageServices || []).forEach((x: any) => {
         wanted.add(normalizeSpecialty(String(x?.serviceId || "")));
+        wanted.add(normalizeSpecialty(String(x?.serviceName || "")));
         wanted.add(normalizeSpecialty(String(x?.sectionId || "")));
         wanted.add(normalizeSpecialty(String(x?.categoryId || "")));
       });
@@ -2349,7 +2404,7 @@ function findCartOverlap(items: CartItem[]) {
       const sv = getServiceById(step.serviceId);
       const staffRaw = await listStaffForService(step.serviceId, sv);
       const staffList = (staffRaw || []).filter((st: any) =>
-        isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true })
+        isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: false })
       );
       if (!staffList.length) {
         return { ok: false as const, reason: "NO_STAFF", failedIndex: idx };
@@ -2835,7 +2890,12 @@ function findCartOverlap(items: CartItem[]) {
         new Set(
           (formData.items || [])
             .filter((it) => !isSequentialOfferItem(it))
-            .map((it) => String(it.serviceId || "").trim())
+            .map((it) =>
+              resolveCanonicalServiceId(
+                String(it.serviceId || "").trim(),
+                String((it as any)?.serviceName || "").trim()
+              )
+            )
             .filter(Boolean)
         )
       );
@@ -2845,7 +2905,13 @@ function findCartOverlap(items: CartItem[]) {
       for (const sid of serviceIds) {
         if (cancelled) return;
         if (staffByService[sid] && Array.isArray(staffByService[sid])) continue;
-        const fromCart = (formData.items || []).find((x) => String(x.serviceId || "").trim() === sid);
+        const fromCart = (formData.items || []).find(
+          (x) =>
+            resolveCanonicalServiceId(
+              String(x.serviceId || "").trim(),
+              String((x as any)?.serviceName || "").trim()
+            ) === sid
+        );
         const sv =
           getServiceById(sid) ||
           ({
@@ -3034,14 +3100,11 @@ function findCartOverlap(items: CartItem[]) {
         if (err) errors.add(err);
 
         const list = ((staffByService[sid] || []) as StaffPublicWithId[]).filter((st: any) => {
-          if ((st as any)?.showOnBooking === false) return false;
           const leave = getStaffLeaveMetaForDate(st, dateISO);
           return !leave.isOnLeave;
         });
         const strictByService = list.filter((st: any) => {
-          const specs = Array.isArray((st as any)?.specialties)
-            ? (st as any).specialties.map((v: any) => normalizeSpecialty(String(v || ""))).filter(Boolean)
-            : [];
+          const specs = normalizeStaffSpecialties(st);
           return specs.includes(normalizeSpecialty(sid));
         });
         if (!strictByService.length) hasStrictCoverageForAll = false;
@@ -3138,7 +3201,6 @@ function findCartOverlap(items: CartItem[]) {
           try {
             const rows = await listStaffForService(sid, getServiceById(sid));
             const filtered = (rows || []).filter((st: any) => {
-              if ((st as any)?.showOnBooking === false) return false;
               if (!String((st as any)?.name || "").trim()) return false;
               const leave = getStaffLeaveMetaForDate(st, dateISO);
               return !leave.isOnLeave;
@@ -3648,7 +3710,7 @@ function findCartOverlap(items: CartItem[]) {
       }
     } else {
       const availableStaffRaw = staffList.filter((st: any) =>
-        isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true })
+        isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: false })
       );
       const availableStaff = preferredEmployeeKey
         ? [
@@ -3814,7 +3876,7 @@ function findCartOverlap(items: CartItem[]) {
           const employeeIdFallback = String(staff?.id || "").trim();
           const fixedName = String((staff as any)?.name || "").trim();
           const fixedAvailable = staff
-            ? isStaffAvailableForDate(staff as any, dateISO, { requireShowOnBooking: true })
+            ? isStaffAvailableForDate(staff as any, dateISO, { requireShowOnBooking: false })
             : false;
 
           if (!fixedAvailable) {
@@ -3854,7 +3916,7 @@ function findCartOverlap(items: CartItem[]) {
           const merged = new Set<string>();
           const timeToStaff = new Map<string, Set<string>>();
           const availableStaff = staffList.filter((st) =>
-            isStaffAvailableForDate(st as any, dateISO, { requireShowOnBooking: true })
+            isStaffAvailableForDate(st as any, dateISO, { requireShowOnBooking: false })
           );
           for (const st of availableStaff) {
             const empKey = String((st as any)?.linkedUid || "").trim() || String((st as any)?.id || "").trim();
@@ -3982,7 +4044,7 @@ function findCartOverlap(items: CartItem[]) {
         }
 
         const availableStaff = staffList.filter((st) =>
-          isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: true })
+          isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: false })
         );
 
         if (!availableStaff.length) {
@@ -6041,12 +6103,15 @@ function findCartOverlap(items: CartItem[]) {
                           takenAll: busy.busyTimes
                         });
 
-                        const serviceStaff = staffByService[it.serviceId] || [];
+                        const serviceKeyForStaff =
+                          resolveCanonicalServiceId(
+                            String(it.serviceId || "").trim(),
+                            String((it as any)?.serviceName || "").trim()
+                          ) || String(it.serviceId || "").trim();
+                        const serviceStaff = staffByService[serviceKeyForStaff] || [];
                         const dateISO = String(it.date || "").trim();
                         const bookingVisibleStaff = serviceStaff.filter(
-                          (st) =>
-                            (st as any)?.showOnBooking !== false &&
-                            !isStaffEmploymentEndedForDate(st as any, dateISO)
+                          (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
                         );
                         const staffWithLeaveMeta = bookingVisibleStaff.map((st) => {
                           const leave = getStaffLeaveMetaForDate(st, dateISO);
@@ -6069,8 +6134,8 @@ function findCartOverlap(items: CartItem[]) {
                         const workingHoursBlockedStaff = staffWithLeaveMeta.filter(
                           (x) => !x.leave.isOnLeave && !x.hasWorkingHours
                         );
-                        const staffLoading = !!staffLoadingByService[it.serviceId];
-                        const staffError = staffErrorByService[it.serviceId] || "";
+                        const staffLoading = !!staffLoadingByService[serviceKeyForStaff];
+                        const staffError = staffErrorByService[serviceKeyForStaff] || "";
                         const selectedEmployeeAvailable = availableStaff.some(
                           (emp) => String(emp?.id || "").trim() === String(it.employeeId || "").trim()
                         );
@@ -6140,7 +6205,7 @@ function findCartOverlap(items: CartItem[]) {
 	                        // âœ… شكل الكرت وهو مقفول (تم التأكيد)
 	                        if (isLocked) {
 	                          return (
-	                            <>
+	                            <Fragment key={it.id}>
 	                              {showPackageRunHeader ? (
                                 <div
                                   className="mb-2 p-2"
@@ -6214,13 +6279,13 @@ function findCartOverlap(items: CartItem[]) {
 	                                  <span>تم إغلاق البطاقة لتخفيف الزحمة البصرية.</span>
 	                                </div>
 	                              </div>
-	                            </>
+	                            </Fragment>
 	                          );
 	                        }
 
                         // âœ… شكل الكرت وهو مفتوح (جاري الاختيار)
                         return (
-                          <>
+                          <Fragment key={it.id}>
                             {showPackageRunHeader ? (
                               <div
                                 className="mb-2 p-2"
@@ -6357,9 +6422,9 @@ function findCartOverlap(items: CartItem[]) {
                                         تفاصيل الباكيج
                                       </div>
                                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                        {packageServiceNames.map((name) => (
+                                        {packageServiceNames.map((name, idx) => (
                                           <span
-                                            key={name}
+                                            key={`${name}-${idx}`}
                                             style={{
                                               fontSize: '0.78rem',
                                               color: '#374151',
@@ -6537,7 +6602,7 @@ function findCartOverlap(items: CartItem[]) {
                               </div>
                             )}
                             </div>
-                          </>
+                          </Fragment>
                         );
                       })}
                     </div>
@@ -6773,8 +6838,8 @@ function findCartOverlap(items: CartItem[]) {
                                               {(r.contributors && r.contributors.length
                                                 ? r.contributors
                                                 : String(r.note || "").replace("المتاح لدى:", "").split("،").map((x) => x.trim()).filter(Boolean)
-                                              ).slice(0, 3).map((name) => (
-                                                <span key={name} className="bk-future-name-chip">{name}</span>
+                                              ).slice(0, 3).map((name, idx) => (
+                                                <span key={`${name}-${idx}`} className="bk-future-name-chip">{name}</span>
                                               ))}
                                             </span>
                                           </div>

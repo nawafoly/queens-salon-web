@@ -15,6 +15,7 @@ import {
   query,
   serverTimestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "../services/firebase";
 
@@ -157,7 +158,14 @@ const Testimonials: React.FC = () => {
 
     // ✅ الآن: ما فيه approved إطلاقاً
     // ✅ نخليها مثل ما كانت: owner يشوف الكل، العميل يشوف كل شيء غير مخفي
-    const qy = query(colRef, orderBy("createdAt", "desc"), limit(50));
+    const qy = isOwner
+      ? query(colRef, orderBy("createdAt", "desc"), limit(50))
+      : query(
+          colRef,
+          where("approved", "==", true),
+          where("hidden", "==", false),
+          limit(50)
+        );
 
     const unsub = onSnapshot(
       qy,
@@ -181,7 +189,12 @@ const Testimonials: React.FC = () => {
             };
           })
           // ✅ فلترة hidden للعملاء فقط
-          .filter((t) => (isOwner ? true : t.hidden !== true));
+          .filter((t) => (isOwner ? true : t.hidden !== true))
+          .sort((a, b) => {
+            const at = Number(a.createdAt?.seconds || 0);
+            const bt = Number(b.createdAt?.seconds || 0);
+            return bt - at;
+          });
 
         setItems(list);
         setLoading(false);
