@@ -631,9 +631,8 @@ service cloud.firestore {
         isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
       );
 
-      // أي مسجل دخول يكتب تعليق pending
+      // أي مستخدم مسجل دخول (عادي أو anonymous) يكتب تعليق
       allow create: if signedIn()
-        && !isAnonymous()
         && (request.resource.data.uid is string)
         && request.resource.data.uid == request.auth.uid
         && (

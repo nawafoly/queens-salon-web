@@ -677,27 +677,6 @@ textarea.form-control {
     padding: 16px;
   }
 
-  .booking-page .booking-cart-item-locked__head {
-    grid-template-columns: 62px minmax(0, 1fr) auto;
-    gap: 10px;
-  }
-
-  .booking-page .booking-cart-item-locked__service-media {
-    width: 62px;
-    height: 62px;
-    border-radius: 14px;
-  }
-
-  .booking-page .booking-cart-item-locked__service-icon {
-    width: 1.35rem;
-    height: 1.35rem;
-  }
-
-  .booking-page .booking-cart-item-locked__index {
-    right: 6px;
-    top: 6px;
-  }
-
   .booking-page .booking-cart-item-locked__title {
     font-size: 1.16rem;
   }
@@ -708,21 +687,6 @@ textarea.form-control {
 
   .booking-page .booking-cart-item-locked__note {
     flex-wrap: wrap;
-  }
-
-  .booking-page .bk-staff-card-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .booking-page .bk-staff-card-btn {
-    min-height: 74px;
-    padding: 6px 4px;
-    border-radius: 12px;
-  }
-
-  .booking-page .bk-staff-card-name {
-    font-size: 0.8rem;
   }
 
   .booking-page .booking-pre-save-summary__title {
@@ -959,66 +923,6 @@ textarea.form-control {
   border: 1px solid rgba(13, 13, 13, 0.14) !important;
 }
 
-.booking-page .bk-staff-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.booking-page .bk-staff-card-btn {
-  border: 1px solid rgba(13, 13, 13, 0.14);
-  background: #fff;
-  border-radius: 14px;
-  min-height: 88px;
-  padding: 8px 6px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  color: #0f172a;
-  transition: all 0.15s ease;
-}
-
-.booking-page .bk-staff-card-btn:hover:not(:disabled) {
-  border-color: rgba(55, 73, 87, 0.45);
-  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
-}
-
-.booking-page .bk-staff-card-btn.is-selected {
-  border-color: #374957;
-  background: #f8fafc;
-  box-shadow: inset 0 0 0 1px rgba(55, 73, 87, 0.2);
-}
-
-.booking-page .bk-staff-card-btn.is-disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.booking-page .bk-staff-card-icon {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-}
-
-.booking-page .bk-staff-card-name {
-  font-size: 0.88rem;
-  font-weight: 800;
-  line-height: 1.15;
-  text-align: center;
-}
-
-.booking-page .bk-staff-card-state {
-  font-size: 0.68rem;
-  line-height: 1.2;
-  color: #64748b;
-  text-align: center;
-}
-
 /* مهم لبعض المتصفحات: خيارات السلكت */
 .booking-page select option,
 .booking-page select optgroup {
@@ -1106,12 +1010,15 @@ textarea.form-control {
 }
 
 .booking-page .booking-cart-item-locked {
-  border: 1px solid #e5e7eb;
-  border-radius: 18px;
-  background: #ffffff;
-  padding: 14px;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
-  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  background:
+    radial-gradient(120% 130% at 0% 0%, rgba(255, 255, 255, 0.08), transparent 50%),
+    linear-gradient(180deg, #35485d 0%, #2d3e50 100%);
+  padding: 22px;
+  box-shadow:
+    0 16px 34px rgba(13, 13, 13, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition:
     box-shadow 0.22s ease,
     transform 0.22s ease,
@@ -1119,33 +1026,18 @@ textarea.form-control {
 }
 
 .booking-page .booking-cart-item-locked:hover {
-  transform: translateY(-2px);
-  border-color: #d1d5db;
-  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.11);
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow:
+    0 20px 40px rgba(13, 13, 13, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .booking-page .booking-cart-item-locked__head {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr) auto;
+  display: flex;
   align-items: flex-start;
-  gap: 12px;
-}
-
-.booking-page .booking-cart-item-locked__service-media {
-  width: 70px;
-  height: 70px;
-  border-radius: 14px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
-  display: grid;
-  place-items: center;
-}
-
-.booking-page .booking-cart-item-locked__service-icon {
-  width: 1.45rem;
-  height: 1.45rem;
-  color: #334155;
-  stroke-width: 1.85;
+  justify-content: space-between;
+  gap: 14px;
 }
 
 .booking-page .booking-cart-item-locked__meta {
@@ -1156,15 +1048,15 @@ textarea.form-control {
 .booking-page .booking-cart-item-locked__title-row {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 8px;
 }
 
 .booking-page .booking-cart-item-locked__title {
-  color: #0f172a !important;
-  -webkit-text-fill-color: #0f172a !important;
-  font-weight: 800;
-  font-size: 1.24rem;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-weight: 700;
+  font-size: 1.42rem;
   line-height: 1.25;
 }
 
@@ -1176,35 +1068,27 @@ textarea.form-control {
   height: 30px;
   border-radius: 999px;
   font-size: 0.9rem;
-  font-weight: 600;
-  color: #64748b !important;
-  -webkit-text-fill-color: #64748b !important;
-  text-shadow: none !important;
-  filter: none !important;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
+  font-weight: 700;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
   flex-shrink: 0;
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
 }
 
 .booking-page .booking-cart-item-locked__sub {
   margin-top: 8px;
-  color: #64748b !important;
-  -webkit-text-fill-color: #64748b !important;
+  color: #dbe8f4 !important;
+  -webkit-text-fill-color: #dbe8f4 !important;
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.1px;
 }
 
 .booking-page .booking-cart-item-locked__price {
-  color: #0f172a !important;
-  -webkit-text-fill-color: #0f172a !important;
-  font-size: 1.95rem;
+  color: #f8fbff !important;
+  -webkit-text-fill-color: #f8fbff !important;
+  font-size: 2.2rem;
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;
@@ -1212,64 +1096,63 @@ textarea.form-control {
 }
 
 .booking-page .booking-cart-item-locked__actions {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 0;
+  margin-top: 18px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(233, 242, 250, 0.14);
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .booking-page .booking-cart-item-locked__actions .btn {
-  min-width: 64px;
+  min-width: 78px;
   border-radius: 999px;
   font-weight: 700;
-  padding: 5px 12px;
+  padding: 7px 16px;
   transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .booking-page .booking-cart-item-locked__actions .btn-outline-secondary {
-  border-color: #cbd5e1;
-  color: #334155 !important;
-  -webkit-text-fill-color: #334155 !important;
-  background: #ffffff;
+  border-color: rgba(233, 242, 250, 0.38);
+  color: #e9f2fa !important;
+  -webkit-text-fill-color: #e9f2fa !important;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .booking-page .booking-cart-item-locked__actions .btn-outline-secondary:hover {
-  border-color: #94a3b8;
-  color: #0f172a !important;
-  -webkit-text-fill-color: #0f172a !important;
-  background: #f8fafc;
+  border-color: rgba(233, 242, 250, 0.62);
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .booking-page .booking-cart-item-locked__actions .btn-outline-danger {
-  border-color: rgba(239, 68, 68, 0.45);
-  color: #ef4444 !important;
-  -webkit-text-fill-color: #ef4444 !important;
-  background: #fff;
+  border-color: rgba(255, 173, 173, 0.65);
+  color: #ffd6d6 !important;
+  -webkit-text-fill-color: #ffd6d6 !important;
+  background: rgba(139, 0, 0, 0.12);
 }
 
 .booking-page .booking-cart-item-locked__actions .btn-outline-danger:hover {
-  border-color: rgba(239, 68, 68, 0.72);
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
-  background: #ef4444;
+  border-color: rgba(255, 173, 173, 0.85);
+  color: #fff0f0 !important;
+  -webkit-text-fill-color: #fff0f0 !important;
+  background: rgba(139, 0, 0, 0.22);
 }
 
 .booking-page .booking-cart-item-locked__note {
-  margin-top: 10px;
-  border: 1px solid #dbeafe;
-  background: #f8fafc;
-  color: #334155 !important;
-  -webkit-text-fill-color: #334155 !important;
-  border-radius: 12px;
-  padding: 8px 10px;
+  margin-top: 16px;
+  border: 1px solid rgba(233, 242, 250, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f6fc !important;
+  -webkit-text-fill-color: #f1f6fc !important;
+  border-radius: 15px;
+  padding: 11px 14px;
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 0.88rem;
+  font-size: 0.96rem;
   font-weight: 500;
 }
 
@@ -1280,11 +1163,11 @@ textarea.form-control {
   min-height: 22px;
   padding: 0 8px;
   border-radius: 999px;
-  background: #22c55e;
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
+  background: linear-gradient(180deg, #36c274 0%, #30b76c 100%);
+  color: #062212 !important;
+  -webkit-text-fill-color: #062212 !important;
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -1301,7 +1184,7 @@ textarea.form-control {
 
 .booking-page .booking-pre-save-summary {
   border: 1px solid rgba(16, 24, 40, 0.12);
-  background: linear-gradient(180deg, #f2f6f3 0%, #e9efea 100%);
+  background: linear-gradient(180deg, #f8fbf9 0%, #f3f7f4 100%);
   border-radius: 14px;
   padding: 14px;
   box-shadow: 0 8px 20px rgba(16, 24, 40, 0.06);
@@ -1386,7 +1269,7 @@ textarea.form-control {
   margin-top: 10px;
   border: 1px solid rgba(22, 33, 43, 0.12);
   border-radius: 12px;
-  background: rgba(243, 247, 244, 0.94);
+  background: rgba(255, 255, 255, 0.9);
   overflow: hidden;
 }
 
@@ -1431,7 +1314,7 @@ textarea.form-control {
   margin-top: 10px;
   border: 1px solid rgba(22, 33, 43, 0.14);
   border-radius: 12px;
-  background: rgba(238, 243, 239, 0.96);
+  background: rgba(255, 255, 255, 0.94);
   padding: 9px 11px;
   display: flex;
   align-items: center;
@@ -1711,5 +1594,3 @@ textarea.form-control {
 .booking-page .bk-service-adder select optgroup {
   color: #0d0d0d !important;
 }
-
-
