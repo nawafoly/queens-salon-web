@@ -79,14 +79,17 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 6px 6px 10px 6px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 /* تحسين شكل السكرول (اختياري) */
 .dashboard-sidebar .sidebar-nav::-webkit-scrollbar {
-  width: 8px;
+  width: 0;
+  height: 0;
 }
 .dashboard-sidebar .sidebar-nav::-webkit-scrollbar-thumb {
-  background: rgba(13, 13, 13, 0.18);
+  background: transparent;
   border-radius: 999px;
 }
 .dashboard-sidebar .sidebar-nav::-webkit-scrollbar-track {

@@ -1358,9 +1358,71 @@ function findCartOverlap(items: CartItem[]) {
           return { ok: false as const, a, b };
         }
       }
-    }
-    return { ok: true as const, a: null as any, b: null as any };
   }
+  return { ok: true as const, a: null as any, b: null as any };
+}
+
+function getLocalExactTakenStartTimesForItem(
+  items: CartItem[],
+  currentItemId: string,
+  employeeId: string,
+  date: string
+) {
+  const taken = new Set<string>();
+  const targetEmployeeId = String(employeeId || "").trim();
+  const targetDate = String(date || "").trim();
+  if (!targetEmployeeId || !targetDate) return taken;
+
+  for (const other of items || []) {
+    if (!other || String(other.id || "").trim() === String(currentItemId || "").trim()) continue;
+    if (isSequentialOfferItem(other)) continue;
+
+    const otherEmployeeId = String(other.employeeId || "").trim();
+    const otherDate = String(other.date || "").trim();
+    const otherTime = String(other.time || "").trim();
+
+    if (!otherEmployeeId || !otherDate || !otherTime) continue;
+    if (otherEmployeeId !== targetEmployeeId || otherDate !== targetDate) continue;
+
+    taken.add(otherTime);
+  }
+
+  return taken;
+}
+
+function findExactCartSlotConflict(
+  items: CartItem[],
+  currentItemId: string,
+  candidate: Partial<CartItem>
+) {
+  const employeeId = String(candidate.employeeId || "").trim();
+  const date = String(candidate.date || "").trim();
+  const time = String(candidate.time || "").trim();
+  if (!employeeId || !date || !time) return null;
+
+  return (
+    (items || []).find((other) => {
+      if (!other) return false;
+      if (String(other.id || "").trim() === String(currentItemId || "").trim()) return false;
+      if (isSequentialOfferItem(other)) return false;
+
+      return (
+        String(other.employeeId || "").trim() === employeeId &&
+        String(other.date || "").trim() === date &&
+        String(other.time || "").trim() === time
+      );
+    }) || null
+  );
+}
+
+function findAnyExactCartSlotConflict(items: CartItem[]) {
+  for (const item of items || []) {
+    if (!item || isSequentialOfferItem(item)) continue;
+    const conflict = findExactCartSlotConflict(items, String(item.id || "").trim(), item);
+    if (conflict) return { item, conflict };
+  }
+  return null;
+}
 
   // =========================
   // âœ… Use local hair guide image + role (owner/admin)
@@ -2861,6 +2923,29 @@ function findCartOverlap(items: CartItem[]) {
   }, [autoAddPackageId, packageOptions, formData.items, addServiceToCart]);
 
   const updateItem = (itemId: string, patch: Partial<CartItem>) => {
+    const currentItems = formData.items || [];
+    const currentItem = currentItems.find((x) => String(x.id || "").trim() === String(itemId || "").trim());
+    if (!currentItem) return;
+
+    const nextCandidate = { ...currentItem, ...patch };
+    const shouldCheckExactCartConflict =
+      !isSequentialOfferItem(nextCandidate as CartItem) &&
+      (patch.employeeId !== undefined || patch.date !== undefined || patch.time !== undefined);
+
+    if (shouldCheckExactCartConflict) {
+      const conflict = findExactCartSlotConflict(currentItems, itemId, nextCandidate);
+      if (conflict) {
+        openModal({
+          title: "تعارض داخل السلة",
+          message:
+            "نفس الموظفة محجوزة داخل السلة بنفس الوقت، غيري الوقت أو اختاري موظفة أخرى.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+    }
+
     setFormData((prev) => {
       const list = prev.items || [];
       const idx = list.findIndex((x) => x.id === itemId);
@@ -4788,6 +4873,17 @@ function findCartOverlap(items: CartItem[]) {
       return;
     }
 
+    const exactConflict = findAnyExactCartSlotConflict(items);
+    if (exactConflict) {
+      openModal({
+        title: "تعارض داخل السلة",
+        message: "نفس الموظفة محجوزة داخل السلة بنفس الوقت، غيري الوقت أو اختاري موظفة أخرى.",
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
+
     const overlap = findCartOverlap(items);
     if (!overlap.ok) {
       openModal({
@@ -6233,8 +6329,16 @@ function findCartOverlap(items: CartItem[]) {
                               fallbackCloseTime: closeTime,
                             })
                           : slotsForThisService;
+                        const exactCartTakenStarts = getLocalExactTakenStartTimesForItem(
+                          itemsList,
+                          it.id,
+                          String(it.employeeId || "").trim(),
+                          dateISO
+                        );
                         const availableSlotsForItem = slotsForSelectedStaff.filter(
-                          (s) => !busy.disabledStartTimes.has(s.value24)
+                          (s) =>
+                            !busy.disabledStartTimes.has(s.value24) &&
+                            !exactCartTakenStarts.has(String(s.value24 || "").trim())
                         );
                         const nearestAvailableStart =
                           suggested && availableSlotsForItem.some((s) => s.value24 === suggested)
@@ -6610,11 +6714,14 @@ function findCartOverlap(items: CartItem[]) {
                                           لا توجد أوقات متاحة لهذا اليوم. جرّبي يومًا آخر أو موظفة أخرى.
                                         </div>
                                       ) : (
-                                        availableSlotsForItem.map((slot) => {
+                                        slotsForSelectedStaff.map((slot) => {
                                           const value24 = slot.value24;
                                           const isGreen = greenStarts.has(value24);
                                           const isSelected = it.time === value24;
                                           const isSequentialSuggested = sequentialBooking && suggested === value24;
+                                          const isDisabledByBusy = busy.disabledStartTimes.has(String(value24 || "").trim());
+                                          const isDisabledByCart = exactCartTakenStarts.has(String(value24 || "").trim());
+                                          const isDisabled = isDisabledByBusy || isDisabledByCart;
 
                                           return (
                                             <button
@@ -6622,11 +6729,18 @@ function findCartOverlap(items: CartItem[]) {
                                               type="button"
                                               className={[
                                                 "bk-time-chip",
-                                                isGreen && !sequentialBooking ? "is-green" : "",
+                                                isGreen && !sequentialBooking && !isDisabled ? "is-green" : "",
                                                 isSequentialSuggested ? "is-sequential-suggested" : "",
-                                                isSelected ? "is-selected" : ""
+                                                isSelected ? "is-selected" : "",
+                                                isDisabled ? "is-disabled" : "",
                                               ].join(" ")}
+                                              disabled={isDisabled}
                                               onClick={() => updateItem(it.id, { time: value24 })}
+                                              title={
+                                                isDisabledByCart
+                                                  ? "هذا الوقت مستخدم داخل السلة لنفس الموظفة في نفس التاريخ"
+                                                  : undefined
+                                              }
                                             >
                                               {slot.label12}
                                             </button>
@@ -6688,7 +6802,7 @@ function findCartOverlap(items: CartItem[]) {
 	                {allPreviewLocked ? (
 	                  <div className="booking-pre-save-summary mb-3">
 	                    <div className="booking-pre-save-summary__head">
-	                      <div className="booking-pre-save-summary__title">ملخص الحجز قبل الحفظ</div>
+	                      <div className="booking-pre-save-summary__title">ملخص الحجز قبل الدفع</div>
 	                      <div className="booking-pre-save-summary__count">
 	                        مؤكد: <span dir="ltr">{lockedPreviewCount} / {totalPreviewCount}</span>
 	                      </div>

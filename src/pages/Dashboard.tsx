@@ -129,6 +129,7 @@ type AppSettings = {
 };
 
 const SETTINGS_KEY = "dashboard_settings_v1";
+const DASHBOARD_BOOTSTRAPPED_KEY = "dashboard_bootstrapped_once_v1";
 
 const defaultSettings: AppSettings = {
   salonName: "MALIKAT SALON",
@@ -711,6 +712,13 @@ function mapProfileRoleToDashboardRole(role: ProfileRole): UiRole | null {
 const Dashboard: React.FC = () => {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [dashError, setDashError] = useState<string>("");
+  const [hasBootstrappedDashboard, setHasBootstrappedDashboard] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(DASHBOARD_BOOTSTRAPPED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
 
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
 
@@ -747,6 +755,13 @@ const Dashboard: React.FC = () => {
 
   const location = useLocation();
   const navigate = useNavigate();
+
+  const markDashboardBootstrapped = () => {
+    setHasBootstrappedDashboard(true);
+    try {
+      sessionStorage.setItem(DASHBOARD_BOOTSTRAPPED_KEY, "1");
+    } catch {}
+  };
 
   const totalIncome = incomeTotalFS;
   const totalExpenses = expensesTotalFS;
@@ -1059,6 +1074,7 @@ const Dashboard: React.FC = () => {
             role: fallbackRole,
             email: user.email || "",
           });
+          markDashboardBootstrapped();
 
           await refreshDashboard(fallbackRole);
           return;
@@ -1087,6 +1103,7 @@ const Dashboard: React.FC = () => {
           role: dashRole,
           email: profile.email || user.email || "",
         });
+        markDashboardBootstrapped();
 
         await refreshDashboard(dashRole);
       } catch (err: any) {
@@ -1339,6 +1356,7 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const isTvQueuePage = location.pathname.startsWith("/dashboard/tv-queue");
+  const isBookingInternalPage = location.pathname.startsWith("/dashboard/booking-internal");
   useEffect(() => {
     if (!isTvQueuePage) return;
     setTopbarNowMs(Date.now());
@@ -1354,8 +1372,25 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  if (!userInfo) {
+  if (!userInfo && !hasBootstrappedDashboard) {
     return <LoadingBrand text="جاري تحميل لوحة التحكم..." />;
+  }
+
+  if (!userInfo) {
+    return (
+      <div className="dashboard-skin dashboard-page dashboard-skin-page is-sidebar-drawer">
+        <div className="container-fluid">
+          <div className="row">
+            <div className="col-md-3 col-lg-2 dashboard-sidebar" />
+            <div className="col-md-9 col-lg-10 dashboard-main">
+              <div className="dashboard-inner">
+                <div className="dashboard-loading">جاري تحميل بيانات القسم...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const topbarName = String(userInfo?.name ?? "")
@@ -1368,7 +1403,7 @@ const Dashboard: React.FC = () => {
 
 
   return (
-    <div className="dashboard-skin dashboard-page dashboard-skin-page is-sidebar-drawer">
+    <div className={`dashboard-skin dashboard-page dashboard-skin-page is-sidebar-drawer${isBookingInternalPage ? " is-booking-internal-route" : ""}`}>
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
       <style>
         {`
@@ -1538,7 +1573,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {!isStaff && canSeeSection("overview") && (
+                {!isStaff && (
                   <li>
                     <NavLink
                       to="/dashboard/overview"
@@ -1551,7 +1586,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
+                {(hasAdminPower || isReception) && (
                   <li>
                     <NavLink
                       to="/dashboard/bookings"
@@ -1564,7 +1599,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
+                {(hasAdminPower || isReception) && (
                   <li>
                     <NavLink
                       to="/dashboard/booking-internal"
@@ -1590,7 +1625,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
+                {(hasAdminPower || isReception) && (
                   <li>
                     <NavLink
                       to="/dashboard/tv-queue"
@@ -1603,8 +1638,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {(hasAdminPower || (isReception && allowStaffViewClients)) &&
-                  canSeeSection("clients") && (
+                {(hasAdminPower || (isReception && allowStaffViewClients)) && (
                     <li>
                       <NavLink
                         to="/dashboard/clients"
@@ -1617,7 +1651,7 @@ const Dashboard: React.FC = () => {
                     </li>
                   )}
 
-                {hasAdminPower && canSeeSection("employees") && (
+                {hasAdminPower && (
                   <li>
                     <NavLink
                       to="/dashboard/employees"
@@ -1630,7 +1664,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {hasAdminPower && canSeeSection("offers") && (
+                {hasAdminPower && (
                   <li>
                     <NavLink
                       to="/dashboard/offers"
@@ -1643,7 +1677,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {hasAdminPower && canSeeSection("reports") && (
+                {hasAdminPower && (
                   <li>
                     <NavLink
                       to="/dashboard/reports"
@@ -1656,7 +1690,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {hasAdminPower && canSeeSection("income") && (
+                {hasAdminPower && (
                   <li>
                     <NavLink
                       to="/dashboard/income"
@@ -1669,7 +1703,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {hasAdminPower && canSeeSection("expenses") && (
+                {hasAdminPower && (
                   <li>
                     <NavLink
                       to="/dashboard/expenses"
@@ -1687,7 +1721,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {hasAdminPower && canSeeSection("logs") && (
+                {hasAdminPower && (
                   <li>
                     <NavLink
                       to="/dashboard/logs"
@@ -1726,7 +1760,7 @@ const Dashboard: React.FC = () => {
                   </li>
                 )}
 
-                {hasAdminPower && canSeeSection("settings") && (
+                {hasAdminPower && (
                   <li>
                     <NavLink
                       to="/dashboard/settings"
@@ -1761,7 +1795,7 @@ const Dashboard: React.FC = () => {
           </div>
 
           {/* Main Content */}
-          <div className="col-md-9 col-lg-10 dashboard-main">
+          <div className={`col-md-9 col-lg-10 dashboard-main${isBookingInternalPage ? " has-single-scroll" : ""}`}>
             <div className={`dash-topbar dash-topbar--sticky ${isTvQueuePage ? "is-tv-queue-topbar" : ""}`}>
               <div className="dash-topbar-left">
                 <button
@@ -1836,7 +1870,7 @@ const Dashboard: React.FC = () => {
                   }
                 />
 
-                {!isStaff && canSeeSection("overview") && (
+                {!isStaff && (
                   <Route
                     path="overview"
                     element={
@@ -1869,11 +1903,11 @@ const Dashboard: React.FC = () => {
                   />
                 )}
 
-                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
+                {(hasAdminPower || isReception) && (
                   <Route path="bookings" element={<DashboardBookings currentRole={userInfo.role} />} />
                 )}
 
-                {(hasAdminPower || isReception) && canSeeSection("bookings") && (
+                {(hasAdminPower || isReception) && (
                   <Route path="tv-queue" element={<DashboardQueueTv />} />
                 )}
 
@@ -1881,8 +1915,7 @@ const Dashboard: React.FC = () => {
                   <Route path="day-audit" element={<DashboardDayAudit />} />
                 )}
 
-                {(hasAdminPower || (isReception && allowStaffViewClients)) &&
-                  canSeeSection("clients") && (
+                {(hasAdminPower || (isReception && allowStaffViewClients)) && (
                     <Route path="clients" element={<DashboardClients currentRole={userInfo.role} />} />
                   )}
 
@@ -1891,27 +1924,27 @@ const Dashboard: React.FC = () => {
                 )}
 
 
-                {hasAdminPower && canSeeSection("employees") && (
+                {hasAdminPower && (
                   <Route path="employees" element={<DashboardEmployees />} />
                 )}
 
-                {hasAdminPower && canSeeSection("offers") && (
+                {hasAdminPower && (
                   <Route path="offers" element={<DashboardOffers />} />
                 )}
 
-                {hasAdminPower && canSeeSection("reports") && (
+                {hasAdminPower && (
                   <Route path="reports" element={<DashboardReports />} />
                 )}
 
-                {hasAdminPower && canSeeSection("income") && (
+                {hasAdminPower && (
                   <Route path="income" element={<DashboardIncome />} />
                 )}
 
-                {hasAdminPower && canSeeSection("expenses") && (
+                {hasAdminPower && (
                   <Route path="expenses" element={<DashboardExpenses />} />
                 )}
 
-                {hasAdminPower && canSeeSection("settings") && (
+                {hasAdminPower && (
                   <Route path="settings/*" element={<DashboardSettings />} />
                 )}
 
@@ -1919,7 +1952,7 @@ const Dashboard: React.FC = () => {
                   <Route path="admin-profile" element={<DashboardAdminProfile />} />
                 )}
 
-                {hasAdminPower && canSeeSection("logs") && (
+                {hasAdminPower && (
                   <Route path="logs" element={<DashboardLogs />} />
                 )}
 

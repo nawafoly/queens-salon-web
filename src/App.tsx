@@ -28,7 +28,6 @@ import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import Track from "./pages/Track";
-import BookingInternal from "./pages/BookingInternal";
 import SuccessInternal from "./pages/SuccessInternal";
 
 import Pay from "./pages/Pay";
@@ -284,16 +283,6 @@ const App: React.FC = () => {
               <ClientGuard>
                 <Profile />
               </ClientGuard>
-            }
-          />
-
-          {/* âœ… Dashboard Booking Internal (Protected) */}
-          <Route
-            path="/dashboard/booking-internal"
-            element={
-              <DashboardGuard>
-                <BookingInternal />
-              </DashboardGuard>
             }
           />
 

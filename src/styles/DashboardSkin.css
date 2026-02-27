@@ -48,14 +48,22 @@
   --dash-bg-2: #F5F5F4;
   --dash-bg-3: #F5F5F4;
 
+  /* Unified dashboard surfaces */
+  --dash-surface: #ffffff;
+  --dash-surface-soft: #faf9f7;
+  --dash-surface-strong: #f2efec;
+  --dash-border: rgba(13, 13, 13, 0.12);
+
   /* Glass */
   --glass: rgba(245, 245, 244, 0.62);
   --glass-strong: rgba(245, 245, 244, 0.78);
   --glass-border: rgba(13, 13, 13, 0.10);
 
   /* Text */
-  --text: #0D0D0D;
-  --muted: rgba(81, 86, 89, 0.75);
+  --text: #171717;
+  --text-strong: #0D0D0D;
+  --muted: #4f4f4f;
+  --muted-soft: #686868;
 
   /* Accent */
   --accent: #40010D;
@@ -100,6 +108,26 @@
   color: var(--text);
   overflow-x: hidden;
   padding: 18px 0;
+}
+
+.dashboard-skin {
+  color: var(--text);
+}
+
+.dashboard-skin .card,
+.dashboard-skin .dashboard-card,
+.dashboard-skin .dash-card,
+.dashboard-skin .table-responsive,
+.dashboard-skin .modal-content {
+  background: var(--dash-surface);
+  color: var(--text);
+  border-color: var(--dash-border);
+}
+
+.dashboard-skin .text-muted,
+.dashboard-skin small,
+.dashboard-skin .small {
+  color: var(--muted-soft) !important;
 }
 
 .dashboard-skin * {
@@ -326,10 +354,12 @@
   transform: translateX(110%);
   transition: transform .18s ease;
   overflow-y: auto;
+  pointer-events: none;
 }
 
 .dashboard-skin.is-sidebar-drawer .dashboard-sidebar.is-open {
   transform: translateX(0);
+  pointer-events: auto;
 }
 
 .dashboard-skin.is-sidebar-drawer .dash-topbar-toggle {
@@ -510,9 +540,13 @@
     transition: transform .18s ease;
     border-radius: var(--radius-xl);
     overflow-y: auto;
+    pointer-events: none;
   }
 
-  .dashboard-skin .dashboard-sidebar.is-open { transform: translateX(0); }
+  .dashboard-skin .dashboard-sidebar.is-open {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
 
   .dashboard-skin .dash-mobile-close {
     display: inline-flex;
@@ -539,9 +573,21 @@
 ========================= */
 .dashboard-skin .form-control,
 .dashboard-skin .form-select {
-  background: rgba(245, 245, 244, 0.86);
-  border: 1px solid rgba(13, 13, 13, 0.12);
-  color: #0D0D0D;
+  background: var(--dash-surface-soft);
+  border: 1px solid var(--dash-border);
+  color: var(--text-strong);
+}
+
+.dashboard-skin input,
+.dashboard-skin textarea,
+.dashboard-skin select {
+  color: var(--text-strong);
+}
+
+.dashboard-skin input::placeholder,
+.dashboard-skin textarea::placeholder {
+  color: var(--muted-soft);
+  opacity: 1;
 }
 
 /* =========================================================
@@ -555,8 +601,8 @@
 /* ✅ Card base (used everywhere) */
 .dashboard-skin .dash-card {
   width: 100%;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
   border-radius: 18px;
   padding: 14px;
   margin: 12px 0;
@@ -567,18 +613,18 @@
   display: block;
   margin-bottom: 6px;
   font-weight: 900;
-  color: rgba(13, 13, 13, 0.92);
+  color: var(--text-strong);
 }
 
 /* ✅ Unified Input / Textarea base */
 .dashboard-skin .dash-input,
 .dashboard-skin .dash-textarea {
   width: 100%;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--dash-border);
   border-radius: 12px;
   padding: 10px 12px;
-  background: #fff;
-  color: #0D0D0D;
+  background: var(--dash-surface-soft);
+  color: var(--text-strong);
   font-family: "Tajawal", sans-serif;
   outline: none;
 }
@@ -669,9 +715,9 @@
 ========================= */
 .dashboard-skin .dash-btn,
 .dashboard-skin .exp-btn {
-  border: 1px solid rgba(13, 13, 13, 0.12);
-background: rgba(245, 245, 244, 0.83);
-  color: rgba(13, 13, 13, 0.92);
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface-strong);
+  color: var(--text-strong);
   border-radius: 12px;
 
   font-size: 13px;
@@ -996,13 +1042,13 @@ background: rgba(245, 245, 244, 0.83);
     overflow-y: auto !important;
     overflow-x: hidden !important;
 
-    scrollbar-width: none !important;
-    -ms-overflow-style: none !important;
+    scrollbar-width: thin !important;
+    -ms-overflow-style: auto !important;
   }
 
   .dashboard-skin .dashboard-sidebar::-webkit-scrollbar {
-    width: 0 !important;
-    height: 0 !important;
+    width: 8px !important;
+    height: 8px !important;
   }
 }
 

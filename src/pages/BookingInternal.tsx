@@ -976,6 +976,21 @@ function isCompletedStatus(raw: any) {
   return String(statusRaw || "").trim().toLowerCase() === "completed";
 }
 
+function isCancelledStatus(raw: any) {
+  const statusRaw =
+    typeof raw === "string" ? raw : String((raw as any)?.status || "");
+  const s = String(statusRaw || "").trim().toLowerCase();
+  return s === "cancelled" || s === "canceled" || s === "rejected";
+}
+
+function canRefundBooking(raw: any) {
+  if (isRefundedBooking(raw)) return false;
+  const statusRaw =
+    typeof raw === "string" ? raw : String((raw as any)?.status || "");
+  const s = String(statusRaw || "").trim().toLowerCase();
+  return s === "confirmed" || s === "completed";
+}
+
 type UiModalState = {
   open: boolean;
   title: string;
@@ -1014,6 +1029,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const navigate = useNavigate();
   const dateRef = useRef<HTMLInputElement>(null);
   const hijriPickerRef = useRef<HTMLDivElement>(null);
+  const serviceSectionCardRef = useRef<HTMLDivElement>(null);
+  const priceListCardRef = useRef<HTMLDivElement>(null);
+  const hairGuideCardRef = useRef<HTMLDivElement>(null);
 
   // =========================
   // Settings (live)
@@ -1211,6 +1229,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [expandedConfirmedCartItems, setExpandedConfirmedCartItems] = useState<
     Record<string, true>
   >({});
+  const [expandedPreviewRows, setExpandedPreviewRows] = useState<Record<string, true>>({});
+  const [serviceSectionHeightPx, setServiceSectionHeightPx] = useState(0);
 
   // =========================
   // ✅ NEW: Future availability (للأيام القادمة)
@@ -1228,6 +1248,52 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [futureMsg, setFutureMsg] = useState("");
   const futureSearchRef = useRef<HTMLDivElement | null>(null);
   const autoFutureSearchKeyRef = useRef("");
+
+  useEffect(() => {
+    const measureServiceSectionHeight = () => {
+      if (typeof window === "undefined" || window.innerWidth < 992) {
+        setServiceSectionHeightPx(0);
+        return;
+      }
+      const serviceHeight = Math.max(
+        0,
+        Math.round(serviceSectionCardRef.current?.getBoundingClientRect().height || 0)
+      );
+      const priceHeight = Math.max(
+        0,
+        Math.round(priceListCardRef.current?.getBoundingClientRect().height || 0)
+      );
+      const guideHeight = Math.max(
+        0,
+        Math.round(hairGuideCardRef.current?.getBoundingClientRect().height || 0)
+      );
+      const next = serviceHeight > 0 ? serviceHeight : Math.max(priceHeight, guideHeight);
+      setServiceSectionHeightPx((prev) => (prev === next ? prev : next));
+    };
+
+    measureServiceSectionHeight();
+    requestAnimationFrame(measureServiceSectionHeight);
+    setTimeout(measureServiceSectionHeight, 120);
+
+    const observedNodes = [
+      serviceSectionCardRef.current,
+      priceListCardRef.current,
+      hairGuideCardRef.current,
+    ].filter(Boolean) as HTMLDivElement[];
+    let observer: ResizeObserver | null = null;
+    if (observedNodes.length && typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => {
+        measureServiceSectionHeight();
+      });
+      observedNodes.forEach((node) => observer?.observe(node));
+    }
+
+    window.addEventListener("resize", measureServiceSectionHeight);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measureServiceSectionHeight);
+    };
+  }, []);
 
   const [staffByService, setStaffByService] = useState<
     Record<string, StaffPublicWithId[]>
@@ -2732,6 +2798,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   ) {
     const id = String(b?.id || "").trim();
     if (!id) return;
+    if (isCancelledStatus(b) || isRefundedBooking(b)) {
+      openModal({
+        title: "لا يمكن تأكيد هذا الحجز",
+        message: "الحجز ملغي/مسترجع ولا يمكن تنفيذ (تأكيد + طباعة) عليه.",
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
 
     const authNow = getAuth();
     const staffUid = authNow.currentUser?.uid || "";
@@ -2841,6 +2916,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }
 
   function openRefundModal(b: any) {
+    if (!canRefundBooking(b)) {
+      openModal({
+        title: "لا يمكن تنفيذ الاسترجاع",
+        message: "الاسترجاع متاح فقط للحجز المؤكد أو المكتمل.",
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
     setRefundTargetBooking(b || null);
     setRefundReason("");
     setRefundDetails("");
@@ -2851,6 +2935,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const b = refundTargetBooking;
     const id = String(b?.id || "").trim();
     if (!id) return;
+    if (!canRefundBooking(b)) {
+      openModal({
+        title: "لا يمكن تنفيذ الاسترجاع",
+        message: "الاسترجاع متاح فقط للحجز المؤكد أو المكتمل.",
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
 
     const reason = String(refundReason || "").trim();
     if (!reason) {
@@ -4016,7 +4109,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return "الأدوات: من العميلة (بدون رسوم)";
   };
 
-  function focusFutureSearchForCartItem(it: CartItem) {
+  function focusFutureSearchForCartItem(
+    it: CartItem,
+    options?: { scroll?: boolean }
+  ) {
     const serviceId = String(it.serviceId || "").trim();
     const employeeKey = resolveEmployeeKey(it);
     const employeeName = String(it.employeeName || "").trim();
@@ -4048,9 +4144,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setFutureSelectedEmployeeKey(employeeKey);
     setFutureStaffNameQuery(employeeName);
 
-    requestAnimationFrame(() => {
-      futureSearchRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    if (options?.scroll) {
+      requestAnimationFrame(() => {
+        futureSearchRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
+      });
+    }
 
     void runFutureAvailabilitySearch({
       serviceId,
@@ -4077,6 +4175,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         delete next[itemId];
       } else {
         next[itemId] = true;
+      }
+      return next;
+    });
+  }
+
+  function togglePreviewRow(rowId: string) {
+    setExpandedPreviewRows((prev) => {
+      const next = { ...prev };
+      if (next[rowId]) {
+        delete next[rowId];
+      } else {
+        next[rowId] = true;
       }
       return next;
     });
@@ -4827,7 +4937,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             if (String(it.time || "").trim()) {
               updateItem(itemId, { time: "", locked: false });
             }
-            focusFutureSearchForCartItem(it);
+            focusFutureSearchForCartItem(it, { scroll: false });
             return;
           }
           const takenFs = await getTakenFsForDay(it, empKey, employeeId, date);
@@ -5023,7 +5133,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           }
 
           if (!hasAnyAvailableForItem && String(it.employeeId || "").trim()) {
-            focusFutureSearchForCartItem(it);
+            focusFutureSearchForCartItem(it, { scroll: false });
           }
         } catch (e: any) {
           console.error(e);
@@ -6199,11 +6309,53 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const lockedPreviewCount = bookingPreviewItems.filter((x) => x.locked).length;
   const totalPreviewCount = bookingPreviewItems.length;
   const allPreviewLocked = totalPreviewCount > 0 && lockedPreviewCount === totalPreviewCount;
+  const shouldShowFutureSearchPanel = useMemo(() => {
+    const items = formData.items || [];
+    if (!items.length) return false;
+
+    return items.some((it) => {
+      const employeeId = String(it.employeeId || "").trim();
+      if (!employeeId) return false;
+
+      const sid = String(it.serviceId || "").trim();
+      const staffList = (staffByService[sid] || []) as StaffPublicWithId[];
+      if (!staffList.length) return false;
+
+      const dateISO = String(it.date || bookingDate || "").trim();
+      const visibleStaff = staffList.filter(
+        (st: any) =>
+          (st as any)?.showOnBooking !== false &&
+          !isStaffEmploymentEndedForDate(st as any, dateISO)
+      );
+      const selectedStaff = visibleStaff.find(
+        (st: any) => String((st as any)?.id || "").trim() === employeeId
+      );
+      if (!selectedStaff) return false;
+
+      const busy = busyByItem[it.id] || emptyBusyState();
+      if (busy.loading) return false;
+
+      const slotsForSelectedStaff = filterStaffSlotsByWorkingHours(selectedStaff as any, {
+        dateISO,
+        slots: baseSlotsForUi,
+        fallbackOpenTime: openTime,
+        fallbackCloseTime: closeTime,
+      });
+      const availableTimeSlots = slotsForSelectedStaff.filter(
+        (s) => !busy.disabledStartTimes?.has(s.value24)
+      );
+      return availableTimeSlots.length === 0;
+    });
+  }, [formData.items, staffByService, bookingDate, busyByItem, baseSlotsForUi, openTime, closeTime]);
+  const sideCardsMatchServiceStyle: React.CSSProperties | undefined =
+    serviceSectionHeightPx > 0
+      ? { height: `${serviceSectionHeightPx}px`, maxHeight: `${serviceSectionHeightPx}px` }
+      : undefined;
 
   return (
     <div className="bk-page-wrapper bk-internal">
       
-      <div className="booking-page py-5">
+      <div className="bk-internal-page py-5">
       <ConfirmModal
         open={uiModal.open}
         title={uiModal.title}
@@ -6227,44 +6379,40 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         ariaLabel={"اختر طريقة الدفع"}
         size="sm"
       >
-        <div className="p-3">
-          <h5 className="mb-2" style={{ fontWeight: 800 }}>
+        <div className="p-3 bk-pay-modal">
+          <h5 className="mb-2 bk-pay-modal-title">
             {"اختر طريقة الدفع"}
           </h5>
-          <div className="d-grid gap-2">
+          <div className="d-grid gap-2 bk-pay-methods">
             <button
               type="button"
-              className={`btn ${internalPaymentMethodDraft === "card" ? "btn-primary" : "btn-outline-primary"}`}
+              className={`btn bk-pay-method-btn ${internalPaymentMethodDraft === "card" ? "is-active" : ""}`}
               onClick={() => setInternalPaymentMethodDraft("card")}
               disabled={isLoading}
-              style={{ borderRadius: 12, borderWidth: 2, fontWeight: 800, minHeight: 48 }}
             >
               {"💳 شبكة"}
             </button>
             <button
               type="button"
-              className={`btn ${internalPaymentMethodDraft === "cash" ? "btn-primary" : "btn-outline-primary"}`}
+              className={`btn bk-pay-method-btn ${internalPaymentMethodDraft === "cash" ? "is-active" : ""}`}
               onClick={() => setInternalPaymentMethodDraft("cash")}
               disabled={isLoading}
-              style={{ borderRadius: 12, borderWidth: 2, fontWeight: 800, minHeight: 48 }}
             >
               {"💵 كاش"}
             </button>
             <button
               type="button"
-              className={`btn ${internalPaymentMethodDraft === "transfer" ? "btn-primary" : "btn-outline-primary"}`}
+              className={`btn bk-pay-method-btn ${internalPaymentMethodDraft === "transfer" ? "is-active" : ""}`}
               onClick={() => setInternalPaymentMethodDraft("transfer")}
               disabled={isLoading}
-              style={{ borderRadius: 12, borderWidth: 2, fontWeight: 800, minHeight: 48 }}
             >
               {"🏦 تحويل"}
             </button>
           </div>
-          <div className="d-grid gap-2 mt-3">
+          <div className="d-grid gap-2 mt-3 bk-pay-modal-actions">
             <button
               type="button"
-              className="btn btn-primary"
-              style={{ borderRadius: 12, fontWeight: 800, minHeight: 48 }}
+              className="btn btn-primary bk-pay-confirm-btn"
               onClick={() => {
                 if (!internalPaymentMethodDraft) return;
                 internalSubmitModeRef.current = "payment";
@@ -6282,8 +6430,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             </button>
             <button
               type="button"
-              className="btn btn-outline-secondary"
-              style={{ borderRadius: 12, minHeight: 44 }}
+              className="btn btn-outline-secondary bk-pay-cancel-btn"
               onClick={() => {
                 setInternalPaymentModalOpen(false);
                 setInternalPaymentMethodDraft("");
@@ -6495,49 +6642,44 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
                 </div>
                 <div className="mt-4 pt-3 bk-existing-booking-block">
-                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                    <div style={{ fontWeight: 800 }}>بحث حجز موجود (تأكيد + طباعة)</div>
+                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2 bk-existing-search-head">
+                    <div className="bk-existing-search-title">بحث حجز موجود (تأكيد + طباعة)</div>
+                    <span className="bk-existing-search-kicker">لوحة الاستقبال</span>
                   </div>
 
-                  <div className="row g-2 align-items-end">
-                    <div className="col-12 col-md-6">
+                  <div className="bk-existing-layout">
+                    <div className="bk-existing-search-panel">
                       <label className="form-label">بحث الحجوزات</label>
-                      <input
-                        className="form-control"
-                        value={bookingSearch}
-                        onChange={(e) => {
-                          setBookingSearch(String(e.target.value || ""));
-                          setFoundBookings([]);
-                          setBookingNameChoices([]);
-                          setSelectedBookingNameKey("");
-                          setSelectedExistingBooking(null);
-                        }}
-                        placeholder="ابحثي باسم أو رقم جوال أو MK"
-                      />
-                    </div>
-
-                    <div className="col-12 col-md-3 d-grid">
-                      <button
-                        type="button"
-                        className="btn btn-outline-light"
-                        onClick={handleSearchBooking}
-                        disabled={bookingSearching}
-                        style={{ borderRadius: 12 }}
-                      >
-                        <FontAwesomeIcon icon={faSearch} className="me-2" />
-                        {bookingSearching ? "جاري البحث..." : "بحث الحجوزات"}
-                      </button>
-                    </div>
-
-                    <div className="col-12 col-md-3">
-                      {bookingSearchMsg ? (
-                        <div
-                          className="alert alert-secondary mb-0 py-2"
-                          style={{ borderRadius: 12, fontSize: 13 }}
+                      <div className="bk-existing-search-row">
+                        <input
+                          className="form-control bk-existing-search-input"
+                          value={bookingSearch}
+                          onChange={(e) => {
+                            setBookingSearch(String(e.target.value || ""));
+                            setFoundBookings([]);
+                            setBookingNameChoices([]);
+                            setSelectedBookingNameKey("");
+                            setSelectedExistingBooking(null);
+                          }}
+                          placeholder="ابحثي باسم أو رقم جوال أو MK"
+                        />
+                        <button
+                          type="button"
+                          className="btn bk-existing-search-btn"
+                          onClick={handleSearchBooking}
+                          disabled={bookingSearching}
                         >
-                          {bookingSearchMsg}
-                        </div>
-                      ) : null}
+                          <FontAwesomeIcon icon={faSearch} className="me-2" />
+                          {bookingSearching ? "جاري البحث..." : "بحث"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bk-existing-hint-panel">
+                      <div className="bk-existing-hint-title">تلميح سريع</div>
+                      <div className="bk-existing-hint-body">
+                        {bookingSearchMsg || "اكتبي اسم العميلة أو رقم الجوال أو رقم MK لإظهار الحجوزات السابقة."}
+                      </div>
                     </div>
                   </div>
 
@@ -6545,17 +6687,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     <div className="mt-3">
                       {bookingNameChoices.length > 1 ? (
                         <div className="mb-3">
-                          <div className="small text-muted mb-2">
+                          <div className="small text-muted mb-2 bk-existing-name-choices-title">
                             نتائج أسماء متشابهة ({bookingNameChoices.length}) - اختاري الاسم:
                           </div>
-                          <div className="d-flex flex-wrap gap-2">
+                          <div className="d-flex flex-wrap gap-2 bk-existing-name-choices-wrap">
                             {bookingNameChoices.map((choice) => {
                               const active = selectedBookingNameKey === choice.key;
                               return (
                                 <button
                                   key={choice.key}
                                   type="button"
-                                  className={`btn btn-sm ${active ? "bk-action-confirm" : "btn-outline-light"}`}
+                                  className={`btn btn-sm bk-name-choice-chip ${active ? "is-active" : ""}`}
                                   onClick={() => {
                                     setSelectedBookingNameKey(choice.key);
                                     setSelectedExistingBooking(null);
@@ -6642,7 +6784,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                           >
                                             طباعة فقط
                                           </button>
-                                        ) : (
+                                        ) : !isCancelledStatus(b) && !isRefundedBooking(b) ? (
                                           <>
                                             <button
                                               type="button"
@@ -6666,8 +6808,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                               تأكيد مع تغيير طريقة الدفع
                                             </button>
                                           </>
-                                        )}
-                                        {!isRefundedBooking(b) && (
+                                        ) : null}
+                                        {canRefundBooking(b) && (
                                           <button
                                             type="button"
                                             className="btn btn-sm bk-action-refund"
@@ -6774,12 +6916,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               </div>
             </div>
             <div className="col-12">
-              <div className="row g-3 bk-sections-grid">
+              <div className="row g-3 align-items-stretch bk-sections-grid">
             {/* اختيار الخدمة */}
-            <div className="col-12 col-lg-6 order-1">
-              <div className="card p-3 bk-panel bk-service-section">
+                <div className="col-12 col-lg-6 order-1 h-100">
+              <div ref={serviceSectionCardRef} className="card p-3 bk-panel bk-service-section">
                 <div className="d-flex align-items-center justify-content-between mb-2">
-                  <div style={{ fontWeight: 800 }}>
+                  <div className="bk-soft-title">
                     <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
                     اختيار الخدمة
                   </div>
@@ -7045,7 +7187,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     <button
                       type="button"
                       className="btn btn-primary bk-add-cart-btn"
-                      style={{ borderRadius: 12 }}
                       disabled={!servicePicker || !selectedDayOpen}
                       onClick={() => addServiceToCart(servicePicker)}
                     >
@@ -7057,11 +7198,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             </div>
 
             {/* عرض قائمة الأسعار (قراءة فقط) */}
-            <div className="col-12 col-lg-6 order-2 bk-price-side-col">
-              <div className="row g-3 bk-price-guide-row">
-                <div className="col-12 col-lg-6">
-                  <div className="card p-3 bk-panel bk-price-list-section">
-                    <div className="mb-2" style={{ fontWeight: 800 }}>عرض قائمة الأسعار</div>
+            <div className="col-12 col-lg-6 order-2 h-100 bk-price-side-col">
+              <div className="row g-3 h-100 align-items-stretch bk-price-guide-row">
+                <div className="col-12 col-lg-6 h-100">
+                  <div ref={priceListCardRef} className="card p-3 bk-panel bk-price-list-section h-100" style={sideCardsMatchServiceStyle}>
+                    <div className="mb-2 bk-soft-title">عرض قائمة الأسعار</div>
 
                     <div className="mb-3">
                       <input
@@ -7072,64 +7213,65 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       />
                     </div>
 
-                    {priceLookupLoading ? (
-                      <div className="alert alert-secondary mb-0" style={{ borderRadius: 12 }}>
-                        جاري تحميل قائمة الأسعار...
-                      </div>
-                    ) : priceLookupResults.length ? (
-                      <div className="bk-price-list-grid" role="list">
-                        {priceLookupResults.map((row) => {
-                          const displayName = toArabicCatalogLabel(String(row.name || row.id));
-                          const icon = pickPriceLookupIcon(displayName);
-                          const seasonPrice = Number(row.seasonPrice || 0);
+                    <div className="bk-price-list-body">
+                      {priceLookupLoading ? (
+                        <div className="alert alert-secondary mb-0 bk-soft-alert">
+                          جاري تحميل قائمة الأسعار...
+                        </div>
+                      ) : priceLookupResults.length ? (
+                        <div className="bk-price-list-grid" role="list">
+                          {priceLookupResults.map((row) => {
+                            const displayName = toArabicCatalogLabel(String(row.name || row.id));
+                            const icon = pickPriceLookupIcon(displayName);
+                            const seasonPrice = Number(row.seasonPrice || 0);
 
-                          return (
-                            <div key={row.id} className="bk-price-list-item" role="listitem">
-                              <div
-                                className="bk-price-list-thumb bk-price-list-icon"
-                                title={icon.label}
-                                role="img"
-                                aria-label={icon.label}
-                              >
-                                <icon.Icon className="bk-price-list-icon-svg" aria-hidden="true" />
-                              </div>
+                            return (
+                              <div key={row.id} className="bk-price-list-item" role="listitem">
+                                <div
+                                  className="bk-price-list-thumb bk-price-list-icon"
+                                  title={icon.label}
+                                  role="img"
+                                  aria-label={icon.label}
+                                >
+                                  <icon.Icon className="bk-price-list-icon-svg" aria-hidden="true" />
+                                </div>
 
-                              <div>
-                                <div className="bk-price-list-name">{displayName}</div>
-                                <div className="bk-price-list-price">
-                                  {Number(row.price || 0).toFixed(0)} ريال
+                                <div>
+                                  <div className="bk-price-list-name">{displayName}</div>
+                                  <div className="bk-price-list-price">
+                                    {Number(row.price || 0).toFixed(0)} ريال
+                                  </div>
+                                </div>
+
+                                <div className="bk-price-list-season">
+                                  <div className="bk-price-list-season-label">سعر الموسم</div>
+                                  <div className={`bk-price-list-season-value ${seasonPrice > 0 ? "" : "is-empty"}`}>
+                                    {seasonPrice > 0 ? `${seasonPrice.toFixed(0)} ريال` : "غير محدد"}
+                                  </div>
                                 </div>
                               </div>
-
-                              <div className="bk-price-list-season">
-                                <div className="bk-price-list-season-label">سعر الموسم</div>
-                                <div className={`bk-price-list-season-value ${seasonPrice > 0 ? "" : "is-empty"}`}>
-                                  {seasonPrice > 0 ? `${seasonPrice.toFixed(0)} ريال` : "غير محدد"}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="alert alert-secondary mb-0" style={{ borderRadius: 12 }}>
-                        لا توجد نتائج مطابقة.
-                      </div>
-                    )}
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="alert alert-secondary mb-0 bk-soft-alert">
+                          لا توجد نتائج مطابقة.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                <div className="col-12 col-lg-6">
-                  <div className="card p-3 bk-panel bk-service-hair-guide">
+                <div className="col-12 col-lg-6 h-100">
+                  <div ref={hairGuideCardRef} className="card p-3 bk-panel bk-service-hair-guide h-100" style={sideCardsMatchServiceStyle}>
                     <div className="d-flex gap-2 flex-wrap align-items-center mb-2">
-                      <span className="badge text-bg-secondary" style={{ borderRadius: 999 }}>
+                      <span className="badge text-bg-secondary bk-guide-badge">
                         دليل أطوال الشعر
                       </span>
 
                       {isOwner ? (
                         <label
-                          className="btn btn-outline-info btn-sm mb-0"
-                          style={{ borderRadius: 12, cursor: "pointer" }}
+                          className="btn btn-outline-info btn-sm mb-0 bk-guide-upload-btn"
                         >
                           {uploadingGuide ? "جاري الرفع..." : "رفع صورة جديدة"}
                           <input
@@ -7144,24 +7286,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                           />
                         </label>
                       ) : (
-                        <span className="text-muted" style={{ fontSize: 12 }}>
+                        <span className="text-muted bk-guide-note">
                           رفع الصورة للإدارة فقط
                         </span>
                       )}
                     </div>
 
-                    <div
-                      className="p-2"
-                      style={{
-                        borderRadius: 14,
-                        background: "rgba(255,255,255,0.06)",
-                        overflow: "hidden",
-                      }}
-                    >
+                    <div className="p-2 bk-guide-image-wrap flex-grow-1 d-flex align-items-center justify-content-center">
                       <img
                         src={hairGuideUrl}
                         alt="hair guide"
-                        style={{ width: "100%", borderRadius: 12, display: "block" }}
+                        className="bk-guide-image"
                       />
                     </div>
                   </div>
@@ -7172,25 +7307,27 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
             {/* السلة */}
             <div className="col-12 col-lg-6 order-2">
-              <div className="card p-3 bk-panel">
-                <div className="bk-client-cart-block">
+              <div className="card p-3 bk-panel bk-cart-panel bk-client-cart-block">
                 {/* Cart */}
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                  <div style={{ fontWeight: 800 }}>
+                  <div className="bk-cart-title">
                     <FontAwesomeIcon icon={faUserTie} className="me-2" />
                     السلة (اختيار الموظفة والوقت)
                   </div>
 
                   <div className="d-flex gap-2 flex-wrap">
-                    <span className="badge text-bg-white" style={{ borderRadius: 999 }}>
+                    <span className="badge text-bg-white bk-cart-count-badge">
                       عدد الخدمات: {(formData.items || []).length}
                     </span>
                   </div>
                 </div>
 
                 {(formData.items || []).length === 0 ? (
-                  <div className="alert alert-secondary mb-0" style={{ borderRadius: 12 }}>
-                    ما فيه خدمات في السلة. اختاري خدمة
+                  <div className="mb-0 bk-cart-empty-soft" role="status" aria-live="polite">
+                    <div className="bk-cart-empty-soft__title">ما فيه خدمات في السلة</div>
+                    <div className="bk-cart-empty-soft__hint">
+                      اختاري خدمة من الأعلى ثم أضيفيها للسلة.
+                    </div>
                   </div>
                 ) : (
                   <div className="bk-cart-list">
@@ -7294,7 +7431,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                   className="btn btn-sm btn-outline-secondary bk-cart-collapse-toggle"
                                   onClick={() => toggleConfirmedCartItem(it.id)}
                                 >
-                                  {isCardExpanded ? "طي" : "عرض"}
+                                  {isCardExpanded ? "إغلاق" : "تعديل"}
                                 </button>
                               ) : null}
                               {canCollapseConfirmedCard ? (
@@ -7487,7 +7624,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                   <button
                                     type="button"
                                     className="btn btn-outline-dark btn-sm"
-                                    onClick={() => focusFutureSearchForCartItem(it)}
+                                    onClick={() => focusFutureSearchForCartItem(it, { scroll: true })}
                                   >
                                     بحث أوقات للأيام القادمة لهذه الخدمة
                                   </button>
@@ -7508,8 +7645,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                             <div className="d-flex gap-2 flex-wrap bk-cart-actions">
                               <button
                                 type="button"
-                                className="btn btn-success btn-sm"
-                                style={{ borderRadius: 10 }}
+                                className="btn btn-sm bk-cart-confirm-btn"
                                 disabled={
                                   !it.employeeId ||
                                   !it.time ||
@@ -7537,8 +7673,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               {sequentialBooking && busy.suggestedSlot && !it.time ? (
                                 <button
                                   type="button"
-                                  className="btn btn-outline-info btn-sm"
-                                  style={{ borderRadius: 10 }}
+                                  className="btn btn-outline-info btn-sm bk-cart-suggest-btn"
                                   disabled={!it.employeeId}
                                   onClick={() => {
                                     updateItem(it.id, { time: busy.suggestedSlot || "", locked: false });
@@ -7553,13 +7688,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 <button
                                   type="button"
                                   className="btn btn-outline-danger btn-sm bk-cart-delete-btn"
-                                  style={{ borderRadius: 10 }}
                                   onClick={() => removeServiceFromCart(it.id)}
                                   disabled={isLoading}
                                 >
                                   حذف
                                 </button>
                               ) : null}
+
                             </div>
                           </div>
                             </>
@@ -7577,23 +7712,196 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   </div>
                 )}
 
+                {shouldShowFutureSearchPanel ? (
+                  <div ref={futureSearchRef} className="bk-cart-future-wrap">
+                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                      <div className="bk-future-title-head">بحث أوقات للأيام القادمة</div>
+                      <span className="text-muted bk-future-subhint">يظهر أول 5 أيام متاحة</span>
+                    </div>
+
+                    <div className="row g-2 align-items-end">
+                      <div className="col-12">
+                        <select
+                          className="form-select"
+                          value={futureAnyStaff ? "any" : "one"}
+                          onChange={(e) => setFutureAnyStaff(e.target.value === "any")}
+                        >
+                          <option value="any">أي موظفة للخدمة</option>
+                          <option value="one">موظفة محددة</option>
+                        </select>
+                      </div>
+
+                      {!futureAnyStaff ? (
+                        <div className="col-12">
+                          <label className="form-label">اختاري الموظفة</label>
+                          {!servicePicker ? (
+                            <div className="alert alert-danger mb-0 py-2" style={{ borderRadius: 12 }}>
+                              اختاري الخدمة أولاً ثم اختاري الموظفة.
+                            </div>
+                          ) : staffLoadingByService[String(servicePicker || "").trim()] ? (
+                            <div className="small text-muted mt-1">
+                              <FontAwesomeIcon icon={faSpinner} spin className="me-2" />
+                              جاري تحميل الموظفات...
+                            </div>
+                          ) : staffErrorByService[String(servicePicker || "").trim()] ? (
+                            <div className="small text-warning mt-1">
+                              {staffErrorByService[String(servicePicker || "").trim()]}
+                            </div>
+                          ) : (
+                            <>
+                              <input
+                                className="form-control"
+                                value={futureStaffNameQuery}
+                                onChange={(e) => {
+                                  const v = String(e.target.value || "");
+                                  setFutureStaffNameQuery(v);
+                                  setFutureSelectedEmployeeKey("");
+                                }}
+                                placeholder="ابحثي باسم الموظفة..."
+                                disabled={!futureStaffOptions.length}
+                              />
+                              {futureStaffNameQuery && filteredFutureStaffOptions.length ? (
+                                <div className="mt-2 d-flex flex-wrap gap-2">
+                                  {filteredFutureStaffOptions.slice(0, 8).map((st) => (
+                                    <button
+                                      key={st.key}
+                                      type="button"
+                                      className="btn btn-outline-light btn-sm"
+                                      onClick={() => {
+                                        setFutureStaffNameQuery(st.name);
+                                        setFutureSelectedEmployeeKey(st.key);
+                                      }}
+                                    >
+                                      {st.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </>
+                          )}
+                        </div>
+                      ) : null}
+
+                      <div className="col-12 d-grid">
+                        <button
+                          type="button"
+                          className="btn btn-outline-info"
+                          style={{ borderRadius: 12 }}
+                          onClick={() => {
+                            void runFutureAvailabilitySearch();
+                          }}
+                          disabled={futureLoading}
+                        >
+                          {futureLoading ? "جاري البحث..." : "بحث"}
+                        </button>
+                      </div>
+
+                      {futureMsg ? (
+                        <div className="col-12">
+                          <div className="alert alert-secondary mb-0 py-2" style={{ borderRadius: 12 }}>
+                            {futureMsg}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {futureResult.length ? (
+                        <div className="col-12">
+                          <div className="bk-future-inline">
+                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                              <div style={{ fontWeight: 800 }}>نتائج البحث</div>
+                              <button
+                                type="button"
+                                className="btn btn-sm bk-time-pill"
+                                onClick={() => {
+                                  const nearestDate = String(futureResult[0]?.date || "").trim();
+                                  const nearestTime = String(futureResult[0]?.times?.[0] || "").trim();
+                                  if (!nearestDate || !nearestTime) return;
+                                  void handleFutureSlotPick(nearestDate, nearestTime);
+                                }}
+                              >
+                                اختيار أقرب موعد
+                              </button>
+                            </div>
+
+                            <div className="table-responsive">
+                              <table className="table align-middle mb-0 bk-future-table">
+                                <thead>
+                                  <tr>
+                                    <th>التاريخ</th>
+                                    <th>أوقات متاحة</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {futureResult.map((r) => (
+                                    <tr key={r.date}>
+                                      <td>{r.date}</td>
+                                      <td>
+                                        <div className="d-flex gap-2 flex-wrap">
+                                          {(r.times || []).map((t) => (
+                                            <button
+                                              key={t}
+                                              type="button"
+                                              className="btn btn-sm bk-time-pill"
+                                              style={{ borderRadius: 999 }}
+                                              onClick={() => {
+                                                void handleFutureSlotPick(r.date, t);
+                                              }}
+                                            >
+                                              {formatTime12(t, t)}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+              </div>
+            </div>
+
+            {/* ملخص الحجز قبل الدفع + الخصم + الإرسال */}
+            <div className="col-12 col-lg-6 order-5 order-lg-3">
+              <div className="card p-3 bk-panel bk-summary-panel">
+                <div className="bk-summary-panel-head mb-2">ملخص الحجز قبل الدفع</div>
                 {totalPreviewCount > 0 && !allPreviewLocked ? (
-                  <div className="bk-cart-preview-pending mt-2">
+                  <div className="bk-cart-preview-pending mb-2">
                     ملخص الحجز يظهر بعد تأكيد الموظفة والوقت لكل خدمة.
                   </div>
                 ) : null}
 
                 {allPreviewLocked ? (
-                  <div className="bk-cart-confirmed-preview mt-2">
+                  <div className="bk-cart-confirmed-preview">
                     <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                      <div className="bk-cart-confirmed-title mb-0">ملخص الحجز قبل الحفظ</div>
+                      <div className="bk-cart-confirmed-title mb-0">تفاصيل الملخص</div>
                       <div className="small text-muted">
                         مؤكد: <span dir="ltr">{lockedPreviewCount} / {totalPreviewCount}</span>
                       </div>
                     </div>
                     <div className="bk-cart-confirmed-meta">
-                      <div><strong>العميلة:</strong> {String(formData.name || "").trim() || "—"}</div>
-                      <div><strong>الجوال:</strong> {phone10Digits(String(formData.phone || "").trim()) || "—"}</div>
+                      <div>
+                        <strong>العميلة:</strong>{" "}
+                        {String(formData.name || "").trim() ? (
+                          String(formData.name || "").trim()
+                        ) : (
+                          <span className="bk-required-missing">الرجاء كتابة الاسم</span>
+                        )}
+                      </div>
+                      <div>
+                        <strong>الجوال:</strong>{" "}
+                        {phone10Digits(String(formData.phone || "").trim()) ? (
+                          phone10Digits(String(formData.phone || "").trim())
+                        ) : (
+                          <span className="bk-required-missing">الرجاء كتابة الجوال</span>
+                        )}
+                      </div>
                       <div><strong>وقت إنشاء الحجز:</strong> {previewCreatedAtLabel}</div>
                     </div>
                     {Number(applied.discountAmount || 0) > 0 ? (
@@ -7623,17 +7931,29 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                           <div className="bk-cart-summary-line-head">
                             <span className="bk-cart-summary-index">#{row.index}</span>
                             <span className="bk-cart-summary-service">{row.serviceName}</span>
-                          </div>
-                          <div className="bk-cart-summary-line-meta">
-                            <span><strong>الموظفة:</strong> {row.staffName}</span>
-                            <span><strong>التاريخ:</strong> {row.date}</span>
-                            <span><strong>الوقت:</strong> {row.timeLabel}</span>
-                            <span><strong>المدة:</strong> {row.durationMin} د</span>
-                            <span><strong>السعر:</strong> {row.priceLabel}</span>
-                            {row.toolsNote ? (
-                              <span><strong>ملاحظة:</strong> {row.toolsNote}</span>
+                            {!expandedPreviewRows[row.id] ? (
+                              <span className="bk-preview-toggle-hint">افتحي البطاقة لعرض التفاصيل</span>
                             ) : null}
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary bk-preview-toggle-btn"
+                              onClick={() => togglePreviewRow(row.id)}
+                            >
+                              {expandedPreviewRows[row.id] ? "▾ إغلاق" : "▸ فتح"}
+                            </button>
                           </div>
+                          {expandedPreviewRows[row.id] ? (
+                            <div className="bk-cart-summary-line-meta">
+                              <span><strong>الموظفة:</strong> {row.staffName}</span>
+                              <span><strong>التاريخ:</strong> {row.date}</span>
+                              <span><strong>الوقت:</strong> {row.timeLabel}</span>
+                              <span><strong>المدة:</strong> {row.durationMin} د</span>
+                              <span><strong>السعر:</strong> {row.priceLabel}</span>
+                              {row.toolsNote ? (
+                                <span><strong>ملاحظة:</strong> {row.toolsNote}</span>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -7646,22 +7966,41 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
                 {/* Manual Discount */}
                 <div className="mt-2">
-                  <div className="row g-2 align-items-end bk-discount-editor">
-                    <div className="col-12 col-md-6 bk-discount-editor-col">
+                  <div className="row g-2 align-items-start bk-discount-editor">
+                    <div className="col-12 bk-discount-editor-col">
                       <label className="form-label">نوع الخصم</label>
-                      <select
-                        className="form-select bk-discount-type-select"
-                        value={manualDiscountType}
-                        onChange={(e) => setManualDiscountType(String(e.target.value || "") as "" | "fixed" | "percent")}
-                        disabled={isLoading}
-                      >
-                        <option value="">بدون خصم</option>
-                        <option value="fixed">خصم مبلغ ثابت (ريال)</option>
-                        <option value="percent">خصم نسبة مئوية (%)</option>
-                      </select>
+                      <div className="bk-discount-type-cards" role="group" aria-label="نوع الخصم">
+                        <button
+                          type="button"
+                          className={`bk-discount-type-card ${manualDiscountType === "" ? "is-active" : ""}`}
+                          disabled={isLoading}
+                          onClick={() => setManualDiscountType("")}
+                          aria-pressed={manualDiscountType === ""}
+                        >
+                          بدون خصم
+                        </button>
+                        <button
+                          type="button"
+                          className={`bk-discount-type-card ${manualDiscountType === "fixed" ? "is-active" : ""}`}
+                          disabled={isLoading}
+                          onClick={() => setManualDiscountType("fixed")}
+                          aria-pressed={manualDiscountType === "fixed"}
+                        >
+                          خصم مبلغ ثابت (ريال)
+                        </button>
+                        <button
+                          type="button"
+                          className={`bk-discount-type-card ${manualDiscountType === "percent" ? "is-active" : ""}`}
+                          disabled={isLoading}
+                          onClick={() => setManualDiscountType("percent")}
+                          aria-pressed={manualDiscountType === "percent"}
+                        >
+                          خصم نسبة مئوية (%)
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="col-12 col-md-6 bk-discount-editor-col">
+                    <div className="col-12 bk-discount-editor-col bk-discount-value-col">
                       <label className="form-label">قيمة الخصم</label>
                       <input
                         type="number"
@@ -7671,7 +8010,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         className="form-control bk-discount-value-input"
                         value={manualDiscountValue}
                         onChange={(e) => setManualDiscountValue(String(e.target.value || ""))}
-                        placeholder={manualDiscountType === "percent" ? "مثال: 10" : "مثال: 50"}
+                        placeholder={manualDiscountType === "percent" ? "مثال: 10" : "مثال: 50 ريال"}
                         disabled={isLoading || !manualDiscountType}
                       />
                     </div>
@@ -7679,8 +8018,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     {discountMsg ? (
                       <div className="col-12 bk-discount-editor-msg-col">
                         <div
-                          className="alert alert-secondary mb-0 py-2 bk-discount-msg"
-                          style={{ borderRadius: 12, fontSize: 13 }}
+                          className="alert alert-secondary mb-0 py-2 bk-discount-msg bk-discount-msg-text"
                         >
                           {discountMsg}
                         </div>
@@ -7693,8 +8031,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
                   <button
                     type="submit"
-                    className="btn btn-primary bk-pay-btn"
-                    style={{ borderRadius: 14, minWidth: 200 }}
+                    className="btn btn-primary bk-pay-btn bk-submit-btn"
                     disabled={isLoading}
                     onClick={() => {
                       internalSubmitModeRef.current = "payment";
@@ -7711,8 +8048,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   </button>
                   <button
                     type="button"
-                    className="btn btn-outline-primary bk-future-booking-btn"
-                    style={{ borderRadius: 14, minWidth: 200 }}
+                    className="btn btn-outline-primary bk-future-booking-btn bk-submit-btn"
                     disabled={isLoading}
                     onClick={() => {
                       internalSubmitModeRef.current = "future";
@@ -7722,16 +8058,16 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     حجز للمستقبل
                   </button>
                 </div>
-                </div>
               </div>
             </div>
 
             {/* بحث أوقات للأيام القادمة */}
-            <div className="col-12 col-lg-6 order-3">
-              <div className="card p-3 bk-panel">
+            {false ? (
+            <div className="col-12 col-lg-6 order-4">
+              <div className="card p-3 bk-panel bk-future-panel">
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                  <div style={{ fontWeight: 800, color: "#0d0d0d" }}>بحث أوقات للأيام القادمة</div>
-                  <span className="text-muted" style={{ fontSize: 12 }}>يُظهر أول 5 أيام متاحة</span>
+                  <div className="bk-future-title-head">بحث أوقات للأيام القادمة</div>
+                  <span className="text-muted bk-future-subhint">يُظهر أول 5 أيام متاحة</span>
                 </div>
 
                 <div className="row g-2 align-items-end">
@@ -7878,6 +8214,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 </div>
               </div>
             </div>
+            ) : null}
           </div>
             </div>
           </div>
