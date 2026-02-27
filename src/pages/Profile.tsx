@@ -13,6 +13,7 @@ import {
   LuInstagram,
   LuImage,
   LuMapPin,
+  LuPencil,
   LuPhone,
   LuQrCode,
   LuReceipt,
@@ -241,7 +242,9 @@ const Profile: React.FC = () => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [profileDoc, setProfileDoc] = useState<UserProfile | null>(null);
 
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authChecked, setAuthChecked] = useState(
+    () => !!auth.currentUser || !!cachedProfile || !!currentUser
+  );
   const [showQrCamera, setShowQrCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -289,7 +292,30 @@ const Profile: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    let alive = true;
+
+    const applyProfileData = (raw: Partial<UserProfile> | null | undefined) => {
+      if (!raw || !alive) return;
+
+      const stableAvatar = resolveStableAvatarUrl((raw as any)?.avatarUrl);
+      const fallbackAvatar = resolveStableAvatarUrl(localStorage.getItem("userAvatar"));
+
+      setUserData((prev) => ({
+        ...prev,
+        name: String(raw.name || prev.name || ""),
+        phone: normalizeKsaPhone(String(raw.phone || prev.phone || "")),
+        email: String(raw.email || prev.email || ""),
+        city: String(raw.city || prev.city || ""),
+        birthdate: String(raw.birthdate || prev.birthdate || ""),
+        avatar: stableAvatar || fallbackAvatar || prev.avatar || "",
+      }));
+
+      if (stableAvatar) localStorage.setItem("userAvatar", stableAvatar);
+    };
+
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!alive) return;
+
       setFirebaseUser(user || null);
 
       if (!user) {
@@ -299,19 +325,7 @@ const Profile: React.FC = () => {
 
         try {
           const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
-          if (cached) {
-            const stableAvatar = resolveStableAvatarUrl(cached.avatarUrl);
-            setUserData((prev) => ({
-              ...prev,
-              name: cached.name || prev.name,
-              phone: normalizeKsaPhone(cached.phone || prev.phone),
-              email: cached.email || prev.email,
-              city: cached.city || prev.city,
-              birthdate: cached.birthdate || prev.birthdate,
-              avatar: stableAvatar || prev.avatar || "",
-            }));
-            if (stableAvatar) localStorage.setItem("userAvatar", stableAvatar);
-          }
+          applyProfileData(cached);
         } catch (e) {
           console.error("Error restoring cached profile:", e);
         }
@@ -320,51 +334,49 @@ const Profile: React.FC = () => {
         return;
       }
 
-      try {
-        setProfileMode("firebase");
-        setFirebaseUid(user.uid);
+      setProfileMode("firebase");
+      setFirebaseUid(user.uid);
+      setAuthChecked(true);
 
-        const p = await createOrLoadUserProfile(user);
+      if (cachedProfile && String((cachedProfile as any)?.uid || "").trim() === user.uid) {
+        setProfileDoc(cachedProfile as UserProfile);
+        applyProfileData(cachedProfile as UserProfile);
+      }
 
-        const pr = String((p as any)?.role || "").toLowerCase().trim();
-        if (pr && pr !== "client") {
+      void createOrLoadUserProfile(user)
+        .then((p) => {
+          if (!alive) return;
+
+          const pr = String((p as any)?.role || "").toLowerCase().trim();
+          if (pr && pr !== "client") {
+            clearClientCacheOnly();
+            navigate("/dashboard-pending", { replace: true });
+            return;
+          }
+
+          setProfileDoc(p);
+          applyProfileData(p);
+
+          localStorage.setItem("user_profile_v1", JSON.stringify(p));
+          if (p?.name) localStorage.setItem("userName", String(p.name));
+          if (p?.email) localStorage.setItem("userEmail", String(p.email));
+          if (p?.phone) localStorage.setItem("userPhone", normalizeKsaPhone(String(p.phone)));
+
+          window.dispatchEvent(new Event("authChanged"));
+        })
+        .catch((e) => {
+          if (!alive) return;
+          console.error("Profile load error:", e);
           clearClientCacheOnly();
           navigate("/dashboard-pending", { replace: true });
-          setAuthChecked(true);
-          return;
-        }
-
-        setProfileDoc(p);
-        const stableAvatar = resolveStableAvatarUrl((p as any)?.avatarUrl);
-        const fallbackAvatar = resolveStableAvatarUrl(localStorage.getItem("userAvatar"));
-        setUserData((prev) => ({
-          ...prev,
-          name: p.name || prev.name,
-          phone: normalizeKsaPhone(p.phone || prev.phone),
-          email: p.email || prev.email,
-          city: p.city || prev.city,
-          birthdate: p.birthdate || prev.birthdate,
-          avatar: stableAvatar || fallbackAvatar || "",
-        }));
-
-        localStorage.setItem("user_profile_v1", JSON.stringify(p));
-        if (p?.name) localStorage.setItem("userName", String(p.name));
-        if (p?.email) localStorage.setItem("userEmail", String(p.email));
-        if (p?.phone) localStorage.setItem("userPhone", normalizeKsaPhone(String(p.phone)));
-        if (stableAvatar) localStorage.setItem("userAvatar", stableAvatar);
-
-        window.dispatchEvent(new Event("authChanged"));
-      } catch (e) {
-        console.error("Profile load error:", e);
-        clearClientCacheOnly();
-        navigate("/dashboard-pending", { replace: true });
-      } finally {
-        setAuthChecked(true);
-      }
+        });
     });
 
-    return () => unsub();
-  }, [navigate]);
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, [cachedProfile, currentUser, navigate]);
 
   useEffect(() => {
     if (!authChecked) return;
@@ -511,12 +523,19 @@ const Profile: React.FC = () => {
     if (!file) return;
 
     try {
+      const effectiveUid =
+        String(firebaseUid || firebaseUser?.uid || profileDoc?.uid || cachedProfile?.uid || "").trim();
+
+      if (!effectiveUid) {
+        throw new Error("تعذر تحديد الحساب الحالي. افتحي الصفحة مرة ثانية ثم حاولي مجددًا.");
+      }
+
       // 1) تجهيز اسم الملف
       const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
       const safeExt = ext.replace(/[^a-z0-9]/g, "") || "jpg";
 
       const ownerId =
-        (firebaseUid || userData.phone || "unknown")
+        (effectiveUid.replace(/\D/g, "") || userData.phone || "unknown")
           .replace(/\D/g, "") || "unknown";
 
       const fileName = `avatar-${Date.now()}.${safeExt}`;
@@ -572,13 +591,26 @@ const Profile: React.FC = () => {
       }));
 
       localStorage.setItem("userAvatar", publicUrl);
+      setProfileDoc((prev) => (prev ? { ...prev, avatarUrl: publicUrl } : prev));
 
-      // 6) حفظ في Firestore
-      if (profileMode === "firebase" && firebaseUid) {
-        await updateUserProfile(firebaseUid, {
-          avatarUrl: publicUrl,
-        } as any);
+      try {
+        const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null") || {};
+        localStorage.setItem(
+          "user_profile_v1",
+          JSON.stringify({
+            ...cached,
+            uid: effectiveUid,
+            avatarUrl: publicUrl,
+          })
+        );
+      } catch {
+        // ignore
       }
+
+      // 6) حفظ في Firestore بشكل مؤكد
+      await updateUserProfile(effectiveUid, {
+        avatarUrl: publicUrl,
+      } as any);
 
       alert("تم رفع الصورة وحفظها ✅");
     } catch (err: any) {
@@ -622,7 +654,7 @@ const Profile: React.FC = () => {
   const openQrCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
+        video: { facingMode: "environment" },
         audio: false,
       });
       cameraStreamRef.current = stream;
@@ -785,7 +817,7 @@ const Profile: React.FC = () => {
   // =======================
   // لودر قبل فحص الدخول
   // =======================
-  if (!authChecked) {
+  if (!authChecked && !cachedProfile && !currentUser && !auth.currentUser) {
     return (
       <div className="p-root">
         <div className="p-wrapper">
@@ -1058,6 +1090,26 @@ const Profile: React.FC = () => {
               <button className="p-close-modal" onClick={() => setShowEditModal(false)}>✕</button>
             </div>
             <div className="p-modal-body-modern">
+              <button
+                className="p-avatar-settings-action"
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <span className="p-avatar-settings-preview">
+                  {userData.avatar ? (
+                    <img src={userData.avatar} alt="صورة الملف الشخصي" />
+                  ) : (
+                    <LuImage />
+                  )}
+                </span>
+                <span className="p-avatar-settings-copy">
+                  <strong>تعديل الصورة</strong>
+                  <small>{userData.avatar ? "اختاري صورة جديدة" : "أضيفي صورة للملف الشخصي"}</small>
+                </span>
+                <span className="p-avatar-settings-icon">
+                  <LuPencil />
+                </span>
+              </button>
               <div className="p-input-group-modern">
                 <label className="p-label-with-icon"><LuUser /> الاسم</label>
                 <input value={editForm.name} onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))} />
