@@ -1318,8 +1318,14 @@ function findCartOverlap(items: CartItem[]) {
         const timeB = String(b.time || "").trim();
 
         if (!empA || !empB || !dateA || !dateB || !timeA || !timeB) continue;
-        if (empA !== empB) continue;
-        if (dateA !== dateB) continue;
+        const idA = String(a.employeeId || "").trim();
+        const idB = String(b.employeeId || "").trim();
+        
+        const sameByKey = empA && empB && empA === empB;
+        const sameById = idA && idB && idA === idB;
+        const crossKeyMatch = (idA && empB === idA) || (idB && empA === idB);
+        
+        if (!(sameByKey || sameById || crossKeyMatch)) continue;        if (dateA !== dateB) continue;
 
         const aLocked = new Set(
           getTimesToLock(
