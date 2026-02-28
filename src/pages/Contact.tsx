@@ -111,11 +111,11 @@ function defaultBusinessHoursMap(): BusinessHoursMap {
 function readBusinessHours(raw: Record<string, unknown> | null | undefined): BusinessHoursMap {
   const fallback = defaultBusinessHoursMap();
   return WEEKDAY_KEYS.reduce((acc, day) => {
-    const x = raw?.[day] || {};
+    const x = (raw?.[day] || {}) as Record<string, unknown>;
     acc[day] = {
-      enabled: typeof x?.enabled === "boolean" ? x.enabled : fallback[day].enabled,
-      start: safeTimeHHMM(x?.start, fallback[day].start),
-      end: safeTimeHHMM(x?.end, fallback[day].end),
+      enabled: typeof x.enabled === "boolean" ? x.enabled : fallback[day].enabled,
+      start: safeTimeHHMM(x.start, fallback[day].start),
+      end: safeTimeHHMM(x.end, fallback[day].end),
     };
     return acc;
   }, {} as BusinessHoursMap);
