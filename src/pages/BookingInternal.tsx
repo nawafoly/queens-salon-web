@@ -472,6 +472,14 @@ function parseBlockedReason(reason: string) {
     };
   }
 
+  if (raw.includes("خارج ساعات عمل الموظفة")) {
+    return {
+      key: "staff-hours",
+      label: "خارج ساعات عمل الموظفة.",
+      detail: "",
+    };
+  }
+
   if (raw.includes("خدمة أخرى في السلة")) {
     return {
       key: "cart-conflict",
@@ -4964,8 +4972,23 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           let suggestedSlot = "";
           let hasAnyAvailableForItem = false;
           const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+          const sid = String(it.serviceId || "").trim();
+          const staffListForService = (staffByService[sid] || []) as StaffPublicWithId[];
+          const selectedStaff = staffListForService.find(
+            (st) => String((st as any)?.id || "").trim() === employeeId
+          );
+          const staffScopedSlots = selectedStaff
+            ? filterStaffSlotsByWorkingHours(selectedStaff as any, {
+                dateISO: date,
+                slots: baseSlots,
+                fallbackOpenTime: openTime,
+                fallbackCloseTime: closeTime,
+              })
+            : baseSlots;
+          const staffScopedSet = new Set(staffScopedSlots.map((s) => s.value24));
+
           const slotsForThisService = filterSlotsByServiceEnd(
-            baseSlots,
+            staffScopedSlots,
             closeTime,
             durationMin,
             bufferMin,
@@ -4975,13 +4998,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             slotsForThisService.map((s) => s.value24)
           );
           const availableStarts = resolveBookableStartTimes({
-            allSlots: baseSlots,
+            allSlots: staffScopedSlots,
             durationMin,
             takenAll,
           });
           const availableSet = new Set<string>(availableStarts);
           baseSlots.forEach((s) => {
             const start = s.value24;
+            if (!staffScopedSet.has(start)) {
+              disabled.add(start);
+              disabledReasonByStart[start] = "خارج ساعات عمل الموظفة.";
+              return;
+            }
             if (!allowedByEndSet.has(start)) {
               disabled.add(start);
               disabledReasonByStart[start] =
@@ -4993,7 +5021,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             disabled.add(start);
 
             const needed = getTimesToLock(
-              baseSlots,
+              staffScopedSlots,
               slotStepMin,
               start,
               durationMin,
@@ -7403,6 +7431,37 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                           : "الأدوات: من العميلة (بدون رسوم)"
                         : "";
                       const canCollapseConfirmedCard = !!it.locked;
+                      const selectedEmployeeId = String(it.employeeId || "").trim();
+                      const handleEmployeePick = (empIdRaw: string) => {
+                        const empId = String(empIdRaw || "").trim();
+                        const st = staffList.find((x) => String(x.id) === empId);
+                        const empUid = String((st as any)?.linkedUid || "").trim();
+                        const empName = String((st as any)?.name || "").trim();
+
+                        updateItem(it.id, {
+                          employeeId: empId,
+                          employeeUid: empUid,
+                          employeeName: empName,
+                          time: "",
+                          locked: false,
+                        });
+
+                        setBusyByItem((p) => ({
+                          ...p,
+                          [it.id]: {
+                            ...emptyBusyState(),
+                            loading: !!empId,
+                            hint: empId ? "جاري التحقق من الأوقات المتاحة..." : "",
+                            disabledStartTimes: new Set(
+                              (
+                                timeSlots.length > 0
+                                  ? timeSlots
+                                  : generateSalonTimeSlots(openTime, closeTime, slotStepMin)
+                              ).map((x) => x.value24)
+                            ),
+                          },
+                        }));
+                      };
                       const isCardExpanded =
                         !canCollapseConfirmedCard || !!expandedConfirmedCartItems[it.id];
 
@@ -7485,56 +7544,54 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               ) : staffErrorByService[sid] ? (
                                 <div className="small text-warning">{staffErrorByService[sid]}</div>
                               ) : (
-                                <select
-                                  className="form-select bk-cart-select"
-                                  value={it.employeeId}
-                                  disabled={!canEditThis}
-                                  onChange={(e) => {
-                                    const empId = String(e.target.value || "").trim();
-                                    const st = staffList.find((x) => String(x.id) === empId);
-                                    const empUid = String((st as any)?.linkedUid || "").trim();
-                                    const empName = String((st as any)?.name || "").trim();
+                                <div className="bk-staff-card-grid" role="list">
+                                  {staffWithAvailability.length ? (
+                                    staffWithAvailability.map(({ staff: st, dayAvailable, hasWorkingHours }) => {
+                                      const staffId = String((st as any)?.id || "").trim();
+                                      const isSelected = selectedEmployeeId === staffId;
+                                      const blockedBySchedule = !dayAvailable || !hasWorkingHours;
+                                      const disabled = !canEditThis || blockedBySchedule;
+                                      const staffName = String((st as any)?.name || st.id || "").trim() || "بدون اسم";
+                                      const leaveUntilISO = normalizeIsoDate((st as any)?.leaveUntil);
+                                      const isLeaveActive =
+                                        !!(st as any)?.onLeave && (!leaveUntilISO || dateISO <= leaveUntilISO);
+                                      const staffState = blockedBySchedule
+                                        ? isLeaveActive
+                                          ? leaveUntilISO
+                                            ? `في إجازة حتى ${formatDateByCalendar(leaveUntilISO, "gregory")}`
+                                            : "في إجازة"
+                                          : !dayAvailable
+                                            ? "غير متاحة اليوم"
+                                            : "خارج ساعات العمل"
+                                        : "";
 
-                                    updateItem(it.id, {
-                                      employeeId: empId,
-                                      employeeUid: empUid,
-                                      employeeName: empName,
-                                      time: "",
-                                      locked: false,
-                                    });
-                                    setBusyByItem((p) => ({
-                                      ...p,
-                                      [it.id]: {
-                                        ...emptyBusyState(),
-                                        loading: !!empId,
-                                        hint: empId ? "جاري التحقق من الأوقات المتاحة..." : "",
-                                        disabledStartTimes: new Set(
-                                          (
-                                            timeSlots.length > 0
-                                              ? timeSlots
-                                              : generateSalonTimeSlots(openTime, closeTime, slotStepMin)
-                                          ).map((x) => x.value24)
-                                        ),
-                                      },
-                                    }));
-                                  }}
-                                >
-                                  <option value="">اختاري موظفة...</option>
-                                  {staffWithAvailability.map(({ staff: st, dayAvailable, hasWorkingHours }) => (
-                                    <option
-                                      key={String(st.id)}
-                                      value={String(st.id)}
-                                      disabled={!dayAvailable || !hasWorkingHours}
-                                    >
-                                      {!dayAvailable
-                                        ? `${String((st as any)?.name || st.id)} (غير متاحة)`
-                                        : !hasWorkingHours
-                                          ? `${String((st as any)?.name || st.id)} (خارج ساعات العمل)`
-                                          : String((st as any)?.name || st.id)}
-                                    </option>
-                                  ))}
-                                </select>
+                                      return (
+                                        <button
+                                          key={staffId}
+                                          type="button"
+                                          className={`bk-staff-card-btn${isSelected ? " is-active" : ""}${blockedBySchedule ? " is-unavailable" : ""}`}
+                                          onClick={() => handleEmployeePick(staffId)}
+                                          disabled={disabled}
+                                          aria-pressed={isSelected}
+                                        >
+                                          <span className="bk-staff-card-icon" aria-hidden="true">
+                                            <FontAwesomeIcon icon={faUser} />
+                                          </span>
+                                          <span className="bk-staff-card-name">{staffName}</span>
+                                          <span className="bk-staff-card-state">{staffState || "\u00A0"}</span>
+                                        </button>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="small text-muted bk-time-grid-empty">
+                                      لا توجد موظفات متاحة لهذه الخدمة حالياً.
+                                    </div>
+                                  )}
+                                </div>
                               )}
+                              <div className="bk-staff-card-note">
+                                الموظفات المعلمات بـ "في إجازة" لا يمكن اختيارهن.
+                              </div>
                             </div>
 
                             <div className="bk-cart-field bk-cart-field-time">

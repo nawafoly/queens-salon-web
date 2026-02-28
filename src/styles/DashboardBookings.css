@@ -1139,7 +1139,20 @@
   font-family: "Tajawal", sans-serif;
 }
 
+.bk-edit-modal {
+  direction: rtl;
+  font-family: "Tajawal", sans-serif;
+}
+
 .bk-refund-modal .bk-cancel-head {
+  padding: 16px 18px;
+  border-bottom: 1px solid #eee;
+  font-size: 18px;
+  font-weight: 900;
+  color: #111;
+}
+
+.bk-edit-modal .bk-cancel-head {
   padding: 16px 18px;
   border-bottom: 1px solid #eee;
   font-size: 18px;
@@ -1151,7 +1164,22 @@
   padding: 16px 18px;
 }
 
+.bk-edit-modal .bk-cancel-body {
+  padding: 16px 18px;
+}
+
 .bk-refund-modal .bk-cancel-meta {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: #4b5563;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.bk-edit-modal .bk-cancel-meta {
   display: grid;
   gap: 6px;
   font-size: 13px;
@@ -1201,7 +1229,25 @@
   box-shadow: none;
 }
 
+.bk-edit-modal .bk-input,
+.bk-edit-modal .bk-select {
+  width: 100%;
+  color: #111827;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  font-size: 14px;
+  box-shadow: none;
+}
+
 .bk-refund-modal textarea.bk-input {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.bk-edit-modal textarea.bk-input {
   min-height: 88px;
   resize: vertical;
 }
@@ -1210,8 +1256,19 @@
   color: #9ca3af;
 }
 
+.bk-edit-modal .bk-input::placeholder {
+  color: #9ca3af;
+}
+
 .bk-refund-modal .bk-input:focus,
 .bk-refund-modal .bk-select:focus {
+  outline: none;
+  border-color: #40010d;
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.08);
+}
+
+.bk-edit-modal .bk-input:focus,
+.bk-edit-modal .bk-select:focus {
   outline: none;
   border-color: #40010d;
   box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.08);
@@ -1223,4 +1280,30 @@
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.bk-edit-modal .bk-cancel-foot {
+  padding: 14px 18px 18px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.bk-edit-modal .bk-edit-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.bk-edit-modal .bk-edit-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+  .bk-edit-modal .bk-edit-grid {
+    grid-template-columns: 1fr;
+  }
 }

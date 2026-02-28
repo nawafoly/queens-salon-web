@@ -1756,9 +1756,12 @@ if (status === "confirmed" || status === "completed") {
 }
 
 export async function updateBookingDetails(bookingId: string, patch: Partial<BookingDoc>) {
+  const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
+  const anyPatch = patch as any;
+
   // ✅ تحديث booking
   await updateDoc(
-    doc(db, ...BOOKINGS_COL, bookingId),
+    bookingRef,
     stripUndefined({
       ...patch,
       updatedAt: serverTimestamp(),
@@ -1775,7 +1778,7 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
 
   // ✅ best-effort track update (إذا track ناقص أو rules تمنع، لا نكسر حفظ الحجز)
   try {
-    await updateDoc(
+    await setDoc(
       doc(db, ...TRACKS_COL, bookingId),
       stripUndefined({
         publicId: patch.publicId,
@@ -1794,15 +1797,136 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
         date: patch.date,
         time: patch.time,
         durationMin: patch.durationMin,
+        paymentMethod: patch.paymentMethod,
+        total: patch.total,
+        finalPrice: patch.finalPrice,
+        clientName: patch.clientName,
+        clientPhone: patch.clientPhone,
+        note: patch.note,
+
+        // legacy mirrors (بعض الشاشات القديمة تقرأ هذه المفاتيح)
+        customerName: anyPatch.customerName,
+        phone: anyPatch.phone,
+        customerPhone: anyPatch.customerPhone,
+        name: anyPatch.name,
 
         status: patch.status,
         slotId: patch.slotId,
 
         updatedAt: serverTimestamp(),
-      }) as any
+      }) as any,
+      { merge: true }
     );
   } catch {
     // ignore
+  }
+
+  // ✅ best-effort income sync (يعكس التعديل في الإيرادات/التقارير)
+  const hasIncomePatch =
+    patch.finalPrice !== undefined ||
+    patch.total !== undefined ||
+    patch.date !== undefined ||
+    patch.paymentMethod !== undefined ||
+    patch.status !== undefined ||
+    patch.clientName !== undefined ||
+    patch.clientPhone !== undefined ||
+    patch.serviceName !== undefined ||
+    patch.serviceSnapshot !== undefined ||
+    patch.employeeName !== undefined ||
+    patch.note !== undefined;
+
+  if (hasIncomePatch) {
+    try {
+      const incomeUpdates: Record<string, any> = {
+        bookingId,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (patch.finalPrice !== undefined || patch.total !== undefined) {
+        const amount = Number(patch.finalPrice ?? patch.total);
+        if (Number.isFinite(amount) && amount >= 0) incomeUpdates.amount = amount;
+      }
+
+      const nextDate = String(patch.date || "").trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) incomeUpdates.date = nextDate;
+
+      if (patch.paymentMethod !== undefined) {
+        const method = normalizePaymentMethod(patch.paymentMethod);
+        if (method) incomeUpdates.method = method;
+      }
+
+      if (patch.status !== undefined) {
+        incomeUpdates.status = patch.status;
+      }
+
+      if (patch.clientName !== undefined) {
+        const name = String(patch.clientName || "").trim();
+        incomeUpdates.clientName = name;
+        incomeUpdates.clientNameLower = name.toLowerCase();
+      }
+
+      if (patch.clientPhone !== undefined) {
+        incomeUpdates.clientPhone = String(patch.clientPhone || "").trim();
+      }
+
+      if (patch.employeeName !== undefined) {
+        incomeUpdates.employeeName = String(patch.employeeName || "").trim();
+      }
+
+      const serviceName = String(
+        patch.serviceSnapshot?.serviceNameAtBooking ?? patch.serviceName ?? ""
+      ).trim();
+      if (serviceName) incomeUpdates.serviceName = serviceName;
+
+      if (patch.note !== undefined) {
+        incomeUpdates.note = String(patch.note || "").trim();
+      }
+
+      const incomeRefs = new Map<string, any>();
+
+      const primaryIncomeRef = doc(db, ...INCOME_COL, bookingId);
+      const primaryIncomeSnap = await getDoc(primaryIncomeRef);
+      if (primaryIncomeSnap.exists()) incomeRefs.set(primaryIncomeRef.id, primaryIncomeRef);
+
+      const linkedIncomeQ = query(collection(db, ...INCOME_COL), where("bookingId", "==", bookingId));
+      const linkedIncomeSnap = await getDocs(linkedIncomeQ);
+      linkedIncomeSnap.docs.forEach((d) => incomeRefs.set(d.id, d.ref));
+
+      if (incomeRefs.size > 0) {
+        const payload = stripUndefined(incomeUpdates) as any;
+        await Promise.all(
+          Array.from(incomeRefs.values()).map((ref) => setDoc(ref, payload, { merge: true }))
+        );
+      }
+    } catch (e) {
+      console.error("income details sync failed (ignored):", e);
+    }
+  }
+
+  // ✅ إذا تغيّر وقت/تاريخ/موظفة أو مدة الخدمة: أعِد مزامنة الأقفال
+  const hasSlotPatch =
+    patch.date !== undefined ||
+    patch.time !== undefined ||
+    patch.durationMin !== undefined ||
+    patch.employeeId !== undefined ||
+    patch.employeeUid !== undefined ||
+    patch.employeeKey !== undefined ||
+    patch.employeeName !== undefined ||
+    patch.slotId !== undefined;
+
+  if (hasSlotPatch) {
+    try {
+      const freshSnap = await getDoc(bookingRef);
+      if (freshSnap.exists()) {
+        const fresh = normalizeBooking(freshSnap.data());
+        await unlockSlotsByBookingId(bookingId);
+        if (fresh.status === "confirmed" || fresh.status === "completed") {
+          await lockSlotsFromBooking(bookingId);
+        }
+      }
+    } catch (e) {
+      console.warn("[updateBookingDetails] slot resync failed (ignored):", e);
+    }
   }
 }
 

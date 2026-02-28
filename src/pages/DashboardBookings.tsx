@@ -509,9 +509,21 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     date: new Date().toISOString().slice(0, 10),
   });
   const saveHintTimerRef = useRef<number | null>(null);
+  const [editTarget, setEditTarget] = useState<Booking | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editDraft, setEditDraft] = useState({
+    customerName: "",
+    phone: "",
+    note: "",
+    date: "",
+    time: "",
+    price: "",
+  });
 
   const uiRole = currentRole;
   const authUser = getAuthUserSafe();
+  const canEditBookings = uiRole === "owner" || uiRole === "admin";
   const closeBookingModal = useCallback(() => setSelectedBooking(null), []);
   const closeCancelModal = useCallback(() => setCancelTarget(null), []);
   const closeRefundModal = useCallback(() => {
@@ -519,6 +531,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     setRefundTarget(null);
     setRefundError("");
   }, [refundSaving]);
+  const closeEditModal = useCallback(() => {
+    if (editSaving) return;
+    setEditTarget(null);
+    setEditError("");
+  }, [editSaving]);
 
   useEffect(() => {
     return () => {
@@ -843,8 +860,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, [filtered]);
 
   const getAllowedStatusOptions = (b: Booking): BookingStatus[] => {
-    if (uiRole === "owner") return allStatusOptions;
-    if (uiRole === "admin" || uiRole === "reception") {
+    if (uiRole === "owner" || uiRole === "admin") return allStatusOptions;
+    if (uiRole === "reception") {
       if (b.status === "pending") return ["pending", "confirmed", "cancelled"];
       return [b.status];
     }
@@ -898,6 +915,106 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       if (selectedBooking?.id === b.id) setSelectedBooking(null);
     } catch (e) {
       alert("تعذر حذف الحجز نهائيًا");
+    }
+  };
+
+  const openEditBookingModal = (b: Booking) => {
+    if (!canEditBookings) {
+      alert("التعديل متاح فقط للمالك أو الأدمن.");
+      return;
+    }
+    setEditDraft({
+      customerName: String(b.customerName || "").trim(),
+      phone: String(b.phone || "").trim(),
+      note: String((b as any)?.note || "").trim(),
+      date: String(b.date || "").trim(),
+      time: String(b.time || "").trim(),
+      price: String(Number(b.finalPrice || b.total || 0)),
+    });
+    setEditError("");
+    setEditTarget(b);
+  };
+
+  const handleSaveBookingEdit = async () => {
+    if (!editTarget?.id || !canEditBookings) return;
+    const customerName = String(editDraft.customerName || "").trim();
+    const phone = String(editDraft.phone || "").trim();
+    const note = String(editDraft.note || "").trim();
+    const date = String(editDraft.date || "").trim();
+    const time = String(editDraft.time || "").trim();
+    const price = Number(editDraft.price || 0);
+
+    if (!customerName) {
+      setEditError("اسم العميلة مطلوب.");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setEditError("التاريخ غير صحيح.");
+      return;
+    }
+    if (!/^([01]?\d|2[0-3]):([0-5]\d)$/.test(time)) {
+      setEditError("الوقت غير صحيح (HH:MM).");
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      setEditError("السعر غير صحيح.");
+      return;
+    }
+
+    try {
+      setEditSaving(true);
+      setEditError("");
+      const patch = {
+        clientName: customerName,
+        clientPhone: phone || null,
+        note,
+        customerName,
+        phone: phone || null,
+        customerPhone: phone || null,
+        date,
+        time,
+        finalPrice: price,
+        total: price,
+      } as any;
+      await updateBookingFields(editTarget.id, patch);
+
+      setBookings((prev) =>
+        prev.map((row) =>
+          row.id === editTarget.id
+            ? {
+                ...row,
+                customerName,
+                phone: phone || "",
+                note,
+                date,
+                time,
+                finalPrice: price,
+                total: price,
+              }
+            : row
+        )
+      );
+
+      setSelectedBooking((prev) =>
+        prev && prev.id === editTarget.id
+          ? {
+              ...prev,
+              customerName,
+              phone: phone || "",
+              note,
+              date,
+              time,
+              finalPrice: price,
+              total: price,
+            }
+          : prev
+      );
+
+      setEditTarget(null);
+    } catch {
+      setEditError("تعذر حفظ تعديل الحجز.");
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -1198,6 +1315,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                             <button className="exp-btn ghost sm bk-info-btn" onClick={() => setSelectedBooking(b)} aria-label="تفاصيل الحجز">
                               <FontAwesomeIcon icon={faCircleInfo} />
                             </button>
+                            {canEditBookings && (
+                              <button className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
+                                تعديل
+                              </button>
+                            )}
                             <button
                               className="exp-btn ghost sm bk-refund-btn"
                               onClick={() => openRefundModal(b)}
@@ -1206,15 +1328,17 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                             >
                               {refundMapByBookingId[String(b.id || "").trim()] ? "الاسترجاع" : "استرجاع"}
                             </button>
-                            {uiRole === "owner" && (
+                            {(uiRole === "owner" || uiRole === "admin") && (
                               <>
-                                <button
-                                  className="exp-btn danger sm"
-                                  onClick={() => handleDeleteBooking(b)}
-                                  title="حذف نهائي"
-                                >
-                                  حذف
-                                </button>
+                                {uiRole === "owner" && (
+                                  <button
+                                    className="exp-btn danger sm"
+                                    onClick={() => handleDeleteBooking(b)}
+                                    title="حذف نهائي"
+                                  >
+                                    حذف
+                                  </button>
+                                )}
                                 <select
                                   className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
                                   style={{ width: "auto", height: 40, padding: "0 12px", fontSize: 12 }}
@@ -1229,7 +1353,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                                 </select>
                               </>
                             )}
-                            {(uiRole === "admin" || uiRole === "reception") && b.status === "pending" && (
+                            {uiRole === "reception" && b.status === "pending" && (
                               <>
                                 <button
                                   className="exp-btn sm"
@@ -1301,6 +1425,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     </div>
                     <div className="bk-mobile-actions">
                        <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
+                       {canEditBookings && (
+                         <button className="exp-btn ghost sm w-100" onClick={() => openEditBookingModal(b)}>
+                           تعديل
+                         </button>
+                       )}
                        <button
                          className="exp-btn ghost sm w-100 bk-refund-btn"
                          onClick={() => openRefundModal(b)}
@@ -1308,11 +1437,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                        >
                          {refundMapByBookingId[String(b.id || "").trim()] ? "الاسترجاع" : "استرجاع"}
                        </button>
-                       {uiRole === "owner" && (
+                       {(uiRole === "owner" || uiRole === "admin") && (
                          <>
-                           <button className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
-                             حذف نهائي
-                           </button>
+                           {uiRole === "owner" && (
+                             <button className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
+                               حذف نهائي
+                             </button>
+                           )}
                            <select
                              className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
                              style={{ height: 40, padding: "0 12px", fontSize: 12 }}
@@ -1327,7 +1458,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                            </select>
                          </>
                        )}
-                       {(uiRole === "admin" || uiRole === "reception") && b.status === "pending" && (
+                       {uiRole === "reception" && b.status === "pending" && (
                          <>
                            <button className="exp-btn sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
                              تأكيد
@@ -1495,6 +1626,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     : "تسجيل استرجاع"}
                 </button>
               )}
+              {canEditBookings && (
+                <button className="exp-btn ghost" onClick={() => openEditBookingModal(selectedBooking)}>
+                  تعديل الحجز
+                </button>
+              )}
               {uiRole === "owner" && (
                 <button className="exp-btn danger" onClick={() => handleDeleteBooking(selectedBooking)}>
                   حذف نهائي
@@ -1636,6 +1772,120 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               disabled={refundSaving}
             >
               {refundSaving ? "جاري الحفظ..." : "حفظ الاسترجاع"}
+            </button>
+          </div>
+        </Modal>
+
+        <Modal
+          open={!!editTarget}
+          onClose={closeEditModal}
+          ariaLabel="تعديل الحجز"
+          panelClassName="bk-edit-modal"
+          size="sm"
+        >
+          <div className="bk-cancel-head">تعديل الحجز</div>
+          <div className="bk-cancel-body">
+            <div className="bk-cancel-meta">
+              <span>رقم الحجز: {bookingRef(editTarget)}</span>
+              <span>الخدمة: {editTarget ? serviceSummaryForTable(editTarget) : "—"}</span>
+            </div>
+
+            <div className="bk-edit-form">
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>اسم العميلة</div>
+                <input
+                  type="text"
+                  className="bk-input"
+                  value={editDraft.customerName}
+                  onChange={(e) => setEditDraft((p) => ({ ...p, customerName: e.target.value }))}
+                  placeholder="مثال: سارة أحمد"
+                  disabled={editSaving}
+                />
+              </label>
+
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>رقم الجوال</div>
+                <input
+                  type="text"
+                  className="bk-input"
+                  value={editDraft.phone}
+                  onChange={(e) => setEditDraft((p) => ({ ...p, phone: e.target.value }))}
+                  placeholder="05xxxxxxxx"
+                  disabled={editSaving}
+                />
+              </label>
+
+              <div className="bk-edit-grid">
+                <label>
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>التاريخ</div>
+                  <input
+                    type="date"
+                    className="bk-input"
+                    value={editDraft.date}
+                    onChange={(e) => setEditDraft((p) => ({ ...p, date: e.target.value }))}
+                    disabled={editSaving}
+                  />
+                </label>
+
+                <label>
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>الوقت</div>
+                  <input
+                    type="time"
+                    className="bk-input"
+                    value={editDraft.time}
+                    onChange={(e) => setEditDraft((p) => ({ ...p, time: e.target.value }))}
+                    disabled={editSaving}
+                  />
+                </label>
+              </div>
+
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>السعر النهائي</div>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className="bk-input"
+                  value={editDraft.price}
+                  onChange={(e) => setEditDraft((p) => ({ ...p, price: e.target.value }))}
+                  placeholder="مثال: 120"
+                  disabled={editSaving}
+                />
+              </label>
+
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>ملاحظة الحجز</div>
+                <textarea
+                  className="bk-input"
+                  rows={3}
+                  value={editDraft.note}
+                  onChange={(e) => setEditDraft((p) => ({ ...p, note: e.target.value }))}
+                  placeholder="ملاحظة داخلية على نفس الحجز"
+                  disabled={editSaving}
+                />
+              </label>
+            </div>
+
+            {editError ? (
+              <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{editError}</div>
+            ) : null}
+          </div>
+          <div className="bk-cancel-foot">
+            <button
+              type="button"
+              className="exp-btn ghost"
+              onClick={closeEditModal}
+              disabled={editSaving}
+            >
+              رجوع
+            </button>
+            <button
+              type="button"
+              className="exp-btn"
+              onClick={handleSaveBookingEdit}
+              disabled={editSaving}
+            >
+              {editSaving ? "جاري الحفظ..." : "حفظ التعديلات"}
             </button>
           </div>
         </Modal>

@@ -118,6 +118,17 @@ type StaffWorkingHourOverride = {
   end?: string;
   note?: string;
 };
+type StaffWorkingHourOverrideGroup = {
+  id: string;
+  fromDate: string;
+  toDate: string;
+  dates: string[];
+  enabled: boolean;
+  start: string;
+  end: string;
+  note?: string;
+  count: number;
+};
 type WorkingHourOverrideMode = "single" | "range" | "specific";
 type WorkingHourOverrideQuickMode = "full" | "closed" | "plus1" | "plus2" | "manual";
 type WorkingHourOverrideApplyMethod = "replace" | "merge";
@@ -475,6 +486,7 @@ function fmtIsoDate(v?: string) {
 }
 
 type DateCalendar = "gregory" | "hijri";
+type HijriDateParts = { day: number; month: number; year: number };
 function fmtIsoDateByCalendar(v?: string, calendar: DateCalendar = "gregory") {
   const s = normalizeIsoDate(v);
   if (!s) return "-";
@@ -497,6 +509,99 @@ function fmtIsoDateHijri(v?: string) {
   return fmtIsoDateByCalendar(v, "hijri");
 }
 
+function normalizeArabicDigits(v: string) {
+  const map: Record<string, string> = {
+    "٠": "0",
+    "١": "1",
+    "٢": "2",
+    "٣": "3",
+    "٤": "4",
+    "٥": "5",
+    "٦": "6",
+    "٧": "7",
+    "٨": "8",
+    "٩": "9",
+    "۰": "0",
+    "۱": "1",
+    "۲": "2",
+    "۳": "3",
+    "۴": "4",
+    "۵": "5",
+    "۶": "6",
+    "۷": "7",
+    "۸": "8",
+    "۹": "9",
+  };
+  return String(v || "").replace(/[٠-٩۰-۹]/g, (ch) => map[ch] || ch);
+}
+
+function hijriPartsFromIso(v?: string): HijriDateParts | null {
+  const s = normalizeIsoDate(v);
+  if (!s) return null;
+  const d = new Date(`${s}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-u-ca-islamic-umalqura", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).formatToParts(d);
+  const day = Number(parts.find((p) => p.type === "day")?.value || NaN);
+  const month = Number(parts.find((p) => p.type === "month")?.value || NaN);
+  const year = Number(parts.find((p) => p.type === "year")?.value || NaN);
+  if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year)) return null;
+  return { day, month, year };
+}
+
+function formatHijriInputFromIso(v?: string) {
+  const p = hijriPartsFromIso(v);
+  if (!p) return "";
+  return `${String(p.day).padStart(2, "0")}/${String(p.month).padStart(2, "0")}/${String(p.year)}`;
+}
+
+function parseHijriDateInput(v: string): HijriDateParts | null {
+  const normalized = normalizeArabicDigits(v)
+    .replace(/[.\-]/g, "/")
+    .replace(/\s+/g, "")
+    .trim();
+  const m = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  const yearRaw = Number(m[3]);
+  let year = yearRaw;
+  if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(yearRaw)) return null;
+  if (yearRaw < 100) year = 1400 + yearRaw;
+  if (day < 1 || day > 30 || month < 1 || month > 12 || year < 1200 || year > 1700) return null;
+  return { day, month, year };
+}
+
+function isoFromHijriDateParts(p: HijriDateParts): string {
+  const targetDay = Math.trunc(Number(p?.day || 0));
+  const targetMonth = Math.trunc(Number(p?.month || 0));
+  const targetYear = Math.trunc(Number(p?.year || 0));
+  if (
+    targetDay < 1 ||
+    targetDay > 30 ||
+    targetMonth < 1 ||
+    targetMonth > 12 ||
+    targetYear < 1200 ||
+    targetYear > 1700
+  ) {
+    return "";
+  }
+  const approxGregorianYear = targetYear + 579;
+  const startUtc = Date.UTC(approxGregorianYear - 2, 0, 1, 12, 0, 0);
+  const endUtc = Date.UTC(approxGregorianYear + 2, 11, 31, 12, 0, 0);
+  for (let t = startUtc; t <= endUtc; t += 86400000) {
+    const iso = new Date(t).toISOString().slice(0, 10);
+    const hp = hijriPartsFromIso(iso);
+    if (!hp) continue;
+    if (hp.day === targetDay && hp.month === targetMonth && hp.year === targetYear) return iso;
+  }
+  return "";
+}
+
 function addDaysIso(dateIso: string, days: number) {
   const s = normalizeLeaveUntil(dateIso);
   if (!s) return "";
@@ -507,6 +612,78 @@ function addDaysIso(dateIso: string, days: number) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function findHijriMonthStartIso(anchorISO: string) {
+  const anchor = normalizeIsoDate(anchorISO) || todayIso();
+  const base = hijriPartsFromIso(anchor);
+  if (!base) return anchor;
+  let cursor = anchor;
+  for (let i = 0; i < 35; i++) {
+    const prev = addDaysIso(cursor, -1);
+    const prevParts = hijriPartsFromIso(prev);
+    if (!prevParts || prevParts.month !== base.month || prevParts.year !== base.year) {
+      return cursor;
+    }
+    cursor = prev;
+  }
+  return cursor;
+}
+
+function buildHijriMonthDays(anchorISO: string) {
+  const start = findHijriMonthStartIso(anchorISO);
+  const base = hijriPartsFromIso(start);
+  if (!base) return [] as Array<{ iso: string; hijriDay: number }>;
+  const out: Array<{ iso: string; hijriDay: number }> = [];
+  let cursor = start;
+  for (let i = 0; i < 35; i++) {
+    const p = hijriPartsFromIso(cursor);
+    if (!p || p.month !== base.month || p.year !== base.year) break;
+    out.push({ iso: cursor, hijriDay: p.day });
+    cursor = addDaysIso(cursor, 1);
+  }
+  return out;
+}
+
+function shiftHijriMonthStartIso(currentMonthStartISO: string, delta: number) {
+  const currentStart = findHijriMonthStartIso(currentMonthStartISO);
+  if (delta === 0) return currentStart;
+  if (delta > 0) {
+    let nextStart = currentStart;
+    for (let i = 0; i < delta; i++) {
+      const days = buildHijriMonthDays(nextStart);
+      if (!days.length) return nextStart;
+      nextStart = addDaysIso(days[days.length - 1].iso, 1);
+    }
+    return findHijriMonthStartIso(nextStart);
+  }
+  let prevStart = currentStart;
+  for (let i = 0; i < Math.abs(delta); i++) {
+    prevStart = findHijriMonthStartIso(addDaysIso(prevStart, -1));
+  }
+  return prevStart;
+}
+
+function toHijriMonthYearLabel(iso: string) {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d
+    .toLocaleDateString("ar-SA-u-ca-islamic-umalqura", {
+      month: "long",
+      year: "numeric",
+    })
+    .replace(/\s*(م|هـ|AD|AH)\.?$/iu, "")
+    .trim();
+}
+
+function hijriWeekdayColumnFromIso(iso: string) {
+  const s = normalizeIsoDate(iso);
+  if (!s) return 0;
+  const d = new Date(`${s}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return 0;
+  const js = d.getDay(); // Sun=0 ... Sat=6
+  const map = [1, 2, 3, 4, 5, 6, 0]; // Sat first
+  return map[js] ?? 0;
 }
 
 function parsePositiveInt(v: string, fallback = 0) {
@@ -533,6 +710,7 @@ function normalizeExceptionalLeaveDates(v: any) {
 }
 
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+const HIJRI_WEEKDAY_SHORT = ["س", "ح", "ن", "ث", "ر", "خ", "ج"] as const;
 const WEEKDAY_OPTIONS: Array<{ key: WeekdayKey; label: string }> = [
   { key: "sat", label: "السبت" },
   { key: "sun", label: "الأحد" },
@@ -615,6 +793,47 @@ function normalizeWorkingHourOverrides(v: any): StaffWorkingHourOverride[] {
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 
+function buildWorkingHourOverrideGroups(
+  rows: StaffWorkingHourOverride[]
+): StaffWorkingHourOverrideGroup[] {
+  const normalized = normalizeWorkingHourOverrides(rows);
+  const out: Array<StaffWorkingHourOverrideGroup & { _sig: string }> = [];
+
+  normalized.forEach((row) => {
+    const date = normalizeLeaveUntil(row.date);
+    if (!date) return;
+    const enabled = row.enabled !== false;
+    const start = normalizeTimeHHMM(row.start) || "10:00";
+    const end = normalizeTimeHHMM(row.end) || "22:00";
+    const note = String(row.note || "").trim() || undefined;
+    const sig = `${enabled ? "1" : "0"}|${start}|${end}|${note || ""}`;
+    const prev = out[out.length - 1];
+    const prevNext = prev ? addDaysIso(prev.toDate, 1) : "";
+
+    if (prev && prev._sig === sig && prevNext === date) {
+      prev.toDate = date;
+      prev.dates.push(date);
+      prev.count += 1;
+      return;
+    }
+
+    out.push({
+      id: `${date}|${sig}`,
+      fromDate: date,
+      toDate: date,
+      dates: [date],
+      enabled,
+      start,
+      end,
+      ...(note ? { note } : {}),
+      count: 1,
+      _sig: sig,
+    });
+  });
+
+  return out.map(({ _sig, ...group }) => group);
+}
+
 function weekdayFromIso(dateIso: string): WeekdayKey | "" {
   const s = normalizeLeaveUntil(dateIso);
   if (!s) return "";
@@ -694,6 +913,29 @@ function formatIsoDateRangeDual(from?: string, to?: string) {
   };
 }
 
+function countIsoDateRangeDays(from?: string, to?: string): number {
+  const a = normalizeIsoDate(from);
+  const b = normalizeIsoDate(to);
+  if (!a || !b) return 0;
+  const start = a <= b ? a : b;
+  const end = a <= b ? b : a;
+  const [sy, sm, sd] = start.split("-").map((x) => Number(x));
+  const [ey, em, ed] = end.split("-").map((x) => Number(x));
+  if (![sy, sm, sd, ey, em, ed].every((n) => Number.isFinite(n))) return 0;
+  const startUtc = Date.UTC(sy, sm - 1, sd);
+  const endUtc = Date.UTC(ey, em - 1, ed);
+  if (!Number.isFinite(startUtc) || !Number.isFinite(endUtc) || endUtc < startUtc) return 0;
+  return Math.floor((endUtc - startUtc) / 86400000) + 1;
+}
+
+function formatArabicInteger(v: number): string {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "0";
+  return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 }).format(
+    Math.max(0, Math.floor(n))
+  );
+}
+
 function normalizeWeekdayList(v: any): WeekdayKey[] {
   if (!Array.isArray(v)) return [];
   const allowed = new Set<WeekdayKey>(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
@@ -768,6 +1010,7 @@ export default function DashboardEmployees() {
 
   const [statsLoading, setStatsLoading] = useState(false);
   const specialtiesMigrationDoneRef = useRef(false);
+  const modalHourOverrideHijriPickerRef = useRef<HTMLDivElement>(null);
   const [bookingStats, setBookingStats] =
     useState<Record<string, StaffBookingStats>>({});
   const [leaveAdjustDays, setLeaveAdjustDays] = useState("1");
@@ -811,6 +1054,15 @@ export default function DashboardEmployees() {
   const [modalCustomHourOverrides, setModalCustomHourOverrides] = useState<StaffWorkingHourOverride[]>([]);
   const [modalHourOverrideFromDate, setModalHourOverrideFromDate] = useState("");
   const [modalHourOverrideToDate, setModalHourOverrideToDate] = useState("");
+  const [modalHourOverrideCalendar, setModalHourOverrideCalendar] = useState<DateCalendar>("gregory");
+  const [modalHourOverrideFromDateHijri, setModalHourOverrideFromDateHijri] = useState("");
+  const [modalHourOverrideToDateHijri, setModalHourOverrideToDateHijri] = useState("");
+  const [modalHourOverrideHijriPickerOpen, setModalHourOverrideHijriPickerOpen] = useState(false);
+  const [modalHourOverrideHijriPickerTarget, setModalHourOverrideHijriPickerTarget] =
+    useState<"from" | "to">("from");
+  const [modalHourOverrideHijriViewMonthISO, setModalHourOverrideHijriViewMonthISO] = useState<string>(
+    () => findHijriMonthStartIso(todayIso())
+  );
   const [modalHourOverrideStart, setModalHourOverrideStart] = useState("10:00");
   const [modalHourOverrideEnd, setModalHourOverrideEnd] = useState("22:00");
   const [modalHourOverrideEnabled, setModalHourOverrideEnabled] = useState(true);
@@ -824,6 +1076,7 @@ export default function DashboardEmployees() {
   const [modalHourOverrideOverwriteExisting, setModalHourOverrideOverwriteExisting] = useState(true);
   const [modalHourOverrideUpdateExistingOnly, setModalHourOverrideUpdateExistingOnly] = useState(false);
   const [modalHourOverrideEditingDate, setModalHourOverrideEditingDate] = useState("");
+  const [modalHourOverrideEditingGroupId, setModalHourOverrideEditingGroupId] = useState("");
   const [monthlySalary, setMonthlySalary] = useState("0");
   const [overtimeMethod, setOvertimeMethod] = useState<StaffPayrollMethod>("hours_from_salary");
   const [overtimeDaysPerMonth, setOvertimeDaysPerMonth] = useState("30");
@@ -844,6 +1097,18 @@ export default function DashboardEmployees() {
   const [srvSection, setSrvSection] = useState<string>("all");
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
   const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
+  const modalHourOverrideHijriMonthTitle = useMemo(
+    () => toHijriMonthYearLabel(modalHourOverrideHijriViewMonthISO),
+    [modalHourOverrideHijriViewMonthISO]
+  );
+  const modalHourOverrideHijriMonthDays = useMemo(
+    () => buildHijriMonthDays(modalHourOverrideHijriViewMonthISO),
+    [modalHourOverrideHijriViewMonthISO]
+  );
+  const modalHourOverrideHijriWeekOffset = useMemo(() => {
+    if (!modalHourOverrideHijriMonthDays.length) return 0;
+    return hijriWeekdayColumnFromIso(modalHourOverrideHijriMonthDays[0].iso);
+  }, [modalHourOverrideHijriMonthDays]);
 
   const resetForm = () => {
     setEditId(null);
@@ -868,6 +1133,12 @@ export default function DashboardEmployees() {
     setModalCustomHourOverrides([]);
     setModalHourOverrideFromDate("");
     setModalHourOverrideToDate("");
+    setModalHourOverrideCalendar("gregory");
+    setModalHourOverrideFromDateHijri("");
+    setModalHourOverrideToDateHijri("");
+    setModalHourOverrideHijriPickerOpen(false);
+    setModalHourOverrideHijriPickerTarget("from");
+    setModalHourOverrideHijriViewMonthISO(findHijriMonthStartIso(todayIso()));
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
@@ -879,6 +1150,7 @@ export default function DashboardEmployees() {
     setModalHourOverrideOverwriteExisting(true);
     setModalHourOverrideUpdateExistingOnly(false);
     setModalHourOverrideEditingDate("");
+    setModalHourOverrideEditingGroupId("");
     setMonthlySalary("0");
     setOvertimeMethod("hours_from_salary");
     setOvertimeDaysPerMonth("30");
@@ -925,6 +1197,12 @@ export default function DashboardEmployees() {
     );
     setModalHourOverrideFromDate("");
     setModalHourOverrideToDate("");
+    setModalHourOverrideCalendar("gregory");
+    setModalHourOverrideFromDateHijri("");
+    setModalHourOverrideToDateHijri("");
+    setModalHourOverrideHijriPickerOpen(false);
+    setModalHourOverrideHijriPickerTarget("from");
+    setModalHourOverrideHijriViewMonthISO(findHijriMonthStartIso(todayIso()));
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
@@ -936,6 +1214,7 @@ export default function DashboardEmployees() {
     setModalHourOverrideOverwriteExisting(true);
     setModalHourOverrideUpdateExistingOnly(false);
     setModalHourOverrideEditingDate("");
+    setModalHourOverrideEditingGroupId("");
     const payrollCfg = normalizePayrollConfig(x as any);
     setMonthlySalary(String(payrollCfg.monthlySalary || 0));
     setOvertimeMethod(payrollCfg.method);
@@ -1466,6 +1745,27 @@ export default function DashboardEmployees() {
     setIsOpen(false);
     setMode("view");
   }, [list, selectedEmployeeId]);
+
+  useEffect(() => {
+    setModalHourOverrideFromDateHijri(formatHijriInputFromIso(modalHourOverrideFromDate));
+  }, [modalHourOverrideFromDate]);
+
+  useEffect(() => {
+    setModalHourOverrideToDateHijri(formatHijriInputFromIso(modalHourOverrideToDate));
+  }, [modalHourOverrideToDate]);
+
+  useEffect(() => {
+    if (!modalHourOverrideHijriPickerOpen) return;
+    const onDocClick = (ev: MouseEvent) => {
+      const root = modalHourOverrideHijriPickerRef.current;
+      if (!root) return;
+      const target = ev.target as Node | null;
+      if (target && root.contains(target)) return;
+      setModalHourOverrideHijriPickerOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [modalHourOverrideHijriPickerOpen]);
 
   const sectionOptions = useMemo(() => {
     const m = new Map<string, { id: string; label: string }>();
@@ -2255,6 +2555,10 @@ export default function DashboardEmployees() {
     modalCustomHourOverrides,
     modalCustomWorkingHours,
   ]);
+  const modalHourOverrideGroups = useMemo(
+    () => buildWorkingHourOverrideGroups(modalCustomHourOverrides),
+    [modalCustomHourOverrides]
+  );
 
   const updateModalWorkingDay = (
     day: WeekdayKey,
@@ -2288,6 +2592,79 @@ export default function DashboardEmployees() {
     setModalHourOverrideApplyWeekdays((prev) =>
       prev.includes(day) ? prev.filter((x) => x !== day) : [...prev, day]
     );
+  };
+
+  const setModalHourOverrideFromGregorian = (next: string) => {
+    const iso = normalizeLeaveUntil(next);
+    setModalHourOverrideFromDate(iso);
+    if (modalHourOverrideEditingDate || modalHourOverrideMode === "single") {
+      setModalHourOverrideToDate(iso);
+    }
+  };
+
+  const setModalHourOverrideToGregorian = (next: string) => {
+    const iso = normalizeLeaveUntil(next);
+    setModalHourOverrideToDate(iso);
+    if (
+      iso &&
+      !normalizeLeaveUntil(modalHourOverrideEditingDate) &&
+      modalHourOverrideMode === "single"
+    ) {
+      setModalHourOverrideMode("range");
+    }
+  };
+
+  const openModalHourOverrideHijriPicker = (target: "from" | "to") => {
+    const baseIso =
+      target === "from"
+        ? normalizeLeaveUntil(modalHourOverrideFromDate) || todayIso()
+        : normalizeLeaveUntil(modalHourOverrideToDate) ||
+          normalizeLeaveUntil(modalHourOverrideFromDate) ||
+          todayIso();
+    setModalHourOverrideHijriPickerTarget(target);
+    setModalHourOverrideHijriViewMonthISO(findHijriMonthStartIso(baseIso));
+    setModalHourOverrideHijriPickerOpen(true);
+    setErrorMsg("");
+  };
+
+  const applyModalHourOverrideHijriPick = (iso: string) => {
+    const dateIso = normalizeLeaveUntil(iso);
+    if (!dateIso) return;
+    if (modalHourOverrideHijriPickerTarget === "from") {
+      setModalHourOverrideFromGregorian(dateIso);
+    } else {
+      setModalHourOverrideToGregorian(dateIso);
+    }
+    setModalHourOverrideHijriPickerOpen(false);
+    setErrorMsg("");
+  };
+
+  const applyModalHourOverrideHijriInput = (
+    target: "from" | "to",
+    raw: string,
+    commit = false
+  ) => {
+    const nextRaw = String(raw || "");
+    if (target === "from") setModalHourOverrideFromDateHijri(nextRaw);
+    else setModalHourOverrideToDateHijri(nextRaw);
+
+    const parsed = parseHijriDateInput(nextRaw);
+    if (!parsed) {
+      if (commit && nextRaw.trim()) {
+        setErrorMsg("صيغة التاريخ الهجري يجب أن تكون: يوم/شهر/سنة (مثال: 09/09/1447).");
+      }
+      return;
+    }
+    const iso = isoFromHijriDateParts(parsed);
+    if (!iso) {
+      if (commit) {
+        setErrorMsg("تعذر تحويل التاريخ الهجري. تأكد من إدخال تاريخ هجري صحيح.");
+      }
+      return;
+    }
+    if (target === "from") setModalHourOverrideFromGregorian(iso);
+    else setModalHourOverrideToGregorian(iso);
+    if (commit) setErrorMsg("");
   };
 
   const setModalHourOverrideRangeFromExisting = () => {
@@ -2324,6 +2701,9 @@ export default function DashboardEmployees() {
 
     setModalHourOverrideFromDate(first.date);
     setModalHourOverrideToDate(last.date);
+    setModalHourOverrideHijriPickerOpen(false);
+    setModalHourOverrideHijriPickerTarget("from");
+    setModalHourOverrideHijriViewMonthISO(findHijriMonthStartIso(first.date));
     setModalHourOverrideEnabled(seed.enabled !== false);
     setModalHourOverrideStart(normalizeTimeHHMM(seed.start) || "10:00");
     setModalHourOverrideEnd(normalizeTimeHHMM(seed.end) || "22:00");
@@ -2364,28 +2744,14 @@ export default function DashboardEmployees() {
     setModalHourOverrideEnd(end);
   };
 
-  const startModalWorkingHourOverrideEdit = (ov: StaffWorkingHourOverride) => {
-    const d = normalizeLeaveUntil(ov.date);
-    if (!d) return;
-    setModalHourOverrideEditingDate(d);
-    setModalHourOverrideFromDate(d);
-    setModalHourOverrideToDate(d);
-    setModalHourOverrideEnabled(ov.enabled !== false);
-    setModalHourOverrideStart(normalizeTimeHHMM(ov.start) || "10:00");
-    setModalHourOverrideEnd(normalizeTimeHHMM(ov.end) || "22:00");
-    setModalHourOverrideMode("single");
-    setModalHourOverrideQuickMode("manual");
-    setModalHourOverrideApplyMethod("replace");
-    setModalHourOverrideNote(String(ov.note || ""));
-    setModalHourOverrideApplyWeekdays([]);
-    setModalHourOverrideOverwriteExisting(true);
-    setModalHourOverrideUpdateExistingOnly(false);
-  };
-
   const cancelModalWorkingHourOverrideEdit = () => {
+    setModalHourOverrideEditingGroupId("");
     setModalHourOverrideEditingDate("");
     setModalHourOverrideFromDate("");
     setModalHourOverrideToDate("");
+    setModalHourOverrideHijriPickerOpen(false);
+    setModalHourOverrideHijriPickerTarget("from");
+    setModalHourOverrideHijriViewMonthISO(findHijriMonthStartIso(todayIso()));
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
@@ -2396,12 +2762,50 @@ export default function DashboardEmployees() {
     setModalHourOverrideApplyWeekdays([]);
   };
 
-  const removeModalWorkingHourOverride = (dateIso: string) => {
-    const d = normalizeLeaveUntil(dateIso);
-    if (!d) return;
-    setModalCustomHourOverrides((prev) => prev.filter((x) => x.date !== d));
-    if (normalizeLeaveUntil(modalHourOverrideEditingDate) === d) {
+  const startModalWorkingHourOverrideGroupEdit = (group: StaffWorkingHourOverrideGroup) => {
+    if (!group) return;
+    setModalHourOverrideEditingGroupId(group.id);
+    setModalHourOverrideEditingDate("");
+    setModalHourOverrideFromDate(group.fromDate);
+    setModalHourOverrideToDate(group.toDate);
+    setModalHourOverrideHijriPickerOpen(false);
+    setModalHourOverrideHijriPickerTarget("from");
+    setModalHourOverrideHijriViewMonthISO(findHijriMonthStartIso(group.fromDate));
+    setModalHourOverrideEnabled(group.enabled !== false);
+    setModalHourOverrideStart(normalizeTimeHHMM(group.start) || "10:00");
+    setModalHourOverrideEnd(normalizeTimeHHMM(group.end) || "22:00");
+    setModalHourOverrideMode(group.fromDate === group.toDate ? "single" : "range");
+    setModalHourOverrideQuickMode("manual");
+    setModalHourOverrideApplyMethod("replace");
+    setModalHourOverrideNote(String(group.note || "").trim());
+    setModalHourOverrideApplyWeekdays([]);
+    setModalHourOverrideOverwriteExisting(true);
+    setModalHourOverrideUpdateExistingOnly(true);
+  };
+
+  const removeModalWorkingHourOverrideGroup = (group: StaffWorkingHourOverrideGroup) => {
+    const targetDates = new Set(
+      (group?.dates || [])
+        .map((d) => normalizeLeaveUntil(d))
+        .filter((d): d is string => !!d)
+    );
+    if (!targetDates.size) return;
+    setModalCustomHourOverrides((prev) =>
+      prev.filter((x) => !targetDates.has(normalizeLeaveUntil(x.date)))
+    );
+
+    const editingDate = normalizeLeaveUntil(modalHourOverrideEditingDate);
+    if (editingDate && targetDates.has(editingDate)) {
       cancelModalWorkingHourOverrideEdit();
+      return;
+    }
+
+    if (!editingDate && modalHourOverrideUpdateExistingOnly) {
+      const from = normalizeLeaveUntil(modalHourOverrideFromDate);
+      const to = normalizeLeaveUntil(modalHourOverrideToDate) || from;
+      if ((from && targetDates.has(from)) || (to && targetDates.has(to))) {
+        cancelModalWorkingHourOverrideEdit();
+      }
     }
   };
 
@@ -2513,12 +2917,18 @@ export default function DashboardEmployees() {
       return;
     }
     setModalCustomHourOverrides(result.next);
-    if (normalizeLeaveUntil(modalHourOverrideEditingDate)) {
+    if (
+      normalizeLeaveUntil(modalHourOverrideEditingDate) ||
+      String(modalHourOverrideEditingGroupId || "").trim()
+    ) {
       cancelModalWorkingHourOverrideEdit();
       return;
     }
     setModalHourOverrideFromDate("");
     setModalHourOverrideToDate("");
+    setModalHourOverrideHijriPickerOpen(false);
+    setModalHourOverrideHijriPickerTarget("from");
+    setModalHourOverrideHijriViewMonthISO(findHijriMonthStartIso(todayIso()));
     setModalHourOverrideStart("10:00");
     setModalHourOverrideEnd("22:00");
     setModalHourOverrideEnabled(true);
@@ -2527,6 +2937,7 @@ export default function DashboardEmployees() {
     setModalHourOverrideApplyMethod("replace");
     setModalHourOverrideNote("");
     setModalHourOverrideEditingDate("");
+    setModalHourOverrideEditingGroupId("");
     setModalHourOverrideUpdateExistingOnly(false);
   };
 
@@ -3675,24 +4086,33 @@ export default function DashboardEmployees() {
                               <button
                                 type="button"
                                 className={`exp-btn ghost sm ${modalHourOverrideMode === "single" ? "is-active" : ""}`}
-                                disabled={loading || !!modalHourOverrideEditingDate}
-                                onClick={() => setModalHourOverrideMode("single")}
+                                disabled={loading || !!modalHourOverrideEditingDate || !!modalHourOverrideEditingGroupId}
+                                onClick={() => {
+                                  setModalHourOverrideEditingGroupId("");
+                                  setModalHourOverrideMode("single");
+                                }}
                               >
                                 تعديل يوم واحد
                               </button>
                               <button
                                 type="button"
                                 className={`exp-btn ghost sm ${modalHourOverrideMode === "range" ? "is-active" : ""}`}
-                                disabled={loading || !!modalHourOverrideEditingDate}
-                                onClick={() => setModalHourOverrideMode("range")}
+                                disabled={loading || !!modalHourOverrideEditingDate || !!modalHourOverrideEditingGroupId}
+                                onClick={() => {
+                                  setModalHourOverrideEditingGroupId("");
+                                  setModalHourOverrideMode("range");
+                                }}
                               >
                                 تعديل فترة
                               </button>
                               <button
                                 type="button"
                                 className={`exp-btn ghost sm ${modalHourOverrideMode === "specific" ? "is-active" : ""}`}
-                                disabled={loading || !!modalHourOverrideEditingDate}
-                                onClick={() => setModalHourOverrideMode("specific")}
+                                disabled={loading || !!modalHourOverrideEditingDate || !!modalHourOverrideEditingGroupId}
+                                onClick={() => {
+                                  setModalHourOverrideEditingGroupId("");
+                                  setModalHourOverrideMode("specific");
+                                }}
                               >
                                 أيام محددة
                               </button>
@@ -3775,11 +4195,13 @@ export default function DashboardEmployees() {
                             >
                               موسم 8 ساعات
                             </button>
-                            <label className="emp-mini-check">
+                            <label
+                              className={`emp-mini-check emp-ov-apply-method-row ${!modalHourOverrideUpdateExistingOnly ? "is-active" : ""}`}
+                            >
                               <input
                                 type="radio"
                                 name="overrideApplyMethod"
-                                checked={modalHourOverrideApplyMethod === "replace"}
+                                checked={!modalHourOverrideUpdateExistingOnly}
                                 disabled={loading}
                                 onChange={() => {
                                   setModalHourOverrideApplyMethod("replace");
@@ -3789,11 +4211,13 @@ export default function DashboardEmployees() {
                               />
                               <span>استبدال أي استثناء موجود في نفس التاريخ</span>
                             </label>
-                            <label className="emp-mini-check">
+                            <label
+                              className={`emp-mini-check emp-ov-apply-method-row ${modalHourOverrideUpdateExistingOnly ? "is-active" : ""}`}
+                            >
                               <input
                                 type="radio"
                                 name="overrideApplyMethod"
-                                checked={modalHourOverrideApplyMethod === "merge"}
+                                checked={modalHourOverrideUpdateExistingOnly}
                                 disabled={loading}
                                 onChange={() => {
                                   const ok = setModalHourOverrideRangeFromExisting();
@@ -3809,35 +4233,209 @@ export default function DashboardEmployees() {
                         </div>
 
                         <div className="emp-working-override-form">
-                          <div>
-                            <label className="emp-label">من تاريخ</label>
-                            <input
-                              className="dash-input"
-                              type="date"
-                              value={modalHourOverrideFromDate}
-                              disabled={loading}
-                              onChange={(e) => {
-                                const next = e.target.value;
-                                setModalHourOverrideFromDate(next);
-                                if (modalHourOverrideEditingDate || modalHourOverrideMode === "single") {
-                                  setModalHourOverrideToDate(next);
-                                }
-                              }}
-                            />
+                          <div className="emp-ov-field emp-ov-calendar-toggle">
+                            <label className="emp-label">نوع التاريخ</label>
+                            <div
+                              className="emp-ov-calendar-toggle-buttons"
+                              role="group"
+                              aria-label="نوع التاريخ"
+                            >
+                              <button
+                                type="button"
+                                className={`exp-btn ghost sm ${modalHourOverrideCalendar === "gregory" ? "is-active" : ""}`}
+                                disabled={loading}
+                                onClick={() => {
+                                  setModalHourOverrideCalendar("gregory");
+                                  setModalHourOverrideHijriPickerOpen(false);
+                                }}
+                              >
+                                ميلادي
+                              </button>
+                              <button
+                                type="button"
+                                className={`exp-btn ghost sm ${modalHourOverrideCalendar === "hijri" ? "is-active" : ""}`}
+                                disabled={loading}
+                                onClick={() => {
+                                  setModalHourOverrideCalendar("hijri");
+                                  openModalHourOverrideHijriPicker("from");
+                                }}
+                              >
+                                هجري
+                              </button>
+                            </div>
+                            <div className="emp-field-note">
+                              {modalHourOverrideCalendar === "hijri"
+                                ? "اختاري التاريخ مباشرة من التقويم، ويمكنك أيضا الكتابة اليدوية."
+                                : "يمكنك التبديل إلى الهجري إذا كان الإدخال بالتقويم الهجري."}
+                            </div>
                           </div>
-                          {modalHourOverrideMode !== "single" ? (
-                            <div>
-                              <label className="emp-label">إلى تاريخ</label>
+                          <div className="emp-ov-field emp-ov-from-date">
+                            <label className="emp-label">من تاريخ</label>
+                            {modalHourOverrideCalendar === "hijri" ? (
+                              <>
+                                <div className="emp-ov-hijri-row">
+                                  <input
+                                    className="dash-input emp-ov-hijri-input"
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={modalHourOverrideFromDateHijri}
+                                    placeholder="مثال: 09/09/1447"
+                                    disabled={loading}
+                                    onChange={(e) =>
+                                      applyModalHourOverrideHijriInput("from", e.target.value, false)
+                                    }
+                                    onBlur={(e) =>
+                                      applyModalHourOverrideHijriInput("from", e.target.value, true)
+                                    }
+                                  />
+                                  <button
+                                    type="button"
+                                    className="exp-btn ghost sm emp-ov-hijri-pick-btn"
+                                    disabled={loading}
+                                    onClick={() => openModalHourOverrideHijriPicker("from")}
+                                  >
+                                    اختيار التاريخ
+                                  </button>
+                                </div>
+                                <div className="emp-field-note">
+                                  الميلادي المقابل: {fmtIsoDate(modalHourOverrideFromDate)}
+                                </div>
+                              </>
+                            ) : (
+                              <input
+                                className="dash-input"
+                                type="date"
+                                value={modalHourOverrideFromDate}
+                                disabled={loading}
+                                onChange={(e) => setModalHourOverrideFromGregorian(e.target.value)}
+                              />
+                            )}
+                          </div>
+                          <div className="emp-ov-field emp-ov-to-date">
+                            <label className="emp-label">إلى تاريخ</label>
+                            {modalHourOverrideCalendar === "hijri" ? (
+                              <>
+                                <div className="emp-ov-hijri-row">
+                                  <input
+                                    className="dash-input emp-ov-hijri-input"
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={modalHourOverrideToDateHijri}
+                                    placeholder="مثال: 19/09/1447"
+                                    disabled={loading || !!modalHourOverrideEditingDate}
+                                    onChange={(e) =>
+                                      applyModalHourOverrideHijriInput("to", e.target.value, false)
+                                    }
+                                    onBlur={(e) =>
+                                      applyModalHourOverrideHijriInput("to", e.target.value, true)
+                                    }
+                                  />
+                                  <button
+                                    type="button"
+                                    className="exp-btn ghost sm emp-ov-hijri-pick-btn"
+                                    disabled={loading || !!modalHourOverrideEditingDate}
+                                    onClick={() => openModalHourOverrideHijriPicker("to")}
+                                  >
+                                    اختيار التاريخ
+                                  </button>
+                                </div>
+                                <div className="emp-field-note">
+                                  الميلادي المقابل:{" "}
+                                  {fmtIsoDate(
+                                    normalizeLeaveUntil(modalHourOverrideToDate) || modalHourOverrideFromDate
+                                  )}
+                                </div>
+                              </>
+                            ) : (
                               <input
                                 className="dash-input"
                                 type="date"
                                 value={modalHourOverrideToDate}
                                 disabled={loading || !!modalHourOverrideEditingDate}
-                                onChange={(e) => setModalHourOverrideToDate(e.target.value)}
+                                onChange={(e) => setModalHourOverrideToGregorian(e.target.value)}
                               />
+                            )}
+                            {modalHourOverrideMode === "single" ? (
+                              <div className="emp-field-note">
+                                اختيار تاريخ مختلف هنا يحول تلقائيا إلى تعديل فترة.
+                              </div>
+                            ) : null}
+                          </div>
+                          {modalHourOverrideCalendar === "hijri" && modalHourOverrideHijriPickerOpen ? (
+                            <div className="emp-ov-field emp-ov-hijri-picker-wrap">
+                              <div className="emp-ov-hijri-picker" ref={modalHourOverrideHijriPickerRef}>
+                                <div className="emp-ov-hijri-picker-head">
+                                  <button
+                                    type="button"
+                                    className="exp-btn ghost sm"
+                                    disabled={loading}
+                                    onClick={() =>
+                                      setModalHourOverrideHijriViewMonthISO((prev) =>
+                                        shiftHijriMonthStartIso(prev, -1)
+                                      )
+                                    }
+                                  >
+                                    السابق
+                                  </button>
+                                  <div className="emp-ov-hijri-picker-title">
+                                    <strong>{modalHourOverrideHijriMonthTitle || "التقويم الهجري"}</strong>
+                                    <span>
+                                      الحقل الحالي:{" "}
+                                      {modalHourOverrideHijriPickerTarget === "from"
+                                        ? "من تاريخ"
+                                        : "إلى تاريخ"}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="exp-btn ghost sm"
+                                    disabled={loading}
+                                    onClick={() =>
+                                      setModalHourOverrideHijriViewMonthISO((prev) =>
+                                        shiftHijriMonthStartIso(prev, 1)
+                                      )
+                                    }
+                                  >
+                                    التالي
+                                  </button>
+                                </div>
+                                <div className="emp-ov-hijri-picker-grid emp-ov-hijri-picker-weekdays">
+                                  {HIJRI_WEEKDAY_SHORT.map((w) => (
+                                    <span key={`ov_hijri_wd_${w}`}>{w}</span>
+                                  ))}
+                                </div>
+                                <div className="emp-ov-hijri-picker-grid">
+                                  {Array.from({ length: modalHourOverrideHijriWeekOffset }).map((_, idx) => (
+                                    <span
+                                      key={`ov_hijri_gap_${idx}`}
+                                      className="emp-ov-hijri-day is-gap"
+                                      aria-hidden="true"
+                                    />
+                                  ))}
+                                  {modalHourOverrideHijriMonthDays.map((cell) => {
+                                    const activeIso =
+                                      modalHourOverrideHijriPickerTarget === "from"
+                                        ? normalizeLeaveUntil(modalHourOverrideFromDate)
+                                        : normalizeLeaveUntil(modalHourOverrideToDate) ||
+                                          normalizeLeaveUntil(modalHourOverrideFromDate);
+                                    const isActive = cell.iso === activeIso;
+                                    return (
+                                      <button
+                                        key={`ov_hijri_day_${cell.iso}`}
+                                        type="button"
+                                        className={`emp-ov-hijri-day ${isActive ? "is-active" : ""}`}
+                                        disabled={loading}
+                                        onClick={() => applyModalHourOverrideHijriPick(cell.iso)}
+                                      >
+                                        {String(cell.hijriDay)}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                             </div>
                           ) : null}
-                          <div>
+                          <div className="emp-ov-field emp-ov-from-time">
                             <label className="emp-label">من الساعة</label>
                             <input
                               className="dash-input"
@@ -3847,7 +4445,7 @@ export default function DashboardEmployees() {
                               onChange={(e) => setModalHourOverrideStart(e.target.value)}
                             />
                           </div>
-                          <div>
+                          <div className="emp-ov-field emp-ov-to-time">
                             <label className="emp-label">إلى الساعة</label>
                             <input
                               className="dash-input"
@@ -3857,7 +4455,7 @@ export default function DashboardEmployees() {
                               onChange={(e) => setModalHourOverrideEnd(e.target.value)}
                             />
                           </div>
-                          <label className="emp-mini-check">
+                          <label className="emp-mini-check emp-ov-toggle">
                             <input
                               type="checkbox"
                               checked={modalHourOverrideEnabled}
@@ -3866,7 +4464,7 @@ export default function DashboardEmployees() {
                             />
                             <span>دوام (إلغاء التحديد = إغلاق كامل)</span>
                           </label>
-                          <div>
+                          <div className="emp-ov-field emp-ov-note">
                             <label className="emp-label">ملاحظة / سبب</label>
                             <input
                               className="dash-input"
@@ -3878,34 +4476,40 @@ export default function DashboardEmployees() {
                           </div>
                           <button
                             type="button"
-                            className="exp-btn ghost sm"
+                            className="exp-btn ghost sm emp-ov-submit"
                             disabled={
                               loading ||
                               !normalizeLeaveUntil(modalHourOverrideFromDate) ||
-                              (!modalHourOverrideEditingDate && modalHourOverridePreview.affectedDays <= 0)
+                              (
+                                !modalHourOverrideEditingDate &&
+                                !modalHourOverrideEditingGroupId &&
+                                modalHourOverridePreview.affectedDays <= 0
+                              )
                             }
                             onClick={addModalWorkingHourOverride}
                           >
-                            {modalHourOverrideEditingDate ? "حفظ التعديل" : "إضافة النطاق"}
+                            {modalHourOverrideEditingDate || modalHourOverrideEditingGroupId
+                              ? "حفظ التعديل"
+                              : "إضافة النطاق"}
                           </button>
-                          {modalHourOverrideEditingDate ? (
+                          {modalHourOverrideEditingDate || modalHourOverrideEditingGroupId ? (
                             <button
                               type="button"
-                              className="exp-btn ghost sm"
+                              className="exp-btn ghost sm emp-ov-cancel"
                               disabled={loading}
                               onClick={cancelModalWorkingHourOverrideEdit}
                             >
                               إلغاء التعديل
                             </button>
                           ) : null}
-                          <div className="emp-field-note">
-                            طريقة التطبيق: {modalHourOverrideUpdateExistingOnly ? "تعديل الاستثناءات الحالية فقط" : "استبدال"}
+                          <div className="emp-field-note emp-ov-apply-note">
+                            طريقة التنفيذ: {modalHourOverrideUpdateExistingOnly ? "تعديل الموجود فقط" : "استبدال الموجود في نفس التاريخ"}
                           </div>
-                          <div className="emp-field-note">
-                            المعاينة: {modalHourOverridePreview.affectedDays} يوم | الساعات الجديدة {modalHourOverridePreview.totalHours.toFixed(1)} | الفرق {modalHourOverridePreview.diffHours >= 0 ? "+" : ""}{modalHourOverridePreview.diffHours.toFixed(1)} ساعة
+                          <div className="emp-field-note emp-ov-preview-note">
+                            المعاينة: {modalHourOverridePreview.affectedDays} يوم | ساعات بعد التعديل {modalHourOverridePreview.totalHours.toFixed(1)} | التغيير {modalHourOverridePreview.diffHours >= 0 ? "+" : ""}{modalHourOverridePreview.diffHours.toFixed(1)} ساعة
                           </div>
                         </div>
-                        {!modalHourOverrideEditingDate && modalHourOverrideMode === "specific" ? (
+                        {!modalHourOverrideEditingDate && !modalHourOverrideEditingGroupId && modalHourOverrideMode === "specific" ? (
                           <div className="emp-working-override-weekdays">
                             <label className="emp-label">تطبيق على أيام محددة (اختياري)</label>
                             <div className="emp-working-override-weekday-chips">
@@ -3936,33 +4540,42 @@ export default function DashboardEmployees() {
                         <div className="emp-working-override-summary">
                           <div className="emp-field-note">
                             {modalHourOverrideEditingDate
-                              ? `وضع التعديل: تحديث استثناء تاريخ ${fmtIsoDate(modalHourOverrideEditingDate)}.`
+                              ? `وضع التعديل: تعديل استثناء يوم ${fmtIsoDate(modalHourOverrideEditingDate)}.`
+                              : modalHourOverrideEditingGroupId
+                                ? `وضع التعديل: تعديل نطاق ${formatIsoDateRange(
+                                    modalHourOverrideFromDate,
+                                    modalHourOverrideToDate || modalHourOverrideFromDate
+                                  )}.`
                               : modalHourOverrideApplyCount > 0
                                 ? modalHourOverrideUpdateExistingOnly
-                                  ? `سيتم تعديل ${modalHourOverrideApplyCount} استثناء موجود ضمن النطاق.`
-                                  : `سيتم تطبيق الاستثناء على ${modalHourOverrideApplyCount} يوم.`
+                                  ? `سيتم تعديل ${modalHourOverrideApplyCount} استثناء موجود.`
+                                  : `سيتم تطبيق الاستثناء على ${modalHourOverrideApplyCount} يوم ضمن النطاق.`
                                 : modalHourOverrideUpdateExistingOnly
-                                  ? "لا يوجد استثناءات حالية مطابقة للنطاق/الفلاتر."
-                                  : "لا يوجد أيام مطابقة للنطاق/الفلاتر الحالية."}
+                                  ? "لا يوجد استثناءات حالية مطابقة للنطاق المحدد."
+                                  : "لا يوجد أيام مطابقة للنطاق المحدد."}
                           </div>
-                          {!modalHourOverrideEditingDate ? (
+                          {!modalHourOverrideEditingDate && !modalHourOverrideEditingGroupId ? (
                             <div className="emp-field-note">
                               {modalHourOverrideUpdateExistingOnly
-                                ? "الوضع الحالي: تعديل الموجود فقط بدون إنشاء أيام جديدة."
+                                ? "الوضع الحالي: تعديل الاستثناءات الحالية فقط."
                                 : modalHourOverrideOverwriteExisting
-                                  ? "سيتم استبدال أي استثناء سابق على نفس التاريخ."
-                                  : "لن يتم استبدال الأيام التي لديها استثناء سابق."}
+                                  ? "الوضع الحالي: استبدال أي استثناء سابق في نفس التاريخ."
+                                  : "الوضع الحالي: إضافة دون استبدال الاستثناءات السابقة."}
                             </div>
                           ) : null}
                         </div>
                         <div className="emp-field-note">
-                          ملاحظة: عند الضغط على "حفظ التغييرات" سيتم تطبيق مسودة الاستثناءات تلقائياً.
+                          سيتم التطبيق عند الضغط على "حفظ التغييرات".
                         </div>
 
                         {modalCustomHourOverrides.length ? (
                           <div className="emp-override-list">
                             <div className="emp-override-list-head">
-                              <span>الاستثناءات الحالية: {modalCustomHourOverrides.length}</span>
+                              <span>
+                                الاستثناءات الحالية: {modalHourOverrideGroups.length} نطاق
+                                {" • "}
+                                {modalCustomHourOverrides.length} يوم
+                              </span>
                               <button
                                 type="button"
                                 className="exp-btn ghost sm"
@@ -3972,46 +4585,67 @@ export default function DashboardEmployees() {
                                 حذف الكل
                               </button>
                             </div>
-                            {modalCustomHourOverrides.map((ov) => {
+                            {modalHourOverrideGroups.map((group, groupIndex) => {
+                              const from = normalizeLeaveUntil(group.fromDate);
+                              const to = normalizeLeaveUntil(group.toDate) || from;
+                              const activeFrom = normalizeLeaveUntil(modalHourOverrideFromDate);
+                              const activeTo =
+                                normalizeLeaveUntil(modalHourOverrideToDate) || activeFrom;
                               const isEditing =
-                                normalizeLeaveUntil(modalHourOverrideEditingDate) === ov.date;
-                              const itemStart = normalizeTimeHHMM(ov.start) || "10:00";
-                              const itemEnd = normalizeTimeHHMM(ov.end) || "22:00";
-                              const itemDay = weekdayFromIso(ov.date);
-                              const itemDayLabel =
-                                WEEKDAY_OPTIONS.find((x) => x.key === itemDay)?.label || "-";
+                                !normalizeLeaveUntil(modalHourOverrideEditingDate) &&
+                                modalHourOverrideUpdateExistingOnly &&
+                                activeFrom === from &&
+                                activeTo === to;
+                              const itemStart = normalizeTimeHHMM(group.start) || "10:00";
+                              const itemEnd = normalizeTimeHHMM(group.end) || "22:00";
+                              const rangeGregorian = formatIsoDateRange(from, to);
+                              const rangeHijri = formatIsoDateRangeByCalendar(from, to, "hijri");
+                              const rangeDays = countIsoDateRangeDays(from, to);
+                              const dayCount = rangeDays > 0 ? rangeDays : Math.max(1, Number(group.count) || 1);
+                              const dayCountLabel =
+                                dayCount > 1 ? `${formatArabicInteger(dayCount)} أيام` : "يوم واحد";
+                              const toneClass = `tone-${(groupIndex % 4) + 1}`;
                               return (
                                 <div
-                                  key={`ov_${ov.date}`}
-                                  className={`emp-override-item ${isEditing ? "editing" : ""}`}
+                                  key={`ov_group_${group.id}`}
+                                  className={`emp-override-item ${toneClass} ${isEditing ? "editing" : ""}`}
                                 >
                                   <div className="emp-override-item-main">
+                                    <span className="emp-override-item-badge">استثناء {groupIndex + 1}</span>
                                     <span className="emp-override-item-date">
-                                      اليوم: {itemDayLabel} | التاريخ: {fmtIsoDate(ov.date)}
+                                      النطاق: {rangeGregorian}
                                     </span>
                                     <span className="emp-override-item-time">
-                                      {ov.enabled === false
+                                      {rangeHijri !== rangeGregorian ? `هجري: ${rangeHijri}` : ""}
+                                    </span>
+                                    <span className="emp-override-item-time">
+                                      عدد الأيام: {dayCountLabel}
+                                    </span>
+                                    <span className="emp-override-item-time">
+                                      {group.enabled === false
                                         ? "الحالة: إغلاق كامل"
                                         : `الوقت: ${formatWindow(itemStart, itemEnd)}`}
                                     </span>
-                                    {ov.note ? <span className="emp-override-item-time">ملاحظة: {ov.note}</span> : null}
+                                    {group.note ? (
+                                      <span className="emp-override-item-time">ملاحظة: {group.note}</span>
+                                    ) : null}
                                   </div>
                                   <div className="emp-override-item-actions">
                                     <button
                                       type="button"
                                       className="exp-btn ghost sm"
                                       disabled={loading}
-                                      onClick={() => startModalWorkingHourOverrideEdit(ov)}
+                                      onClick={() => startModalWorkingHourOverrideGroupEdit(group)}
                                     >
-                                      تعديل
+                                      تعديل النطاق
                                     </button>
                                     <button
                                       type="button"
                                       className="exp-btn ghost sm"
                                       disabled={loading}
-                                      onClick={() => removeModalWorkingHourOverride(ov.date)}
+                                      onClick={() => removeModalWorkingHourOverrideGroup(group)}
                                     >
-                                      حذف
+                                      حذف النطاق
                                     </button>
                                   </div>
                                 </div>

@@ -1776,6 +1776,69 @@ h1, h2, h3, h4, h5, h6 {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(13, 13, 13, 0.1);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.emp-modal .emp-working-override-presets .exp-btn {
+  white-space: nowrap;
+}
+
+.emp-modal .emp-working-override-presets .emp-ov-apply-method-row {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  justify-content: start;
+  gap: 10px;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px 12px;
+  text-align: right;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.emp-modal .emp-working-override-presets .emp-ov-apply-method-row:hover {
+  border-color: rgba(64, 1, 13, 0.24);
+}
+
+.emp-modal .emp-working-override-presets .emp-ov-apply-method-row.is-active {
+  border-color: rgba(64, 1, 13, 0.42);
+  background: rgba(64, 1, 13, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(64, 1, 13, 0.12);
+}
+
+.emp-modal .emp-working-override-presets .emp-ov-apply-method-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #40010d;
+}
+
+.emp-modal .emp-working-override-presets .emp-ov-apply-method-row span {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  color: #1f2937;
+  line-height: 1.55;
+}
+
+.emp-modal .emp-working-override-presets .emp-ov-apply-method-row.is-active span {
+  color: #40010d;
+}
+
+@media (max-width: 640px) {
+  .emp-modal .emp-working-override-presets .emp-ov-apply-method-row {
+    grid-template-columns: 16px minmax(0, 1fr);
+    padding: 9px 10px;
+  }
+
+  .emp-modal .emp-working-override-presets .emp-ov-apply-method-row span {
+    font-size: 12px;
+  }
 }
 
 .emp-modal .emp-working-override-presets .exp-btn.is-active,
@@ -1787,14 +1850,209 @@ h1, h2, h3, h4, h5, h6 {
 
 .emp-modal .emp-working-override-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-field {
+  min-width: 0;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-calendar-toggle {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-calendar-toggle-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-calendar-toggle-buttons .exp-btn {
+  min-width: 92px;
+  justify-content: center;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-from-date,
+.emp-modal .emp-working-override-form .emp-ov-to-date,
+.emp-modal .emp-working-override-form .emp-ov-from-time,
+.emp-modal .emp-working-override-form .emp-ov-to-time {
+  grid-column: span 3;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-input {
+  direction: ltr;
+  text-align: center;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
   align-items: center;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-pick-btn {
+  white-space: nowrap;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-picker-wrap {
+  grid-column: 1 / -1;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-picker {
+  border: 1px solid rgba(13, 13, 13, 0.14);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-picker-title {
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-picker-title strong {
+  font-size: 14px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-picker-title span {
+  font-size: 11px;
+  font-weight: 800;
+  color: #64748b;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-picker-weekdays {
+  margin-bottom: 5px;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-picker-weekdays span {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: #64748b;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-day {
+  border: 1px solid rgba(13, 13, 13, 0.14);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  min-height: 34px;
+  font-weight: 800;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-day.is-active {
+  border-color: #40010d;
+  background: rgba(64, 1, 13, 0.12);
+  color: #40010d;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-hijri-day.is-gap {
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-note {
+  grid-column: span 6;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-toggle {
+  grid-column: span 6;
+  min-height: 42px;
+  border: 1px dashed rgba(13, 13, 13, 0.2);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0 10px;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-submit,
+.emp-modal .emp-working-override-form .emp-ov-cancel {
+  grid-column: span 3;
+  width: 100%;
+  justify-content: center;
+}
+
+.emp-modal .emp-working-override-form .emp-ov-apply-note,
+.emp-modal .emp-working-override-form .emp-ov-preview-note {
+  grid-column: 1 / -1;
+  margin-top: 0;
 }
 
 @media (max-width: 1100px) {
   .emp-modal .emp-working-override-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .emp-modal .emp-working-override-form .emp-ov-from-date,
+  .emp-modal .emp-working-override-form .emp-ov-to-date,
+  .emp-modal .emp-working-override-form .emp-ov-from-time,
+  .emp-modal .emp-working-override-form .emp-ov-to-time,
+  .emp-modal .emp-working-override-form .emp-ov-submit,
+  .emp-modal .emp-working-override-form .emp-ov-cancel {
+    grid-column: span 1;
+  }
+
+  .emp-modal .emp-working-override-form .emp-ov-note,
+  .emp-modal .emp-working-override-form .emp-ov-toggle,
+  .emp-modal .emp-working-override-form .emp-ov-apply-note,
+  .emp-modal .emp-working-override-form .emp-ov-preview-note {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .emp-modal .emp-working-override-form {
+    grid-template-columns: 1fr;
+  }
+
+  .emp-modal .emp-working-override-form .emp-ov-hijri-row {
+    grid-template-columns: 1fr;
+  }
+
+  .emp-modal .emp-working-override-form .emp-ov-hijri-pick-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .emp-modal .emp-working-override-form .emp-ov-hijri-picker-head {
+    flex-wrap: wrap;
+  }
+
+  .emp-modal .emp-working-override-form .emp-ov-from-date,
+  .emp-modal .emp-working-override-form .emp-ov-to-date,
+  .emp-modal .emp-working-override-form .emp-ov-from-time,
+  .emp-modal .emp-working-override-form .emp-ov-to-time,
+  .emp-modal .emp-working-override-form .emp-ov-note,
+  .emp-modal .emp-working-override-form .emp-ov-toggle,
+  .emp-modal .emp-working-override-form .emp-ov-submit,
+  .emp-modal .emp-working-override-form .emp-ov-cancel,
+  .emp-modal .emp-working-override-form .emp-ov-apply-note,
+  .emp-modal .emp-working-override-form .emp-ov-preview-note {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1861,19 +2119,65 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .emp-modal .emp-override-item {
+  --ov-accent: rgba(64, 1, 13, 0.35);
+  --ov-surface: rgba(64, 1, 13, 0.03);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   border: 1px solid rgba(13, 13, 13, 0.12);
   border-radius: 10px;
-  padding: 8px 10px;
-  background: #fff;
+  padding: 8px 10px 8px 12px;
+  background: var(--ov-surface);
+  position: relative;
+  overflow: hidden;
+}
+
+.emp-modal .emp-override-item::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 4px;
+  background: var(--ov-accent);
+}
+
+.emp-modal .emp-override-item.tone-1 {
+  --ov-accent: rgba(64, 1, 13, 0.44);
+  --ov-surface: rgba(64, 1, 13, 0.04);
+}
+
+.emp-modal .emp-override-item.tone-2 {
+  --ov-accent: rgba(185, 109, 24, 0.44);
+  --ov-surface: rgba(185, 109, 24, 0.06);
+}
+
+.emp-modal .emp-override-item.tone-3 {
+  --ov-accent: rgba(15, 118, 110, 0.44);
+  --ov-surface: rgba(15, 118, 110, 0.06);
+}
+
+.emp-modal .emp-override-item.tone-4 {
+  --ov-accent: rgba(51, 65, 85, 0.44);
+  --ov-surface: rgba(51, 65, 85, 0.06);
 }
 
 .emp-modal .emp-override-item.editing {
   border-color: #40010d;
-  background: rgba(64, 1, 13, 0.04);
+  background: rgba(64, 1, 13, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(64, 1, 13, 0.18);
+}
+
+.emp-modal .emp-override-item-badge {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(13, 13, 13, 0.15);
+  color: #334155;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
 }
 
 .emp-modal .emp-override-item-main {

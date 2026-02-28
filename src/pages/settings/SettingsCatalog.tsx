@@ -83,6 +83,7 @@ type DetailsMode = "view" | "edit";
 type DetailsTab = "overview" | "pricing" | "variants" | "audit";
 type FilterStatus = "all" | "active" | "inactive";
 type ComposerMode = null | "section" | "service";
+type ServiceComposerSpot = "pricing" | "variants";
 
 export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const navigate = useNavigate();
@@ -109,6 +110,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const [serviceSectionFilter, setServiceSectionFilter] = useState("all");
 
   const [composerMode, setComposerMode] = useState<ComposerMode>(null);
+  const [serviceComposerSpot, setServiceComposerSpot] = useState<ServiceComposerSpot>("pricing");
   const [newSection, setNewSection] = useState({ name: "", order: 1, active: true });
   const [newService, setNewService] = useState({
     sectionId: "",
@@ -628,7 +630,11 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     }
   };
 
-  const startServiceComposer = (sectionId?: string, preferredCategoryId?: string) => {
+  const startServiceComposer = (
+    sectionId?: string,
+    preferredCategoryId?: string,
+    spot: ServiceComposerSpot = "pricing"
+  ) => {
     const sid = String(sectionId || selectedSectionId || sections[0]?.id || "").trim();
     if (!sid) return showMsg("❌ اختر قسمًا أولًا", 2200);
 
@@ -647,6 +653,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       return showMsg("❌ أضف تصنيفًا أولًا قبل إضافة خدمة", 2600);
     }
 
+    setServiceComposerSpot(spot);
     setNewService({
       sectionId: sid,
       categoryId: resolvedCategoryId,
@@ -748,6 +755,49 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     </div>
   ) : null;
 
+  const renderServiceComposer = () => (
+    <div className="scatalog-ref__composer scatalog-ref__composer--service-inline">
+      <b>إضافة خدمة</b>
+      <select className="settings-input" value={newService.sectionId} onChange={(e) => { const sid = String(e.target.value || "").trim(); const cats = categories.filter((c) => String(c.sectionId || "").trim() === sid).sort((a, b) => Number(a.order || 0) - Number(b.order || 0)); setNewService((p) => ({ ...p, sectionId: sid, categoryId: String(cats[0]?.id || "") })); }}>
+        <option value="">— اختر القسم —</option>
+        {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+      <select className="settings-input" value={newService.categoryId} onChange={(e) => setNewService((p) => ({ ...p, categoryId: e.target.value }))}>
+        <option value="">— اختر التصنيف —</option>
+        {composerCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      <input className="settings-input" placeholder="اسم الخدمة" value={newService.name} onChange={(e) => setNewService((p) => ({ ...p, name: e.target.value }))} />
+      <div className="scatalog-ref__inline-2">
+        <div className="settings-field">
+          <label>الوقت (دقيقة)</label>
+          <input className="settings-input" type="number" min={5} value={newService.durationMin} onChange={(e) => setNewService((p) => ({ ...p, durationMin: parseNumberInput(e.target.value, p.durationMin) }))} />
+        </div>
+        <div className="settings-field">
+          <label>السعر</label>
+          <input className="settings-input" type="number" min={0} value={newService.price} onChange={(e) => setNewService((p) => ({ ...p, price: parseNumberInput(e.target.value, p.price) }))} />
+        </div>
+      </div>
+      <div className="settings-field">
+        <label>سعر الموسم (اختياري)</label>
+        <input
+          className="settings-input"
+          type="number"
+          min={0}
+          value={newService.seasonPrice ?? ""}
+          onChange={(e) => {
+            const raw = e.target.value;
+            const val = raw === "" ? null : parseNumberInput(raw, Number(newService.seasonPrice ?? 0));
+            setNewService((p) => ({ ...p, seasonPrice: val }));
+          }}
+        />
+      </div>
+      <div className="scatalog-ref__composer-actions">
+        <button className="dash-btn" type="button" onClick={() => setComposerMode(null)}>إلغاء</button>
+        <button className={`exp-btn primary ${!String(newService.sectionId || "").trim() || !String(newService.categoryId || "").trim() ? "is-disabled" : ""}`} type="button" disabled={!String(newService.sectionId || "").trim() || !String(newService.categoryId || "").trim()} onClick={() => void createService()}>إنشاء</button>
+      </div>
+    </div>
+  );
+
   const startEdit = () => {
     if (!hasSelection) return;
     if (activeListMode === "sections" && selectedSectionLive) setSectionDraft({ ...selectedSectionLive });
@@ -835,7 +885,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
             <div className="scatalog-ref__left-actions">
               <button type="button" className="exp-btn" onClick={() => { setNewSection({ name: "", order: nextSectionOrder, active: true }); setComposerMode("section"); }}>+ إضافة قسم</button>
-              <button type="button" className="exp-btn primary" onClick={() => startServiceComposer()}>+ إضافة خدمة</button>
             </div>
 
             {composerMode === "section" && (
@@ -849,49 +898,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 <div className="scatalog-ref__composer-actions">
                   <button className="dash-btn" type="button" onClick={() => setComposerMode(null)}>إلغاء</button>
                   <button className="exp-btn primary" type="button" onClick={() => void createSection()}>إنشاء</button>
-                </div>
-              </div>
-            )}
-
-            {composerMode === "service" && (
-              <div className="scatalog-ref__composer">
-                <b>إضافة خدمة</b>
-                <select className="settings-input" value={newService.sectionId} onChange={(e) => { const sid = String(e.target.value || "").trim(); const cats = categories.filter((c) => String(c.sectionId || "").trim() === sid).sort((a, b) => Number(a.order || 0) - Number(b.order || 0)); setNewService((p) => ({ ...p, sectionId: sid, categoryId: String(cats[0]?.id || "") })); }}>
-                  <option value="">— اختر القسم —</option>
-                  {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-                <select className="settings-input" value={newService.categoryId} onChange={(e) => setNewService((p) => ({ ...p, categoryId: e.target.value }))}>
-                  <option value="">— اختر التصنيف —</option>
-                  {composerCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <input className="settings-input" placeholder="اسم الخدمة" value={newService.name} onChange={(e) => setNewService((p) => ({ ...p, name: e.target.value }))} />
-                <div className="scatalog-ref__inline-2">
-                  <div className="settings-field">
-                    <label>الوقت (دقيقة)</label>
-                    <input className="settings-input" type="number" min={5} value={newService.durationMin} onChange={(e) => setNewService((p) => ({ ...p, durationMin: parseNumberInput(e.target.value, p.durationMin) }))} />
-                  </div>
-                  <div className="settings-field">
-                    <label>السعر</label>
-                    <input className="settings-input" type="number" min={0} value={newService.price} onChange={(e) => setNewService((p) => ({ ...p, price: parseNumberInput(e.target.value, p.price) }))} />
-                  </div>
-                </div>
-                <div className="settings-field">
-                  <label>سعر الموسم (اختياري)</label>
-                  <input
-                    className="settings-input"
-                    type="number"
-                    min={0}
-                    value={newService.seasonPrice ?? ""}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      const val = raw === "" ? null : parseNumberInput(raw, Number(newService.seasonPrice ?? 0));
-                      setNewService((p) => ({ ...p, seasonPrice: val }));
-                    }}
-                  />
-                </div>
-                <div className="scatalog-ref__composer-actions">
-                  <button className="dash-btn" type="button" onClick={() => setComposerMode(null)}>إلغاء</button>
-                  <button className={`exp-btn primary ${!String(newService.sectionId || "").trim() || !String(newService.categoryId || "").trim() ? "is-disabled" : ""}`} type="button" disabled={!String(newService.sectionId || "").trim() || !String(newService.categoryId || "").trim()} onClick={() => void createService()}>إنشاء</button>
                 </div>
               </div>
             )}
@@ -959,11 +965,12 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                               className={`exp-btn primary ${!sectionServiceCategoryId ? "is-disabled" : ""}`}
                               type="button"
                               disabled={!sectionServiceCategoryId}
-                              onClick={() => startServiceComposer(selectedSectionLive.id, sectionServiceCategoryId)}
+                              onClick={() => startServiceComposer(selectedSectionLive.id, sectionServiceCategoryId, "pricing")}
                             >
                               + إضافة خدمة
                             </button>
                           </div>
+                          {composerMode === "service" && serviceComposerSpot === "pricing" ? renderServiceComposer() : null}
                           {!categoriesInSection.length ? (
                             <div className="settings-note">لا توجد تصنيفات في هذا القسم. أضف تصنيفًا أولًا.</div>
                           ) : (
@@ -1014,7 +1021,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                               <input className="settings-input" type="number" value={c.order} disabled={mode !== "edit"} onChange={(e) => setCategories((prev) => prev.map((x) => (x.id === c.id ? { ...x, order: Number(e.target.value || 0) } : x)))} />
                               <label className="scatalog-ref__check"><input className="settings-check" type="checkbox" checked={c.active !== false} disabled={mode !== "edit"} onChange={(e) => setCategories((prev) => prev.map((x) => (x.id === c.id ? { ...x, active: e.target.checked } : x)))} /><span>نشط</span></label>
                               <button className={`dash-btn ${variantsServicesCategoryId === c.id ? "scatalog-ref__btn-active" : ""}`} type="button" onClick={() => openVariantsServicesPanel(c.id)}>
-                                {variantsServicesCategoryId === c.id ? "الخدمات المفتوحة" : "الخدمات"}
+                                {variantsServicesCategoryId === c.id ? "الخدمات المفتوحة" : "افتح الخدمات"}
                               </button>
                               <button className="exp-btn" type="button" disabled={mode !== "edit"} onClick={() => void saveCategory(c)}>حفظ</button>
                               <button className="exp-btn danger" type="button" disabled={mode !== "edit"} onClick={() => void deleteCategory(c.id)}>حذف</button>
@@ -1078,11 +1085,12 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                   className={`exp-btn primary ${!variantsServicesCategoryId ? "is-disabled" : ""}`}
                   type="button"
                   disabled={!variantsServicesCategoryId}
-                  onClick={() => startServiceComposer(selectedSectionLive.id, variantsServicesCategoryId)}
+                  onClick={() => startServiceComposer(selectedSectionLive.id, variantsServicesCategoryId, "variants")}
                 >
                   + إضافة خدمة
                 </button>
               </div>
+              {composerMode === "service" && serviceComposerSpot === "variants" ? renderServiceComposer() : null}
               <div className="scatalog-ref__context-pill">
                 <span>التصنيف النشط</span>
                 <b>{selectedCategoryForVariantsServices?.name || "—"}</b>
