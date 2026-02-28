@@ -35,6 +35,11 @@ function clampInt(v: any, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
 }
+function parseNumberInput(raw: string, fallback = 0) {
+  if (raw === "") return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
 function toMillisSafe(v: any) {
   if (!v) return 0;
   if (typeof v?.toMillis === "function") return v.toMillis();
@@ -736,9 +741,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         <div className="settings-field"><label>ID</label><input className="settings-input" value={openedServiceLiveInSection.id} disabled /></div>
         <div className="settings-field"><label>التصنيف</label><select className="settings-input" value={String(openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.categoryId || "" : openedServiceLiveInSection.categoryId || "")} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => { const cid = String(e.target.value || "").trim(); const cat = categoryById.get(cid); setOpenedServiceDraftInSection((p) => (p ? { ...p, categoryId: cid, sectionId: String(cat?.sectionId || p.sectionId || "").trim() } : p)); }}>{categoriesInSection.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
         <label className="scatalog-ref__check"><input className="settings-check" type="checkbox" checked={openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.active !== false : openedServiceLiveInSection.active !== false} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => setOpenedServiceDraftInSection((p) => (p ? { ...p, active: e.target.checked } : p))} /><span>نشطة</span></label>
-        <div className="settings-field"><label>السعر</label><input className="settings-input" type="number" min={0} value={openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.price ?? 0 : openedServiceLiveInSection.price} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => setOpenedServiceDraftInSection((p) => (p ? { ...p, price: Math.max(0, Number(e.target.value || 0)) } : p))} /></div>
-        <div className="settings-field"><label>المدة (دقيقة)</label><input className="settings-input" type="number" min={5} value={openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.durationMin ?? 60 : openedServiceLiveInSection.durationMin} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => setOpenedServiceDraftInSection((p) => (p ? { ...p, durationMin: Math.max(5, Number(e.target.value || 0)) } : p))} /></div>
-        <div className="settings-field"><label>سعر الموسم</label><input className="settings-input" type="number" min={0} value={(openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.seasonPrice : openedServiceLiveInSection.seasonPrice) ?? ""} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => { const raw = e.target.value; const val = raw === "" ? null : Math.max(0, Number(raw)); setOpenedServiceDraftInSection((p) => (p ? { ...p, seasonPrice: val } : p)); }} /></div>
+        <div className="settings-field"><label>السعر</label><input className="settings-input" type="number" min={0} value={openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.price ?? 0 : openedServiceLiveInSection.price} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => setOpenedServiceDraftInSection((p) => (p ? { ...p, price: parseNumberInput(e.target.value, p.price) } : p))} /></div>
+        <div className="settings-field"><label>المدة (دقيقة)</label><input className="settings-input" type="number" min={5} value={openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.durationMin ?? 60 : openedServiceLiveInSection.durationMin} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => setOpenedServiceDraftInSection((p) => (p ? { ...p, durationMin: parseNumberInput(e.target.value, p.durationMin) } : p))} /></div>
+        <div className="settings-field"><label>سعر الموسم</label><input className="settings-input" type="number" min={0} value={(openedServiceModeInSection === "edit" ? openedServiceDraftInSection?.seasonPrice : openedServiceLiveInSection.seasonPrice) ?? ""} disabled={openedServiceModeInSection !== "edit"} onChange={(e) => { const raw = e.target.value; const val = raw === "" ? null : parseNumberInput(raw, 0); setOpenedServiceDraftInSection((p) => (p ? { ...p, seasonPrice: val } : p)); }} /></div>
       </div>
     </div>
   ) : null;
@@ -861,8 +866,28 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 </select>
                 <input className="settings-input" placeholder="اسم الخدمة" value={newService.name} onChange={(e) => setNewService((p) => ({ ...p, name: e.target.value }))} />
                 <div className="scatalog-ref__inline-2">
-                  <input className="settings-input" type="number" min={5} value={newService.durationMin} onChange={(e) => setNewService((p) => ({ ...p, durationMin: Math.max(5, Number(e.target.value || 0)) }))} />
-                  <input className="settings-input" type="number" min={0} value={newService.price} onChange={(e) => setNewService((p) => ({ ...p, price: Math.max(0, Number(e.target.value || 0)) }))} />
+                  <div className="settings-field">
+                    <label>الوقت (دقيقة)</label>
+                    <input className="settings-input" type="number" min={5} value={newService.durationMin} onChange={(e) => setNewService((p) => ({ ...p, durationMin: parseNumberInput(e.target.value, p.durationMin) }))} />
+                  </div>
+                  <div className="settings-field">
+                    <label>السعر</label>
+                    <input className="settings-input" type="number" min={0} value={newService.price} onChange={(e) => setNewService((p) => ({ ...p, price: parseNumberInput(e.target.value, p.price) }))} />
+                  </div>
+                </div>
+                <div className="settings-field">
+                  <label>سعر الموسم (اختياري)</label>
+                  <input
+                    className="settings-input"
+                    type="number"
+                    min={0}
+                    value={newService.seasonPrice ?? ""}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const val = raw === "" ? null : parseNumberInput(raw, Number(newService.seasonPrice ?? 0));
+                      setNewService((p) => ({ ...p, seasonPrice: val }));
+                    }}
+                  />
                 </div>
                 <div className="scatalog-ref__composer-actions">
                   <button className="dash-btn" type="button" onClick={() => setComposerMode(null)}>إلغاء</button>
@@ -959,7 +984,14 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                               {servicesInSelectedCategory.length ? servicesInSelectedCategory.map((s) => (
                                 <div key={s.id} className="scatalog-ref__linked-row">
                                   <div><b>{s.name}</b><span>{selectedCategoryForServices?.name || "بدون تصنيف"}</span></div>
-                                  <div><span>{money(s.price)} ر.س</span><span>{s.durationMin} د</span><button className="dash-btn" type="button" onClick={() => openServiceInSection(s.id)}>فتح الخدمة</button></div>
+                                  <div>
+                                    <span className="scatalog-ref__meta-item"><strong>السعر:</strong> {money(s.price)} ر.س</span>
+                                    {s.seasonPrice !== null && s.seasonPrice !== undefined ? (
+                                      <span className="scatalog-ref__meta-item is-season"><strong>سعر الموسم:</strong> {money(s.seasonPrice)} ر.س</span>
+                                    ) : null}
+                                    <span className="scatalog-ref__meta-item"><strong>الوقت:</strong> {s.durationMin} د</span>
+                                    <button className="dash-btn" type="button" onClick={() => openServiceInSection(s.id)}>فتح الخدمة</button>
+                                  </div>
                                 </div>
                               )) : <div className="settings-note">لا توجد خدمات داخل التصنيف المحدد.</div>}
 
@@ -1016,9 +1048,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
                       {activeTab === "pricing" && (
                         <div className="scatalog-ref__grid-2">
-                          <div className="settings-field"><label>السعر</label><input className="settings-input" type="number" min={0} value={mode === "edit" ? serviceDraft?.price ?? 0 : selectedServiceLive.price} disabled={mode !== "edit"} onChange={(e) => setServiceDraft((p) => (p ? { ...p, price: Math.max(0, Number(e.target.value || 0)) } : p))} /></div>
-                          <div className="settings-field"><label>المدة (دقيقة)</label><input className="settings-input" type="number" min={5} value={mode === "edit" ? serviceDraft?.durationMin ?? 60 : selectedServiceLive.durationMin} disabled={mode !== "edit"} onChange={(e) => setServiceDraft((p) => (p ? { ...p, durationMin: Math.max(5, Number(e.target.value || 0)) } : p))} /></div>
-                          <div className="settings-field"><label>سعر الموسم</label><input className="settings-input" type="number" min={0} value={(mode === "edit" ? serviceDraft?.seasonPrice : selectedServiceLive.seasonPrice) ?? ""} disabled={mode !== "edit"} onChange={(e) => { const raw = e.target.value; const val = raw === "" ? null : Math.max(0, Number(raw)); setServiceDraft((p) => (p ? { ...p, seasonPrice: val } : p)); }} /></div>
+                          <div className="settings-field"><label>السعر</label><input className="settings-input" type="number" min={0} value={mode === "edit" ? serviceDraft?.price ?? 0 : selectedServiceLive.price} disabled={mode !== "edit"} onChange={(e) => setServiceDraft((p) => (p ? { ...p, price: parseNumberInput(e.target.value, p.price) } : p))} /></div>
+                          <div className="settings-field"><label>المدة (دقيقة)</label><input className="settings-input" type="number" min={5} value={mode === "edit" ? serviceDraft?.durationMin ?? 60 : selectedServiceLive.durationMin} disabled={mode !== "edit"} onChange={(e) => setServiceDraft((p) => (p ? { ...p, durationMin: parseNumberInput(e.target.value, p.durationMin) } : p))} /></div>
+                          <div className="settings-field"><label>سعر الموسم</label><input className="settings-input" type="number" min={0} value={(mode === "edit" ? serviceDraft?.seasonPrice : selectedServiceLive.seasonPrice) ?? ""} disabled={mode !== "edit"} onChange={(e) => { const raw = e.target.value; const val = raw === "" ? null : parseNumberInput(raw, 0); setServiceDraft((p) => (p ? { ...p, seasonPrice: val } : p)); }} /></div>
                         </div>
                       )}
 
@@ -1060,7 +1092,14 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               {servicesInVariantsCategory.length ? servicesInVariantsCategory.map((s) => (
                 <div key={s.id} className={`scatalog-ref__linked-row ${openedServiceIdInSection === s.id ? "is-opened" : ""}`}>
                   <div><b>{s.name}</b><span>{selectedCategoryForVariantsServices?.name || "بدون تصنيف"}</span></div>
-                  <div><span>{money(s.price)} ر.س</span><span>{s.durationMin} د</span><button className={`dash-btn ${openedServiceIdInSection === s.id ? "scatalog-ref__btn-active" : ""}`} type="button" onClick={() => openServiceInSection(s.id)}>{openedServiceIdInSection === s.id ? "الخدمة مفتوحة" : "فتح الخدمة"}</button></div>
+                  <div>
+                    <span className="scatalog-ref__meta-item"><strong>السعر:</strong> {money(s.price)} ر.س</span>
+                    {s.seasonPrice !== null && s.seasonPrice !== undefined ? (
+                      <span className="scatalog-ref__meta-item is-season"><strong>سعر الموسم:</strong> {money(s.seasonPrice)} ر.س</span>
+                    ) : null}
+                    <span className="scatalog-ref__meta-item"><strong>الوقت:</strong> {s.durationMin} د</span>
+                    <button className={`dash-btn ${openedServiceIdInSection === s.id ? "scatalog-ref__btn-active" : ""}`} type="button" onClick={() => openServiceInSection(s.id)}>{openedServiceIdInSection === s.id ? "الخدمة مفتوحة" : "فتح الخدمة"}</button>
+                  </div>
                 </div>
               )) : <div className="settings-note">لا توجد خدمات داخل التصنيف المحدد.</div>}
 

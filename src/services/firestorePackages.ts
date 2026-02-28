@@ -27,6 +27,7 @@ export type ServicePackageDoc = {
   description?: string;
   imageUrl?: string;
   active: boolean;
+  startDate?: string; // YYYY-MM-DD
   endDate?: string; // YYYY-MM-DD
   serviceIds: string[];
   services: PackageServiceItem[];
@@ -53,6 +54,43 @@ function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
     out[k] = v;
   }
   return out as Partial<T>;
+}
+
+function localISODate(d: Date) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function normalizeDateISO(v: any): string {
+  if (!v) return "";
+
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const datePrefixMatch = s.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+    if (datePrefixMatch?.[1]) return datePrefixMatch[1];
+    const parsed = new Date(s);
+    if (!Number.isNaN(parsed.getTime())) return localISODate(parsed);
+    return "";
+  }
+
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return "";
+    return localISODate(v);
+  }
+
+  if (typeof v?.toDate === "function") {
+    return normalizeDateISO(v.toDate());
+  }
+
+  if (typeof v?.seconds === "number") {
+    return normalizeDateISO(new Date(v.seconds * 1000));
+  }
+
+  return "";
 }
 
 function normalizePackageItem(raw: any): PackageServiceItem {
@@ -101,7 +139,8 @@ function normalizePackage(raw: any, id: string): ServicePackageDoc {
     description: String(raw?.description || "").trim() || undefined,
     imageUrl: String(raw?.imageUrl || "").trim() || undefined,
     active: raw?.active !== false,
-    endDate: String(raw?.endDate || "").trim() || undefined,
+    startDate: normalizeDateISO(raw?.startDate) || undefined,
+    endDate: normalizeDateISO(raw?.endDate) || undefined,
     serviceIds,
     services,
     baseTotalPrice,
@@ -116,8 +155,12 @@ function normalizePackage(raw: any, id: string): ServicePackageDoc {
 }
 
 export async function listActivePackages(salonId = DEFAULT_SALON_ID): Promise<ServicePackageDoc[]> {
-  const today = new Date().toISOString().slice(0, 10);
-  const isActiveByDate = (x: ServicePackageDoc) => !x.endDate || x.endDate >= today;
+  const today = localISODate(new Date());
+  const isActiveByDate = (x: ServicePackageDoc) => {
+    const startOk = !x.startDate || x.startDate <= today;
+    const endOk = !x.endDate || x.endDate >= today;
+    return startOk && endOk;
+  };
   try {
     const snap = await getDocs(query(packagesCol(salonId), orderBy("updatedAt", "desc")));
     return snap.docs
@@ -168,7 +211,8 @@ export async function upsertPackage(pkg: ServicePackageDoc, salonId = DEFAULT_SA
     description: String(pkg.description || "").trim() || undefined,
     imageUrl: String(pkg.imageUrl || "").trim() || undefined,
     active: pkg.active !== false,
-    endDate: String(pkg.endDate || "").trim() || undefined,
+    startDate: normalizeDateISO(pkg.startDate) || undefined,
+    endDate: normalizeDateISO(pkg.endDate) || undefined,
     serviceIds,
     services,
     baseTotalPrice,
@@ -197,7 +241,8 @@ export async function upsertPackage(pkg: ServicePackageDoc, salonId = DEFAULT_SA
         description: String(pkg.description || "").trim() || undefined,
         imageUrl: String(pkg.imageUrl || "").trim() || undefined,
         active: pkg.active !== false,
-        endDate: String(pkg.endDate || "").trim() || undefined,
+        startDate: normalizeDateISO(pkg.startDate) || undefined,
+        endDate: normalizeDateISO(pkg.endDate) || undefined,
         serviceIds,
         baseTotalPrice,
         totalDurationMin,

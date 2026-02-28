@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { formatTime12 } from "../helpers/timeDisplay";
 
 import {
   faMapMarkerAlt,
@@ -41,7 +42,200 @@ type PublicSettings = {
   mapEmbedUrl?: string;  // رابط embed كامل أو pb فقط
 };
 
+type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+type BookingHourOverrideMode = "hours" | "closed";
+type BookingHourOverride = {
+  id?: string;
+  fromDate: string;
+  toDate: string;
+  mode: BookingHourOverrideMode;
+  start?: string;
+  end?: string;
+  includeWeekdays?: WeekdayKey[];
+  blockedWeekdays?: WeekdayKey[];
+};
+
+type BusinessHoursMap = Record<WeekdayKey, { enabled: boolean; start: string; end: string }>;
+
+const WEEKDAY_KEYS: WeekdayKey[] = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"];
+const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
+  sat: "السبت",
+  sun: "الأحد",
+  mon: "الإثنين",
+  tue: "الثلاثاء",
+  wed: "الأربعاء",
+  thu: "الخميس",
+  fri: "الجمعة",
+};
+
 const SALON_ID = "main";
+
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function safeTimeHHMM(v: unknown, fallback: string): string {
+  const s = String(v || "").trim();
+  if (!/^\d{1,2}:\d{2}$/.test(s)) return fallback;
+  const [h, m] = s.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return fallback;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return fallback;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
+  const m = String(dateISO || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "sat";
+  const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const jsDay = dt.getDay(); // 0=Sun .. 6=Sat
+  const map: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  return map[jsDay] || "sat";
+}
+
+function defaultBusinessHoursMap(): BusinessHoursMap {
+  return {
+    sat: { enabled: true, start: "10:00", end: "22:00" },
+    sun: { enabled: true, start: "10:00", end: "22:00" },
+    mon: { enabled: true, start: "10:00", end: "22:00" },
+    tue: { enabled: true, start: "10:00", end: "22:00" },
+    wed: { enabled: true, start: "10:00", end: "22:00" },
+    thu: { enabled: true, start: "10:00", end: "22:00" },
+    fri: { enabled: false, start: "10:00", end: "22:00" },
+  };
+}
+
+function readBusinessHours(raw: Record<string, unknown> | null | undefined): BusinessHoursMap {
+  const fallback = defaultBusinessHoursMap();
+  return WEEKDAY_KEYS.reduce((acc, day) => {
+    const x = raw?.[day] || {};
+    acc[day] = {
+      enabled: typeof x?.enabled === "boolean" ? x.enabled : fallback[day].enabled,
+      start: safeTimeHHMM(x?.start, fallback[day].start),
+      end: safeTimeHHMM(x?.end, fallback[day].end),
+    };
+    return acc;
+  }, {} as BusinessHoursMap);
+}
+
+function normalizeWeekdayList(v: unknown): WeekdayKey[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((d: unknown) => String(d || "").trim().toLowerCase() as WeekdayKey)
+    .filter((d) => WEEKDAY_KEYS.includes(d))
+    .filter((d, idx, arr) => arr.indexOf(d) === idx);
+}
+
+function readBookingHourOverrides(raw: unknown): BookingHourOverride[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((x: unknown) => {
+      const row = (x || {}) as Record<string, unknown>;
+      const fromDate = String(row?.fromDate || "").trim();
+      const toDate = String(row?.toDate || "").trim();
+      if (!fromDate || !toDate) return null;
+      const mode: BookingHourOverrideMode = String(row?.mode || "").trim() === "closed" ? "closed" : "hours";
+      return {
+        id: String(row?.id || "").trim() || undefined,
+        fromDate,
+        toDate,
+        mode,
+        start: String(row?.start || "").trim() || undefined,
+        end: String(row?.end || "").trim() || undefined,
+        includeWeekdays: normalizeWeekdayList(row?.includeWeekdays),
+        blockedWeekdays: normalizeWeekdayList(row?.blockedWeekdays),
+      };
+    })
+    .filter(Boolean) as BookingHourOverride[];
+}
+
+function isDateWithinRange(dateISO: string, fromDate: string, toDate: string) {
+  const d = String(dateISO || "").trim();
+  const from = String(fromDate || "").trim();
+  const to = String(toDate || "").trim();
+  if (!d || !from || !to) return false;
+  return d >= from && d <= to;
+}
+
+function getDaySettingsForDate(
+  dateISO: string,
+  businessHours: BusinessHoursMap,
+  bookingHourOverrides: BookingHourOverride[]
+) {
+  const dayKey = resolveWeekdayFromISO(dateISO);
+  const dayHoursBase = businessHours?.[dayKey] || { enabled: true, start: "10:00", end: "22:00" };
+
+  for (let i = bookingHourOverrides.length - 1; i >= 0; i--) {
+    const ov = bookingHourOverrides[i];
+    if (!isDateWithinRange(dateISO, ov.fromDate, ov.toDate)) continue;
+
+    const includeDays = Array.isArray(ov.includeWeekdays) ? ov.includeWeekdays : [];
+    if (includeDays.length > 0 && !includeDays.includes(dayKey)) continue;
+
+    const blockedDays = Array.isArray(ov.blockedWeekdays) ? ov.blockedWeekdays : [];
+    if (blockedDays.includes(dayKey) || String(ov?.mode || "").trim() === "closed") {
+      return {
+        dayKey,
+        enabled: false,
+        openTime: safeTimeHHMM(dayHoursBase?.start, "10:00"),
+        closeTime: safeTimeHHMM(dayHoursBase?.end, "22:00"),
+      };
+    }
+
+    return {
+      dayKey,
+      enabled: true,
+      openTime: safeTimeHHMM(String(ov?.start || ""), safeTimeHHMM(dayHoursBase?.start, "10:00")),
+      closeTime: safeTimeHHMM(String(ov?.end || ""), safeTimeHHMM(dayHoursBase?.end, "22:00")),
+    };
+  }
+
+  return {
+    dayKey,
+    enabled: dayHoursBase?.enabled !== false,
+    openTime: safeTimeHHMM(dayHoursBase?.start, "10:00"),
+    closeTime: safeTimeHHMM(dayHoursBase?.end, "22:00"),
+  };
+}
+
+function dateToISO(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function getNextDateISOForWeekday(target: WeekdayKey, startISO: string): string {
+  const m = String(startISO || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return todayISO();
+  const start = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  for (let i = 0; i <= 13; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const iso = dateToISO(d);
+    if (resolveWeekdayFromISO(iso) === target) return iso;
+  }
+  return startISO;
+}
+
+function compressWorkingHoursRows(rows: Array<{ dayKey: WeekdayKey; day: string; hours: string }>) {
+  if (!rows.length) return [] as Array<{ day: string; hours: string }>;
+  const out: Array<{ day: string; hours: string }> = [];
+  let groupStart = 0;
+  for (let i = 1; i <= rows.length; i++) {
+    const sameAsGroup = i < rows.length && rows[i].hours === rows[groupStart].hours;
+    if (sameAsGroup) continue;
+    const first = rows[groupStart];
+    const last = rows[i - 1];
+    const day = groupStart === i - 1 ? first.day : `${first.day} - ${last.day}`;
+    out.push({ day, hours: first.hours });
+    groupStart = i;
+  }
+  return out;
+}
 
 function parseWorkingHourLine(lineRaw: string) {
   const line = String(lineRaw || "").trim();
@@ -101,6 +295,7 @@ const Contact: React.FC = () => {
   });
 
   const [publicSettings, setPublicSettings] = useState<PublicSettings | null>(null);
+  const [appSettings, setAppSettings] = useState<Record<string, unknown> | null>(null);
   const [sending, setSending] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -122,8 +317,21 @@ const Contact: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // ✅ ساعات العمل: hoursText -> قائمة
-  const workingHours = useMemo(() => {
+  useEffect(() => {
+    const ref = doc(db, "salons", SALON_ID, "settings", "app");
+    const unsub = onSnapshot(
+      ref,
+      (snap) => setAppSettings(snap.exists() ? snap.data() : null),
+      (err) => {
+        console.error("app settings snapshot error:", err);
+        setAppSettings(null);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // ✅ ساعات العمل اليدوية من settings/public
+  const manualWorkingHours = useMemo(() => {
     const raw = publicSettings?.hoursText?.trim();
     if (!raw) {
       return [
@@ -139,6 +347,51 @@ const Contact: React.FC = () => {
       .filter(Boolean)
       .map((line) => parseWorkingHourLine(line));
   }, [publicSettings?.hoursText]);
+
+  // ✅ ساعات العمل التلقائية من جدول الحجز (تتفعل عندما يكون الموسم/الجدول المجدول فعال)
+  const seasonAutoWorkingHours = useMemo(() => {
+    const app = (appSettings || {}) as Record<string, unknown>;
+    const booking = ((app.booking || {}) as Record<string, unknown>) || {};
+    const businessHours = readBusinessHours((booking.businessHours || {}) as Record<string, unknown>);
+    const bookingHourOverrides = readBookingHourOverrides(booking.bookingHourOverrides);
+
+    const today = todayISO();
+    const seasonFill = ((booking.seasonFill || {}) as Record<string, unknown>) || {};
+    const seasonFillActive =
+      Boolean(seasonFill.enabled) &&
+      isDateWithinRange(today, String(seasonFill.from || ""), String(seasonFill.to || ""));
+
+    const seasonPricing = ((app.catalogSeasonPricing || {}) as Record<string, unknown>) || {};
+    const seasonPricingFrom = String(seasonPricing.startDate || seasonPricing.from || "").trim();
+    const seasonPricingTo = String(seasonPricing.endDate || seasonPricing.to || "").trim();
+    const seasonPricingActive =
+      Boolean(seasonPricing.enabled) && isDateWithinRange(today, seasonPricingFrom, seasonPricingTo);
+
+    const overrideActiveToday = bookingHourOverrides.some((ov) =>
+      isDateWithinRange(today, String(ov?.fromDate || ""), String(ov?.toDate || ""))
+    );
+
+    const seasonActiveNow = seasonFillActive || seasonPricingActive || overrideActiveToday;
+    if (!seasonActiveNow) return [];
+
+    const rows = WEEKDAY_KEYS.map((dayKey) => {
+      const dateISO = getNextDateISOForWeekday(dayKey, today);
+      const daySettings = getDaySettingsForDate(dateISO, businessHours, bookingHourOverrides);
+      const hours =
+        daySettings.enabled === false
+          ? "مغلق"
+          : `${formatTime12(daySettings.openTime, daySettings.openTime)} - ${formatTime12(
+              daySettings.closeTime,
+              daySettings.closeTime
+            )}`;
+      return { dayKey, day: WEEKDAY_LABEL_AR[dayKey], hours };
+    });
+
+    return compressWorkingHoursRows(rows);
+  }, [appSettings]);
+
+  const isSeasonHoursAuto = seasonAutoWorkingHours.length > 0;
+  const workingHours = isSeasonHoursAuto ? seasonAutoWorkingHours : manualWorkingHours;
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -415,8 +668,14 @@ const Contact: React.FC = () => {
                     ))}
                   </ul>
 
+                  {isSeasonHoursAuto ? (
+                    <div style={{ marginTop: 10, opacity: 0.75, fontSize: 13 }}>
+                      (تم تطبيق ساعات الموسم تلقائيًا حسب الجدول المفعّل)
+                    </div>
+                  ) : null}
+
                   {/* للتأكد بس: لو hoursText فاضي */}
-                  {!hoursText?.trim() ? (
+                  {!hoursText?.trim() && !isSeasonHoursAuto ? (
                     <div style={{ marginTop: 10, opacity: 0.65, fontSize: 13 }}>
                       (ملاحظة: ساعات العمل من لوحة التحكم غير مضافة بعد)
                     </div>

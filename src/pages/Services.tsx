@@ -11,6 +11,7 @@ import packagesImg from "../assets/images/packages.png";
 import servicesImg from "../assets/images/services.png";
 import homeServicesImg from "../assets/images/home-services.png";
 import hairColorTreatmentsImg from "../assets/images/hair-color-treatments.png";
+import hairGuideImg from "../assets/images/hair-length-guide.png";
 
 import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -33,6 +34,7 @@ import "../styles/Offers.css";
 // ✅ Firestore
 import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
 import { db } from "../services/firebase";
+import { AppSettingsService } from "../services/AppSettingsService";
 
 const SALON_ID = "main";
 
@@ -57,10 +59,16 @@ type ServiceRow = {
   sectionId: string;
   categoryId?: string;
   price: number;
+  seasonPrice?: number | null;
   active?: boolean;
 };
 
-type UiServiceItem = { id: string; name: string; price: number };
+type UiServiceItem = {
+  id: string;
+  name: string;
+  basePrice: number;
+  seasonPrice: number | null;
+};
 
 type UiCategory = {
   id: string;
@@ -78,15 +86,48 @@ type UiSection = {
   totalServices: number;
 };
 
+function formatMoney(n: number) {
+  return Number(n || 0).toFixed(0);
+}
+
+function parseIsoDateLocal(dateISO: string): Date | null {
+  const m = String(dateISO || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(y, mo - 1, d);
+  if (
+    dt.getFullYear() !== y ||
+    dt.getMonth() !== mo - 1 ||
+    dt.getDate() !== d
+  ) {
+    return null;
+  }
+  return dt;
+}
+
+function formatSeasonDateGregorian(dateISO: string) {
+  const dt = parseIsoDateLocal(dateISO);
+  if (!dt) return dateISO;
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(dt);
+}
+
 export default function Services() {
   const [loading, setLoading] = useState(true);
   const [sections, setSections] = useState<SectionRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [services, setServices] = useState<ServiceRow[]>([]);
+  const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
   const [error, setError] = useState<string | null>(null);
 
   // ✅ فتح/إغلاق (تصنيف) مثل "عرض التفاصيل"
   const [openCatKey, setOpenCatKey] = useState<string | null>(null);
+  const [openHairGuideSectionId, setOpenHairGuideSectionId] = useState<string | null>(null);
 
   // ✅ ثوابت العرض حسب sectionId
   const uiBySectionId = useMemo(() => {
@@ -147,6 +188,40 @@ export default function Services() {
   }, []);
 
   useEffect(() => {
+    const unsub = AppSettingsService.subscribe((remote: any) => {
+      setAppSettings(remote || {});
+    });
+    return () => unsub();
+  }, []);
+
+  const seasonRangeLabelGregorian = useMemo(() => {
+    const season = (appSettings as any)?.catalogSeasonPricing || {};
+    const from = String(season?.startDate || season?.from || "").trim();
+    const to = String(season?.endDate || season?.to || "").trim();
+
+    if (from && to) {
+      return `الميلادي: يبدأ من ${formatSeasonDateGregorian(from)} م وينتهي ${formatSeasonDateGregorian(to)} م`;
+    }
+    if (from) return `الميلادي: يبدأ من ${formatSeasonDateGregorian(from)} م`;
+    if (to) return `الميلادي: ينتهي ${formatSeasonDateGregorian(to)} م`;
+    return "الميلادي: غير محدد";
+  }, [appSettings]);
+
+  const seasonRangeTitle = useMemo(() => {
+    const season = (appSettings as any)?.catalogSeasonPricing || {};
+    const from = String(season?.startDate || season?.from || "").trim();
+    const to = String(season?.endDate || season?.to || "").trim();
+    const today = new Date().toISOString().slice(0, 10);
+    const activeNow =
+      Boolean(season?.enabled) &&
+      Boolean(from) &&
+      Boolean(to) &&
+      today >= from &&
+      today <= to;
+    return activeNow ? "تاريخ أسعار الموسم (فعال الآن)" : "تاريخ أسعار الموسم";
+  }, [appSettings]);
+
+  useEffect(() => {
     let mounted = true;
 
     async function load() {
@@ -192,12 +267,18 @@ export default function Services() {
 
         const servicesRows: ServiceRow[] = servicesSnap.docs.map((d) => {
           const data = d.data() as any;
+          const seasonRaw = data?.seasonPrice;
+          const seasonPrice =
+            seasonRaw === null || seasonRaw === undefined || String(seasonRaw).trim() === ""
+              ? null
+              : Math.max(0, Number(seasonRaw || 0));
           return {
             id: d.id,
             name: String(data?.name || ""),
             sectionId: String(data?.sectionId || ""),
             categoryId: data?.categoryId ? String(data.categoryId) : undefined,
             price: Number(data?.price ?? 0),
+            seasonPrice,
             active: Boolean(data?.active ?? true),
           };
         });
@@ -238,7 +319,16 @@ export default function Services() {
 
     services.forEach((s) => {
       if (!s.sectionId) return;
-      const item: UiServiceItem = { id: s.id, name: s.name, price: s.price };
+      const basePrice = Math.max(0, Number(s.price || 0));
+      const hasSeasonPrice =
+        s.seasonPrice !== null && s.seasonPrice !== undefined && String(s.seasonPrice) !== "";
+      const seasonPrice = hasSeasonPrice ? Math.max(0, Number(s.seasonPrice || 0)) : null;
+      const item: UiServiceItem = {
+        id: s.id,
+        name: s.name,
+        basePrice,
+        seasonPrice,
+      };
 
       if (s.categoryId) {
         const list = servicesByCategory.get(s.categoryId) || [];
@@ -331,6 +421,9 @@ export default function Services() {
           ) : (
             <div className="cards-grid-2">
               {uiSections.map((sec, index) => {
+                const isHairSection =
+                  /hair/i.test(String(sec.id || "")) || /شعر/i.test(String(sec.title || ""));
+                const isHairGuideOpen = openHairGuideSectionId === sec.id;
                 return (
                   <div key={sec.id}>
                     {/* ✅ نفس كرت العروض */}
@@ -341,11 +434,37 @@ export default function Services() {
                       {/* badge removed */}
 
                       {/* ✅ Image header مثل الصورة */}
-                      <div
-                        className="offer-image"
+                      <button
+                        type="button"
+                        className={[
+                          "offer-image",
+                          isHairSection ? "services-hair-guide-trigger" : "",
+                          isHairGuideOpen ? "is-open" : "",
+                        ].join(" ")}
                         style={{ backgroundImage: `url(${sec.image})` }}
-                        aria-label={sec.title}
-                      />
+                        aria-label={isHairSection ? `${sec.title} - دليل أطوال الشعر` : sec.title}
+                        onClick={() => {
+                          if (!isHairSection) return;
+                          setOpenHairGuideSectionId((prev) => (prev === sec.id ? null : sec.id));
+                        }}
+                        title={isHairSection ? "اضغطي لعرض/إغلاق دليل أطوال الشعر" : sec.title}
+                      >
+                        {isHairSection && (
+                          <span className="services-hair-guide-trigger-badge">
+                            {isHairGuideOpen ? "إغلاق دليل الأطوال" : "عرض دليل الأطوال"}
+                          </span>
+                        )}
+                      </button>
+
+                      {isHairSection && isHairGuideOpen && (
+                        <div className="services-hair-guide-panel">
+                          <img
+                            src={hairGuideImg}
+                            alt="دليل أطوال الشعر"
+                            className="services-hair-guide-image"
+                          />
+                        </div>
+                      )}
 
                       <div className="offer-content">
                         {/* ✅ عنوان داخل الجسم مثل الصورة */}
@@ -362,7 +481,12 @@ export default function Services() {
                             عدد الخدمات: <b>{sec.totalServices}</b>
                           </span>
 
-                          <span className="status-pill active">متاح</span>
+                          <span className="status-pill season-period season-period-title">
+                            {seasonRangeTitle}
+                          </span>
+                          <span className="status-pill season-period season-period-greg">
+                            {seasonRangeLabelGregorian}
+                          </span>
                         </div>
 
                         {/* ✅ نفس شريط رمادي (بدل التاريخ) */}
@@ -392,7 +516,19 @@ export default function Services() {
                                         <li key={it.id} className="services-li">
                                           <span className="services-item-name">{it.name}</span>
                                           <span className="services-item-price">
-                                            {it.price} ريال
+                                            {`العادي: ${formatMoney(it.basePrice)} ريال`}
+                                          </span>
+                                          <span
+                                            className={[
+                                              "services-item-price",
+                                              "services-item-price-season",
+                                            ].join(" ")}
+                                          >
+                                            {`الموسم: ${
+                                              it.seasonPrice === null
+                                                ? "غير محدد"
+                                                : `${formatMoney(it.seasonPrice)} ريال`
+                                            }`}
                                           </span>
                                         </li>
                                       ))}

@@ -756,6 +756,25 @@
   margin-top: 10px;
 }
 
+.of-services-toggle {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.of-services-summary {
+  font-size: 13px;
+  font-weight: 700;
+  color: #30363a;
+}
+
+.of-services-summary strong {
+  color: #40010D;
+}
+
 .of-pill {
   display: inline-flex;
   align-items: center;
@@ -808,8 +827,16 @@
   margin-top: 10px;
   border: 1px solid rgba(13, 13, 13, 0.08);
   border-radius: 16px;
-  overflow: hidden;
+  overflow: auto;
   background: #fff;
+}
+
+.of-services-box--catalog {
+  max-height: min(52vh, 420px);
+}
+
+.of-services-box--sequence {
+  max-height: min(42vh, 320px);
 }
 
 .of-services-table {
@@ -819,6 +846,9 @@
 }
 
 .of-services-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: rgba(64, 1, 13, 0.06);
   font-size: 12px;
   font-weight: 900;
@@ -963,6 +993,16 @@
 
   .of-scope-pills {
     grid-template-columns: 1fr;
+  }
+
+  .of-services-toggle {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .of-services-toggle .dash-pill {
+    width: 100%;
+    justify-content: center;
   }
 
   .of-pill {
@@ -1602,6 +1642,18 @@
   font-size: 16px;
 }
 
+.pkgm .pkgm__titlebar {
+  align-items: center;
+}
+
+.pkgm .pkgm__title-actions {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .pkgm .pkgm__field label {
   font-weight: 800;
   color: #30363a;
@@ -1679,6 +1731,7 @@
 .pkgm .pkgm__selected-names {
   opacity: 0.95;
 }
+
 
 .pkgm .pkgm__service {
   display: flex;
@@ -1819,6 +1872,17 @@
 }
 
 @media (max-width: 900px) {
+  .pkgm .pkgm__titlebar {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .pkgm .pkgm__title-actions {
+    width: 100%;
+    margin-inline-start: 0;
+    justify-content: flex-start;
+  }
+
   .offers-stats-section {
     grid-template-columns: 1fr;
   }
@@ -1899,5 +1963,137 @@
 
   .pkgm .pkgm__service-status { min-width: 64px; }
 
+}
+
+/* =========================================
+   Dashboard Offers Responsive Stability
+   Final overrides to prevent layout breaks
+========================================= */
+@media (max-width: 1200px) {
+  .offers-page .offers-header,
+  .offers-page .offers-card,
+  .offers-page .offers-stats,
+  .offers-page .offers-table-card {
+    width: min(100%, calc(100vw - 16px));
+  }
+
+  .offers-page .pkg-offers-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .offers-page .pkgm .pkgm__row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .offers-page .pkg-offers-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .offers-page .offers-filter-pills,
+  .offers-page .offers-row--filters {
+    width: 100%;
+  }
+
+  .offers-page .offers-search,
+  .offers-page .offers-search--wide {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .offers-page .pkgm .pkgm__title-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .offers-page .pkgm .pkgm__title-actions .dash-pill {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .offers-page .pkgm .pkgm__title-actions .dash-pill:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .offers-page .offers-quick-btn,
+  .offers-page .offers-filter-pills .dash-pill,
+  .offers-page .pkgm__title-actions .dash-pill,
+  .offers-page .pkgm__services-actions .dash-pill,
+  .offers-page .pkgm__list-mode .dash-pill {
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .offers-page .of-field-inline {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .offers-page .of-field-inline > div {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .offers-page .of-field-inline .dash-pill {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .offers-page .offers-card,
+  .offers-page .offers-table-card {
+    padding: 10px;
+  }
+
+  .offers-page .pkgm .pkgm__title-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .offers-page .pkgm .pkgm__list-mode {
+    grid-template-columns: 1fr;
+  }
+
+  .offers-page .pkgm .pkgm__service {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .offers-page .pkgm .pkgm__service-status {
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .offers-page .pkgm .pkgm__services-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================
+   Offer Form: No Nested Scroll
+========================================= */
+.offers-section--offer-form .of-form {
+  overflow: visible;
+  max-height: none;
+}
+
+.offers-section--offer-form .of-services-box {
+  overflow: visible;
+}
+
+.offers-section--offer-form .of-services-box--catalog,
+.offers-section--offer-form .of-services-box--sequence {
+  max-height: none;
+}
+
+.offers-section--offer-form .of-services-table thead th {
+  position: static;
+  top: auto;
 }
 

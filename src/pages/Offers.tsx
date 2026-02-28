@@ -57,8 +57,22 @@ const SALON_ID = "main";
 function toISODate(v: any): string {
   if (!v) return "";
   if (typeof v === "string") return v;
-  if (v?.toDate) return v.toDate().toISOString().slice(0, 10);
-  if (v?.seconds) return new Date(v.seconds * 1000).toISOString().slice(0, 10);
+  if (v?.toDate) {
+    const d = v.toDate();
+    if (Number.isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  if (v?.seconds) {
+    const d = new Date(v.seconds * 1000);
+    if (Number.isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
   return "";
 }
 
@@ -100,6 +114,20 @@ function isActiveNow(o: UiOffer) {
   if (o.startDate && today < o.startDate) return false;
   if (o.validUntil && today > o.validUntil) return false;
 
+  return true;
+}
+
+function isPackageActiveNow(p: ServicePackageDoc) {
+  if (!p) return false;
+  if (p.active === false) return false;
+  if (!String(p.name || "").trim()) return false;
+  if (Number(p.totalDurationMin || 0) <= 0) return false;
+
+  const today = todayISO();
+  const start = toISODate((p as any)?.startDate);
+  const end = toISODate((p as any)?.endDate);
+  if (start && today < start) return false;
+  if (end && today > end) return false;
   return true;
 }
 
@@ -383,13 +411,7 @@ const Offers = () => {
   }, [offers]);
 
   const activePackages = useMemo(() => {
-    return (packageOffers || []).filter(
-      (p) =>
-        p &&
-        p.active !== false &&
-        String(p.name || "").trim() &&
-        Number(p.totalDurationMin || 0) > 0
-    );
+    return (packageOffers || []).filter((p) => isPackageActiveNow(p));
   }, [packageOffers]);
 
   return (
@@ -486,9 +508,8 @@ const Offers = () => {
 
                         <button
                           type="button"
-                          className="btn btn-outline btn-sm"
+                          className="btn btn-outline btn-sm offer-copy-btn"
                           onClick={() => copyCode(offer.code)}
-                          style={{ borderRadius: 999, padding: "6px 12px" }}
                           disabled={!offer.code}
                         >
                           <FontAwesomeIcon icon={faCopy} className="me-2" />
@@ -685,21 +706,27 @@ const Offers = () => {
 
           {/* ENDED / PAUSED */}
           {endedOrPaused.length > 0 && (
-            <div style={{ marginTop: 28 }}>
-              <div className="text-center">
+            <div className="offers-ended-wrap">
+              <div className="offers-ended-head text-center">
                 <button
                   type="button"
-                  className="btn btn-outline"
+                  className={`offers-ended-toggle ${showEnded ? "is-open" : ""}`}
                   onClick={() => setShowEnded((s) => !s)}
-                  style={{ borderRadius: 999, padding: "10px 16px" }}
                 >
-                  <FontAwesomeIcon icon={showEnded ? faEyeSlash : faEye} className="me-2" />
-                  {showEnded ? "إخفاء العروض المنتهية/الموقوفة" : "إظهار العروض المنتهية/الموقوفة"}
+                  <span className="offers-ended-toggle-icon">
+                    <FontAwesomeIcon icon={showEnded ? faEyeSlash : faEye} />
+                  </span>
+                  <span className="offers-ended-toggle-text">
+                    {showEnded ? "إخفاء العروض المنتهية/الموقوفة" : "إظهار العروض المنتهية/الموقوفة"}
+                  </span>
+                  <span className="offers-ended-toggle-count" aria-label="عدد العروض المنتهية">
+                    {endedOrPaused.length}
+                  </span>
                 </button>
               </div>
 
               {showEnded && (
-                <div style={{ marginTop: 18 }}>
+                <div className="offers-ended-panel">
                   <div className="text-center mb-3">
                     <h3 style={{ margin: 0 }}>عروض منتهية أو موقوفة</h3>
                     <p style={{ opacity: 0.75, marginTop: 8 }}>
@@ -758,13 +785,15 @@ const Offers = () => {
                                 ينتهي: {new Date(offer.validUntil).toLocaleDateString("ar-SA")}
                               </div>
 
-                              <div className="offer-details">
-                                <p className="offer-description">{offer.description}</p>
-                              </div>
+                              {expanded && (
+                                <div className="offer-details">
+                                  <p className="offer-description">{offer.description}</p>
+                                </div>
+                              )}
 
                               <button
                                 type="button"
-                                className="toggle-details"
+                                className={["toggle-details", expanded ? "is-open" : ""].join(" ")}
                                 onClick={() => setOpenOfferId(expanded ? null : offer.id)}
                               >
                                 <span>{expanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}</span>

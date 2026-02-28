@@ -67,6 +67,7 @@ type PackageDraft = {
   description: string;
   imageUrl: string;
   active: boolean;
+  startDate: string;
   endDate: string;
   serviceIds: string[];
   finalPrice: number;
@@ -237,6 +238,12 @@ function isPackageExpiredByToday(p: any) {
   return todayISO() > end;
 }
 
+function isPackageScheduledByToday(p: any) {
+  const start = String(p?.startDate || "").trim();
+  if (!start) return false;
+  return todayISO() < start;
+}
+
 const DashboardOffers: React.FC = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [packagesCatalog, setPackagesCatalog] = useState<ServicePackageDoc[]>([]);
@@ -255,6 +262,7 @@ const DashboardOffers: React.FC = () => {
     description: "",
     imageUrl: "",
     active: true,
+    startDate: "",
     endDate: "",
     serviceIds: [],
     finalPrice: 0,
@@ -266,6 +274,7 @@ const DashboardOffers: React.FC = () => {
 
   const [queryText, setQueryText] = useState("");
   const [serviceSearch, setServiceSearch] = useState("");
+  const [servicesPickerOpen, setServicesPickerOpen] = useState(false);
   const [pickedImageName, setPickedImageName] = useState("");
   const [filterMode, setFilterMode] = useState<OfferFilterMode>("active_now");
   const [inlineNotice, setInlineNotice] = useState<{ type: "error" | "success"; text: string } | null>(null);
@@ -330,6 +339,13 @@ const DashboardOffers: React.FC = () => {
       document.removeEventListener("keydown", onKey);
     };
   }, [discountOpen]);
+
+  useEffect(() => {
+    if (form.appliesTo !== "services") {
+      setServicesPickerOpen(false);
+      setServiceSearch("");
+    }
+  }, [form.appliesTo]);
 
 
   // ✅ قائمة خدمات من Firestore (نفس id المستخدم بالحجز)
@@ -504,7 +520,9 @@ const DashboardOffers: React.FC = () => {
   }, [offers]);
   const packageStats = useMemo(() => {
     const total = packagesCatalog.length;
-    const activeNowCount = packagesCatalog.filter((p: any) => p?.active !== false && !isPackageExpiredByToday(p)).length;
+    const activeNowCount = packagesCatalog.filter(
+      (p: any) => p?.active !== false && !isPackageScheduledByToday(p) && !isPackageExpiredByToday(p)
+    ).length;
     const used = packagesCatalog.filter((p: any) => Number((p as any)?.usageCount || 0) > 0).length;
     return { total, activeNowCount, used };
   }, [packagesCatalog]);
@@ -512,6 +530,7 @@ const DashboardOffers: React.FC = () => {
   const openAdd = () => {
     setEditing(null);
     setServiceSearch("");
+    setServicesPickerOpen(false);
     setPickedImageName("");
     setDiscountOpen(false);
 
@@ -538,6 +557,7 @@ const DashboardOffers: React.FC = () => {
   const openEdit = (o: Offer) => {
     setEditing(o);
     setServiceSearch("");
+    setServicesPickerOpen(false);
     setPickedImageName((o as any).imageUrl ? "تم اختيار صورة" : "");
     setDiscountOpen(false);
 
@@ -565,6 +585,7 @@ const DashboardOffers: React.FC = () => {
     setOpen(false);
     setEditing(null);
     setServiceSearch("");
+    setServicesPickerOpen(false);
     setDiscountOpen(false);
   };
 
@@ -858,6 +879,7 @@ const DashboardOffers: React.FC = () => {
       description: "",
       imageUrl: "",
       active: true,
+      startDate: "",
       endDate: "",
       serviceIds: [],
       finalPrice: 0,
@@ -895,6 +917,7 @@ const DashboardOffers: React.FC = () => {
       description: String(pkg.description || "").trim(),
       imageUrl: String(pkg.imageUrl || "").trim(),
       active: pkg.active !== false,
+      startDate: String((pkg as any).startDate || "").trim(),
       endDate: String((pkg as any).endDate || "").trim(),
       serviceIds: Array.isArray(pkg.serviceIds) ? pkg.serviceIds : [],
       finalPrice: Math.max(0, Number(pkg.finalPrice || 0)),
@@ -926,6 +949,9 @@ const DashboardOffers: React.FC = () => {
   const savePackageDraft = async () => {
     const name = String(packageDraft.name || "").trim();
     if (!name) return showNotice("اكتب اسم الباكيج");
+    if (packageDraft.startDate && packageDraft.endDate && packageDraft.startDate > packageDraft.endDate) {
+      return showNotice("تاريخ بداية الباكيج لازم يكون قبل تاريخ الانتهاء");
+    }
     if (packageDraft.endDate && packageDraft.endDate < todayISO()) return showNotice("تاريخ انتهاء الباكيج يجب أن يكون اليوم أو بعده");
     if (!packageComputed.picked.length) return showNotice("اختر خدمة واحدة على الأقل");
     if (packageComputed.totalDurationMin <= 0) return showNotice("مدة الباكيج غير صحيحة");
@@ -945,6 +971,7 @@ const DashboardOffers: React.FC = () => {
         description: String(packageDraft.description || "").trim() || undefined,
         imageUrl: String(packageDraft.imageUrl || "").trim() || undefined,
         active: packageDraft.active !== false,
+        startDate: String(packageDraft.startDate || "").trim() || undefined,
         endDate: String(packageDraft.endDate || "").trim() || undefined,
         serviceIds: services.map((x) => x.serviceId),
         services,
@@ -1067,7 +1094,8 @@ const DashboardOffers: React.FC = () => {
             {packagesCatalog.map((p) => {
               const isEditingThis = editingPackageId === String(p.id || "").trim();
               const pkgExpired = isPackageExpiredByToday(p);
-              const pkgStatus = p.active === false ? "موقوف" : pkgExpired ? "منتهي" : "نشط";
+              const pkgScheduled = isPackageScheduledByToday(p);
+              const pkgStatus = p.active === false ? "موقوف" : pkgScheduled ? "مجدول" : pkgExpired ? "منتهي" : "نشط";
               return (
                 <div key={p.id} className={`pkg-offer-card ${isEditingThis ? "is-editing" : ""}`}>
                   <div className="pkg-offer-inner">
@@ -1093,6 +1121,10 @@ const DashboardOffers: React.FC = () => {
                     <div className="pkg-offer-row">
                       <div className="pkg-offer-label">الخصم</div>
                       <div className="pkg-offer-value">{Number(p.discountPercent || 0).toFixed(1)}%</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">يبدأ</div>
+                      <div className="pkg-offer-value">{String((p as any).startDate || "").trim() || "—"}</div>
                     </div>
                     <div className="pkg-offer-row">
                       <div className="pkg-offer-label">ينتهي</div>
@@ -1143,17 +1175,25 @@ const DashboardOffers: React.FC = () => {
 
       {packageFormOpen && (
       <div ref={packageFormRef} className="offers-card pkgm offers-section offers-section--package-form">
-        <div className="offers-card-title" style={{ justifyContent: "space-between" }}>
+        <div className="offers-card-title pkgm__titlebar">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
             <FontAwesomeIcon icon={faTag} /> {editingPackageId ? "تعديل الباكيج" : "نموذج الباكيج"}
           </span>
-          <button
-            type="button"
-            className="dash-pill dash-pill-outline dash-pill-sm"
-            onClick={() => setPackageFormOpen(false)}
-          >
-            <FontAwesomeIcon icon={faXmark} /> إغلاق
-          </button>
+          <div className="pkgm__title-actions">
+            <button type="button" className="dash-pill dash-pill-primary dash-pill-sm" onClick={savePackageDraft}>
+              {editingPackageId ? "تحديث الباكيج" : "حفظ الباكيج"}
+            </button>
+            <button type="button" className="dash-pill dash-pill-outline dash-pill-sm" onClick={resetPackageDraft}>
+              تفريغ الباكيج
+            </button>
+            <button
+              type="button"
+              className="dash-pill dash-pill-outline dash-pill-sm"
+              onClick={() => setPackageFormOpen(false)}
+            >
+              <FontAwesomeIcon icon={faXmark} /> إغلاق
+            </button>
+          </div>
         </div>
         <div className="offers-section-note">
           عدّل البيانات ثم اضغط حفظ. أثناء التعديل سيتم تحديث نفس الباكيج.
@@ -1174,6 +1214,10 @@ const DashboardOffers: React.FC = () => {
           <div className="pkgm__field">
             <label>سعر الباكيج النهائي</label>
             <input type="number" min={0} value={packageDraft.finalPrice} onChange={(e) => setPackageDraft((p) => ({ ...p, finalPrice: Math.max(0, Number(e.target.value || 0)) }))} />
+          </div>
+          <div className="pkgm__field">
+            <label>تاريخ بداية الباكيج</label>
+            <input type="date" value={packageDraft.startDate} onChange={(e) => setPackageDraft((p) => ({ ...p, startDate: e.target.value }))} />
           </div>
           <div className="pkgm__field">
             <label>تاريخ انتهاء الباكيج</label>
@@ -1245,50 +1289,99 @@ const DashboardOffers: React.FC = () => {
           </div>
         </div>
         <div className="offers-hint">اضغط على أي خدمة للتحديد أو الإلغاء.</div>
-        {!!selectedPackageServices.length && (
+        <div className="pkgm__list-mode">
+          <button
+            type="button"
+            className={`dash-pill dash-pill-sm ${packageListMode === "all" ? "dash-pill-primary" : "dash-pill-outline"}`}
+            onClick={() => setPackageListMode("all")}
+          >
+            الكل ({filteredPackageServices.length})
+          </button>
+          <button
+            type="button"
+            className={`dash-pill dash-pill-sm ${packageListMode === "selected" ? "dash-pill-primary" : "dash-pill-outline"}`}
+            onClick={() => setPackageListMode("selected")}
+          >
+            المحدد ({selectedPackageServices.length})
+          </button>
+          <button
+            type="button"
+            className={`dash-pill dash-pill-sm ${packageListMode === "unselected" ? "dash-pill-primary" : "dash-pill-outline"}`}
+            onClick={() => setPackageListMode("unselected")}
+          >
+            غير المحدد ({unselectedPackageServices.length})
+          </button>
+        </div>
+        {!!packageComputed.picked.length && (
           <div className="pkgm__selected-summary">
-            <strong>المحدد الآن:</strong> {selectedPackageServices.length} خدمة
+            <strong>المحدد الآن:</strong> {packageComputed.picked.length} خدمة
             <span className="pkgm__selected-names">
-              {selectedPackageServices
+              {packageComputed.picked
                 .slice(0, 4)
                 .map((s) => s.name)
                 .join("، ")}
-              {selectedPackageServices.length > 4 ? " ..." : ""}
+              {packageComputed.picked.length > 4 ? " ..." : ""}
             </span>
           </div>
         )}
         <div className="pkgm__services">
-          {[...filteredPackageServices]
-            .sort((a, b) => {
-              const aSel = packageDraft.serviceIds.includes(a.id) ? 1 : 0;
-              const bSel = packageDraft.serviceIds.includes(b.id) ? 1 : 0;
-              if (aSel !== bSel) return bSel - aSel;
-              return String(a.name || "").localeCompare(String(b.name || ""), "ar");
-            })
-            .map((s) => {
-              const selected = packageDraft.serviceIds.includes(s.id);
-              const sectionText = resolveSectionLabel(s.sectionId || "");
-              const categoryText = resolveCategoryLabel(s.categoryName || s.categoryId || "");
-              return (
+          {[...visibleSelectedGroups, ...visibleUnselectedGroups].map((group, gi) => {
+            const firstUnselectedIdx = visibleSelectedGroups.length;
+            const isUnselectedGroup = gi >= firstUnselectedIdx && visibleSelectedGroups.length > 0;
+            const groupKey = `${isUnselectedGroup ? "unselected" : "selected"}::${group.title}`;
+            const openByDefault = !isUnselectedGroup;
+            const isOpen = isPackageGroupOpen(groupKey, openByDefault);
+
+            return (
+              <div key={groupKey} className="pkgm__group">
                 <button
-                  key={s.id}
                   type="button"
-                  className={`pkgm__service pkgm__service-row ${selected ? "is-selected" : ""}`}
-                  onClick={() => toggleDraftServiceId(s.id)}
+                  className="pkgm__group-toggle"
+                  onClick={() => togglePackageGroup(groupKey)}
                 >
-                  <div className="pkgm__service-main">
-                    <span className="pkgm__service-name">{s.name}</span>
-                    <span className="pkgm__service-meta">
-                      {s.price} ر.س • {s.durationMin} د • القسم: {sectionText} • الصنف: {categoryText}
-                    </span>
-                  </div>
-                  <span className="pkgm__service-status">
-                    {selected ? (<><FontAwesomeIcon icon={faCheck} /> محدد</>) : "اختيار"}
+                  <span className="pkgm__group-toggle-label">
+                    {group.title} ({group.services.length})
+                  </span>
+                  <span className="pkgm__group-toggle-caret" aria-hidden="true">
+                    {isOpen ? "▾" : "▸"}
                   </span>
                 </button>
-              );
-            })}
+                {isOpen ? (
+                  <div className="pkgm__group-items">
+                    {group.services.map((s) => {
+                      const selected = packageDraft.serviceIds.includes(s.id);
+                      const sectionText = resolveSectionLabel(s.sectionId || "");
+                      const categoryText = resolveCategoryLabel(s.categoryName || s.categoryId || "");
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className={`pkgm__service pkgm__service-row ${selected ? "is-selected" : ""}`}
+                          onClick={() => toggleDraftServiceId(s.id)}
+                        >
+                          <div className="pkgm__service-main">
+                            <span className="pkgm__service-name">{s.name}</span>
+                            <span className="pkgm__service-meta">
+                              {s.price} ر.س • {s.durationMin} د • القسم: {sectionText} • الصنف: {categoryText}
+                            </span>
+                          </div>
+                          <span className="pkgm__service-status">
+                            {selected ? (<><FontAwesomeIcon icon={faCheck} /> محدد</>) : "اختيار"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
           {!filteredPackageServices.length && <div className="pkgm__empty">لا توجد خدمات مطابقة للبحث</div>}
+          {filteredPackageServices.length > 0 && !visibleSelectedGroups.length && !visibleUnselectedGroups.length && (
+            <div className="pkgm__empty">
+              {packageListMode === "selected" ? "لا توجد خدمات محددة حسب البحث الحالي" : "كل الخدمات الحالية محددة بالفعل"}
+            </div>
+          )}
         </div>
         {packageComputed.isHighDiscount && (
           <div className="pkgm__warn">
@@ -1296,10 +1389,6 @@ const DashboardOffers: React.FC = () => {
             سعر مقترح: {packageComputed.suggestedPrice} ر.س. يمكنك الحفظ كما هو.
           </div>
         )}
-        <div className="pkgm__actions">
-          <button type="button" className="dash-pill dash-pill-primary" onClick={savePackageDraft}>{editingPackageId ? "تحديث الباكيج" : "حفظ الباكيج"}</button>
-          <button type="button" className="dash-pill dash-pill-outline" onClick={resetPackageDraft}>تفريغ النموذج</button>
-        </div>
       </div>
       )}
 
@@ -1610,59 +1699,76 @@ const DashboardOffers: React.FC = () => {
 
                 {form.appliesTo === "services" && (
                   <>
-                    <div className="of-services-search">
-                      <FontAwesomeIcon className="of-services-ic" icon={faMagnifyingGlass} />
-                      <input value={serviceSearch} onChange={(e) => setServiceSearch(e.target.value)} placeholder="بحث داخل الخدمات..." />
+                    <div className="of-services-toggle">
+                      <div className="of-services-summary">
+                        الخدمات المحددة: <strong>{form.serviceIds.length}</strong> من <strong>{servicesFlat.length}</strong>
+                      </div>
+                      <button
+                        type="button"
+                        className="dash-pill dash-pill-outline dash-pill-sm of-services-toggle-btn"
+                        onClick={() => setServicesPickerOpen((s) => !s)}
+                      >
+                        {servicesPickerOpen ? "إخفاء قائمة الخدمات" : "إظهار قائمة الخدمات"}
+                      </button>
                     </div>
 
-                    <div className="of-services-box">
-                      <table className="of-services-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: 76 }}>اختيار</th>
-                            <th>الخدمة</th>
-                            <th style={{ width: 120 }}>السعر</th>
-                          </tr>
-                        </thead>
+                    {servicesPickerOpen && (
+                      <>
+                        <div className="of-services-search">
+                          <FontAwesomeIcon className="of-services-ic" icon={faMagnifyingGlass} />
+                          <input value={serviceSearch} onChange={(e) => setServiceSearch(e.target.value)} placeholder="بحث داخل الخدمات..." />
+                        </div>
 
-                        <tbody>
-                          {servicesGrouped.length === 0 ? (
-                            <tr>
-                              <td colSpan={3} style={{ textAlign: "center", padding: 14 }}>
-                                لا توجد خدمات
-                              </td>
-                            </tr>
-                          ) : (
-                            servicesGrouped.map(([groupName, list]) => (
-                              <React.Fragment key={groupName}>
-                                <tr className="of-group-row">
-                                  <td colSpan={3}>{groupName}</td>
+                        <div className="of-services-box of-services-box--catalog">
+                          <table className="of-services-table">
+                            <thead>
+                              <tr>
+                                <th style={{ width: 76 }}>اختيار</th>
+                                <th>الخدمة</th>
+                                <th style={{ width: 120 }}>السعر</th>
+                              </tr>
+                            </thead>
+
+                            <tbody>
+                              {servicesGrouped.length === 0 ? (
+                                <tr>
+                                  <td colSpan={3} style={{ textAlign: "center", padding: 14 }}>
+                                    لا توجد خدمات
+                                  </td>
                                 </tr>
+                              ) : (
+                                servicesGrouped.map(([groupName, list]) => (
+                                  <React.Fragment key={groupName}>
+                                    <tr className="of-group-row">
+                                      <td colSpan={3}>{groupName}</td>
+                                    </tr>
 
-                                {list.map((s) => (
-                                  <tr key={s.id}>
-                                    <td>
-                                      <label className="of-check">
-                                        <input
-                                          type="checkbox"
-                                          checked={form.serviceIds.includes(s.id)}
-                                          onChange={() => toggleServiceId(s.id)}
-                                        />
-                                      </label>
-                                    </td>
-                                    <td>{s.name}</td>
-                                    <td>{s.basePrice} ريال</td>
-                                  </tr>
-                                ))}
-                              </React.Fragment>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                                    {list.map((s) => (
+                                      <tr key={s.id}>
+                                        <td>
+                                          <label className="of-check">
+                                            <input
+                                              type="checkbox"
+                                              checked={form.serviceIds.includes(s.id)}
+                                              onChange={() => toggleServiceId(s.id)}
+                                            />
+                                          </label>
+                                        </td>
+                                        <td>{s.name}</td>
+                                        <td>{s.basePrice} ريال</td>
+                                      </tr>
+                                    ))}
+                                  </React.Fragment>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
 
                     {normalizeSequenceSteps(form.sequenceSteps, form.serviceIds).length > 0 && (
-                      <div className="of-services-box" style={{ marginTop: 12 }}>
+                      <div className="of-services-box of-services-box--sequence" style={{ marginTop: 12 }}>
                         <div className="offers-hint" style={{ marginBottom: 8 }}>
                           تسلسل العرض (`sequenceSteps`) - مصدر الحقيقة للحجز التسلسلي
                         </div>

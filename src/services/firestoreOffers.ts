@@ -74,6 +74,43 @@ function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   return out as Partial<T>;
 }
 
+function localISODate(d: Date) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function normalizeDateISO(v: any): string {
+  if (!v) return "";
+
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const datePrefixMatch = s.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+    if (datePrefixMatch?.[1]) return datePrefixMatch[1];
+    const parsed = new Date(s);
+    if (!Number.isNaN(parsed.getTime())) return localISODate(parsed);
+    return "";
+  }
+
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return "";
+    return localISODate(v);
+  }
+
+  if (typeof v?.toDate === "function") {
+    return normalizeDateISO(v.toDate());
+  }
+
+  if (typeof v?.seconds === "number") {
+    return normalizeDateISO(new Date(v.seconds * 1000));
+  }
+
+  return "";
+}
+
 function endOfDay(d: Date) {
   const x = new Date(d);
   x.setHours(23, 59, 59, 999);
@@ -82,8 +119,8 @@ function endOfDay(d: Date) {
 
 /** ✅ تحقق صلاحية التاريخ الآن (inclusive) */
 export function isOfferActiveNow(offerLike: {
-  startDate?: string;
-  endDate?: string;
+  startDate?: any;
+  endDate?: any;
   active?: boolean;
   isActive?: boolean;
 }) {
@@ -95,17 +132,16 @@ export function isOfferActiveNow(offerLike: {
 
   if (!activeFlag) return false;
 
-  const startDate = offerLike?.startDate;
-  const endDate = offerLike?.endDate;
+  const startDate = normalizeDateISO(offerLike?.startDate);
+  const endDate = normalizeDateISO(offerLike?.endDate);
 
   if (startDate) {
-    const s = new Date(startDate);
-    s.setHours(0, 0, 0, 0);
+    const s = new Date(`${startDate}T00:00:00`);
     if (now < s) return false;
   }
 
   if (endDate) {
-    const e = endOfDay(new Date(endDate));
+    const e = endOfDay(new Date(`${endDate}T00:00:00`));
     if (now > e) return false;
   }
 
@@ -144,7 +180,17 @@ function normalizeCode(codeRaw: any) {
 export async function listOffers(salonId = DEFAULT_SALON_ID): Promise<Offer[]> {
   const q = query(offersCol(salonId), orderBy("createdAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Offer[];
+  return snap.docs.map((d) => {
+    const raw = d.data() as any;
+    const startDate = normalizeDateISO(raw?.startDate);
+    const endDate = normalizeDateISO(raw?.endDate ?? raw?.validUntil);
+    return {
+      ...raw,
+      id: d.id,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    };
+  }) as Offer[];
 }
 
 /** ✅ إضافة/تحديث */
@@ -161,6 +207,8 @@ export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
 
   const active = Boolean(payload.active);
   const usageCount = Number(payload.usageCount ?? 0);
+  const startDate = normalizeDateISO((payload as any).startDate);
+  const endDate = normalizeDateISO((payload as any).endDate ?? (payload as any).validUntil);
 
   await setDoc(
     ref,
@@ -174,6 +222,8 @@ export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
       active,
       isActive: active, // ✅ للتوافق مع أي كود قديم
 
+      startDate: startDate || "",
+      endDate: endDate || "",
       usageCount,
 
       appliesTo: (payload.appliesTo as any) || "all",
@@ -226,8 +276,8 @@ export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
         discountType: offer.discountType,
         value: offer.value,
         active: offer.active,
-        startDate: offer.startDate || "",
-        endDate: offer.endDate || "",
+        startDate: startDate || "",
+        endDate: endDate || "",
         appliesTo: offer.appliesTo || "all",
         serviceIds: Array.isArray(offer.serviceIds) ? offer.serviceIds : [],
         deletedAt: (offer as any)?.deletedAt ?? null,
@@ -309,11 +359,19 @@ export async function findActiveOfferByCode(
 
   const d0 = snap.docs[0];
   const data = d0.data() as any;
+  const startDate = normalizeDateISO(data?.startDate);
+  const endDate = normalizeDateISO(data?.endDate ?? data?.validUntil);
+  const normalized = {
+    ...data,
+    id: d0.id,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+  } as Offer;
 
   // ✅ أهم نقطة: التواريخ الآن تُطبق فعليًا
-  if (!isOfferActiveNow({ ...data, active: true })) return null;
+  if (!isOfferActiveNow({ ...normalized, active: true })) return null;
 
-  return { id: d0.id, ...data } as Offer;
+  return normalized;
 }
 
 /**

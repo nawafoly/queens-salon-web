@@ -586,8 +586,8 @@ function normalizeCouponCode(raw: string) {
 function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {
   if (!bookingDateISO) return { ok: true, reason: "" };
 
-  const s = String(offer?.startDate || "").trim();
-  const e = String(offer?.endDate || "").trim();
+  const s = normalizeOfferDateISO(offer?.startDate);
+  const e = normalizeOfferDateISO(offer?.endDate ?? offer?.validUntil);
 
   if (s && bookingDateISO < s) return { ok: false, reason: `العرض يبدأ من ${s}` };
   if (e && bookingDateISO > e) return { ok: false, reason: `العرض انتهى بتاريخ ${e}` };
@@ -713,6 +713,43 @@ function safeTimeHHMM(v: any, fallback: string) {
 function normalizeISODate(v: any) {
   const s = String(v || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
+function normalizeOfferDateISO(v: any) {
+  const iso = normalizeISODate(v);
+  if (iso) return iso;
+
+  if (typeof v === "string") {
+    const s = v.trim();
+    const datePrefixMatch = s.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+    if (datePrefixMatch?.[1]) return datePrefixMatch[1];
+    const parsed = new Date(s);
+    if (!Number.isNaN(parsed.getTime())) {
+      const yyyy = parsed.getFullYear();
+      const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+      const dd = String(parsed.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    return "";
+  }
+
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return "";
+    const yyyy = v.getFullYear();
+    const mm = String(v.getMonth() + 1).padStart(2, "0");
+    const dd = String(v.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  if (typeof v?.toDate === "function") {
+    return normalizeOfferDateISO(v.toDate());
+  }
+
+  if (typeof v?.seconds === "number") {
+    return normalizeOfferDateISO(new Date(v.seconds * 1000));
+  }
+
+  return "";
 }
 
 function formatISODateAr(v: any) {
