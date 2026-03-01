@@ -1,5 +1,5 @@
 ﻿// src/App.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 
@@ -100,11 +100,40 @@ function getNameFromStorage(): string {
    Scroll To Top
 ================================ */
 function ScrollToTop() {
-  const { pathname } = useLocation();
+  const location = useLocation();
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [pathname]);
+  const scrollAllToTop = (behavior: ScrollBehavior = "auto") => {
+    if (typeof document !== "undefined") {
+      const nodes: Array<HTMLElement | null> = [
+        document.scrollingElement as HTMLElement | null,
+        document.documentElement,
+        document.body,
+        document.querySelector<HTMLElement>(".main-content"),
+      ];
+      for (const el of nodes) {
+        if (!el) continue;
+        try {
+          el.scrollTo({ top: 0, behavior });
+        } catch {
+          el.scrollTop = 0;
+        }
+      }
+    }
+    if (typeof window !== "undefined") {
+      try {
+        window.scrollTo({ top: 0, left: 0, behavior });
+      } catch {
+        window.scrollTo(0, 0);
+      }
+    }
+  };
+
+  useLayoutEffect(() => {
+    scrollAllToTop("auto");
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => scrollAllToTop("auto"));
+    }
+  }, [location.pathname, location.search, location.hash, location.key]);
 
   return null;
 }
@@ -336,5 +365,4 @@ const App: React.FC = () => {
 };
 
 export default App;
-
 

@@ -10,8 +10,6 @@ import {
   faCalendarAlt,
   faPercent,
   faGift,
-  faChevronDown,
-  faChevronUp,
   faCopy,
   faEye,
   faEyeSlash,
@@ -43,7 +41,6 @@ type UiOffer = {
 
   image: string;
   badge: string;
-  features: string[];
 
   active: boolean;
   usageCount?: number;
@@ -188,29 +185,9 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
       : `خصم ${Number(value || 0)} ريال`;
 
   const title = String(raw?.title || "عرض");
-  const description =
-    String(raw?.description || "").trim() ||
-    (discountType === "percent"
-      ? `استخدمي كود الخصم للحصول على خصم ${computedPercent}% على خدمات الصالون.`
-      : `استخدمي كود الخصم للحصول على خصم ${Number(value || 0)} ريال على خدمات الصالون.`);
+  const description = String(raw?.description || "").trim();
 
   const validUntil = endDate || "2099-12-31";
-
-  const features: string[] = [
-    code ? `الكود: ${code}` : "الكود: —",
-    discountType === "percent"
-      ? `قيمة الخصم: ${computedPercent}%`
-      : `قيمة الخصم: ${Number(value || 0)} ريال`,
-    appliesTo === "services"
-      ? `ينطبق على خدمات محددة (${serviceIds.length})`
-      : "ينطبق على جميع الخدمات",
-    startDate
-      ? `يبدأ من: ${new Date(startDate).toLocaleDateString("ar-SA")}`
-      : "ساري الآن",
-    endDate
-      ? `ينتهي في: ${new Date(endDate).toLocaleDateString("ar-SA")}`
-      : "بدون تاريخ نهاية",
-  ];
 
   const packageLike =
     Number(raw?.packageFinalPrice || 0) > 0 ||
@@ -230,7 +207,6 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
     code,
     image: img || emma,
     badge,
-    features,
     active,
     usageCount: Number(raw?.usageCount ?? 0),
 
@@ -247,8 +223,6 @@ const Offers = () => {
   const [offers, setOffers] = useState<UiOffer[]>([]);
   const [packageOffers, setPackageOffers] = useState<ServicePackageDoc[]>([]);
   const [serviceNameById, setServiceNameById] = useState<Record<string, string>>({});
-  const [openOfferId, setOpenOfferId] = useState<string | null>(null);
-  const [openPackageId, setOpenPackageId] = useState<string | null>(null);
   const [showEnded, setShowEnded] = useState(false);
 
   // ✅ Modal بدل alert
@@ -492,6 +466,24 @@ const Offers = () => {
     return (packageOffers || []).filter((p) => isPackageActiveNow(p));
   }, [packageOffers]);
 
+  const totalOfferUsage = useMemo(() => {
+    return (offers || [])
+      .filter((o) => !o.packageLike)
+      .reduce((sum, o) => sum + Math.max(0, Math.floor(Number(o.usageCount || 0))), 0);
+  }, [offers]);
+
+  const totalPackageUsage = useMemo(() => {
+    return (packageOffers || []).reduce(
+      (sum, p) => sum + Math.max(0, Math.floor(Number((p as any)?.usageCount || 0))),
+      0
+    );
+  }, [packageOffers]);
+
+  const beneficiariesCount = useMemo(() => {
+    const base = 2592;
+    return base + totalOfferUsage + totalPackageUsage;
+  }, [totalOfferUsage, totalPackageUsage]);
+
   return (
     <div className="offers-page">
       <ConfirmModal
@@ -532,8 +524,8 @@ const Offers = () => {
                     <div className="stat-label">عروض سارية الآن</div>
                   </div>
                   <div className="stat-item text-center">
-                    <div className="stat-number">+100</div>
-                    <div className="stat-label">عميلة استفادت</div>
+                    <div className="stat-number">+{beneficiariesCount.toLocaleString("en-US")}</div>
+                    <div className="stat-label">عميله استفادت</div>
                   </div>
                 </div>
               </div>
@@ -551,13 +543,12 @@ const Offers = () => {
 
           <div className="cards-grid-2">
             {activeNow.map((offer, index) => {
-              const expanded = openOfferId === offer.id;
               const offerServiceNames = offerServiceNamesById[offer.id] || [];
 
               return (
                 <div key={offer.id}>
                   <div
-                    className={["offer-card-enhanced", expanded ? "expanded" : "collapsed"].join(" ")}
+                    className="offer-card-enhanced"
                     style={{ animationDelay: `${index * 0.06}s` }}
                   >
                     <div className="offer-badge">
@@ -609,67 +600,43 @@ const Offers = () => {
                         ساري حتى: {new Date(offer.validUntil).toLocaleDateString("ar-SA")}
                       </div>
 
-                      <button
-                        type="button"
-                        className={["toggle-details", expanded ? "is-open" : ""].join(" ")}
-                        onClick={() => setOpenOfferId(expanded ? null : offer.id)}
-                      >
-                        <span>{expanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}</span>
-                        <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} />
-                      </button>
-
-                      {expanded && (
-                        <div className="offer-details">
+                      <div className="offer-details">
+                        {String(offer.description || "").trim() ? (
                           <p className="offer-description">{offer.description}</p>
+                        ) : null}
 
-                          <div className="offer-features mb-3">
-                            <h5 className="fw-bold mb-2">
+                        {offer.appliesTo === "services" && (
+                          <div className="pkg-services-block">
+                            <div className="pkg-services-title">
                               <FontAwesomeIcon icon={faTag} className="me-2" />
-                              تفاصيل العرض:
-                            </h5>
-                            <ul>
-                              {offer.features.map((feature, idx) => (
-                                <li key={idx}>
-                                  <span className="check-dot" />
-                                  {feature}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          {offer.appliesTo === "services" && (
-                            <div className="pkg-services-block">
-                              <div className="pkg-services-title">
-                                <FontAwesomeIcon icon={faTag} className="me-2" />
-                                الخدمات المشمولة في العرض
-                              </div>
-                              {offerServiceNames.length > 0 ? (
-                                <div className="pkg-services-chips">
-                                  {offerServiceNames.map((serviceName: string, serviceIdx: number) => (
-                                    <span key={`${offer.id}-offer-svc-${serviceIdx}`} className="pkg-service-chip">
-                                      {serviceName}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="pkg-services-empty">
-                                  هذا العرض ينطبق على {Array.isArray(offer.serviceIds) ? offer.serviceIds.length : 0} خدمة محددة.
-                                </div>
-                              )}
+                              الخدمات المشمولة في العرض
                             </div>
-                          )}
+                            {offerServiceNames.length > 0 ? (
+                              <div className="pkg-services-chips">
+                                {offerServiceNames.map((serviceName: string, serviceIdx: number) => (
+                                  <span key={`${offer.id}-offer-svc-${serviceIdx}`} className="pkg-service-chip">
+                                    {serviceName}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="pkg-services-empty">
+                                هذا العرض ينطبق على {Array.isArray(offer.serviceIds) ? offer.serviceIds.length : 0} خدمة محددة.
+                              </div>
+                            )}
+                          </div>
+                        )}
 
-                          <Link
-                            to={{
-                              pathname: "/booking",
-                              search: `?coupon=${encodeURIComponent(String(offer.code || "").trim())}&fromOffer=1`,
-                            }}
-                            className="btn btn-primary w-100 btn-lg rounded-pill"
-                          >
-                            احجزي واستعملي الكود
-                          </Link>
-                        </div>
-                      )}
+                        <Link
+                          to={{
+                            pathname: "/booking",
+                            search: `?coupon=${encodeURIComponent(String(offer.code || "").trim())}&fromOffer=1`,
+                          }}
+                          className="btn btn-primary w-100 btn-lg rounded-pill"
+                        >
+                          احجزي واستعملي الكود
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -691,9 +658,12 @@ const Offers = () => {
 
               <div className="cards-grid-2">
                 {activePackages.map((p, index) => {
-                  const expanded = openPackageId === p.id;
                   const pkgStart = toISODate((p as any)?.startDate);
                   const pkgEnd = toISODate((p as any)?.endDate);
+                  const packageDescription = String((p as any).description || "").trim();
+                  const packageBaseTotal = Math.max(0, Number((p as any).baseTotalPrice || 0));
+                  const packageFinal = Math.max(0, Number(p.finalPrice || 0));
+                  const packageDuration = Math.max(0, Number(p.totalDurationMin || 0));
                   const packageServiceNames =
                     Array.isArray((p as any).services) && (p as any).services.length > 0
                       ? (p as any).services
@@ -703,7 +673,7 @@ const Offers = () => {
                   return (
                     <div key={`pkg-public-${p.id}`}>
                       <div
-                        className={["offer-card-enhanced", expanded ? "expanded" : "collapsed"].join(" ")}
+                        className="offer-card-enhanced"
                         style={{ animationDelay: `${index * 0.05}s` }}
                       >
                         <div
@@ -717,9 +687,13 @@ const Offers = () => {
 
                           <div className="offer-mini-row" style={{ flexWrap: "wrap" }}>
                             <span className="discount-badge">خصم {Number(p.discountPercent || 0).toFixed(1)}%</span>
-                            <span className="save-badge">{Number(p.finalPrice || 0)} ريال</span>
-                            <span className="save-badge">{Number(p.totalDurationMin || 0)} د</span>
+                            <span className="save-badge">{packageFinal} ريال</span>
+                            {packageBaseTotal > packageFinal ? (
+                              <span className="save-badge is-previous">{packageBaseTotal} ريال</span>
+                            ) : null}
+                            <span className="save-badge">{packageDuration} د</span>
                             <span className="status-pill active">فعال</span>
+                            <span className="offer-scope-pill scope-services">باكيج متكامل</span>
                           </div>
 
                           <div className="offer-validity">
@@ -732,73 +706,39 @@ const Offers = () => {
                               : "بدون تاريخ انتهاء"}
                           </div>
 
-                          <button
-                            type="button"
-                            className={["toggle-details", expanded ? "is-open" : ""].join(" ")}
-                            onClick={() => setOpenPackageId(expanded ? null : p.id)}
-                          >
-                            <span>{expanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}</span>
-                            <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} />
-                          </button>
-
-                          {expanded && (
-                            <div className="offer-details">
-                              <p className="offer-description">
-                                {String((p as any).description || "").trim() || "باكيج مجمع بخدمات مختارة بسعر خاص."}
-                              </p>
-                              <div className="offer-features mb-3">
-                                <h5 className="fw-bold mb-2">
-                                  <FontAwesomeIcon icon={faTag} className="me-2" />
-                                  تفاصيل الباكيج:
-                                </h5>
-                                <ul>
-                                  <li><span className="check-dot" />السعر الإجمالي قبل الخصم: {Number((p as any).baseTotalPrice || 0)} ريال</li>
-                                  <li><span className="check-dot" />السعر النهائي: {Number(p.finalPrice || 0)} ريال</li>
-                                  <li><span className="check-dot" />المدة: {Number(p.totalDurationMin || 0)} دقيقة</li>
-                                  <li>
-                                    <span className="check-dot" />
-                                    {pkgStart
-                                      ? `يبدأ: ${new Date(pkgStart).toLocaleDateString("ar-SA")}`
-                                      : "يبدأ: الآن"}
-                                  </li>
-                                  <li>
-                                    <span className="check-dot" />
-                                    {pkgEnd
-                                      ? `ينتهي: ${new Date(pkgEnd).toLocaleDateString("ar-SA")}`
-                                      : "ينتهي: بدون تاريخ انتهاء"}
-                                  </li>
-                                </ul>
-                                <div className="pkg-services-block">
-                                  <div className="pkg-services-title">
-                                    <FontAwesomeIcon icon={faTag} className="me-2" />
-                                    الخدمات المشمولة
-                                  </div>
-                                  {packageServiceNames.length > 0 ? (
-                                    <div className="pkg-services-chips">
-                                      {packageServiceNames.map((serviceName: string, serviceIdx: number) => (
-                                        <span key={`${p.id}-svc-${serviceIdx}`} className="pkg-service-chip">
-                                          {serviceName}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <div className="pkg-services-empty">
-                                      عدد الخدمات: {Array.isArray(p.serviceIds) ? p.serviceIds.length : 0}
-                                    </div>
-                                  )}
-                                </div>
+                          <div className="offer-details">
+                            {packageDescription ? (
+                              <p className="offer-description">{packageDescription}</p>
+                            ) : null}
+                            <div className="pkg-services-block">
+                              <div className="pkg-services-title">
+                                <FontAwesomeIcon icon={faTag} className="me-2" />
+                                الخدمات المشمولة في الباكيج
                               </div>
-                              <Link
-                                to={{
-                                  pathname: "/booking",
-                                  search: `?scope=offers_packages&pick=${encodeURIComponent(`pkg:${String(p.id || "").trim()}`)}&autoAdd=1`,
-                                }}
-                                className="btn btn-primary w-100 btn-lg rounded-pill"
-                              >
-                                احجزي هذا الباكيج
-                              </Link>
+                              {packageServiceNames.length > 0 ? (
+                                <div className="pkg-services-chips">
+                                  {packageServiceNames.map((serviceName: string, serviceIdx: number) => (
+                                    <span key={`${p.id}-svc-${serviceIdx}`} className="pkg-service-chip">
+                                      {serviceName}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="pkg-services-empty">
+                                  عدد الخدمات: {Array.isArray(p.serviceIds) ? p.serviceIds.length : 0}
+                                </div>
+                              )}
                             </div>
-                          )}
+                            <Link
+                              to={{
+                                pathname: "/booking",
+                                search: `?scope=offers_packages&pick=${encodeURIComponent(`pkg:${String(p.id || "").trim()}`)}&autoAdd=1`,
+                              }}
+                              className="btn btn-primary w-100 btn-lg rounded-pill"
+                            >
+                              احجزي هذا الباكيج
+                            </Link>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -840,9 +780,7 @@ const Offers = () => {
 
                   <div className="cards-grid-2">
                     {endedOrPaused.map((offer, index) => {
-                      const expanded = openOfferId === offer.id;
                       const endedBadge = !offer.active ? "موقوف" : "منتهي";
-                      const offerServiceNames = offerServiceNamesById[offer.id] || [];
 
                       return (
                         <div key={offer.id}>
@@ -850,7 +788,6 @@ const Offers = () => {
                             className={[
                               "offer-card-enhanced",
                               "expired",
-                              expanded ? "expanded" : "collapsed",
                             ].join(" ")}
                             style={{ animationDelay: `${index * 0.04}s` }}
                           >
@@ -892,42 +829,6 @@ const Offers = () => {
                                   : ""}
                                 ينتهي: {new Date(offer.validUntil).toLocaleDateString("ar-SA")}
                               </div>
-
-                              {expanded && (
-                                <div className="offer-details">
-                                  <p className="offer-description">{offer.description}</p>
-                                  {offer.appliesTo === "services" && (
-                                    <div className="pkg-services-block">
-                                      <div className="pkg-services-title">
-                                        <FontAwesomeIcon icon={faTag} className="me-2" />
-                                        الخدمات المشمولة في العرض
-                                      </div>
-                                      {offerServiceNames.length > 0 ? (
-                                        <div className="pkg-services-chips">
-                                          {offerServiceNames.map((serviceName: string, serviceIdx: number) => (
-                                            <span key={`${offer.id}-ended-offer-svc-${serviceIdx}`} className="pkg-service-chip">
-                                              {serviceName}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      ) : (
-                                        <div className="pkg-services-empty">
-                                          هذا العرض ينطبق على {Array.isArray(offer.serviceIds) ? offer.serviceIds.length : 0} خدمة محددة.
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              <button
-                                type="button"
-                                className={["toggle-details", expanded ? "is-open" : ""].join(" ")}
-                                onClick={() => setOpenOfferId(expanded ? null : offer.id)}
-                              >
-                                <span>{expanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}</span>
-                                <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} />
-                              </button>
                             </div>
                           </div>
                         </div>

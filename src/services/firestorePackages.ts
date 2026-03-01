@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  increment,
   orderBy,
   query,
   serverTimestamp,
@@ -27,6 +28,7 @@ export type ServicePackageDoc = {
   description?: string;
   imageUrl?: string;
   active: boolean;
+  usageCount?: number;
   startDate?: string; // YYYY-MM-DD
   endDate?: string; // YYYY-MM-DD
   serviceIds: string[];
@@ -139,6 +141,7 @@ function normalizePackage(raw: any, id: string): ServicePackageDoc {
     description: String(raw?.description || "").trim() || undefined,
     imageUrl: String(raw?.imageUrl || "").trim() || undefined,
     active: raw?.active !== false,
+    usageCount: Math.max(0, Number(raw?.usageCount || 0)),
     startDate: normalizeDateISO(raw?.startDate) || undefined,
     endDate: normalizeDateISO(raw?.endDate) || undefined,
     serviceIds,
@@ -211,6 +214,10 @@ export async function upsertPackage(pkg: ServicePackageDoc, salonId = DEFAULT_SA
     description: String(pkg.description || "").trim() || undefined,
     imageUrl: String(pkg.imageUrl || "").trim() || undefined,
     active: pkg.active !== false,
+    usageCount:
+      Number.isFinite(Number((pkg as any)?.usageCount))
+        ? Math.max(0, Number((pkg as any)?.usageCount || 0))
+        : undefined,
     startDate: normalizeDateISO(pkg.startDate) || undefined,
     endDate: normalizeDateISO(pkg.endDate) || undefined,
     serviceIds,
@@ -260,4 +267,21 @@ export async function removePackage(idRaw: string, salonId = DEFAULT_SALON_ID) {
   const id = String(idRaw || "").trim();
   if (!id) return;
   await deleteDoc(doc(db, "salons", salonId, "service_packages", id));
+}
+
+export async function incrementPackageUsage(
+  salonId = DEFAULT_SALON_ID,
+  packageIdRaw: string
+) {
+  const packageId = String(packageIdRaw || "").trim();
+  if (!packageId) return;
+  const ref = doc(db, "salons", salonId, "service_packages", packageId);
+  await setDoc(
+    ref,
+    {
+      usageCount: increment(1),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 }

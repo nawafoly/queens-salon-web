@@ -73,6 +73,7 @@ import {
   offerAppliesToService,
   listOffers,
   isOfferActiveNow,
+  incrementOfferUsage,
 } from "../services/firestoreOffers";
 
 // âœ… Staff Public (Firestore)
@@ -90,6 +91,7 @@ import {
 } from "../services/firestoreCatalog";
 import {
   listActivePackages,
+  incrementPackageUsage,
   type ServicePackageDoc,
   type PackageServiceItem,
 } from "../services/firestorePackages";
@@ -124,6 +126,9 @@ type CartItem = {
   packageRunId?: string;
   serviceId: string;
   serviceName: string;
+  offerSourceId?: string;
+  offerSourceCode?: string;
+  offerSourceTitle?: string;
   packageId?: string;
   packageSnapshot?: {
     packageId: string;
@@ -194,6 +199,7 @@ type OfferServiceChoice = {
 
 type OfferServicePickerState = {
   open: boolean;
+  offerId: string;
   offerTitle: string;
   couponCode: string;
   choices: OfferServiceChoice[];
@@ -419,7 +425,7 @@ type FlatService = {
 };
 
 type CategoryOption = { id: string; name: string };
-type PickerScope = "services" | "offers_packages";
+type PickerScope = "services" | "offers_packages" | "offers";
 type FsSectionCatalogCacheRow = {
   categories: CategoryDoc[];
   services: ServiceDoc[];
@@ -918,6 +924,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const dateRef = useRef<HTMLInputElement>(null);
+  const bookingCardRef = useRef<HTMLDivElement>(null);
+  const lastStepRef = useRef<BookingStep | null>(null);
 
   // =========================
   // âœ… Settings (live)
@@ -1031,10 +1039,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       try {
         const rows = await listOffers(SALON_ID);
         if (cancelled) return;
-        const active = (Array.isArray(rows) ? rows : []).filter((o: any) => {
-          const steps = Array.isArray((o as any)?.sequenceSteps) ? (o as any).sequenceSteps : [];
-          return steps.length > 0 && isOfferActiveNow(o as any);
-        });
+        const active = (Array.isArray(rows) ? rows : []).filter((o: any) => isOfferActiveNow(o as any));
         setSequenceOffers(active);
       } catch {
         if (!cancelled) setSequenceOffers([]);
@@ -1189,9 +1194,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [appliedCoupons, setAppliedCoupons] = useState<AppliedCouponEntry[]>([]);
   const [offerMsg, setOfferMsg] = useState("");
   const [offerMsgKind, setOfferMsgKind] = useState<CouponMessageKind>("");
+  const [pendingAutoCouponCode, setPendingAutoCouponCode] = useState("");
   const [offerLandingMsg, setOfferLandingMsg] = useState("");
   const [offerServicePicker, setOfferServicePicker] = useState<OfferServicePickerState>({
     open: false,
+    offerId: "",
     offerTitle: "",
     couponCode: "",
     choices: [],
@@ -1202,7 +1209,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [currentStep, setCurrentStep] = useState<BookingStep>(1);
   const [staffChoiceMode, setStaffChoiceMode] = useState<"any" | "manual">("any");
   const [anyStaffAssigningItemId, setAnyStaffAssigningItemId] = useState("");
-  const [bookingFlowState, setBookingFlowState] = useState<BookingFlowState>({
+  const [, setBookingFlowState] = useState<BookingFlowState>({
     selectedVariantId: "",
     selectedVariantLabel: "",
     staffChoice: "any",
@@ -1215,6 +1222,77 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     coupon: "",
   });
   const serviceSignatureRef = useRef<string>("");
+  const hasOfferServiceInCart = useMemo(
+    () =>
+      (formData.items || []).some(
+        (it) =>
+          !!String(it.offerSourceId || "").trim() ||
+          !!String((it as any)?.sequenceOfferId || "").trim()
+      ),
+    [formData.items]
+  );
+  const offerCartItem = useMemo(
+    () =>
+      (formData.items || []).find(
+        (it) =>
+          !!String(it.offerSourceId || "").trim() ||
+          !!String((it as any)?.sequenceOfferId || "").trim()
+      ) || null,
+    [formData.items]
+  );
+  const scrollBookingTop = (behavior: ScrollBehavior = "smooth") => {
+    const card = bookingCardRef.current;
+    if (card) {
+      try {
+        card.scrollIntoView({ behavior, block: "start", inline: "nearest" });
+      } catch {
+        // ignore
+      }
+    }
+
+    if (typeof document !== "undefined") {
+      const nodes: Array<HTMLElement | null> = [
+        document.scrollingElement as HTMLElement | null,
+        document.documentElement,
+        document.body,
+        document.querySelector<HTMLElement>(".main-content"),
+      ];
+      for (const el of nodes) {
+        if (!el) continue;
+        try {
+          el.scrollTo({ top: 0, behavior });
+        } catch {
+          el.scrollTop = 0;
+        }
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      try {
+        window.scrollTo({ top: 0, left: 0, behavior });
+      } catch {
+        window.scrollTo(0, 0);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (lastStepRef.current === null) {
+      lastStepRef.current = currentStep;
+      return;
+    }
+    if (lastStepRef.current === currentStep) return;
+    lastStepRef.current = currentStep;
+
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        scrollBookingTop("smooth");
+      });
+      window.setTimeout(() => {
+        scrollBookingTop("auto");
+      }, 120);
+    }
+  }, [currentStep]);
 
   const clearAppliedCoupons = () => {
     setAppliedCoupons([]);
@@ -1222,6 +1300,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     setOfferMsgKind("");
     setManualOverride(false);
   };
+
+  useEffect(() => {
+    if ((appliedCoupons || []).length <= 1) return;
+    const first = appliedCoupons[0];
+    setAppliedCoupons(first ? [first] : []);
+    setOfferMsgKind("error");
+    setOfferMsg("مسموح بكود خصم واحد فقط لكل فاتورة. تم الاحتفاظ بكود واحد.");
+  }, [appliedCoupons]);
 
   const resetItemsAfterServiceChange = () => {
     setFormData((prev) => {
@@ -2144,15 +2230,52 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     return rows.sort((a, b) => collator.compare(a.title, b.title));
   }, [servicesFlat, bookingDate, appSettings]);
 
+  const sequenceOfferOptions = useMemo(() => {
+    const rows = (sequenceOffers || [])
+      .map((offer: any) => {
+        const oid = String((offer as any)?.id || "").trim();
+        if (!oid) return null;
+        const title = String((offer as any)?.title || "").trim() || "عرض تسلسلي";
+        const discountType = String((offer as any)?.discountType || "").trim().toLowerCase();
+        const discountValue = Math.max(
+          0,
+          Number((offer as any)?.value ?? (offer as any)?.discountPercent ?? 0)
+        );
+        const code = normalizeCouponCode(String((offer as any)?.code || "").trim());
+        const priceText =
+          discountType === "percent"
+            ? `خصم ${discountValue}%${code ? ` • ${code}` : ""}`
+            : `خصم ${discountValue} ريال${code ? ` • ${code}` : ""}`;
+        return {
+          id: `offer:${oid}`,
+          title,
+          priceText,
+        };
+      })
+      .filter(Boolean) as Array<{ id: string; title: string; priceText: string }>;
+
+    const collator = new Intl.Collator("ar", { sensitivity: "base", numeric: true });
+    return rows.sort((a, b) => collator.compare(a.title, b.title));
+  }, [sequenceOffers]);
+
   useEffect(() => {
     const params = new URLSearchParams(location.search || "");
     const scope = String(params.get("scope") || "").trim();
     const pickRaw = String(params.get("pick") || "").trim();
     const autoAdd = String(params.get("autoAdd") || "").trim() === "1";
-    if (scope !== "offers_packages" || !pickRaw) return;
+    if (!pickRaw || (scope !== "offers_packages" && scope !== "offers")) return;
 
     const isOfferPick = pickRaw.startsWith("offer:");
     if (isOfferPick) {
+      const offerDocId = String(pickRaw.slice("offer:".length) || "").trim();
+      const offerPickerId = offerDocId ? `offer:${offerDocId}` : pickRaw;
+      setPickerScope("offers");
+      setServicePicker(offerPickerId);
+      setSelectedSectionId("");
+      setSelectedCategory("");
+      setShowHairGuide(false);
+      setOfferStartTime("");
+
       params.delete("scope");
       params.delete("pick");
       params.delete("autoAdd");
@@ -2226,6 +2349,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     setOfferMsg("تم تعبئة كود الخصم تلقائيًا.");
     setOfferMsgKind("success");
     if (fromOffer) {
+      setPendingAutoCouponCode(normalizedCoupon);
       setOfferLandingMsg("تم استخدام العرض، أكمل تعبئة بيانات الحجز لإتمام حجزك.");
       void (async () => {
         try {
@@ -2263,19 +2387,25 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           if (choices.length === 1) {
             const pickedServiceId = String(choices[0]?.serviceId || "").trim();
             if (!pickedServiceId) return;
-            const alreadyInCart = (formData.items || []).some(
-              (it) => String(it.serviceId || "").trim() === pickedServiceId
-            );
-            if (!alreadyInCart) {
-              await addServiceToCart(pickedServiceId);
-              setOfferLandingMsg("تم استخدام العرض وإضافة الخدمة تلقائيًا للسلة. أكمل تعبئة بيانات الحجز.");
+            if (hasOfferServiceInCart) {
+              setOfferLandingMsg("مسموح بإضافة خدمة عرض واحدة فقط في نفس الحجز.");
+              return;
             }
+            await addServiceToCart(pickedServiceId, {
+              preventDuplicate: true,
+              offerSourceId: String((offer as any)?.id || "").trim(),
+              offerSourceCode: normalizedCoupon,
+              offerSourceTitle: String((offer as any)?.title || "").trim() || "العرض",
+            });
+            setOfferLandingMsg("تم استخدام العرض بنجاح. اكملي اجراءات حجزك");
+            setCurrentStep(2);
             return;
           }
 
           setOfferLandingMsg("العرض يشمل أكثر من خدمة. اختاري خدمة واحدة لتطبيق العرض عليها.");
           setOfferServicePicker({
             open: true,
+            offerId: String((offer as any)?.id || "").trim(),
             offerTitle: String((offer as any)?.title || "").trim() || "العرض",
             couponCode: normalizedCoupon,
             choices,
@@ -2299,7 +2429,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       },
       { replace: true }
     );
-  }, [location.pathname, location.search, navigate]);
+  }, [location.pathname, location.search, navigate, hasOfferServiceInCart]);
 
   const servicesInSection = useMemo(() => {
     if (!selectedSectionId) return [];
@@ -2901,7 +3031,15 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     return null;
   };
 
-  const addServiceToCart = async (idRaw: string) => {
+  const addServiceToCart = async (
+    idRaw: string,
+    options?: {
+      preventDuplicate?: boolean;
+      offerSourceId?: string;
+      offerSourceCode?: string;
+      offerSourceTitle?: string;
+    }
+  ) => {
     let id = String(idRaw || "").trim();
     if (!id) return;
     const bookingDateSafe = String(bookingDate || "").trim() || todayISO();
@@ -3122,46 +3260,74 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const toolsSource = toolsEligible ? "client" : undefined;
     const priced = buildItemPriceWithTools(serviceBasePrice, toolsSource, toolsEligible);
 
-    setFormData((prev) => ({
-      ...prev,
-      items: [
-        ...(prev.items || []),
-        {
-          id: makeLocalId(),
-          serviceId: id,
-          serviceName: sv.name,
-          packageId: sv.kind === "package" ? String(sv.packageId || "").trim() : undefined,
-          packageSnapshot:
-            sv.kind === "package" && sv.packageId
-              ? {
-                  packageId: String(sv.packageId || "").trim(),
-                  packageName: sv.name,
-                  finalPriceAtBooking: Number(sv.basePrice || 0),
-                  baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
-                  totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-                  serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
-                  services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
-                }
-              : undefined,
-          serviceBasePrice: priced.serviceBasePrice,
-          basePrice: priced.basePrice,
-          priceText: priced.priceText,
-          durationMin: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-          employeeId: "",
-          employeeUid: "",
-          employeeName: "",
-          date: bookingDateSafe,
-          time: "",
-          locked: false,
-          serviceSectionId: String(sv.sectionId || "").trim(),
-          serviceSectionTitle: String(sv.sectionTitle || "").trim() || undefined,
-          serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
-          serviceCategoryName: String(sv.category || "").trim() || undefined,
-          toolsSource,
-          toolsFeeApplied: priced.toolsFeeApplied,
-        },
-      ],
-    }));
+    setFormData((prev) => {
+      const prevItems = prev.items || [];
+      const duplicateIdx = prevItems.findIndex((it) => String(it.serviceId || "").trim() === id);
+      if (options?.preventDuplicate && duplicateIdx !== -1) {
+        const offerSourceId = String(options?.offerSourceId || "").trim();
+        if (offerSourceId) {
+          const nextItems = [...prevItems];
+          const target = nextItems[duplicateIdx];
+          if (target && !String(target.offerSourceId || "").trim()) {
+            nextItems[duplicateIdx] = {
+              ...target,
+              offerSourceId,
+              offerSourceCode:
+                normalizeCouponCode(String(options?.offerSourceCode || "").trim()) || undefined,
+              offerSourceTitle: String(options?.offerSourceTitle || "").trim() || undefined,
+            };
+            return {
+              ...prev,
+              items: nextItems,
+            };
+          }
+        }
+        return prev;
+      }
+      return {
+        ...prev,
+        items: [
+          ...prevItems,
+          {
+            id: makeLocalId(),
+            serviceId: id,
+            serviceName: sv.name,
+            offerSourceId: String(options?.offerSourceId || "").trim() || undefined,
+            offerSourceCode: normalizeCouponCode(String(options?.offerSourceCode || "").trim()) || undefined,
+            offerSourceTitle: String(options?.offerSourceTitle || "").trim() || undefined,
+            packageId: sv.kind === "package" ? String(sv.packageId || "").trim() : undefined,
+            packageSnapshot:
+              sv.kind === "package" && sv.packageId
+                ? {
+                    packageId: String(sv.packageId || "").trim(),
+                    packageName: sv.name,
+                    finalPriceAtBooking: Number(sv.basePrice || 0),
+                    baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
+                    totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                    serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
+                    services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
+                  }
+                : undefined,
+            serviceBasePrice: priced.serviceBasePrice,
+            basePrice: priced.basePrice,
+            priceText: priced.priceText,
+            durationMin: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+            employeeId: "",
+            employeeUid: "",
+            employeeName: "",
+            date: bookingDateSafe,
+            time: "",
+            locked: false,
+            serviceSectionId: String(sv.sectionId || "").trim(),
+            serviceSectionTitle: String(sv.sectionTitle || "").trim() || undefined,
+            serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
+            serviceCategoryName: String(sv.category || "").trim() || undefined,
+            toolsSource,
+            toolsFeeApplied: priced.toolsFeeApplied,
+          },
+        ],
+      };
+    });
 
     setServicePicker("");
     setSelectedCategory("");
@@ -3169,6 +3335,77 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     setShowHairGuide(false);
 
     clearAppliedCoupons();
+  };
+
+  const addOfferFromPicker = async () => {
+    const pick = String(servicePicker || "").trim();
+    if (!pick.startsWith("offer:")) return;
+
+    const offerId = String(pick.slice("offer:".length) || "").trim();
+    if (!offerId) return;
+    if (hasOfferServiceInCart) {
+      setOfferMsgKind("error");
+      setOfferMsg("مسموح بإضافة خدمة عرض واحدة فقط في نفس الحجز.");
+      return;
+    }
+
+    const offer = (sequenceOffers || []).find(
+      (o: any) => String((o as any)?.id || "").trim() === offerId
+    );
+    if (!offer) {
+      setOfferMsgKind("error");
+      setOfferMsg("تعذر تحميل العرض المحدد.");
+      return;
+    }
+
+    const autoCode = normalizeCouponCode(String((offer as any)?.code || "").trim());
+    if (autoCode) {
+      setCouponCode(autoCode);
+      setPendingAutoCouponCode(autoCode);
+    }
+
+    const rawServiceIds: string[] = [];
+    if (Array.isArray((offer as any)?.serviceIds)) {
+      for (const rawId of (offer as any).serviceIds) {
+        const sid = String(rawId || "").trim();
+        if (sid) rawServiceIds.push(sid);
+      }
+    }
+    if (Array.isArray((offer as any)?.sequenceSteps)) {
+      for (const row of (offer as any).sequenceSteps) {
+        const sid = String((row as any)?.serviceId || "").trim();
+        if (sid) rawServiceIds.push(sid);
+      }
+    }
+    const serviceIds = Array.from(new Set(rawServiceIds));
+
+    if (serviceIds.length > 0) {
+      let pickedServiceId = "";
+      for (const sid of serviceIds) {
+        const sv = await ensureServiceByIdForOffer(sid);
+        if (sv) {
+          pickedServiceId = sid;
+          break;
+        }
+      }
+      if (pickedServiceId) {
+        await addServiceToCart(pickedServiceId, {
+          preventDuplicate: true,
+          offerSourceId: String((offer as any)?.id || "").trim(),
+          offerSourceCode: autoCode,
+          offerSourceTitle: String((offer as any)?.title || "").trim() || "العرض",
+        });
+      }
+
+      setOfferMsgKind("success");
+      setOfferMsg("تم اختيار العرض وتفعيل الخصم تلقائيًا.");
+      setServicePicker("");
+      return;
+    }
+
+    setOfferMsgKind("success");
+    setOfferMsg("تم تفعيل كود العرض تلقائيًا. اختاري الخدمة لإكمال الحجز.");
+    setServicePicker("");
   };
 
   const closeOfferServicePicker = () => {
@@ -3182,20 +3419,29 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   const confirmOfferServicePicker = async () => {
     const pickedServiceId = String(offerServicePicker.selectedServiceId || "").trim();
     if (!pickedServiceId || offerServicePicker.adding) return;
+    if (hasOfferServiceInCart) {
+      setOfferMsgKind("error");
+      setOfferMsg("مسموح بإضافة خدمة عرض واحدة فقط في نفس الحجز.");
+      closeOfferServicePicker();
+      return;
+    }
 
     setOfferServicePicker((prev) => ({ ...prev, adding: true }));
     try {
-      const alreadyInCart = (formData.items || []).some(
-        (it) => String(it.serviceId || "").trim() === pickedServiceId
-      );
-      if (!alreadyInCart) {
-        await addServiceToCart(pickedServiceId);
-        setOfferMsgKind("success");
-        setOfferMsg("تمت إضافة الخدمة المختارة من العرض إلى السلة.");
-      } else {
-        setOfferMsgKind("success");
-        setOfferMsg("الخدمة المختارة موجودة بالفعل في السلة.");
+      await addServiceToCart(pickedServiceId, {
+        preventDuplicate: true,
+        offerSourceId: String(offerServicePicker.offerId || "").trim(),
+        offerSourceCode: normalizeCouponCode(offerServicePicker.couponCode || couponCode),
+        offerSourceTitle: String(offerServicePicker.offerTitle || "").trim() || "العرض",
+      });
+      const autoCode = normalizeCouponCode(offerServicePicker.couponCode || couponCode);
+      if (autoCode) {
+        setCouponCode(autoCode);
+        setPendingAutoCouponCode(autoCode);
       }
+      setOfferMsgKind("success");
+      setOfferMsg("تم اختيار الخدمة للعرض بنجاح.");
+      setCurrentStep(2);
     } catch {
       setOfferMsgKind("error");
       setOfferMsg("تعذر إضافة الخدمة المختارة من العرض، حاولي مرة أخرى.");
@@ -5047,17 +5293,36 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   // =========================
   // Coupon
   // =========================
-  const handleApplyCoupon = async () => {
-    const code = normalizeCouponCode(couponCode);
-    if (!code) {
-      clearAppliedCoupons();
-      return;
+  const applyCouponCode = async (
+    codeRaw: string,
+    options?: {
+      clearInputOnSuccess?: boolean;
+      suppressAlreadyAppliedMsg?: boolean;
+      suppressRetryableErrors?: boolean;
+    }
+  ) => {
+    const code = normalizeCouponCode(codeRaw);
+    const clearInputOnSuccess = options?.clearInputOnSuccess ?? true;
+    const suppressAlreadyAppliedMsg = !!options?.suppressAlreadyAppliedMsg;
+    const suppressRetryableErrors = !!options?.suppressRetryableErrors;
+
+    if (!code) return "empty" as const;
+
+    const existingCouponCode = normalizeCouponCode(
+      String((appliedCoupons || [])[0]?.code || "")
+    );
+    if (existingCouponCode && existingCouponCode !== code) {
+      setOfferMsgKind("error");
+      setOfferMsg("مسموح بكود خصم واحد فقط لكل فاتورة. احذفي الكود الحالي أولًا.");
+      return "single_coupon_only" as const;
     }
 
-    if ((appliedCoupons || []).some((x) => normalizeCouponCode(x.code) === code)) {
-      setOfferMsgKind("error");
-      setOfferMsg("تم استخدام هذا الكود مسبقًا في نفس الفاتورة.");
-      return;
+    if (existingCouponCode && existingCouponCode === code) {
+      if (!suppressAlreadyAppliedMsg) {
+        setOfferMsgKind("error");
+        setOfferMsg("تم استخدام هذا الكود مسبقًا في نفس الفاتورة.");
+      }
+      return "already_applied" as const;
     }
 
     const reservedItemIds = new Set(
@@ -5072,34 +5337,41 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       if (!offer) {
         setOfferMsgKind("error");
         setOfferMsg("الكود غير صحيح أو منتهي");
-        return;
+        return "invalid_or_expired" as const;
       }
 
-      const applicable = (formData.items || []).filter((it) => {
+      const applicableAll = (formData.items || []).filter((it) => {
         const itemId = String(it.id || "").trim();
         const sid = String(it.serviceId || "").trim();
         return itemId && sid && !reservedItemIds.has(itemId) && offerAppliesToService(offer, sid);
       });
 
-      if (!applicable.length) {
-        const hasAnyMatching = (formData.items || []).some((it) => {
-          const sid = String(it.serviceId || "").trim();
-          return sid && offerAppliesToService(offer, sid);
-        });
-        setOfferMsgKind("error");
-        setOfferMsg(
-          hasAnyMatching
-            ? "هذا الكود ينطبق على خدمات تم خصمها بالفعل بكود آخر."
-            : "هذا الكود لا ينطبق على الخدمات المختارة."
-        );
-        return;
+      if (!applicableAll.length) {
+        if (!suppressRetryableErrors) {
+          const hasAnyMatching = (formData.items || []).some((it) => {
+            const sid = String(it.serviceId || "").trim();
+            return sid && offerAppliesToService(offer, sid);
+          });
+          setOfferMsgKind("error");
+          setOfferMsg(
+            hasAnyMatching
+              ? "هذا الكود ينطبق على خدمات تم خصمها بالفعل بكود آخر."
+              : "هذا الكود لا ينطبق على الخدمات المختارة."
+          );
+        }
+        return "no_applicable_services" as const;
       }
+
+      // ✅ One discount operation per invoice: apply to a single service only.
+      const applicable = [applicableAll[applicableAll.length - 1]];
 
       const missingDate = applicable.find((it) => !String(it.date || "").trim());
       if (missingDate) {
-        setOfferMsgKind("error");
-        setOfferMsg("اختاري تاريخ الحجز للخدمات قبل تطبيق الكود");
-        return;
+        if (!suppressRetryableErrors) {
+          setOfferMsgKind("error");
+          setOfferMsg("اختاري تاريخ الحجز للخدمات قبل تطبيق الكود");
+        }
+        return "missing_date" as const;
       }
 
       const badDate = applicable
@@ -5110,9 +5382,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         .find((x) => !x.check.ok);
 
       if (badDate) {
-        setOfferMsgKind("error");
-        setOfferMsg(badDate.check.reason || "هذا العرض غير متاح لتاريخ الحجز المختار");
-        return;
+        if (!suppressRetryableErrors) {
+          setOfferMsgKind("error");
+          setOfferMsg(badDate.check.reason || "هذا العرض غير متاح لتاريخ الحجز المختار");
+        }
+        return "invalid_date" as const;
       }
 
       const applicableTotal = applicable.reduce((s, it) => s + Number(it.basePrice || 0), 0);
@@ -5121,7 +5395,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       if (!safeDiscount) {
         setOfferMsgKind("error");
         setOfferMsg("هذا الكود لا يضيف خصمًا على الخدمات المختارة.");
-        return;
+        return "no_discount" as const;
       }
 
       const nextEntry: AppliedCouponEntry = {
@@ -5134,27 +5408,65 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           .filter(Boolean),
       };
 
-      setAppliedCoupons((prev) => {
-        const dedup = new Map<string, AppliedCouponEntry>();
-        for (const row of [...prev, nextEntry]) {
-          const key = normalizeCouponCode(row.code);
-          if (!key) continue;
-          if (!dedup.has(key)) dedup.set(key, { ...row, code: key });
-        }
-        return Array.from(dedup.values());
-      });
-      setCouponCode("");
+      setAppliedCoupons([nextEntry]);
+      if (clearInputOnSuccess) setCouponCode("");
+      else setCouponCode(code);
       setManualOverride(true);
       setOfferMsgKind("success");
       setOfferMsg(
-        `تم تطبيق الكود (${nextEntry.code}) على ${nextEntry.applicableItemIds.length} خدمة. إجمالي الخصم ${safeDiscount} ريال.`
+        `تم تطبيق الكود (${nextEntry.code}) على خدمة واحدة. إجمالي الخصم ${safeDiscount} ريال.`
       );
+      return "applied" as const;
     } catch (e: any) {
       console.error("apply coupon error:", e?.code, e?.message, e);
       setOfferMsgKind("error");
       setOfferMsg("صار خطأ في التحقق من الكود");
+      return "error" as const;
     }
   };
+
+  const handleApplyCoupon = async () => {
+    const status = await applyCouponCode(couponCode, { clearInputOnSuccess: true });
+    if (status === "empty") {
+      clearAppliedCoupons();
+    }
+  };
+
+  useEffect(() => {
+    const code = normalizeCouponCode(pendingAutoCouponCode);
+    if (!code) return;
+
+    if ((appliedCoupons || []).some((x) => normalizeCouponCode(x.code) === code)) {
+      setPendingAutoCouponCode("");
+      return;
+    }
+
+    if (!(formData.items || []).length) return;
+
+    let cancelled = false;
+    void (async () => {
+      const status = await applyCouponCode(code, {
+        clearInputOnSuccess: false,
+        suppressAlreadyAppliedMsg: true,
+        suppressRetryableErrors: true,
+      });
+      if (cancelled) return;
+      if (
+        status === "applied" ||
+        status === "already_applied" ||
+        status === "single_coupon_only" ||
+        status === "invalid_or_expired" ||
+        status === "no_discount" ||
+        status === "error"
+      ) {
+        setPendingAutoCouponCode("");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingAutoCouponCode, formData.items, appliedCoupons]);
 
   const handleRemoveCoupon = (codeRaw: string) => {
     const code = normalizeCouponCode(codeRaw);
@@ -5430,9 +5742,14 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
     try {
       const typedCode = normalizeCouponCode(couponCode);
-      const normalizedCodes = [...(appliedCoupons || []).map((x) => normalizeCouponCode(x.code)), typedCode]
-        .filter(Boolean)
-        .filter((code, idx, arr) => arr.indexOf(code) === idx);
+      const appliedCode = normalizeCouponCode(String((appliedCoupons || [])[0]?.code || ""));
+      const selectedCode = appliedCode || typedCode;
+      const normalizedCodes = selectedCode ? [selectedCode] : [];
+      if (appliedCode && typedCode && appliedCode !== typedCode) {
+        setCouponCode(appliedCode);
+        setOfferMsgKind("error");
+        setOfferMsg("تم تجاهل الكود الإضافي. المسموح كود خصم واحد فقط لكل فاتورة.");
+      }
 
       const finalCoupons: AppliedCouponEntry[] = [];
       const reservedItemIds = new Set<string>();
@@ -5449,13 +5766,13 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           return;
         }
 
-        const applicable = items.filter((it) => {
+        const applicableAll = items.filter((it) => {
           const itemId = String(it.id || "").trim();
           const sid = String(it.serviceId || "").trim();
           return itemId && sid && !reservedItemIds.has(itemId) && offerAppliesToService(offer, sid);
         });
 
-        if (!applicable.length) {
+        if (!applicableAll.length) {
           const hasAnyMatching = items.some((it) => {
             const sid = String(it.serviceId || "").trim();
             return sid && offerAppliesToService(offer, sid);
@@ -5470,6 +5787,9 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           });
           return;
         }
+
+        // ✅ One discount operation per invoice: keep one eligible service only.
+        const applicable = [applicableAll[applicableAll.length - 1]];
 
         const missingDate = applicable.find((it) => !String(it.date || "").trim());
         if (missingDate) {
@@ -6159,6 +6479,47 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         });
       }
 
+      const usedOfferIds = new Set<string>();
+      for (const row of finalCoupons) {
+        const offerId = String(row.offerId || "").trim();
+        if (offerId) usedOfferIds.add(offerId);
+      }
+      for (const row of items) {
+        const sequenceOfferId = String((row as any)?.sequenceOfferId || "").trim();
+        if (sequenceOfferId) usedOfferIds.add(sequenceOfferId);
+      }
+
+      const usedPackageIds = new Set<string>();
+      for (const row of createdBookings) {
+        const packageIdRaw = String((row as any)?.packageId || "").trim();
+        if (!packageIdRaw) continue;
+        const lower = packageIdRaw.toLowerCase();
+        if (lower.startsWith("offer:")) continue;
+        if (lower.startsWith("package:")) {
+          const cleaned = packageIdRaw.slice("package:".length).trim();
+          if (cleaned) usedPackageIds.add(cleaned);
+          continue;
+        }
+        usedPackageIds.add(packageIdRaw);
+      }
+
+      await Promise.all([
+        ...Array.from(usedOfferIds).map(async (offerId) => {
+          try {
+            await incrementOfferUsage(SALON_ID, offerId);
+          } catch {
+            // ignore usage counter failures
+          }
+        }),
+        ...Array.from(usedPackageIds).map(async (packageId) => {
+          try {
+            await incrementPackageUsage(SALON_ID, packageId);
+          } catch {
+            // ignore usage counter failures
+          }
+        }),
+      ]);
+
       localStorage.setItem("allBookings", JSON.stringify(createdBookings));
       localStorage.setItem("currentBooking", JSON.stringify(createdBookings[0] || null));
       localStorage.removeItem("bookingDraft");
@@ -6321,10 +6682,20 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   const shouldShowAuthGate = !internalMode && authResolved && !isSignedClient;
   const shouldShowAuthLoader = !internalMode && !authResolved;
   const bookingDateSafe = String(bookingDate || "").trim() || todayISO();
+  const hasSelectedBookingDate = !!String(bookingDate || "").trim();
   const cartItems = formData.items || [];
   const firstCartItem = cartItems[0] || null;
   const selectedVariantId = String(firstCartItem?.serviceId || servicePicker || "").trim();
-  const selectedVariantLabel = String(firstCartItem?.serviceName || "").trim() || "لم يتم اختيار خدمة";
+  const selectedServiceLabels = cartItems
+    .map((it) => String(it?.serviceName || "").trim())
+    .filter(Boolean);
+  const step1SummaryRows = cartItems
+    .map((it, idx) => ({
+      index: idx + 1,
+      itemId: String(it?.id || "").trim(),
+      label: String(it?.serviceName || "").trim() || "خدمة",
+    }))
+    .filter((x) => x.itemId && x.label);
   const firstItemWithStaff = cartItems.find((it) => String(it.employeeId || "").trim());
   const firstItemWithTime = cartItems.find((it) => String(it.time || "").trim());
   const selectedStaffEmployeeKey = String(
@@ -6350,7 +6721,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         ? 3
         : 4;
 
-  const step1SummaryText = selectedVariantLabel;
+  const step1SummaryText =
+    step1SummaryRows.length === 0
+      ? "لم يتم اختيار خدمة"
+      : step1SummaryRows
+          .map((row) => `${row.index}- ${row.label}`)
+          .join("\n");
   const staffSummaryText =
     staffChoiceMode === "any"
       ? "أي موظفة متاحة"
@@ -6362,12 +6738,13 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   const step2SummaryText = `${step2TimeSummary} - ${staffSummaryText}`;
   const step3SummaryText = [
     String(formData.note || "").trim() ? "تمت إضافة ملاحظة" : "",
-    appliedCoupons.length > 0 ? `${appliedCoupons.length} كود خصم` : "",
+    appliedCoupons.length > 0 ? "تم تطبيق كود خصم" : "",
   ].filter(Boolean).join(" - ") || "اختياري";
   const step4SummaryText = `${finalPrice.toFixed(0)} ريال`;
+  const step1HintText = `عدد الخدمات المضافة (${cartItems.length})`;
   const futureAnyStaffEffective = staffChoiceMode === "any";
   const stepRows: Array<{ id: BookingStep; title: string; hint: string; summary: string }> = [
-    { id: 1, title: "الخدمة", hint: "اختاري الخدمة اللي تبغينها", summary: step1SummaryText },
+    { id: 1, title: "الخدمة", hint: step1HintText, summary: step1SummaryText },
     { id: 2, title: "الوقت والموظفة", hint: "اختاري اليوم والوقت ثم الموظفة المناسبة", summary: step2SummaryText },
     { id: 3, title: "ملاحظات وكود خصم", hint: "أضيفي ملاحظة أو كود خصم (اختياري)", summary: step3SummaryText },
     { id: 4, title: "التأكيد", hint: "راجعي التفاصيل واضغطي تأكيد", summary: step4SummaryText },
@@ -6510,7 +6887,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       <div className="container">
         <div className="row justify-content-center">
           <div className="col-lg-8">
-            <div className="booking-card">
+            <div className="booking-card" ref={bookingCardRef}>
 
               {/* âœ… Logo */}
               <div className="text-center mb-3">
@@ -6562,13 +6939,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                 </div>
               ) : (
               <form className="booking-form" onSubmit={handleSubmit}>
-                <div className="booking-flow-strip">
-                  <span><strong>الخدمة:</strong> {bookingFlowState.selectedVariantLabel || step1SummaryText}</span>
-                  <span><strong>الموظفة:</strong> {bookingFlowState.staffChoice === "any" ? "أي موظفة متاحة" : (bookingFlowState.staffEmployeeName || staffSummaryText)}</span>
-                  <span><strong>الوقت:</strong> {bookingFlowState.time ? `${bookingFlowState.date} - ${formatTime12ForClient(bookingFlowState.time)}` : step3SummaryText}</span>
-                  <span><strong>الإجمالي:</strong> {finalPrice.toFixed(0)} ريال</span>
-                </div>
-
                 <div className="booking-step-focus mb-4">
                   <div className="booking-step-focus__top">
                     <span className="booking-step-focus__pill">
@@ -6578,7 +6948,28 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                       <div className="booking-step-focus__title">{activeStepRow.title}</div>
                       <div className="booking-step-focus__hint">{activeStepRow.hint}</div>
                     </div>
-                    <div className="booking-step-focus__summary">{activeStepRow.summary}</div>
+                    <div className="booking-step-focus__summary">
+                      {activeStepRow.id === 1 && step1SummaryRows.length > 0 ? (
+                        <div className="booking-step-focus__summary-list">
+                          {step1SummaryRows.map((row) => (
+                            <div key={`step1-summary-${row.itemId}`} className="booking-step-focus__summary-row">
+                              <span className="booking-step-focus__summary-text">
+                                {row.index}- {row.label}
+                              </span>
+                              <button
+                                type="button"
+                                className="booking-step-focus__summary-remove"
+                                onClick={() => removeServiceFromCart(row.itemId)}
+                              >
+                                حذفها
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        activeStepRow.summary
+                      )}
+                    </div>
                   </div>
 
                   <div className="booking-step-focus__progress" role="tablist" aria-label="خطوات الحجز">
@@ -6698,9 +7089,24 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         setSelectedSectionId("");
                         setSelectedCategory("");
                         setShowHairGuide(false);
+                        setOfferStartTime("");
                       }}
                     >
                       الخدمات
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${pickerScope === "offers" ? "btn-dark" : "btn-outline-dark"} btn-sm`}
+                      onClick={() => {
+                        setPickerScope("offers");
+                        setServicePicker("");
+                        setSelectedSectionId("");
+                        setSelectedCategory("");
+                        setShowHairGuide(false);
+                        setOfferStartTime("");
+                      }}
+                    >
+                      العروض
                     </button>
                     <button
                       type="button"
@@ -6711,6 +7117,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         setSelectedSectionId("");
                         setSelectedCategory("");
                         setShowHairGuide(false);
+                        setOfferStartTime("");
                       }}
                     >
                       البكجات
@@ -6774,6 +7181,38 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         </div>
                       </div>
                     </div>
+                  ) : pickerScope === "offers" ? (
+                    <div className="row g-2">
+                      <div className="col-12">
+                        <div className="bk-field">
+                          <select
+                            className={`form-select dash-select ${servicePicker ? "" : "is-empty"} ${hasOfferServiceInCart ? "is-offer-limit" : ""}`}
+                            value={hasOfferServiceInCart ? "" : servicePicker}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              handleServicePickerChange(next);
+                            }}
+                            disabled={!sequenceOfferOptions.length || hasOfferServiceInCart}
+                          >
+                            <option value="">
+                              {hasOfferServiceInCart
+                                ? "مسموح بإضافة خدمة عرض واحدة فقط في نفس الحجز."
+                                : "اختاري العرض"}
+                            </option>
+                            {!sequenceOfferOptions.length && <option value="" disabled>لا توجد عروض متاحة</option>}
+                            {sequenceOfferOptions.length > 0 && (
+                              <optgroup label="العروض">
+                                {sequenceOfferOptions.map((offer) => (
+                                  <option key={offer.id} value={offer.id}>
+                                    {offer.title} — {offer.priceText}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <div className="row g-2">
                       <div className="col-12">
@@ -6811,9 +7250,16 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         className="btn btn-dark booking-service-add-btn"
                         disabled={
                           !servicePicker ||
-                          !selectedDayOpen
+                          !selectedDayOpen ||
+                          (pickerScope === "offers" && hasOfferServiceInCart)
                         }
-                        onClick={() => addServiceToCart(servicePicker)}
+                        onClick={() => {
+                          if (pickerScope === "offers") {
+                            void addOfferFromPicker();
+                            return;
+                          }
+                          void addServiceToCart(servicePicker);
+                        }}
                       >
                         إضافة
                       </button>
@@ -6893,12 +7339,13 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
 
                 {currentStep === 2 ? (
-                  <div className="booking-step-card-shell mb-4">
+                  <div className={`booking-step-card-shell mb-4 ${hasSelectedBookingDate ? "" : "booking-step-card-shell--disabled"}`}>
                     <div className="booking-step-card-shell__title">تبغين موظفة معينة؟ (اختياري)</div>
                     <div className="booking-staff-choice">
                       <button
                         type="button"
                         className={`btn ${staffChoiceMode === "any" ? "btn-dark" : "btn-outline-dark"}`}
+                        disabled={!hasSelectedBookingDate}
                         onClick={() => setStaffChoiceMode("any")}
                       >
                         أي موظفة متاحة
@@ -6906,16 +7353,19 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                       <button
                         type="button"
                         className={`btn ${staffChoiceMode === "manual" ? "btn-dark" : "btn-outline-dark"}`}
+                        disabled={!hasSelectedBookingDate}
                         onClick={() => setStaffChoiceMode("manual")}
                       >
                         اختيار يدوي
                       </button>
                     </div>
-                    <div className="small text-muted mt-2">
-                      {staffChoiceMode === "any"
-                        ? "سيتم اعتماد أي موظفة متاحة داخل نفس الخطوة بعد اختيار الوقت."
-                        : "اختاري الموظفة يدويًا من السلة بعد تحديد التاريخ والوقت."}
-                    </div>
+                    {!hasSelectedBookingDate || staffChoiceMode === "manual" ? (
+                      <div className="small text-muted mt-2">
+                        {!hasSelectedBookingDate
+                          ? "لن يتفعل اختيار الموظفة إلا بعد تحديد تاريخ الحجز."
+                          : "اختاري الموظفة يدويًا من السلة بعد تحديد التاريخ والوقت."}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -6928,6 +7378,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 	                    </label>
 	                    <span className="booking-cart-count">عدد الخدمات: {(formData.items || []).length}</span>
 	                  </div>
+                    {!hasSelectedBookingDate ? (
+                      <div className="booking-step-date-required-note" role="status" aria-live="polite">
+                        <strong>قبل اختيار الموظفة والوقت:</strong>
+                        <span>حددي تاريخ الحجز أولًا من خانة "تاريخ الحجز" بالأعلى.</span>
+                      </div>
+                    ) : null}
 
                   {!!(formData.items || []).length ? (
                     <div className="mt-2">
@@ -7486,7 +7942,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                   </div>
                                 ) : null}
 
-                                {!usePackageQuickMode && staffChoiceMode === "manual" && (
+                                {hasSelectedBookingDate && !usePackageQuickMode && staffChoiceMode === "manual" && (
                                 <div className="col-md-6">
                                   <label className="form-label small fw-bold">1. اختاري الموظفة</label>
                                   <div className="bk-staff-card-grid">
@@ -7581,7 +8037,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                 </div>
                                 )}
 
-                                {!usePackageQuickMode && hideAnyModeTimeSelection && (
+                                {hasSelectedBookingDate && !usePackageQuickMode && hideAnyModeTimeSelection && (
                                   <div className="col-12">
                                     <label className="form-label small fw-bold">1. اختاري الوقت المتاح</label>
                                     <div className="text-warning small mb-2">{staffUnavailableMsg}</div>
@@ -7597,7 +8053,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                   </div>
                                 )}
 
-                                {!usePackageQuickMode && !hideAnyModeTimeSelection && (staffChoiceMode === "any" || (it.employeeId && selectedEmployeeAvailable)) && (
+                                {hasSelectedBookingDate && !usePackageQuickMode && !hideAnyModeTimeSelection && (staffChoiceMode === "any" || (it.employeeId && selectedEmployeeAvailable)) && (
                                   <div className="col-12">
                                     <label className="form-label small fw-bold">
                                       {staffChoiceMode === "any" ? "1. اختاري الوقت المتاح" : "2. اختاري الوقت المتاح"}
@@ -8085,7 +8541,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                   </div>
                   {appliedDiscountTotal > 0 && (
                     <div className="d-flex justify-content-between mt-1">
-                      <span>الخصم ({appliedCoupons.length} كود)</span>
+                      <span>الخصم (كود واحد)</span>
                       <strong>-{Number(appliedDiscountTotal || 0)} ريال</strong>
                     </div>
                   )}

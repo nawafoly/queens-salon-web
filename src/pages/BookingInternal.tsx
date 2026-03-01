@@ -87,6 +87,7 @@ import {
 } from "../services/firestoreCatalog";
 import {
   listActivePackages,
+  incrementPackageUsage,
   type ServicePackageDoc,
   type PackageServiceItem,
 } from "../services/firestorePackages";
@@ -6628,12 +6629,46 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         });
       }
 
-      if (!isFutureBooking && shouldPersistOffer && bookingOfferId) {
-        try {
-          await incrementOfferUsage(SALON_ID, bookingOfferId);
-        } catch {
-          // ignore usage counter failures for internal flow
+      if (!isFutureBooking) {
+        const usedOfferIds = new Set<string>();
+        if (shouldPersistOffer && bookingOfferId) usedOfferIds.add(String(bookingOfferId || "").trim());
+        for (const row of items) {
+          const sequenceOfferId = String((row as any)?.sequenceOfferId || "").trim();
+          if (sequenceOfferId) usedOfferIds.add(sequenceOfferId);
         }
+
+        const usedPackageIds = new Set<string>();
+        for (const row of createdBookings) {
+          const packageIdRaw = String((row as any)?.packageId || "").trim();
+          if (!packageIdRaw) continue;
+          const lower = packageIdRaw.toLowerCase();
+          if (lower.startsWith("offer:")) continue;
+          if (lower.startsWith("package:")) {
+            const cleaned = packageIdRaw.slice("package:".length).trim();
+            if (cleaned) usedPackageIds.add(cleaned);
+            continue;
+          }
+          usedPackageIds.add(packageIdRaw);
+        }
+
+        await Promise.all([
+          ...Array.from(usedOfferIds).map(async (offerId) => {
+            if (!offerId) return;
+            try {
+              await incrementOfferUsage(SALON_ID, offerId);
+            } catch {
+              // ignore usage counter failures for internal flow
+            }
+          }),
+          ...Array.from(usedPackageIds).map(async (packageId) => {
+            if (!packageId) return;
+            try {
+              await incrementPackageUsage(SALON_ID, packageId);
+            } catch {
+              // ignore usage counter failures for internal flow
+            }
+          }),
+        ]);
       }
 
       localStorage.setItem("allBookings", JSON.stringify(createdBookings));
