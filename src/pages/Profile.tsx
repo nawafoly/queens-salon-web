@@ -236,6 +236,7 @@ function mapFsBookingToUi(id: string, b: FsBooking): BookingData {
 
 const Profile: React.FC = () => {
   const navigate = useNavigate();
+  const leavingForBookingRef = useRef(false);
 
   const [profileMode, setProfileMode] = useState<ProfileMode>("local");
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
@@ -349,6 +350,7 @@ const Profile: React.FC = () => {
 
           const pr = String((p as any)?.role || "").toLowerCase().trim();
           if (pr && pr !== "client") {
+            if (leavingForBookingRef.current) return;
             clearClientCacheOnly();
             navigate("/dashboard-pending", { replace: true });
             return;
@@ -366,6 +368,7 @@ const Profile: React.FC = () => {
         })
         .catch((e) => {
           if (!alive) return;
+          if (leavingForBookingRef.current) return;
           console.error("Profile load error:", e);
           clearClientCacheOnly();
           navigate("/dashboard-pending", { replace: true });
@@ -385,6 +388,7 @@ const Profile: React.FC = () => {
     const firebaseOk = !!firebaseUser;
 
     if (!token && !firebaseOk) {
+      if (leavingForBookingRef.current) return;
       navigate("/login", { replace: true });
     }
   }, [authChecked, firebaseUser, navigate]);
@@ -677,6 +681,7 @@ const Profile: React.FC = () => {
       alert("ما فيه حجز مكتمل سابق للتكرار حالياً.");
       return;
     }
+    leavingForBookingRef.current = true;
     navigate("/booking", {
       state: {
         repeatFromBookingId: lastBooking.id,
@@ -906,7 +911,10 @@ const Profile: React.FC = () => {
             <div className="p-quick-booking-actions">
               <button
                 className="p-link-action p-link-action-wide"
-                onClick={() => navigate("/booking")}
+                onClick={() => {
+                  leavingForBookingRef.current = true;
+                  navigate("/booking");
+                }}
                 type="button"
                 aria-label="حجز جديد"
               >

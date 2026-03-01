@@ -24,8 +24,6 @@ import hairGuideImg from "../assets/images/hair-length-guide.png";
 
 import {
   faCalendarAlt,
-  faUser,
-  faPhone,
   faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 
@@ -201,6 +199,21 @@ type OfferServicePickerState = {
   choices: OfferServiceChoice[];
   selectedServiceId: string;
   adding: boolean;
+};
+
+type BookingStep = 1 | 2 | 3 | 4;
+
+type BookingFlowState = {
+  selectedVariantId: string;
+  selectedVariantLabel: string;
+  staffChoice: "any" | "manual";
+  staffEmployeeKey: string;
+  staffEmployeeName: string;
+  date: string;
+  time: string;
+  customerName: string;
+  customerPhone: string;
+  coupon: string;
 };
 
 function extractMinPrice(priceText: string): number {
@@ -447,6 +460,7 @@ type BookingHourOverride = {
   reason?: string;
 };
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const AR_SA_LATN_LOCALE = "ar-SA-u-nu-latn";
 const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
   sat: "السبت",
   sun: "الأحد",
@@ -772,7 +786,7 @@ function formatISODateAr(v: any) {
   if (!iso) return "";
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("ar-SA", {
+  return d.toLocaleDateString(AR_SA_LATN_LOCALE, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -1116,6 +1130,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
     // 2) لو مسجلة دخول: عبّي من Firestore profile
     const auth = getAuth();
+    const initialUser = auth.currentUser;
+    if (initialUser && !(initialUser as any).isAnonymous) {
+      setSignedUid(initialUser.uid);
+      if (!cancelled) setAuthResolved(true);
+    }
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u || (u as any).isAnonymous) {
         setSignedUid(null);
@@ -1125,6 +1144,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       }
 
       setSignedUid(u.uid);
+      // لا تنتظر تحميل البروفايل من Firestore لإزالة شاشة "التحقق".
+      if (!cancelled) setAuthResolved(true);
 
       try {
         const p = await createOrLoadUserProfile(u);
@@ -1146,8 +1167,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         if (phone) localStorage.setItem("userPhone", phone);
       } catch {
         fillFromLocalStorage();
-      } finally {
-        if (!cancelled) setAuthResolved(true);
       }
     });
 
@@ -1180,6 +1199,22 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     adding: false,
   });
   const [manualOverride, setManualOverride] = useState(false);
+  const [currentStep, setCurrentStep] = useState<BookingStep>(1);
+  const [staffChoiceMode, setStaffChoiceMode] = useState<"any" | "manual">("any");
+  const [anyStaffAssigningItemId, setAnyStaffAssigningItemId] = useState("");
+  const [bookingFlowState, setBookingFlowState] = useState<BookingFlowState>({
+    selectedVariantId: "",
+    selectedVariantLabel: "",
+    staffChoice: "any",
+    staffEmployeeKey: "",
+    staffEmployeeName: "",
+    date: "",
+    time: "",
+    customerName: "",
+    customerPhone: "",
+    coupon: "",
+  });
+  const serviceSignatureRef = useRef<string>("");
 
   const clearAppliedCoupons = () => {
     setAppliedCoupons([]);
@@ -1187,6 +1222,49 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     setOfferMsgKind("");
     setManualOverride(false);
   };
+
+  const resetItemsAfterServiceChange = () => {
+    setFormData((prev) => {
+      let touched = false;
+      const nextItems = (prev.items || []).map((it) => {
+        const hasAnySelection =
+          !!String(it.employeeId || "").trim() ||
+          !!String(it.employeeUid || "").trim() ||
+          !!String(it.employeeName || "").trim() ||
+          !!String(it.time || "").trim() ||
+          !!it.locked;
+        if (!hasAnySelection) return it;
+        touched = true;
+        return {
+          ...it,
+          employeeId: "",
+          employeeUid: "",
+          employeeName: "",
+          time: "",
+          locked: false,
+        };
+      });
+      return touched ? { ...prev, items: nextItems } : prev;
+    });
+    setBusyByItem({});
+    setPackageQuickByRun({});
+  };
+
+  useEffect(() => {
+    const signature = (formData.items || [])
+      .map((it) => String(it.serviceId || "").trim())
+      .filter(Boolean)
+      .join("|");
+    if (!serviceSignatureRef.current) {
+      serviceSignatureRef.current = signature;
+      return;
+    }
+    if (serviceSignatureRef.current !== signature) {
+      resetItemsAfterServiceChange();
+    }
+    serviceSignatureRef.current = signature;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.items]);
 
   // âœ… busy/disabled per item
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
@@ -1216,8 +1294,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const sid = String(it?.serviceId || "").trim();
     if (!sid) return;
 
-    const employeeKey = String(it?.employeeUid || it?.employeeId || "").trim();
-    const employeeName = String(it?.employeeName || "").trim();
+    const anyMode = staffChoiceMode === "any";
+    const employeeKey = anyMode ? "" : String(it?.employeeUid || it?.employeeId || "").trim();
+    const employeeName = anyMode ? "" : String(it?.employeeName || "").trim();
     const dateISO = String(bookingDate || "").trim();
 
     setFutureServiceId(sid);
@@ -1225,18 +1304,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     setShowFutureSearch(true);
     setFutureResult([]);
     setFutureMsg("");
-    autoFutureSearchKeyRef.current = `${sid}|${dateISO}|${employeeKey ? "one" : "any"}|${employeeKey}`;
+    autoFutureSearchKeyRef.current = `${sid}|${dateISO}|${anyMode || !employeeKey ? "any" : "one"}|${employeeKey}`;
 
-    if (employeeKey) {
-      setFutureAnyStaff(false);
-      setFutureSelectedEmployeeKey(employeeKey);
-      setFutureStaffNameQuery(employeeName || "");
-      setFutureGateMsg("اليوم ممتلئ لنفس الموظفة. يمكنكِ البحث عن أقرب يوم متاح.");
-    } else {
+    if (anyMode) {
       setFutureAnyStaff(true);
       setFutureSelectedEmployeeKey("");
       setFutureStaffNameQuery("");
       setFutureGateMsg("اليوم ممتلئ لهذه الخدمة. يمكنكِ البحث عن أقرب يوم متاح.");
+    } else {
+      setFutureAnyStaff(false);
+      setFutureSelectedEmployeeKey(employeeKey);
+      setFutureStaffNameQuery(employeeName || "");
+      setFutureGateMsg("اليوم ممتلئ لهذه الموظفة. يمكنكِ البحث عن أقرب يوم متاح.");
     }
 
     setTimeout(() => {
@@ -3212,7 +3291,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         openModal({
           title: "تعارض داخل السلة",
           message:
-            "نفس الموظفة محجوزة داخل السلة بنفس الوقت، غيري الوقت أو اختاري موظفة أخرى.",
+            "هذا الوقت محجوز لنفس الموظفة داخل السلة، اختاري وقت مختلف.",
           variant: "danger",
           confirmText: "حسنًا",
         });
@@ -3922,11 +4001,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const sid = String(futureServiceId || servicePicker || "").trim();
     const dateISO = String(bookingDate || "").trim();
     const employeeKey = String(futureSelectedEmployeeKey || "").trim();
-    const contextKey = `${sid}|${dateISO}|${futureAnyStaff ? "any" : "one"}|${employeeKey}`;
+    const effectiveFutureAnyStaff = staffChoiceMode === "any";
+    const contextKey = `${sid}|${dateISO}|${effectiveFutureAnyStaff ? "any" : "one"}|${employeeKey}`;
 
     if (!showFutureSearch || !sid || !dateISO) return;
     if (futureGateLoading || futureLoading) return;
-    if (!futureAnyStaff && !employeeKey) return;
+    if (!effectiveFutureAnyStaff && !employeeKey) return;
 
     if (autoFutureSearchKeyRef.current === contextKey) return;
     autoFutureSearchKeyRef.current = contextKey;
@@ -3938,6 +4018,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     futureServiceId,
     servicePicker,
     bookingDate,
+    staffChoiceMode,
     futureAnyStaff,
     futureSelectedEmployeeKey,
   ]);
@@ -4064,149 +4145,184 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     return list.slice(0, Math.max(1, take));
   }
 
-  async function applyFutureTimeSelection(dateISO: string, time24: string) {
-    const serviceId = String(futureServiceId || servicePicker || "").trim();
-    if (!serviceId || !dateISO || !time24) return;
+  const requestBookingDateChange = (nextDateISO: string, onConfirmed?: () => void) => {
+    const nextDate = String(nextDateISO || "").trim();
+    if (!nextDate) return;
 
-    applyBookingDate(dateISO);
+    const currentDate = String(bookingDate || "").trim();
+    const applyAndContinue = () => {
+      if (nextDate !== currentDate) {
+        applyBookingDate(nextDate);
+      }
+      onConfirmed?.();
+    };
 
-    const target =
-      (formData.items || []).find(
-        (it) =>
-          String(it.id || "").trim() === String(futureTargetItemId || "").trim() &&
-          String(it.serviceId || "").trim() === serviceId
-      ) ||
-      (formData.items || []).find(
-        (it) => String(it.serviceId || "").trim() === serviceId && !it.locked
-      ) ||
-      (formData.items || []).find((it) => String(it.serviceId || "").trim() === serviceId);
-
-    if (!target) return;
-    const targetItemId = String(target.id || "").trim();
-
-    const sv = getServiceById(serviceId);
-    const durationMin = Number(
-      sv?.durationMin ||
-        target?.durationMin ||
-        DEFAULT_SERVICE_DURATION_MIN
-    );
-
-    let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
-    if (!Object.prototype.hasOwnProperty.call(staffByService, serviceId)) {
-      const res = await listStaffForService(serviceId, sv);
-      staffList = (res || []) as StaffPublicWithId[];
-      setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
+    if (!currentDate || nextDate === currentDate) {
+      applyAndContinue();
+      return;
     }
 
-    const preferredEmployeeKey = String(
-      futureSelectedEmployeeKey ||
-      target.employeeUid ||
-      target.employeeId ||
-      ""
-    ).trim();
+    openModal(
+      {
+        title: "تأكيد تغيير تاريخ الحجز",
+        message: `سيتم تغيير تاريخ الحجز إلى ${formatISODateAr(nextDate)} وإعادة تعيين الموظفة والوقت للخدمات الحالية. هل تريدين المتابعة؟`,
+        variant: "info",
+        confirmText: "نعم، متابعة",
+      },
+      applyAndContinue
+    );
+  };
 
-    let chosenStaff: StaffPublicWithId | null = null;
+  async function applyFutureTimeSelection(dateISO: string, time24: string) {
+    const serviceId = String(futureServiceId || servicePicker || "").trim();
+    const chosenDate = String(dateISO || "").trim();
+    const chosenTime = String(time24 || "").trim();
+    const effectiveFutureAnyStaff = staffChoiceMode === "any";
+    if (!serviceId || !chosenDate || !chosenTime) return;
 
-    if (!futureAnyStaff) {
-      const fixedKey = String(futureSelectedEmployeeKey || "").trim();
-      if (fixedKey) {
-        chosenStaff =
-          staffList.find((s: any) => String(s.linkedUid || s.id || "").trim() === fixedKey) ||
-          staffList.find((s: any) => String(s.id || "").trim() === fixedKey) ||
-          null;
-      }
-    } else {
-      const availableStaffRaw = staffList.filter((st: any) =>
-        isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: false })
+    const continueApply = async () => {
+      const target =
+        (formData.items || []).find(
+          (it) =>
+            String(it.id || "").trim() === String(futureTargetItemId || "").trim() &&
+            String(it.serviceId || "").trim() === serviceId
+        ) ||
+        (formData.items || []).find(
+          (it) => String(it.serviceId || "").trim() === serviceId && !it.locked
+        ) ||
+        (formData.items || []).find((it) => String(it.serviceId || "").trim() === serviceId);
+
+      if (!target) return;
+      const targetItemId = String(target.id || "").trim();
+
+      const sv = getServiceById(serviceId);
+      const durationMin = Number(
+        sv?.durationMin ||
+          target?.durationMin ||
+          DEFAULT_SERVICE_DURATION_MIN
       );
-      const availableStaff = preferredEmployeeKey
-        ? [
-            ...availableStaffRaw.filter(
-              (st: any) =>
-                String(st?.linkedUid || st?.id || "").trim() === preferredEmployeeKey ||
-                String(st?.id || "").trim() === preferredEmployeeKey
-            ),
-            ...availableStaffRaw.filter(
-              (st: any) =>
-                String(st?.linkedUid || st?.id || "").trim() !== preferredEmployeeKey &&
-                String(st?.id || "").trim() !== preferredEmployeeKey
-            ),
-          ]
-        : availableStaffRaw;
 
-      for (const st of availableStaff) {
-        const empKey = String((st as any)?.linkedUid || "").trim() || String((st as any)?.id || "").trim();
-        const empIdFallback = String((st as any)?.id || "").trim();
-        if (!empKey) continue;
+      let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
+      if (!Object.prototype.hasOwnProperty.call(staffByService, serviceId)) {
+        const res = await listStaffForService(serviceId, sv);
+        staffList = (res || []) as StaffPublicWithId[];
+        setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
+      }
+
+      const preferredEmployeeKey = String(
+        futureSelectedEmployeeKey ||
+        target.employeeUid ||
+        target.employeeId ||
+        ""
+      ).trim();
+
+      let chosenStaff: StaffPublicWithId | null = null;
+
+      if (!effectiveFutureAnyStaff) {
+        const fixedKey = String(futureSelectedEmployeeKey || "").trim();
+        if (fixedKey) {
+          chosenStaff =
+            staffList.find((s: any) => String(s.linkedUid || s.id || "").trim() === fixedKey) ||
+            staffList.find((s: any) => String(s.id || "").trim() === fixedKey) ||
+            null;
+        }
+      } else {
+        const availableStaffRaw = staffList.filter((st: any) =>
+          isStaffAvailableForDate(st, chosenDate, { requireShowOnBooking: false })
+        );
+        const availableStaff = preferredEmployeeKey
+          ? [
+              ...availableStaffRaw.filter(
+                (st: any) =>
+                  String(st?.linkedUid || st?.id || "").trim() === preferredEmployeeKey ||
+                  String(st?.id || "").trim() === preferredEmployeeKey
+              ),
+              ...availableStaffRaw.filter(
+                (st: any) =>
+                  String(st?.linkedUid || st?.id || "").trim() !== preferredEmployeeKey &&
+                  String(st?.id || "").trim() !== preferredEmployeeKey
+              ),
+            ]
+          : availableStaffRaw;
+
+        for (const st of availableStaff) {
+          const empKey = String((st as any)?.linkedUid || "").trim() || String((st as any)?.id || "").trim();
+          const empIdFallback = String((st as any)?.id || "").trim();
+          if (!empKey) continue;
+          const localTaken = targetItemId
+            ? getLocalTakenTimesForItem(
+                formData.items || [],
+                targetItemId,
+                empKey,
+                chosenDate,
+                empIdFallback
+              )
+            : new Set<string>();
+
+          const starts = await getAvailableStartsForDay({
+            salonId: SALON_ID,
+            employeeKey: empKey,
+            employeeIdFallback: empIdFallback,
+            dateISO: chosenDate,
+            durationMin,
+            take: 288,
+            localTakenTimes: localTaken,
+            staff: st,
+          });
+          if (starts.includes(chosenTime)) {
+            chosenStaff = st;
+            break;
+          }
+        }
+      }
+
+      if (!effectiveFutureAnyStaff && chosenStaff) {
+        const chosenKey =
+          String((chosenStaff as any)?.linkedUid || "").trim() ||
+          String((chosenStaff as any)?.id || "").trim();
+        const chosenId = String((chosenStaff as any)?.id || "").trim();
         const localTaken = targetItemId
           ? getLocalTakenTimesForItem(
               formData.items || [],
               targetItemId,
-              empKey,
-              dateISO,
-              empIdFallback
+              chosenKey,
+              chosenDate,
+              chosenId
             )
           : new Set<string>();
-
         const starts = await getAvailableStartsForDay({
           salonId: SALON_ID,
-          employeeKey: empKey,
-          employeeIdFallback: empIdFallback,
-          dateISO,
+          employeeKey: chosenKey,
+          employeeIdFallback: chosenId,
+          dateISO: chosenDate,
           durationMin,
           take: 288,
           localTakenTimes: localTaken,
-          staff: st,
+          staff: chosenStaff,
         });
-        if (starts.includes(time24)) {
-          chosenStaff = st;
-          break;
+        if (!starts.includes(chosenTime)) {
+          chosenStaff = null;
         }
       }
-    }
 
-    if (!futureAnyStaff && chosenStaff) {
-      const chosenKey =
-        String((chosenStaff as any)?.linkedUid || "").trim() ||
-        String((chosenStaff as any)?.id || "").trim();
-      const chosenId = String((chosenStaff as any)?.id || "").trim();
-      const localTaken = targetItemId
-        ? getLocalTakenTimesForItem(
-            formData.items || [],
-            targetItemId,
-            chosenKey,
-            dateISO,
-            chosenId
-          )
-        : new Set<string>();
-      const starts = await getAvailableStartsForDay({
-        salonId: SALON_ID,
-        employeeKey: chosenKey,
-        employeeIdFallback: chosenId,
-        dateISO,
-        durationMin,
-        take: 288,
-        localTakenTimes: localTaken,
-        staff: chosenStaff,
-      });
-      if (!starts.includes(time24)) {
-        chosenStaff = null;
+      if (!chosenStaff) {
+        setFutureMsg("تم تحديد اليوم والوقت. اختاري الموظفة لإكمال الخدمة.");
+        updateItem(target.id, { time: chosenTime, locked: false });
+        return;
       }
-    }
 
-    if (!chosenStaff) {
-      setFutureMsg("تم تحديد اليوم والوقت. اختاري الموظفة لإكمال الخدمة.");
-      updateItem(target.id, { time: time24, locked: false });
-      return;
-    }
+      updateItem(target.id, {
+        date: chosenDate,
+        time: chosenTime,
+        employeeId: String((chosenStaff as any)?.id || "").trim(),
+        employeeUid: String((chosenStaff as any)?.linkedUid || "").trim(),
+        employeeName: String((chosenStaff as any)?.name || "").trim(),
+        locked: false,
+      });
+    };
 
-    updateItem(target.id, {
-      date: dateISO,
-      time: time24,
-      employeeId: String((chosenStaff as any)?.id || "").trim(),
-      employeeUid: String((chosenStaff as any)?.linkedUid || "").trim(),
-      employeeName: String((chosenStaff as any)?.name || "").trim(),
-      locked: false,
+    requestBookingDateChange(chosenDate, () => {
+      void continueApply();
     });
   }
 
@@ -4254,9 +4370,10 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         (x) => String(x.name || "").trim() === String(futureStaffNameQuery || "").trim()
       )?.key || "";
 
+    const effectiveFutureAnyStaff = staffChoiceMode === "any";
     const fixedEmployeeKey = String(futureSelectedEmployeeKey || resolvedByName || "").trim();
-    if (!futureAnyStaff && !fixedEmployeeKey) {
-      setFutureMsg("اختاري موظفة محددة أو اختاري (أي موظفة للخدمة).");
+    if (!effectiveFutureAnyStaff && !fixedEmployeeKey) {
+      setFutureMsg("اختاري موظفة لإكمال البحث.");
       return;
     }
 
@@ -4276,7 +4393,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         let dayTimes: string[] = [];
         let dayNote = "";
 
-        if (!futureAnyStaff && fixedEmployeeKey) {
+        if (!effectiveFutureAnyStaff && fixedEmployeeKey) {
           const staff =
             staffList.find((s: any) => String(s.linkedUid || s.id || "") === fixedEmployeeKey) ||
             staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
@@ -4505,7 +4622,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             setFutureMsg("");
           } else {
             setShowFutureSearch(true);
-            setFutureGateMsg("اليوم المختار ممتلئ لهذه الخدمة. اضغطي بحث لعرض أقرب مواعيد متاحة في الأيام القادمة.");
+            setFutureGateMsg("اليوم ممتلئ لهذه الخدمة. يمكنكِ البحث عن أقرب يوم متاح.");
           }
         }
       } catch {
@@ -4746,15 +4863,140 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
   const handleSectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const sid = e.target.value;
+    if (String(sid || "").trim() !== String(selectedSectionId || "").trim() && (formData.items || []).length) {
+      resetItemsAfterServiceChange();
+    }
     setSelectedSectionId(sid);
     setSelectedCategory("");
     setServicePicker("");
     setShowHairGuide(false);
   };
 
+  const assignAnyStaffForItemTime = async (item: CartItem, dateISO: string, time24: string) => {
+    const itemId = String(item?.id || "").trim();
+    const serviceIdRaw = String(item?.serviceId || "").trim();
+    const date = String(dateISO || "").trim();
+    const time = String(time24 || "").trim();
+    if (!itemId || !serviceIdRaw || !date || !time) return;
+
+    setAnyStaffAssigningItemId(itemId);
+    try {
+      const serviceId =
+        resolveCanonicalServiceId(serviceIdRaw, String(item?.serviceName || "").trim()) || serviceIdRaw;
+      const sv = getServiceById(serviceId) || getServiceById(serviceIdRaw);
+      let staffList = (staffByService[serviceId] || staffByService[serviceIdRaw] || []) as StaffPublicWithId[];
+      const hasCache =
+        Object.prototype.hasOwnProperty.call(staffByService, serviceId) ||
+        Object.prototype.hasOwnProperty.call(staffByService, serviceIdRaw);
+
+      if (!hasCache) {
+        const res = await listStaffForService(serviceId, sv);
+        staffList = (res || []) as StaffPublicWithId[];
+        setStaffByService((prev) => ({ ...prev, [serviceId]: staffList }));
+      }
+
+      const visibleStaff = (staffList || []).filter((st: any) => {
+        if (isStaffEmploymentEndedForDate(st as any, date)) return false;
+        return isStaffAvailableForDate(st as any, date, { requireShowOnBooking: false });
+      });
+
+      if (!visibleStaff.length) {
+        openModal({
+          title: "لا توجد موظفات متاحات",
+          message: "لا توجد موظفات متاحات لهذه الخدمة في اليوم المختار.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
+      const preferredKey = String(item.employeeUid || item.employeeId || "").trim();
+      const orderedStaff = preferredKey
+        ? [
+            ...visibleStaff.filter(
+              (st: any) =>
+                String(st?.linkedUid || st?.id || "").trim() === preferredKey ||
+                String(st?.id || "").trim() === preferredKey
+            ),
+            ...visibleStaff.filter(
+              (st: any) =>
+                String(st?.linkedUid || st?.id || "").trim() !== preferredKey &&
+                String(st?.id || "").trim() !== preferredKey
+            ),
+          ]
+        : visibleStaff;
+
+      const durationMin = Math.max(1, Number(item.durationMin || DEFAULT_SERVICE_DURATION_MIN));
+      let chosenStaff: StaffPublicWithId | null = null;
+      for (const st of orderedStaff) {
+        const empId = String((st as any)?.id || "").trim();
+        const empKey = String((st as any)?.linkedUid || "").trim() || empId;
+        if (!empId || !empKey) continue;
+
+        const localTaken = getLocalTakenTimesForItem(
+          formData.items || [],
+          itemId,
+          empKey,
+          date,
+          empId
+        );
+
+        const starts = await getAvailableStartsForDay({
+          salonId: SALON_ID,
+          employeeKey: empKey,
+          employeeIdFallback: empId,
+          dateISO: date,
+          durationMin,
+          take: 288,
+          localTakenTimes: localTaken,
+          staff: st,
+        });
+
+        if (starts.includes(time)) {
+          chosenStaff = st;
+          break;
+        }
+      }
+
+      if (!chosenStaff) {
+        openModal({
+          title: "الوقت غير متاح",
+          message: "هذا الوقت غير متاح الآن. اختاري وقتًا آخر.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
+      updateItem(itemId, {
+        date,
+        time,
+        employeeId: String((chosenStaff as any)?.id || "").trim(),
+        employeeUid: String((chosenStaff as any)?.linkedUid || "").trim(),
+        employeeName: String((chosenStaff as any)?.name || "").trim(),
+        locked: false,
+      });
+    } finally {
+      setAnyStaffAssigningItemId((prev) => (prev === itemId ? "" : prev));
+    }
+  };
+
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedCategory(e.target.value);
+    const nextCategory = String(e.target.value || "").trim();
+    if (nextCategory !== String(selectedCategory || "").trim() && (formData.items || []).length) {
+      resetItemsAfterServiceChange();
+    }
+    setSelectedCategory(nextCategory);
     setServicePicker("");
+  };
+
+  const handleServicePickerChange = (nextRaw: string) => {
+    const next = String(nextRaw || "").trim();
+    if (next !== String(servicePicker || "").trim() && (formData.items || []).length) {
+      resetItemsAfterServiceChange();
+    }
+    setServicePicker(next);
+    setOfferStartTime("");
   };
 
   const basePrice = useMemo(() => {
@@ -4771,7 +5013,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
   const previewCreatedAtLabel = useMemo(
     () =>
-      new Intl.DateTimeFormat("ar-SA", {
+      new Intl.DateTimeFormat(AR_SA_LATN_LOCALE, {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(new Date()),
@@ -5161,7 +5403,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     if (exactConflict) {
       openModal({
         title: "تعارض داخل السلة",
-        message: "نفس الموظفة محجوزة داخل السلة بنفس الوقت، غيري الوقت أو اختاري موظفة أخرى.",
+        message: "هذا الوقت محجوز لنفس الموظفة داخل السلة، اختاري وقت مختلف.",
         variant: "danger",
         confirmText: "حسنًا",
       });
@@ -6078,6 +6320,108 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   const isSignedClient = !!signedUid;
   const shouldShowAuthGate = !internalMode && authResolved && !isSignedClient;
   const shouldShowAuthLoader = !internalMode && !authResolved;
+  const bookingDateSafe = String(bookingDate || "").trim() || todayISO();
+  const cartItems = formData.items || [];
+  const firstCartItem = cartItems[0] || null;
+  const selectedVariantId = String(firstCartItem?.serviceId || servicePicker || "").trim();
+  const selectedVariantLabel = String(firstCartItem?.serviceName || "").trim() || "لم يتم اختيار خدمة";
+  const firstItemWithStaff = cartItems.find((it) => String(it.employeeId || "").trim());
+  const firstItemWithTime = cartItems.find((it) => String(it.time || "").trim());
+  const selectedStaffEmployeeKey = String(
+    firstItemWithStaff?.employeeUid || firstItemWithStaff?.employeeId || ""
+  ).trim();
+  const selectedStaffEmployeeName = String(firstItemWithStaff?.employeeName || "").trim();
+  const selectedTime = String(firstItemWithTime?.time || "").trim();
+  const selectedDate = String(firstItemWithTime?.date || bookingDateSafe).trim();
+  const customerName = String(formData.name || "").trim();
+  const customerPhone = phone10Digits(String(formData.phone || "").trim());
+  const isStep1Complete = cartItems.length > 0 && !!selectedVariantId;
+  const isStep2Complete =
+    !!String(bookingDate || "").trim() &&
+    cartItems.length > 0 &&
+    cartItems.every((it) => !!String(it.time || "").trim());
+  const isStep2ReadyForNext = isStep2Complete && allPreviewLocked;
+  const isStep3Complete = true;
+  const maxUnlockedStep: BookingStep = !isStep1Complete
+    ? 1
+    : !isStep2ReadyForNext
+      ? 2
+      : !isStep3Complete
+        ? 3
+        : 4;
+
+  const step1SummaryText = selectedVariantLabel;
+  const staffSummaryText =
+    staffChoiceMode === "any"
+      ? "أي موظفة متاحة"
+      : (selectedStaffEmployeeName || "اختيار يدوي");
+  const step2TimeSummary =
+    selectedTime && selectedDate
+      ? `${selectedDate} - ${formatTime12ForClient(selectedTime)}`
+      : (String(bookingDate || "").trim() ? `${String(bookingDate || "").trim()} - لم يتم تحديد الوقت` : "لم يتم تحديد الوقت");
+  const step2SummaryText = `${step2TimeSummary} - ${staffSummaryText}`;
+  const step3SummaryText = [
+    String(formData.note || "").trim() ? "تمت إضافة ملاحظة" : "",
+    appliedCoupons.length > 0 ? `${appliedCoupons.length} كود خصم` : "",
+  ].filter(Boolean).join(" - ") || "اختياري";
+  const step4SummaryText = `${finalPrice.toFixed(0)} ريال`;
+  const futureAnyStaffEffective = staffChoiceMode === "any";
+  const stepRows: Array<{ id: BookingStep; title: string; hint: string; summary: string }> = [
+    { id: 1, title: "الخدمة", hint: "اختاري الخدمة اللي تبغينها", summary: step1SummaryText },
+    { id: 2, title: "الوقت والموظفة", hint: "اختاري اليوم والوقت ثم الموظفة المناسبة", summary: step2SummaryText },
+    { id: 3, title: "ملاحظات وكود خصم", hint: "أضيفي ملاحظة أو كود خصم (اختياري)", summary: step3SummaryText },
+    { id: 4, title: "التأكيد", hint: "راجعي التفاصيل واضغطي تأكيد", summary: step4SummaryText },
+  ];
+  const activeStepRow = stepRows.find((x) => x.id === currentStep) || stepRows[0];
+
+  useEffect(() => {
+    if (currentStep > maxUnlockedStep) {
+      setCurrentStep(maxUnlockedStep);
+    }
+  }, [currentStep, maxUnlockedStep]);
+
+  useEffect(() => {
+    const nextFlow: BookingFlowState = {
+      selectedVariantId,
+      selectedVariantLabel: step1SummaryText,
+      staffChoice: staffChoiceMode,
+      staffEmployeeKey: selectedStaffEmployeeKey,
+      staffEmployeeName: selectedStaffEmployeeName,
+      date: selectedDate,
+      time: selectedTime,
+      customerName,
+      customerPhone,
+      coupon: String(couponCode || "").trim(),
+    };
+    setBookingFlowState((prev) => {
+      if (
+        prev.selectedVariantId === nextFlow.selectedVariantId &&
+        prev.selectedVariantLabel === nextFlow.selectedVariantLabel &&
+        prev.staffChoice === nextFlow.staffChoice &&
+        prev.staffEmployeeKey === nextFlow.staffEmployeeKey &&
+        prev.staffEmployeeName === nextFlow.staffEmployeeName &&
+        prev.date === nextFlow.date &&
+        prev.time === nextFlow.time &&
+        prev.customerName === nextFlow.customerName &&
+        prev.customerPhone === nextFlow.customerPhone &&
+        prev.coupon === nextFlow.coupon
+      ) {
+        return prev;
+      }
+      return nextFlow;
+    });
+  }, [
+    selectedVariantId,
+    step1SummaryText,
+    staffChoiceMode,
+    selectedStaffEmployeeKey,
+    selectedStaffEmployeeName,
+    selectedDate,
+    selectedTime,
+    customerName,
+    customerPhone,
+    couponCode,
+  ]);
 
   return (
 
@@ -6218,66 +6562,74 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                 </div>
               ) : (
               <form className="booking-form" onSubmit={handleSubmit}>
+                <div className="booking-flow-strip">
+                  <span><strong>الخدمة:</strong> {bookingFlowState.selectedVariantLabel || step1SummaryText}</span>
+                  <span><strong>الموظفة:</strong> {bookingFlowState.staffChoice === "any" ? "أي موظفة متاحة" : (bookingFlowState.staffEmployeeName || staffSummaryText)}</span>
+                  <span><strong>الوقت:</strong> {bookingFlowState.time ? `${bookingFlowState.date} - ${formatTime12ForClient(bookingFlowState.time)}` : step3SummaryText}</span>
+                  <span><strong>الإجمالي:</strong> {finalPrice.toFixed(0)} ريال</span>
+                </div>
 
-                <div className="row">
-                  <div className="col-md-6 mb-4">
-                    {/* الاسم */}
-                    <label htmlFor="name" className="form-label">الاسم</label>
-
-                    <div className="input-group">
-                      <span className="input-group-text" aria-hidden="true">
-                        <FontAwesomeIcon icon={faUser} />
-                      </span>
-
-                      <input
-                        type="text"
-                        className="form-control"
-                        id="name"
-                        name="name"
-                        value={formData.name}
-                        readOnly={isSignedClient}
-                        disabled={isSignedClient}
-                        onChange={(e) =>
-                          setFormData((prev) => ({ ...prev, name: e.target.value }))
-                        }
-                        placeholder="اسم العميلة"
-                        required
-                      />
+                <div className="booking-step-focus mb-4">
+                  <div className="booking-step-focus__top">
+                    <span className="booking-step-focus__pill">
+                      الخطوة {currentStep} من {stepRows.length}
+                    </span>
+                    <div className="booking-step-focus__title-wrap">
+                      <div className="booking-step-focus__title">{activeStepRow.title}</div>
+                      <div className="booking-step-focus__hint">{activeStepRow.hint}</div>
                     </div>
+                    <div className="booking-step-focus__summary">{activeStepRow.summary}</div>
                   </div>
 
-
-                  <div className="col-md-6 mb-4">
-                    {/* الجوال */}
-                    <label htmlFor="phone" className="form-label">رقم الجوال</label>
-
-                    <div className="input-group">
-                      <span className="input-group-text">
-                        <FontAwesomeIcon icon={faPhone} />
-                      </span>
-
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        className="form-control"
-                        id="phone"
-                        name="phone"
-                        value={formData.phone}
-                        readOnly={isSignedClient}
-                        disabled={isSignedClient}
-                        onChange={(e) => {
-                          const digitsOnly = e.target.value.replace(/\D/g, "").slice(0, 10);
-                          setFormData((prev) => ({ ...prev, phone: digitsOnly }));
-                        }}
-                        placeholder="05xxxxxxxx"
-                        required
-                        maxLength={10}
-                      />
-                    </div>
+                  <div className="booking-step-focus__progress" role="tablist" aria-label="خطوات الحجز">
+                    {stepRows.map((stepRow) => {
+                      const isActive = currentStep === stepRow.id;
+                      const isUnlocked = stepRow.id <= maxUnlockedStep;
+                      const isDone = stepRow.id < currentStep && isUnlocked;
+                      return (
+                        <button
+                          key={`step-dot-${stepRow.id}`}
+                          type="button"
+                          role="tab"
+                          aria-selected={isActive}
+                          aria-label={`الخطوة ${stepRow.id}: ${stepRow.title}`}
+                          disabled={!isUnlocked}
+                          className={`booking-step-focus__dot ${isActive ? "is-active" : ""} ${isDone ? "is-done" : ""}`}
+                          onClick={() => {
+                            if (!isUnlocked) return;
+                            setCurrentStep(stepRow.id);
+                          }}
+                        >
+                          <span className="booking-step-focus__dot-index">{stepRow.id}</span>
+                        </button>
+                      );
+                    })}
                   </div>
 
+                  {stepRows.some((row) => row.id < currentStep && row.id <= maxUnlockedStep) ? (
+                    <div className="booking-step-focus__quick-edit">
+                      {stepRows
+                        .filter((row) => row.id < currentStep && row.id <= maxUnlockedStep)
+                        .map((row) => (
+                          <button
+                            key={`step-edit-${row.id}`}
+                            type="button"
+                            className="btn btn-sm btn-outline-dark booking-step-focus__edit-btn"
+                            onClick={() => setCurrentStep(row.id)}
+                          >
+                            تعديل {row.title}
+                          </button>
+                        ))}
+                    </div>
+                  ) : null}
+                </div>
 
-                  {/* âœ… التاريخ (عمود لحاله) */}
+                {currentStep === 2 ? (
+                <div className="booking-step-card-shell mb-4">
+                  <div className="booking-step-card-shell__title">
+                    اختاري اليوم والوقت المناسب
+                  </div>
+                  <div className="row">
                   <div className="col-12 mb-4">
                     <label htmlFor="bookingDate" className="form-label">تاريخ الحجز</label>
 
@@ -6327,9 +6679,14 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                     )}
                   </div>
                 </div>
+                </div>
+                ) : null}
 
 
-                <div className="mb-4 bk-service-adder" style={{ border: '1px solid #eee', padding: '15px', borderRadius: '12px', background: '#fafafa' }}>
+                {currentStep === 1 ? (
+                <div className="booking-step-card-shell mb-4">
+                  <div className="booking-step-card-shell__title">اختاري الخدمة اللي تبغينها</div>
+                <div className="mb-0 bk-service-adder" style={{ border: '1px solid #eee', padding: '15px', borderRadius: '12px', background: '#fafafa' }}>
                   <label className="form-label" style={{ fontWeight: 'bold' }}>أضيفي خدمة جديدة</label>
                   <div className="bk-picker-scope mb-2">
                     <button
@@ -6399,7 +6756,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                           <select
                             className={`form-select dash-select ${servicePicker ? "" : "is-empty"}`}
                             value={servicePicker}
-                            onChange={(e) => setServicePicker(e.target.value)}
+                            onChange={(e) => handleServicePickerChange(e.target.value)}
                             disabled={!selectedSectionId}
                           >
                             <option value="">اختاري الخدمة</option>
@@ -6426,8 +6783,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                             value={servicePicker}
                             onChange={(e) => {
                               const next = e.target.value;
-                              setServicePicker(next);
-                              setOfferStartTime("");
+                              handleServicePickerChange(next);
                             }}
                             disabled={!packageOptions.length}
                           >
@@ -6522,9 +6878,49 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                     </div>
                   )}
                 </div>
+                  <div className="mt-3 d-grid">
+                    <button
+                      type="button"
+                      className="btn btn-dark"
+                      disabled={!isStep1Complete}
+                      onClick={() => setCurrentStep(2)}
+                    >
+                      التالي: الوقت والموظفة
+                    </button>
+                  </div>
+                </div>
+                ) : null}
 
+
+                {currentStep === 2 ? (
+                  <div className="booking-step-card-shell mb-4">
+                    <div className="booking-step-card-shell__title">تبغين موظفة معينة؟ (اختياري)</div>
+                    <div className="booking-staff-choice">
+                      <button
+                        type="button"
+                        className={`btn ${staffChoiceMode === "any" ? "btn-dark" : "btn-outline-dark"}`}
+                        onClick={() => setStaffChoiceMode("any")}
+                      >
+                        أي موظفة متاحة
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${staffChoiceMode === "manual" ? "btn-dark" : "btn-outline-dark"}`}
+                        onClick={() => setStaffChoiceMode("manual")}
+                      >
+                        اختيار يدوي
+                      </button>
+                    </div>
+                    <div className="small text-muted mt-2">
+                      {staffChoiceMode === "any"
+                        ? "سيتم اعتماد أي موظفة متاحة داخل نفس الخطوة بعد اختيار الوقت."
+                        : "اختاري الموظفة يدويًا من السلة بعد تحديد التاريخ والوقت."}
+                    </div>
+                  </div>
+                ) : null}
 
 	                {/* âœ… الخدمات المختارة (السلة) */}
+                {currentStep === 2 ? (
 	                <div className="mb-4">
 	                  <div className="booking-cart-head">
 	                    <label className="form-label mb-0" style={{ fontWeight: 'bold' }}>
@@ -6660,6 +7056,10 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         const selectedEmployeeAvailable = availableStaff.some(
                           (emp) => String(emp?.id || "").trim() === String(it.employeeId || "").trim()
                         );
+                        const isManualStaffChoice = staffChoiceMode === "manual";
+                        const isAnyStaffAssigning =
+                          staffChoiceMode === "any" &&
+                          String(anyStaffAssigningItemId || "").trim() === String(it.id || "").trim();
                         const packageRunMeta = packageRunId ? packageRunMetaByRun[packageRunId] : undefined;
                         const quickEligibility = packageRunId ? packageQuickEligibilityByRun[packageRunId] : undefined;
                         const quickCommonStaff = quickEligibility?.commonStaff || [];
@@ -6672,14 +7072,15 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                           !!packageRunMeta &&
                           packageRunMeta.items.length > 1 &&
                           quickCommonStaff.length > 0;
+                        const usePackageQuickMode = hasPackageQuickMode && staffChoiceMode === "manual";
                         const isPackageRunFollower = !!packageRunMeta && !isPackageRunLeader;
                         const packageName = String(it.packageSnapshot?.packageName || "").trim();
                         const packageFinalPrice = Math.max(0, Number(it.packageSnapshot?.finalPriceAtBooking || 0));
-                        const showAsPackageBlock = hasPackageQuickMode && isPackageRunLeader && !!packageName;
+                        const showAsPackageBlock = usePackageQuickMode && isPackageRunLeader && !!packageName;
                         const cardTitle = showAsPackageBlock ? packageName : it.serviceName;
                         const cardPriceText = showAsPackageBlock && packageFinalPrice > 0 ? `${packageFinalPrice} ريال` : it.priceText;
                         const ServiceCardIcon = pickBookingCardIcon(String(cardTitle || ""));
-                        if (hasPackageQuickMode && isPackageRunFollower) return null;
+                        if (usePackageQuickMode && isPackageRunFollower) return null;
                         const packageQuickState = packageRunId
                           ? (packageQuickByRun[packageRunId] || {
                               employeeId: "",
@@ -6696,6 +7097,13 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         const staffUnavailableMsg = (!staffLoading && !staffError && bookingVisibleStaff.length && !availableStaff.length)
                           ? "لا توجد موظفات متاحات لهذا التاريخ."
                           : "";
+                        const hideAnyModeTimeSelection = !isManualStaffChoice && !!staffUnavailableMsg;
+                        const dayFullyBookedMsg = isManualStaffChoice
+                          ? "اليوم ممتلئ لهذه الموظفة. يمكنكِ البحث عن أقرب يوم متاح."
+                          : "اليوم ممتلئ لهذه الخدمة. يمكنكِ البحث عن أقرب يوم متاح.";
+                        const futureSearchBtnLabel = isManualStaffChoice
+                          ? "بحث أوقات للأيام القادمة لهذه الموظفة"
+                          : "بحث أوقات للأيام القادمة لهذه الخدمة";
 
                         const suggested = String(busy.suggestedSlot || "").trim();
                         const slotsForThisService = filterSlotsByServiceEnd(
@@ -6705,9 +7113,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                           bufferMin,
                           ALLOW_OVERTIME_MIN
                         );
-                        const selectedStaffForTime = bookingVisibleStaff.find(
-                          (x) => String(x.id || "").trim() === String(it.employeeId || "").trim()
-                        );
+                        const selectedStaffForTime = isManualStaffChoice
+                          ? bookingVisibleStaff.find(
+                              (x) => String(x.id || "").trim() === String(it.employeeId || "").trim()
+                            )
+                          : null;
                         const slotsForSelectedStaff = selectedStaffForTime
                           ? filterStaffSlotsByWorkingHours(selectedStaffForTime as any, {
                               dateISO,
@@ -6716,16 +7126,63 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                               fallbackCloseTime: closeTime,
                             })
                           : slotsForThisService;
-                        const exactCartTakenStarts = getLocalExactTakenStartTimesForItem(
-                          itemsList,
-                          it.id,
-                          String(it.employeeId || "").trim(),
-                          dateISO
-                        );
+                        const exactCartTakenStarts = isManualStaffChoice
+                          ? getLocalExactTakenStartTimesForItem(
+                              itemsList,
+                              it.id,
+                              String(it.employeeId || "").trim(),
+                              dateISO
+                            )
+                          : new Set<string>();
+                        const anyModePackageTakenLocks =
+                          !isManualStaffChoice && packageRunId
+                            ? (() => {
+                                const occupied = new Set<string>();
+                                itemsList
+                                  .filter((x) => String(x.id || "").trim() !== String(it.id || "").trim())
+                                  .filter((x) => String(x.packageRunId || "").trim() === packageRunId)
+                                  .filter((x) => String(x.date || "").trim() === dateISO)
+                                  .forEach((x) => {
+                                    const otherStart = String(x.time || "").trim();
+                                    if (!otherStart) return;
+                                    const otherDuration = Math.max(
+                                      1,
+                                      Number(x.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+                                    );
+                                    getTimesToLock(
+                                      baseSlotsForUi,
+                                      slotStepMin,
+                                      otherStart,
+                                      otherDuration,
+                                      bufferMin
+                                    ).forEach((t) => occupied.add(String(t || "").trim()));
+                                  });
+                                return occupied;
+                              })()
+                            : new Set<string>();
+                        const anyModePackageDisabledStarts =
+                          !isManualStaffChoice && packageRunId
+                            ? new Set<string>(
+                                slotsForSelectedStaff
+                                  .map((s) => String(s.value24 || "").trim())
+                                  .filter(Boolean)
+                                  .filter((start) => {
+                                    const needed = getTimesToLock(
+                                      baseSlotsForUi,
+                                      slotStepMin,
+                                      start,
+                                      Math.max(1, Number(dur || DEFAULT_SERVICE_DURATION_MIN)),
+                                      bufferMin
+                                    );
+                                    return needed.some((t) => anyModePackageTakenLocks.has(String(t || "").trim()));
+                                  })
+                              )
+                            : new Set<string>();
                         const availableSlotsForItem = slotsForSelectedStaff.filter(
                           (s) =>
-                            !busy.disabledStartTimes.has(s.value24) &&
-                            !exactCartTakenStarts.has(String(s.value24 || "").trim())
+                            (!isManualStaffChoice || !busy.disabledStartTimes.has(s.value24)) &&
+                            (!isManualStaffChoice || !exactCartTakenStarts.has(String(s.value24 || "").trim())) &&
+                            (isManualStaffChoice || !anyModePackageDisabledStarts.has(String(s.value24 || "").trim()))
                         );
                         const nearestAvailableStart =
                           suggested && availableSlotsForItem.some((s) => s.value24 === suggested)
@@ -6855,7 +7312,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                               </div>
                             ) : (
                               <div className="row g-3">
-                                {isPackageRunLeader && packageRunMeta && (quickLoading || hasPackageQuickMode) ? (
+                                {isPackageRunLeader && packageRunMeta && staffChoiceMode === "manual" && (quickLoading || hasPackageQuickMode) ? (
                                   <div className="col-12">
                                     <div
                                       style={{
@@ -6879,35 +7336,67 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                         </div>
                                       ) : (
                                         <>
-                                          <div className="row g-2 align-items-end">
-                                            <div className="col-md-6">
-                                              <label className="form-label small fw-bold">موظفة البكج</label>
-                                              <select
-                                                className="form-select"
-                                                value={packageQuickState.employeeId}
-                                                onChange={(e) => {
-                                                  const empId = String(e.target.value || "").trim();
-                                                  setPackageQuickByRun((prev) => ({
-                                                    ...prev,
-                                                    [packageRunId]: {
-                                                      employeeId: empId,
-                                                      times: [],
-                                                      loading: false,
-                                                      error: "",
-                                                    },
-                                                  }));
-                                                  if (empId) {
-                                                    void loadPackageQuickStarts(packageRunId, empId);
-                                                  }
-                                                }}
-                                              >
-                                                <option value="">اختاري موظفة للبكج</option>
-                                                {quickCommonStaff.map((emp: any) => (
-                                                  <option key={String(emp?.id || "").trim()} value={String(emp?.id || "").trim()}>
-                                                    {String(emp?.name || "").trim() || "موظفة"}
-                                                  </option>
-                                                ))}
-                                              </select>
+                                          <div>
+                                            <label className="form-label small fw-bold">موظفة البكج</label>
+                                            <div className="bk-staff-card-grid">
+                                              {quickCommonStaff.map((emp: any) => {
+                                                const empId = String(emp?.id || "").trim();
+                                                const selected = empId && empId === String(packageQuickState.employeeId || "").trim();
+                                                return (
+                                                  <button
+                                                    key={empId || String(emp?.name || "").trim()}
+                                                    type="button"
+                                                    className={[
+                                                      "bk-staff-card-btn",
+                                                      selected ? "is-selected" : "",
+                                                    ].join(" ").trim()}
+                                                    onClick={() => {
+                                                      const nextEmpId = selected ? "" : empId;
+                                                      setPackageQuickByRun((prev) => ({
+                                                        ...prev,
+                                                        [packageRunId]: {
+                                                          employeeId: nextEmpId,
+                                                          times: [],
+                                                          loading: false,
+                                                          error: "",
+                                                        },
+                                                      }));
+                                                      if (nextEmpId) {
+                                                        void loadPackageQuickStarts(packageRunId, nextEmpId);
+                                                      }
+                                                    }}
+                                                  >
+                                                    <span className="bk-staff-card-icon" aria-hidden="true">
+                                                      <svg
+                                                        width="22"
+                                                        height="22"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                      >
+                                                        <path
+                                                          d="M12 12.2C15.09 12.2 17.6 9.69 17.6 6.6C17.6 3.51 15.09 1 12 1C8.91 1 6.4 3.51 6.4 6.6C6.4 9.69 8.91 12.2 12 12.2Z"
+                                                          fill="#374957"
+                                                          fillOpacity="0.12"
+                                                        />
+                                                        <path
+                                                          d="M12 12.2C15.09 12.2 17.6 9.69 17.6 6.6C17.6 3.51 15.09 1 12 1C8.91 1 6.4 3.51 6.4 6.6C6.4 9.69 8.91 12.2 12 12.2Z"
+                                                          stroke="#374957"
+                                                          strokeWidth="1.3"
+                                                        />
+                                                        <path
+                                                          d="M3.2 22.6C3.2 18.84 7.14 15.8 12 15.8C16.86 15.8 20.8 18.84 20.8 22.6"
+                                                          stroke="#374957"
+                                                          strokeWidth="1.3"
+                                                          strokeLinecap="round"
+                                                        />
+                                                      </svg>
+                                                    </span>
+                                                    <span className="bk-staff-card-name">{String(emp?.name || "").trim() || "موظفة"}</span>
+                                                    {selected ? <span className="bk-staff-card-state">محددة</span> : null}
+                                                  </button>
+                                                );
+                                              })}
                                             </div>
                                           </div>
                                           {packageQuickState.loading ? (
@@ -6997,7 +7486,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                   </div>
                                 ) : null}
 
-                                {!hasPackageQuickMode && (
+                                {!usePackageQuickMode && staffChoiceMode === "manual" && (
                                 <div className="col-md-6">
                                   <label className="form-label small fw-bold">1. اختاري الموظفة</label>
                                   <div className="bk-staff-card-grid">
@@ -7092,13 +7581,34 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                 </div>
                                 )}
 
-                                {!hasPackageQuickMode && it.employeeId && selectedEmployeeAvailable && (
+                                {!usePackageQuickMode && hideAnyModeTimeSelection && (
                                   <div className="col-12">
-                                    <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
+                                    <label className="form-label small fw-bold">1. اختاري الوقت المتاح</label>
+                                    <div className="text-warning small mb-2">{staffUnavailableMsg}</div>
+                                    <div className="mt-2 d-grid">
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline-dark btn-sm bk-future-search-btn"
+                                        onClick={() => openFutureSearchFromItem(it)}
+                                      >
+                                        {futureSearchBtnLabel}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {!usePackageQuickMode && !hideAnyModeTimeSelection && (staffChoiceMode === "any" || (it.employeeId && selectedEmployeeAvailable)) && (
+                                  <div className="col-12">
+                                    <label className="form-label small fw-bold">
+                                      {staffChoiceMode === "any" ? "1. اختاري الوقت المتاح" : "2. اختاري الوقت المتاح"}
+                                    </label>
+                                    {staffChoiceMode === "any" && staffUnavailableMsg ? (
+                                      <div className="text-warning small mb-2">{staffUnavailableMsg}</div>
+                                    ) : null}
                                     <div className="bk-time-grid">
                                       {availableSlotsForItem.length === 0 ? (
-                                        <div className="text-muted small" style={{ padding: 8 }}>
-                                          لا توجد أوقات متاحة لهذا اليوم. جرّبي يومًا آخر أو موظفة أخرى.
+                                        <div className="text-warning small" style={{ padding: 8 }}>
+                                          {dayFullyBookedMsg}
                                         </div>
                                       ) : (
                                         slotsForSelectedStaff.map((slot) => {
@@ -7106,9 +7616,15 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                           const isGreen = greenStarts.has(value24);
                                           const isSelected = it.time === value24;
                                           const isSequentialSuggested = sequentialBooking && suggested === value24;
-                                          const isDisabledByBusy = busy.disabledStartTimes.has(String(value24 || "").trim());
-                                          const isDisabledByCart = exactCartTakenStarts.has(String(value24 || "").trim());
-                                          const isDisabled = isDisabledByBusy || isDisabledByCart;
+                                          const isDisabledByBusy =
+                                            isManualStaffChoice && busy.disabledStartTimes.has(String(value24 || "").trim());
+                                          const isDisabledByCartManual =
+                                            isManualStaffChoice && exactCartTakenStarts.has(String(value24 || "").trim());
+                                          const isDisabledByPackageAny =
+                                            !isManualStaffChoice &&
+                                            anyModePackageDisabledStarts.has(String(value24 || "").trim());
+                                          const isDisabledByCart = isDisabledByCartManual || isDisabledByPackageAny;
+                                          const isDisabled = isDisabledByBusy || isDisabledByCart || isAnyStaffAssigning;
 
                                           return (
                                             <button
@@ -7122,9 +7638,17 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                                 isDisabled ? "is-disabled" : "",
                                               ].join(" ")}
                                               disabled={isDisabled}
-                                              onClick={() => updateItem(it.id, { time: value24 })}
+                                              onClick={() => {
+                                                if (staffChoiceMode === "any") {
+                                                  void assignAnyStaffForItemTime(it, dateISO, value24);
+                                                  return;
+                                                }
+                                                updateItem(it.id, { time: value24 });
+                                              }}
                                               title={
-                                                isDisabledByCart
+                                                isDisabledByPackageAny
+                                                  ? "هذا الوقت يتعارض مع خدمة أخرى في نفس البكج"
+                                                  : isDisabledByCart
                                                   ? "هذا الوقت مستخدم داخل السلة لنفس الموظفة في نفس التاريخ"
                                                   : undefined
                                               }
@@ -7135,15 +7659,20 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                         })
                                       )}
                                     </div>
+                                    {isAnyStaffAssigning ? (
+                                      <div className="small text-muted mt-2">
+                                        <FontAwesomeIcon icon={faSpinner} spin /> جاري تحديد الموظفة المتاحة...
+                                      </div>
+                                    ) : null}
 
                                     {availableSlotsForItem.length === 0 ? (
                                       <div className="mt-2 d-grid">
                                         <button
                                           type="button"
-                                          className="btn btn-outline-dark btn-sm"
+                                          className="btn btn-outline-dark btn-sm bk-future-search-btn"
                                           onClick={() => openFutureSearchFromItem(it)}
                                         >
-                                          بحث أوقات للأيام القادمة لهذه الخدمة
+                                          {futureSearchBtnLabel}
                                         </button>
                                       </div>
                                     ) : null}
@@ -7158,6 +7687,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                         <button
                                           type="button"
                                           className="btn btn-success w-100 py-2 fw-bold"
+                                          disabled={isAnyStaffAssigning}
                                           onClick={() => updateItem(it.id, { locked: true })}
                                         >
                                           تأكيد الموظفة والوقت لهذه الخدمة
@@ -7179,14 +7709,9 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                     </div>
 	                  )}
 	                </div>
+                ) : null}
 
-	                {totalPreviewCount > 0 && !allPreviewLocked ? (
-	                  <div className="booking-pre-save-pending mb-3">
-	                    ملخص الحجز يظهر بعد تأكيد الموظفة والوقت لكل خدمة.
-	                  </div>
-	                ) : null}
-
-	                {allPreviewLocked ? (
+	                {currentStep === 4 ? (
 	                  <div className="booking-pre-save-summary mb-3">
 	                    <div className="booking-pre-save-summary__head">
 	                      <div className="booking-pre-save-summary__title">ملخص الحجز قبل الدفع</div>
@@ -7195,9 +7720,18 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 	                      </div>
 	                    </div>
 	                    <div className="booking-pre-save-summary__meta">
-	                      <div><strong>العميلة:</strong> {String(formData.name || "").trim() || "-"}</div>
-	                      <div><strong>الجوال:</strong> {phone10Digits(String(formData.phone || "").trim()) || "-"}</div>
-	                      <div><strong>وقت إنشاء الحجز:</strong> {previewCreatedAtLabel}</div>
+	                      <div className="booking-pre-save-summary__meta-item">
+                          <span className="booking-pre-save-summary__meta-label">العميلة</span>
+                          <strong className="booking-pre-save-summary__meta-value">{String(formData.name || "").trim() || "-"}</strong>
+                        </div>
+	                      <div className="booking-pre-save-summary__meta-item">
+                          <span className="booking-pre-save-summary__meta-label">الجوال</span>
+                          <strong className="booking-pre-save-summary__meta-value">{phone10Digits(String(formData.phone || "").trim()) || "-"}</strong>
+                        </div>
+	                      <div className="booking-pre-save-summary__meta-item">
+                          <span className="booking-pre-save-summary__meta-label">وقت إنشاء الحجز</span>
+                          <strong className="booking-pre-save-summary__meta-value">{previewCreatedAtLabel}</strong>
+                        </div>
 	                    </div>
 
 	                    {appliedDiscountTotal > 0 ? (
@@ -7230,13 +7764,31 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 	                            <span className="booking-pre-save-summary__row-service">{row.serviceName}</span>
 	                          </div>
 	                          <div className="booking-pre-save-summary__row-meta">
-	                            <span><strong>الموظفة:</strong> {row.staffName}</span>
-	                            <span><strong>التاريخ:</strong> {row.date}</span>
-	                            <span><strong>الوقت:</strong> {row.timeLabel}</span>
-	                            <span><strong>المدة:</strong> {row.durationMin} د</span>
-	                            <span><strong>السعر:</strong> {row.priceLabel}</span>
+	                            <span className="booking-pre-save-summary__fact">
+                                <span className="booking-pre-save-summary__fact-label">الموظفة</span>
+                                <strong className="booking-pre-save-summary__fact-value">{row.staffName}</strong>
+                              </span>
+	                            <span className="booking-pre-save-summary__fact">
+                                <span className="booking-pre-save-summary__fact-label">التاريخ</span>
+                                <strong className="booking-pre-save-summary__fact-value">{row.date}</strong>
+                              </span>
+	                            <span className="booking-pre-save-summary__fact">
+                                <span className="booking-pre-save-summary__fact-label">الوقت</span>
+                                <strong className="booking-pre-save-summary__fact-value">{row.timeLabel}</strong>
+                              </span>
+	                            <span className="booking-pre-save-summary__fact">
+                                <span className="booking-pre-save-summary__fact-label">المدة</span>
+                                <strong className="booking-pre-save-summary__fact-value">{row.durationMin} د</strong>
+                              </span>
+	                            <span className="booking-pre-save-summary__fact">
+                                <span className="booking-pre-save-summary__fact-label">السعر</span>
+                                <strong className="booking-pre-save-summary__fact-value">{row.priceLabel}</strong>
+                              </span>
 	                            {row.toolsNote ? (
-	                              <span><strong>ملاحظة:</strong> {row.toolsNote}</span>
+	                              <span className="booking-pre-save-summary__fact booking-pre-save-summary__fact--wide">
+                                  <span className="booking-pre-save-summary__fact-label">ملاحظة</span>
+                                  <strong className="booking-pre-save-summary__fact-value">{row.toolsNote}</strong>
+                                </span>
 	                            ) : null}
 	                          </div>
 	                        </div>
@@ -7250,13 +7802,13 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 	                  </div>
 	                ) : null}
 
-	                {futureGateLoading ? (
+	                {currentStep === 2 && futureGateLoading ? (
 	                  <div className="small text-muted mb-2">
 	                    <FontAwesomeIcon icon={faSpinner} spin /> جاري التحقق من توفر اليوم المختار...
 	                  </div>
                 ) : null}
 
-                {showFutureSearch ? (
+                {currentStep === 2 && showFutureSearch ? (
                   <div
                     ref={futureSearchRef}
                     className="mb-4"
@@ -7267,50 +7819,15 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                       <span className="text-muted" style={{ fontSize: 12 }}>يعرض أول 5 أيام متاحة بعد التاريخ المختار</span>
                     </div>
 
-                    {futureGateMsg ? (
-                      <div className="alert alert-warning py-2 mb-2">{futureGateMsg}</div>
-                    ) : null}
-
                     <div className="row g-2 align-items-end">
-                      <div className="col-12">
-                        <div className="bk-field">
-                          <select
-                            className="form-select dash-select"
-                            value={futureAnyStaff ? "any" : "one"}
-                            onChange={(e) => {
-                              const any = e.target.value === "any";
-                              setFutureAnyStaff(any);
-                              if (any) {
-                                setFutureSelectedEmployeeKey("");
-                                setFutureStaffNameQuery("");
-                              }
-                            }}
-                          >
-                            <option value="any">أي موظفة للخدمة</option>
-                            <option value="one">موظفة محددة</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {!futureAnyStaff ? (
+                      {staffChoiceMode !== "any" ? (
                         <div className="col-12">
                           <label className="form-label">اختاري الموظفة</label>
                           {!String(futureServiceId || servicePicker || "").trim() ? (
                             <div className="alert alert-danger mb-2 py-2">
-                              اختاري الخدمة أولاً ثم ابحثي باسم الموظفة.
+                              اختاري الخدمة أولاً.
                             </div>
                           ) : null}
-                          <input
-                            className="form-control"
-                            value={futureStaffNameQuery}
-                            onChange={(e) => {
-                              const v = String(e.target.value || "");
-                              setFutureStaffNameQuery(v);
-                              setFutureSelectedEmployeeKey("");
-                            }}
-                            placeholder="ابحثي باسم الموظفة..."
-                            disabled={!String(futureServiceId || servicePicker || "").trim()}
-                          />
                           {String(futureServiceId || servicePicker || "").trim() &&
                           staffLoadingByService[String(futureServiceId || servicePicker || "").trim()] ? (
                             <div className="small text-muted mt-1">
@@ -7323,21 +7840,38 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                               {staffErrorByService[String(futureServiceId || servicePicker || "").trim()]}
                             </div>
                           ) : null}
-                          {futureStaffNameQuery && filteredFutureStaffOptions.length ? (
-                            <div className="mt-2 d-flex flex-wrap gap-2">
-                              {filteredFutureStaffOptions.slice(0, 8).map((st) => (
-                                <button
-                                  key={st.key}
-                                  type="button"
-                                  className="btn btn-outline-dark btn-sm"
-                                  onClick={() => {
-                                    setFutureStaffNameQuery(st.name);
-                                    setFutureSelectedEmployeeKey(st.key);
-                                  }}
-                                >
-                                  {st.name}
-                                </button>
-                              ))}
+                          {String(futureServiceId || servicePicker || "").trim() &&
+                          !staffLoadingByService[String(futureServiceId || servicePicker || "").trim()] &&
+                          !staffErrorByService[String(futureServiceId || servicePicker || "").trim()] &&
+                          futureStaffOptions.length === 0 ? (
+                            <div className="text-warning small mt-1">
+                              لا توجد موظفات لهذه الخدمة حالياً.
+                            </div>
+                          ) : null}
+                          {futureStaffOptions.length > 0 ? (
+                            <div className="bk-staff-card-grid mt-2">
+                              {futureStaffOptions.map((st) => {
+                                const selected =
+                                  String(futureSelectedEmployeeKey || "").trim() === String(st.key || "").trim();
+                                return (
+                                  <button
+                                    key={st.key}
+                                    type="button"
+                                    className={[
+                                      "bk-staff-card-btn",
+                                      selected ? "is-selected" : "",
+                                    ].join(" ").trim()}
+                                    onClick={() => {
+                                      const nextKey = selected ? "" : st.key;
+                                      setFutureSelectedEmployeeKey(nextKey);
+                                      setFutureStaffNameQuery(selected ? "" : st.name);
+                                    }}
+                                  >
+                                    <span className="bk-staff-card-name">{st.name}</span>
+                                    {selected ? <span className="bk-staff-card-state">محددة</span> : null}
+                                  </button>
+                                );
+                              })}
                             </div>
                           ) : null}
                         </div>
@@ -7348,7 +7882,10 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                           type="button"
                           className="btn btn-outline-dark"
                           onClick={runFutureAvailabilitySearch}
-                          disabled={futureLoading}
+                          disabled={
+                            futureLoading ||
+                            (!futureAnyStaffEffective && !String(futureSelectedEmployeeKey || "").trim())
+                          }
                         >
                           {futureLoading ? "جاري البحث..." : "بحث"}
                         </button>
@@ -7365,7 +7902,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                       {futureResult.length ? (
                         <div className="col-12">
                           <div className="bk-future-inline">
-                            {futureAnyStaff ? (
+                            {futureAnyStaffEffective ? (
                               <div className="small text-muted mb-2">
                                 الأوقات التالية قد تكون عند موظفات مختلفات، وسيتم تحديد الموظفة بعد اختيار اليوم.
                               </div>
@@ -7378,7 +7915,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                 onClick={() => {
                                   const nearestDate = String(futureResult[0]?.date || "").trim();
                                   if (!nearestDate) return;
-                                  applyBookingDate(nearestDate);
+                                  requestBookingDateChange(nearestDate);
                                 }}
                               >
                                 اختيار أقرب موعد
@@ -7438,7 +7975,26 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                   </div>
                 ) : null}
 
+                {currentStep === 2 ? (
+                  <div className="d-grid mb-4">
+                    <button
+                      type="button"
+                      className="btn btn-dark"
+                      disabled={!isStep2ReadyForNext}
+                      onClick={() => setCurrentStep(3)}
+                    >
+                      التالي: ملاحظة وكود الخصم
+                    </button>
+                    {!allPreviewLocked ? (
+                      <div className="small text-warning mt-2 text-center">
+                        لازم تأكيد الموظفة والوقت لكل خدمة قبل الانتقال للخطوة التالية.
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
+                {currentStep === 3 ? (
+                <>
                 <div className="mb-4">
                   <label htmlFor="note" className="form-label">ملاحظة (اختياري)</label>
                   <textarea
@@ -7507,7 +8063,21 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                     </div>
                   )}
                 </div>
+                <div className="d-grid mb-4">
+                  <button
+                    type="button"
+                    className="btn btn-dark"
+                    disabled={!isStep3Complete}
+                    onClick={() => setCurrentStep(4)}
+                  >
+                    التالي: التأكيد
+                  </button>
+                </div>
+                </>
+                ) : null}
 
+                {currentStep === 4 ? (
+                <>
                 <div className="booking-summary mb-4 qs-black">
                   <div className="d-flex justify-content-between">
                     <span>السعر</span>
@@ -7528,7 +8098,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                 <button
                   type="submit"
                   className="btn btn-primary w-100 booking-submit-btn"
-                  disabled={isLoading}
+                  disabled={isLoading || !allPreviewLocked}
                 >
                   {isLoading ? (
                     <><FontAwesomeIcon icon={faSpinner} spin /> جاري تأكيد الحجز…</>
@@ -7536,6 +8106,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                     "تأكيد الحجز النهائي"
                   )}
                 </button>
+                </>
+                ) : null}
               </form>
               )}
             </div>
