@@ -59,6 +59,7 @@ import "../styles/DashboardBookings.css";
 type StatusOption = BookingStatus | "all";
 
 const NOTES_KEY = "dashboard_booking_notes_v1";
+const BOOKING_ACTION_PIN = "598867395";
 
 const statusLabel: Record<BookingStatus, string> = {
   confirmed: "مؤكد",
@@ -68,6 +69,7 @@ const statusLabel: Record<BookingStatus, string> = {
 };
 
 const allStatusOptions: BookingStatus[] = ["pending", "confirmed", "completed", "cancelled"];
+type BookingPaymentType = "full" | "partial";
 
 /* =========================
    Helpers
@@ -84,6 +86,29 @@ function inDateRange(bookingDate: string, from: string, to: string) {
   if (from && d < from) return false;
   if (to && d > to) return false;
   return true;
+}
+
+function parseBookingDateTimeMs(dateISO: string, timeHHMM: string): number | null {
+  const d = String(dateISO || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const t = String(timeHHMM || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!d || !t) return null;
+
+  const year = Number(d[1]);
+  const month = Number(d[2]);
+  const day = Number(d[3]);
+  const hour = Number(t[1]);
+  const minute = Number(t[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+
+  const stamp = new Date(year, Math.max(0, month - 1), day, hour, minute, 0, 0);
+  if (
+    stamp.getFullYear() !== year ||
+    stamp.getMonth() !== month - 1 ||
+    stamp.getDate() !== day
+  ) {
+    return null;
+  }
+  return stamp.getTime();
 }
 
 function downloadCSV(filename: string, rows: string[][]) {
@@ -148,6 +173,65 @@ function bookingRef(b: Partial<Booking> | null | undefined) {
   if (/^MK-\d+$/.test(up)) return up;
   if (/^\d+$/.test(up)) return `MK-${up}`;
   return up;
+}
+
+function round2(v: number) {
+  return Math.round((Number(v) || 0) * 100) / 100;
+}
+
+function readBookingTotalAmount(raw: any) {
+  const n = Number(raw?.finalPrice ?? raw?.total ?? 0);
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
+function normalizeBookingPaymentType(raw: any): BookingPaymentType | null {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return null;
+  if (s === "full" || s === "complete" || s === "كامل") return "full";
+  if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
+  return null;
+}
+
+function resolveBookingPaymentSummary(raw: any): {
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+} {
+  const totalAmount = readBookingTotalAmount(raw);
+  const normalizedType = normalizeBookingPaymentType(raw?.paymentType);
+  const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
+  const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
+  const status = String(raw?.status || "").trim().toLowerCase();
+  const isRevenueStatus = status === "confirmed" || status === "completed";
+
+  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paidAmount: number;
+  if (hasExplicitPaid) {
+    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
+  } else if (paymentType === "partial") {
+    paidAmount = 0;
+  } else {
+    paidAmount = isRevenueStatus ? totalAmount : 0;
+  }
+
+  if (paymentType === "full") {
+    paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
+  } else {
+    paymentType = paidAmount >= totalAmount ? "full" : "partial";
+  }
+
+  const remainingAmount = Math.max(0, round2(totalAmount - paidAmount));
+  return {
+    paymentType,
+    paidAmount: round2(Math.max(0, Math.min(totalAmount, paidAmount))),
+    remainingAmount,
+    totalAmount: round2(totalAmount),
+  };
+}
+
+function paymentTypeLabel(type: BookingPaymentType) {
+  return type === "partial" ? "عربون" : "كامل";
 }
 
 function toMillisSafe(v: any) {
@@ -435,6 +519,9 @@ type Booking = {
   time: string;
   status: BookingStatus;
   paymentMethod?: string;
+  paymentType?: BookingPaymentType;
+  paidAmount?: number;
+  remainingAmount?: number;
   total?: number;
   finalPrice?: number;
   createdAt?: any;
@@ -469,6 +556,12 @@ type RefundDraft = {
   details: string;
   date: string;
 };
+
+type SensitiveBookingAction =
+  | { kind: "status"; bookingId: string; nextStatus: BookingStatus; bookingRef: string }
+  | { kind: "edit"; booking: Booking }
+  | { kind: "refund"; booking: Booking }
+  | { kind: "delete"; booking: Booking };
 
 /* =========================
    Component
@@ -519,7 +612,21 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     date: "",
     time: "",
     price: "",
+    paymentType: "full" as BookingPaymentType,
+    paidAmount: "",
   });
+  const [confirmTarget, setConfirmTarget] = useState<Booking | null>(null);
+  const [confirmSaving, setConfirmSaving] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
+  const [confirmDraft, setConfirmDraft] = useState({
+    paymentType: "full" as BookingPaymentType,
+    paidAmount: "",
+  });
+  const [actionPinOpen, setActionPinOpen] = useState(false);
+  const [actionPinBusy, setActionPinBusy] = useState(false);
+  const [actionPin, setActionPin] = useState("");
+  const [actionPinError, setActionPinError] = useState("");
+  const [pendingSensitiveAction, setPendingSensitiveAction] = useState<SensitiveBookingAction | null>(null);
 
   const uiRole = currentRole;
   const authUser = getAuthUserSafe();
@@ -536,6 +643,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     setEditTarget(null);
     setEditError("");
   }, [editSaving]);
+  const closeConfirmModal = useCallback(() => {
+    if (confirmSaving) return;
+    setConfirmTarget(null);
+    setConfirmError("");
+  }, [confirmSaving]);
+  const closeActionPinModal = useCallback(() => {
+    if (actionPinBusy) return;
+    setActionPinOpen(false);
+    setActionPin("");
+    setActionPinError("");
+    setPendingSensitiveAction(null);
+  }, [actionPinBusy]);
 
   useEffect(() => {
     return () => {
@@ -859,6 +978,32 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return out;
   }, [filtered]);
 
+  const staleStatusBookings = useMemo(() => {
+    const nowMs = Date.now();
+    return bookings
+      .filter((b) => {
+        if (!(b.status === "pending" || b.status === "confirmed")) return false;
+        const bookingMs = parseBookingDateTimeMs(String(b.date || ""), String(b.time || ""));
+        if (bookingMs === null) return false;
+        return bookingMs < nowMs;
+      })
+      .sort((a, b) => {
+        const aMs = parseBookingDateTimeMs(String(a.date || ""), String(a.time || "")) || 0;
+        const bMs = parseBookingDateTimeMs(String(b.date || ""), String(b.time || "")) || 0;
+        return aMs - bMs;
+      });
+  }, [bookings]);
+
+  const stalePendingCount = useMemo(
+    () => staleStatusBookings.filter((b) => b.status === "pending").length,
+    [staleStatusBookings]
+  );
+  const staleConfirmedCount = useMemo(
+    () => staleStatusBookings.filter((b) => b.status === "confirmed").length,
+    [staleStatusBookings]
+  );
+  const stalePreviewBookings = useMemo(() => staleStatusBookings.slice(0, 6), [staleStatusBookings]);
+
   const getAllowedStatusOptions = (b: Booking): BookingStatus[] => {
     if (uiRole === "owner" || uiRole === "admin") return allStatusOptions;
     if (uiRole === "reception") {
@@ -868,7 +1013,24 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return [b.status];
   };
 
-  const handleUpdateStatus = async (id: string, newStatus: BookingStatus) => {
+  const requestSensitiveAction = (action: SensitiveBookingAction) => {
+    setPendingSensitiveAction(action);
+    setActionPin("");
+    setActionPinError("");
+    setActionPinOpen(true);
+  };
+
+  const sensitiveActionDescription = (action: SensitiveBookingAction | null) => {
+    if (!action) return "";
+    if (action.kind === "status") {
+      return `تغيير حالة الحجز ${action.bookingRef} إلى ${statusLabel[action.nextStatus]}`;
+    }
+    if (action.kind === "edit") return `تعديل بيانات الحجز ${bookingRef(action.booking)}`;
+    if (action.kind === "refund") return `إدارة استرجاع الحجز ${bookingRef(action.booking)}`;
+    return `حذف نهائي للحجز ${bookingRef(action.booking)}`;
+  };
+
+  const executeStatusUpdate = async (id: string, newStatus: BookingStatus) => {
     const target = bookings.find((x) => x.id === id);
     if (!target) return;
     const allowed = getAllowedStatusOptions(target);
@@ -880,10 +1042,129 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setCancelTarget(target);
       return;
     }
+    if (newStatus === "confirmed" && target.status === "pending") {
+      const payment = resolveBookingPaymentSummary(target);
+      setConfirmDraft({
+        paymentType: payment.paymentType === "partial" ? "partial" : "full",
+        paidAmount:
+          payment.paymentType === "partial"
+            ? String(payment.paidAmount || "")
+            : String(payment.totalAmount || 0),
+      });
+      setConfirmError("");
+      setConfirmTarget(target);
+      return;
+    }
     try {
       await updateBookingStatus(id, newStatus);
     } catch (e) {
       alert("فشل تحديث الحالة");
+    }
+  };
+
+  const handleUpdateStatus = (id: string, newStatus: BookingStatus) => {
+    const target = bookings.find((x) => x.id === id);
+    if (!target) return;
+    const allowed = getAllowedStatusOptions(target);
+    if (!allowed.includes(newStatus)) {
+      alert("غير مسموح لك بهذا التغيير.");
+      return;
+    }
+    requestSensitiveAction({
+      kind: "status",
+      bookingId: id,
+      nextStatus: newStatus,
+      bookingRef: bookingRef(target),
+    });
+  };
+
+  const handleConfirmPending = async () => {
+    if (!confirmTarget?.id) return;
+    const totalAmount = readBookingTotalAmount(confirmTarget);
+    const nextType = confirmDraft.paymentType === "partial" ? "partial" : "full";
+    let paidAmount = nextType === "full" ? totalAmount : Number(confirmDraft.paidAmount || 0);
+
+    if (nextType === "partial") {
+      if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
+        setConfirmError("أدخلي مبلغ عربون صحيح.");
+        return;
+      }
+      if (paidAmount > totalAmount) {
+        setConfirmError("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز.");
+        return;
+      }
+    }
+
+    let paymentType: BookingPaymentType = nextType;
+    if (paidAmount >= totalAmount) {
+      paymentType = "full";
+      paidAmount = totalAmount;
+    }
+    const remainingAmount = round2(Math.max(0, totalAmount - paidAmount));
+
+    try {
+      setConfirmSaving(true);
+      setConfirmError("");
+
+      await updateBookingFields(confirmTarget.id, {
+        paymentType,
+        paidAmount: round2(paidAmount),
+        remainingAmount,
+      } as any);
+      await updateBookingStatus(confirmTarget.id, "confirmed");
+
+      // Ensure confirmed bookings with partial/full paid amount are reflected in income immediately.
+      try {
+        const bookingId = String(confirmTarget.id || "").trim();
+        const syncMethod = detectPaymentMethod({
+          ...confirmTarget,
+          status: "confirmed",
+          paymentType,
+          paidAmount: round2(paidAmount),
+          remainingAmount,
+        } as Booking);
+
+        if (bookingId && Number(paidAmount) > 0) {
+          const incomeNote =
+            paymentType === "partial"
+              ? `عربون: ${round2(paidAmount)} ر.س | المتبقي: ${remainingAmount} ر.س`
+              : undefined;
+
+          await upsertIncomeFS({
+            id: bookingId,
+            bookingId,
+            date: new Date().toISOString().slice(0, 10),
+            amount: round2(paidAmount),
+            method: syncMethod,
+            source: "booking",
+            note: incomeNote,
+            createdAt: Date.now(),
+          });
+        } else if (bookingId) {
+          await removeIncomeFS(bookingId);
+        }
+      } catch (syncErr) {
+        console.warn("confirm->income sync failed:", syncErr);
+      }
+
+      const localPatch = {
+        paymentType,
+        paidAmount: round2(paidAmount),
+        remainingAmount,
+        status: "confirmed" as BookingStatus,
+      };
+      setBookings((prev) =>
+        prev.map((row) => (row.id === confirmTarget.id ? { ...row, ...localPatch } : row))
+      );
+      setSelectedBooking((prev) =>
+        prev && prev.id === confirmTarget.id ? { ...prev, ...localPatch } : prev
+      );
+
+      setConfirmTarget(null);
+    } catch {
+      setConfirmError("تعذر تأكيد الحجز الآن.");
+    } finally {
+      setConfirmSaving(false);
     }
   };
 
@@ -900,15 +1181,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     }
   };
 
-  const handleDeleteBooking = async (b: Booking) => {
+  const executeDeleteBooking = async (b: Booking) => {
     if (uiRole !== "owner") {
       alert("الحذف النهائي متاح للمالك فقط");
       return;
     }
-
-    const ref = bookingRef(b);
-    const ok = window.confirm(`تأكيد الحذف النهائي للحجز #${ref}؟ لا يمكن التراجع.`);
-    if (!ok) return;
 
     try {
       await deleteBooking(b.id);
@@ -918,11 +1195,20 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     }
   };
 
-  const openEditBookingModal = (b: Booking) => {
+  const handleDeleteBooking = (b: Booking) => {
+    if (uiRole !== "owner") {
+      alert("الحذف النهائي متاح للمالك فقط");
+      return;
+    }
+    requestSensitiveAction({ kind: "delete", booking: b });
+  };
+
+  const openEditBookingModalUnsafe = (b: Booking) => {
     if (!canEditBookings) {
       alert("التعديل متاح فقط للمالك أو الأدمن.");
       return;
     }
+    const payment = resolveBookingPaymentSummary(b);
     setEditDraft({
       customerName: String(b.customerName || "").trim(),
       phone: String(b.phone || "").trim(),
@@ -930,9 +1216,50 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       date: String(b.date || "").trim(),
       time: String(b.time || "").trim(),
       price: String(Number(b.finalPrice || b.total || 0)),
+      paymentType: payment.paymentType,
+      paidAmount: String(payment.paidAmount || 0),
     });
     setEditError("");
     setEditTarget(b);
+  };
+
+  const openEditBookingModal = (b: Booking) => {
+    if (!canEditBookings) {
+      alert("التعديل متاح فقط للمالك أو الأدمن.");
+      return;
+    }
+    requestSensitiveAction({ kind: "edit", booking: b });
+  };
+
+  const confirmSensitiveAction = async () => {
+    if (!pendingSensitiveAction) return;
+    if (String(actionPin).trim() !== BOOKING_ACTION_PIN) {
+      setActionPinError("الرقم السري غير صحيح.");
+      return;
+    }
+
+    setActionPinBusy(true);
+    setActionPinError("");
+
+    try {
+      const action = pendingSensitiveAction;
+      if (action.kind === "status") {
+        await executeStatusUpdate(action.bookingId, action.nextStatus);
+      } else if (action.kind === "edit") {
+        openEditBookingModalUnsafe(action.booking);
+      } else if (action.kind === "refund") {
+        openRefundModalUnsafe(action.booking);
+      } else if (action.kind === "delete") {
+        await executeDeleteBooking(action.booking);
+      }
+
+      setActionPinOpen(false);
+      setActionPin("");
+      setActionPinError("");
+      setPendingSensitiveAction(null);
+    } finally {
+      setActionPinBusy(false);
+    }
   };
 
   const handleSaveBookingEdit = async () => {
@@ -943,6 +1270,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const date = String(editDraft.date || "").trim();
     const time = String(editDraft.time || "").trim();
     const price = Number(editDraft.price || 0);
+    const paymentType = editDraft.paymentType === "partial" ? "partial" : "full";
+    let paidAmount = paymentType === "full" ? price : Number(editDraft.paidAmount || 0);
 
     if (!customerName) {
       setEditError("اسم العميلة مطلوب.");
@@ -960,6 +1289,23 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setEditError("السعر غير صحيح.");
       return;
     }
+    if (paymentType === "partial") {
+      if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
+        setEditError("أدخلي مبلغ عربون صحيح.");
+        return;
+      }
+      if (paidAmount > price) {
+        setEditError("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز.");
+        return;
+      }
+    }
+
+    let nextPaymentType: BookingPaymentType = paymentType;
+    if (paidAmount >= price) {
+      nextPaymentType = "full";
+      paidAmount = price;
+    }
+    const remainingAmount = round2(Math.max(0, price - paidAmount));
 
     try {
       setEditSaving(true);
@@ -975,6 +1321,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         time,
         finalPrice: price,
         total: price,
+        paymentType: nextPaymentType,
+        paidAmount: round2(paidAmount),
+        remainingAmount,
       } as any;
       await updateBookingFields(editTarget.id, patch);
 
@@ -990,6 +1339,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 time,
                 finalPrice: price,
                 total: price,
+                paymentType: nextPaymentType,
+                paidAmount: round2(paidAmount),
+                remainingAmount,
               }
             : row
         )
@@ -1006,6 +1358,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               time,
               finalPrice: price,
               total: price,
+              paymentType: nextPaymentType,
+              paidAmount: round2(paidAmount),
+              remainingAmount,
             }
           : prev
       );
@@ -1038,7 +1393,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return "transfer";
   };
 
-  const openRefundModal = (b: Booking) => {
+  const openRefundModalUnsafe = (b: Booking) => {
     if (!canManageRefund(b)) return;
     const bookingId = String(b.id || "").trim();
     const existing = refundMapByBookingId[bookingId];
@@ -1053,6 +1408,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     });
     setRefundError("");
     setRefundTarget(b);
+  };
+
+  const openRefundModal = (b: Booking) => {
+    if (!canManageRefund(b)) return;
+    requestSensitiveAction({ kind: "refund", booking: b });
   };
 
   const handleSaveRefund = async () => {
@@ -1129,11 +1489,30 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const activeRefundForTarget = refundTarget
     ? refundMapByBookingId[String(refundTarget.id || "").trim()] || null
     : null;
+  const selectedBookingPayment = useMemo(
+    () => resolveBookingPaymentSummary(selectedBooking || {}),
+    [selectedBooking]
+  );
 
   const handleExport = () => {
     const rows = [
-      ["ID", "الزبون", "الهاتف", "الخدمة", "الموظفة", "التاريخ", "الوقت", "الحالة", "السعر"],
-      ...filtered.map(b => [
+      [
+        "ID",
+        "الزبون",
+        "الهاتف",
+        "الخدمة",
+        "الموظفة",
+        "التاريخ",
+        "الوقت",
+        "الحالة",
+        "الإجمالي",
+        "نوع الدفع",
+        "المدفوع",
+        "المتبقي",
+      ],
+      ...filtered.map((b) => {
+        const payment = resolveBookingPaymentSummary(b);
+        return [
         bookingRef(b),
         b.customerName || "—",
         b.phone || "—",
@@ -1142,8 +1521,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         b.date,
         formatTime12(b.time),
         statusLabel[b.status],
-        String(b.finalPrice || b.total || 0)
-      ])
+        String(payment.totalAmount),
+        paymentTypeLabel(payment.paymentType),
+        String(payment.paidAmount),
+        String(payment.remainingAmount),
+      ];
+      })
     ];
     downloadCSV(`bookings_${new Date().toISOString().slice(0,10)}.csv`, rows);
   };
@@ -1175,6 +1558,42 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         </div>
 
         <div className="bk-mini">
+          {staleStatusBookings.length > 0 ? (
+            <div className="bk-stale-alert" role="status" aria-live="polite">
+              <div className="bk-stale-alert-head">
+                <strong>تنبيه: يوجد {staleStatusBookings.length} حجز قديم ما زال غير مغلق.</strong>
+                <span>
+                  في الانتظار: {stalePendingCount} • مؤكد: {staleConfirmedCount}
+                </span>
+              </div>
+
+              <div className="bk-stale-alert-list">
+                {stalePreviewBookings.map((b) => (
+                  <button
+                    key={`stale_${b.id}`}
+                    type="button"
+                    className="bk-stale-alert-item"
+                    onClick={() => setSelectedBooking(b)}
+                    title="فتح تفاصيل الحجز"
+                  >
+                    <span className="bk-stale-alert-ref">
+                      {bookingRef(b)} • {b.customerName || "—"}
+                    </span>
+                    <span className="bk-stale-alert-meta">
+                      {b.date} {formatTime12(b.time)} • {statusLabel[b.status]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {staleStatusBookings.length > stalePreviewBookings.length ? (
+                <div className="bk-stale-alert-more">
+                  +{staleStatusBookings.length - stalePreviewBookings.length} حجوزات قديمة إضافية
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="bk-filters">
             <div className="bk-field">
               <label>بحث</label>
@@ -1280,6 +1699,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     )
                       ? (b.status as BookingStatus)
                       : "pending";
+                    const payment = resolveBookingPaymentSummary(b);
                     rows.push(
                       <tr key={b.id} className={`bk-row bk-row-${safeStatus}`}>
                         <td>
@@ -1308,7 +1728,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           <div className="bk-update-at">{lastUpdateMap[b.id]?.at || "—"}</div>
                         </td>
                         <td>
-                          <span className="bk-price-pill">{b.finalPrice || b.total || 0} ر.س</span>
+                          <span className="bk-price-pill">{payment.totalAmount} ر.س</span>
+                          <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>
+                            دفعت {payment.paidAmount} ر.س
+                          </div>
+                          <div style={{ fontSize: 11, opacity: 0.8 }}>
+                            المتبقي {payment.remainingAmount} ر.س
+                          </div>
                         </td>
                         <td className="bk-actions-cell">
                           <div className="bk-actions-row">
@@ -1390,7 +1816,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     <span>{block.label} - {block.rows.length} خدمات</span>
                   </div>
                 ) : null}
-                {block.rows.map((b) => (
+                {block.rows.map((b) => {
+                  const payment = resolveBookingPaymentSummary(b);
+                  return (
                   <div key={b.id} className={`bk-mobile-card bk-mobile-card-${b.status || "pending"}`}>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">رقم الحجز:</span>
@@ -1422,6 +1850,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">الحالة:</span>
                       <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
+                    </div>
+                    <div className="bk-mobile-row">
+                      <span className="bk-mobile-label">الدفع:</span>
+                      <span className="bk-mobile-val">
+                        {paymentTypeLabel(payment.paymentType)} - دفعت {payment.paidAmount} ر.س - المتبقي{" "}
+                        {payment.remainingAmount} ر.س
+                      </span>
                     </div>
                     <div className="bk-mobile-actions">
                        <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
@@ -1470,7 +1905,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                        )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ))}
           </div>
@@ -1544,7 +1980,21 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 </div>
                 <div className="bk-item">
                   <span className="bk-item-label">السعر الإجمالي</span>
-                  <span className="bk-item-val">{selectedBooking.finalPrice || selectedBooking.total || 0} ر.س</span>
+                  <span className="bk-item-val">{selectedBookingPayment.totalAmount} ر.س</span>
+                </div>
+                <div className="bk-item">
+                  <span className="bk-item-label">نوع الدفع</span>
+                  <span className="bk-item-val">
+                    {paymentTypeLabel(selectedBookingPayment.paymentType)}
+                  </span>
+                </div>
+                <div className="bk-item">
+                  <span className="bk-item-label">المدفوع</span>
+                  <span className="bk-item-val">{selectedBookingPayment.paidAmount} ر.س</span>
+                </div>
+                <div className="bk-item">
+                  <span className="bk-item-label">المتبقي</span>
+                  <span className="bk-item-val">{selectedBookingPayment.remainingAmount} ر.س</span>
                 </div>
                 <div className="bk-item">
                   <span className="bk-item-label">الحالة</span>
@@ -1640,6 +2090,61 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </div>
           </Modal>
         )}
+
+        <Modal
+          open={actionPinOpen}
+          onClose={closeActionPinModal}
+          ariaLabel="التحقق بالرقم السري"
+          panelClassName="bk-cancel-modal"
+          size="sm"
+        >
+          <div className="bk-cancel-head">تأكيد الإجراء</div>
+          <div className="bk-cancel-body">
+            <div className="bk-cancel-meta">
+              <span>{sensitiveActionDescription(pendingSensitiveAction) || "إجراء حساس"}</span>
+              {pendingSensitiveAction?.kind === "delete" ? (
+                <span style={{ color: "#b42318" }}>تنبيه: الحذف النهائي لا يمكن التراجع عنه.</span>
+              ) : null}
+            </div>
+            <div className="bk-edit-form" style={{ marginTop: 10 }}>
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>الرقم السري</div>
+                <input
+                  type="password"
+                  className="bk-input"
+                  value={actionPin}
+                  onChange={(e) => setActionPin(e.target.value)}
+                  placeholder="أدخلي الرقم السري"
+                  autoComplete="new-password"
+                  name="booking_action_pin"
+                  inputMode="numeric"
+                  disabled={actionPinBusy}
+                />
+              </label>
+            </div>
+            {actionPinError ? (
+              <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{actionPinError}</div>
+            ) : null}
+          </div>
+          <div className="bk-cancel-foot">
+            <button
+              type="button"
+              className="exp-btn ghost"
+              onClick={closeActionPinModal}
+              disabled={actionPinBusy}
+            >
+              إلغاء
+            </button>
+            <button
+              type="button"
+              className={`exp-btn ${pendingSensitiveAction?.kind === "delete" ? "danger" : ""}`}
+              onClick={confirmSensitiveAction}
+              disabled={actionPinBusy}
+            >
+              {actionPinBusy ? "جاري التحقق..." : "متابعة"}
+            </button>
+          </div>
+        </Modal>
 
         <Modal
           open={!!refundTarget}
@@ -1777,6 +2282,95 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         </Modal>
 
         <Modal
+          open={!!confirmTarget}
+          onClose={closeConfirmModal}
+          ariaLabel="تأكيد الحجز مع الدفع"
+          panelClassName="bk-edit-modal"
+          size="sm"
+        >
+          <div className="bk-cancel-head">تأكيد الحجز</div>
+          <div className="bk-cancel-body">
+            <div className="bk-cancel-meta">
+              <span>رقم الحجز: {bookingRef(confirmTarget)}</span>
+              <span>العميلة: {confirmTarget?.customerName || "—"}</span>
+              <span>إجمالي الحجز: {readBookingTotalAmount(confirmTarget)} ر.س</span>
+            </div>
+
+            <div className="bk-edit-form">
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>نوع الدفع وقت التأكيد</div>
+                <select
+                  className="bk-select"
+                  value={confirmDraft.paymentType}
+                  onChange={(e) =>
+                    setConfirmDraft((p) => ({
+                      ...p,
+                      paymentType: e.target.value as BookingPaymentType,
+                    }))
+                  }
+                  disabled={confirmSaving}
+                >
+                  <option value="full">دفع كامل</option>
+                  <option value="partial">عربون</option>
+                </select>
+              </label>
+
+              {confirmDraft.paymentType === "partial" ? (
+                <label>
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ العربون</div>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="bk-input"
+                    value={confirmDraft.paidAmount}
+                    onChange={(e) =>
+                      setConfirmDraft((p) => ({ ...p, paidAmount: e.target.value }))
+                    }
+                    placeholder="مثال: 150"
+                    disabled={confirmSaving}
+                  />
+                </label>
+              ) : null}
+
+              <div style={{ fontSize: 12, color: "#667085" }}>
+                {(() => {
+                  const total = readBookingTotalAmount(confirmTarget);
+                  const paid =
+                    confirmDraft.paymentType === "full"
+                      ? total
+                      : Math.max(0, Number(confirmDraft.paidAmount || 0));
+                  const remaining = round2(Math.max(0, total - paid));
+                  return `دفعت ${round2(paid)} ر.س - المتبقي ${remaining} ر.س`;
+                })()}
+              </div>
+            </div>
+
+            {confirmError ? (
+              <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{confirmError}</div>
+            ) : null}
+          </div>
+          <div className="bk-cancel-foot">
+            <button
+              type="button"
+              className="exp-btn ghost"
+              onClick={closeConfirmModal}
+              disabled={confirmSaving}
+            >
+              رجوع
+            </button>
+            <button
+              type="button"
+              className="exp-btn"
+              onClick={handleConfirmPending}
+              disabled={confirmSaving}
+            >
+              {confirmSaving ? "جاري التأكيد..." : "تأكيد"}
+            </button>
+          </div>
+        </Modal>
+
+        <Modal
           open={!!editTarget}
           onClose={closeEditModal}
           ariaLabel="تعديل الحجز"
@@ -1852,6 +2446,49 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   disabled={editSaving}
                 />
               </label>
+
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>نوع الدفع</div>
+                <select
+                  className="bk-select"
+                  value={editDraft.paymentType}
+                  onChange={(e) =>
+                    setEditDraft((p) => ({ ...p, paymentType: e.target.value as BookingPaymentType }))
+                  }
+                  disabled={editSaving}
+                >
+                  <option value="full">دفع كامل</option>
+                  <option value="partial">عربون</option>
+                </select>
+              </label>
+
+              {editDraft.paymentType === "partial" ? (
+                <label>
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ العربون</div>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="bk-input"
+                    value={editDraft.paidAmount}
+                    onChange={(e) => setEditDraft((p) => ({ ...p, paidAmount: e.target.value }))}
+                    placeholder="مثال: 100"
+                    disabled={editSaving}
+                  />
+                </label>
+              ) : null}
+
+              <div style={{ fontSize: 12, color: "#667085" }}>
+                المتبقي بعد التعديل:{" "}
+                {(() => {
+                  const total = Math.max(0, Number(editDraft.price || 0));
+                  const paid =
+                    editDraft.paymentType === "full"
+                      ? total
+                      : Math.max(0, Number(editDraft.paidAmount || 0));
+                  return `${round2(Math.max(0, total - paid))} ر.س`;
+                })()}
+              </div>
 
               <label>
                 <div style={{ fontSize: 13, marginBottom: 4 }}>ملاحظة الحجز</div>

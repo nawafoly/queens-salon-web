@@ -428,9 +428,19 @@ const DashboardOffers: React.FC = () => {
         getDocs(collection(db, "salons", SALON_ID, "service_sections")),
         getDocs(collection(db, "salons", SALON_ID, "service_categories")),
       ]);
-      const filteredOffers = (Array.isArray(offersData) ? offersData : []).filter((o: any) => !isPackageLinkedOffer(o));
+      const safePackages = Array.isArray(packagesData) ? packagesData : [];
+      const packageIds = new Set(
+        safePackages
+          .map((p: any) => String(p?.id || "").trim())
+          .filter(Boolean)
+      );
+      const filteredOffers = (Array.isArray(offersData) ? offersData : []).filter((o: any) => {
+        const offerId = String(o?.id || "").trim();
+        if (offerId && packageIds.has(offerId)) return false;
+        return !isPackageLinkedOffer(o);
+      });
       setOffers(filteredOffers);
-      setPackagesCatalog(Array.isArray(packagesData) ? packagesData : []);
+      setPackagesCatalog(safePackages);
       const secMap: Record<string, string> = {};
       sectionsSnap.docs.forEach((d) => {
         const id = String(d.id || "").trim();
@@ -528,6 +538,8 @@ const DashboardOffers: React.FC = () => {
   }, [packagesCatalog]);
 
   const openAdd = () => {
+    setPackageFormOpen(false);
+    setEditingPackageId("");
     setEditing(null);
     setServiceSearch("");
     setServicesPickerOpen(false);
@@ -555,6 +567,8 @@ const DashboardOffers: React.FC = () => {
   };
 
   const openEdit = (o: Offer) => {
+    setPackageFormOpen(false);
+    setEditingPackageId("");
     setEditing(o);
     setServiceSearch("");
     setServicesPickerOpen(false);
@@ -887,6 +901,7 @@ const DashboardOffers: React.FC = () => {
     });
   };
   const startCreatePackage = () => {
+    close();
     resetPackageDraft();
     setPackageFormOpen(true);
     window.requestAnimationFrame(() => {
@@ -908,6 +923,7 @@ const DashboardOffers: React.FC = () => {
     openAdd();
   };
   const openPackageForEdit = (pkg: ServicePackageDoc) => {
+    close();
     setEditingPackageId(String(pkg.id || "").trim());
     setPackageFormOpen(true);
     setPackagePickedImageName(String(pkg.imageUrl || "").trim() ? "تم اختيار صورة" : "");
@@ -947,6 +963,20 @@ const DashboardOffers: React.FC = () => {
     setPackageDraft((prev) => ({ ...prev, imageUrl: b64 }));
   };
   const savePackageDraft = async () => {
+    const isUpdateMode = Boolean(String(editingPackageId || "").trim());
+    const prevPkg = isUpdateMode
+      ? packagesCatalog.find((x) => String((x as any)?.id || "").trim() === String(editingPackageId || "").trim())
+      : null;
+    const wasExpiredByDate = prevPkg ? isPackageExpiredByToday(prevPkg) : false;
+    const nextStartDate = String(packageDraft.startDate || "").trim();
+    const nextEndDate = String(packageDraft.endDate || "").trim();
+    const nowIso = todayISO();
+    const shouldReactivateByDateExtension =
+      isUpdateMode &&
+      wasExpiredByDate &&
+      (!nextEndDate || nextEndDate >= nowIso) &&
+      (!nextStartDate || nextStartDate <= nowIso);
+    const nextActive = shouldReactivateByDateExtension ? true : packageDraft.active !== false;
     const name = String(packageDraft.name || "").trim();
     if (!name) return showNotice("اكتب اسم الباكيج");
     if (packageDraft.startDate && packageDraft.endDate && packageDraft.startDate > packageDraft.endDate) {
@@ -970,7 +1000,7 @@ const DashboardOffers: React.FC = () => {
         name,
         description: String(packageDraft.description || "").trim() || undefined,
         imageUrl: String(packageDraft.imageUrl || "").trim() || undefined,
-        active: packageDraft.active !== false,
+        active: nextActive,
         startDate: String(packageDraft.startDate || "").trim() || undefined,
         endDate: String(packageDraft.endDate || "").trim() || undefined,
         serviceIds: services.map((x) => x.serviceId),
@@ -985,11 +1015,15 @@ const DashboardOffers: React.FC = () => {
       SALON_ID
     );
     // مهم: لا ننشئ عرض تلقائي عند حفظ الباكج.
-    // تنظيف أي عرض قديم لنفس المعرف (من الإصدارات السابقة).
-    try {
-      await removeOffer(id, SALON_ID);
-    } catch {
+    // تنظيف أي عرض قديم لنفس المعرف (من الإصدارات السابقة) بالخلفية.
+    void removeOffer(id, SALON_ID).catch(() => {
       // ignore (قد يكون العرض غير موجود أو مستخدم سابقا)
+    });
+    if (isUpdateMode) {
+      resetPackageDraft();
+      setPackageFormOpen(false);
+      void refresh();
+      return;
     }
     await refresh();
     resetPackageDraft();

@@ -32,6 +32,7 @@ import { writeAuditLog } from "./logService";
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 export type BookingChannel = "client" | "dashboard" | "internal";
 type BookingPaymentMethod = "cash" | "card" | "transfer";
+export type BookingPaymentType = "full" | "partial";
 
 // ✅ NEW: Snapshot ثابت للعرض وعدم تأثر الحجوزات بتغيير الأسعار لاحقًا
 export type ServiceSnapshot = {
@@ -121,6 +122,9 @@ export type BookingDoc = {
   total?: number;
   finalPrice?: number;
   paymentMethod?: BookingPaymentMethod;
+  paymentType?: BookingPaymentType;
+  paidAmount?: number;
+  remainingAmount?: number;
 
   status: BookingStatus;
   note?: string;
@@ -190,6 +194,7 @@ function stripUndefined<T>(value: T): T {
 }
 
 function normalizeBooking(raw: any): BookingDoc {
+  const paymentState = resolveBookingPaymentState(raw);
   return {
     userId: raw?.userId ?? null,
 
@@ -287,9 +292,12 @@ function normalizeBooking(raw: any): BookingDoc {
 
     slotId: raw?.slotId ? String(raw.slotId) : undefined,
 
-    total: Number(raw?.total ?? 0),
-    finalPrice: Number(raw?.finalPrice ?? 0),
+    total: paymentState.totalAmount,
+    finalPrice: Number(raw?.finalPrice ?? paymentState.totalAmount),
     paymentMethod: normalizePaymentMethod(raw?.paymentMethod) ?? undefined,
+    paymentType: paymentState.paymentType,
+    paidAmount: paymentState.paidAmount,
+    remainingAmount: paymentState.remainingAmount,
 
     status: raw?.status ?? "pending",
     note: raw?.note ?? undefined,
@@ -370,6 +378,61 @@ function normalizePaymentMethod(raw: any): BookingPaymentMethod | null {
   return null;
 }
 
+function normalizePaymentType(raw: any): BookingPaymentType | null {
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (!s) return null;
+  if (s === "full" || s === "complete" || s === "كامل") return "full";
+  if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
+  return null;
+}
+
+function readTotalAmount(raw: any): number {
+  const v = Number(raw?.finalPrice ?? raw?.total ?? 0);
+  return Number.isFinite(v) ? Math.max(0, v) : 0;
+}
+
+function round2(v: number): number {
+  return Math.round((Number(v) || 0) * 100) / 100;
+}
+
+function resolveBookingPaymentState(raw: any): {
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+} {
+  const totalAmount = readTotalAmount(raw);
+  const normalizedType = normalizePaymentType(raw?.paymentType);
+  const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
+  const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
+  const status = String(raw?.status || "").toLowerCase().trim() as BookingStatus;
+  const isRevenueStatus = status === "confirmed" || status === "completed";
+
+  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paidAmount: number;
+  if (hasExplicitPaid) {
+    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
+  } else if (paymentType === "partial") {
+    paidAmount = 0;
+  } else {
+    paidAmount = isRevenueStatus ? totalAmount : 0;
+  }
+
+  if (paymentType === "full") {
+    paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
+  } else {
+    paymentType = paidAmount >= totalAmount ? "full" : "partial";
+  }
+
+  const remainingAmount = Math.max(0, round2(totalAmount - paidAmount));
+  return {
+    paymentType,
+    paidAmount: round2(Math.max(0, Math.min(totalAmount, paidAmount))),
+    remainingAmount,
+    totalAmount,
+  };
+}
+
 // ✅ Helper: parse explicit payment method from note only
 function parseExplicitPaymentMethod(note?: string): BookingPaymentMethod | null {
   const raw = String(note || "").trim();
@@ -409,8 +472,7 @@ function resolvePaymentMethodForStatus(
 }
 
 function getAmount(b: BookingDoc): number {
-  const v = Number(b.finalPrice ?? b.total ?? 0);
-  return Number.isFinite(v) ? v : 0;
+  return resolveBookingPaymentState(b).paidAmount;
 }
 
 function buildStatusAuditPatch(
@@ -861,6 +923,13 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
   const fallbackPrice = Number(snapFromInput?.priceAtBooking ?? data.finalPrice ?? data.total ?? 0);
   const fallbackDur = Number(snapFromInput?.durationAtBooking ?? durationMin);
+  const totalAmount = Number.isFinite(fallbackPrice) ? Math.max(0, fallbackPrice) : 0;
+  const paymentState = resolveBookingPaymentState({
+    ...data,
+    status: statusNow,
+    total: totalAmount,
+    finalPrice: totalAmount,
+  });
 
   const serviceSnapshot: ServiceSnapshot = stripUndefined({
     serviceNameAtBooking: fallbackName || "-",
@@ -892,13 +961,17 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     slotStepMinAtBooking: (data as any).slotStepMinAtBooking ?? daySlotSettings.slotStepMin,
     bufferMinAtBooking: (data as any).bufferMinAtBooking ?? daySlotSettings.bufferMin,
     paymentMethod: resolvedPaymentMethod,
+    paymentType: paymentState.paymentType,
+    paidAmount: paymentState.paidAmount,
+    remainingAmount: paymentState.remainingAmount,
     ...statusAuditPatch,
 
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  const shouldCreateIncomeOnCreate = statusNow === "confirmed" || statusNow === "completed";
-  const incomeAmount = Number(data.finalPrice ?? data.total ?? serviceSnapshot.priceAtBooking ?? 0) || 0;
+  const shouldCreateIncomeOnCreate =
+    (statusNow === "confirmed" || statusNow === "completed") && paymentState.paidAmount > 0;
+  const incomeAmount = paymentState.paidAmount;
   const incomeMethod = resolvedPaymentMethod || "transfer";
   const incomeStatus = statusNow === "completed" ? "completed" : "confirmed";
 
@@ -1056,6 +1129,9 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         time: data.time,
         durationMin,
         paymentMethod: resolvedPaymentMethod,
+        paymentType: paymentState.paymentType,
+        paidAmount: paymentState.paidAmount,
+        remainingAmount: paymentState.remainingAmount,
 
         // ✅ NEW: خزن إعدادات السلوّت وقت الحجز
         slotStepMinAtBooking: (payloadBase as any).slotStepMinAtBooking,
@@ -1087,6 +1163,9 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
       date: data.date,
       time: data.time,
       total: Number(data.finalPrice ?? data.total ?? 0),
+      paymentType: paymentState.paymentType,
+      paidAmount: paymentState.paidAmount,
+      remainingAmount: paymentState.remainingAmount,
     },
   });
 
@@ -1337,6 +1416,9 @@ export async function createDashboardBooking(args: {
 
   total?: number;
   finalPrice?: number;
+  paymentType?: BookingPaymentType;
+  paidAmount?: number;
+  remainingAmount?: number;
 
   status?: BookingStatus;
   note?: string;
@@ -1369,6 +1451,9 @@ export async function createDashboardBooking(args: {
 
     total: args.total ?? 0,
     finalPrice: args.finalPrice ?? 0,
+    paymentType: args.paymentType,
+    paidAmount: args.paidAmount,
+    remainingAmount: args.remainingAmount,
 
     status: args.status ?? "confirmed",
     note: args.note?.trim() || undefined,
@@ -1575,13 +1660,30 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     const snap = await tx.get(bookingRef);
     if (!snap.exists()) throw new Error("BOOKING_NOT_FOUND");
 
-    const booking = normalizeBooking(snap.data());
+    const bookingRaw: any = snap.data() || {};
+    const booking = normalizeBooking(bookingRaw);
 
     const resolvedPaymentMethod = resolvePaymentMethodForStatus(
       status,
       (booking as any).paymentMethod,
       booking.note
     );
+    const totalAmount = readTotalAmount(bookingRaw);
+    const hasStoredPaymentFields =
+      Number.isFinite(Number(bookingRaw?.paidAmount)) ||
+      normalizePaymentType(bookingRaw?.paymentType) !== null;
+    const nextPaymentState = resolveBookingPaymentState({
+      ...bookingRaw,
+      status,
+      total: totalAmount,
+      finalPrice: totalAmount,
+      ...(hasStoredPaymentFields
+        ? {}
+        : {
+            paymentType: "full",
+            paidAmount: status === "confirmed" || status === "completed" ? totalAmount : 0,
+          }),
+    });
 
     // booking
     tx.update(
@@ -1589,6 +1691,9 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
       stripUndefined({
         status,
         paymentMethod: resolvedPaymentMethod,
+        paymentType: nextPaymentState.paymentType,
+        paidAmount: nextPaymentState.paidAmount,
+        remainingAmount: nextPaymentState.remainingAmount,
         ...statusAuditPatch,
         updatedAt: serverTimestamp(),
       }) as any
@@ -1619,6 +1724,9 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         time: booking.time,
         durationMin: booking.durationMin ?? undefined,
         paymentMethod: resolvedPaymentMethod,
+        paymentType: nextPaymentState.paymentType,
+        paidAmount: nextPaymentState.paidAmount,
+        remainingAmount: nextPaymentState.remainingAmount,
 
         status,
         ...statusAuditPatch,
@@ -1629,7 +1737,17 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
       { merge: true }
     );
 
-    return { booking, resolvedPaymentMethod };
+    return {
+      booking: {
+        ...booking,
+        status,
+        paymentMethod: resolvedPaymentMethod,
+        paymentType: nextPaymentState.paymentType,
+        paidAmount: nextPaymentState.paidAmount,
+        remainingAmount: nextPaymentState.remainingAmount,
+      } as BookingDoc,
+      resolvedPaymentMethod,
+    };
   });
 
   // ✅ booking log: status changed (best effort)
@@ -1668,6 +1786,15 @@ if (status === "confirmed" || status === "completed") {
       resolvePaymentMethodForStatus(status, (bookingForIncome as any).paymentMethod, bookingForIncome.note) ||
       "transfer";
     const amount = getAmount(bookingForIncome);
+    if ((status === "confirmed" || status === "completed") && (!Number.isFinite(amount) || amount <= 0)) {
+      try {
+        const s = await getDoc(incomeRef);
+        if (s.exists()) await deleteDoc(incomeRef);
+      } catch {
+        // ignore
+      }
+      return;
+    }
 
     // ✅ المطلوب منك: الدخل يننشأ مرة وحدة فقط عند confirmed
     if (status === "confirmed") {
@@ -1703,8 +1830,16 @@ if (status === "confirmed" || status === "completed") {
           await setDoc(
             incomeRef,
             stripUndefined({
+              amount: Number(amount || 0),
               status: "confirmed",
               method: resolvedPaymentMethod,
+              date: bookingForIncome.date,
+              clientName: bookingForIncome.clientName,
+              clientPhone: bookingForIncome.clientPhone,
+              serviceName:
+                bookingForIncome.serviceSnapshot?.serviceNameAtBooking ||
+                bookingForIncome.serviceName,
+              employeeName: bookingForIncome.employeeName,
               updatedAt: serverTimestamp(),
             }) as any,
             { merge: true }
@@ -1739,9 +1874,30 @@ if (status === "confirmed" || status === "completed") {
             stripUndefined({
               status: "completed",
               method: resolvedPaymentMethod,
+              amount: Number(amount || 0),
               updatedAt: serverTimestamp(),
             }) as any,
             { merge: true }
+          );
+        } else {
+          await setDoc(
+            incomeRef,
+            stripUndefined({
+              source: "booking",
+              bookingId,
+              amount: Number(amount || 0),
+              status: "completed",
+              method: resolvedPaymentMethod,
+              date: bookingForIncome.date,
+              clientName: bookingForIncome.clientName,
+              clientPhone: bookingForIncome.clientPhone,
+              serviceName:
+                bookingForIncome.serviceSnapshot?.serviceNameAtBooking ||
+                bookingForIncome.serviceName,
+              employeeName: bookingForIncome.employeeName,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }) as any
           );
         }
       } catch {
@@ -1798,6 +1954,9 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
         time: patch.time,
         durationMin: patch.durationMin,
         paymentMethod: patch.paymentMethod,
+        paymentType: patch.paymentType,
+        paidAmount: patch.paidAmount,
+        remainingAmount: patch.remainingAmount,
         total: patch.total,
         finalPrice: patch.finalPrice,
         clientName: patch.clientName,
@@ -1827,6 +1986,9 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
     patch.total !== undefined ||
     patch.date !== undefined ||
     patch.paymentMethod !== undefined ||
+    patch.paymentType !== undefined ||
+    patch.paidAmount !== undefined ||
+    patch.remainingAmount !== undefined ||
     patch.status !== undefined ||
     patch.clientName !== undefined ||
     patch.clientPhone !== undefined ||
@@ -1837,65 +1999,65 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
 
   if (hasIncomePatch) {
     try {
-      const incomeUpdates: Record<string, any> = {
-        bookingId,
-        updatedAt: serverTimestamp(),
-      };
-
-      if (patch.finalPrice !== undefined || patch.total !== undefined) {
-        const amount = Number(patch.finalPrice ?? patch.total);
-        if (Number.isFinite(amount) && amount >= 0) incomeUpdates.amount = amount;
-      }
-
-      const nextDate = String(patch.date || "").trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) incomeUpdates.date = nextDate;
-
-      if (patch.paymentMethod !== undefined) {
-        const method = normalizePaymentMethod(patch.paymentMethod);
-        if (method) incomeUpdates.method = method;
-      }
-
-      if (patch.status !== undefined) {
-        incomeUpdates.status = patch.status;
-      }
-
-      if (patch.clientName !== undefined) {
-        const name = String(patch.clientName || "").trim();
-        incomeUpdates.clientName = name;
-        incomeUpdates.clientNameLower = name.toLowerCase();
-      }
-
-      if (patch.clientPhone !== undefined) {
-        incomeUpdates.clientPhone = String(patch.clientPhone || "").trim();
-      }
-
-      if (patch.employeeName !== undefined) {
-        incomeUpdates.employeeName = String(patch.employeeName || "").trim();
-      }
-
-      const serviceName = String(
-        patch.serviceSnapshot?.serviceNameAtBooking ?? patch.serviceName ?? ""
-      ).trim();
-      if (serviceName) incomeUpdates.serviceName = serviceName;
-
-      if (patch.note !== undefined) {
-        incomeUpdates.note = String(patch.note || "").trim();
-      }
-
       const incomeRefs = new Map<string, any>();
-
       const primaryIncomeRef = doc(db, ...INCOME_COL, bookingId);
       const primaryIncomeSnap = await getDoc(primaryIncomeRef);
       if (primaryIncomeSnap.exists()) incomeRefs.set(primaryIncomeRef.id, primaryIncomeRef);
-
       const linkedIncomeQ = query(collection(db, ...INCOME_COL), where("bookingId", "==", bookingId));
       const linkedIncomeSnap = await getDocs(linkedIncomeQ);
       linkedIncomeSnap.docs.forEach((d) => incomeRefs.set(d.id, d.ref));
 
+      const freshSnap = await getDoc(bookingRef);
+      const freshBooking = freshSnap.exists() ? normalizeBooking(freshSnap.data()) : null;
+      const freshStatus = String(freshBooking?.status || "").toLowerCase().trim() as BookingStatus;
+      const shouldKeepIncome =
+        (freshStatus === "confirmed" || freshStatus === "completed") &&
+        Number(getAmount((freshBooking || {}) as BookingDoc) || 0) > 0;
+
+      if (!shouldKeepIncome) {
+        if (incomeRefs.size > 0) {
+          await Promise.all(Array.from(incomeRefs.values()).map((ref) => deleteDoc(ref)));
+        }
+        return;
+      }
+
+      const method = normalizePaymentMethod(
+        (freshBooking as any)?.paymentMethod ?? patch.paymentMethod
+      ) || "transfer";
+      const serviceName = String(
+        freshBooking?.serviceSnapshot?.serviceNameAtBooking ??
+          freshBooking?.serviceName ??
+          patch.serviceSnapshot?.serviceNameAtBooking ??
+          patch.serviceName ??
+          ""
+      ).trim();
+      const payload = stripUndefined({
+        bookingId,
+        amount: Number(getAmount((freshBooking || {}) as BookingDoc) || 0),
+        status: freshStatus,
+        method,
+        date: String(freshBooking?.date || "").trim(),
+        clientName: String(freshBooking?.clientName || "").trim(),
+        clientNameLower: String(freshBooking?.clientName || "").toLowerCase().trim(),
+        clientPhone: String(freshBooking?.clientPhone || "").trim(),
+        serviceName: serviceName || undefined,
+        employeeName: String(freshBooking?.employeeName || "").trim(),
+        note: String(freshBooking?.note || "").trim() || undefined,
+        updatedAt: serverTimestamp(),
+      }) as any;
+
       if (incomeRefs.size > 0) {
-        const payload = stripUndefined(incomeUpdates) as any;
         await Promise.all(
           Array.from(incomeRefs.values()).map((ref) => setDoc(ref, payload, { merge: true }))
+        );
+      } else {
+        await setDoc(
+          primaryIncomeRef,
+          {
+            source: "booking",
+            createdAt: serverTimestamp(),
+            ...payload,
+          } as any
         );
       }
     } catch (e) {

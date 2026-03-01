@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { formatTime12 } from "../helpers/timeDisplay";
 
+type BookingPaymentType = "full" | "partial";
+
 type BookingItem = {
   id?: string;
   publicId?: string;
@@ -26,11 +28,16 @@ type BookingItem = {
   time?: string;
   durationMin?: number;
   finalPrice?: number;
+  total?: number;
   discountAmount?: number;
   offerTitle?: string;
   couponCode?: string;
   toolsSource?: "client" | "salon" | string | null;
   toolsFeeApplied?: number;
+  paymentType?: BookingPaymentType | string;
+  paidAmount?: number;
+  remainingAmount?: number;
+  status?: string;
   createdAt?: number | string | Date;
 };
 
@@ -115,6 +122,46 @@ function toEpoch(v: any): number {
   return NaN;
 }
 
+function normalizePaymentType(raw: any): BookingPaymentType | null {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return null;
+  if (s === "full" || s === "complete" || s === "كامل") return "full";
+  if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
+  return null;
+}
+
+function resolveItemPayment(item: BookingItem) {
+  const totalAmount = Math.max(0, Number(item?.finalPrice ?? item?.total ?? 0) || 0);
+  const normalizedType = normalizePaymentType(item?.paymentType);
+  const hasExplicitPaid = Number.isFinite(Number(item?.paidAmount));
+  const explicitPaid = hasExplicitPaid ? Number(item?.paidAmount) : NaN;
+  const status = String(item?.status || "").trim().toLowerCase();
+  const isRevenueStatus = status === "confirmed" || status === "completed";
+
+  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paidAmount: number;
+  if (hasExplicitPaid) {
+    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
+  } else if (paymentType === "partial") {
+    paidAmount = 0;
+  } else {
+    paidAmount = isRevenueStatus ? totalAmount : totalAmount;
+  }
+
+  if (paymentType === "full") {
+    paidAmount = Math.max(0, Math.min(totalAmount, paidAmount));
+  } else {
+    paymentType = paidAmount >= totalAmount ? "full" : "partial";
+  }
+  const remainingAmount = Math.max(0, Math.round((totalAmount - paidAmount) * 100) / 100);
+  return {
+    paymentType,
+    paidAmount: Math.round(Math.max(0, Math.min(totalAmount, paidAmount)) * 100) / 100,
+    remainingAmount,
+    totalAmount: Math.round(totalAmount * 100) / 100,
+  };
+}
+
 export default function SuccessInternal() {
   const bookingInfo = useMemo<CurrentBooking | null>(
     () => safeParse<CurrentBooking | null>("currentBooking", null),
@@ -159,6 +206,10 @@ export default function SuccessInternal() {
     (sum, item) => sum + Math.max(0, Number(item.discountAmount || 0)),
     0
   );
+  const paymentTotals = allBookings.map((item) => resolveItemPayment(item));
+  const paidTotal = paymentTotals.reduce((sum, item) => sum + Number(item.paidAmount || 0), 0);
+  const remainingTotal = paymentTotals.reduce((sum, item) => sum + Number(item.remainingAmount || 0), 0);
+  const invoicePaymentType: BookingPaymentType = remainingTotal > 0 ? "partial" : "full";
   const totalBeforeDiscount = totalFinalPrice + discountTotal;
   const offerTitle =
     String((allBookings.find((x) => String(x.offerTitle || "").trim())?.offerTitle || "")).trim() ||
@@ -486,6 +537,24 @@ export default function SuccessInternal() {
             <span>الإجمالي:</span>
             <span className="value">{formatCurrency(totalFinalPrice)} ر.س</span>
           </div>
+          <div className="total-line">
+            <span>نوع الدفع:</span>
+            <span className="value">{invoicePaymentType === "partial" ? "عربون" : "كامل"}</span>
+          </div>
+          <div className="total-line">
+            <span>المدفوع:</span>
+            <span className="value">{formatCurrency(paidTotal)} ر.س</span>
+          </div>
+          <div className="total-line">
+            <span>المتبقي:</span>
+            <span className="value">{formatCurrency(remainingTotal)} ر.س</span>
+          </div>
+          {invoicePaymentType === "partial" ? (
+            <div className="total-line">
+              <span>دفعت عربون:</span>
+              <span className="value">{formatCurrency(paidTotal)} ر.س</span>
+            </div>
+          ) : null}
         </section>
 
         <footer className="footer">
@@ -495,4 +564,3 @@ export default function SuccessInternal() {
     </div>
   );
 }
-

@@ -748,6 +748,48 @@
   background: rgba(249, 251, 254, 0.94);
 }
 
+.bk-internal .bk-payment-cell {
+  display: grid;
+  gap: 0.32rem;
+  min-width: 140px;
+}
+
+.bk-internal .bk-payment-line {
+  border-radius: 10px;
+  padding: 0.26rem 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.3;
+  border: 1px solid transparent;
+  text-align: right;
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+
+.bk-internal .bk-payment-line-paid {
+  color: #4c5b70;
+  background: rgba(125, 140, 160, 0.12);
+  border-color: rgba(125, 140, 160, 0.25);
+}
+
+.bk-internal .bk-payment-line-remaining {
+  color: #7f3614;
+  background: linear-gradient(135deg, #fff5e1 0%, #ffe7bf 100%);
+  border-color: rgba(188, 113, 35, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.bk-internal .bk-payment-line-remaining.is-secondary {
+  color: #7b3514;
+  background: linear-gradient(135deg, #fff4df 0%, #ffe2b6 100%);
+}
+
+.bk-internal .bk-payment-empty {
+  color: #8b97aa;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .bk-internal .bk-existing-table .bk-existing-group-row td {
   background: linear-gradient(135deg, #edf1f7 0%, #e4eaf3 100%);
   border-top: 2px solid rgba(103, 118, 141, 0.35);
@@ -865,11 +907,13 @@
   line-height: 1.2;
 }
 
-.bk-internal .bk-payment-method-grid {
+.bk-internal .bk-payment-method-grid,
+.bk-pay-modal .bk-payment-method-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.bk-internal .bk-payment-method-btn {
+.bk-internal .bk-payment-method-btn,
+.bk-pay-modal .bk-payment-method-btn {
   width: 100%;
   min-height: 50px;
   display: flex;
@@ -884,20 +928,25 @@
 }
 
 .bk-internal .bk-payment-method-btn:hover,
-.bk-internal .bk-payment-method-btn:focus {
+.bk-internal .bk-payment-method-btn:focus,
+.bk-pay-modal .bk-payment-method-btn:hover,
+.bk-pay-modal .bk-payment-method-btn:focus {
   color: #3f2c21;
   background: #fbe9d8;
   border-color: #b68764;
 }
 
-.bk-internal .bk-payment-method-btn.is-active {
+.bk-internal .bk-payment-method-btn.is-active,
+.bk-pay-modal .bk-payment-method-btn.is-active {
   color: #fff;
   background: var(--bk-primary);
   border-color: var(--bk-primary);
 }
 
 .bk-internal .bk-payment-method-btn.is-active:hover,
-.bk-internal .bk-payment-method-btn.is-active:focus {
+.bk-internal .bk-payment-method-btn.is-active:focus,
+.bk-pay-modal .bk-payment-method-btn.is-active:hover,
+.bk-pay-modal .bk-payment-method-btn.is-active:focus {
   background: var(--bk-primary-dark);
   border-color: var(--bk-primary-dark);
 }
@@ -1092,7 +1141,8 @@
     grid-template-columns: 1fr;
   }
 
-  .bk-internal .bk-payment-method-grid {
+  .bk-internal .bk-payment-method-grid,
+  .bk-pay-modal .bk-payment-method-grid {
     grid-template-columns: 1fr;
   }
 

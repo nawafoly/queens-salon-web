@@ -27,6 +27,7 @@ import ConfirmModal from "../components/ConfirmModal";
 import type { ServicePackageDoc } from "../services/firestorePackages";
 
 type DiscountType = "percent" | "fixed";
+type OfferAppliesTo = "all" | "services";
 
 type UiOffer = {
   id: string;
@@ -50,6 +51,9 @@ type UiOffer = {
   createdAt?: number;
   deletedAt?: number;
   packageLike?: boolean;
+  appliesTo: OfferAppliesTo;
+  serviceIds: string[];
+  sequenceServiceNames: string[];
 };
 
 const SALON_ID = "main";
@@ -94,6 +98,10 @@ function normalizeDiscountType(raw: any): DiscountType {
   return "fixed";
 }
 
+function normalizeOfferAppliesTo(raw: any): OfferAppliesTo {
+  return String(raw || "").trim().toLowerCase() === "services" ? "services" : "all";
+}
+
 function pickFallbackImage(discountType: DiscountType) {
   return discountType === "percent" ? hair : skin;
 }
@@ -133,6 +141,15 @@ function isPackageActiveNow(p: ServicePackageDoc) {
 
 function normalizeOfferDoc(docId: string, raw: any): UiOffer {
   const discountType = normalizeDiscountType(raw?.discountType);
+  const appliesTo = normalizeOfferAppliesTo(raw?.appliesTo);
+  const serviceIds = Array.isArray(raw?.serviceIds)
+    ? raw.serviceIds.map((x: any) => String(x || "").trim()).filter(Boolean)
+    : [];
+  const sequenceServiceNames = Array.isArray(raw?.sequenceSteps)
+    ? raw.sequenceSteps
+        .map((x: any) => String(x?.titleSnapshot || "").trim())
+        .filter(Boolean)
+    : [];
 
   const active =
     raw?.active === true ||
@@ -184,6 +201,9 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
     discountType === "percent"
       ? `قيمة الخصم: ${computedPercent}%`
       : `قيمة الخصم: ${Number(value || 0)} ريال`,
+    appliesTo === "services"
+      ? `ينطبق على خدمات محددة (${serviceIds.length})`
+      : "ينطبق على جميع الخدمات",
     startDate
       ? `يبدأ من: ${new Date(startDate).toLocaleDateString("ar-SA")}`
       : "ساري الآن",
@@ -217,12 +237,16 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
     createdAt: toMillis(raw?.createdAt) || 0,
     deletedAt: toMillis(raw?.deletedAt) || 0,
     packageLike,
+    appliesTo,
+    serviceIds,
+    sequenceServiceNames,
   };
 }
 
 const Offers = () => {
   const [offers, setOffers] = useState<UiOffer[]>([]);
   const [packageOffers, setPackageOffers] = useState<ServicePackageDoc[]>([]);
+  const [serviceNameById, setServiceNameById] = useState<Record<string, string>>({});
   const [openOfferId, setOpenOfferId] = useState<string | null>(null);
   const [openPackageId, setOpenPackageId] = useState<string | null>(null);
   const [showEnded, setShowEnded] = useState(false);
@@ -332,6 +356,60 @@ const Offers = () => {
 
     return () => unsub1();
   }, []);
+
+  useEffect(() => {
+    const q1 = query(
+      collection(db, "salons", SALON_ID, "services"),
+      orderBy("name", "asc")
+    );
+
+    const unsub1 = onSnapshot(
+      q1,
+      (snap) => {
+        const next: Record<string, string> = {};
+        snap.docs.forEach((d) => {
+          const id = String(d.id || "").trim();
+          const raw = d.data() as any;
+          const name = String(raw?.name || "").trim();
+          if (id && name) next[id] = name;
+        });
+        setServiceNameById(next);
+      },
+      () => {
+        const q2 = query(collection(db, "salons", SALON_ID, "services"));
+        const unsub2 = onSnapshot(
+          q2,
+          (snap) => {
+            const next: Record<string, string> = {};
+            snap.docs.forEach((d) => {
+              const id = String(d.id || "").trim();
+              const raw = d.data() as any;
+              const name = String(raw?.name || "").trim();
+              if (id && name) next[id] = name;
+            });
+            setServiceNameById(next);
+          },
+          () => setServiceNameById({})
+        );
+        return unsub2;
+      }
+    );
+
+    return () => unsub1();
+  }, []);
+
+  const offerServiceNamesById = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const offer of offers) {
+      if (offer.appliesTo !== "services") continue;
+      const fromSeq = Array.isArray(offer.sequenceServiceNames) ? offer.sequenceServiceNames : [];
+      const fromIds = (offer.serviceIds || [])
+        .map((id) => serviceNameById[String(id || "").trim()])
+        .filter(Boolean);
+      out[offer.id] = Array.from(new Set([...fromSeq, ...fromIds]));
+    }
+    return out;
+  }, [offers, serviceNameById]);
 
   useEffect(() => {
     const q1 = query(
@@ -474,6 +552,7 @@ const Offers = () => {
           <div className="cards-grid-2">
             {activeNow.map((offer, index) => {
               const expanded = openOfferId === offer.id;
+              const offerServiceNames = offerServiceNamesById[offer.id] || [];
 
               return (
                 <div key={offer.id}>
@@ -517,6 +596,9 @@ const Offers = () => {
                         </button>
 
                         <span className="status-pill active">فعال</span>
+                        <span className={`offer-scope-pill ${offer.appliesTo === "services" ? "scope-services" : "scope-all"}`}>
+                          {offer.appliesTo === "services" ? "خدمات محددة" : "كل الخدمات"}
+                        </span>
                       </div>
 
                       <div className="offer-validity">
@@ -554,6 +636,28 @@ const Offers = () => {
                               ))}
                             </ul>
                           </div>
+
+                          {offer.appliesTo === "services" && (
+                            <div className="pkg-services-block">
+                              <div className="pkg-services-title">
+                                <FontAwesomeIcon icon={faTag} className="me-2" />
+                                الخدمات المشمولة في العرض
+                              </div>
+                              {offerServiceNames.length > 0 ? (
+                                <div className="pkg-services-chips">
+                                  {offerServiceNames.map((serviceName: string, serviceIdx: number) => (
+                                    <span key={`${offer.id}-offer-svc-${serviceIdx}`} className="pkg-service-chip">
+                                      {serviceName}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="pkg-services-empty">
+                                  هذا العرض ينطبق على {Array.isArray(offer.serviceIds) ? offer.serviceIds.length : 0} خدمة محددة.
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                           <Link
                             to={{
@@ -738,6 +842,7 @@ const Offers = () => {
                     {endedOrPaused.map((offer, index) => {
                       const expanded = openOfferId === offer.id;
                       const endedBadge = !offer.active ? "موقوف" : "منتهي";
+                      const offerServiceNames = offerServiceNamesById[offer.id] || [];
 
                       return (
                         <div key={offer.id}>
@@ -775,6 +880,9 @@ const Offers = () => {
                                 </span>
 
                                 <span className="status-pill ended">{endedBadge}</span>
+                                <span className={`offer-scope-pill ${offer.appliesTo === "services" ? "scope-services" : "scope-all"}`}>
+                                  {offer.appliesTo === "services" ? "خدمات محددة" : "كل الخدمات"}
+                                </span>
                               </div>
 
                               <div className="offer-validity">
@@ -788,6 +896,27 @@ const Offers = () => {
                               {expanded && (
                                 <div className="offer-details">
                                   <p className="offer-description">{offer.description}</p>
+                                  {offer.appliesTo === "services" && (
+                                    <div className="pkg-services-block">
+                                      <div className="pkg-services-title">
+                                        <FontAwesomeIcon icon={faTag} className="me-2" />
+                                        الخدمات المشمولة في العرض
+                                      </div>
+                                      {offerServiceNames.length > 0 ? (
+                                        <div className="pkg-services-chips">
+                                          {offerServiceNames.map((serviceName: string, serviceIdx: number) => (
+                                            <span key={`${offer.id}-ended-offer-svc-${serviceIdx}`} className="pkg-service-chip">
+                                              {serviceName}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <div className="pkg-services-empty">
+                                          هذا العرض ينطبق على {Array.isArray(offer.serviceIds) ? offer.serviceIds.length : 0} خدمة محددة.
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               )}
 

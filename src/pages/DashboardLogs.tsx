@@ -12,7 +12,12 @@ import {
   faChevronUp,
 } from "@fortawesome/free-solid-svg-icons";
 
+import ConfirmModal from "../components/ConfirmModal";
 import { db } from "../services/firebase";
+import { upsertExpenseFS } from "../services/firestoreExpenses";
+import { upsertIncomeFS } from "../services/firestoreIncome";
+import { writeAuditLog } from "../services/logService";
+import type { Expense, IncomeItem, PaymentMethod } from "../types/finance";
 import "../styles/DashboardLogs.css";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
@@ -71,9 +76,11 @@ const ACTION_LABELS: Record<string, string> = {
   income_created: "إضافة دخل",
   income_updated: "تعديل دخل",
   income_deleted: "حذف دخل",
+  income_restored: "استرجاع دخل",
   expense_created: "إضافة مصروف",
   expense_updated: "تعديل مصروف",
   expense_deleted: "حذف مصروف",
+  expense_restored: "استرجاع مصروف",
   offer_created: "إضافة عرض",
   offer_updated: "تعديل عرض",
   offer_deleted: "حذف عرض",
@@ -105,6 +112,12 @@ function safeMs(ts: any): number {
     if (!ts) return 0;
     if (typeof ts?.toMillis === "function") return ts.toMillis();
     if (typeof ts === "number") return ts;
+    if (typeof ts?.seconds === "number") {
+      return Math.round(Number(ts.seconds) * 1000 + Number(ts.nanoseconds || 0) / 1_000_000);
+    }
+    if (typeof ts?._seconds === "number") {
+      return Math.round(Number(ts._seconds) * 1000 + Number(ts._nanoseconds || 0) / 1_000_000);
+    }
     if (typeof ts === "string") {
       const parsed = Date.parse(ts);
       return Number.isFinite(parsed) ? parsed : 0;
@@ -415,6 +428,134 @@ function extractImportantChanges(r: LogRow): string[] {
   return out.slice(0, 12);
 }
 
+function getRestoreKind(r: LogRow): "income" | "expense" | null {
+  const actionKey = String(r.action || "").trim().toLowerCase();
+  if (actionKey === "income_deleted") return "income";
+  if (actionKey === "expense_deleted") return "expense";
+  return null;
+}
+
+function toIsoDate(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function normalizeIsoDate(rawDate: unknown, fallbackMs: number): string {
+  const direct = String(rawDate ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
+
+  const withPrefix = direct.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (withPrefix?.[1]) return withPrefix[1];
+
+  if (direct) {
+    const parsed = Date.parse(direct);
+    if (Number.isFinite(parsed)) return toIsoDate(parsed);
+  }
+
+  return fallbackMs > 0 ? toIsoDate(fallbackMs) : "";
+}
+
+function asNumber(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function asOptionalString(v: unknown): string | undefined {
+  const s = String(v ?? "").trim();
+  return s || undefined;
+}
+
+function normalizePaymentMethod(raw: unknown): PaymentMethod {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (!s) return "cash";
+
+  if (s === "cash" || s.includes("كاش") || s.includes("نقد")) return "cash";
+  if (
+    s === "card" ||
+    s === "pos_card" ||
+    s === "mada_online" ||
+    s.includes("شبكة") ||
+    s.includes("مدى") ||
+    s.includes("بطاق")
+  ) {
+    return "card";
+  }
+  if (s === "transfer" || s === "bank_transfer" || s.includes("تحويل")) return "transfer";
+  if (s === "other") return "other";
+  return "other";
+}
+
+function canRestoreDeletedLog(r: LogRow): boolean {
+  const kind = getRestoreKind(r);
+  if (!kind) return false;
+  if (!isObj(r.before)) return false;
+  const id = String(r.entityId || (r.before as Record<string, unknown>)?.id || "").trim();
+  return Boolean(id);
+}
+
+function buildIncomeFromDeletedLog(r: LogRow): IncomeItem | null {
+  if (!isObj(r.before)) return null;
+  const before = r.before as Record<string, unknown>;
+  const id = String(r.entityId || before.id || "").trim();
+  if (!id) return null;
+
+  const createdAtMs = safeMs(before.createdAt) || safeMs(before.updatedAt) || r.atMs || Date.now();
+  const date = normalizeIsoDate(before.date, createdAtMs);
+  const source = String(before.source ?? "dashboard").trim() || "dashboard";
+
+  return {
+    id,
+    date,
+    amount: asNumber(before.amount),
+    method: normalizePaymentMethod(before.method ?? before.paymentMethod),
+    source,
+    note: asOptionalString(before.note),
+    bookingId: asOptionalString(before.bookingId),
+    createdAt: createdAtMs || Date.now(),
+  };
+}
+
+function buildExpenseFromDeletedLog(r: LogRow): Expense | null {
+  if (!isObj(r.before)) return null;
+  const before = r.before as Record<string, unknown>;
+  const id = String(r.entityId || before.id || "").trim();
+  const title = String(before.title ?? "").trim();
+  if (!id || !title) return null;
+
+  const createdAtMs = safeMs(before.createdAt) || safeMs(before.updatedAt) || r.atMs || Date.now();
+  const date = normalizeIsoDate(before.date, createdAtMs);
+
+  return {
+    id,
+    title,
+    category: String(before.category ?? "أخرى").trim() || "أخرى",
+    amount: asNumber(before.amount),
+    date,
+    paymentMethod: normalizePaymentMethod(before.paymentMethod ?? before.method),
+    note: asOptionalString(before.note),
+    createdAt: createdAtMs || Date.now(),
+    bookingId: asOptionalString(before.bookingId),
+    addedBy: asOptionalString(before.addedBy),
+    createdBy: asOptionalString(before.createdBy),
+    createdByName: asOptionalString(before.createdByName),
+    createdByUid: asOptionalString(before.createdByUid),
+    createdByEmail: asOptionalString(before.createdByEmail),
+    sourceKind: asOptionalString(before.sourceKind),
+    sourceRefId: asOptionalString(before.sourceRefId),
+    sourceType: asOptionalString(before.sourceType),
+    staffId: asOptionalString(before.staffId),
+    staffName: asOptionalString(before.staffName),
+    monthKey: asOptionalString(before.monthKey),
+    payrollKind:
+      before.payrollKind === "salary" || before.payrollKind === "overtime"
+        ? before.payrollKind
+        : undefined,
+  };
+}
+
 const SENSITIVE_ACTIONS = new Set<string>([
   "role_changed",
   "settings_updated",
@@ -422,9 +563,11 @@ const SENSITIVE_ACTIONS = new Set<string>([
   "income_created",
   "income_updated",
   "income_deleted",
+  "income_restored",
   "expense_created",
   "expense_updated",
   "expense_deleted",
+  "expense_restored",
   "booking_confirmed",
   "booking_completed",
   "booking_cancelled",
@@ -476,6 +619,10 @@ export default function DashboardLogs() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [maxRows, setMaxRows] = useState<number>(300);
+  const [restoringLogId, setRestoringLogId] = useState("");
+  const [restoreMsg, setRestoreMsg] = useState("");
+  const [restoreErr, setRestoreErr] = useState("");
+  const [restoreTarget, setRestoreTarget] = useState<LogRow | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -534,6 +681,83 @@ export default function DashboardLogs() {
     if (!canManage) return;
     load();
   }, [canManage, maxRows]);
+
+  const openRestoreConfirm = (r: LogRow) => {
+    const kind = getRestoreKind(r);
+    if (!kind) return;
+
+    const payload =
+      kind === "income" ? buildIncomeFromDeletedLog(r) : buildExpenseFromDeletedLog(r);
+
+    if (!payload) {
+      setRestoreMsg("");
+      setRestoreErr("لا يمكن الاسترجاع لأن بيانات السجل غير مكتملة.");
+      return;
+    }
+
+    setRestoreTarget(r);
+  };
+
+  const handleRestore = async () => {
+    const r = restoreTarget;
+    if (!r) return;
+    const kind = getRestoreKind(r);
+    if (!kind) return;
+
+    const payload =
+      kind === "income" ? buildIncomeFromDeletedLog(r) : buildExpenseFromDeletedLog(r);
+    if (!payload) {
+      setRestoreMsg("");
+      setRestoreErr("لا يمكن الاسترجاع لأن بيانات السجل غير مكتملة.");
+      setRestoreTarget(null);
+      return;
+    }
+
+    setRestoreMsg("");
+    setRestoreErr("");
+    setRestoringLogId(r.id);
+
+    try {
+      if (kind === "income") {
+        await upsertIncomeFS(payload as IncomeItem, SALON_ID);
+      } else {
+        await upsertExpenseFS(payload as Expense, SALON_ID);
+      }
+
+      await writeAuditLog({
+        salonId: SALON_ID,
+        action: kind === "income" ? "income_restored" : "expense_restored",
+        entityType: kind,
+        entityId: payload.id,
+        description:
+          kind === "income"
+            ? "تم استرجاع سجل دخل من شاشة السجل"
+            : "تم استرجاع سجل مصروف من شاشة السجل",
+        source: "dashboard",
+        before: r.before ?? null,
+        after: payload,
+        meta: {
+          restoredFromLogId: r.logId || r.id,
+          restoredFromAction: r.action || "",
+        },
+      });
+
+      setRestoreErr("");
+      setRestoreMsg(
+        kind === "income"
+          ? "تم استرجاع الدخل بنجاح."
+          : "تم استرجاع المصروف بنجاح."
+      );
+      setRestoreTarget(null);
+      await load();
+    } catch (e: any) {
+      const msg = String(e?.message || e || "").trim();
+      setRestoreMsg("");
+      setRestoreErr(msg ? `تعذر تنفيذ الاسترجاع: ${msg}` : "تعذر تنفيذ الاسترجاع.");
+    } finally {
+      setRestoringLogId("");
+    }
+  };
 
   const actionOptions = useMemo(() => {
     const s = new Set<string>();
@@ -658,6 +882,15 @@ export default function DashboardLogs() {
     };
   }, [filtered, rows]);
 
+  const restoreTargetKind = restoreTarget ? getRestoreKind(restoreTarget) : null;
+  const restoreTargetId = restoreTarget
+    ? String(
+        restoreTarget.entityId ||
+          (isObj(restoreTarget.before) ? (restoreTarget.before as Record<string, unknown>).id : "") ||
+          ""
+      ).trim()
+    : "";
+
   if (!authUser) {
     return (
       <div className="dashboard-page logs-page">
@@ -702,6 +935,8 @@ export default function DashboardLogs() {
         </div>
 
         {errMsg && <div className="dash-alert">{errMsg}</div>}
+        {restoreErr ? <div className="logs-restore-status logs-restore-status--error">{restoreErr}</div> : null}
+        {restoreMsg ? <div className="logs-restore-status logs-restore-status--ok">{restoreMsg}</div> : null}
 
         <div className="dash-card logs-card">
           <div className="logs-insights">
@@ -848,6 +1083,9 @@ export default function DashboardLogs() {
               {filtered.map((r) => {
                 const sensitive = detectSensitiveLocal(r);
                 const expanded = expandedId === r.id;
+                const restoreKind = getRestoreKind(r);
+                const canRestore = canRestoreDeletedLog(r);
+                const rowRestoreBusy = restoringLogId === r.id;
 
                 return (
                   <div key={r.id} className={`logs-row ${sensitive ? "logs-row--sensitive" : ""}`}>
@@ -894,6 +1132,25 @@ export default function DashboardLogs() {
                           {r.logId ? <span className="logs-mini-chip">Log: {r.logId}</span> : null}
                           {r.entityId ? <span className="logs-mini-chip">Entity: {r.entityId}</span> : null}
                         </div>
+                        {restoreKind ? (
+                          <div className="logs-detail-actions">
+                            <button
+                              className="logs-restore-btn"
+                              type="button"
+                              disabled={!canRestore || Boolean(restoringLogId)}
+                              onClick={() => openRestoreConfirm(r)}
+                              title={
+                                canRestore
+                                  ? restoreKind === "income"
+                                    ? "استرجاع سجل الدخل المحذوف"
+                                    : "استرجاع سجل المصروف المحذوف"
+                                  : "لا يمكن الاسترجاع لأن بيانات قبل الحذف غير متوفرة"
+                              }
+                            >
+                              {rowRestoreBusy ? "جاري..." : "استرجاع"}
+                            </button>
+                          </div>
+                        ) : null}
                         <div className="logs-detail-summary">
                           {extractImportantChanges(r).map((line, idx) => (
                             <div key={`${r.id}-line-${idx}`} className="logs-detail-line">
@@ -925,6 +1182,30 @@ export default function DashboardLogs() {
               })}
             </div>
           )}
+
+          <ConfirmModal
+            open={Boolean(restoreTarget)}
+            title={restoreTargetKind === "expense" ? "تأكيد استرجاع المصروف" : "تأكيد استرجاع الدخل"}
+            message={
+              restoreTarget
+                ? restoreTargetKind === "expense"
+                  ? `سيتم استرجاع سجل المصروف رقم ${restoreTargetId}.`
+                  : `سيتم استرجاع سجل الدخل رقم ${restoreTargetId}.`
+                : ""
+            }
+            variant="info"
+            confirmText={restoringLogId ? "جاري الاسترجاع..." : "تأكيد الاسترجاع"}
+            cancelText="إلغاء"
+            showCancel
+            onCancel={() => {
+              if (restoringLogId) return;
+              setRestoreTarget(null);
+            }}
+            onConfirm={() => {
+              if (restoringLogId) return;
+              void handleRestore();
+            }}
+          />
         </div>
       </div>
     </div>

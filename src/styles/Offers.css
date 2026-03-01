@@ -253,6 +253,28 @@
   color: var(--qs-burgundy, #40010D);
 }
 
+.offers-page .offer-scope-pill{
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid rgba(13,13,13,0.16);
+}
+
+.offers-page .offer-scope-pill.scope-services{
+  color: #0f5132;
+  border-color: rgba(25,135,84,0.28);
+  background: rgba(25,135,84,0.12);
+}
+
+.offers-page .offer-scope-pill.scope-all{
+  color: #1f3a5f;
+  border-color: rgba(31,58,95,0.26);
+  background: rgba(31,58,95,0.12);
+}
+
 /* Validity row */
 .offers-page .offer-validity{
   display: flex;

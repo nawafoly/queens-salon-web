@@ -25,6 +25,7 @@ type RevenueBreakdown = {
   card: number;
   transfer: number;
 };
+type BookingPaymentType = "full" | "partial";
 
 type DayAuditPrintPayload = {
   dateLabel: string;
@@ -110,6 +111,40 @@ function normalizeAuditPaymentMethod(rawMethod: unknown, rawNote: unknown): Paym
   return "transfer";
 }
 
+function normalizePaymentType(raw: unknown): BookingPaymentType | null {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (!s) return null;
+  if (s === "full" || s === "complete" || s === "كامل") return "full";
+  if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
+  return null;
+}
+
+function resolveAuditPaidAmount(raw: Record<string, unknown>): number {
+  const totalAmount = Math.max(0, toNum(raw?.finalPrice ?? raw?.total ?? 0));
+  const normalizedType = normalizePaymentType(raw?.paymentType);
+  const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
+  const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
+  const status = String(raw?.status || "").trim().toLowerCase();
+  const isRevenueStatus = status === "confirmed" || status === "completed";
+
+  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paidAmount: number;
+  if (hasExplicitPaid) {
+    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
+  } else if (paymentType === "partial") {
+    paidAmount = 0;
+  } else {
+    paidAmount = isRevenueStatus ? totalAmount : 0;
+  }
+
+  if (paymentType === "full") {
+    paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
+  } else {
+    paymentType = paidAmount >= totalAmount ? "full" : "partial";
+  }
+  return Math.round(Math.max(0, Math.min(totalAmount, paidAmount)) * 100) / 100;
+}
+
 function loadLockMap(): Record<string, LockSnapshot> {
   try {
     const raw = localStorage.getItem(LOCK_KEY);
@@ -178,7 +213,8 @@ export default function DashboardDayAudit() {
           const status = String(x?.status || "").toLowerCase().trim();
           if (status !== "confirmed" && status !== "completed") return;
 
-          const amount = toNum(x?.finalPrice ?? x?.total ?? 0);
+          const amount = resolveAuditPaidAmount(x);
+          if (amount <= 0) return;
           total += amount;
 
           const method = normalizeAuditPaymentMethod(x?.paymentMethod, x?.note);

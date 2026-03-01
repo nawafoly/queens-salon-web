@@ -60,6 +60,75 @@
   gap: 10px;
 }
 
+.bk-page-wrapper .bk-stale-alert {
+  border: 1px solid rgba(217, 119, 6, 0.28);
+  background: linear-gradient(145deg, rgba(255, 247, 237, 0.96), rgba(255, 251, 235, 0.96));
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.bk-page-wrapper .bk-stale-alert-head {
+  display: grid;
+  gap: 4px;
+}
+
+.bk-page-wrapper .bk-stale-alert-head strong {
+  color: #7c2d12;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.bk-page-wrapper .bk-stale-alert-head span {
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.bk-page-wrapper .bk-stale-alert-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bk-page-wrapper .bk-stale-alert-item {
+  width: 100%;
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  background: #fff;
+  border-radius: 12px;
+  padding: 9px 10px;
+  display: grid;
+  gap: 2px;
+  text-align: right;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.bk-page-wrapper .bk-stale-alert-item:hover {
+  border-color: rgba(180, 83, 9, 0.38);
+  box-shadow: 0 8px 18px rgba(180, 83, 9, 0.12);
+  transform: translateY(-1px);
+}
+
+.bk-page-wrapper .bk-stale-alert-ref {
+  color: #7c2d12;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.bk-page-wrapper .bk-stale-alert-meta {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bk-page-wrapper .bk-stale-alert-more {
+  font-size: 12px;
+  color: #92400e;
+  font-weight: 800;
+}
+
 .bk-page-wrapper .bk-filters {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -818,6 +887,10 @@
     padding: 14px;
   }
 
+  .bk-page-wrapper .bk-stale-alert-list {
+    grid-template-columns: 1fr;
+  }
+
   .bk-page-wrapper .bk-filters {
     grid-template-columns: 1fr;
   }
@@ -1142,6 +1215,9 @@
 .bk-edit-modal {
   direction: rtl;
   font-family: "Tajawal", sans-serif;
+  max-height: min(92vh, 880px);
+  display: flex;
+  flex-direction: column;
 }
 
 .bk-refund-modal .bk-cancel-head {
@@ -1166,6 +1242,30 @@
 
 .bk-edit-modal .bk-cancel-body {
   padding: 16px 18px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.bk-edit-modal .bk-cancel-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.bk-edit-modal .bk-cancel-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+}
+
+.bk-edit-modal .bk-cancel-body::-webkit-scrollbar-thumb {
+  background: rgba(64, 1, 13, 0.35);
+  border-radius: 10px;
+}
+
+.bk-edit-modal .bk-cancel-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(64, 1, 13, 0.55);
 }
 
 .bk-refund-modal .bk-cancel-meta {

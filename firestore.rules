@@ -548,7 +548,7 @@ service cloud.firestore {
 
     match /salons/{salonId}/income/{id} {
       allow read, write: if signedIn() && (
-        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","accountant"]
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","accountant","reception"]
       );
     }
 

@@ -17,6 +17,7 @@ import {
 
 type PeriodKey = "day" | "week" | "month" | "year" | "custom";
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
+type BookingPaymentType = "full" | "partial";
 
 type BookingRow = {
   id: string;
@@ -25,6 +26,10 @@ type BookingRow = {
   time: string;
   status: BookingStatus;
   amount: number;
+  totalAmount: number;
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
   employeeId?: string | null;
   employeeUid?: string | null;
   employeeKey?: string | null;
@@ -148,6 +153,55 @@ function normalizeSource(raw: string) {
   if (s === "booking" || s === "invoice" || s === "حجز") return "booking";
   if (s === "refund" || s === "استرجاع") return "refund";
   return "manual";
+}
+
+function normalizePaymentType(raw: any): BookingPaymentType | null {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return null;
+  if (s === "full" || s === "complete" || s === "كامل") return "full";
+  if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
+  return null;
+}
+
+function resolveBookingPayment(raw: any): {
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+} {
+  const totalAmount = Math.max(
+    0,
+    Number(raw?.finalPrice ?? raw?.total ?? raw?.serviceSnapshot?.priceAtBooking ?? 0) || 0
+  );
+  const normalizedType = normalizePaymentType(raw?.paymentType);
+  const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
+  const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
+  const status = String(raw?.status || "").trim().toLowerCase();
+  const isRevenueStatus = status === "confirmed" || status === "completed";
+
+  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paidAmount: number;
+  if (hasExplicitPaid) {
+    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
+  } else if (paymentType === "partial") {
+    paidAmount = 0;
+  } else {
+    paidAmount = isRevenueStatus ? totalAmount : 0;
+  }
+
+  if (paymentType === "full") {
+    paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
+  } else {
+    paymentType = paidAmount >= totalAmount ? "full" : "partial";
+  }
+
+  const remainingAmount = Math.max(0, Math.round((totalAmount - paidAmount) * 100) / 100);
+  return {
+    paymentType,
+    paidAmount: Math.round(Math.max(0, Math.min(totalAmount, paidAmount)) * 100) / 100,
+    remainingAmount,
+    totalAmount: Math.round(totalAmount * 100) / 100,
+  };
 }
 
 function isIsoDate(v: string) {
@@ -416,13 +470,18 @@ export default function DashboardReports() {
           const raw = d.data() as any;
           const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
           const date = normalizeIsoDate(raw?.date, createdAtMs);
+          const payment = resolveBookingPayment(raw);
           return {
             id: d.id,
             publicId: String(raw?.publicId || raw?.trackPublicId || "").trim(),
             date,
             time: String(raw?.time || "").trim(),
             status: String(raw?.status || "pending").trim().toLowerCase() as BookingStatus,
-            amount: Number(raw?.finalPrice ?? raw?.total ?? raw?.serviceSnapshot?.priceAtBooking ?? 0) || 0,
+            amount: payment.paidAmount,
+            totalAmount: payment.totalAmount,
+            paymentType: payment.paymentType,
+            paidAmount: payment.paidAmount,
+            remainingAmount: payment.remainingAmount,
             employeeId: String(raw?.employeeId || "").trim() || null,
             employeeUid: String(raw?.employeeUid || "").trim() || null,
             employeeKey: String(raw?.employeeKey || "").trim() || null,
@@ -590,7 +649,10 @@ export default function DashboardReports() {
   const bookingRevenueRows = useMemo(
     () =>
       bookings.filter(
-        (b) => REVENUE_STATUSES.has(b.status) && inDateRange(b.date, range.from, range.to)
+        (b) =>
+          REVENUE_STATUSES.has(b.status) &&
+          inDateRange(b.date, range.from, range.to) &&
+          Number(b.amount || 0) > 0
       ),
     [bookings, range.from, range.to]
   );
@@ -796,7 +858,12 @@ export default function DashboardReports() {
 
     const bookingRevenueByMonth = (key: string) =>
       bookings
-        .filter((b) => REVENUE_STATUSES.has(b.status) && String(b.date || "").startsWith(`${key}-`))
+        .filter(
+          (b) =>
+            REVENUE_STATUSES.has(b.status) &&
+            String(b.date || "").startsWith(`${key}-`) &&
+            Number(b.amount || 0) > 0
+        )
         .reduce((s, x) => s + Number(x.amount || 0), 0);
 
     const manualRevenueByMonth = (key: string) =>

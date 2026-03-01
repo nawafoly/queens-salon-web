@@ -280,14 +280,6 @@
   background: rgba(124, 58, 237, 0.04);
 }
 
-/* محاذاة المصدر/الملاحظة */
-.income-page table.dashboard-table th:nth-child(4),
-.income-page table.dashboard-table td:nth-child(4),
-.income-page table.dashboard-table th:nth-child(5),
-.income-page table.dashboard-table td:nth-child(5) {
-  text-align: right;
-}
-
 /* =========================
    Pills (بنفس روح البنفسجي)
 ========================= */
@@ -532,6 +524,41 @@
   margin-top: 12px;
   display: grid;
   gap: 8px;
+}
+
+.income-page-modal__card .income-edit-booking-hint {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.income-page-modal__card .income-edit-summary {
+  margin-top: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #f0e4e7;
+  background: #fcf8f9;
+  color: #5b0015;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.income-page-modal__card .income-edit-error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .income-page-modal__card .income-modal-close-btn {
@@ -792,6 +819,46 @@
   padding: 10px 8px;
 }
 
+.income-page table.dashboard-table {
+  table-layout: fixed;
+  min-width: 1220px;
+}
+
+.income-page .income-col-date {
+  width: 110px;
+}
+
+.income-page .income-col-amount {
+  width: 130px;
+}
+
+.income-page .income-col-method {
+  width: 110px;
+}
+
+.income-page .income-col-client {
+  width: 170px;
+  text-align: right;
+}
+
+.income-page .income-col-booking {
+  width: 130px;
+}
+
+.income-page .income-col-source {
+  width: 190px;
+  text-align: right;
+}
+
+.income-page .income-col-note {
+  width: 290px;
+  text-align: right;
+}
+
+.income-page .income-col-actions {
+  width: 120px;
+}
+
 .income-page .income-row.income-row-cash {
   background: linear-gradient(180deg, rgba(34, 197, 94, 0.03), rgba(34, 197, 94, 0.01));
 }
@@ -864,15 +931,176 @@
   border-color: #e5e7eb;
 }
 
-.income-page .income-source-text,
+.income-page .income-method-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.income-page .income-pay-kind {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 900;
+  border: 1px solid #d8dbe0;
+  background: #f8fafc;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.income-page .income-pay-kind.full {
+  border-color: #b6e5c7;
+  background: #ecfdf3;
+  color: #166534;
+}
+
+.income-page .income-pay-kind.partial {
+  border-color: #f6d8b9;
+  background: #fff4e6;
+  color: #b45309;
+}
+
 .income-page .income-client-text,
-.income-page .income-booking-text,
-.income-page .income-note-text {
-  max-width: 260px;
+.income-page .income-booking-text {
+  display: block;
+  max-width: 100%;
   margin: 0 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.income-page .income-source-cell {
+  max-width: 280px;
+  margin: 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+  text-align: right;
+}
+
+.income-page .income-source-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.income-page .income-source-badge.booking {
+  color: #166534;
+  background: #ecfdf3;
+  border-color: #bcecd0;
+}
+
+.income-page .income-source-badge.invoice {
+  color: #6d28d9;
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.income-page .income-source-badge.internal {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.income-page .income-source-badge.manual {
+  color: #92400e;
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.income-page .income-source-badge.refund {
+  color: #be123c;
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.income-page .income-mobile-value.income-source-cell {
+  margin: 0;
+  justify-content: flex-end;
+}
+
+.income-page .income-note-text {
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  text-align: right;
+}
+
+.income-page table.dashboard-table tbody td.income-col-note {
+  vertical-align: top;
+}
+
+.income-page .income-payment-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 0;
+  justify-content: flex-end;
+}
+
+.income-page .income-note-primary {
+  display: block;
+  margin-bottom: 0;
+  font-size: 12px;
+  color: #4b5563;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  unicode-bidi: plaintext;
+}
+
+.income-page .income-note-primary-system {
+  color: #475569;
+  font-weight: 700;
+}
+
+.income-page .income-payment-line {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.income-page .income-payment-line-paid {
+  color: #475569;
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.income-page .income-payment-line-remaining {
+  color: #9a3412;
+  background: linear-gradient(135deg, #fff6e8 0%, #ffe4bc 100%);
+  border-color: rgba(194, 115, 37, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
 .income-page .income-delete-btn {
@@ -886,6 +1114,12 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.income-page .income-actions-cell {
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .income-page .income-edit-btn {
@@ -918,4 +1152,17 @@
 
 .income-page .income-mobile-amount {
   font-weight: 900;
+}
+
+/* Final table alignment guardrail */
+.income-page .income-table-wrap .dashboard-table thead th,
+.income-page .income-table-wrap .dashboard-table tbody td {
+  vertical-align: middle;
+}
+
+.income-page .income-table-wrap .dashboard-table .income-col-client,
+.income-page .income-table-wrap .dashboard-table .income-col-booking,
+.income-page .income-table-wrap .dashboard-table .income-col-source,
+.income-page .income-table-wrap .dashboard-table .income-col-note {
+  text-align: right;
 }

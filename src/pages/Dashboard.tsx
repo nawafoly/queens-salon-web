@@ -231,6 +231,15 @@ function financeSourceLabelAr(raw: unknown): string {
   return String(raw || "").trim() || "إيراد";
 }
 
+function bookingStatusLabelAr(status: BookingStatus | string): string {
+  const s = String(status || "").toLowerCase().trim();
+  if (s === "confirmed") return "مؤكد";
+  if (s === "pending") return "في الانتظار";
+  if (s === "cancelled") return "ملغي";
+  if (s === "completed") return "مكتمل";
+  return String(status || "-");
+}
+
 /** ✅ تحويل حجز Firestore لشكل Booking اللي تستخدمه الواجهة */
 async function mapFirestoreToUiBooking(b: BookingDocWithId): Promise<Booking> {
   const serviceId = (b as any)?.serviceId || b.serviceName || "";
@@ -1271,7 +1280,6 @@ const Dashboard: React.FC = () => {
   const hasAdminPower = Boolean(isOwner || isAdmin);
 
   const allowStaffChangeStatus = settings.policies.allowStaffChangeStatus;
-  const allowReceptionChangeStatus = settings.policies.allowReceptionChangeStatus;
   const allowStaffViewClients = settings.policies.allowStaffViewClients;
 
   const canSeeSection = (key: SectionKey) => settings.sections[key] !== false;
@@ -1314,25 +1322,6 @@ const Dashboard: React.FC = () => {
 
 
   const handleOpenBooking = (booking: Booking) => setSelectedBooking(booking);
-
-  const handleChangeStatus = async (id: string, status: BookingStatus) => {
-    const canReceptionChange = isReception && allowReceptionChangeStatus;
-    const canStaffChange = isStaff && allowStaffChangeStatus;
-
-    if (hasAdminPower || canReceptionChange || canStaffChange) {
-      try {
-        await updateBookingStatusFS(id, status);
-        const roleNow = userInfo?.role;
-        await refreshDashboard(roleNow);
-        setSelectedBooking((prev) =>
-          prev && prev.id === id ? { ...prev, status } : prev
-        );
-      } catch (e) {
-        console.error(e);
-        alert("تعذر تحديث الحالة. تأكد من الصلاحيات/Rules.");
-      }
-    }
-  };
 
   useEffect(() => {
     setTodayScheduleBookings(
@@ -2063,34 +2052,12 @@ const Dashboard: React.FC = () => {
                 <b>الحالة</b>
 
                 <div className="dash-status-row">
-                  {hasAdminPower ||
-                    (isReception && allowReceptionChangeStatus) ||
-                    (isStaff && allowStaffChangeStatus) ? (
-                    <select
-                      className="dash-select"
-                      value={selectedBooking.status}
-                      onChange={(e) =>
-                        handleChangeStatus(selectedBooking.id, e.target.value as BookingStatus)
-                      }
-                    >
-                      <option value="confirmed">مؤكد</option>
-                      <option value="pending">في الانتظار</option>
-                      <option value="completed">مكتمل</option>
-                      <option value="cancelled">ملغي</option>
-                    </select>
-                  ) : (
-                    <span className={`status-badge ${selectedBooking.status}`}>
-                      {selectedBooking.status}
-                    </span>
-                  )}
-
-                  {!hasAdminPower &&
-                    !(isReception && allowReceptionChangeStatus) &&
-                    !(isStaff && allowStaffChangeStatus) && (
-                      <span style={{ fontSize: 12, opacity: 0.75 }}>
-                        التعديل غير مسموح حسب إعدادات النظام
-                      </span>
-                    )}
+                  <span className={`status-badge ${selectedBooking.status}`}>
+                    {bookingStatusLabelAr(selectedBooking.status)}
+                  </span>
+                  <span style={{ fontSize: 12, opacity: 0.75 }}>
+                    التحكم بالحالة من صفحة إدارة الحجوزات فقط
+                  </span>
                 </div>
               </div>
             </div>
@@ -2119,4 +2086,3 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-

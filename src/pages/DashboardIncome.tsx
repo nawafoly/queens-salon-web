@@ -38,6 +38,20 @@ const INCOME_MIGRATED_KEY = "income_migrated_to_firestore_v1";
 const INCOME_EDIT_PIN = "598867395";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
+type BookingPaymentType = "full" | "partial";
+type BookingMeta = {
+  bookingRef: string;
+  clientName: string;
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+};
+type PaymentSummaryRow = {
+  kind: "paid" | "remaining";
+  label: string;
+  value: number;
+};
 
 function mapFirestoreRole(raw: unknown): UiRole {
   const role = String(raw || "").toLowerCase().trim();
@@ -80,18 +94,97 @@ function todayISO() {
 }
 
 function methodLabel(m: PaymentMethod) {
-  if (m === "cash") return "كاش";
-  if (m === "card") return "شبكة";
-  if (m === "transfer") return "تحويل";
-  return "أخرى";
+  if (m === "cash") return "\u0643\u0627\u0634";
+  if (m === "card") return "\u0634\u0628\u0643\u0629";
+  if (m === "transfer") return "\u062a\u062d\u0648\u064a\u0644";
+  return "\u0623\u062e\u0631\u0649";
 }
 
 function sourceLabel(source: string) {
   const s = String(source || "").trim().toLowerCase();
   if (!s) return "-";
-  if (s === "booking" || s === "حجز") return "حجز";
-  if (s === "refund" || s === "استرجاع") return "استرجاع";
+  if (s === "booking" || s === "\u062d\u062c\u0632") return "\u062d\u062c\u0632";
+  if (s === "invoice" || s === "\u0641\u0627\u062a\u0648\u0631\u0629") return "\u0641\u0627\u062a\u0648\u0631\u0629";
+  if (s === "internal_booking") return "\u062d\u062c\u0632 \u062f\u0627\u062e\u0644\u064a";
+  if (s === "manual" || s === "\u064a\u062f\u0648\u064a") return "\u064a\u062f\u0648\u064a";
+  if (s === "refund" || s === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639") return "\u0627\u0633\u062a\u0631\u062c\u0627\u0639";
   return String(source || "").trim();
+}
+
+function sourceKind(source: string): "booking" | "invoice" | "internal" | "manual" | "refund" | "other" {
+  const s = String(source || "").trim().toLowerCase();
+  if (!s) return "other";
+  if (s === "booking" || s === "\u062d\u062c\u0632") return "booking";
+  if (s === "invoice" || s === "\u0641\u0627\u062a\u0648\u0631\u0629") return "invoice";
+  if (s === "internal_booking") return "internal";
+  if (s === "manual" || s === "\u064a\u062f\u0648\u064a") return "manual";
+  if (s === "refund" || s === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639") return "refund";
+  return "other";
+}
+
+function methodLabelFromRaw(raw?: string): string {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return "-";
+  if (s === "cash" || s === "\u0643\u0627\u0634") return "\u0643\u0627\u0634";
+  if (
+    s === "card" ||
+    s === "mada" ||
+    s.includes("\u0634\u0628\u0643") ||
+    s.includes("\u0628\u0637\u0627\u0642")
+  )
+    return "\u0634\u0628\u0643\u0629";
+  if (s === "transfer" || s.includes("\u062a\u062d\u0648\u064a\u0644")) return "\u062a\u062d\u0648\u064a\u0644";
+  return String(raw || "").trim();
+}
+
+function formatIncomeNotePart(part: string): string {
+  const p = String(part || "").trim();
+  if (!p) return "";
+  const lower = p.toLowerCase();
+
+  if (lower.startsWith("invoice_from_reception:")) {
+    const method = p.split(":")[1] || "";
+    return `فاتورة من الاستقبال (${methodLabelFromRaw(method)})`;
+  }
+  if (lower.startsWith("internal_payment:")) {
+    const method = p.split(":")[1] || "";
+    return `دفع داخلي (${methodLabelFromRaw(method)})`;
+  }
+  if (lower.startsWith("payment_method:")) {
+    const method = p.split(":")[1] || "";
+    return `طريقة الدفع (${methodLabelFromRaw(method)})`;
+  }
+
+  return p;
+}
+
+function formatIncomeNote(raw?: string): string {
+  const note = String(raw || "").trim();
+  if (!note) return "";
+
+  const parts = note
+    .split("|")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  if (!parts.length) return note;
+  return parts.map((p) => formatIncomeNotePart(p)).filter(Boolean).join(" - ");
+}
+
+function noteHasPaymentSummary(raw?: string): boolean {
+  const note = String(raw || "").trim().toLowerCase();
+  if (!note) return false;
+  return /دفعت|المتبقي|عربون|دفع كامل|paid|remaining|deposit/.test(note);
+}
+
+function isSystemIncomeNote(raw?: string): boolean {
+  const note = String(raw || "").trim().toLowerCase();
+  if (!note) return false;
+  return (
+    note.includes("invoice_from_reception:") ||
+    note.includes("internal_payment:") ||
+    note.includes("payment_method:")
+  );
 }
 
 function toBookingRef(v?: string) {
@@ -100,6 +193,103 @@ function toBookingRef(v?: string) {
   if (/^MK-\d+$/.test(raw)) return raw;
   if (/^\d+$/.test(raw)) return `MK-${raw}`;
   return raw;
+}
+
+function round2(v: number): number {
+  return Math.round((Number(v) || 0) * 100) / 100;
+}
+
+function normalizeBookingPaymentType(raw: unknown): BookingPaymentType | null {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (!s) return null;
+  if (s === "full" || s === "complete" || s === "\u0643\u0627\u0645\u0644") return "full";
+  if (s === "partial" || s === "deposit" || s === "\u0639\u0631\u0628\u0648\u0646" || s === "\u062c\u0632\u0626\u064a") return "partial";
+  return null;
+}
+
+function resolveBookingPayment(raw: any): {
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+} {
+  const totalAmount = Math.max(
+    0,
+    Number(raw?.finalPrice ?? raw?.total ?? raw?.serviceSnapshot?.priceAtBooking ?? 0) || 0
+  );
+  const normalizedType = normalizeBookingPaymentType(raw?.paymentType);
+  const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
+  const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
+  const status = String(raw?.status || "").trim().toLowerCase();
+  const isRevenueStatus = status === "confirmed" || status === "completed";
+
+  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paidAmount: number;
+  if (hasExplicitPaid) {
+    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
+  } else if (paymentType === "partial") {
+    paidAmount = 0;
+  } else {
+    paidAmount = isRevenueStatus ? totalAmount : 0;
+  }
+
+  if (paymentType === "full") {
+    paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
+  } else {
+    paymentType = paidAmount >= totalAmount ? "full" : "partial";
+  }
+
+  return {
+    paymentType,
+    paidAmount: round2(Math.max(0, Math.min(totalAmount, paidAmount))),
+    remainingAmount: round2(Math.max(0, totalAmount - paidAmount)),
+    totalAmount: round2(totalAmount),
+  };
+}
+
+function resolveLinkedBookingId(item: IncomeItem): string {
+  const explicit = String(item.bookingId || "").trim();
+  if (explicit) return explicit;
+  const source = String(item.source || "").trim().toLowerCase();
+  if (source === "booking" || source === "حجز") return String(item.id || "").trim();
+  return "";
+}
+
+function parseMoneyInput(raw: string): number {
+  return Number(String(raw || "").replaceAll(",", "").trim());
+}
+
+function isRefundIncomeRow(item: IncomeItem): boolean {
+  const source = String(item.source || "").trim().toLowerCase();
+  return (
+    String(item.id || "").startsWith("refund_") ||
+    source === "refund" ||
+    source === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639" ||
+    Number(item.amount || 0) < 0
+  );
+}
+
+function paymentTypeLabel(type: BookingPaymentType): string {
+  return type === "partial" ? "\u0639\u0631\u0628\u0648\u0646" : "\u0643\u0627\u0645\u0644";
+}
+
+function buildPaymentSummaryRows(meta?: BookingMeta): PaymentSummaryRow[] {
+  if (!meta) return [];
+  const paid = round2(meta.paidAmount);
+  const remaining = round2(meta.remainingAmount);
+  const rows: PaymentSummaryRow[] = [];
+  if (paid > 0) rows.push({ kind: "paid", label: "\u062f\u0641\u0639\u062a", value: paid });
+  if (remaining > 0) rows.push({ kind: "remaining", label: "\u0627\u0644\u0645\u062a\u0628\u0642\u064a", value: remaining });
+  return rows;
+}
+
+function buildPaymentSummary(meta?: BookingMeta): string {
+  if (!meta) return "";
+  const rows = buildPaymentSummaryRows(meta);
+  const typeText = paymentTypeLabel(meta.paymentType);
+  if (!rows.length) return typeText;
+  const rowsText = rows.map((r) => `${r.label} ${round2(r.value)} \u0631.\u0633`).join(" - ");
+  return `${typeText} - ${rowsText}`;
 }
 
 function toCsv(items: IncomeItem[]) {
@@ -213,8 +403,6 @@ function firebaseMsg(e: any) {
 }
 
 export default function DashboardIncome() {
-  type BookingMeta = { bookingRef: string; clientName: string };
-
   const [items, setItems] = useState<IncomeItem[]>([]);
   const [bookingMetaById, setBookingMetaById] = useState<Record<string, BookingMeta>>({});
   const [uiRole, setUiRole] = useState<UiRole>("guest");
@@ -228,12 +416,28 @@ export default function DashboardIncome() {
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [source, setSource] = useState("يدوي");
   const [note, setNote] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<IncomeItem | null>(null);
+  const [editPin, setEditPin] = useState("");
+  const [editError, setEditError] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+  const [editBookingTotal, setEditBookingTotal] = useState("");
+  const [editPaymentType, setEditPaymentType] = useState<BookingPaymentType>("full");
+  const [editPaidAmount, setEditPaidAmount] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<IncomeItem | null>(null);
+  const [deletePin, setDeletePin] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
   // Filters
   const [q, setQ] = useState("");
   const [fMethod, setFMethod] = useState<PaymentMethod | "all">("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const editLinkedBookingId = editTarget ? resolveLinkedBookingId(editTarget) : "";
+  const editBookingMeta = editLinkedBookingId ? bookingMetaById[editLinkedBookingId] : undefined;
+  const editIsRefund = editTarget ? isRefundIncomeRow(editTarget) : false;
+  const editCanAdjustPayment = !!editLinkedBookingId && !editIsRefund;
 
   const refresh = async () => {
     try {
@@ -241,11 +445,16 @@ export default function DashboardIncome() {
       const [incomeRows, bookingRows] = await Promise.all([listAllIncomeFS(), listAllBookings()]);
       const bookingMap = bookingRows.reduce(
         (acc, b: any) => {
+          const payment = resolveBookingPayment(b);
           acc[String(b.id)] = {
             bookingRef: toBookingRef(String(b.publicId || "")),
             clientName: String(
               b.clientName || b.customerName || b.name || b.client?.name || b.customer?.name || ""
             ).trim(),
+            paymentType: payment.paymentType,
+            paidAmount: payment.paidAmount,
+            remainingAmount: payment.remainingAmount,
+            totalAmount: payment.totalAmount,
           };
           return acc;
         },
@@ -303,11 +512,16 @@ export default function DashboardIncome() {
         const [finalData, bookingRows] = await Promise.all([listAllIncomeFS(), listAllBookings()]);
         const bookingMap = bookingRows.reduce(
           (acc, b: any) => {
+            const payment = resolveBookingPayment(b);
             acc[String(b.id)] = {
               bookingRef: toBookingRef(String(b.publicId || "")),
               clientName: String(
                 b.clientName || b.customerName || b.name || b.client?.name || b.customer?.name || ""
               ).trim(),
+              paymentType: payment.paymentType,
+              paidAmount: payment.paidAmount,
+              remainingAmount: payment.remainingAmount,
+              totalAmount: payment.totalAmount,
             };
             return acc;
           },
@@ -339,21 +553,32 @@ export default function DashboardIncome() {
         if (to && x.date > to) return false;
 
         if (!qq) return true;
-        const linkedBookingId =
-          String(x.bookingId || "").trim() ||
-          (sourceLabel(String(x.source || "")) === "حجز" ? String(x.id || "").trim() : "");
+        const linkedBookingId = resolveLinkedBookingId(x);
         const bm = bookingMetaById[linkedBookingId];
+        const paymentSummary = buildPaymentSummary(bm);
+        const noteText = formatIncomeNote(x.note);
+        const effectiveAmount = bm ? Number(bm.paidAmount || 0) : Number(x.amount || 0);
         const a =
-          `${x.date} ${x.amount} ${sourceLabel(x.source || "")} ${x.note || ""} ${
+          `${x.date} ${effectiveAmount} ${sourceLabel(x.source || "")} ${x.note || ""} ${noteText} ${
             x.bookingId || ""
-          } ${x.id} ${bm?.clientName || ""} ${bm?.bookingRef || ""}`.toLowerCase();
+          } ${x.id} ${bm?.clientName || ""} ${bm?.bookingRef || ""} ${paymentSummary}`.toLowerCase();
         return a.includes(qq);
       })
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   }, [items, q, fMethod, from, to, bookingMetaById]);
 
+  const rowBookingMeta = (item: IncomeItem) => {
+    const linkedBookingId = resolveLinkedBookingId(item);
+    return bookingMetaById[linkedBookingId];
+  };
+
+  const rowEffectiveAmount = (item: IncomeItem) => {
+    const bm = rowBookingMeta(item);
+    return bm ? Number(bm.paidAmount || 0) : Number(item.amount || 0);
+  };
+
   const total = useMemo(
-    () => filtered.reduce((s, x) => s + (Number(x.amount) || 0), 0),
+    () => filtered.reduce((s, x) => s + rowEffectiveAmount(x), 0),
     [filtered]
   );
 
@@ -361,7 +586,7 @@ export default function DashboardIncome() {
     () =>
       filtered
         .filter((x) => x.method === "cash")
-        .reduce((s, x) => s + (Number(x.amount) || 0), 0),
+        .reduce((s, x) => s + rowEffectiveAmount(x), 0),
     [filtered]
   );
 
@@ -369,7 +594,7 @@ export default function DashboardIncome() {
     () =>
       filtered
         .filter((x) => x.method === "card")
-        .reduce((s, x) => s + (Number(x.amount) || 0), 0),
+        .reduce((s, x) => s + rowEffectiveAmount(x), 0),
     [filtered]
   );
 
@@ -377,7 +602,7 @@ export default function DashboardIncome() {
     () =>
       filtered
         .filter((x) => x.method === "transfer")
-        .reduce((s, x) => s + (Number(x.amount) || 0), 0),
+        .reduce((s, x) => s + rowEffectiveAmount(x), 0),
     [filtered]
   );
 
@@ -385,8 +610,8 @@ export default function DashboardIncome() {
     () =>
       Math.abs(
         filtered
-          .filter((x) => Number(x.amount) < 0)
-          .reduce((s, x) => s + (Number(x.amount) || 0), 0)
+          .filter((x) => rowEffectiveAmount(x) < 0)
+          .reduce((s, x) => s + rowEffectiveAmount(x), 0)
       ),
     [filtered]
   );
@@ -424,62 +649,133 @@ export default function DashboardIncome() {
     }
   };
 
-  const removeIncome = async (id: string) => {
+  const openDeleteIncomeModal = (item: IncomeItem) => {
+    setDeleteTarget(item);
+    setDeletePin("");
+    setDeleteError("");
+    setDeleteOpen(true);
+  };
+
+  const closeDeleteIncomeModal = () => {
+    if (loading) return;
+    setDeleteOpen(false);
+    setDeleteTarget(null);
+    setDeletePin("");
+    setDeleteError("");
+  };
+
+  const confirmDeleteIncome = async () => {
+    if (!deleteTarget?.id) return;
+    if (String(deletePin).trim() !== INCOME_EDIT_PIN) {
+      setDeleteError("الرقم السري غير صحيح");
+      return;
+    }
+
     try {
       setLoading(true);
-      await removeIncomeFS(id);
+      setDeleteError("");
+      await removeIncomeFS(String(deleteTarget.id));
       const next = await listAllIncomeFS();
       setItems(next);
+      setDeleteOpen(false);
+      setDeleteTarget(null);
+      setDeletePin("");
+      setDeleteError("");
+      setModalMsg("تم حذف سجل الإيراد");
     } catch (e) {
-      setModalMsg(firebaseMsg(e));
+      setDeleteError(firebaseMsg(e));
     } finally {
       setLoading(false);
     }
   };
 
-  const editIncomeAmount = async (item: IncomeItem) => {
-    const pin = window.prompt("أدخلي الرقم السري لتعديل المبلغ");
-    if (pin === null) return;
-    if (String(pin).trim() !== INCOME_EDIT_PIN) {
-      setModalMsg("الرقم السري غير صحيح");
+  const openEditIncomeModal = (item: IncomeItem) => {
+    const linkedBookingId = resolveLinkedBookingId(item);
+    const meta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
+    const fallbackAmount = round2(Math.max(0, Number(item.amount || 0)));
+
+    setEditTarget(item);
+    setEditPin("");
+    setEditError("");
+    setEditAmount(String(fallbackAmount));
+    setEditBookingTotal(String(round2(meta?.totalAmount ?? fallbackAmount)));
+    setEditPaymentType(meta?.paymentType || "full");
+    setEditPaidAmount(String(round2(meta?.paidAmount ?? fallbackAmount)));
+    setEditOpen(true);
+  };
+
+  const closeEditIncomeModal = () => {
+    if (loading) return;
+    setEditOpen(false);
+    setEditTarget(null);
+    setEditPin("");
+    setEditError("");
+  };
+
+  const saveEditedIncome = async () => {
+    if (!editTarget) return;
+    if (String(editPin).trim() !== INCOME_EDIT_PIN) {
+      setEditError("الرقم السري غير صحيح");
       return;
     }
 
-    const currentAmount = Number(item.amount) || 0;
-    const rawAmount = window.prompt("أدخلي المبلغ الجديد", String(currentAmount));
-    if (rawAmount === null) return;
-
-    const nextAmount = Number(String(rawAmount).replaceAll(",", "").trim());
-    if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
-      setModalMsg("المبلغ غير صحيح");
-      return;
-    }
+    const bookingId = resolveLinkedBookingId(editTarget);
+    const canAdjustPayment = !!bookingId && !isRefundIncomeRow(editTarget);
 
     try {
       setLoading(true);
-      await upsertIncomeFS({
-        ...item,
-        amount: nextAmount,
-        createdAt: Number(item.createdAt) || Date.now(),
-      });
-      const explicitBookingId = String(item.bookingId || "").trim();
-      const fallbackBookingId = String(item.id || "").trim();
-      const bookingId = explicitBookingId || fallbackBookingId;
-      const source = String(item.source || "").trim().toLowerCase();
-      const isRefundRow =
-        String(item.id || "").startsWith("refund_") ||
-        source === "refund" ||
-        source === "استرجاع" ||
-        Number(item.amount || 0) < 0;
-      const shouldSyncBookingAmount = !!bookingId && nextAmount > 0 && !isRefundRow;
+      setEditError("");
 
-      if (shouldSyncBookingAmount) {
+      if (canAdjustPayment) {
+        const totalAmountRaw = parseMoneyInput(editBookingTotal);
+        if (!Number.isFinite(totalAmountRaw) || totalAmountRaw <= 0) {
+          setEditError("إجمالي الحجز غير صحيح.");
+          return;
+        }
+        const totalAmount = round2(totalAmountRaw);
+
+        let paymentType: BookingPaymentType = editPaymentType === "partial" ? "partial" : "full";
+        let paidAmount =
+          paymentType === "full" ? totalAmount : parseMoneyInput(editPaidAmount);
+
+        if (paymentType === "partial") {
+          if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
+            setEditError("مبلغ العربون غير صحيح.");
+            return;
+          }
+          if (paidAmount > totalAmount) {
+            setEditError("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز.");
+            return;
+          }
+        }
+
+        if (!Number.isFinite(paidAmount) || paidAmount < 0) {
+          setEditError("المبلغ المدفوع غير صحيح.");
+          return;
+        }
+
+        if (paidAmount >= totalAmount) {
+          paymentType = "full";
+          paidAmount = totalAmount;
+        }
+
+        const paidRounded = round2(Math.max(0, Math.min(totalAmount, paidAmount)));
+        const remainingAmount = round2(Math.max(0, totalAmount - paidRounded));
+
         await Promise.all([
+          upsertIncomeFS({
+            ...editTarget,
+            amount: paidRounded,
+            createdAt: Number(editTarget.createdAt) || Date.now(),
+          }),
           setDoc(
             doc(db, "salons", "main", "bookings", bookingId),
             {
-              total: nextAmount,
-              finalPrice: nextAmount,
+              total: totalAmount,
+              finalPrice: totalAmount,
+              paymentType,
+              paidAmount: paidRounded,
+              remainingAmount,
               updatedAt: serverTimestamp(),
               amountEditedFromIncome: true,
               amountEditedAt: serverTimestamp(),
@@ -489,8 +785,11 @@ export default function DashboardIncome() {
           setDoc(
             doc(db, "salons", "main", "booking_tracks", bookingId),
             {
-              total: nextAmount,
-              finalPrice: nextAmount,
+              total: totalAmount,
+              finalPrice: totalAmount,
+              paymentType,
+              paidAmount: paidRounded,
+              remainingAmount,
               updatedAt: serverTimestamp(),
               amountEditedFromIncome: true,
               amountEditedAt: serverTimestamp(),
@@ -498,13 +797,33 @@ export default function DashboardIncome() {
             { merge: true }
           ),
         ]);
+
+        await refresh();
+        setModalMsg("تم تعديل طريقة الدفع وتحديث الإيراد");
+      } else {
+        const nextAmountRaw = parseMoneyInput(editAmount);
+        if (!Number.isFinite(nextAmountRaw) || nextAmountRaw <= 0) {
+          setEditError("المبلغ غير صحيح.");
+          return;
+        }
+
+        const nextAmount = round2(nextAmountRaw);
+        await upsertIncomeFS({
+          ...editTarget,
+          amount: nextAmount,
+          createdAt: Number(editTarget.createdAt) || Date.now(),
+        });
+        const next = await listAllIncomeFS();
+        setItems(next);
+        setModalMsg("تم تعديل المبلغ");
       }
 
-      const next = await listAllIncomeFS();
-      setItems(next);
-      setModalMsg(shouldSyncBookingAmount ? "تم تعديل المبلغ وتحديث سعر الحجز" : "تم تعديل المبلغ");
+      setEditOpen(false);
+      setEditTarget(null);
+      setEditPin("");
+      setEditError("");
     } catch (e) {
-      setModalMsg(firebaseMsg(e));
+      setEditError(firebaseMsg(e));
     } finally {
       setLoading(false);
     }
@@ -672,10 +991,17 @@ export default function DashboardIncome() {
                 <FontAwesomeIcon icon={faSearch} />
               </div>
               <input
+                id="income_filters_search"
+                name="income_filters_search"
+                type="search"
                 className="form-control"
                 placeholder="بحث (المصدر / الملاحظة / المبلغ / المعرف...)"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
             </div>
 
@@ -724,14 +1050,14 @@ export default function DashboardIncome() {
             <table className="dashboard-table">
               <thead>
                 <tr>
-                  <th>التاريخ</th>
-                  <th>المبلغ</th>
-                  <th>الدفع</th>
-                  <th>العميلة</th>
-                  <th>رقم الحجز</th>
-                  <th>المصدر</th>
-                  <th>ملاحظة</th>
-                  <th>حذف</th>
+                  <th className="income-col-date">التاريخ</th>
+                  <th className="income-col-amount">المبلغ</th>
+                  <th className="income-col-method">الدفع</th>
+                  <th className="income-col-client">العميلة</th>
+                  <th className="income-col-booking">رقم الحجز</th>
+                  <th className="income-col-source">المصدر</th>
+                  <th className="income-col-note">ملاحظة</th>
+                  <th className="income-col-actions">إجراء</th>
                 </tr>
               </thead>
               <tbody>
@@ -743,44 +1069,79 @@ export default function DashboardIncome() {
                   </tr>
                 ) : (
                   filtered.map((x) => {
-                    const linkedBookingId =
-                      String(x.bookingId || "").trim() ||
-                      (sourceLabel(String(x.source || "")) === "حجز" ? String(x.id || "").trim() : "");
-                    const bookingMeta = bookingMetaById[linkedBookingId];
+                    const bookingMeta = rowBookingMeta(x);
+                    const paymentSummaryRows = buildPaymentSummaryRows(bookingMeta);
+                    const amountToShow = rowEffectiveAmount(x);
+                    const noteText = formatIncomeNote(x.note);
+                    const noteClass = `income-note-primary${isSystemIncomeNote(x.note) ? " income-note-primary-system" : ""}`;
+                    const srcKind = sourceKind(x.source || "");
+                    const showPaymentSummary = paymentSummaryRows.length > 0 && !noteHasPaymentSummary(noteText);
                     return (
                       <tr key={x.id} className={"income-row income-row-" + x.method}>
-                        <td className="income-date">{x.date}</td>
-                        <td>
+                        <td className="income-col-date income-date">{x.date}</td>
+                        <td className="income-col-amount">
                           <span className="income-amount">
-                            {(Number(x.amount) || 0).toLocaleString()} ريال
+                            {(Number(amountToShow) || 0).toLocaleString()} ريال
                           </span>
                         </td>
-                        <td>
-                          <span className={"income-method-badge " + x.method}>{methodLabel(x.method)}</span>
+                        <td className="income-col-method">
+                          <div className="income-method-cell">
+                            <span className={"income-method-badge " + x.method}>{methodLabel(x.method)}</span>
+                            {bookingMeta ? (
+                              <span className={`income-pay-kind ${bookingMeta.paymentType}`}>
+                                {paymentTypeLabel(bookingMeta.paymentType)}
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
-                        <td className="income-client-text">{bookingMeta?.clientName || "-"}</td>
-                        <td className="income-booking-text">{bookingMeta?.bookingRef || "-"}</td>
-                        <td className="income-source-text">{sourceLabel(x.source || "")}</td>
-                        <td className="income-note-text">{x.note || "-"}</td>
-                        <td className="income-row-actions">
-                          <button
-                            className="dash-icon-btn qs-black income-edit-btn"
-                            type="button"
-                            title="تعديل المبلغ"
-                            onClick={() => editIncomeAmount(x)}
-                            disabled={loading}
-                          >
-                            <FontAwesomeIcon icon={faPen} />
-                          </button>
-                          <button
-                            className="dash-icon-btn qs-black income-delete-btn"
-                            type="button"
-                            title="حذف"
-                            onClick={() => removeIncome(String(x.id))}
-                            disabled={loading}
-                          >
-                            <FontAwesomeIcon icon={faTrash} />
-                          </button>
+                        <td className="income-col-client income-client-text">{bookingMeta?.clientName || "-"}</td>
+                        <td className="income-col-booking income-booking-text">{bookingMeta?.bookingRef || "-"}</td>
+                        <td className="income-col-source">
+                          <div className="income-source-cell">
+                            <span className={`income-source-badge ${srcKind}`}>
+                              {sourceLabel(x.source || "")}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="income-col-note">
+                          <div className="income-note-text">
+                            {noteText ? <span className={noteClass}>{noteText}</span> : null}
+                            {showPaymentSummary ? (
+                              <span className="income-payment-summary">
+                                {paymentSummaryRows.map((row) => (
+                                  <span
+                                    key={row.kind}
+                                    className={`income-payment-line income-payment-line-${row.kind}`}
+                                  >
+                                    {row.label} {row.value.toFixed(2)} ر.س
+                                  </span>
+                                ))}
+                              </span>
+                            ) : null}
+                            {!showPaymentSummary && !noteText ? "-" : null}
+                          </div>
+                        </td>
+                        <td className="income-col-actions income-actions-cell">
+                          <div className="income-row-actions">
+                            <button
+                              className="dash-icon-btn qs-black income-edit-btn"
+                              type="button"
+                              title="تعديل المبلغ"
+                              onClick={() => openEditIncomeModal(x)}
+                              disabled={loading}
+                            >
+                              <FontAwesomeIcon icon={faPen} />
+                            </button>
+                            <button
+                              className="dash-icon-btn qs-black income-delete-btn"
+                              type="button"
+                              title="حذف"
+                              onClick={() => openDeleteIncomeModal(x)}
+                              disabled={loading}
+                            >
+                              <FontAwesomeIcon icon={faTrash} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -797,10 +1158,13 @@ export default function DashboardIncome() {
               </div>
             ) : (
               filtered.map((x) => {
-                const linkedBookingId =
-                  String(x.bookingId || "").trim() ||
-                  (sourceLabel(String(x.source || "")) === "حجز" ? String(x.id || "").trim() : "");
-                const bookingMeta = bookingMetaById[linkedBookingId];
+                const bookingMeta = rowBookingMeta(x);
+                const paymentSummaryRows = buildPaymentSummaryRows(bookingMeta);
+                const amountToShow = rowEffectiveAmount(x);
+                const noteText = formatIncomeNote(x.note);
+                const noteClass = `income-note-primary${isSystemIncomeNote(x.note) ? " income-note-primary-system" : ""}`;
+                const srcKind = sourceKind(x.source || "");
+                const showPaymentSummary = paymentSummaryRows.length > 0 && !noteHasPaymentSummary(noteText);
                 return (
                   <article className="income-mobile-card" key={"mob_" + x.id}>
                     <div className="income-mobile-row">
@@ -810,12 +1174,21 @@ export default function DashboardIncome() {
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">المبلغ</span>
                       <span className="income-mobile-value income-mobile-amount">
-                        {(Number(x.amount) || 0).toLocaleString()} ريال
+                        {(Number(amountToShow) || 0).toLocaleString()} ريال
                       </span>
                     </div>
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">الدفع</span>
-                      <span className="income-mobile-value"><span className={"income-method-badge " + x.method}>{methodLabel(x.method)}</span></span>
+                      <span className="income-mobile-value">
+                        <span className="income-method-cell">
+                          <span className={"income-method-badge " + x.method}>{methodLabel(x.method)}</span>
+                          {bookingMeta ? (
+                            <span className={`income-pay-kind ${bookingMeta.paymentType}`}>
+                              {paymentTypeLabel(bookingMeta.paymentType)}
+                            </span>
+                          ) : null}
+                        </span>
+                      </span>
                     </div>
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">العميلة</span>
@@ -827,18 +1200,37 @@ export default function DashboardIncome() {
                     </div>
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">المصدر</span>
-                      <span className="income-mobile-value">{sourceLabel(x.source || "")}</span>
+                      <span className="income-mobile-value income-source-cell">
+                        <span className={`income-source-badge ${srcKind}`}>
+                          {sourceLabel(x.source || "")}
+                        </span>
+                      </span>
                     </div>
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">ملاحظة</span>
-                      <span className="income-mobile-value">{x.note || "-"}</span>
+                      <span className="income-mobile-value">
+                        {noteText ? <span className={noteClass}>{noteText}</span> : null}
+                        {showPaymentSummary ? (
+                          <span className="income-payment-summary">
+                            {paymentSummaryRows.map((row) => (
+                              <span
+                                key={row.kind}
+                                className={`income-payment-line income-payment-line-${row.kind}`}
+                              >
+                                {row.label} {row.value.toFixed(2)} ر.س
+                              </span>
+                            ))}
+                          </span>
+                        ) : null}
+                        {!showPaymentSummary && !noteText ? "-" : null}
+                      </span>
                     </div>
                     <div className="income-mobile-actions">
                       <button
                         className="dash-pill dash-pill-outline income-mobile-edit"
                         type="button"
                         title="تعديل المبلغ"
-                        onClick={() => editIncomeAmount(x)}
+                        onClick={() => openEditIncomeModal(x)}
                         disabled={loading}
                       >
                         <FontAwesomeIcon icon={faPen} /> تعديل
@@ -847,7 +1239,7 @@ export default function DashboardIncome() {
                         className="dash-pill dash-pill-outline income-mobile-delete"
                         type="button"
                         title="حذف"
-                        onClick={() => removeIncome(String(x.id))}
+                        onClick={() => openDeleteIncomeModal(x)}
                         disabled={loading}
                       >
                         <FontAwesomeIcon icon={faTrash} /> حذف
@@ -966,6 +1358,218 @@ export default function DashboardIncome() {
             </div>
         </Modal>
       )}
+
+      {editOpen && editTarget && (
+        <Modal
+          open={editOpen}
+          onClose={closeEditIncomeModal}
+          ariaLabel="تعديل دخل"
+          panelClassName="income-page-modal__card"
+          size="sm"
+        >
+          <div className="income-page-modal__head">
+            <div className="income-page-modal__title">
+              {editCanAdjustPayment ? "تعديل الدفع للحجز" : "تعديل مبلغ الدخل"}
+            </div>
+            <button
+              className="income-modal-close-btn"
+              onClick={closeEditIncomeModal}
+              type="button"
+              disabled={loading}
+            >
+              إغلاق
+            </button>
+          </div>
+
+          <div className="income-page-modal__body">
+            {editCanAdjustPayment ? (
+              <div className="income-edit-booking-hint">
+                <span>رقم الحجز: {editBookingMeta?.bookingRef || editLinkedBookingId || "-"}</span>
+                <span>العميلة: {editBookingMeta?.clientName || "-"}</span>
+              </div>
+            ) : null}
+
+            <div className="income-modal-grid">
+              <label className="income-modal-field">
+                <span>الرقم السري</span>
+                <input
+                  type="password"
+                  placeholder="أدخلي الرقم السري"
+                  value={editPin}
+                  onChange={(e) => setEditPin(e.target.value)}
+                  className="income-modal-input"
+                  disabled={loading}
+                  autoComplete="new-password"
+                  name="income_edit_pin"
+                  inputMode="numeric"
+                  data-lpignore="true"
+                />
+              </label>
+
+              {editCanAdjustPayment ? (
+                <>
+                  <label className="income-modal-field">
+                    <span>إجمالي الحجز (ر.س)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={editBookingTotal}
+                      onChange={(e) => setEditBookingTotal(e.target.value)}
+                      className="income-modal-input"
+                      disabled={loading}
+                    />
+                  </label>
+
+                  <label className="income-modal-field">
+                    <span>نوع الدفع</span>
+                    <select
+                      className="income-modal-input"
+                      value={editPaymentType}
+                      onChange={(e) => setEditPaymentType(e.target.value as BookingPaymentType)}
+                      disabled={loading}
+                    >
+                      <option value="full">دفع كامل</option>
+                      <option value="partial">عربون</option>
+                    </select>
+                  </label>
+
+                  {editPaymentType === "partial" ? (
+                    <label className="income-modal-field">
+                      <span>المبلغ المدفوع (ر.س)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={editPaidAmount}
+                        onChange={(e) => setEditPaidAmount(e.target.value)}
+                        className="income-modal-input"
+                        disabled={loading}
+                      />
+                    </label>
+                  ) : null}
+
+                  <div className="income-edit-summary">
+                    {(() => {
+                      const total = round2(Math.max(0, parseMoneyInput(editBookingTotal)));
+                      const paidRaw =
+                        editPaymentType === "full" ? total : Math.max(0, parseMoneyInput(editPaidAmount));
+                      const paid = round2(Math.min(total, paidRaw));
+                      const remaining = round2(Math.max(0, total - paid));
+                      return `دفعت ${paid} ر.س - المتبقي ${remaining} ر.س`;
+                    })()}
+                  </div>
+                </>
+              ) : (
+                <label className="income-modal-field">
+                  <span>المبلغ الجديد (ر.س)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    className="income-modal-input"
+                    disabled={loading}
+                  />
+                </label>
+              )}
+            </div>
+
+            {editError ? <div className="income-edit-error">{editError}</div> : null}
+
+            <div className="income-modal-actions">
+              <button
+                className="income-modal-btn income-modal-btn--primary"
+                onClick={saveEditedIncome}
+                type="button"
+                disabled={loading}
+              >
+                {loading ? "جاري الحفظ..." : "حفظ التعديل"}
+              </button>
+
+              <button
+                className="income-modal-btn income-modal-btn--secondary"
+                onClick={closeEditIncomeModal}
+                type="button"
+                disabled={loading}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {deleteOpen && deleteTarget && (
+        <Modal
+          open={deleteOpen}
+          onClose={closeDeleteIncomeModal}
+          ariaLabel="حذف دخل"
+          panelClassName="income-page-modal__card"
+          size="sm"
+        >
+          <div className="income-page-modal__head">
+            <div className="income-page-modal__title">تأكيد حذف سجل الإيراد</div>
+            <button
+              className="income-modal-close-btn"
+              onClick={closeDeleteIncomeModal}
+              type="button"
+              disabled={loading}
+            >
+              إغلاق
+            </button>
+          </div>
+
+          <div className="income-page-modal__body">
+            <div className="income-edit-booking-hint">
+              <span>التاريخ: {deleteTarget.date || "-"}</span>
+              <span>المبلغ: {Number(deleteTarget.amount || 0).toLocaleString()} ر.س</span>
+              <span>المصدر: {sourceLabel(deleteTarget.source || "")}</span>
+            </div>
+
+            <div className="income-modal-grid">
+              <label className="income-modal-field">
+                <span>الرقم السري للحذف</span>
+                <input
+                  type="password"
+                  placeholder="أدخلي الرقم السري"
+                  value={deletePin}
+                  onChange={(e) => setDeletePin(e.target.value)}
+                  className="income-modal-input"
+                  disabled={loading}
+                  autoComplete="new-password"
+                  name="income_delete_pin"
+                  inputMode="numeric"
+                  data-lpignore="true"
+                />
+              </label>
+            </div>
+
+            {deleteError ? <div className="income-edit-error">{deleteError}</div> : null}
+
+            <div className="income-modal-actions">
+              <button
+                className="income-modal-btn income-modal-btn--primary"
+                onClick={confirmDeleteIncome}
+                type="button"
+                disabled={loading}
+              >
+                {loading ? "جاري الحذف..." : "تأكيد الحذف"}
+              </button>
+
+              <button
+                className="income-modal-btn income-modal-btn--secondary"
+                onClick={closeDeleteIncomeModal}
+                type="button"
+                disabled={loading}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -973,4 +1577,3 @@ export default function DashboardIncome() {
 // 🔕 silence unused helpers
 void loadBookings;
 void isRevenueStatus;
-

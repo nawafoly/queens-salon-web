@@ -90,9 +90,20 @@ import {
   type ServicePackageDoc,
   type PackageServiceItem,
 } from "../services/firestorePackages";
+import {
+  listOffers,
+  isOfferActiveNow,
+  offerAppliesToService,
+  incrementOfferUsage,
+  type Offer,
+} from "../services/firestoreOffers";
 
 // Create booking
-import { createBooking } from "../services/firestoreBookings";
+import {
+  createBooking,
+  updateBookingStatus,
+  updateBookingDetails as updateBookingFields,
+} from "../services/firestoreBookings";
 import * as firestoreBookings from "../services/firestoreBookings";
 
 // Profile loader (للعميلة لما تكون مسجلة دخول بالصفحات العامة)
@@ -167,6 +178,9 @@ type AppliedOfferResult = {
   title: string;
   discountAmount: number;
   finalPrice: number;
+  offerId: string | null;
+  couponCode: string;
+  applicableItemIndexes: number[];
 };
 
 function extractMinPrice(priceText: string): number {
@@ -608,6 +622,19 @@ function calcManualDiscount(
   return { discountAmount: discount, finalPrice: Math.max(0, basePrice - discount) };
 }
 
+function isLegacyPackageLinkedOffer(raw: any) {
+  return (
+    raw &&
+    (Number(raw?.packageFinalPrice || 0) > 0 ||
+      Number(raw?.packageBaseTotalPrice || 0) > 0 ||
+      Number(raw?.packageTotalDurationMin || 0) > 0)
+  );
+}
+
+function normalizeCouponCode(raw: any) {
+  return String(raw || "").trim().toUpperCase();
+}
+
 function todayISO() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -971,6 +998,97 @@ function normalizeExistingPaymentMethod(raw: any): "cash" | "card" | "transfer" 
   return "transfer";
 }
 
+type BookingPaymentType = "full" | "partial";
+
+function normalizeExistingPaymentType(raw: any): BookingPaymentType | null {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return null;
+  if (s === "full" || s === "complete" || s === "كامل") return "full";
+  if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
+  return null;
+}
+
+function roundMoney2(v: number) {
+  return Math.round((Number(v) || 0) * 100) / 100;
+}
+
+function readBookingTotalAmount(raw: any) {
+  const n = Number(raw?.finalPrice ?? raw?.total ?? raw?.serviceSnapshot?.priceAtBooking ?? 0);
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
+function resolveExistingBookingPayment(
+  raw: any,
+  override?: Partial<{ paymentType: BookingPaymentType; paidAmount: number }>
+) {
+  const totalAmount = readBookingTotalAmount(raw);
+  const normalizedType = normalizeExistingPaymentType(override?.paymentType ?? raw?.paymentType);
+  const hasExplicitPaid = Number.isFinite(Number(override?.paidAmount ?? raw?.paidAmount));
+  const explicitPaid = hasExplicitPaid ? Number(override?.paidAmount ?? raw?.paidAmount) : NaN;
+  const status = String(raw?.status || "").trim().toLowerCase();
+  const isRevenueStatus = status === "confirmed" || status === "completed";
+
+  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paidAmount: number;
+
+  if (hasExplicitPaid) {
+    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
+  } else if (paymentType === "partial") {
+    paidAmount = 0;
+  } else {
+    paidAmount = isRevenueStatus ? totalAmount : 0;
+  }
+
+  if (paymentType === "full") {
+    paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
+  } else {
+    paymentType = paidAmount >= totalAmount ? "full" : "partial";
+  }
+
+  const remainingAmount = Math.max(0, roundMoney2(totalAmount - paidAmount));
+  return {
+    paymentType,
+    paidAmount: roundMoney2(Math.max(0, Math.min(totalAmount, paidAmount))),
+    remainingAmount,
+    totalAmount: roundMoney2(totalAmount),
+  };
+}
+
+function allocatePaidAcrossTargets(targetTotals: number[], paidTotal: number): number[] {
+  const totals = targetTotals.map((v) => roundMoney2(Math.max(0, Number(v) || 0)));
+  const grandTotal = roundMoney2(totals.reduce((sum, v) => sum + v, 0));
+  if (!totals.length || grandTotal <= 0) return totals.map(() => 0);
+
+  let remainingPaid = roundMoney2(Math.max(0, Math.min(grandTotal, Number(paidTotal) || 0)));
+  let remainingTotal = grandTotal;
+  const out = totals.map(() => 0);
+
+  for (let i = 0; i < totals.length; i++) {
+    if (remainingPaid <= 0 || remainingTotal <= 0) break;
+    const slotTotal = totals[i];
+    let share =
+      i === totals.length - 1
+        ? remainingPaid
+        : roundMoney2((slotTotal / remainingTotal) * remainingPaid);
+    share = roundMoney2(Math.max(0, Math.min(slotTotal, share)));
+    out[i] = share;
+    remainingPaid = roundMoney2(Math.max(0, remainingPaid - share));
+    remainingTotal = roundMoney2(Math.max(0, remainingTotal - slotTotal));
+  }
+
+  if (remainingPaid > 0) {
+    for (let i = totals.length - 1; i >= 0 && remainingPaid > 0; i--) {
+      const room = roundMoney2(Math.max(0, totals[i] - out[i]));
+      if (room <= 0) continue;
+      const add = roundMoney2(Math.min(room, remainingPaid));
+      out[i] = roundMoney2(out[i] + add);
+      remainingPaid = roundMoney2(Math.max(0, remainingPaid - add));
+    }
+  }
+
+  return out.map((v, i) => roundMoney2(Math.max(0, Math.min(totals[i], v))));
+}
+
 function isRefundedBooking(raw: any) {
   const s = String(raw?.status || "").trim().toLowerCase();
   if (s === "refunded") return true;
@@ -1219,6 +1337,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   const [manualDiscountType, setManualDiscountType] = useState<"" | "fixed" | "percent">("");
   const [manualDiscountValue, setManualDiscountValue] = useState("");
+  const [availableOffers, setAvailableOffers] = useState<Offer[]>([]);
+  const [offersLoading, setOffersLoading] = useState(false);
+  const [offersLoadMsg, setOffersLoadMsg] = useState("");
+  const [selectedOfferId, setSelectedOfferId] = useState("");
   const [discountMsg, setDiscountMsg] = useState("");
   const [applied, setApplied] = useState<AppliedOfferResult>({
     discountType: null,
@@ -1226,6 +1348,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     title: "",
     discountAmount: 0,
     finalPrice: 0,
+    offerId: null,
+    couponCode: "",
+    applicableItemIndexes: [],
   });
 
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
@@ -1256,6 +1381,35 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [futureMsg, setFutureMsg] = useState("");
   const futureSearchRef = useRef<HTMLDivElement | null>(null);
   const autoFutureSearchKeyRef = useRef("");
+
+  useEffect(() => {
+    let mounted = true;
+    const loadOffers = async () => {
+      setOffersLoading(true);
+      setOffersLoadMsg("");
+      try {
+        const rows = await listOffers(SALON_ID);
+        if (!mounted) return;
+        const active = (Array.isArray(rows) ? rows : []).filter((o: any) => {
+          if (!o) return false;
+          if (Boolean((o as any)?.deletedAt)) return false;
+          if (isLegacyPackageLinkedOffer(o)) return false;
+          return isOfferActiveNow(o as any);
+        });
+        setAvailableOffers(active);
+      } catch {
+        if (!mounted) return;
+        setAvailableOffers([]);
+        setOffersLoadMsg("تعذر تحميل العروض المحفوظة.");
+      } finally {
+        if (mounted) setOffersLoading(false);
+      }
+    };
+    void loadOffers();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const measureServiceSectionHeight = () => {
@@ -1825,13 +1979,19 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [internalPaymentMethodDraft, setInternalPaymentMethodDraft] = useState<
     "" | "cash" | "card" | "transfer"
   >("");
+  const [internalPaymentTypeDraft, setInternalPaymentTypeDraft] = useState<BookingPaymentType>("full");
+  const [internalPaymentPaidAmountDraft, setInternalPaymentPaidAmountDraft] = useState("");
+  const [internalPaymentError, setInternalPaymentError] = useState("");
   const internalPaymentMethodRef = useRef<"cash" | "card" | "transfer" | null>(null);
+  const internalPaymentTypeRef = useRef<BookingPaymentType | null>(null);
+  const internalPaidAmountRef = useRef<number | null>(null);
   const internalSubmitModeRef = useRef<"payment" | "future">("payment");
   const internalBookingFormRef = useRef<HTMLFormElement | null>(null);
   const pendingInvoicePopupRef = useRef<Window | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [confirmTargetBooking, setConfirmTargetBooking] = useState<any | null>(null);
-  const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<"cash" | "card">("cash");
+  const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<"cash" | "card" | "transfer">("cash");
+  const [confirmPaymentError, setConfirmPaymentError] = useState("");
   const [refundModalOpen, setRefundModalOpen] = useState(false);
   const [refundTargetBooking, setRefundTargetBooking] = useState<any | null>(null);
   const [refundReason, setRefundReason] = useState("");
@@ -1842,6 +2002,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     { key: string; name: string; phone: string; count: number }[]
   >([]);
   const [selectedBookingNameKey, setSelectedBookingNameKey] = useState("");
+  const bookingSearchCacheRef = useRef<Record<string, { ts: number; rows: any[] }>>({});
+  const BOOKING_SEARCH_CACHE_TTL_MS = 20_000;
 
   const displayFoundBookings = useMemo(() => {
     if (bookingNameChoices.length > 1 && !selectedBookingNameKey) return [] as any[];
@@ -1945,6 +2107,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     // 3) digits only => treat as MK number
     const onlyDigits = compact.replace(/\D/g, "");
+    if (/^05\d{1,8}$/.test(onlyDigits)) {
+      return { kind: "phone", value: onlyDigits, publicIdCandidates: [] };
+    }
     if (onlyDigits && onlyDigits.length >= 3 && onlyDigits.length <= 12) {
       return {
         kind: "publicId",
@@ -2005,9 +2170,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }
 
   async function searchBookingsForReception(raw: string) {
+    const MAX_RESULTS = 25;
     const q0 = normalizeSearchKey(raw);
     const q = classifySearchKey(q0);
     if (q.kind === "empty") return [];
+    const cacheKey = `${q.kind}:${q0}`;
+    const cached = bookingSearchCacheRef.current[cacheKey];
+    if (cached && Date.now() - Number(cached.ts || 0) <= BOOKING_SEARCH_CACHE_TTL_MS) {
+      return (cached.rows || []).map((row) => ({ ...(row || {}) }));
+    }
 
     const colBookings = collection(db, "salons", SALON_ID, "bookings");
     const out: any[] = [];
@@ -2025,6 +2196,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     };
 
     const runEq = async (field: string, value: string, take = 25) => {
+      if (out.length >= MAX_RESULTS) return;
       const v = String(value || "").trim();
       if (!v) return;
       try {
@@ -2036,6 +2208,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     };
 
     const runPrefix = async (field: string, prefix: string, take = 25) => {
+      if (out.length >= MAX_RESULTS) return;
       const p = String(prefix || "").trim();
       if (!p) return;
       try {
@@ -2055,6 +2228,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     };
 
     const runRecent = async (take = 160) => {
+      if (out.length >= MAX_RESULTS) return;
       try {
         const snap = await getDocs(
           query(colBookings, orderBy("createdAt", "desc"), limit(take))
@@ -2070,86 +2244,217 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       }
     };
 
+    const qName = normalizeSearchText(q0);
+    const qPhone = phone10Digits(q0);
+    const qPublicIds = (q.kind === "publicId" ? q.publicIdCandidates : [q0])
+      .map((v) => normalizeSearchText(v))
+      .filter(Boolean);
+    const qDocId = normalizeSearchText(q0);
+    const isCancelledStatus = (b: any) => {
+      const s = String(b?.status || "").trim().toLowerCase();
+      return s === "cancelled" || s === "canceled" || s === "rejected";
+    };
+    const isCompletedStatus = (b: any) =>
+      String(b?.status || "").trim().toLowerCase() === "completed";
+
+    const matchesLoose = (b: any) => {
+      const nameCandidate = normalizeSearchText(
+        String(b?.clientName || b?.name || b?.fullName || "")
+      );
+      const phoneCandidate = phone10Digits(
+        String(b?.clientPhone || b?.phone || b?.mobile || "")
+      );
+      const publicIdCandidate = normalizeSearchText(
+        String(b?.publicId || b?.trackPublicId || b?.mk || "")
+      );
+      const publicBaseCandidate = normalizeSearchText(extractBookingPublicIdBase(b));
+      const idCandidate = normalizeSearchText(String(b?.id || b?.bookingId || ""));
+
+      if (q.kind === "phone") return !!qPhone && phoneCandidate.includes(qPhone);
+
+      if (q.kind === "publicId") {
+        return qPublicIds.some(
+          (needle) =>
+            publicIdCandidate.includes(needle) || publicBaseCandidate.includes(needle)
+        );
+      }
+
+      if (q.kind === "name") return !!qName && nameCandidate.includes(qName);
+      if (q.kind === "id") return !!qDocId && idCandidate.includes(qDocId);
+
+      return (
+        (!!qPhone && phoneCandidate.includes(qPhone)) ||
+        (!!qName &&
+          (nameCandidate.includes(qName) ||
+            publicIdCandidate.includes(qName) ||
+            publicBaseCandidate.includes(qName))) ||
+        (!!qDocId && idCandidate.includes(qDocId))
+      );
+    };
+
+    const matchesCancelledStrict = (b: any) => {
+      const nameCandidate = normalizeSearchText(
+        String(b?.clientName || b?.name || b?.fullName || "")
+      );
+      const phoneCandidate = phone10Digits(
+        String(b?.clientPhone || b?.phone || b?.mobile || "")
+      );
+      const publicIdCandidate = normalizeSearchText(
+        String(b?.publicId || b?.trackPublicId || b?.mk || "")
+      );
+      const publicBaseCandidate = normalizeSearchText(extractBookingPublicIdBase(b));
+      const publicDigitsCandidate = String(publicBaseCandidate || "").replace(/\D/g, "");
+      const idCandidate = normalizeSearchText(String(b?.id || b?.bookingId || ""));
+
+      if (q.kind === "phone") {
+        return !!qPhone && qPhone.length === 10 && phoneCandidate === qPhone;
+      }
+
+      if (q.kind === "publicId") {
+        return qPublicIds.some((needle) => {
+          const needleDigits = String(needle || "").replace(/\D/g, "");
+          return (
+            publicIdCandidate === needle ||
+            publicBaseCandidate === needle ||
+            (!!needleDigits && publicDigitsCandidate === needleDigits)
+          );
+        });
+      }
+
+      if (q.kind === "name") {
+        return (
+          !!qName &&
+          (nameCandidate === qName || nameCandidate.startsWith(`${qName} `))
+        );
+      }
+
+      if (q.kind === "id") return !!qDocId && idCandidate === qDocId;
+
+      return (
+        (!!qPhone &&
+          qPhone.length === 10 &&
+          phoneCandidate === qPhone) ||
+        (!!qName &&
+          (nameCandidate === qName || nameCandidate.startsWith(`${qName} `))) ||
+        (!!qDocId && idCandidate === qDocId)
+      );
+    };
+
+    const matchesCompletedStrict = (b: any) => {
+      const nameCandidate = normalizeSearchText(
+        String(b?.clientName || b?.name || b?.fullName || "")
+      );
+      const phoneCandidate = phone10Digits(
+        String(b?.clientPhone || b?.phone || b?.mobile || "")
+      );
+      const publicIdCandidate = normalizeSearchText(
+        String(b?.publicId || b?.trackPublicId || b?.mk || "")
+      );
+      const publicBaseCandidate = normalizeSearchText(extractBookingPublicIdBase(b));
+      const publicDigitsCandidate = String(publicBaseCandidate || "").replace(/\D/g, "");
+      const idCandidate = normalizeSearchText(String(b?.id || b?.bookingId || ""));
+
+      if (q.kind === "phone") {
+        return !!qPhone && qPhone.length === 10 && phoneCandidate === qPhone;
+      }
+
+      if (q.kind === "publicId") {
+        return qPublicIds.some((needle) => {
+          const needleDigits = String(needle || "").replace(/\D/g, "");
+          return (
+            publicIdCandidate === needle ||
+            publicBaseCandidate === needle ||
+            (!!needleDigits && publicDigitsCandidate === needleDigits)
+          );
+        });
+      }
+
+      if (q.kind === "name") return !!qName && nameCandidate === qName;
+      if (q.kind === "id") return !!qDocId && idCandidate === qDocId;
+
+      return (
+        (!!qPhone &&
+          qPhone.length === 10 &&
+          phoneCandidate === qPhone) ||
+        (!!qName && nameCandidate === qName) ||
+        (!!qDocId && idCandidate === qDocId)
+      );
+    };
+
+    const isMatch = (b: any) => {
+      if (isCompletedStatus(b)) return matchesCompletedStrict(b);
+      if (isCancelledStatus(b)) return matchesCancelledStrict(b);
+      return matchesLoose(b);
+    };
+
     // 1) by phone
     if (q.kind === "phone") {
-      await runEq("clientPhone", q.value, 40);
-      await runEq("phone", q.value, 40);
+      await Promise.all([
+        runEq("clientPhone", q.value, MAX_RESULTS),
+        runEq("phone", q.value, MAX_RESULTS),
+      ]);
     }
 
     // 2) by public id
-    if (q.kind === "publicId") {
-      for (const candidate of q.publicIdCandidates) {
-        await runEq("publicId", candidate, 25);
-        await runEq("trackPublicId", candidate, 25);
-        await runEq("mk", candidate, 25);
+    if (q.kind === "publicId" && out.length < MAX_RESULTS) {
+      const candidates = Array.from(new Set(q.publicIdCandidates)).slice(0, 2);
+      const tasks: Promise<void>[] = [];
+      for (const candidate of candidates) {
+        tasks.push(runEq("publicId", candidate, MAX_RESULTS));
+        tasks.push(runEq("trackPublicId", candidate, MAX_RESULTS));
+        tasks.push(runEq("mk", candidate, MAX_RESULTS));
       }
+      if (candidates[0]) {
+        tasks.push(runPrefix("publicId", candidates[0], MAX_RESULTS));
+      }
+      await Promise.all(tasks);
     }
 
     // 3) by name (case-insensitive, Arabic/English)
-    if (q.kind === "name") {
+    if (q.kind === "name" && out.length < MAX_RESULTS) {
       const nameRaw = String(q.value || "").trim();
       const nameLower = normalizeDigits(nameRaw).toLowerCase();
       const nameNeedle = normalizeSearchText(nameRaw);
 
-      await runPrefix("clientNameLower", nameLower, 30);
-      await runPrefix("nameLower", nameLower, 30);
+      const tasks: Promise<void>[] = [
+        runPrefix("clientNameLower", nameLower, MAX_RESULTS),
+        runPrefix("nameLower", nameLower, MAX_RESULTS),
+        runEq("clientName", nameRaw, MAX_RESULTS),
+        runEq("name", nameRaw, MAX_RESULTS),
+      ];
       if (nameNeedle && nameNeedle !== nameLower) {
-        await runPrefix("clientNameLower", nameNeedle, 30);
-        await runPrefix("nameLower", nameNeedle, 30);
+        tasks.push(runPrefix("clientNameLower", nameNeedle, MAX_RESULTS));
+        tasks.push(runPrefix("nameLower", nameNeedle, MAX_RESULTS));
       }
-      await runEq("clientName", nameRaw, 20);
-      await runEq("name", nameRaw, 20);
+      await Promise.all(tasks);
     }
 
     // 4) by doc id direct (always try as fallback)
-    const idCandidates = Array.from(
-      new Set<string>([q.value, q0, String(raw || "").trim()].filter(Boolean))
-    );
-    for (const idCandidate of idCandidates) {
-      try {
-        const snap = await getDoc(doc(db, "salons", SALON_ID, "bookings", idCandidate));
-        if (snap.exists()) pushDoc(snap.id, snap.data() as any);
-      } catch {
-        // ignore
+    if (out.length < MAX_RESULTS && (q.kind === "publicId" || q.kind === "id")) {
+      const idCandidates = Array.from(
+        new Set<string>([q.value, q0, String(raw || "").trim()].filter(Boolean))
+      );
+      for (const idCandidate of idCandidates) {
+        if (out.length >= MAX_RESULTS) break;
+        try {
+          const snap = await getDoc(doc(db, "salons", SALON_ID, "bookings", idCandidate));
+          if (snap.exists()) pushDoc(snap.id, snap.data() as any);
+        } catch {
+          // ignore
+        }
       }
     }
 
     // 5) broad fallback (helps when lower fields are missing or casing differs)
-    if (q.kind === "name" || out.length === 0) {
-      await runRecent(160);
+    if (q.kind === "name" && out.length === 0) {
+      await runRecent(25);
+      const filtered = out.filter((b) => isMatch(b));
+      out.splice(0, out.length, ...filtered);
+    }
 
-      const qName = normalizeSearchText(q0);
-      const qPhone = phone10Digits(q0);
-      const qPublicIds = (q.kind === "publicId" ? q.publicIdCandidates : [q0])
-        .map((v) => normalizeSearchText(v))
-        .filter(Boolean);
-
-      const filtered = out.filter((b) => {
-        const nameCandidate = normalizeSearchText(
-          String(b?.clientName || b?.name || b?.fullName || "")
-        );
-        const phoneCandidate = phone10Digits(
-          String(b?.clientPhone || b?.phone || b?.mobile || "")
-        );
-        const publicIdCandidate = normalizeSearchText(
-          String(b?.publicId || b?.trackPublicId || b?.mk || "")
-        );
-
-        if (q.kind === "phone") return !!qPhone && phoneCandidate.includes(qPhone);
-        if (q.kind === "publicId") {
-          return qPublicIds.some((needle) => publicIdCandidate.includes(needle));
-        }
-        if (q.kind === "name") return !!qName && nameCandidate.includes(qName);
-
-        return (
-          (!!qPhone && phoneCandidate.includes(qPhone)) ||
-          (!!qName && (nameCandidate.includes(qName) || publicIdCandidate.includes(qName)))
-        );
-      });
-
-      if (filtered.length) {
-        out.splice(0, out.length, ...filtered);
-      }
+    const statusAwareResults = out.filter((b) => isMatch(b));
+    if (statusAwareResults.length !== out.length) {
+      out.splice(0, out.length, ...statusAwareResults);
     }
 
     const toEpoch = (v: any) => {
@@ -2172,7 +2477,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     };
 
     out.sort((a, b) => toEpoch(b?.createdAt) - toEpoch(a?.createdAt));
-    return out.slice(0, 25);
+    const finalRows = out.slice(0, MAX_RESULTS);
+    bookingSearchCacheRef.current[cacheKey] = {
+      ts: Date.now(),
+      rows: finalRows.map((row) => ({ ...(row || {}) })),
+    };
+    return finalRows;
   }
 
   async function applyFutureTimeSelection(dateISO: string, time24: string) {
@@ -2670,7 +2980,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   function openConfirmAndPrintModal(b: any) {
     setConfirmTargetBooking(b || null);
-    setConfirmPaymentMethod("cash");
+    setConfirmPaymentMethod(normalizeExistingPaymentMethod((b as any)?.paymentMethod));
+    setConfirmPaymentError("");
     setPaymentModalOpen(true);
   }
 
@@ -2747,6 +3058,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   function enrichBookingForPrint(rawBooking: any) {
     const booking = rawBooking || {};
+    const payment = resolveExistingBookingPayment(booking);
     const serviceId = String(booking?.serviceId || booking?.service || "").trim();
     const sv = serviceId ? getServiceById(serviceId) : null;
 
@@ -2785,6 +3097,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     return {
       ...booking,
+      paymentType: payment.paymentType,
+      paidAmount: payment.paidAmount,
+      remainingAmount: payment.remainingAmount,
       serviceSectionId: sectionId || undefined,
       serviceSectionTitle: sectionTitle || undefined,
       serviceCategoryId: categoryId || undefined,
@@ -2802,7 +3117,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   async function completeAndPrintExistingBooking(
     b: any,
-    paymentMethodOverride?: "cash" | "card" | "transfer"
+    paymentMethodOverride?: "cash" | "card" | "transfer",
+    paymentOverride?: Partial<{ paymentType: BookingPaymentType; paidAmount: number }>
   ) {
     const id = String(b?.id || "").trim();
     if (!id) return;
@@ -2831,36 +3147,19 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setIsLoading(true);
     try {
       const now = Date.now();
-      const amount = Number(b?.finalPrice ?? b?.total ?? 0) || 0;
       const nextPaymentMethod =
         paymentMethodOverride || normalizeExistingPaymentMethod((b as any)?.paymentMethod);
+      const payment = resolveExistingBookingPayment(b, paymentOverride);
 
-      await updateDoc(doc(db, "salons", SALON_ID, "bookings", id), {
-        status: "completed",
-        confirmedAt: now,
-        confirmedByUid: staffUid,
-        completedAt: now,
-        completedByUid: staffUid,
-        paidAt: now,
-        paidByUid: staffUid,
+      await updateBookingFields(id, {
         paymentMethod: nextPaymentMethod,
+        paymentType: payment.paymentType,
+        paidAmount: payment.paidAmount,
+        remainingAmount: payment.remainingAmount,
         invoiceIssuedAt: now,
         channel: b?.channel || b?.source || "online",
       } as any);
-
-      await upsertIncomeFS(
-        {
-          id,
-          date: todayISO(),
-          amount,
-          method: nextPaymentMethod,
-          source: "invoice",
-          bookingId: id,
-          note: `invoice_from_reception:${String(nextPaymentMethod)}`,
-          createdAt: now,
-        } as any,
-        SALON_ID
-      );
+      await updateBookingStatus(id, "completed");
 
       void writeAuditLog({
         salonId: SALON_ID,
@@ -2872,14 +3171,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         after: {
           status: "completed",
           paymentMethod: nextPaymentMethod,
-          amount,
+          paymentType: payment.paymentType,
+          paidAmount: payment.paidAmount,
+          remainingAmount: payment.remainingAmount,
           paidAt: now,
           invoiceIssuedAt: now,
         },
         meta: {
           bookingId: id,
           paymentMethod: nextPaymentMethod,
-          amount,
+          paidAmount: payment.paidAmount,
+          remainingAmount: payment.remainingAmount,
         },
       });
 
@@ -2887,6 +3189,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         ...b,
         status: "completed",
         paymentMethod: nextPaymentMethod,
+        paymentType: payment.paymentType,
+        paidAmount: payment.paidAmount,
+        remainingAmount: payment.remainingAmount,
         paidAt: now,
       };
       const printReady = enrichBookingForPrint(refreshed);
@@ -2902,6 +3207,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       localStorage.setItem("allBookings", JSON.stringify([printReady]));
       setPaymentModalOpen(false);
       setConfirmTargetBooking(null);
+      setConfirmPaymentError("");
       if (!openInternalPrintPopup()) notifyInvoicePopupBlocked();
     } catch (e: any) {
       closePendingInvoicePopup();
@@ -2920,7 +3226,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   async function confirmAndPrintExistingBooking() {
     if (!confirmTargetBooking) return;
-    await completeAndPrintExistingBooking(confirmTargetBooking, confirmPaymentMethod);
+    const basePayment = resolveExistingBookingPayment(confirmTargetBooking);
+    const totalAmount = roundMoney2(basePayment.totalAmount);
+    setConfirmPaymentError("");
+    await completeAndPrintExistingBooking(confirmTargetBooking, confirmPaymentMethod, {
+      paymentType: "full",
+      paidAmount: totalAmount,
+    });
   }
 
   function openRefundModal(b: any) {
@@ -5275,6 +5587,44 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return (formData.items || []).reduce((sum, it) => sum + Number(it.basePrice || 0), 0);
   }, [formData.items]);
 
+  const selectableOffers = useMemo(() => {
+    const rows = Array.isArray(availableOffers) ? availableOffers : [];
+    return rows
+      .filter((o: any) => !isLegacyPackageLinkedOffer(o))
+      .sort((a: any, b: any) => {
+        const at = Number((a as any)?.updatedAt?.seconds || (a as any)?.createdAt?.seconds || 0);
+        const bt = Number((b as any)?.updatedAt?.seconds || (b as any)?.createdAt?.seconds || 0);
+        return bt - at;
+      });
+  }, [availableOffers]);
+
+  const selectedOffer = useMemo(() => {
+    const id = String(selectedOfferId || "").trim();
+    if (!id) return null;
+    return selectableOffers.find((o: any) => String((o as any)?.id || "").trim() === id) || null;
+  }, [selectableOffers, selectedOfferId]);
+
+  const discountApplicableIdx = useMemo(() => {
+    const items = formData.items || [];
+    if (!items.length) return [] as number[];
+    if (!selectedOffer) return items.map((_, idx) => idx);
+    const out: number[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const serviceId = String(items[i]?.serviceId || "").trim();
+      if (!serviceId) continue;
+      if (offerAppliesToService(selectedOffer as Offer, serviceId)) out.push(i);
+    }
+    return out;
+  }, [formData.items, selectedOffer]);
+
+  const discountBasePrice = useMemo(() => {
+    if (!discountApplicableIdx.length) return 0;
+    return discountApplicableIdx.reduce((sum, idx) => {
+      const row = (formData.items || [])[idx];
+      return sum + Number(row?.basePrice || 0);
+    }, 0);
+  }, [discountApplicableIdx, formData.items]);
+
   const finalPrice = useMemo(() => applied.finalPrice, [applied.finalPrice]);
   const baseSlotsForUi = useMemo(
     () =>
@@ -5284,33 +5634,50 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     [timeSlots, openTime, closeTime, slotStepMin]
   );
 
+  const setManualDiscountMode = (next: "" | "fixed" | "percent") => {
+    setSelectedOfferId("");
+    setManualDiscountType(next);
+  };
+
   useEffect(() => {
-    const rawValue = Number(manualDiscountValue);
-    const hasType = manualDiscountType === "fixed" || manualDiscountType === "percent";
+    const usingOffer = !!selectedOffer;
+    const rawValue = usingOffer ? Number((selectedOffer as any)?.value || 0) : Number(manualDiscountValue);
+    const sourceTypeRaw = usingOffer ? String((selectedOffer as any)?.discountType || "").trim() : manualDiscountType;
+    const hasType = sourceTypeRaw === "fixed" || sourceTypeRaw === "percent";
+    const sourceType = hasType ? (sourceTypeRaw as "fixed" | "percent") : null;
     const value = Number.isFinite(rawValue) ? Math.max(0, rawValue) : 0;
-    const warning =
-      manualDiscountType === "percent" && value > 100
-        ? "  100%   100% ."
-        : "";
-    const normalizedValue = manualDiscountType === "percent" ? Math.min(100, value) : value;
-    const calc = calcManualDiscount(basePrice, hasType ? manualDiscountType : null, normalizedValue);
+    const warningParts: string[] = [];
+    if (sourceType === "percent" && value > 100) {
+      warningParts.push("نسبة الخصم لا يمكن أن تتجاوز 100%.");
+    }
+    if (usingOffer && discountApplicableIdx.length === 0 && (formData.items || []).length > 0) {
+      warningParts.push("العرض المحدد لا ينطبق على الخدمات الموجودة في السلة.");
+    }
+    const normalizedValue = sourceType === "percent" ? Math.min(100, value) : value;
+    const calc = calcManualDiscount(discountBasePrice, sourceType, normalizedValue);
 
-    const title =
-      hasType && normalizedValue > 0
-        ? manualDiscountType === "percent"
-          ? `  (${normalizedValue.toFixed(0)}%)`
-          : `  (${normalizedValue.toFixed(0)} )`
-        : "";
+    const code = usingOffer ? normalizeCouponCode((selectedOffer as any)?.code) : "";
+    const title = usingOffer
+      ? String((selectedOffer as any)?.title || "").trim() || (code ? `كود ${code}` : "عرض محفوظ")
+      : hasType && normalizedValue > 0
+      ? sourceType === "percent"
+        ? `خصم يدوي (${normalizedValue.toFixed(0)}%)`
+        : `خصم يدوي (${normalizedValue.toFixed(0)} ريال)`
+      : "";
 
+    const discountAmount = calc.discountAmount;
     setApplied({
-      discountType: hasType ? manualDiscountType : null,
+      discountType: sourceType,
       discountValue: normalizedValue,
       title,
-      discountAmount: calc.discountAmount,
-      finalPrice: calc.finalPrice,
+      discountAmount,
+      finalPrice: Math.max(0, Number(basePrice || 0) - Number(discountAmount || 0)),
+      offerId: usingOffer ? String((selectedOffer as any)?.id || "").trim() || null : null,
+      couponCode: usingOffer ? code : "",
+      applicableItemIndexes: discountApplicableIdx,
     });
-    setDiscountMsg(warning);
-  }, [basePrice, manualDiscountType, manualDiscountValue]);
+    setDiscountMsg(warningParts.join(" "));
+  }, [basePrice, discountApplicableIdx, discountBasePrice, formData.items, manualDiscountType, manualDiscountValue, selectedOffer]);
 
   function allocateDiscount(items: CartItem[], discountTotal: number) {
     const total = items.reduce((s, it) => s + Number(it.basePrice || 0), 0);
@@ -5568,8 +5935,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const submitMode = internalSubmitModeRef.current;
     const isFutureBooking = submitMode === "future";
     const selectedPaymentMethod = isFutureBooking ? null : internalPaymentMethodRef.current;
-    if (!isFutureBooking && !selectedPaymentMethod) {
+    const selectedPaymentType = isFutureBooking ? null : internalPaymentTypeRef.current;
+    const selectedPaidAmount = isFutureBooking ? null : internalPaidAmountRef.current;
+    if (
+      !isFutureBooking &&
+      (!selectedPaymentMethod || !selectedPaymentType || !Number.isFinite(Number(selectedPaidAmount)))
+    ) {
+      const totalAmount = roundMoney2(Math.max(0, Number(finalPrice || 0)));
       setInternalPaymentMethodDraft("");
+      setInternalPaymentTypeDraft("full");
+      setInternalPaymentPaidAmountDraft(String(totalAmount));
+      setInternalPaymentError("");
       setInternalPaymentModalOpen(true);
       return;
     }
@@ -5711,7 +6087,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       }
 
       const discountTotal = Number(finalApplied.discountAmount || 0);
-      const applicableIdx: number[] = discountTotal > 0 ? items.map((_, idx) => idx) : [];
+      const applicableIdx: number[] =
+        discountTotal > 0
+          ? (Array.isArray(finalApplied.applicableItemIndexes)
+              ? finalApplied.applicableItemIndexes
+              : []
+            ).filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < items.length)
+          : [];
+      const appliedOfferId = String(finalApplied.offerId || "").trim();
+      const appliedCouponCode = normalizeCouponCode(finalApplied.couponCode || "");
+      const shouldPersistOffer = discountTotal > 0 && !!appliedOfferId;
+      const bookingOfferId = shouldPersistOffer ? appliedOfferId : null;
+      const bookingCouponCode = shouldPersistOffer ? appliedCouponCode : "";
 
       const perItemDiscounts = items.map(() => 0);
 
@@ -5737,12 +6124,67 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       }
 
       const userNote = String(formData.note || "").trim();
-      const offerNote = finalApplied.title
-        ? `Offer: ${finalApplied.title} | discount=${Number(finalApplied.discountAmount || 0).toFixed(0)}`
+      const offerNote = finalApplied.title && discountTotal > 0
+        ? `Offer: ${finalApplied.title}${bookingCouponCode ? ` (${bookingCouponCode})` : ""} | discount=${Number(finalApplied.discountAmount || 0).toFixed(0)}`
         : "";
 
       const paymentNote = selectedPaymentMethod ? `payment_method:${selectedPaymentMethod}` : "";
       const noteFinal = [userNote, offerNote, paymentNote].filter(Boolean).join(" | ") || undefined;
+
+      const paymentTargets: Array<{ key: string; total: number }> = [];
+      const seenPackageTargets = new Set<string>();
+      for (let i = 0; i < items.length; i++) {
+        const row = items[i];
+        const packageRunId = String(row.packageRunId || "").trim();
+        if (!packageRunId) {
+          const amount = Math.max(0, Number(row.basePrice || 0) - Number(perItemDiscounts[i] || 0));
+          paymentTargets.push({ key: `item:${i}`, total: roundMoney2(amount) });
+          continue;
+        }
+        if (seenPackageTargets.has(packageRunId)) continue;
+        const runEntries = items
+          .map((x, idx) => ({ x, idx }))
+          .filter(({ x }) => String(x.packageRunId || "").trim() === packageRunId);
+        if (runEntries.length <= 1) {
+          const amount = Math.max(0, Number(row.basePrice || 0) - Number(perItemDiscounts[i] || 0));
+          paymentTargets.push({ key: `item:${i}`, total: roundMoney2(amount) });
+          continue;
+        }
+        seenPackageTargets.add(packageRunId);
+        const runTotal = runEntries.reduce((sum, entry) => {
+          const discount = Number(perItemDiscounts[entry.idx] || 0);
+          return sum + Math.max(0, Number(entry.x.basePrice || 0) - discount);
+        }, 0);
+        paymentTargets.push({ key: `group:${packageRunId}`, total: roundMoney2(runTotal) });
+      }
+
+      const paymentByTargetKey = new Map<
+        string,
+        { paymentType: BookingPaymentType; paidAmount: number; remainingAmount: number; totalAmount: number }
+      >();
+      if (!isFutureBooking) {
+        const targetsTotal = roundMoney2(
+          paymentTargets.reduce((sum, target) => sum + Number(target.total || 0), 0)
+        );
+        const requestedPaid = roundMoney2(
+          Math.max(0, Math.min(targetsTotal, Number(selectedPaidAmount || 0)))
+        );
+        const allocated = allocatePaidAcrossTargets(
+          paymentTargets.map((target) => Number(target.total || 0)),
+          requestedPaid
+        );
+        paymentTargets.forEach((target, idx) => {
+          const totalAmount = roundMoney2(Math.max(0, Number(target.total || 0)));
+          const paidAmount = roundMoney2(Math.max(0, Math.min(totalAmount, Number(allocated[idx] || 0))));
+          const remainingAmount = roundMoney2(Math.max(0, totalAmount - paidAmount));
+          paymentByTargetKey.set(target.key, {
+            paymentType: paidAmount >= totalAmount ? "full" : "partial",
+            paidAmount,
+            remainingAmount,
+            totalAmount,
+          });
+        });
+      }
 
       const createdBookings: any[] = [];
       const processedPackageRuns = new Set<string>();
@@ -5803,6 +6245,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               const d = Number(perItemDiscounts[row.idx] || 0);
               return sum + Math.max(0, Number(row.item.basePrice || 0) - d);
             }, 0);
+            const groupPayment = paymentByTargetKey.get(`group:${packageRunId}`) || {
+              paymentType: "partial" as BookingPaymentType,
+              paidAmount: 0,
+              remainingAmount: roundMoney2(Math.max(0, Number(runFinalTotal || 0))),
+              totalAmount: roundMoney2(Math.max(0, Number(runFinalTotal || 0))),
+            };
 
             const employeeIdsInRun = Array.from(
               new Set(
@@ -5881,13 +6329,22 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 time: parentStartTime,
                 total: Number(runFinalTotal || 0),
                 finalPrice: Number(runFinalTotal || 0),
+                couponCode: bookingCouponCode,
+                offerId: bookingOfferId,
                 discountAmount: Number(runDiscountTotal || 0),
                 discountType: finalApplied.discountType || null,
                 discountValue: Number(finalApplied.discountValue || 0),
                 offerTitle: finalApplied.title || null,
                 status: isFutureBooking ? "pending" : "completed",
                 ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-                ...(!isFutureBooking ? { paidAt: Date.now() } : {}),
+                ...(!isFutureBooking
+                  ? {
+                      paymentType: groupPayment.paymentType,
+                      paidAmount: groupPayment.paidAmount,
+                      remainingAmount: groupPayment.remainingAmount,
+                    }
+                  : {}),
+                ...(!isFutureBooking && groupPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
                 note: [noteFinal, `packageRunId=${packageRunId}`, `packageItems=${sortedRun.length}`]
                   .filter(Boolean)
                   .join(" | "),
@@ -5939,13 +6396,21 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   time: String(item.time || "").trim(),
                   total: Number(currentFinal || 0),
                   finalPrice: Number(currentFinal || 0),
+                  couponCode: bookingCouponCode,
+                  offerId: bookingOfferId,
                   discountAmount: Number(perItemDiscounts[sourceIdx] || 0),
                   discountType: finalApplied.discountType || null,
                   discountValue: Number(finalApplied.discountValue || 0),
                   offerTitle: finalApplied.title || null,
                   status: isFutureBooking ? "pending" : "completed",
                   ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-                  ...(!isFutureBooking ? { paidAt: Date.now() } : {}),
+                  ...(!isFutureBooking
+                    ? {
+                        paymentType: "partial" as BookingPaymentType,
+                        paidAmount: 0,
+                        remainingAmount: roundMoney2(Math.max(0, Number(currentFinal || 0))),
+                      }
+                    : {}),
                   note: currentItemNote,
                   slotStepMinAtBooking: slotStepMin,
                   bufferMinAtBooking: bufferMin,
@@ -5981,8 +6446,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               time: parentStartTime,
               total: Number(runFinalTotal || 0),
               finalPrice: Number(runFinalTotal || 0),
-              couponCode: "",
-              offerId: null,
+              couponCode: bookingCouponCode,
+              offerId: bookingOfferId,
               offerTitle: finalApplied.title || null,
               discountAmount: runDiscountTotal,
               discountType: finalApplied.discountType || null,
@@ -5990,19 +6455,26 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               durationMin: parentDurationMin,
               status: isFutureBooking ? "pending" : "completed",
               ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-              ...(!isFutureBooking ? { paidAt: Date.now() } : {}),
+              ...(!isFutureBooking
+                ? {
+                    paymentType: groupPayment.paymentType,
+                    paidAmount: groupPayment.paidAmount,
+                    remainingAmount: groupPayment.remainingAmount,
+                  }
+                : {}),
+              ...(!isFutureBooking && groupPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
               channel: "internal",
               bookingGroupId: groupRes.parentId,
               subBookingIds: groupRes.itemIds,
               createdAt: Date.now(),
             });
 
-            if (!isFutureBooking && selectedPaymentMethod && incomeMethod) {
+            if (!isFutureBooking && selectedPaymentMethod && incomeMethod && groupPayment.paidAmount > 0) {
               await upsertIncomeFS(
                 {
                   id: String(groupRes.parentId || "").trim(),
                   date: todayISO(),
-                  amount: Number(runFinalTotal || 0),
+                  amount: Number(groupPayment.paidAmount || 0),
                   method: incomeMethod as any,
                   source: "booking",
                   bookingId: String(groupRes.parentId || "").trim(),
@@ -6044,6 +6516,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           categoryIdAtBooking,
           categoryNameAtBooking,
         };
+        const itemPayment = paymentByTargetKey.get(`item:${idx}`) || {
+          paymentType: "partial" as BookingPaymentType,
+          paidAmount: 0,
+          remainingAmount: roundMoney2(Math.max(0, Number(itemFinal || 0))),
+          totalAmount: roundMoney2(Math.max(0, Number(itemFinal || 0))),
+        };
 
         const res = await createBooking({
           userId: staffUid,
@@ -6069,6 +6547,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
           total: Number(itemFinal || 0),
           finalPrice: Number(itemFinal || 0),
+          couponCode: bookingCouponCode,
+          offerId: bookingOfferId,
           discountAmount: itemDiscount,
           discountType: finalApplied.discountType || null,
           discountValue: Number(finalApplied.discountValue || 0),
@@ -6076,7 +6556,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
           status: isFutureBooking ? "pending" : "completed",
           ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-          ...(!isFutureBooking ? { paidAt: Date.now() } : {}),
+          ...(!isFutureBooking
+            ? {
+                paymentType: itemPayment.paymentType,
+                paidAmount: itemPayment.paidAmount,
+                remainingAmount: itemPayment.remainingAmount,
+              }
+            : {}),
+          ...(!isFutureBooking && itemPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
           note: itemNote,
 
           slotStepMinAtBooking: slotStepMin,
@@ -6116,8 +6603,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           total: Number(itemFinal || 0),
           finalPrice: Number(itemFinal || 0),
 
-          couponCode: "",
-          offerId: null,
+          couponCode: bookingCouponCode,
+          offerId: bookingOfferId,
           offerTitle: finalApplied.title || null,
           discountAmount: itemDiscount,
           discountType: finalApplied.discountType || null,
@@ -6128,25 +6615,24 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           toolsFeeApplied: Number(it.toolsFeeApplied || 0),
           status: isFutureBooking ? "pending" : "completed",
           ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-          ...(!isFutureBooking ? { paidAt: Date.now() } : {}),
+          ...(!isFutureBooking
+            ? {
+                paymentType: itemPayment.paymentType,
+                paidAmount: itemPayment.paidAmount,
+                remainingAmount: itemPayment.remainingAmount,
+              }
+            : {}),
+          ...(!isFutureBooking && itemPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
           createdAt: Date.now(),
           channel: "internal",
         });
+      }
 
-        if (!isFutureBooking && selectedPaymentMethod && incomeMethod) {
-          await upsertIncomeFS(
-            {
-              id: String(res.id || "").trim(),
-              date: todayISO(),
-              amount: Number(itemFinal || 0),
-              method: incomeMethod as any,
-              source: "booking",
-              bookingId: String(res.id || "").trim(),
-              note: `internal_payment:${selectedPaymentMethod}`,
-              createdAt: Date.now(),
-            } as any,
-            SALON_ID
-          );
+      if (!isFutureBooking && shouldPersistOffer && bookingOfferId) {
+        try {
+          await incrementOfferUsage(SALON_ID, bookingOfferId);
+        } catch {
+          // ignore usage counter failures for internal flow
         }
       }
 
@@ -6154,6 +6640,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       localStorage.setItem("currentBooking", JSON.stringify(createdBookings[0] || null));
       localStorage.removeItem("bookingDraft");
       internalPaymentMethodRef.current = null;
+      internalPaymentTypeRef.current = null;
+      internalPaidAmountRef.current = null;
 
       if (isFutureBooking) {
         navigate("/success");
@@ -6206,6 +6694,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     } finally {
       setIsLoading(false);
       internalPaymentMethodRef.current = null;
+      internalPaymentTypeRef.current = null;
+      internalPaidAmountRef.current = null;
       internalSubmitModeRef.current = "payment";
     }
   };
@@ -6403,6 +6893,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           if (isLoading) return;
           setInternalPaymentModalOpen(false);
           setInternalPaymentMethodDraft("");
+          setInternalPaymentTypeDraft("full");
+          setInternalPaymentPaidAmountDraft(String(roundMoney2(Math.max(0, Number(finalPrice || 0)))));
+          setInternalPaymentError("");
+          internalPaymentMethodRef.current = null;
+          internalPaymentTypeRef.current = null;
+          internalPaidAmountRef.current = null;
         }}
         ariaLabel={"اختر طريقة الدفع"}
         size="sm"
@@ -6437,15 +6933,106 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               {"🏦 تحويل"}
             </button>
           </div>
+          <div className="mt-3">
+            <div className="form-label mb-2">نوع الدفع</div>
+            <div className="d-grid gap-2 bk-pay-methods">
+              <button
+                type="button"
+                className={`btn bk-pay-method-btn ${internalPaymentTypeDraft === "full" ? "is-active" : ""}`}
+                onClick={() => {
+                  setInternalPaymentTypeDraft("full");
+                  setInternalPaymentPaidAmountDraft(
+                    String(roundMoney2(Math.max(0, Number(finalPrice || 0))))
+                  );
+                  setInternalPaymentError("");
+                }}
+                disabled={isLoading}
+              >
+                دفع كامل
+              </button>
+              <button
+                type="button"
+                className={`btn bk-pay-method-btn ${internalPaymentTypeDraft === "partial" ? "is-active" : ""}`}
+                onClick={() => {
+                  setInternalPaymentTypeDraft("partial");
+                  setInternalPaymentError("");
+                }}
+                disabled={isLoading}
+              >
+                عربون
+              </button>
+            </div>
+            {internalPaymentTypeDraft === "partial" ? (
+              <div className="mt-2">
+                <label className="form-label mb-1">مبلغ العربون</label>
+                <input
+                  type="number"
+                  className="form-control"
+                  min={0}
+                  step="0.01"
+                  value={internalPaymentPaidAmountDraft}
+                  onChange={(e) => {
+                    setInternalPaymentPaidAmountDraft(String(e.target.value || ""));
+                    setInternalPaymentError("");
+                  }}
+                  placeholder="مثال: 150"
+                  disabled={isLoading}
+                />
+              </div>
+            ) : null}
+            <div className="small text-muted mt-2">
+              {(() => {
+                const total = roundMoney2(Math.max(0, Number(finalPrice || 0)));
+                const paid =
+                  internalPaymentTypeDraft === "full"
+                    ? total
+                    : roundMoney2(Math.max(0, Number(internalPaymentPaidAmountDraft || 0)));
+                const remaining = roundMoney2(Math.max(0, total - paid));
+                return `دفعت ${paid} ر.س - المتبقي ${remaining} ر.س`;
+              })()}
+            </div>
+            {internalPaymentError ? (
+              <div className="small mt-2" style={{ color: "#b42318" }}>
+                {internalPaymentError}
+              </div>
+            ) : null}
+          </div>
           <div className="d-grid gap-2 mt-3 bk-pay-modal-actions">
             <button
               type="button"
               className="btn btn-primary bk-pay-confirm-btn"
               onClick={() => {
-                if (!internalPaymentMethodDraft) return;
+                if (!internalPaymentMethodDraft) {
+                  setInternalPaymentError("اختاري طريقة الدفع أولًا.");
+                  return;
+                }
+                const totalAmount = roundMoney2(Math.max(0, Number(finalPrice || 0)));
+                const desiredType = internalPaymentTypeDraft === "partial" ? "partial" : "full";
+                let paidAmount =
+                  desiredType === "full"
+                    ? totalAmount
+                    : Number(internalPaymentPaidAmountDraft || 0);
+                if (desiredType === "partial") {
+                  if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
+                    setInternalPaymentError("اكتبي مبلغ العربون بشكل صحيح.");
+                    return;
+                  }
+                  if (paidAmount > totalAmount) {
+                    setInternalPaymentError("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز.");
+                    return;
+                  }
+                }
+                let finalType: BookingPaymentType = desiredType;
+                if (paidAmount >= totalAmount) {
+                  finalType = "full";
+                  paidAmount = totalAmount;
+                }
                 internalSubmitModeRef.current = "payment";
                 primeInternalPrintPopup();
                 internalPaymentMethodRef.current = internalPaymentMethodDraft;
+                internalPaymentTypeRef.current = finalType;
+                internalPaidAmountRef.current = roundMoney2(paidAmount);
+                setInternalPaymentError("");
                 setInternalPaymentModalOpen(false);
                 // Let the popup render first, then run the heavy submit flow.
                 window.setTimeout(() => {
@@ -6462,6 +7049,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               onClick={() => {
                 setInternalPaymentModalOpen(false);
                 setInternalPaymentMethodDraft("");
+                setInternalPaymentTypeDraft("full");
+                setInternalPaymentPaidAmountDraft(String(roundMoney2(Math.max(0, Number(finalPrice || 0)))));
+                setInternalPaymentError("");
+                internalPaymentMethodRef.current = null;
+                internalPaymentTypeRef.current = null;
+                internalPaidAmountRef.current = null;
               }}
               disabled={isLoading}
             >
@@ -6476,22 +7069,44 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           if (isLoading) return;
           setPaymentModalOpen(false);
           setConfirmTargetBooking(null);
+          setConfirmPaymentError("");
         }}
-        ariaLabel="تأكيد مع تغيير طريقة الدفع"
+        ariaLabel="تأكيد الدفع"
         size="sm"
       >
-        <div className="p-3">
-          <h5 className="mb-2" style={{ fontWeight: 800 }}>تأكيد مع تغيير طريقة الدفع</h5>
+        <div className="p-3 bk-pay-modal">
+          <h5 className="mb-2 bk-pay-modal-title">تأكيد الدفع + الطباعة</h5>
           <p className="mb-3 text-muted" style={{ fontSize: 13 }}>
-            اختاري طريقة الدفع الجديدة. بعد التأكيد يتم اعتماد الحجز كمكتمل ثم الانتقال للطباعة.
+            بعد التأكيد سيتم تحصيل المبلغ كاملًا واعتماد الحجز ثم الانتقال للطباعة.
           </p>
-          <div className="form-label mb-2">طريقة الدفع الجديدة</div>
+          {(() => {
+            const payment = resolveExistingBookingPayment(confirmTargetBooking);
+            const remaining = roundMoney2(payment.remainingAmount);
+            if (!(remaining > 0)) return null;
+            return (
+              <div
+                className="mb-3"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: "#b54708",
+                  background: "#fffaeb",
+                  border: "1px solid #fecd97",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                }}
+              >
+                هذا الحجز متبقي عليه مبلغ {remaining} ر.س، وسيتم الآن استلام المبلغ كاملًا.
+              </div>
+            );
+          })()}
+          <div className="form-label mb-2">طريقة الدفع</div>
           <div
             className="d-grid gap-2 bk-payment-method-grid"
           >
             <button
               type="button"
-              className={`btn bk-payment-method-btn ${confirmPaymentMethod === "cash" ? "is-active" : ""}`}
+              className={`btn bk-pay-method-btn ${confirmPaymentMethod === "cash" ? "is-active" : ""}`}
               onClick={() => setConfirmPaymentMethod("cash")}
               disabled={isLoading}
             >
@@ -6499,18 +7114,38 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             </button>
             <button
               type="button"
-              className={`btn bk-payment-method-btn ${confirmPaymentMethod === "card" ? "is-active" : ""}`}
+              className={`btn bk-pay-method-btn ${confirmPaymentMethod === "card" ? "is-active" : ""}`}
               onClick={() => setConfirmPaymentMethod("card")}
               disabled={isLoading}
             >
               شبكة
             </button>
+            <button
+              type="button"
+              className={`btn bk-pay-method-btn ${confirmPaymentMethod === "transfer" ? "is-active" : ""}`}
+              onClick={() => setConfirmPaymentMethod("transfer")}
+              disabled={isLoading}
+            >
+              تحويل
+            </button>
           </div>
+          <div className="small text-muted mt-2">
+            {(() => {
+              const total = resolveExistingBookingPayment(confirmTargetBooking).totalAmount;
+              const paid = roundMoney2(total);
+              const remaining = roundMoney2(Math.max(0, total - paid));
+              return `دفع كامل: ${paid} ر.س - المتبقي بعد التأكيد: ${remaining} ر.س`;
+            })()}
+          </div>
+          {confirmPaymentError ? (
+            <div className="small mt-2" style={{ color: "#b42318" }}>
+              {confirmPaymentError}
+            </div>
+          ) : null}
           <div className="d-grid gap-2 mt-3">
             <button
               type="button"
-              className="btn btn-primary"
-              style={{ borderRadius: 12, fontWeight: 800, minHeight: 48 }}
+              className="btn btn-primary bk-pay-confirm-btn"
               onClick={() => {
                 primeInternalPrintPopup();
                 void confirmAndPrintExistingBooking();
@@ -6521,11 +7156,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             </button>
             <button
               type="button"
-              className="btn btn-outline-secondary"
-              style={{ borderRadius: 12, minHeight: 44 }}
+              className="btn btn-outline-secondary bk-pay-cancel-btn"
               onClick={() => {
                 setPaymentModalOpen(false);
                 setConfirmTargetBooking(null);
+                setConfirmPaymentError("");
               }}
               disabled={isLoading}
             >
@@ -6689,6 +7324,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                             setSelectedBookingNameKey("");
                             setSelectedExistingBooking(null);
                           }}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            e.preventDefault();
+                            if (bookingSearching) return;
+                            void handleSearchBooking();
+                          }}
                           placeholder="ابحثي باسم أو رقم جوال أو MK"
                         />
                         <button
@@ -6751,6 +7392,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               <th>التاريخ</th>
                               <th>الوقت</th>
                               <th>الحالة</th>
+                              <th>الدفع</th>
                               <th style={{ width: 260 }}>إجراء</th>
                             </tr>
                           </thead>
@@ -6760,7 +7402,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               if (block.bookings.length > 1) {
                                 rows.push(
                                   <tr key={`group-${block.key}`} className="bk-existing-group-row">
-                                    <td colSpan={7}>
+                                    <td colSpan={8}>
                                       <div className="bk-existing-group-row-inner">
                                         <span className="bk-existing-group-title">حجز مجمّع</span>
                                         <span className="bk-existing-group-meta">
@@ -6779,6 +7421,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 const sectionLabel = readBookingSectionLabel(b);
                                 const categoryLabel = readBookingCategoryLabel(b);
                                 const serviceMeta = [sectionLabel, categoryLabel].filter(Boolean).join(" / ");
+                                const payment = resolveExistingBookingPayment(b);
+                                const isFullyPaid = roundMoney2(payment.remainingAmount) <= 0;
+                                const showPaidLine = roundMoney2(payment.paidAmount) > 0;
+                                const showRemainingLine = roundMoney2(payment.remainingAmount) > 0;
 
                                 rows.push(
                                   <tr key={String(b.id)}>
@@ -6798,6 +7444,27 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                       </span>
                                     </td>
                                     <td>
+                                      <div className="bk-payment-cell">
+                                        {showPaidLine ? (
+                                          <div className="bk-payment-line bk-payment-line-paid">
+                                            دفعت {payment.paidAmount.toFixed(2)} ر.س
+                                          </div>
+                                        ) : null}
+                                        {showRemainingLine ? (
+                                          <div
+                                            className={`bk-payment-line bk-payment-line-remaining ${
+                                              showPaidLine ? "is-secondary" : ""
+                                            }`}
+                                          >
+                                            المتبقي {payment.remainingAmount.toFixed(2)} ر.س
+                                          </div>
+                                        ) : null}
+                                        {!showPaidLine && !showRemainingLine ? (
+                                          <div className="bk-payment-empty">—</div>
+                                        ) : null}
+                                      </div>
+                                    </td>
+                                    <td>
                                       <div className="bk-existing-actions">
                                         {isCompletedStatus(b) ? (
                                           <button
@@ -6814,18 +7481,20 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                           </button>
                                         ) : !isCancelledStatus(b) && !isRefundedBooking(b) ? (
                                           <>
-                                            <button
-                                              type="button"
-                                              className="btn btn-sm bk-action-confirm"
-                                              style={{ borderRadius: 10 }}
-                                              onClick={() => {
-                                                primeInternalPrintPopup();
-                                                void completeAndPrintExistingBooking(b);
-                                              }}
-                                              disabled={isLoading}
-                                            >
-                                              تأكيد + طباعة
-                                            </button>
+                                            {isFullyPaid ? (
+                                              <button
+                                                type="button"
+                                                className="btn btn-sm bk-action-confirm"
+                                                style={{ borderRadius: 10 }}
+                                                onClick={() => {
+                                                  primeInternalPrintPopup();
+                                                  void completeAndPrintExistingBooking(b);
+                                                }}
+                                                disabled={isLoading}
+                                              >
+                                                تأكيد + طباعة
+                                              </button>
+                                            ) : null}
                                             <button
                                               type="button"
                                               className="btn btn-sm bk-action-confirm bk-action-confirm-alt"
@@ -6866,7 +7535,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                             })}
                             {bookingNameChoices.length > 1 && !selectedBookingNameKey ? (
                               <tr>
-                                <td colSpan={7} className="text-muted">
+                                <td colSpan={8} className="text-muted">
                                   اختاري اسمًا من القائمة أعلاه لعرض الحجوزات الخاصة به.
                                 </td>
                               </tr>
@@ -6920,7 +7589,27 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                   0
                                 ).toFixed(0)} ريال`,
                               ],
-                            ].map(([label, value]) => (
+                              [
+                                "نوع الدفع",
+                                resolveExistingBookingPayment(selectedExistingBooking).paymentType === "partial"
+                                  ? "عربون"
+                                  : "كامل",
+                              ],
+                              [
+                                "المدفوع",
+                                roundMoney2(resolveExistingBookingPayment(selectedExistingBooking).paidAmount) > 0
+                                  ? `${resolveExistingBookingPayment(selectedExistingBooking).paidAmount.toFixed(2)} ريال`
+                                  : "",
+                              ],
+                              [
+                                "المتبقي",
+                                roundMoney2(resolveExistingBookingPayment(selectedExistingBooking).remainingAmount) > 0
+                                  ? `${resolveExistingBookingPayment(selectedExistingBooking).remainingAmount.toFixed(2)} ريال`
+                                  : "",
+                              ],
+                            ]
+                              .filter(([, value]) => String(value || "").trim() !== "")
+                              .map(([label, value]) => (
                               <div key={label} className="bk-booking-row">
                                 <div className="bk-booking-label">{label}</div>
                                 <div className="bk-booking-value">
@@ -8025,13 +8714,58 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 <div className="mt-2">
                   <div className="row g-2 align-items-start bk-discount-editor">
                     <div className="col-12 bk-discount-editor-col">
+                      <label className="form-label">الخصم المحفوظ</label>
+                      <select
+                        className="form-select"
+                        value={selectedOfferId}
+                        disabled={isLoading || offersLoading}
+                        onChange={(e) => setSelectedOfferId(String(e.target.value || "").trim())}
+                      >
+                        <option value="">بدون خصم محفوظ</option>
+                        {selectableOffers.map((o: any) => {
+                          const code = normalizeCouponCode((o as any)?.code);
+                          const title = String((o as any)?.title || "").trim() || "عرض";
+                          const kind =
+                            String((o as any)?.discountType || "").trim() === "percent"
+                              ? `${Number((o as any)?.value || 0)}%`
+                              : `${Number((o as any)?.value || 0)} ريال`;
+                          return (
+                            <option key={String((o as any)?.id || "").trim()} value={String((o as any)?.id || "").trim()}>
+                              {title} {code ? `(${code})` : ""} - {kind}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {offersLoadMsg ? (
+                        <div className="small text-warning mt-1">{offersLoadMsg}</div>
+                      ) : selectedOffer ? (
+                        <div className="small text-muted mt-1">
+                          {String((selectedOffer as any)?.appliesTo || "all") === "services"
+                            ? `ينطبق على خدمات محددة (${discountApplicableIdx.length} خدمة حالياً في السلة)`
+                            : `ينطبق على كل خدمات السلة (${(formData.items || []).length})`}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {selectedOffer ? (
+                      <div className="col-12 bk-discount-editor-col bk-discount-value-col">
+                        <label className="form-label">كود الخصم</label>
+                        <input
+                          className="form-control bk-discount-value-input"
+                          value={normalizeCouponCode((selectedOffer as any)?.code)}
+                          readOnly
+                        />
+                      </div>
+                    ) : null}
+
+                    <div className="col-12 bk-discount-editor-col">
                       <label className="form-label">نوع الخصم</label>
                       <div className="bk-discount-type-cards" role="group" aria-label="نوع الخصم">
                         <button
                           type="button"
                           className={`bk-discount-type-card ${manualDiscountType === "" ? "is-active" : ""}`}
-                          disabled={isLoading}
-                          onClick={() => setManualDiscountType("")}
+                          disabled={isLoading || !!selectedOffer}
+                          onClick={() => setManualDiscountMode("")}
                           aria-pressed={manualDiscountType === ""}
                         >
                           بدون خصم
@@ -8039,8 +8773,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         <button
                           type="button"
                           className={`bk-discount-type-card ${manualDiscountType === "fixed" ? "is-active" : ""}`}
-                          disabled={isLoading}
-                          onClick={() => setManualDiscountType("fixed")}
+                          disabled={isLoading || !!selectedOffer}
+                          onClick={() => setManualDiscountMode("fixed")}
                           aria-pressed={manualDiscountType === "fixed"}
                         >
                           خصم مبلغ ثابت (ريال)
@@ -8048,8 +8782,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         <button
                           type="button"
                           className={`bk-discount-type-card ${manualDiscountType === "percent" ? "is-active" : ""}`}
-                          disabled={isLoading}
-                          onClick={() => setManualDiscountType("percent")}
+                          disabled={isLoading || !!selectedOffer}
+                          onClick={() => setManualDiscountMode("percent")}
                           aria-pressed={manualDiscountType === "percent"}
                         >
                           خصم نسبة مئوية (%)
@@ -8068,7 +8802,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         value={manualDiscountValue}
                         onChange={(e) => setManualDiscountValue(String(e.target.value || ""))}
                         placeholder={manualDiscountType === "percent" ? "مثال: 10" : "مثال: 50 ريال"}
-                        disabled={isLoading || !manualDiscountType}
+                        disabled={isLoading || !manualDiscountType || !!selectedOffer}
                       />
                     </div>
 
@@ -8283,9 +9017,3 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 };
 
 export default BookingInternal;
-
-
-
-
-
-
