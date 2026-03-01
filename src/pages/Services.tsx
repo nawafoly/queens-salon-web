@@ -1,5 +1,5 @@
 // src/pages/Services.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // ✅ صور منتجات (لا تغيّر منطق الصور)
 import hair from "../assets/images/hair.png";
@@ -37,6 +37,8 @@ import { db } from "../services/firebase";
 import { AppSettingsService } from "../services/AppSettingsService";
 
 const SALON_ID = "main";
+const SERVICES_CACHE_KEY = "services_page_cache_v1";
+const SERVICES_CACHE_TTL_MS = 10 * 60 * 1000;
 
 type SectionRow = {
   id: string;
@@ -86,6 +88,94 @@ type UiSection = {
   totalServices: number;
 };
 
+type ServicesPageCache = {
+  savedAt: number;
+  sections: SectionRow[];
+  categories: CategoryRow[];
+  services: ServiceRow[];
+};
+
+function normalizeSectionRow(raw: any, id = ""): SectionRow {
+  return {
+    id: String(id || raw?.id || "").trim(),
+    name: String(raw?.name || "").trim(),
+    active: Boolean(raw?.active ?? true),
+    order: Number(raw?.order ?? 0),
+  };
+}
+
+function normalizeCategoryRow(raw: any, id = ""): CategoryRow {
+  return {
+    id: String(id || raw?.id || "").trim(),
+    sectionId: String(raw?.sectionId || "").trim(),
+    name: String(raw?.name || "").trim(),
+    active: Boolean(raw?.active ?? true),
+    order: Number(raw?.order ?? 0),
+  };
+}
+
+function normalizeServiceRow(raw: any, id = ""): ServiceRow {
+  const seasonRaw = raw?.seasonPrice;
+  const seasonPrice =
+    seasonRaw === null || seasonRaw === undefined || String(seasonRaw).trim() === ""
+      ? null
+      : Math.max(0, Number(seasonRaw || 0));
+  return {
+    id: String(id || raw?.id || "").trim(),
+    name: String(raw?.name || "").trim(),
+    sectionId: String(raw?.sectionId || "").trim(),
+    categoryId: raw?.categoryId ? String(raw.categoryId).trim() : undefined,
+    price: Math.max(0, Number(raw?.price ?? 0)),
+    seasonPrice,
+    active: Boolean(raw?.active ?? true),
+  };
+}
+
+function readServicesPageCache(): ServicesPageCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(SERVICES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ServicesPageCache>;
+    const savedAt = Number(parsed?.savedAt || 0);
+    if (!savedAt || Date.now() - savedAt > SERVICES_CACHE_TTL_MS) return null;
+
+    const sections = Array.isArray(parsed?.sections)
+      ? parsed.sections.map((x: any) => normalizeSectionRow(x)).filter((x) => x.id && x.name)
+      : [];
+    const categories = Array.isArray(parsed?.categories)
+      ? parsed.categories
+          .map((x: any) => normalizeCategoryRow(x))
+          .filter((x) => x.id && x.sectionId && x.name)
+      : [];
+    const services = Array.isArray(parsed?.services)
+      ? parsed.services
+          .map((x: any) => normalizeServiceRow(x))
+          .filter((x) => x.id && x.sectionId && x.name)
+      : [];
+
+    if (!sections.length && !categories.length && !services.length) return null;
+    return { savedAt, sections, categories, services };
+  } catch {
+    return null;
+  }
+}
+
+function writeServicesPageCache(payload: Omit<ServicesPageCache, "savedAt">) {
+  if (typeof window === "undefined") return;
+  try {
+    const snapshot: ServicesPageCache = {
+      savedAt: Date.now(),
+      sections: payload.sections,
+      categories: payload.categories,
+      services: payload.services,
+    };
+    window.localStorage.setItem(SERVICES_CACHE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // ignore
+  }
+}
+
 function formatMoney(n: number) {
   return Number(n || 0).toFixed(0);
 }
@@ -125,36 +215,84 @@ export default function Services() {
   const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ فتح/إغلاق (تصنيف) مثل "عرض التفاصيل"
-  const [openCatKey, setOpenCatKey] = useState<string | null>(null);
+  // ✅ فتح/إغلاق متعدد للتصنيفات لتفادي قفزات السكروول عند إغلاق تصنيف بعيد بالأعلى
+  const [openCatKeys, setOpenCatKeys] = useState<Record<string, true>>({});
   const [openHairGuideSectionId, setOpenHairGuideSectionId] = useState<string | null>(null);
+  const scrollStabilizeTimersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const html = document.documentElement;
+    const previous = html.style.scrollBehavior;
+    html.style.scrollBehavior = "auto";
+    return () => {
+      html.style.scrollBehavior = previous;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === "undefined") return;
+      for (const t of scrollStabilizeTimersRef.current) {
+        window.clearTimeout(t);
+      }
+      scrollStabilizeTimersRef.current = [];
+    };
+  }, []);
 
   const toggleCategoryDetails = (key: string, triggerEl?: HTMLButtonElement | null) => {
-    const beforeTop = triggerEl?.getBoundingClientRect().top ?? null;
-    setOpenCatKey((prev) => (prev === key ? null : key));
+    if (typeof window !== "undefined") {
+      for (const t of scrollStabilizeTimersRef.current) {
+        window.clearTimeout(t);
+      }
+      scrollStabilizeTimersRef.current = [];
+    }
+
+    const winY =
+      typeof window !== "undefined"
+        ? Math.max(window.scrollY || 0, document.documentElement.scrollTop || 0, document.body.scrollTop || 0)
+        : 0;
+    const mainContent = typeof document !== "undefined"
+      ? document.querySelector<HTMLElement>(".main-content")
+      : null;
+    const mainY = mainContent ? mainContent.scrollTop : 0;
+
+    setOpenCatKeys((prev) => {
+      const next = { ...prev };
+      if (next[key]) {
+        delete next[key];
+      } else {
+        next[key] = true;
+      }
+      return next;
+    });
 
     if (typeof window === "undefined") return;
 
     const stabilizeScroll = () => {
-      if (!triggerEl || beforeTop === null) return;
-      const afterTop = triggerEl.getBoundingClientRect().top;
-      const delta = afterTop - beforeTop;
-      if (Math.abs(delta) > 1) {
-        try {
-          window.scrollBy({ top: delta, left: 0, behavior: "auto" });
-        } catch {
-          window.scrollTo(0, Math.max(0, window.scrollY + delta));
-        }
-      }
       try {
-        triggerEl.blur();
+        window.scrollTo(0, Math.max(0, winY));
       } catch {
         // ignore
+      }
+      document.documentElement.scrollTop = Math.max(0, winY);
+      document.body.scrollTop = Math.max(0, winY);
+      if (mainContent) mainContent.scrollTop = Math.max(0, mainY);
+      if (triggerEl) {
+        try {
+          triggerEl.blur();
+        } catch {
+          // ignore
+        }
       }
     };
 
     window.requestAnimationFrame(stabilizeScroll);
-    window.setTimeout(stabilizeScroll, 80);
+    const delays = [40, 110, 220, 360];
+    for (const delay of delays) {
+      const t = window.setTimeout(stabilizeScroll, delay);
+      scrollStabilizeTimersRef.current.push(t);
+    }
   };
 
   // ✅ ثوابت العرض حسب sectionId
@@ -251,82 +389,75 @@ export default function Services() {
 
   useEffect(() => {
     let mounted = true;
+    const cached = readServicesPageCache();
+    const hasCached = !!cached;
+
+    if (cached) {
+      setSections(cached.sections.filter((s) => s.active !== false));
+      setCategories(cached.categories.filter((c) => c.active !== false));
+      setServices(cached.services.filter((s) => s.active !== false));
+      setLoading(false);
+    }
 
     async function load() {
-      setLoading(true);
+      if (!hasCached) setLoading(true);
       setError(null);
 
       try {
-        // ✅ 1) Sections
+        // ✅ Fetch in parallel to reduce page-open latency.
         const sectionsRef = collection(db, "salons", SALON_ID, "service_sections");
-        const sectionsQ = query(sectionsRef, orderBy("order", "asc"));
-        const sectionsSnap = await getDocs(sectionsQ);
-
-        const sectionsRows: SectionRow[] = sectionsSnap.docs.map((d) => {
-          const data = d.data() as any;
-          return {
-            id: d.id,
-            name: String(data?.name || ""),
-            active: Boolean(data?.active ?? true),
-            order: Number(data?.order ?? 0),
-          };
-        });
-
-        // ✅ 2) Categories
         const catsRef = collection(db, "salons", SALON_ID, "service_categories");
-        const catsQ = query(catsRef, orderBy("order", "asc"));
-        const catsSnap = await getDocs(catsQ);
-
-        const catsRows: CategoryRow[] = catsSnap.docs.map((d) => {
-          const data = d.data() as any;
-          return {
-            id: d.id,
-            sectionId: String(data?.sectionId || ""),
-            name: String(data?.name || ""),
-            active: Boolean(data?.active ?? true),
-            order: Number(data?.order ?? 0),
-          };
-        });
-
-        // ✅ 3) Services (active only)
         const servicesRef = collection(db, "salons", SALON_ID, "services");
-        const servicesQ = query(servicesRef, where("active", "==", true));
-        const servicesSnap = await getDocs(servicesQ);
 
-        const servicesRows: ServiceRow[] = servicesSnap.docs.map((d) => {
-          const data = d.data() as any;
-          const seasonRaw = data?.seasonPrice;
-          const seasonPrice =
-            seasonRaw === null || seasonRaw === undefined || String(seasonRaw).trim() === ""
-              ? null
-              : Math.max(0, Number(seasonRaw || 0));
-          return {
-            id: d.id,
-            name: String(data?.name || ""),
-            sectionId: String(data?.sectionId || ""),
-            categoryId: data?.categoryId ? String(data.categoryId) : undefined,
-            price: Number(data?.price ?? 0),
-            seasonPrice,
-            active: Boolean(data?.active ?? true),
-          };
-        });
+        const sectionsQ = query(sectionsRef, orderBy("order", "asc"));
+        const catsQ = query(catsRef, orderBy("order", "asc"));
+        const servicesQ = query(servicesRef, where("active", "==", true));
+
+        const [sectionsSnap, catsSnap, servicesSnap] = await Promise.all([
+          getDocs(sectionsQ),
+          getDocs(catsQ),
+          getDocs(servicesQ),
+        ]);
+
+        const sectionsRows: SectionRow[] = sectionsSnap.docs
+          .map((d) => normalizeSectionRow(d.data(), d.id))
+          .filter((x) => x.id && x.name);
+
+        const catsRows: CategoryRow[] = catsSnap.docs
+          .map((d) => normalizeCategoryRow(d.data(), d.id))
+          .filter((x) => x.id && x.sectionId && x.name);
+
+        const servicesRows: ServiceRow[] = servicesSnap.docs
+          .map((d) => normalizeServiceRow(d.data(), d.id))
+          .filter((x) => x.id && x.sectionId && x.name);
 
         if (!mounted) return;
 
-        setSections(sectionsRows.filter((s) => s.active !== false));
-        setCategories(catsRows.filter((c) => c.active !== false));
-        setServices(servicesRows);
+        const nextSections = sectionsRows.filter((s) => s.active !== false);
+        const nextCategories = catsRows.filter((c) => c.active !== false);
+        const nextServices = servicesRows.filter((s) => s.active !== false);
+
+        setSections(nextSections);
+        setCategories(nextCategories);
+        setServices(nextServices);
+        writeServicesPageCache({
+          sections: nextSections,
+          categories: nextCategories,
+          services: nextServices,
+        });
       } catch (e: any) {
         if (!mounted) return;
         console.error("Services load error:", e);
-        setError(e?.message || "صار خطأ أثناء تحميل الخدمات");
+        if (!hasCached) {
+          setError(e?.message || "صار خطأ أثناء تحميل الخدمات");
+        }
       } finally {
         if (!mounted) return;
-        setLoading(false);
+        if (!hasCached) setLoading(false);
       }
     }
 
-    load();
+    void load();
     return () => {
       mounted = false;
     };
@@ -524,7 +655,7 @@ export default function Services() {
                         <div className="services-cat-stack">
                           {sec.categories.map((cat) => {
                             const key = `${sec.id}__${cat.id}`;
-                            const expanded = openCatKey === key;
+                            const expanded = !!openCatKeys[key];
 
                             return (
                               <div key={key} className="services-cat-item">

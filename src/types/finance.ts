@@ -62,6 +62,10 @@ export type IncomeItem = {
 
   bookingId?: string;
 
+  /** Optional client data (may exist for booking/internal/manual rows) */
+  clientName?: string;
+  clientPhone?: string;
+
   /** millis */
   createdAt: number;
 };

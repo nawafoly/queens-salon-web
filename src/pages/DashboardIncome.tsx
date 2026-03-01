@@ -102,7 +102,7 @@ function methodLabel(m: PaymentMethod) {
 
 function sourceLabel(source: string) {
   const s = String(source || "").trim().toLowerCase();
-  if (!s) return "-";
+  if (!s) return "غير محدد";
   if (s === "booking" || s === "\u062d\u062c\u0632") return "\u062d\u062c\u0632";
   if (s === "invoice" || s === "\u0641\u0627\u062a\u0648\u0631\u0629") return "\u0641\u0627\u062a\u0648\u0631\u0629";
   if (s === "internal_booking") return "\u062d\u062c\u0632 \u062f\u0627\u062e\u0644\u064a";
@@ -124,7 +124,7 @@ function sourceKind(source: string): "booking" | "invoice" | "internal" | "manua
 
 function methodLabelFromRaw(raw?: string): string {
   const s = String(raw || "").trim().toLowerCase();
-  if (!s) return "-";
+  if (!s) return "غير محدد";
   if (s === "cash" || s === "\u0643\u0627\u0634") return "\u0643\u0627\u0634";
   if (
     s === "card" ||
@@ -171,12 +171,6 @@ function formatIncomeNote(raw?: string): string {
   return parts.map((p) => formatIncomeNotePart(p)).filter(Boolean).join(" - ");
 }
 
-function noteHasPaymentSummary(raw?: string): boolean {
-  const note = String(raw || "").trim().toLowerCase();
-  if (!note) return false;
-  return /دفعت|المتبقي|عربون|دفع كامل|paid|remaining|deposit/.test(note);
-}
-
 function isSystemIncomeNote(raw?: string): boolean {
   const note = String(raw || "").trim().toLowerCase();
   if (!note) return false;
@@ -189,7 +183,7 @@ function isSystemIncomeNote(raw?: string): boolean {
 
 function toBookingRef(v?: string) {
   const raw = String(v || "").trim().toUpperCase();
-  if (!raw) return "-";
+  if (!raw) return "بدون حجز";
   if (/^MK-\d+$/.test(raw)) return raw;
   if (/^\d+$/.test(raw)) return `MK-${raw}`;
   return raw;
@@ -290,6 +284,53 @@ function buildPaymentSummary(meta?: BookingMeta): string {
   if (!rows.length) return typeText;
   const rowsText = rows.map((r) => `${r.label} ${round2(r.value)} \u0631.\u0633`).join(" - ");
   return `${typeText} - ${rowsText}`;
+}
+
+function resolveDisplayClientName(item: IncomeItem, meta?: BookingMeta): string {
+  const fromMeta = String(meta?.clientName || "").trim();
+  if (fromMeta) return fromMeta;
+
+  const raw = item as any;
+  const fromIncome = String(
+    raw?.clientName || raw?.customerName || raw?.name || raw?.client?.name || raw?.customer?.name || ""
+  ).trim();
+  if (fromIncome) return fromIncome;
+
+  return "عميلة غير محددة";
+}
+
+function resolveDisplayBookingRef(item: IncomeItem, meta?: BookingMeta): string {
+  const fromMeta = String(meta?.bookingRef || "").trim();
+  if (fromMeta && fromMeta !== "-") return fromMeta;
+
+  const bookingId = String(item.bookingId || "").trim();
+  if (bookingId) return toBookingRef(bookingId);
+
+  const kind = sourceKind(item.source || "");
+  if (kind === "manual" || kind === "invoice" || kind === "refund" || kind === "other") {
+    return "بدون حجز";
+  }
+  if (kind === "internal") return "حجز داخلي";
+  return "غير متوفر";
+}
+
+function resolveDisplayNoteText(item: IncomeItem, noteText: string): string {
+  if (noteText) return noteText;
+  const kind = sourceKind(item.source || "");
+  if (kind === "booking") return "سجل حجز بدون ملاحظة";
+  if (kind === "invoice") return "فاتورة بدون ملاحظة";
+  if (kind === "internal") return "دفع داخلي بدون ملاحظة";
+  if (kind === "manual") return "دخل يدوي بدون ملاحظة";
+  if (kind === "refund") return "استرجاع بدون ملاحظة";
+  return "بدون ملاحظة";
+}
+
+function buildFallbackPaymentSummaryText(item: IncomeItem, amountToShow: number): string {
+  const signedAmount = round2(Number(amountToShow || item.amount || 0));
+  const absAmount = Math.abs(signedAmount);
+  const kind = sourceKind(item.source || "");
+  if (kind === "refund" || signedAmount < 0) return `استرجاع ${absAmount.toFixed(2)} ر.س`;
+  return `مدفوع ${absAmount.toFixed(2)} ر.س`;
 }
 
 function toCsv(items: IncomeItem[]) {
@@ -1036,7 +1077,7 @@ export default function DashboardIncome() {
         </div>
 
         {/* Table */}
-        <div className="income-table-wrap" style={{ marginTop: 12 }}>
+        <div className="income-table-wrap">
           <div className="income-table-head">
             <div className="income-table-count">
               السجلات: {filtered.length.toLocaleString()}
@@ -1046,8 +1087,8 @@ export default function DashboardIncome() {
             )}
           </div>
 
-          <div className="table-responsive">
-            <table className="dashboard-table">
+          <div className="income-table-responsive">
+            <table className="income-table">
               <thead>
                 <tr>
                   <th className="income-col-date">التاريخ</th>
@@ -1057,13 +1098,14 @@ export default function DashboardIncome() {
                   <th className="income-col-booking">رقم الحجز</th>
                   <th className="income-col-source">المصدر</th>
                   <th className="income-col-note">ملاحظة</th>
+                  <th className="income-col-payment-summary">ملخص الدفع</th>
                   <th className="income-col-actions">إجراء</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ padding: 18, opacity: 0.75 }}>
+                    <td colSpan={9} className="income-empty-cell">
                       لا يوجد بيانات مطابقة للفترة الحالية.
                     </td>
                   </tr>
@@ -1075,7 +1117,15 @@ export default function DashboardIncome() {
                     const noteText = formatIncomeNote(x.note);
                     const noteClass = `income-note-primary${isSystemIncomeNote(x.note) ? " income-note-primary-system" : ""}`;
                     const srcKind = sourceKind(x.source || "");
-                    const showPaymentSummary = paymentSummaryRows.length > 0 && !noteHasPaymentSummary(noteText);
+                    const hasPaymentSummary = paymentSummaryRows.length > 0;
+                    const displayClientName = resolveDisplayClientName(x, bookingMeta);
+                    const displayBookingRef = resolveDisplayBookingRef(x, bookingMeta);
+                    const displayNoteText = resolveDisplayNoteText(x, noteText);
+                    const fallbackPaymentSummaryText = buildFallbackPaymentSummaryText(x, amountToShow);
+                    const fallbackPaymentSummaryClass =
+                      srcKind === "refund" || Number(amountToShow) < 0
+                        ? "income-payment-line-remaining"
+                        : "income-payment-line-paid";
                     return (
                       <tr key={x.id} className={"income-row income-row-" + x.method}>
                         <td className="income-col-date income-date">{x.date}</td>
@@ -1094,8 +1144,12 @@ export default function DashboardIncome() {
                             ) : null}
                           </div>
                         </td>
-                        <td className="income-col-client income-client-text">{bookingMeta?.clientName || "-"}</td>
-                        <td className="income-col-booking income-booking-text">{bookingMeta?.bookingRef || "-"}</td>
+                        <td className="income-col-client">
+                          <span className="income-client-text">{displayClientName}</span>
+                        </td>
+                        <td className="income-col-booking">
+                          <span className="income-booking-text">{displayBookingRef}</span>
+                        </td>
                         <td className="income-col-source">
                           <div className="income-source-cell">
                             <span className={`income-source-badge ${srcKind}`}>
@@ -1105,8 +1159,12 @@ export default function DashboardIncome() {
                         </td>
                         <td className="income-col-note">
                           <div className="income-note-text">
-                            {noteText ? <span className={noteClass}>{noteText}</span> : null}
-                            {showPaymentSummary ? (
+                            <span className={noteText ? noteClass : "income-note-primary"}>{displayNoteText}</span>
+                          </div>
+                        </td>
+                        <td className="income-col-payment-summary">
+                          <div className="income-payment-summary-cell">
+                            {hasPaymentSummary ? (
                               <span className="income-payment-summary">
                                 {paymentSummaryRows.map((row) => (
                                   <span
@@ -1117,8 +1175,13 @@ export default function DashboardIncome() {
                                   </span>
                                 ))}
                               </span>
-                            ) : null}
-                            {!showPaymentSummary && !noteText ? "-" : null}
+                            ) : (
+                              <span
+                                className={`income-payment-line ${fallbackPaymentSummaryClass}`}
+                              >
+                                {fallbackPaymentSummaryText}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="income-col-actions income-actions-cell">
@@ -1164,7 +1227,15 @@ export default function DashboardIncome() {
                 const noteText = formatIncomeNote(x.note);
                 const noteClass = `income-note-primary${isSystemIncomeNote(x.note) ? " income-note-primary-system" : ""}`;
                 const srcKind = sourceKind(x.source || "");
-                const showPaymentSummary = paymentSummaryRows.length > 0 && !noteHasPaymentSummary(noteText);
+                const hasPaymentSummary = paymentSummaryRows.length > 0;
+                const displayClientName = resolveDisplayClientName(x, bookingMeta);
+                const displayBookingRef = resolveDisplayBookingRef(x, bookingMeta);
+                const displayNoteText = resolveDisplayNoteText(x, noteText);
+                const fallbackPaymentSummaryText = buildFallbackPaymentSummaryText(x, amountToShow);
+                const fallbackPaymentSummaryClass =
+                  srcKind === "refund" || Number(amountToShow) < 0
+                    ? "income-payment-line-remaining"
+                    : "income-payment-line-paid";
                 return (
                   <article className="income-mobile-card" key={"mob_" + x.id}>
                     <div className="income-mobile-row">
@@ -1192,11 +1263,11 @@ export default function DashboardIncome() {
                     </div>
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">العميلة</span>
-                      <span className="income-mobile-value">{bookingMeta?.clientName || "-"}</span>
+                      <span className="income-mobile-value">{displayClientName}</span>
                     </div>
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">رقم الحجز</span>
-                      <span className="income-mobile-value">{bookingMeta?.bookingRef || "-"}</span>
+                      <span className="income-mobile-value">{displayBookingRef}</span>
                     </div>
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">المصدر</span>
@@ -1209,8 +1280,13 @@ export default function DashboardIncome() {
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">ملاحظة</span>
                       <span className="income-mobile-value">
-                        {noteText ? <span className={noteClass}>{noteText}</span> : null}
-                        {showPaymentSummary ? (
+                        <span className={noteText ? noteClass : "income-note-primary"}>{displayNoteText}</span>
+                      </span>
+                    </div>
+                    <div className="income-mobile-row">
+                      <span className="income-mobile-label">ملخص الدفع</span>
+                      <span className="income-mobile-value">
+                        {hasPaymentSummary ? (
                           <span className="income-payment-summary">
                             {paymentSummaryRows.map((row) => (
                               <span
@@ -1221,8 +1297,11 @@ export default function DashboardIncome() {
                               </span>
                             ))}
                           </span>
-                        ) : null}
-                        {!showPaymentSummary && !noteText ? "-" : null}
+                        ) : (
+                          <span className={`income-payment-line ${fallbackPaymentSummaryClass}`}>
+                            {fallbackPaymentSummaryText}
+                          </span>
+                        )}
                       </span>
                     </div>
                     <div className="income-mobile-actions">

@@ -416,6 +416,13 @@
   background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(245,245,244,0.92));
 }
 
+/* Prevent mobile scroll-jump while expanding category details inside cards */
+.services-page .offer-card-enhanced,
+.services-page .services-cat-stack,
+.services-page .services-cat-item{
+  overflow-anchor: none;
+}
+
 .services-page .services-hair-guide-image{
   width: 100%;
   max-height: 520px;
@@ -436,4 +443,3 @@
 .qs-wine {
   color: #40010D !important;
 }
-
