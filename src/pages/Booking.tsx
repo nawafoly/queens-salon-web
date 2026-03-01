@@ -926,6 +926,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const dateRef = useRef<HTMLInputElement>(null);
   const bookingCardRef = useRef<HTMLDivElement>(null);
   const lastStepRef = useRef<BookingStep | null>(null);
+  const stepScrollTimersRef = useRef<number[]>([]);
 
   // =========================
   // âœ… Settings (live)
@@ -1240,13 +1241,43 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       ) || null,
     [formData.items]
   );
-  const scrollBookingTop = (behavior: ScrollBehavior = "smooth") => {
+  const scrollBookingTop = (behavior: ScrollBehavior = "auto") => {
+    if (typeof document !== "undefined") {
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT")
+      ) {
+        try {
+          active.blur();
+        } catch {
+          // ignore
+        }
+      }
+    }
+
     const card = bookingCardRef.current;
     if (card) {
       try {
         card.scrollIntoView({ behavior, block: "start", inline: "nearest" });
       } catch {
         // ignore
+      }
+
+      // Some mobile browsers scroll a parent container instead of window.
+      let parent = card.parentElement;
+      while (parent) {
+        if (parent.scrollHeight > parent.clientHeight) {
+          try {
+            parent.scrollTo({ top: 0, behavior });
+          } catch {
+            parent.scrollTop = 0;
+          }
+          parent.scrollTop = 0;
+        }
+        parent = parent.parentElement;
       }
     }
 
@@ -1256,6 +1287,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         document.documentElement,
         document.body,
         document.querySelector<HTMLElement>(".main-content"),
+        document.querySelector<HTMLElement>(".booking-page"),
       ];
       for (const el of nodes) {
         if (!el) continue;
@@ -1264,6 +1296,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         } catch {
           el.scrollTop = 0;
         }
+        el.scrollTop = 0;
       }
     }
 
@@ -1273,6 +1306,30 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       } catch {
         window.scrollTo(0, 0);
       }
+      window.scrollTo(0, 0);
+    }
+  };
+
+  const scheduleBookingTopScroll = () => {
+    if (typeof window === "undefined") {
+      scrollBookingTop("auto");
+      return;
+    }
+    for (const t of stepScrollTimersRef.current) {
+      window.clearTimeout(t);
+    }
+    stepScrollTimersRef.current = [];
+
+    const isMobile = window.matchMedia("(max-width: 991px)").matches;
+    const behavior: ScrollBehavior = isMobile ? "auto" : "auto";
+
+    scrollBookingTop(behavior);
+    window.requestAnimationFrame(() => scrollBookingTop(behavior));
+
+    const delays = [90, 200, 360];
+    for (const delay of delays) {
+      const t = window.setTimeout(() => scrollBookingTop("auto"), delay);
+      stepScrollTimersRef.current.push(t);
     }
   };
 
@@ -1284,15 +1341,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (lastStepRef.current === currentStep) return;
     lastStepRef.current = currentStep;
 
-    if (typeof window !== "undefined") {
-      window.requestAnimationFrame(() => {
-        scrollBookingTop("smooth");
-      });
-      window.setTimeout(() => {
-        scrollBookingTop("auto");
-      }, 120);
-    }
+    scheduleBookingTopScroll();
   }, [currentStep]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === "undefined") return;
+      for (const t of stepScrollTimersRef.current) {
+        window.clearTimeout(t);
+      }
+      stepScrollTimersRef.current = [];
+    };
+  }, []);
 
   const clearAppliedCoupons = () => {
     setAppliedCoupons([]);

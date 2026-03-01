@@ -129,6 +129,34 @@ export default function Services() {
   const [openCatKey, setOpenCatKey] = useState<string | null>(null);
   const [openHairGuideSectionId, setOpenHairGuideSectionId] = useState<string | null>(null);
 
+  const toggleCategoryDetails = (key: string, triggerEl?: HTMLButtonElement | null) => {
+    const beforeTop = triggerEl?.getBoundingClientRect().top ?? null;
+    setOpenCatKey((prev) => (prev === key ? null : key));
+
+    if (typeof window === "undefined") return;
+
+    const stabilizeScroll = () => {
+      if (!triggerEl || beforeTop === null) return;
+      const afterTop = triggerEl.getBoundingClientRect().top;
+      const delta = afterTop - beforeTop;
+      if (Math.abs(delta) > 1) {
+        try {
+          window.scrollBy({ top: delta, left: 0, behavior: "auto" });
+        } catch {
+          window.scrollTo(0, Math.max(0, window.scrollY + delta));
+        }
+      }
+      try {
+        triggerEl.blur();
+      } catch {
+        // ignore
+      }
+    };
+
+    window.requestAnimationFrame(stabilizeScroll);
+    window.setTimeout(stabilizeScroll, 80);
+  };
+
   // ✅ ثوابت العرض حسب sectionId
   const uiBySectionId = useMemo(() => {
     return {
@@ -503,7 +531,9 @@ export default function Services() {
                                 <button
                                   type="button"
                                   className={["toggle-details", expanded ? "is-open" : ""].join(" ")}
-                                  onClick={() => setOpenCatKey(expanded ? null : key)}
+                                  onClick={(e) => {
+                                    toggleCategoryDetails(key, e.currentTarget);
+                                  }}
                                 >
                                   <span>{cat.name}</span>
                                   <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} />

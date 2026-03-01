@@ -101,8 +101,25 @@ function getNameFromStorage(): string {
 ================================ */
 function ScrollToTop() {
   const location = useLocation();
+  const timersRef = React.useRef<number[]>([]);
 
-  const scrollAllToTop = (behavior: ScrollBehavior = "auto") => {
+  const runScrollTop = (behavior: ScrollBehavior = "auto") => {
+    if (typeof document !== "undefined") {
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT")
+      ) {
+        try {
+          active.blur();
+        } catch {
+          // ignore
+        }
+      }
+    }
+
     if (typeof document !== "undefined") {
       const nodes: Array<HTMLElement | null> = [
         document.scrollingElement as HTMLElement | null,
@@ -117,6 +134,7 @@ function ScrollToTop() {
         } catch {
           el.scrollTop = 0;
         }
+        el.scrollTop = 0;
       }
     }
     if (typeof window !== "undefined") {
@@ -125,13 +143,56 @@ function ScrollToTop() {
       } catch {
         window.scrollTo(0, 0);
       }
+      window.scrollTo(0, 0);
+    }
+  };
+
+  const forceScrollTop = () => {
+    if (typeof window === "undefined") {
+      runScrollTop("auto");
+      return;
+    }
+    for (const t of timersRef.current) {
+      window.clearTimeout(t);
+    }
+    timersRef.current = [];
+
+    const isMobile = window.matchMedia("(max-width: 991px)").matches;
+    const behavior: ScrollBehavior = isMobile ? "auto" : "auto";
+
+    runScrollTop(behavior);
+    window.requestAnimationFrame(() => runScrollTop(behavior));
+
+    const delays = [80, 180, 320];
+    for (const delay of delays) {
+      const t = window.setTimeout(() => runScrollTop("auto"), delay);
+      timersRef.current.push(t);
     }
   };
 
   useLayoutEffect(() => {
-    scrollAllToTop("auto");
-    if (typeof window !== "undefined") {
-      window.requestAnimationFrame(() => scrollAllToTop("auto"));
+    forceScrollTop();
+    return () => {
+      if (typeof window === "undefined") return;
+      for (const t of timersRef.current) {
+        window.clearTimeout(t);
+      }
+      timersRef.current = [];
+    };
+  }, [location.pathname, location.search, location.hash, location.key]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onShow = () => {
+      forceScrollTop();
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => {
+      window.removeEventListener("pageshow", onShow);
+      for (const t of timersRef.current) {
+        window.clearTimeout(t);
+      }
+      timersRef.current = [];
     }
   }, [location.pathname, location.search, location.hash, location.key]);
 
@@ -365,4 +426,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
