@@ -791,7 +791,7 @@ const Offers = () => {
                               <Link
                                 to={{
                                   pathname: "/booking",
-                                  search: `?scope=offers_packages&pick=${encodeURIComponent(String(p.id || "").trim())}&autoAdd=1`,
+                                  search: `?scope=offers_packages&pick=${encodeURIComponent(`pkg:${String(p.id || "").trim()}`)}&autoAdd=1`,
                                 }}
                                 className="btn btn-primary w-100 btn-lg rounded-pill"
                               >

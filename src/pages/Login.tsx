@@ -1,7 +1,7 @@
 // src/pages/Login.tsx
 import React, { useEffect, useState } from "react";
 import logoBelak from "../assets/images/ssunnamed2.png";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faEye,
@@ -59,6 +59,12 @@ type AdminRole = "owner" | "admin" | "reception" | "staff" | "pending";
 ========================= */
 function cleanEmail(v: string) {
   return String(v || "").trim().toLowerCase();
+}
+
+function sanitizeNextPath(raw: string) {
+  const value = String(raw || "").trim();
+  if (!value.startsWith("/") || value.startsWith("//")) return "";
+  return value;
 }
 
 function isMalikatAdminEmail(email: string) {
@@ -258,7 +264,31 @@ const Login: React.FC = () => {
   // ✅ جديد: رسالة نجاح (عشان تعرف إن العملية تمت)
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const location = useLocation();
   const navigate = useNavigate();
+  const requestedNextPath = sanitizeNextPath(
+    new URLSearchParams(location.search).get("next") || ""
+  );
+  const clientLandingPath = requestedNextPath || "/profile";
+
+  useEffect(() => {
+    const mode = String(new URLSearchParams(location.search).get("mode") || "")
+      .trim()
+      .toLowerCase();
+
+    if (mode === "register") {
+      setErrorMsg(null);
+      setSuccessMsg(null);
+      setIsRegister(true);
+      return;
+    }
+
+    if (mode === "login") {
+      setErrorMsg(null);
+      setSuccessMsg(null);
+      setIsRegister(false);
+    }
+  }, [location.search]);
 
   // ✅ لو الجلسة موجودة بالفعل: وجّه حسب الدور من Auth + Firestore
   useEffect(() => {
@@ -282,7 +312,7 @@ const Login: React.FC = () => {
         navigate("/dashboard/overview", { replace: true });
         return;
       }
-      if (role === "client") navigate("/profile", { replace: true });
+      if (role === "client") navigate(clientLandingPath, { replace: true });
     };
 
     redirectByRole(auth.currentUser).catch(() => {});
@@ -293,7 +323,7 @@ const Login: React.FC = () => {
       alive = false;
       unsub();
     };
-  }, [navigate]);
+  }, [navigate, clientLandingPath]);
 
   // مساعدة: التحقق من الجوال والإيميل
   const isEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -527,7 +557,7 @@ const Login: React.FC = () => {
         if (canAccessDashboard(profile.role)) {
           navigate("/dashboard/overview", { replace: true });
         } else {
-          navigate("/profile", { replace: true });
+          navigate(clientLandingPath, { replace: true });
         }
 
         return;
@@ -553,7 +583,7 @@ const Login: React.FC = () => {
             source: "client_app",
             after: { phone: user.phone, email: user.email },
           });
-          navigate("/profile", { replace: true });
+          navigate(clientLandingPath, { replace: true });
           return;
         }
 
@@ -698,7 +728,7 @@ const Login: React.FC = () => {
       setSuccessMsg("تم إنشاء الحساب بنجاح ✅");
 
       // ✅ 7) توجيه العميلة
-      navigate("/profile", { replace: true });
+      navigate(clientLandingPath, { replace: true });
     } catch (err: any) {
       console.error("❌ SIGNUP FAILED:", {
         code: err?.code,
@@ -756,7 +786,7 @@ const Login: React.FC = () => {
             // عميلة
             const profile = await createOrLoadUserProfile(u);
             storeFirebaseSession(profile);
-            navigate("/profile", { replace: true });
+            navigate(clientLandingPath, { replace: true });
             return;
           }
 

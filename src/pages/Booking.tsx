@@ -105,6 +105,7 @@ import { createOrLoadUserProfile } from "../services/userProfile";
 
 // âœ… Custom modal بدل alert
 import ConfirmModal from "../components/ConfirmModal";
+import Modal from "../components/Modal";
 
 const createBookingGroup = (
   firestoreBookings as {
@@ -186,6 +187,20 @@ type AppliedCouponEntry = {
   offerTitle: string;
   discountAmount: number;
   applicableItemIds: string[];
+};
+
+type OfferServiceChoice = {
+  serviceId: string;
+  serviceName: string;
+};
+
+type OfferServicePickerState = {
+  open: boolean;
+  offerTitle: string;
+  couponCode: string;
+  choices: OfferServiceChoice[];
+  selectedServiceId: string;
+  adding: boolean;
 };
 
 function extractMinPrice(priceText: string): number {
@@ -1045,6 +1060,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const fsSectionCatalogInFlightRef = useRef<
     Record<string, Promise<FsSectionCatalogCacheRow>>
   >({});
+  const serviceByIdCacheRef = useRef<Record<string, FlatService>>({});
 
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
@@ -1072,6 +1088,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // âœ… Auto-fill client info (name/phone) from Profile
   // =========================
   const [signedUid, setSignedUid] = useState<string | null>(null);
+  const [authResolved, setAuthResolved] = useState<boolean>(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1103,6 +1120,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       if (!u || (u as any).isAnonymous) {
         setSignedUid(null);
         fillFromLocalStorage();
+        if (!cancelled) setAuthResolved(true);
         return;
       }
 
@@ -1128,6 +1146,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         if (phone) localStorage.setItem("userPhone", phone);
       } catch {
         fillFromLocalStorage();
+      } finally {
+        if (!cancelled) setAuthResolved(true);
       }
     });
 
@@ -1151,6 +1171,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [offerMsg, setOfferMsg] = useState("");
   const [offerMsgKind, setOfferMsgKind] = useState<CouponMessageKind>("");
   const [offerLandingMsg, setOfferLandingMsg] = useState("");
+  const [offerServicePicker, setOfferServicePicker] = useState<OfferServicePickerState>({
+    open: false,
+    offerTitle: "",
+    couponCode: "",
+    choices: [],
+    selectedServiceId: "",
+    adding: false,
+  });
   const [manualOverride, setManualOverride] = useState(false);
 
   const clearAppliedCoupons = () => {
@@ -2040,11 +2068,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   useEffect(() => {
     const params = new URLSearchParams(location.search || "");
     const scope = String(params.get("scope") || "").trim();
-    const pick = String(params.get("pick") || "").trim();
+    const pickRaw = String(params.get("pick") || "").trim();
     const autoAdd = String(params.get("autoAdd") || "").trim() === "1";
-    if (scope !== "offers_packages" || !pick) return;
+    if (scope !== "offers_packages" || !pickRaw) return;
 
-    const isOfferPick = pick.startsWith("offer:");
+    const isOfferPick = pickRaw.startsWith("offer:");
     if (isOfferPick) {
       params.delete("scope");
       params.delete("pick");
@@ -2060,27 +2088,35 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       return;
     }
 
+    const packageDocId = pickRaw.startsWith("pkg:")
+      ? String(pickRaw.slice("pkg:".length) || "").trim()
+      : pickRaw;
+    const packagePickerId = packageDocId ? `pkg:${packageDocId}` : pickRaw;
+
     setPickerScope("offers_packages");
-    setServicePicker(pick);
+    setServicePicker(packagePickerId);
     setSelectedSectionId("");
     setSelectedCategory("");
     setShowHairGuide(false);
     setOfferStartTime("");
 
-    const hasPackage = packageOptions.some((p) => String(p.id || "").trim() === pick);
-    if (autoAdd && hasPackage) setAutoAddPackageId(pick);
+    const hasPackage = packageOptions.some((p) => {
+      const pid = String(p.id || "").trim();
+      return pid === packagePickerId || pid === packageDocId;
+    });
+    if (autoAdd && hasPackage) setAutoAddPackageId(packagePickerId);
     if (!hasPackage) {
       void (async () => {
         try {
-          const snap = await getDoc(doc(db, "salons", SALON_ID, "service_packages", pick));
+          const snap = await getDoc(doc(db, "salons", SALON_ID, "service_packages", packageDocId));
           if (!snap.exists()) return;
           const raw = snap.data() as any;
           setFsPackages((prev) => {
-            if ((prev || []).some((x) => String((x as any)?.id || "").trim() === pick)) return prev;
-            return [...(prev || []), ({ id: pick, ...(raw || {}) } as any)];
+            if ((prev || []).some((x) => String((x as any)?.id || "").trim() === packageDocId)) return prev;
+            return [...(prev || []), ({ id: packageDocId, ...(raw || {}) } as any)];
           });
           setCatalogMode("firestore");
-          if (autoAdd) setAutoAddPackageId(pick);
+          if (autoAdd) setAutoAddPackageId(packagePickerId);
         } catch {
           // no-op
         }
@@ -2106,11 +2142,71 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const fromOffer = String(params.get("fromOffer") || "").trim() === "1";
     if (!coupon) return;
 
-    setCouponCode(normalizeCouponCode(coupon));
+    const normalizedCoupon = normalizeCouponCode(coupon);
+    setCouponCode(normalizedCoupon);
     setOfferMsg("تم تعبئة كود الخصم تلقائيًا.");
     setOfferMsgKind("success");
     if (fromOffer) {
       setOfferLandingMsg("تم استخدام العرض، أكمل تعبئة بيانات الحجز لإتمام حجزك.");
+      void (async () => {
+        try {
+          const offer = await findActiveOfferByCode(SALON_ID, normalizedCoupon);
+          if (!offer) return;
+
+          const appliesToServices = String((offer as any)?.appliesTo || "all").trim().toLowerCase() === "services";
+          if (!appliesToServices) return;
+
+          const rawServiceIds: unknown[] = Array.isArray((offer as any)?.serviceIds)
+            ? (offer as any).serviceIds
+            : [];
+          const serviceIdSet = new Set<string>();
+          for (const rawId of rawServiceIds) {
+            const serviceId = String(rawId ?? "").trim();
+            if (!serviceId) continue;
+            serviceIdSet.add(serviceId);
+          }
+          const serviceIds: string[] = Array.from(serviceIdSet);
+          if (!serviceIds.length) return;
+
+          const choicesRaw: OfferServiceChoice[] = await Promise.all(
+            serviceIds.map(async (rawServiceId: string): Promise<OfferServiceChoice> => {
+              const serviceId = String(rawServiceId ?? "").trim();
+              const sv = await ensureServiceByIdForOffer(serviceId);
+              return {
+                serviceId,
+                serviceName: String(sv?.name || serviceId).trim() || serviceId,
+              };
+            })
+          );
+          const choices = choicesRaw.filter((x) => String(x.serviceId || "").trim());
+          if (!choices.length) return;
+
+          if (choices.length === 1) {
+            const pickedServiceId = String(choices[0]?.serviceId || "").trim();
+            if (!pickedServiceId) return;
+            const alreadyInCart = (formData.items || []).some(
+              (it) => String(it.serviceId || "").trim() === pickedServiceId
+            );
+            if (!alreadyInCart) {
+              await addServiceToCart(pickedServiceId);
+              setOfferLandingMsg("تم استخدام العرض وإضافة الخدمة تلقائيًا للسلة. أكمل تعبئة بيانات الحجز.");
+            }
+            return;
+          }
+
+          setOfferLandingMsg("العرض يشمل أكثر من خدمة. اختاري خدمة واحدة لتطبيق العرض عليها.");
+          setOfferServicePicker({
+            open: true,
+            offerTitle: String((offer as any)?.title || "").trim() || "العرض",
+            couponCode: normalizedCoupon,
+            choices,
+            selectedServiceId: "",
+            adding: false,
+          });
+        } catch {
+          // no-op
+        }
+      })();
     }
     setManualOverride(false);
 
@@ -2190,7 +2286,82 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   }, [selectedSectionId, sectionOptionsSafe]);
 
   const getServiceById = (id: string) => {
-    return servicesFlat.find((sv) => sv.id === id) || null;
+    const serviceId = String(id || "").trim();
+    if (!serviceId) return null;
+    const direct = servicesFlat.find((sv) => String(sv.id || "").trim() === serviceId) || null;
+    if (direct) return direct;
+    const cached = serviceByIdCacheRef.current[serviceId];
+    return cached || null;
+  };
+
+  const ensureServiceByIdForOffer = async (idRaw: string): Promise<FlatService | null> => {
+    const id = String(idRaw || "").trim();
+    if (!id || id.startsWith("pkg:") || id.startsWith("offer:")) return null;
+
+    const direct = getServiceById(id);
+    if (direct) return direct;
+
+    const cached = serviceByIdCacheRef.current[id];
+    if (cached) return cached;
+
+    try {
+      const snap = await getDoc(doc(db, "salons", SALON_ID, "services", id));
+      if (!snap.exists()) return null;
+      const raw = snap.data() as any;
+      if (raw?.active === false) return null;
+
+      const name = readDisplayLabel(raw, id);
+      if (!name) return null;
+
+      const sectionId = String(raw?.sectionId || "").trim();
+      const sectionTitle = (
+        String(sectionLabelById.get(sectionId) || "").trim() ||
+        readDisplayLabel(raw?.section, sectionId) ||
+        sectionId ||
+        "الخدمات"
+      ).trim();
+
+      const categoryId = String(raw?.categoryId || "").trim();
+      const category = (
+        String(categoryLabelById.get(categoryId) || "").trim() ||
+        String(raw?.categoryName || raw?.category || "").trim() ||
+        categoryId ||
+        "عام"
+      ).trim();
+
+      const priceNum = Number((raw as any)?.["السعر"] ?? raw?.price ?? 0);
+      const seasonPriceRaw =
+        (raw as any)?.seasonPrice ??
+        (raw as any)?.["سعر_الموسم"] ??
+        (raw as any)?.season_price ??
+        (raw as any)?.seasonPriceValue ??
+        0;
+      const seasonPriceNum = Number(String(seasonPriceRaw).replace(/[^\d.]/g, "")) || 0;
+      const seasonPrice = seasonPriceNum > 0 ? seasonPriceNum : undefined;
+      const durationMin = Number(
+        (raw as any)?.["المدة"] ?? raw?.durationMin ?? DEFAULT_SERVICE_DURATION_MIN
+      );
+
+      const normalized: FlatService = {
+        id,
+        kind: "service",
+        sectionId,
+        sectionTitle,
+        categoryId: categoryId || undefined,
+        category: category || "عام",
+        name,
+        priceText: `${Number.isFinite(priceNum) ? priceNum : 0} ريال`,
+        basePrice: Number.isFinite(priceNum) ? priceNum : 0,
+        seasonPrice,
+        durationMin,
+        source: "firestore",
+      };
+
+      serviceByIdCacheRef.current[id] = normalized;
+      return normalized;
+    } catch {
+      return null;
+    }
   };
 
   const serviceIdByName = useMemo(() => {
@@ -2652,8 +2823,19 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   };
 
   const addServiceToCart = async (idRaw: string) => {
-    const id = String(idRaw || "").trim();
+    let id = String(idRaw || "").trim();
     if (!id) return;
+    const bookingDateSafe = String(bookingDate || "").trim() || todayISO();
+
+    if (!id.startsWith("offer:") && !id.startsWith("pkg:")) {
+      const packagePickerId = `pkg:${id}`;
+      const existsAsPackage = packageOptions.some(
+        (p) => String(p.id || "").trim() === packagePickerId
+      );
+      if (existsAsPackage) {
+        id = packagePickerId;
+      }
+    }
 
     if (id.startsWith("offer:")) {
       const offerId = id.slice("offer:".length).trim();
@@ -2700,7 +2882,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             employeeId: "__AUTO_SEQ__",
             employeeUid: "",
             employeeName: "تعيين تلقائي",
-            date: bookingDate,
+            date: bookingDateSafe,
             time: startTime,
             locked: true,
             serviceSectionId: "offers",
@@ -2720,7 +2902,10 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       return;
     }
 
-    const sv = getServiceById(id);
+    let sv = getServiceById(id);
+    if (!sv) {
+      sv = await ensureServiceByIdForOffer(id);
+    }
     if (!sv) return;
 
     if (sv.kind === "package") {
@@ -2728,9 +2913,17 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       const pkgServiceIds = (Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [])
         .map((x) => String(x || "").trim())
         .filter(Boolean);
-      const serviceIds = pkgServices.length
-        ? pkgServices.map((x: any) => String(x?.serviceId || "").trim()).filter(Boolean)
-        : pkgServiceIds;
+      const serviceIdsFromMeta = pkgServices
+        .map((x: any) =>
+          String(
+            x?.serviceId ||
+            x?.id ||
+            x?.service?.id ||
+            ""
+          ).trim()
+        )
+        .filter(Boolean);
+      const serviceIds = serviceIdsFromMeta.length ? serviceIdsFromMeta : pkgServiceIds;
       if (!serviceIds.length) return;
 
       const baseByService = serviceIds.map((serviceId, idx) => {
@@ -2810,7 +3003,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           employeeId: "",
           employeeUid: "",
           employeeName: "",
-          date: bookingDate,
+          date: bookingDateSafe,
           time: "",
           locked: false,
           serviceSectionId: sectionId,
@@ -2878,7 +3071,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           employeeId: "",
           employeeUid: "",
           employeeName: "",
-          date: bookingDate,
+          date: bookingDateSafe,
           time: "",
           locked: false,
           serviceSectionId: String(sv.sectionId || "").trim(),
@@ -2897,6 +3090,43 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     setShowHairGuide(false);
 
     clearAppliedCoupons();
+  };
+
+  const closeOfferServicePicker = () => {
+    setOfferServicePicker((prev) => ({
+      ...prev,
+      open: false,
+      adding: false,
+    }));
+  };
+
+  const confirmOfferServicePicker = async () => {
+    const pickedServiceId = String(offerServicePicker.selectedServiceId || "").trim();
+    if (!pickedServiceId || offerServicePicker.adding) return;
+
+    setOfferServicePicker((prev) => ({ ...prev, adding: true }));
+    try {
+      const alreadyInCart = (formData.items || []).some(
+        (it) => String(it.serviceId || "").trim() === pickedServiceId
+      );
+      if (!alreadyInCart) {
+        await addServiceToCart(pickedServiceId);
+        setOfferMsgKind("success");
+        setOfferMsg("تمت إضافة الخدمة المختارة من العرض إلى السلة.");
+      } else {
+        setOfferMsgKind("success");
+        setOfferMsg("الخدمة المختارة موجودة بالفعل في السلة.");
+      }
+    } catch {
+      setOfferMsgKind("error");
+      setOfferMsg("تعذر إضافة الخدمة المختارة من العرض، حاولي مرة أخرى.");
+    } finally {
+      setOfferServicePicker((prev) => ({
+        ...prev,
+        open: false,
+        adding: false,
+      }));
+    }
   };
 
   const removeServiceFromCart = (itemId: string) => {
@@ -2946,9 +3176,16 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   };
 
   useEffect(() => {
-    const pid = String(autoAddPackageId || "").trim();
-    if (!pid) return;
-    const hasPackage = packageOptions.some((p) => String(p.id || "").trim() === pid);
+    const autoAddRaw = String(autoAddPackageId || "").trim();
+    if (!autoAddRaw) return;
+    const packageDocId = autoAddRaw.startsWith("pkg:")
+      ? String(autoAddRaw.slice("pkg:".length) || "").trim()
+      : autoAddRaw;
+    const pid = packageDocId ? `pkg:${packageDocId}` : autoAddRaw;
+    const hasPackage = packageOptions.some((p) => {
+      const optionId = String(p.id || "").trim();
+      return optionId === pid || optionId === packageDocId;
+    });
     if (!hasPackage) return;
     const alreadyInCart = (formData.items || []).some(
       (it) => String(it?.serviceId || "").trim() === pid
@@ -3235,7 +3472,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
     grouped.forEach((items, runId) => {
       const ordered = [...items];
-      const dateISO = String(ordered[0]?.date || bookingDate || "").trim();
+      const dateISO = String(ordered[0]?.date || bookingDate || todayISO()).trim();
       const totalDurationMin = ordered.reduce(
         (sum, x) => sum + Math.max(1, Number(x.durationMin || DEFAULT_SERVICE_DURATION_MIN)),
         0
@@ -3501,11 +3738,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const quickCommonStaff = packageQuickEligibilityByRun[runId]?.commonStaff || [];
     if (!quickCommonStaff.length) return;
 
-    const dateISO = String(runMeta.dateISO || bookingDate || "").trim();
+    const dateISO = String(runMeta.dateISO || bookingDate || todayISO()).trim();
     const selectedStaff = quickCommonStaff.find(
       (st: any) => String(st?.id || "").trim() === employeeId
     );
-    if (!selectedStaff || !dateISO) return;
+    if (!selectedStaff) return;
 
     const employeeKey =
       String((selectedStaff as any)?.linkedUid || "").trim() ||
@@ -3515,12 +3752,22 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const dayOpenTime = safeTimeHHMM(dayCfg.openTime, openTime);
     const dayCloseTime = safeTimeHHMM(dayCfg.closeTime, closeTime);
     const baseSlots = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
-    if (!baseSlots.length) return;
-
     setPackageQuickByRun((prev) => ({
       ...prev,
       [runId]: { employeeId, times: [], loading: true, error: "" },
     }));
+    if (!baseSlots.length) {
+      setPackageQuickByRun((prev) => ({
+        ...prev,
+        [runId]: {
+          employeeId,
+          times: [],
+          loading: false,
+          error: "لا توجد أوقات متاحة في يوم الحجز المختار.",
+        },
+      }));
+      return;
+    }
 
     try {
       const takenFs = await collectTakenTimesForEmployeeDay({
@@ -3596,11 +3843,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     if (!runMeta || !runMeta.items.length) return;
     const quickCommonStaff = packageQuickEligibilityByRun[runId]?.commonStaff || [];
     if (!quickCommonStaff.length) return;
-    const dateISO = String(runMeta.dateISO || bookingDate || "").trim();
+    const dateISO = String(runMeta.dateISO || bookingDate || todayISO()).trim();
     const selectedStaff = quickCommonStaff.find(
       (st: any) => String(st?.id || "").trim() === employeeId
     );
-    if (!selectedStaff || !dateISO) return;
+    if (!selectedStaff) return;
 
     const employeeKey =
       String((selectedStaff as any)?.linkedUid || "").trim() ||
@@ -5829,6 +6076,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
   // âœ… أضف هذا السطر فقط
   const isSignedClient = !!signedUid;
+  const shouldShowAuthGate = !internalMode && authResolved && !isSignedClient;
+  const shouldShowAuthLoader = !internalMode && !authResolved;
 
   return (
 
@@ -5846,6 +6095,73 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         }}
         onCancel={closeModal}
       />
+      <Modal
+        open={offerServicePicker.open}
+        onClose={closeOfferServicePicker}
+        ariaLabel="اختيار خدمة العرض"
+        size="sm"
+        panelClassName="booking-offer-picker-panel"
+      >
+        <div className="booking-offer-picker-modal">
+          <h3 className="booking-offer-picker-modal__title">
+            اختيار الخدمة من العرض
+          </h3>
+          <p className="booking-offer-picker-modal__hint">
+            {String(offerServicePicker.offerTitle || "").trim()
+              ? `العرض: ${offerServicePicker.offerTitle}`
+              : "العرض المختار"}
+          </p>
+          <p className="booking-offer-picker-modal__text">
+            العرض يشمل لكل فاتورة خدمة وحدة، الرجاء اختاري خدمتك اللي تبغي عليها العرض.
+          </p>
+
+          <label className="booking-offer-picker-modal__label" htmlFor="offerServiceSelect">
+            الخدمات المشمولة في العرض
+          </label>
+          <select
+            id="offerServiceSelect"
+            className="booking-offer-picker-modal__select"
+            value={offerServicePicker.selectedServiceId}
+            onChange={(e) =>
+              setOfferServicePicker((prev) => ({
+                ...prev,
+                selectedServiceId: String(e.target.value || "").trim(),
+              }))
+            }
+            disabled={offerServicePicker.adding}
+          >
+            <option value="" disabled>
+              اختاري الخدمة
+            </option>
+            {offerServicePicker.choices.map((row) => (
+              <option key={row.serviceId} value={row.serviceId}>
+                {row.serviceName}
+              </option>
+            ))}
+          </select>
+
+          <div className="booking-offer-picker-modal__actions">
+            <button
+              type="button"
+              className="booking-offer-picker-modal__btn booking-offer-picker-modal__btn--cancel"
+              onClick={closeOfferServicePicker}
+              disabled={offerServicePicker.adding}
+            >
+              إلغاء
+            </button>
+            <button
+              type="button"
+              className="booking-offer-picker-modal__btn booking-offer-picker-modal__btn--confirm"
+              onClick={() => {
+                void confirmOfferServicePicker();
+              }}
+              disabled={!String(offerServicePicker.selectedServiceId || "").trim() || offerServicePicker.adding}
+            >
+              {offerServicePicker.adding ? "جارٍ الإضافة..." : "اختيار الخدمة وإضافتها للسلة"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <div className="container">
         <div className="row justify-content-center">
@@ -5867,6 +6183,40 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                 </div>
               )}
 
+              {shouldShowAuthLoader ? (
+                <div className="booking-auth-gate booking-auth-gate--loading" role="status" aria-live="polite">
+                  <h3 className="booking-auth-gate__title">جاري التحقق من الحساب</h3>
+                  <p className="booking-auth-gate__text">
+                    نتحقق من حالة الدخول قبل عرض نموذج الحجز.
+                  </p>
+                </div>
+              ) : shouldShowAuthGate ? (
+                <div className="booking-auth-gate" role="alert" aria-live="assertive">
+                  <h3 className="booking-auth-gate__title">إنشاء حساب مطلوب قبل إتمام الحجز</h3>
+                  <p className="booking-auth-gate__text">
+                    لا يمكن إكمال الحجز دون إنشاء حساب عميلة أولًا.
+                  </p>
+                  <p className="booking-auth-gate__text">
+                    إذا كان لديك حساب مسبقًا، يُرجى تسجيل الدخول ثم متابعة إجراءات الحجز.
+                  </p>
+                  <div className="booking-auth-gate__actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary booking-auth-gate__cta"
+                      onClick={() => navigate("/login?mode=register&next=%2Fbooking")}
+                    >
+                      إنشاء حساب جديد
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline-dark booking-auth-gate__cta booking-auth-gate__cta--login"
+                      onClick={() => navigate("/login?mode=login&next=%2Fbooking")}
+                    >
+                      تسجيل الدخول
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <form className="booking-form" onSubmit={handleSubmit}>
 
                 <div className="row">
@@ -7187,6 +7537,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                   )}
                 </button>
               </form>
+              )}
             </div>
           </div>
         </div>
