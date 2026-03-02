@@ -180,7 +180,13 @@ function round2(v: number) {
 }
 
 function readBookingTotalAmount(raw: any) {
-  const n = Number(raw?.finalPrice ?? raw?.total ?? 0);
+  const n = Number(
+    raw?.finalPrice ??
+      raw?.total ??
+      raw?.serviceSnapshot?.priceAtBooking ??
+      raw?.packageSnapshot?.finalPriceAtBooking ??
+      0
+  );
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
@@ -205,7 +211,7 @@ function resolveBookingPaymentSummary(raw: any): {
   const status = String(raw?.status || "").trim().toLowerCase();
   const isRevenueStatus = status === "confirmed" || status === "completed";
 
-  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "partial");
   let paidAmount: number;
   if (hasExplicitPaid) {
     paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
@@ -230,8 +236,20 @@ function resolveBookingPaymentSummary(raw: any): {
   };
 }
 
-function paymentTypeLabel(type: BookingPaymentType) {
-  return type === "partial" ? "عربون" : "كامل";
+function paymentStatusLabel(payment: {
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+}) {
+  const total = round2(payment.totalAmount);
+  const paid = round2(payment.paidAmount);
+  const remaining = round2(payment.remainingAmount);
+  if (total <= 0) return "لا يوجد سعر محدد";
+  if (paid <= 0 && remaining > 0) return "غير مدفوع";
+  if (remaining <= 0) return "مدفوع بالكامل";
+  if (payment.paymentType === "partial") return "عربون";
+  return "مدفوع";
 }
 
 function toMillisSafe(v: any) {
@@ -1046,10 +1064,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       const payment = resolveBookingPaymentSummary(target);
       setConfirmDraft({
         paymentType: payment.paymentType === "partial" ? "partial" : "full",
-        paidAmount:
-          payment.paymentType === "partial"
-            ? String(payment.paidAmount || "")
-            : String(payment.totalAmount || 0),
+        paidAmount: String(round2(payment.paidAmount || 0)),
       });
       setConfirmError("");
       setConfirmTarget(target);
@@ -1085,8 +1100,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     let paidAmount = nextType === "full" ? totalAmount : Number(confirmDraft.paidAmount || 0);
 
     if (nextType === "partial") {
-      if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
-        setConfirmError("أدخلي مبلغ عربون صحيح.");
+      if (!Number.isFinite(paidAmount) || paidAmount < 0) {
+        setConfirmError("أدخلي مبلغ عربون صحيح (0 أو أكثر).");
         return;
       }
       if (paidAmount > totalAmount) {
@@ -1215,7 +1230,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       note: String((b as any)?.note || "").trim(),
       date: String(b.date || "").trim(),
       time: String(b.time || "").trim(),
-      price: String(Number(b.finalPrice || b.total || 0)),
+      price: String(readBookingTotalAmount(b)),
       paymentType: payment.paymentType,
       paidAmount: String(payment.paidAmount || 0),
     });
@@ -1269,7 +1284,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const note = String(editDraft.note || "").trim();
     const date = String(editDraft.date || "").trim();
     const time = String(editDraft.time || "").trim();
-    const price = Number(editDraft.price || 0);
+    const priceInput = String(editDraft.price || "").trim();
+    const fallbackPrice = readBookingTotalAmount(editTarget);
+    const price = priceInput === "" ? fallbackPrice : Number(priceInput);
     const paymentType = editDraft.paymentType === "partial" ? "partial" : "full";
     let paidAmount = paymentType === "full" ? price : Number(editDraft.paidAmount || 0);
 
@@ -1290,8 +1307,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       return;
     }
     if (paymentType === "partial") {
-      if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
-        setEditError("أدخلي مبلغ عربون صحيح.");
+      if (!Number.isFinite(paidAmount) || paidAmount < 0) {
+        setEditError("أدخلي مبلغ عربون صحيح (0 أو أكثر).");
         return;
       }
       if (paidAmount > price) {
@@ -1376,7 +1393,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const canManageRefund = (b: Booking) => {
     if (!(uiRole === "owner" || uiRole === "admin" || uiRole === "reception")) return false;
     if (!(b.status === "confirmed" || b.status === "completed")) return false;
-    const amount = Number(b.finalPrice || b.total || 0);
+    const amount = readBookingTotalAmount(b);
     if (!Number.isFinite(amount) || amount <= 0) return false;
     return true;
   };
@@ -1397,7 +1414,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     if (!canManageRefund(b)) return;
     const bookingId = String(b.id || "").trim();
     const existing = refundMapByBookingId[bookingId];
-    const bookingAmount = Number(b.finalPrice || b.total || 0);
+    const bookingAmount = readBookingTotalAmount(b);
     const fallbackMethod = detectPaymentMethod(b);
     setRefundDraft({
       amount: existing ? String(existing.amount || "") : String(Math.abs(bookingAmount || 0)),
@@ -1421,7 +1438,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const bookingId = String(b.id || "").trim();
     if (!bookingId || !canManageRefund(b)) return;
 
-    const bookingAmount = Number(b.finalPrice || b.total || 0);
+    const bookingAmount = readBookingTotalAmount(b);
     const amountInput = Number(refundDraft.amount || 0);
     if (!Number.isFinite(amountInput) || amountInput <= 0) {
       setRefundError("أدخل مبلغ استرجاع صحيح.");
@@ -1522,7 +1539,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         formatTime12(b.time),
         statusLabel[b.status],
         String(payment.totalAmount),
-        paymentTypeLabel(payment.paymentType),
+        paymentStatusLabel(payment),
         String(payment.paidAmount),
         String(payment.remainingAmount),
       ];
@@ -1730,6 +1747,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         <td>
                           <span className="bk-price-pill">{payment.totalAmount} ر.س</span>
                           <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>
+                            {paymentStatusLabel(payment)}
+                          </div>
+                          <div style={{ fontSize: 11, opacity: 0.8 }}>
                             دفعت {payment.paidAmount} ر.س
                           </div>
                           <div style={{ fontSize: 11, opacity: 0.8 }}>
@@ -1854,7 +1874,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">الدفع:</span>
                       <span className="bk-mobile-val">
-                        {paymentTypeLabel(payment.paymentType)} - دفعت {payment.paidAmount} ر.س - المتبقي{" "}
+                        {paymentStatusLabel(payment)} - دفعت {payment.paidAmount} ر.س - المتبقي{" "}
                         {payment.remainingAmount} ر.س
                       </span>
                     </div>
@@ -1985,7 +2005,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 <div className="bk-item">
                   <span className="bk-item-label">نوع الدفع</span>
                   <span className="bk-item-val">
-                    {paymentTypeLabel(selectedBookingPayment.paymentType)}
+                    {paymentStatusLabel(selectedBookingPayment)}
                   </span>
                 </div>
                 <div className="bk-item">
@@ -2095,35 +2115,41 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           open={actionPinOpen}
           onClose={closeActionPinModal}
           ariaLabel="التحقق بالرقم السري"
-          panelClassName="bk-cancel-modal"
+          panelClassName="bk-cancel-modal bk-action-pin-modal"
           size="sm"
         >
           <div className="bk-cancel-head">تأكيد الإجراء</div>
           <div className="bk-cancel-body">
-            <div className="bk-cancel-meta">
-              <span>{sensitiveActionDescription(pendingSensitiveAction) || "إجراء حساس"}</span>
+            <div className="bk-action-pin-summary">
+              <div className="bk-action-pin-summary-label">الإجراء المطلوب</div>
+              <div className="bk-action-pin-summary-value">
+                {sensitiveActionDescription(pendingSensitiveAction) || "إجراء حساس"}
+              </div>
               {pendingSensitiveAction?.kind === "delete" ? (
-                <span style={{ color: "#b42318" }}>تنبيه: الحذف النهائي لا يمكن التراجع عنه.</span>
+                <div className="bk-action-pin-warning">تنبيه: الحذف النهائي لا يمكن التراجع عنه.</div>
               ) : null}
             </div>
-            <div className="bk-edit-form" style={{ marginTop: 10 }}>
-              <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>الرقم السري</div>
-                <input
-                  type="password"
-                  className="bk-input"
-                  value={actionPin}
-                  onChange={(e) => setActionPin(e.target.value)}
-                  placeholder="أدخلي الرقم السري"
-                  autoComplete="new-password"
-                  name="booking_action_pin"
-                  inputMode="numeric"
-                  disabled={actionPinBusy}
-                />
+            <div className="bk-action-pin-form">
+              <label className="bk-action-pin-label" htmlFor="booking_action_pin_input">
+                الرقم السري
               </label>
+              <input
+                id="booking_action_pin_input"
+                type="password"
+                className="bk-input bk-action-pin-input"
+                value={actionPin}
+                onChange={(e) => setActionPin(e.target.value)}
+                placeholder="أدخلي الرقم السري"
+                autoComplete="new-password"
+                name="booking_action_pin"
+                inputMode="numeric"
+                disabled={actionPinBusy}
+                autoFocus
+              />
+              <div className="bk-action-pin-hint">هذا التحقق مخصص لحماية التعديلات الحساسة.</div>
             </div>
             {actionPinError ? (
-              <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{actionPinError}</div>
+              <div className="bk-action-pin-error">{actionPinError}</div>
             ) : null}
           </div>
           <div className="bk-cancel-foot">
@@ -2158,7 +2184,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             <div className="bk-cancel-meta">
               <span>رقم الحجز: {bookingRef(refundTarget)}</span>
               <span>العميلة: {refundTarget?.customerName || "—"}</span>
-              <span>قيمة الحجز: {refundTarget ? Number(refundTarget.finalPrice || refundTarget.total || 0) : 0} ر.س</span>
+              <span>قيمة الحجز: {refundTarget ? readBookingTotalAmount(refundTarget) : 0} ر.س</span>
             </div>
 
             <div className={`bk-refund-status ${activeRefundForTarget ? "is-refunded" : "is-none"}`}>
@@ -2311,7 +2337,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   disabled={confirmSaving}
                 >
                   <option value="full">دفع كامل</option>
-                  <option value="partial">عربون</option>
+                  <option value="partial">عربون / بدون دفع</option>
                 </select>
               </label>
 
@@ -2327,9 +2353,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     onChange={(e) =>
                       setConfirmDraft((p) => ({ ...p, paidAmount: e.target.value }))
                     }
-                    placeholder="مثال: 150"
+                    placeholder="مثال: 150 (أو 0 بدون دفع)"
                     disabled={confirmSaving}
                   />
+                  <div style={{ fontSize: 11, marginTop: 6, color: "#667085" }}>
+                    اتركيه 0 إذا الحجز بدون أي دفعة الآن.
+                  </div>
                 </label>
               ) : null}
 
@@ -2458,7 +2487,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   disabled={editSaving}
                 >
                   <option value="full">دفع كامل</option>
-                  <option value="partial">عربون</option>
+                  <option value="partial">عربون / بدون دفع</option>
                 </select>
               </label>
 
@@ -2472,9 +2501,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     className="bk-input"
                     value={editDraft.paidAmount}
                     onChange={(e) => setEditDraft((p) => ({ ...p, paidAmount: e.target.value }))}
-                    placeholder="مثال: 100"
+                    placeholder="مثال: 100 (أو 0 بدون دفع)"
                     disabled={editSaving}
                   />
+                  <div style={{ fontSize: 11, marginTop: 6, color: "#667085" }}>
+                    اتركيه 0 إذا الحجز بدون أي دفعة.
+                  </div>
                 </label>
               ) : null}
 

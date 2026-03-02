@@ -171,7 +171,13 @@ function resolveBookingPayment(raw: any): {
 } {
   const totalAmount = Math.max(
     0,
-    Number(raw?.finalPrice ?? raw?.total ?? raw?.serviceSnapshot?.priceAtBooking ?? 0) || 0
+    Number(
+      raw?.finalPrice ??
+        raw?.total ??
+        raw?.serviceSnapshot?.priceAtBooking ??
+        raw?.packageSnapshot?.finalPriceAtBooking ??
+        0
+    ) || 0
   );
   const normalizedType = normalizePaymentType(raw?.paymentType);
   const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
@@ -179,7 +185,7 @@ function resolveBookingPayment(raw: any): {
   const status = String(raw?.status || "").trim().toLowerCase();
   const isRevenueStatus = status === "confirmed" || status === "completed";
 
-  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "partial");
   let paidAmount: number;
   if (hasExplicitPaid) {
     paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));

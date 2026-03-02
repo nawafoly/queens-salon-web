@@ -2567,11 +2567,11 @@
   -webkit-text-fill-color: #fff !important;
 }
 
+/* Keep bk-action-* colors controlled by their dedicated rules above to avoid cascade conflicts. */
 .bk-internal .btn-outline-secondary,
 .bk-internal .btn-outline-dark,
 .bk-internal .btn-outline-light,
-.bk-internal .btn-outline-info,
-.bk-internal .bk-action-details {
+.bk-internal .btn-outline-info {
   background: var(--bk-surface-soft) !important;
   border-color: var(--bk-border) !important;
   color: var(--bk-text) !important;
@@ -2580,37 +2580,30 @@
 .bk-internal .btn-outline-secondary:hover,
 .bk-internal .btn-outline-dark:hover,
 .bk-internal .btn-outline-light:hover,
-.bk-internal .btn-outline-info:hover,
-.bk-internal .bk-action-details:hover {
+.bk-internal .btn-outline-info:hover {
   background: var(--bk-surface-strong) !important;
   border-color: var(--bk-accent-border) !important;
   color: var(--bk-text) !important;
 }
 
-.bk-internal .btn-outline-danger,
-.bk-internal .bk-action-refund {
+.bk-internal .btn-outline-danger {
   background: var(--bk-danger-bg) !important;
   border-color: var(--bk-danger-border) !important;
   color: var(--bk-danger-text) !important;
 }
 
-.bk-internal .btn-outline-danger:hover,
-.bk-internal .bk-action-refund:hover {
+.bk-internal .btn-outline-danger:hover {
   background: #f8e4e8 !important;
   border-color: #dca4af !important;
   color: #711828 !important;
 }
 
-.bk-internal .bk-action-confirm,
-.bk-internal .bk-action-print,
 .bk-internal .btn-success {
   background: var(--bk-success-bg) !important;
   border-color: var(--bk-success-border) !important;
   color: var(--bk-success-text) !important;
 }
 
-.bk-internal .bk-action-confirm:hover,
-.bk-internal .bk-action-print:hover,
 .bk-internal .btn-success:hover {
   background: #ddf1e6 !important;
   border-color: #9dcfb6 !important;

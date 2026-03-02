@@ -1014,7 +1014,13 @@ function roundMoney2(v: number) {
 }
 
 function readBookingTotalAmount(raw: any) {
-  const n = Number(raw?.finalPrice ?? raw?.total ?? raw?.serviceSnapshot?.priceAtBooking ?? 0);
+  const n = Number(
+    raw?.finalPrice ??
+      raw?.total ??
+      raw?.serviceSnapshot?.priceAtBooking ??
+      raw?.packageSnapshot?.finalPriceAtBooking ??
+      0
+  );
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
@@ -1029,7 +1035,7 @@ function resolveExistingBookingPayment(
   const status = String(raw?.status || "").trim().toLowerCase();
   const isRevenueStatus = status === "confirmed" || status === "completed";
 
-  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "partial");
   let paidAmount: number;
 
   if (hasExplicitPaid) {
@@ -1053,6 +1059,22 @@ function resolveExistingBookingPayment(
     remainingAmount,
     totalAmount: roundMoney2(totalAmount),
   };
+}
+
+function describeBookingPaymentState(payment: {
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+}) {
+  const total = roundMoney2(payment.totalAmount);
+  const paid = roundMoney2(payment.paidAmount);
+  const remaining = roundMoney2(payment.remainingAmount);
+  if (total <= 0) return "لا يوجد سعر محدد";
+  if (paid <= 0 && remaining > 0) return "غير مدفوع";
+  if (remaining <= 0) return "مدفوع بالكامل";
+  if (payment.paymentType === "partial") return "عربون";
+  return "مدفوع";
 }
 
 function allocatePaidAcrossTargets(targetTotals: number[], paidTotal: number): number[] {
@@ -5938,9 +5960,20 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const selectedPaymentMethod = isFutureBooking ? null : internalPaymentMethodRef.current;
     const selectedPaymentType = isFutureBooking ? null : internalPaymentTypeRef.current;
     const selectedPaidAmount = isFutureBooking ? null : internalPaidAmountRef.current;
+    const selectedPaidAmountSafe = Number.isFinite(Number(selectedPaidAmount))
+      ? roundMoney2(Math.max(0, Number(selectedPaidAmount)))
+      : null;
+    const isNoPaymentNow =
+      !isFutureBooking &&
+      selectedPaymentType === "partial" &&
+      selectedPaidAmountSafe !== null &&
+      selectedPaidAmountSafe <= 0;
+    const shouldSaveAsPending = isFutureBooking || isNoPaymentNow;
     if (
       !isFutureBooking &&
-      (!selectedPaymentMethod || !selectedPaymentType || !Number.isFinite(Number(selectedPaidAmount)))
+      (!selectedPaymentType ||
+        selectedPaidAmountSafe === null ||
+        (!selectedPaymentMethod && !isNoPaymentNow))
     ) {
       const totalAmount = roundMoney2(Math.max(0, Number(finalPrice || 0)));
       setInternalPaymentMethodDraft("");
@@ -6168,7 +6201,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           paymentTargets.reduce((sum, target) => sum + Number(target.total || 0), 0)
         );
         const requestedPaid = roundMoney2(
-          Math.max(0, Math.min(targetsTotal, Number(selectedPaidAmount || 0)))
+          Math.max(0, Math.min(targetsTotal, Number(selectedPaidAmountSafe || 0)))
         );
         const allocated = allocatePaidAcrossTargets(
           paymentTargets.map((target) => Number(target.total || 0)),
@@ -6336,16 +6369,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 discountType: finalApplied.discountType || null,
                 discountValue: Number(finalApplied.discountValue || 0),
                 offerTitle: finalApplied.title || null,
-                status: isFutureBooking ? "pending" : "completed",
+                status: shouldSaveAsPending ? "pending" : "completed",
                 ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-                ...(!isFutureBooking
-                  ? {
-                      paymentType: groupPayment.paymentType,
-                      paidAmount: groupPayment.paidAmount,
-                      remainingAmount: groupPayment.remainingAmount,
-                    }
-                  : {}),
-                ...(!isFutureBooking && groupPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
+                paymentType: groupPayment.paymentType,
+                paidAmount: groupPayment.paidAmount,
+                remainingAmount: groupPayment.remainingAmount,
+                ...(!shouldSaveAsPending && groupPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
                 note: [noteFinal, `packageRunId=${packageRunId}`, `packageItems=${sortedRun.length}`]
                   .filter(Boolean)
                   .join(" | "),
@@ -6403,15 +6432,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   discountType: finalApplied.discountType || null,
                   discountValue: Number(finalApplied.discountValue || 0),
                   offerTitle: finalApplied.title || null,
-                  status: isFutureBooking ? "pending" : "completed",
+                  status: shouldSaveAsPending ? "pending" : "completed",
                   ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-                  ...(!isFutureBooking
-                    ? {
-                        paymentType: "partial" as BookingPaymentType,
-                        paidAmount: 0,
-                        remainingAmount: roundMoney2(Math.max(0, Number(currentFinal || 0))),
-                      }
-                    : {}),
+                  paymentType: "partial" as BookingPaymentType,
+                  paidAmount: 0,
+                  remainingAmount: roundMoney2(Math.max(0, Number(currentFinal || 0))),
                   note: currentItemNote,
                   slotStepMinAtBooking: slotStepMin,
                   bufferMinAtBooking: bufferMin,
@@ -6454,23 +6479,19 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               discountType: finalApplied.discountType || null,
               discountValue: Number(finalApplied.discountValue || 0),
               durationMin: parentDurationMin,
-              status: isFutureBooking ? "pending" : "completed",
+              status: shouldSaveAsPending ? "pending" : "completed",
               ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-              ...(!isFutureBooking
-                ? {
-                    paymentType: groupPayment.paymentType,
-                    paidAmount: groupPayment.paidAmount,
-                    remainingAmount: groupPayment.remainingAmount,
-                  }
-                : {}),
-              ...(!isFutureBooking && groupPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
+              paymentType: groupPayment.paymentType,
+              paidAmount: groupPayment.paidAmount,
+              remainingAmount: groupPayment.remainingAmount,
+              ...(!shouldSaveAsPending && groupPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
               channel: "internal",
               bookingGroupId: groupRes.parentId,
               subBookingIds: groupRes.itemIds,
               createdAt: Date.now(),
             });
 
-            if (!isFutureBooking && selectedPaymentMethod && incomeMethod && groupPayment.paidAmount > 0) {
+            if (!shouldSaveAsPending && selectedPaymentMethod && incomeMethod && groupPayment.paidAmount > 0) {
               await upsertIncomeFS(
                 {
                   id: String(groupRes.parentId || "").trim(),
@@ -6555,16 +6576,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           discountValue: Number(finalApplied.discountValue || 0),
           offerTitle: finalApplied.title || null,
 
-          status: isFutureBooking ? "pending" : "completed",
+          status: shouldSaveAsPending ? "pending" : "completed",
           ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-          ...(!isFutureBooking
-            ? {
-                paymentType: itemPayment.paymentType,
-                paidAmount: itemPayment.paidAmount,
-                remainingAmount: itemPayment.remainingAmount,
-              }
-            : {}),
-          ...(!isFutureBooking && itemPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
+          paymentType: itemPayment.paymentType,
+          paidAmount: itemPayment.paidAmount,
+          remainingAmount: itemPayment.remainingAmount,
+          ...(!shouldSaveAsPending && itemPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
           note: itemNote,
 
           slotStepMinAtBooking: slotStepMin,
@@ -6614,22 +6631,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           durationMin,
           toolsSource: String(it.toolsSource || "").trim() || null,
           toolsFeeApplied: Number(it.toolsFeeApplied || 0),
-          status: isFutureBooking ? "pending" : "completed",
+          status: shouldSaveAsPending ? "pending" : "completed",
           ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-          ...(!isFutureBooking
-            ? {
-                paymentType: itemPayment.paymentType,
-                paidAmount: itemPayment.paidAmount,
-                remainingAmount: itemPayment.remainingAmount,
-              }
-            : {}),
-          ...(!isFutureBooking && itemPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
+          paymentType: itemPayment.paymentType,
+          paidAmount: itemPayment.paidAmount,
+          remainingAmount: itemPayment.remainingAmount,
+          ...(!shouldSaveAsPending && itemPayment.paidAmount > 0 ? { paidAt: Date.now() } : {}),
           createdAt: Date.now(),
           channel: "internal",
         });
       }
 
-      if (!isFutureBooking) {
+      if (!shouldSaveAsPending) {
         const usedOfferIds = new Set<string>();
         if (shouldPersistOffer && bookingOfferId) usedOfferIds.add(String(bookingOfferId || "").trim());
         for (const row of items) {
@@ -6678,13 +6691,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       internalPaymentTypeRef.current = null;
       internalPaidAmountRef.current = null;
 
-      if (isFutureBooking) {
+      if (shouldSaveAsPending) {
         navigate("/success");
       } else {
         if (!openInternalPrintPopup()) notifyInvoicePopupBlocked();
       }
     } catch (e: any) {
-      if (!isFutureBooking) closePendingInvoicePopup();
+      if (!shouldSaveAsPending) closePendingInvoicePopup();
       console.error(e);
 
       if (e?.code === "SLOT_TAKEN" || String(e?.message || "") === "SLOT_TAKEN") {
@@ -6990,11 +7003,31 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 className={`btn bk-pay-method-btn ${internalPaymentTypeDraft === "partial" ? "is-active" : ""}`}
                 onClick={() => {
                   setInternalPaymentTypeDraft("partial");
+                  if (!String(internalPaymentPaidAmountDraft || "").trim()) {
+                    setInternalPaymentPaidAmountDraft("0");
+                  }
                   setInternalPaymentError("");
                 }}
                 disabled={isLoading}
               >
-                عربون
+                عربون / دفع جزئي
+              </button>
+              <button
+                type="button"
+                className={`btn bk-pay-method-btn ${
+                  internalPaymentTypeDraft === "partial" &&
+                  roundMoney2(Math.max(0, Number(internalPaymentPaidAmountDraft || 0))) <= 0
+                    ? "is-active"
+                    : ""
+                }`}
+                onClick={() => {
+                  setInternalPaymentTypeDraft("partial");
+                  setInternalPaymentPaidAmountDraft("0");
+                  setInternalPaymentError("");
+                }}
+                disabled={isLoading}
+              >
+                بدون دفع الآن
               </button>
             </div>
             {internalPaymentTypeDraft === "partial" ? (
@@ -7010,9 +7043,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     setInternalPaymentPaidAmountDraft(String(e.target.value || ""));
                     setInternalPaymentError("");
                   }}
-                  placeholder="مثال: 150"
+                  placeholder="مثال: 150 (أو 0 بدون دفع)"
                   disabled={isLoading}
                 />
+                <div className="small text-muted mt-1">
+                  اكتبي 0 إذا كانت العميلة حجزت بدون أي دفعة حالياً.
+                </div>
               </div>
             ) : null}
             <div className="small text-muted mt-2">
@@ -7023,6 +7059,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     ? total
                     : roundMoney2(Math.max(0, Number(internalPaymentPaidAmountDraft || 0)));
                 const remaining = roundMoney2(Math.max(0, total - paid));
+                if (internalPaymentTypeDraft === "partial" && paid <= 0) {
+                  return `بدون دفع الآن - المتبقي ${remaining} ر.س`;
+                }
                 return `دفعت ${paid} ر.س - المتبقي ${remaining} ر.س`;
               })()}
             </div>
@@ -7037,19 +7076,25 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               type="button"
               className="btn btn-primary bk-pay-confirm-btn"
               onClick={() => {
-                if (!internalPaymentMethodDraft) {
-                  setInternalPaymentError("اختاري طريقة الدفع أولًا.");
-                  return;
-                }
                 const totalAmount = roundMoney2(Math.max(0, Number(finalPrice || 0)));
                 const desiredType = internalPaymentTypeDraft === "partial" ? "partial" : "full";
                 let paidAmount =
                   desiredType === "full"
                     ? totalAmount
                     : Number(internalPaymentPaidAmountDraft || 0);
+                const isNoPayment =
+                  desiredType === "partial" &&
+                  roundMoney2(Math.max(0, Number(paidAmount || 0))) <= 0;
+                const methodForSubmit: "cash" | "card" | "transfer" | null = isNoPayment
+                  ? null
+                  : internalPaymentMethodDraft || null;
+                if (!methodForSubmit && !isNoPayment) {
+                  setInternalPaymentError("اختاري طريقة الدفع أولًا.");
+                  return;
+                }
                 if (desiredType === "partial") {
-                  if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
-                    setInternalPaymentError("اكتبي مبلغ العربون بشكل صحيح.");
+                  if (!Number.isFinite(paidAmount) || paidAmount < 0) {
+                    setInternalPaymentError("اكتبي مبلغ العربون بشكل صحيح (0 أو أكثر).");
                     return;
                   }
                   if (paidAmount > totalAmount) {
@@ -7058,15 +7103,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   }
                 }
                 let finalType: BookingPaymentType = desiredType;
-                if (paidAmount >= totalAmount) {
+                if (paidAmount >= totalAmount && !isNoPayment) {
                   finalType = "full";
                   paidAmount = totalAmount;
                 }
                 internalSubmitModeRef.current = "payment";
-                primeInternalPrintPopup();
-                internalPaymentMethodRef.current = internalPaymentMethodDraft;
+                if (!isNoPayment) primeInternalPrintPopup();
+                internalPaymentMethodRef.current = methodForSubmit;
                 internalPaymentTypeRef.current = finalType;
-                internalPaidAmountRef.current = roundMoney2(paidAmount);
+                internalPaidAmountRef.current = roundMoney2(Math.max(0, paidAmount));
                 setInternalPaymentError("");
                 setInternalPaymentModalOpen(false);
                 // Let the popup render first, then run the heavy submit flow.
@@ -7074,7 +7119,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   internalBookingFormRef.current?.requestSubmit();
                 }, 0);
               }}
-              disabled={isLoading || !internalPaymentMethodDraft}
+              disabled={
+                isLoading ||
+                (!internalPaymentMethodDraft &&
+                  !(
+                    internalPaymentTypeDraft === "partial" &&
+                    roundMoney2(Math.max(0, Number(internalPaymentPaidAmountDraft || 0))) <= 0
+                  ))
+              }
             >
               {"تأكيد الدفع"}
             </button>
@@ -7458,6 +7510,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 const serviceMeta = [sectionLabel, categoryLabel].filter(Boolean).join(" / ");
                                 const payment = resolveExistingBookingPayment(b);
                                 const isFullyPaid = roundMoney2(payment.remainingAmount) <= 0;
+                                const hasPrice = roundMoney2(payment.totalAmount) > 0;
+                                const paymentState = describeBookingPaymentState(payment);
                                 const showPaidLine = roundMoney2(payment.paidAmount) > 0;
                                 const showRemainingLine = roundMoney2(payment.remainingAmount) > 0;
 
@@ -7480,23 +7534,34 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                     </td>
                                     <td>
                                       <div className="bk-payment-cell">
-                                        {showPaidLine ? (
-                                          <div className="bk-payment-line bk-payment-line-paid">
-                                            دفعت {payment.paidAmount.toFixed(2)} ر.س
+                                        <div className="bk-payment-line bk-payment-line-paid">
+                                          {paymentState}
+                                        </div>
+                                        {hasPrice ? (
+                                          <>
+                                            {showPaidLine ? (
+                                              <div className="bk-payment-line bk-payment-line-paid">
+                                                دفعت {payment.paidAmount.toFixed(2)} ر.س
+                                              </div>
+                                            ) : null}
+                                            {showRemainingLine ? (
+                                              <div
+                                                className={`bk-payment-line bk-payment-line-remaining ${
+                                                  showPaidLine ? "is-secondary" : ""
+                                                }`}
+                                              >
+                                                المتبقي {payment.remainingAmount.toFixed(2)} ر.س
+                                              </div>
+                                            ) : null}
+                                            {!showPaidLine && !showRemainingLine ? (
+                                              <div className="bk-payment-empty">—</div>
+                                            ) : null}
+                                          </>
+                                        ) : (
+                                          <div className="bk-payment-line bk-payment-line-remaining is-secondary">
+                                            حددي سعر الخدمة لاحتساب المتبقي.
                                           </div>
-                                        ) : null}
-                                        {showRemainingLine ? (
-                                          <div
-                                            className={`bk-payment-line bk-payment-line-remaining ${
-                                              showPaidLine ? "is-secondary" : ""
-                                            }`}
-                                          >
-                                            المتبقي {payment.remainingAmount.toFixed(2)} ر.س
-                                          </div>
-                                        ) : null}
-                                        {!showPaidLine && !showRemainingLine ? (
-                                          <div className="bk-payment-empty">—</div>
-                                        ) : null}
+                                        )}
                                       </div>
                                     </td>
                                     <td>
@@ -7618,29 +7683,25 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               ],
                               [
                                 "المبلغ",
-                                `${Number(
-                                  selectedExistingBooking?.finalPrice ??
-                                  selectedExistingBooking?.total ??
-                                  0
-                                ).toFixed(0)} ريال`,
+                                `${readBookingTotalAmount(selectedExistingBooking).toFixed(2)} ريال`,
                               ],
                               [
                                 "نوع الدفع",
-                                resolveExistingBookingPayment(selectedExistingBooking).paymentType === "partial"
-                                  ? "عربون"
-                                  : "كامل",
+                                describeBookingPaymentState(
+                                  resolveExistingBookingPayment(selectedExistingBooking)
+                                ),
                               ],
                               [
                                 "المدفوع",
-                                roundMoney2(resolveExistingBookingPayment(selectedExistingBooking).paidAmount) > 0
+                                readBookingTotalAmount(selectedExistingBooking) > 0
                                   ? `${resolveExistingBookingPayment(selectedExistingBooking).paidAmount.toFixed(2)} ريال`
-                                  : "",
+                                  : "—",
                               ],
                               [
                                 "المتبقي",
-                                roundMoney2(resolveExistingBookingPayment(selectedExistingBooking).remainingAmount) > 0
+                                readBookingTotalAmount(selectedExistingBooking) > 0
                                   ? `${resolveExistingBookingPayment(selectedExistingBooking).remainingAmount.toFixed(2)} ريال`
-                                  : "",
+                                  : "حددي سعر الخدمة أولاً",
                               ],
                             ]
                               .filter(([, value]) => String(value || "").trim() !== "")

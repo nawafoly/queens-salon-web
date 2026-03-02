@@ -120,14 +120,23 @@ function normalizePaymentType(raw: unknown): BookingPaymentType | null {
 }
 
 function resolveAuditPaidAmount(raw: Record<string, unknown>): number {
-  const totalAmount = Math.max(0, toNum(raw?.finalPrice ?? raw?.total ?? 0));
+  const totalAmount = Math.max(
+    0,
+    toNum(
+      raw?.finalPrice ??
+        raw?.total ??
+        (raw as any)?.serviceSnapshot?.priceAtBooking ??
+        (raw as any)?.packageSnapshot?.finalPriceAtBooking ??
+        0
+    )
+  );
   const normalizedType = normalizePaymentType(raw?.paymentType);
   const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
   const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
   const status = String(raw?.status || "").trim().toLowerCase();
   const isRevenueStatus = status === "confirmed" || status === "completed";
 
-  let paymentType: BookingPaymentType = normalizedType || "full";
+  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "partial");
   let paidAmount: number;
   if (hasExplicitPaid) {
     paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));

@@ -1206,6 +1206,97 @@
   gap: 10px;
 }
 
+/* Action PIN Modal (confirmation for sensitive actions) */
+.bk-action-pin-modal .bk-cancel-head {
+  background: linear-gradient(180deg, rgba(64, 1, 13, 0.06), rgba(64, 1, 13, 0));
+}
+
+.bk-action-pin-modal .bk-cancel-body {
+  display: grid;
+  gap: 12px;
+}
+
+.bk-action-pin-modal .bk-action-pin-summary {
+  display: grid;
+  gap: 8px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.bk-action-pin-modal .bk-action-pin-summary-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #6b7280;
+}
+
+.bk-action-pin-modal .bk-action-pin-summary-value {
+  font-size: 13px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.6;
+}
+
+.bk-action-pin-modal .bk-action-pin-warning {
+  border: 1px solid rgba(180, 35, 24, 0.22);
+  background: rgba(180, 35, 24, 0.06);
+  color: #b42318;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bk-action-pin-modal .bk-action-pin-form {
+  display: grid;
+  gap: 8px;
+}
+
+.bk-action-pin-modal .bk-action-pin-label {
+  font-size: 13px;
+  font-weight: 800;
+  color: #374151;
+}
+
+.bk-action-pin-modal .bk-input.bk-action-pin-input {
+  min-height: 48px;
+  height: 48px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-align: center;
+  direction: ltr;
+}
+
+.bk-action-pin-modal .bk-action-pin-hint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.bk-action-pin-modal .bk-action-pin-error {
+  border: 1px solid rgba(180, 35, 24, 0.28);
+  background: rgba(180, 35, 24, 0.08);
+  color: #b42318;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .bk-action-pin-modal .bk-cancel-foot {
+    justify-content: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .bk-action-pin-modal .bk-cancel-foot .exp-btn {
+    width: 100%;
+  }
+}
+
 /* Refund Modal (separate from cancel modal for clarity) */
 .bk-refund-modal {
   direction: rtl;
