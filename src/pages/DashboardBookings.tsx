@@ -8,7 +8,6 @@ import {
   faFilter,
   faFileCsv,
   faXmark,
-  faCircleInfo,
   faRotate,
   faPlus,
 } from "@fortawesome/free-solid-svg-icons";
@@ -928,11 +927,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     }>;
   }, [selectedBooking, bookings, notesMap]);
 
-  const filtered = useMemo(() => {
+  const filteredBase = useMemo(() => {
     let list = [...bookings];
-    if (statusFilter !== "all") {
-      list = list.filter((b) => b.status === statusFilter);
-    }
     if (dateFrom || dateTo) {
       list = list.filter((b) => inDateRange(b.date, dateFrom, dateTo));
     }
@@ -967,7 +963,34 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       });
     }
     return list.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-  }, [bookings, q, statusFilter, dateFrom, dateTo, uiRole, authUser]);
+  }, [bookings, q, dateFrom, dateTo, uiRole, authUser]);
+
+  const filtered = useMemo(() => {
+    if (statusFilter === "all") return filteredBase;
+    return filteredBase.filter((b) => b.status === statusFilter);
+  }, [filteredBase, statusFilter]);
+
+  const statusTabCounts = useMemo(
+    () => ({
+      all: filteredBase.length,
+      pending: filteredBase.filter((b) => b.status === "pending").length,
+      confirmed: filteredBase.filter((b) => b.status === "confirmed").length,
+      completed: filteredBase.filter((b) => b.status === "completed").length,
+      cancelled: filteredBase.filter((b) => b.status === "cancelled").length,
+    }),
+    [filteredBase]
+  );
+
+  const totalRemainingAmount = useMemo(
+    () =>
+      round2(
+        filtered.reduce((sum, b) => {
+          if (b.status === "cancelled") return sum;
+          return sum + resolveBookingPaymentSummary(b).remainingAmount;
+        }, 0)
+      ),
+    [filtered]
+  );
 
   const groupedFiltered = useMemo(() => {
     const blocks = new Map<string, { key: string; label: string; rows: Booking[] }>();
@@ -1611,6 +1634,54 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </div>
           ) : null}
 
+          <div className="bk-headline">
+            <div className="bk-status-tabs" role="tablist" aria-label="فلترة حالة الحجز">
+              <button
+                type="button"
+                className={`bk-status-tab ${statusFilter === "all" ? "is-active" : ""}`}
+                onClick={() => setStatusFilter("all")}
+              >
+                الكل
+                <span>{statusTabCounts.all}</span>
+              </button>
+              <button
+                type="button"
+                className={`bk-status-tab ${statusFilter === "pending" ? "is-active" : ""}`}
+                onClick={() => setStatusFilter("pending")}
+              >
+                بالانتظار
+                <span>{statusTabCounts.pending}</span>
+              </button>
+              <button
+                type="button"
+                className={`bk-status-tab ${statusFilter === "confirmed" ? "is-active" : ""}`}
+                onClick={() => setStatusFilter("confirmed")}
+              >
+                مؤكد
+                <span>{statusTabCounts.confirmed}</span>
+              </button>
+              <button
+                type="button"
+                className={`bk-status-tab ${statusFilter === "completed" ? "is-active" : ""}`}
+                onClick={() => setStatusFilter("completed")}
+              >
+                مكتمل
+                <span>{statusTabCounts.completed}</span>
+              </button>
+              <button
+                type="button"
+                className={`bk-status-tab ${statusFilter === "cancelled" ? "is-active" : ""}`}
+                onClick={() => setStatusFilter("cancelled")}
+              >
+                ملغي
+                <span>{statusTabCounts.cancelled}</span>
+              </button>
+            </div>
+            <div className="bk-total-remaining">
+              إجمالي المتبقي: <strong>{totalRemainingAmount} ر.س</strong>
+            </div>
+          </div>
+
           <div className="bk-filters">
             <div className="bk-field">
               <label>بحث</label>
@@ -1625,16 +1696,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 value={q} 
                 onChange={e => setQ(e.target.value)} 
               />
-            </div>
-            <div className="bk-field">
-              <label>الحالة</label>
-              <select className="bk-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)}>
-                <option value="all">الكل</option>
-                <option value="pending">قيد الانتظار</option>
-                <option value="confirmed">مؤكد</option>
-                <option value="completed">مكتمل</option>
-                <option value="cancelled">ملغي</option>
-              </select>
             </div>
             <div className="bk-field bk-field-date">
               <label>من تاريخ</label>
@@ -1745,21 +1806,27 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           <div className="bk-update-at">{lastUpdateMap[b.id]?.at || "—"}</div>
                         </td>
                         <td>
-                          <span className="bk-price-pill">{payment.totalAmount} ر.س</span>
-                          <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>
-                            {paymentStatusLabel(payment)}
-                          </div>
-                          <div style={{ fontSize: 11, opacity: 0.8 }}>
-                            دفعت {payment.paidAmount} ر.س
-                          </div>
-                          <div style={{ fontSize: 11, opacity: 0.8 }}>
-                            المتبقي {payment.remainingAmount} ر.س
+                          <div className="bk-payment-cell">
+                            <span className="bk-price-pill">{payment.totalAmount} ر.س</span>
+                            <span
+                              className={`bk-payment-status ${
+                                payment.remainingAmount <= 0
+                                  ? "is-paid"
+                                  : payment.paidAmount > 0
+                                    ? "is-partial"
+                                    : "is-unpaid"
+                              }`}
+                            >
+                              {paymentStatusLabel(payment)}
+                            </span>
+                            <span className="bk-payment-line">دفعت {payment.paidAmount} ر.س</span>
+                            <span className="bk-payment-line">المتبقي {payment.remainingAmount} ر.س</span>
                           </div>
                         </td>
                         <td className="bk-actions-cell">
                           <div className="bk-actions-row">
-                            <button className="exp-btn ghost sm bk-info-btn" onClick={() => setSelectedBooking(b)} aria-label="تفاصيل الحجز">
-                              <FontAwesomeIcon icon={faCircleInfo} />
+                            <button className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
+                              تفاصيل
                             </button>
                             {canEditBookings && (
                               <button className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
