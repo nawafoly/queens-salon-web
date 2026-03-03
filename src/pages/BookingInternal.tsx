@@ -43,9 +43,16 @@ import {
   isStaffWorkingAtTime,
   isStaffEmploymentEndedForDate,
 } from "../helpers/staffAvailability";
+import {
+  pickEffectivePrice as resolveEffectiveSeasonPrice,
+} from "../helpers/seasonPricing";
 
 import { AppSettingsService } from "../services/AppSettingsService";
 import Modal from "../components/Modal";
+import BookingDropdown, {
+  type BookingDropdownGroup,
+  type BookingDropdownOption,
+} from "../components/BookingDropdown";
 
 // Firestore
 import {
@@ -264,6 +271,7 @@ const PACKAGE_SECTION_TITLE = "البكيجات";
 const ALLOW_OVERTIME_MIN = 15;
 const TAKEN_TIMES_CACHE_TTL_MS = 20_000;
 const BOOKED_META_CACHE_TTL_MS = 20_000;
+const HOME_SERVICE_MIN_TOTAL_SAR = 1000;
 const MANI_PEDI_SECTION_KEYWORDS = [
   "manicure",
   "pedicure",
@@ -278,6 +286,20 @@ const MANI_PEDI_SECTION_KEYWORDS = [
   "بوديكير",
   "بدكير",
   "بوديكير",
+];
+const HOME_SERVICE_SECTION_KEYWORDS = [
+  "home-services",
+  "home service",
+  "home services",
+  "mobile service",
+  "at home",
+  "home",
+  "منزلي",
+  "منزلية",
+  "خدمة منزلية",
+  "خدمات منزلية",
+  "خدمات المنزل",
+  "المنزل",
 ];
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 type DateCalendar = "gregory" | "hijri";
@@ -865,6 +887,12 @@ function isManiPediSectionByInfo(sectionId: string, sectionTitle?: string) {
   const hay = normalizeSearchText(`${sectionId || ""} ${sectionTitle || ""}`);
   if (!hay) return false;
   return MANI_PEDI_SECTION_KEYWORDS.some((k) => hay.includes(normalizeSearchText(k)));
+}
+
+function isHomeServiceSectionByInfo(sectionId: string, sectionTitle?: string) {
+  const hay = normalizeSearchText(`${sectionId || ""} ${sectionTitle || ""}`);
+  if (!hay) return false;
+  return HOME_SERVICE_SECTION_KEYWORDS.some((k) => hay.includes(normalizeSearchText(k)));
 }
 
 function toArabicCatalogLabel(raw: string) {
@@ -3477,50 +3505,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return isStaffAvailableForDate(staff as any, date, { requireShowOnBooking: true });
   }
 
-  // =========================
-  // Season enabled
-  // =========================
-  function isDateInRange(dateISO: string, startISO: string, endISO: string) {
-    if (!dateISO) return false;
-    if (startISO && dateISO < startISO) return false;
-    if (endISO && dateISO > endISO) return false;
-    return true;
-  }
-
-  function isSeasonEnabledForDate(appSettings: any, dateISO: string) {
-    const season = (appSettings as any)?.catalogSeasonPricing || {};
-    const enabled = !!season.enabled;
-
-    const start = String(season.startDate || season.from || "").trim();
-    const end = String(season.endDate || season.to || "").trim();
-
-    if (!enabled) return { ok: false, start, end };
-    if (!start && !end) return { ok: true, start, end };
-
-    return { ok: isDateInRange(dateISO, start, end), start, end };
-  }
-
   function pickEffectivePrice(args: {
     basePrice: number;
     seasonPrice?: number;
     appSettings: any;
     dateISO: string;
   }) {
-    const base = Math.max(0, Number(args.basePrice || 0));
-    const season = Math.max(0, Number(args.seasonPrice || 0));
-
-    const seasonState = isSeasonEnabledForDate(args.appSettings, args.dateISO);
-    const seasonActive = seasonState.ok;
-
-    if (seasonActive && season > 0) {
-      return { price: season, label: "سعر موسم ✅", usedSeason: true };
-    }
-
-    return {
-      price: base,
-      label: seasonActive ? "سعر عادي (لا يوجد سعر موسم)" : "سعر عادي",
-      usedSeason: false,
-    };
+    return resolveEffectiveSeasonPrice(args);
   }
 
   function findCartOverlap(items: CartItem[]) {
@@ -4091,6 +4082,22 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return Object.entries(pricingSections).map(([id, sec]) => ({ id, title: sec.title }));
   }, [catalogMode, fsSections, fsPackages]);
 
+  const serviceSectionOptions = useMemo(
+    () => sectionOptions.filter((s) => String(s.id || "").trim() !== PACKAGE_SECTION_ID),
+    [sectionOptions]
+  );
+
+  const sectionDropdownOptions = useMemo<BookingDropdownOption[]>(
+    () => [
+      { value: "", label: "اختاري قسم..." },
+      ...serviceSectionOptions.map((s) => ({
+        value: String(s.id || "").trim(),
+        label: toArabicCatalogLabel(String(s.title || s.id)),
+      })),
+    ],
+    [serviceSectionOptions]
+  );
+
   const categoryOptions: CategoryOption[] = useMemo(() => {
     if (!selectedSectionId) return [];
     if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) return [];
@@ -4189,6 +4196,53 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       }))
       .filter((x) => x.id);
   }, [servicesFlat, bookingDate, appSettings]);
+
+  const categoryDropdownOptions = useMemo<BookingDropdownOption[]>(
+    () => [
+      { value: "", label: "الكل" },
+      ...categoryOptions.map((c) => ({
+        value: String(c.id || "").trim(),
+        label: toArabicCatalogLabel(String(c.name || c.id)),
+      })),
+    ],
+    [categoryOptions]
+  );
+
+  const serviceDropdownGroups = useMemo<BookingDropdownGroup[]>(
+    () => [
+      {
+        label: "",
+        options: [{ value: "", label: "اختاري خدمة..." }],
+      },
+      ...servicesGrouped.map(([catName, arr]) => ({
+        label: toArabicCatalogLabel(String(catName || "")),
+        options: arr.map((sv) => ({
+          value: String(sv.id || "").trim(),
+          label: `${toArabicCatalogLabel(String(sv.name || sv.id))} - ${servicePickerPriceText(sv)}`,
+        })),
+      })),
+    ],
+    [servicesGrouped, bookingDate, appSettings]
+  );
+
+  const packageDropdownOptions = useMemo<BookingDropdownOption[]>(
+    () => [
+      { value: "", label: "اختاري باكيج..." },
+      ...packageOptions.map((pkg) => ({
+        value: String(pkg.id || "").trim(),
+        label: `${pkg.title} - ${pkg.priceText}`,
+      })),
+    ],
+    [packageOptions]
+  );
+
+  const futureStaffModeDropdownOptions = useMemo<BookingDropdownOption[]>(
+    () => [
+      { value: "any", label: "أي موظفة للخدمة" },
+      { value: "one", label: "موظفة محددة" },
+    ],
+    []
+  );
 
   const priceLookupNeedle = useMemo(
     () => normalizeSearchText(String(priceLookupQuery || "").trim()),
@@ -5593,16 +5647,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const sid = e.target.value;
+  const handleSectionSelect = (sidRaw: string) => {
+    const sid = String(sidRaw || "").trim();
     setSelectedSectionId(sid);
     setPickerScope(String(sid || "").trim() === PACKAGE_SECTION_ID ? "packages" : "services");
     setSelectedCategory("");
     setServicePicker("");
   };
 
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedCategory(e.target.value);
+  const handleCategorySelect = (categoryRaw: string) => {
+    const categoryId = String(categoryRaw || "").trim();
+    setSelectedCategory(categoryId);
     setServicePicker("");
   };
 
@@ -5620,6 +5675,26 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         return bt - at;
       });
   }, [availableOffers]);
+
+  const savedOffersDropdownOptions = useMemo<BookingDropdownOption[]>(
+    () => [
+      { value: "", label: "بدون خصم محفوظ" },
+      ...selectableOffers.map((o: any) => {
+        const id = String((o as any)?.id || "").trim();
+        const code = normalizeCouponCode((o as any)?.code);
+        const title = String((o as any)?.title || "").trim() || "عرض";
+        const kind =
+          String((o as any)?.discountType || "").trim() === "percent"
+            ? `${Number((o as any)?.value || 0)}%`
+            : `${Number((o as any)?.value || 0)} ريال`;
+        return {
+          value: id,
+          label: `${title}${code ? ` (${code})` : ""} - ${kind}`,
+        };
+      }),
+    ],
+    [selectableOffers]
+  );
 
   const selectedOffer = useMemo(() => {
     const id = String(selectedOfferId || "").trim();
@@ -6145,6 +6220,34 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       }
 
       // ✅ الاستقبال: الموظف لازم يكون مسجل دخول
+      let hasHomeServiceItem = false;
+      const homeServicesTotal = roundMoney2(
+        items.reduce((sum, it, idx) => {
+          const serviceId = String(it.serviceId || "").trim();
+          const serviceDoc = getServiceById(serviceId);
+          const sectionId = String(it.serviceSectionId || serviceDoc?.sectionId || "").trim();
+          const sectionTitle =
+            String(it.serviceSectionTitle || "").trim() ||
+            String(serviceDoc?.sectionTitle || "").trim();
+          if (!isHomeServiceSectionByInfo(sectionId, sectionTitle)) return sum;
+          hasHomeServiceItem = true;
+          const itemDiscount = Number(perItemDiscounts[idx] || 0);
+          const itemFinal = Math.max(0, Number(it.basePrice || 0) - itemDiscount);
+          return sum + itemFinal;
+        }, 0)
+      );
+      if (hasHomeServiceItem && homeServicesTotal <= HOME_SERVICE_MIN_TOTAL_SAR) {
+        openModal({
+          title: "شرط حجز الخدمات المنزلية",
+          message:
+            `لحجز الخدمات المنزلية لازم يكون الإجمالي أكبر من ${HOME_SERVICE_MIN_TOTAL_SAR} ريال.\n` +
+            `الإجمالي الحالي للخدمات المنزلية: ${homeServicesTotal.toFixed(2)} ريال.`,
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
       const authNow = getAuth();
       const staffUid = authNow.currentUser?.uid || "";
       if (!staffUid) {
@@ -7922,77 +8025,52 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     <>
                       <div className="col-12">
                         <label className="form-label">القسم</label>
-                        <select
-                          className="form-select"
+                        <BookingDropdown
+                          ariaLabel="القسم"
                           value={selectedSectionId}
-                          onChange={handleSectionChange}
-                        >
-                          <option value="">اختاري قسم...</option>
-                          {sectionOptions
-                            .filter((s) => String(s.id || "").trim() !== PACKAGE_SECTION_ID)
-                            .map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {toArabicCatalogLabel(String(s.title || s.id))}
-                              </option>
-                            ))}
-                        </select>
+                          onChange={handleSectionSelect}
+                          options={sectionDropdownOptions}
+                          placeholder="اختاري قسم..."
+                          disabled={!serviceSectionOptions.length}
+                        />
                       </div>
 
                       <div className="col-12">
                         <label className="form-label">التصنيف</label>
-                        <select
-                          className="form-select"
+                        <BookingDropdown
+                          ariaLabel="التصنيف"
                           value={selectedCategory}
-                          onChange={handleCategoryChange}
+                          onChange={handleCategorySelect}
+                          options={categoryDropdownOptions}
+                          placeholder="الكل"
                           disabled={!selectedSectionId}
-                        >
-                          <option value="">الكل</option>
-                          {categoryOptions.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {toArabicCatalogLabel(String(c.name || c.id))}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </div>
 
                       <div className="col-12">
                         <label className="form-label">الخدمة</label>
-                        <select
-                          className="form-select"
+                        <BookingDropdown
+                          ariaLabel="الخدمة"
                           value={servicePicker}
-                          onChange={(e) => setServicePicker(String(e.target.value || ""))}
+                          onChange={(next) => setServicePicker(String(next || ""))}
+                          groups={serviceDropdownGroups}
+                          placeholder="اختاري خدمة..."
                           disabled={!selectedSectionId}
-                        >
-                          <option value="">اختاري خدمة...</option>
-                          {servicesGrouped.map(([catName, arr]) => (
-                            <optgroup key={catName} label={toArabicCatalogLabel(String(catName || ""))}>
-                              {arr.map((sv) => (
-                                <option key={sv.id} value={sv.id}>
-                                  {toArabicCatalogLabel(String(sv.name || sv.id))} - {servicePickerPriceText(sv)}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </select>
+                        />
                       </div>
                     </>
                   ) : (
                     <div className="col-12">
                       <label className="form-label">البكج</label>
-                      <select
-                        className="form-select"
+                      <BookingDropdown
+                        ariaLabel="البكج"
                         value={servicePicker}
-                        onChange={(e) => setServicePicker(String(e.target.value || ""))}
+                        onChange={(next) => setServicePicker(String(next || ""))}
+                        options={packageDropdownOptions}
+                        placeholder="اختاري باكيج..."
                         disabled={!packageOptions.length}
-                      >
-                        <option value="">اختاري باكيج...</option>
-                        {!packageOptions.length && <option value="" disabled>لا توجد باكيجات متاحة</option>}
-                        {packageOptions.map((pkg) => (
-                          <option key={pkg.id} value={pkg.id}>
-                            {pkg.title} - {pkg.priceText}
-                          </option>
-                        ))}
-                      </select>
+                        emptyText="لا توجد باكيجات متاحة"
+                      />
                     </div>
                   )}
 
@@ -8563,14 +8641,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
                     <div className="row g-2 align-items-end">
                       <div className="col-12">
-                        <select
-                          className="form-select"
+                        <BookingDropdown
+                          ariaLabel="اختيار الموظفة"
                           value={futureAnyStaff ? "any" : "one"}
-                          onChange={(e) => setFutureAnyStaff(e.target.value === "any")}
-                        >
-                          <option value="any">أي موظفة للخدمة</option>
-                          <option value="one">موظفة محددة</option>
-                        </select>
+                          onChange={(next) => setFutureAnyStaff(String(next || "").trim() === "any")}
+                          options={futureStaffModeDropdownOptions}
+                          placeholder="اختيار الموظفة"
+                        />
                       </div>
 
                       {!futureAnyStaff ? (
@@ -8811,27 +8888,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   <div className="row g-2 align-items-start bk-discount-editor">
                     <div className="col-12 bk-discount-editor-col">
                       <label className="form-label">الخصم المحفوظ</label>
-                      <select
-                        className="form-select"
+                      <BookingDropdown
+                        ariaLabel="الخصم المحفوظ"
                         value={selectedOfferId}
                         disabled={isLoading || offersLoading}
-                        onChange={(e) => setSelectedOfferId(String(e.target.value || "").trim())}
-                      >
-                        <option value="">بدون خصم محفوظ</option>
-                        {selectableOffers.map((o: any) => {
-                          const code = normalizeCouponCode((o as any)?.code);
-                          const title = String((o as any)?.title || "").trim() || "عرض";
-                          const kind =
-                            String((o as any)?.discountType || "").trim() === "percent"
-                              ? `${Number((o as any)?.value || 0)}%`
-                              : `${Number((o as any)?.value || 0)} ريال`;
-                          return (
-                            <option key={String((o as any)?.id || "").trim()} value={String((o as any)?.id || "").trim()}>
-                              {title} {code ? `(${code})` : ""} - {kind}
-                            </option>
-                          );
-                        })}
-                      </select>
+                        onChange={(next) => setSelectedOfferId(String(next || "").trim())}
+                        options={savedOffersDropdownOptions}
+                        placeholder="بدون خصم محفوظ"
+                      />
                       {offersLoadMsg ? (
                         <div className="small text-warning mt-1">{offersLoadMsg}</div>
                       ) : selectedOffer ? (
@@ -8959,14 +9023,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
                 <div className="row g-2 align-items-end">
                   <div className="col-12">
-                    <select
-                      className="form-select"
+                    <BookingDropdown
+                      ariaLabel="اختيار الموظفة"
                       value={futureAnyStaff ? "any" : "one"}
-                      onChange={(e) => setFutureAnyStaff(e.target.value === "any")}
-                    >
-                      <option value="any">أي موظفة للخدمة</option>
-                      <option value="one">موظفة محددة</option>
-                    </select>
+                      onChange={(next) => setFutureAnyStaff(String(next || "").trim() === "any")}
+                      options={futureStaffModeDropdownOptions}
+                      placeholder="اختيار الموظفة"
+                    />
                   </div>
 
                   {!futureAnyStaff ? (
@@ -9113,3 +9176,4 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 };
 
 export default BookingInternal;
+

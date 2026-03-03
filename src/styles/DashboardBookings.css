@@ -69,6 +69,35 @@
   color: #4b5563;
 }
 
+.bk-page-wrapper .bk-new-summary {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bk-page-wrapper .bk-new-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+  background: rgba(148, 163, 184, 0.12);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.bk-page-wrapper .bk-new-count.is-has-new {
+  border-color: rgba(180, 83, 9, 0.34);
+  background: rgba(245, 158, 11, 0.18);
+  color: #7c2d12;
+}
+
 .bk-page-wrapper .bookings-error {
   margin-top: 10px;
   border: 1px solid rgba(180, 35, 24, 0.3);
@@ -464,6 +493,10 @@
   background: linear-gradient(180deg, rgba(59, 130, 246, 0.05), rgba(59, 130, 246, 0.02));
 }
 
+.bk-page-wrapper .bookings-table .bk-row.bk-row-unseen td {
+  box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.04);
+}
+
 .bk-page-wrapper .bookings-table .bk-row td:first-child {
   border-right: 4px solid transparent;
 }
@@ -543,6 +576,20 @@
   white-space: nowrap;
   direction: ltr;
   unicode-bidi: plaintext;
+}
+
+.bk-page-wrapper .bk-new-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 83, 9, 0.35);
+  background: rgba(245, 158, 11, 0.2);
+  color: #7c2d12;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 2px 8px;
+  line-height: 1.2;
 }
 
 .bk-page-wrapper .bk-customer-name {
@@ -830,6 +877,14 @@
 .bk-page-wrapper .bk-mobile-card.bk-mobile-card-completed {
   border-color: rgba(59, 130, 246, 0.34);
   background: linear-gradient(180deg, rgba(59, 130, 246, 0.07), #fff);
+}
+
+.bk-page-wrapper .bk-mobile-card.is-unseen {
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35), 0 8px 22px rgba(180, 83, 9, 0.12);
+}
+
+.bk-page-wrapper .bk-new-badge-mobile {
+  margin-bottom: 10px;
 }
 
 .bk-page-wrapper .bk-mobile-row {

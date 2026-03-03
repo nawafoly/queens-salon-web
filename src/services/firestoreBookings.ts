@@ -128,6 +128,11 @@ export type BookingDoc = {
 
   status: BookingStatus;
   note?: string;
+  viewedAt?: Timestamp | number;
+  viewedAtMs?: number;
+  viewedByUid?: string | null;
+  viewedByEmail?: string | null;
+  viewedByName?: string | null;
   pendingAt?: number;
   pendingByUid?: string;
   confirmedAt?: number;
@@ -140,6 +145,7 @@ export type BookingDoc = {
   paidByUid?: string;
 
   createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 };
 
 export type BookingDocWithId = BookingDoc & { id: string };
@@ -302,7 +308,13 @@ function normalizeBooking(raw: any): BookingDoc {
 
     status: raw?.status ?? "pending",
     note: raw?.note ?? undefined,
+    viewedAt: raw?.viewedAt ?? undefined,
+    viewedAtMs: Number(raw?.viewedAtMs || 0) || undefined,
+    viewedByUid: raw?.viewedByUid ? String(raw.viewedByUid) : undefined,
+    viewedByEmail: raw?.viewedByEmail ? String(raw.viewedByEmail) : undefined,
+    viewedByName: raw?.viewedByName ? String(raw.viewedByName) : undefined,
     createdAt: raw?.createdAt,
+    updatedAt: raw?.updatedAt,
   };
 }
 
@@ -733,7 +745,7 @@ async function writeBookingLog(args: {
   let action: string = "booking_updated";
   if (args.type === "created") action = "booking_created";
   if (args.type === "details_updated") action = "booking_updated";
-  if (args.type === "staff_acknowledged") action = "booking_reassigned";
+  if (args.type === "staff_acknowledged") action = "booking_viewed";
   if (args.type === "status_changed") {
     const status = String(args?.patch?.status || "").toLowerCase().trim();
     if (status === "confirmed") action = "booking_confirmed";
@@ -1519,6 +1531,75 @@ export async function getBookingById(id: string) {
   const snap = await getDoc(doc(db, ...BOOKINGS_COL, id));
   if (!snap.exists()) return null;
   return { id: snap.id, ...normalizeBooking(snap.data()) };
+}
+
+export async function markBookingViewed(bookingId: string) {
+  const id = String(bookingId || "").trim();
+  if (!id) throw new Error("BOOKING_ID_REQUIRED");
+
+  const bookingRef = doc(db, ...BOOKINGS_COL, id);
+  const trackRef = doc(db, ...TRACKS_COL, id);
+  const auth = getAuth();
+  const viewer = auth.currentUser;
+  const nowMs = Date.now();
+
+  let didWrite = false;
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(bookingRef);
+    if (!snap.exists()) throw new Error("BOOKING_NOT_FOUND");
+
+    const data = snap.data() as any;
+    const viewedAtMs = Number(data?.viewedAtMs || 0);
+    const hasViewedTimestamp =
+      typeof data?.viewedAt?.toMillis === "function" ||
+      (typeof data?.viewedAt?.seconds === "number" && Number(data?.viewedAt.seconds) > 0) ||
+      Number.isFinite(Number(data?.viewedAt)) && Number(data?.viewedAt) > 0;
+    if ((Number.isFinite(viewedAtMs) && viewedAtMs > 0) || hasViewedTimestamp) return;
+
+    tx.update(
+      bookingRef,
+      stripUndefined({
+        viewedAt: serverTimestamp(),
+        viewedAtMs: nowMs,
+        viewedByUid: String(viewer?.uid || "").trim() || null,
+        viewedByEmail: String(viewer?.email || "").trim() || null,
+        viewedByName: String(viewer?.displayName || "").trim() || null,
+        updatedAt: serverTimestamp(),
+      }) as any
+    );
+    didWrite = true;
+  });
+
+  if (!didWrite) return;
+
+  try {
+    await setDoc(
+      trackRef,
+      stripUndefined({
+        viewedAt: serverTimestamp(),
+        viewedAtMs: nowMs,
+        viewedByUid: String(viewer?.uid || "").trim() || null,
+        viewedByEmail: String(viewer?.email || "").trim() || null,
+        viewedByName: String(viewer?.displayName || "").trim() || null,
+        updatedAt: serverTimestamp(),
+      }) as any,
+      { merge: true }
+    );
+  } catch {
+    // ignore
+  }
+
+  await writeBookingLog({
+    bookingId: id,
+    type: "staff_acknowledged",
+    note: "تمت مشاهدة الحجز لأول مرة",
+    patch: {
+      viewedAtMs: nowMs,
+      viewedByUid: String(viewer?.uid || "").trim() || null,
+      viewedByEmail: String(viewer?.email || "").trim() || null,
+    },
+  });
 }
 
 export async function listAllBookings(): Promise<BookingDocWithId[]> {

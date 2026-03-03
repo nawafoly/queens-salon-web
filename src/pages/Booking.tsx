@@ -41,6 +41,9 @@ import {
   isStaffEmploymentEndedForDate,
   resolveStaffWorkingWindowForDate,
 } from "../helpers/staffAvailability";
+import {
+  pickEffectivePrice as resolveEffectiveSeasonPrice,
+} from "../helpers/seasonPricing";
 import { AppSettingsService } from "../services/AppSettingsService";
 
 import "../styles/Booking.css";
@@ -205,6 +208,35 @@ type OfferServicePickerState = {
   choices: OfferServiceChoice[];
   selectedServiceId: string;
   adding: boolean;
+};
+
+type CouponTargetChoice = {
+  itemId: string;
+  serviceId: string;
+  serviceName: string;
+  date: string;
+  time: string;
+  price: number;
+};
+
+type CouponTargetPickerState = {
+  open: boolean;
+  code: string;
+  offerId: string;
+  offerTitle: string;
+  choices: CouponTargetChoice[];
+  selectedItemId: string;
+  applying: boolean;
+  clearInputOnSuccess: boolean;
+  suppressAlreadyAppliedMsg: boolean;
+  suppressRetryableErrors: boolean;
+};
+
+type ApplyCouponOptions = {
+  clearInputOnSuccess?: boolean;
+  suppressAlreadyAppliedMsg?: boolean;
+  suppressRetryableErrors?: boolean;
+  forcedItemId?: string;
 };
 
 type BookingStep = 1 | 2 | 3 | 4;
@@ -438,6 +470,7 @@ const PACKAGE_SECTION_ID = "service-packages";
 const PACKAGE_SECTION_TITLE = "البكيجات";
 const ALLOW_OVERTIME_MIN = 15;
 const MANI_PEDI_TOOLS_FEE_FIXED = 15;
+const HOME_SERVICE_MIN_TOTAL_SAR = 1000;
 const MANI_PEDI_SECTION_KEYWORDS = [
   "manicure",
   "pedicure",
@@ -452,6 +485,20 @@ const MANI_PEDI_SECTION_KEYWORDS = [
   "بوديكير",
   "بدكير",
   "بوديكير",
+];
+const HOME_SERVICE_SECTION_KEYWORDS = [
+  "home-services",
+  "home service",
+  "home services",
+  "mobile service",
+  "at home",
+  "home",
+  "منزلي",
+  "منزلية",
+  "خدمة منزلية",
+  "خدمات منزلية",
+  "خدمات المنزل",
+  "المنزل",
 ];
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 type BookingHourOverrideMode = "hours" | "closed";
@@ -879,6 +926,12 @@ function isManiPediSectionByInfo(sectionId: string, sectionTitle?: string) {
   return MANI_PEDI_SECTION_KEYWORDS.some((k) => hay.includes(normalizeSearchText(k)));
 }
 
+function isHomeServiceSectionByInfo(sectionId: string, sectionTitle?: string) {
+  const hay = normalizeSearchText(`${sectionId || ""} ${sectionTitle || ""}`);
+  if (!hay) return false;
+  return HOME_SERVICE_SECTION_KEYWORDS.some((k) => hay.includes(normalizeSearchText(k)));
+}
+
 function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
   const s = String(dateISO || "").trim();
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -1254,6 +1307,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     selectedServiceId: "",
     adding: false,
   });
+  const [couponTargetPicker, setCouponTargetPicker] = useState<CouponTargetPickerState>({
+    open: false,
+    code: "",
+    offerId: "",
+    offerTitle: "",
+    choices: [],
+    selectedItemId: "",
+    applying: false,
+    clearInputOnSuccess: true,
+    suppressAlreadyAppliedMsg: false,
+    suppressRetryableErrors: false,
+  });
   const [manualOverride, setManualOverride] = useState(false);
   const [currentStep, setCurrentStep] = useState<BookingStep>(1);
   const staffChoiceMode: "manual" = "manual";
@@ -1481,6 +1546,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [futureTargetItemId, setFutureTargetItemId] = useState("");
   const autoFutureSearchKeyRef = useRef("");
   const autoStaffDefaultContextRef = useRef<Record<string, string>>({});
+  const manualStaffChoiceContextRef = useRef<Record<string, string>>({});
   const futureSearchRef = useRef<HTMLDivElement | null>(null);
 
   function openFutureSearchFromItem(it: CartItem) {
@@ -1575,67 +1641,30 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
     return taken;
   }
-
-
-
-
-  function isDateInRange(dateISO: string, startISO: string, endISO: string) {
-    if (!dateISO) return false;
-    if (startISO && dateISO < startISO) return false;
-    if (endISO && dateISO > endISO) return false;
-    return true;
-  }
-
-  // âœ… مثال شكل إعدادات الموسم (نربطه مع appSettings لاحقًا لو اسم الحقول مختلف)
-  function isSeasonEnabledForDate(appSettings: any, dateISO: string) {
-    const season = (appSettings as any)?.catalogSeasonPricing || {};
-    const enabled = !!season.enabled;
-
-    const start = String(season.startDate || season.from || "").trim();
-    const end = String(season.endDate || season.to || "").trim();
-
-    if (!enabled) return { ok: false, start, end };
-    if (!start && !end) return { ok: true, start, end };
-
-    return { ok: isDateInRange(dateISO, start, end), start, end };
-  }
-
-  // âœ… السعر النهائي: إذا الموسم شغال -> استخدم seasonPrice إذا موجود، وإلا استخدم العادي
-function pickEffectivePrice(args: {
+  function pickEffectivePrice(args: {
     basePrice: number;
     seasonPrice?: number;
     appSettings: any;
     dateISO: string;
   }) {
-    const base = Math.max(0, Number(args.basePrice || 0));
-    const season = Math.max(0, Number(args.seasonPrice || 0));
+    return resolveEffectiveSeasonPrice(args);
+  }
 
-    const seasonState = isSeasonEnabledForDate(args.appSettings, args.dateISO);
-    const seasonActive = seasonState.ok;
+  function isSequentialOfferItem(it: CartItem) {
+    return (
+      !!String((it as any)?.sequenceOfferId || "").trim() &&
+      Array.isArray((it as any)?.sequenceStepsSnapshot) &&
+      ((it as any)?.sequenceStepsSnapshot?.length || 0) > 0
+    );
+  }
 
-    if (seasonActive && season > 0) {
-      return { price: season, label: "سعر موسم", usedSeason: true };
-    }
-
-    // âœ… إذا الموسم شغال لكن الخدمة ما لها سعر موسم: نرجع للعادي (هذا شرطك)
-    return { price: base, label: seasonActive ? "سعر عادي (لا يوجد سعر موسم)" : "سعر عادي", usedSeason: false };
-}
-
-function isSequentialOfferItem(it: CartItem) {
-  return (
-    !!String((it as any)?.sequenceOfferId || "").trim() &&
-    Array.isArray((it as any)?.sequenceStepsSnapshot) &&
-    ((it as any)?.sequenceStepsSnapshot?.length || 0) > 0
-  );
-}
-
-function findCartOverlap(items: CartItem[]) {
-  const list = (items || []).map((x) => ({ ...x }));
-  for (let i = 0; i < list.length; i++) {
-    for (let j = i + 1; j < list.length; j++) {
-      const a = list[i];
-      const b = list[j];
-      if (isSequentialOfferItem(a) || isSequentialOfferItem(b)) continue;
+  function findCartOverlap(items: CartItem[]) {
+    const list = (items || []).map((x) => ({ ...x }));
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i];
+        const b = list[j];
+        if (isSequentialOfferItem(a) || isSequentialOfferItem(b)) continue;
 
         const empA = resolveEmployeeKey(a); // âœ… FIX
         const empB = resolveEmployeeKey(b); // âœ… FIX
@@ -1647,12 +1676,13 @@ function findCartOverlap(items: CartItem[]) {
         if (!empA || !empB || !dateA || !dateB || !timeA || !timeB) continue;
         const idA = String(a.employeeId || "").trim();
         const idB = String(b.employeeId || "").trim();
-        
+
         const sameByKey = empA && empB && empA === empB;
         const sameById = idA && idB && idA === idB;
         const crossKeyMatch = (idA && empB === idA) || (idB && empA === idB);
-        
-        if (!(sameByKey || sameById || crossKeyMatch)) continue;        if (dateA !== dateB) continue;
+
+        if (!(sameByKey || sameById || crossKeyMatch)) continue;
+        if (dateA !== dateB) continue;
 
         const aLocked = new Set(
           getTimesToLock(
@@ -3477,25 +3507,50 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const serviceIds = Array.from(new Set(rawServiceIds));
 
     if (serviceIds.length > 0) {
-      let pickedServiceId = "";
-      for (const sid of serviceIds) {
-        const sv = await ensureServiceByIdForOffer(sid);
-        if (sv) {
-          pickedServiceId = sid;
-          break;
-        }
+      const choicesRaw: OfferServiceChoice[] = await Promise.all(
+        serviceIds.map(async (rawServiceId: string): Promise<OfferServiceChoice> => {
+          const sid = String(rawServiceId || "").trim();
+          const sv = await ensureServiceByIdForOffer(sid);
+          return {
+            serviceId: sid,
+            serviceName: String(sv?.name || sid).trim() || sid,
+          };
+        })
+      );
+      const choices = choicesRaw.filter((x) => String(x.serviceId || "").trim());
+
+      if (!choices.length) {
+        setOfferMsgKind("error");
+        setOfferMsg("تعذر تحميل خدمات العرض.");
+        setServicePicker("");
+        return;
       }
-      if (pickedServiceId) {
+
+      if (choices.length === 1) {
+        const pickedServiceId = String(choices[0]?.serviceId || "").trim();
         await addServiceToCart(pickedServiceId, {
           preventDuplicate: true,
           offerSourceId: String((offer as any)?.id || "").trim(),
           offerSourceCode: autoCode,
           offerSourceTitle: String((offer as any)?.title || "").trim() || "العرض",
         });
+        setOfferMsgKind("success");
+        setOfferMsg("تم اختيار العرض وتفعيل الخصم تلقائيًا.");
+        setServicePicker("");
+        return;
       }
 
+      setOfferServicePicker({
+        open: true,
+        offerId: String((offer as any)?.id || "").trim(),
+        offerTitle: String((offer as any)?.title || "").trim() || "العرض",
+        couponCode: autoCode,
+        choices,
+        selectedServiceId: "",
+        adding: false,
+      });
       setOfferMsgKind("success");
-      setOfferMsg("تم اختيار العرض وتفعيل الخصم تلقائيًا.");
+      setOfferMsg("اختاري الخدمة المطلوبة من العرض لإضافتها.");
       setServicePicker("");
       return;
     }
@@ -3511,6 +3566,46 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       open: false,
       adding: false,
     }));
+  };
+
+  const closeCouponTargetPicker = () => {
+    setCouponTargetPicker((prev) => ({
+      ...prev,
+      open: false,
+      applying: false,
+    }));
+  };
+
+  const confirmCouponTargetPicker = async () => {
+    const pickedItemId = String(couponTargetPicker.selectedItemId || "").trim();
+    const code = normalizeCouponCode(couponTargetPicker.code || couponCode);
+    if (!pickedItemId || !code || couponTargetPicker.applying) return;
+
+    setCouponTargetPicker((prev) => ({ ...prev, applying: true }));
+    try {
+      const status = await applyCouponCode(code, {
+        clearInputOnSuccess: couponTargetPicker.clearInputOnSuccess,
+        suppressAlreadyAppliedMsg: couponTargetPicker.suppressAlreadyAppliedMsg,
+        suppressRetryableErrors: couponTargetPicker.suppressRetryableErrors,
+        forcedItemId: pickedItemId,
+      });
+
+      if (
+        status === "applied" ||
+        status === "already_applied" ||
+        status === "single_coupon_only" ||
+        status === "invalid_or_expired" ||
+        status === "no_discount" ||
+        status === "error" ||
+        status === "no_applicable_services" ||
+        status === "selected_service_unavailable"
+      ) {
+        closeCouponTargetPicker();
+        return;
+      }
+    } finally {
+      setCouponTargetPicker((prev) => ({ ...prev, applying: false }));
+    }
   };
 
   const confirmOfferServicePicker = async () => {
@@ -4429,7 +4524,9 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           !!String(it.employeeId || "").trim() ||
           !!String(it.employeeUid || "").trim() ||
           !!String(it.employeeName || "").trim();
-        const currentEmployeeId = String(it.employeeId || "").trim();
+        // Never override user's explicit staff choice.
+        if (hasCurrentSelection) continue;
+        if (manualStaffChoiceContextRef.current[itemId] === contextKey) continue;
 
         const hasAvailableStarts = async (staff: StaffPublicWithId) => {
           const empId = String((staff as any)?.id || "").trim();
@@ -4455,17 +4552,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           return starts.length > 0;
         };
 
-        let currentIsTrulyAvailable = false;
-        if (currentEmployeeId) {
-          const selected = candidateStaff.find(
-            (st) => String(st?.id || "").trim() === currentEmployeeId
-          );
-          if (selected) {
-            currentIsTrulyAvailable = await hasAvailableStarts(selected);
-          }
-        }
-        if (currentIsTrulyAvailable) continue;
-
         let firstTrulyAvailable: StaffPublicWithId | null = null;
         for (const st of candidateStaff) {
           if (await hasAvailableStarts(st)) {
@@ -4480,10 +4566,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           const nextEmployeeName = String((firstTrulyAvailable as any)?.name || "").trim();
 
           const autoPickAllowedForEmpty =
-            !hasCurrentSelection &&
             autoStaffDefaultContextRef.current[itemId] !== contextKey;
-          const shouldReplaceCurrentUnavailable = hasCurrentSelection;
-          if (!autoPickAllowedForEmpty && !shouldReplaceCurrentUnavailable) continue;
+          if (!autoPickAllowedForEmpty) continue;
 
           patches.push({
             itemId,
@@ -4499,15 +4583,13 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           continue;
         }
 
-        // No available staff => keep selection empty and clear stale selection.
-        if (hasCurrentSelection || !!String(it.time || "").trim() || !!it.locked) {
+        // No available staff for this context with empty selection:
+        // keep card unlocked and clear stale time only.
+        if (!!String(it.time || "").trim() || !!it.locked) {
           patches.push({
             itemId,
             contextKey,
             patch: {
-              employeeId: "",
-              employeeUid: "",
-              employeeName: "",
               time: "",
               locked: false,
             },
@@ -5439,16 +5521,13 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   // =========================
   const applyCouponCode = async (
     codeRaw: string,
-    options?: {
-      clearInputOnSuccess?: boolean;
-      suppressAlreadyAppliedMsg?: boolean;
-      suppressRetryableErrors?: boolean;
-    }
+    options?: ApplyCouponOptions
   ) => {
     const code = normalizeCouponCode(codeRaw);
     const clearInputOnSuccess = options?.clearInputOnSuccess ?? true;
     const suppressAlreadyAppliedMsg = !!options?.suppressAlreadyAppliedMsg;
     const suppressRetryableErrors = !!options?.suppressRetryableErrors;
+    const forcedItemId = String(options?.forcedItemId || "").trim();
 
     if (!code) return "empty" as const;
 
@@ -5506,8 +5585,51 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         return "no_applicable_services" as const;
       }
 
-      // ✅ One discount operation per invoice: apply to a single service only.
-      const applicable = [applicableAll[applicableAll.length - 1]];
+      let applicable: CartItem[] = [];
+      if (forcedItemId) {
+        applicable = applicableAll.filter(
+          (it) => String(it.id || "").trim() === forcedItemId
+        );
+        if (!applicable.length) {
+          if (!suppressRetryableErrors) {
+            setOfferMsgKind("error");
+            setOfferMsg("الخدمة المحددة لم تعد متاحة لهذا العرض. اختاري خدمة أخرى.");
+          }
+          return "selected_service_unavailable" as const;
+        }
+      } else if (applicableAll.length === 1) {
+        applicable = [applicableAll[0]];
+      } else {
+        const choices: CouponTargetChoice[] = applicableAll.map((it) => ({
+          itemId: String(it.id || "").trim(),
+          serviceId: String(it.serviceId || "").trim(),
+          serviceName: String(it.serviceName || "").trim() || "خدمة",
+          date: String(it.date || bookingDate || "").trim(),
+          time: String(it.time || "").trim(),
+          price: Math.max(0, Number(it.basePrice || 0)),
+        }));
+        const firstChoice = choices.find((row) => row.itemId) || null;
+        if (firstChoice) {
+          setCouponTargetPicker({
+            open: true,
+            code,
+            offerId: String((offer as any)?.id || "").trim(),
+            offerTitle: String((offer as any)?.title || "").trim() || code,
+            choices,
+            selectedItemId: firstChoice.itemId,
+            applying: false,
+            clearInputOnSuccess,
+            suppressAlreadyAppliedMsg,
+            suppressRetryableErrors,
+          });
+          if (!suppressRetryableErrors) {
+            setOfferMsgKind("error");
+            setOfferMsg("حددي الخدمة المطلوب تطبيق الكود عليها.");
+          }
+          return "needs_service_selection" as const;
+        }
+        return "no_applicable_services" as const;
+      }
 
       const missingDate = applicable.find((it) => !String(it.date || "").trim());
       if (missingDate) {
@@ -5558,7 +5680,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       setManualOverride(true);
       setOfferMsgKind("success");
       setOfferMsg(
-        `تم تطبيق الكود (${nextEntry.code}) على خدمة واحدة. إجمالي الخصم ${safeDiscount} ريال.`
+        `تم تطبيق الكود (${nextEntry.code}) على الخدمة المحددة. إجمالي الخصم ${safeDiscount} ريال.`
       );
       return "applied" as const;
     } catch (e: any) {
@@ -5600,6 +5722,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         status === "already_applied" ||
         status === "single_coupon_only" ||
         status === "invalid_or_expired" ||
+        status === "needs_service_selection" ||
+        status === "selected_service_unavailable" ||
         status === "no_discount" ||
         status === "error"
       ) {
@@ -6008,8 +6132,52 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           return;
         }
 
-        // ✅ One discount operation per invoice: keep one eligible service only.
-        const applicable = [applicableAll[applicableAll.length - 1]];
+        const existingAppliedEntry = (appliedCoupons || []).find(
+          (row) => normalizeCouponCode(row.code) === code
+        );
+        const preferredItemIds = new Set(
+          (existingAppliedEntry?.applicableItemIds || [])
+            .map((id) => String(id || "").trim())
+            .filter(Boolean)
+        );
+        let applicable = applicableAll.filter((it) =>
+          preferredItemIds.has(String(it.id || "").trim())
+        );
+
+        if (!applicable.length) {
+          if (applicableAll.length > 1) {
+            const choices: CouponTargetChoice[] = applicableAll.map((it) => ({
+              itemId: String(it.id || "").trim(),
+              serviceId: String(it.serviceId || "").trim(),
+              serviceName: String(it.serviceName || "").trim() || "خدمة",
+              date: String(it.date || bookingDate || "").trim(),
+              time: String(it.time || "").trim(),
+              price: Math.max(0, Number(it.basePrice || 0)),
+            }));
+            const firstChoice = choices.find((row) => row.itemId) || null;
+            if (firstChoice) {
+              setCouponCode(code);
+              setCouponTargetPicker({
+                open: true,
+                code,
+                offerId: String((offer as any)?.id || "").trim(),
+                offerTitle: String((offer as any)?.title || "").trim() || code,
+                choices,
+                selectedItemId: firstChoice.itemId,
+                applying: false,
+                clearInputOnSuccess: true,
+                suppressAlreadyAppliedMsg: false,
+                suppressRetryableErrors: false,
+              });
+              setOfferMsgKind("error");
+              setOfferMsg("حددي الخدمة المطلوب تطبيق الكود عليها ثم أعيدي المحاولة.");
+              return;
+            }
+          }
+          applicable = [applicableAll[applicableAll.length - 1]];
+        } else {
+          applicable = [applicable[applicable.length - 1]];
+        }
 
         const missingDate = applicable.find((it) => !String(it.date || "").trim());
         if (missingDate) {
@@ -6087,6 +6255,35 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           const itemId = String(items[originalIndex]?.id || "").trim();
           if (itemId && itemDiscount > 0) couponByItemId.set(itemId, couponEntry);
         });
+      }
+
+      let hasHomeServiceItem = false;
+      const homeServicesTotal = Math.round(
+        items.reduce((sum, it, idx) => {
+          const serviceId = String(it.serviceId || "").trim();
+          const serviceDoc = getServiceById(serviceId);
+          const sectionId = String(it.serviceSectionId || serviceDoc?.sectionId || "").trim();
+          const sectionTitle =
+            String(it.serviceSectionTitle || "").trim() ||
+            String(sectionLabelById.get(sectionId) || "").trim() ||
+            String(serviceDoc?.sectionTitle || "").trim();
+          if (!isHomeServiceSectionByInfo(sectionId, sectionTitle)) return sum;
+          hasHomeServiceItem = true;
+          const itemDiscount = Number(perItemDiscounts[idx] || 0);
+          const itemFinal = Math.max(0, Number(it.basePrice || 0) - itemDiscount);
+          return sum + itemFinal;
+        }, 0) * 100
+      ) / 100;
+      if (hasHomeServiceItem && homeServicesTotal <= HOME_SERVICE_MIN_TOTAL_SAR) {
+        openModal({
+          title: "شرط حجز الخدمات المنزلية",
+          message:
+            `لحجز الخدمات المنزلية لازم يكون الإجمالي أكبر من ${HOME_SERVICE_MIN_TOTAL_SAR} ريال.\n` +
+            `الإجمالي الحالي للخدمات المنزلية: ${homeServicesTotal.toFixed(2)} ريال.`,
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
       }
 
       const authNow = getAuth();
@@ -7099,6 +7296,78 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
               disabled={!String(offerServicePicker.selectedServiceId || "").trim() || offerServicePicker.adding}
             >
               {offerServicePicker.adding ? "جارٍ الإضافة..." : "اختيار الخدمة وإضافتها للسلة"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        open={couponTargetPicker.open}
+        onClose={closeCouponTargetPicker}
+        ariaLabel="اختيار خدمة الكوبون"
+        size="sm"
+        panelClassName="booking-offer-picker-panel"
+      >
+        <div className="booking-offer-picker-modal">
+          <h3 className="booking-offer-picker-modal__title">
+            اختيار الخدمة المستهدفة بالخصم
+          </h3>
+          <p className="booking-offer-picker-modal__hint">
+            {String(couponTargetPicker.offerTitle || "").trim()
+              ? `العرض: ${couponTargetPicker.offerTitle}`
+              : "الكود المختار"}
+          </p>
+          <p className="booking-offer-picker-modal__text">
+            هذا العرض ينطبق على خدمات محددة. اختاري الخدمة التي تريدين تطبيق الخصم عليها.
+          </p>
+
+          <label className="booking-offer-picker-modal__label" htmlFor="couponTargetSelect">
+            الخدمات المؤهلة
+          </label>
+          <select
+            id="couponTargetSelect"
+            className="booking-offer-picker-modal__select"
+            value={couponTargetPicker.selectedItemId}
+            onChange={(e) =>
+              setCouponTargetPicker((prev) => ({
+                ...prev,
+                selectedItemId: String(e.target.value || "").trim(),
+              }))
+            }
+            disabled={couponTargetPicker.applying}
+          >
+            <option value="" disabled>
+              اختاري الخدمة
+            </option>
+            {couponTargetPicker.choices.map((row) => {
+              const dateLabel = String(row.date || "").trim() || "-";
+              const timeLabel = formatTime12ForClient(String(row.time || "").trim());
+              const priceLabel = `${Number(row.price || 0).toFixed(0)} ريال`;
+              return (
+                <option key={row.itemId} value={row.itemId}>
+                  {`${row.serviceName} • ${dateLabel} • ${timeLabel} • ${priceLabel}`}
+                </option>
+              );
+            })}
+          </select>
+
+          <div className="booking-offer-picker-modal__actions">
+            <button
+              type="button"
+              className="booking-offer-picker-modal__btn booking-offer-picker-modal__btn--cancel"
+              onClick={closeCouponTargetPicker}
+              disabled={couponTargetPicker.applying}
+            >
+              إلغاء
+            </button>
+            <button
+              type="button"
+              className="booking-offer-picker-modal__btn booking-offer-picker-modal__btn--confirm"
+              onClick={() => {
+                void confirmCouponTargetPicker();
+              }}
+              disabled={!String(couponTargetPicker.selectedItemId || "").trim() || couponTargetPicker.applying}
+            >
+              {couponTargetPicker.applying ? "جارٍ التطبيق..." : "تطبيق الخصم على الخدمة المحددة"}
             </button>
           </div>
         </div>
@@ -8233,6 +8502,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                           disabled={disabled}
                                           title={stateText || undefined}
                                           onClick={() => {
+                                            const currentContextKey = `${serviceKeyForStaff}|${dateISO}`;
+                                            const currentItemId = String(it.id || "").trim();
+                                            if (currentItemId) {
+                                              manualStaffChoiceContextRef.current[currentItemId] =
+                                                currentContextKey;
+                                            }
                                             if (selected) {
                                               updateItem(it.id, {
                                                 employeeId: "",

@@ -1134,8 +1134,9 @@ const Dashboard: React.FC = () => {
   }, [navigate]);
 
   // ✅ Auto Job (Client-side): كل 5 دقائق
-  // - pending  -> cancelled (يفك slots)
   // - confirmed -> completed (لا يفك slots)
+  // ملاحظة: إلغاء pending تلقائيًا يتم من السيرفر (Cloud Function) فقط
+  // لتجنب الإلغاء الخاطئ بسبب ساعة/منطقة جهاز المتصفح.
   // ✅ حماية: يشتغل Owner/Admin فقط
   useEffect(() => {
     if (!userInfo) return;
@@ -1237,9 +1238,7 @@ const Dashboard: React.FC = () => {
 
           if (now < end) continue;
 
-          if (st === "pending") {
-            await updateBookingStatusFS(b.id, "cancelled"); // يفك slots من داخل firestoreBookings
-          } else if (st === "confirmed") {
+          if (st === "confirmed") {
             await updateBookingStatusFS(b.id, "completed");
           }
         }
