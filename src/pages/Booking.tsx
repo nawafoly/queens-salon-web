@@ -38,8 +38,8 @@ import { formatTime12 } from "../helpers/timeDisplay";
 import {
   isStaffAvailableForDate,
   filterStaffSlotsByWorkingHours,
-  isStaffWorkingAtTime,
   isStaffEmploymentEndedForDate,
+  resolveStaffWorkingWindowForDate,
 } from "../helpers/staffAvailability";
 import { AppSettingsService } from "../services/AppSettingsService";
 
@@ -208,11 +208,12 @@ type OfferServicePickerState = {
 };
 
 type BookingStep = 1 | 2 | 3 | 4;
+type CalendarViewMode = "gregorian" | "hijri";
 
 type BookingFlowState = {
   selectedVariantId: string;
   selectedVariantLabel: string;
-  staffChoice: "any" | "manual";
+  staffChoice: "manual";
   staffEmployeeKey: string;
   staffEmployeeName: string;
   date: string;
@@ -435,7 +436,7 @@ const SALON_ID = "main";
 const DEFAULT_SERVICE_DURATION_MIN = 60;
 const PACKAGE_SECTION_ID = "service-packages";
 const PACKAGE_SECTION_TITLE = "البكيجات";
-const ALLOW_OVERTIME_MIN = 20;
+const ALLOW_OVERTIME_MIN = 15;
 const MANI_PEDI_TOOLS_FEE_FIXED = 15;
 const MANI_PEDI_SECTION_KEYWORDS = [
   "manicure",
@@ -467,6 +468,9 @@ type BookingHourOverride = {
 };
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const AR_SA_LATN_LOCALE = "ar-SA-u-nu-latn";
+const AR_SA_GREGORY_LATN_LOCALE = "ar-SA-u-ca-gregory-nu-latn";
+const AR_SA_HIJRI_LATN_LOCALE = "ar-SA-u-ca-islamic-nu-latn";
+const BOOKING_CALENDAR_PREF_KEY = "booking_calendar_view";
 const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
   sat: "السبت",
   sun: "الأحد",
@@ -674,6 +678,8 @@ type BusyState = {
   suggestedSlot?: string; // âœ… NEW: الوقت المقترح (لطور الموسم فقط)
 };
 
+type SlotChipState = "available" | "booked" | "unavailable";
+
 type PackageQuickState = {
   employeeId: string;
   times: string[];
@@ -797,6 +803,25 @@ function formatISODateAr(v: any) {
     month: "2-digit",
     day: "2-digit",
   });
+}
+
+function normalizeCalendarViewMode(v: any): CalendarViewMode {
+  return String(v || "").trim().toLowerCase() === "hijri" ? "hijri" : "gregorian";
+}
+
+function formatBookingDateForView(dateISO: string, mode: CalendarViewMode) {
+  const iso = normalizeISODate(dateISO);
+  if (!iso) return "";
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+
+  const locale = mode === "hijri" ? AR_SA_HIJRI_LATN_LOCALE : AR_SA_GREGORY_LATN_LOCALE;
+  return new Intl.DateTimeFormat(locale, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(d);
 }
 
 function getStaffLeaveMetaForDate(staff: any, dateISO: string) {
@@ -939,6 +964,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const sequentialBooking = !!(booking as any)?.sequentialBooking;
   // âœ… تاريخ الحجز الأساسي (لازم يختاره قبل الخدمات)
   const [bookingDate, setBookingDate] = useState<string>("");
+  const [calendarViewMode, setCalendarViewMode] = useState<CalendarViewMode>(() => {
+    try {
+      const stored = localStorage.getItem(BOOKING_CALENDAR_PREF_KEY);
+      if (stored) return normalizeCalendarViewMode(stored);
+    } catch {
+      // ignore
+    }
+    const docLang = typeof document !== "undefined" ? String(document.documentElement.lang || "").trim() : "";
+    const navLang = typeof navigator !== "undefined" ? String(navigator.language || "").trim() : "";
+    if (/^ar-SA/i.test(docLang) || /^ar-SA/i.test(navLang)) return "hijri";
+    return "gregorian";
+  });
 
 
   const businessHours = (booking as any)?.businessHours || {};
@@ -947,20 +984,30 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     [(booking as any)?.bookingHourOverrides]
   );
 
-  const getDaySettingsForDate = (dateISO: string) => {
-    const dayKey = resolveWeekdayFromISO(String(dateISO || "").trim() || todayISO());
-    const dayHoursBase = (businessHours as any)?.[dayKey] || {
-      enabled: true,
-      start: "10:00",
-      end: "22:00",
-    };
+  useEffect(() => {
+    try {
+      localStorage.setItem(BOOKING_CALENDAR_PREF_KEY, calendarViewMode);
+    } catch {
+      // ignore
+    }
+  }, [calendarViewMode]);
 
+  const getDaySettingsForDate = (dateISO: string) => {
+    const targetDate = String(dateISO || "").trim() || todayISO();
+    const dayKey = resolveWeekdayFromISO(targetDate);
+
+    const weeklyDay = (businessHours as any)?.[dayKey];
+    const weeklyEnabled = weeklyDay?.enabled !== false;
+    const weeklyOpen = safeTimeHHMM(weeklyDay?.start, "10:00");
+    const weeklyClose = safeTimeHHMM(weeklyDay?.end, "22:00");
+
+    // Priority: active exception for this date > weekly day schedule.
     for (let i = bookingHourOverrides.length - 1; i >= 0; i--) {
       const ov = bookingHourOverrides[i];
       const fromDate = String(ov?.fromDate || "").trim();
       const toDate = String(ov?.toDate || "").trim();
       if (!fromDate || !toDate) continue;
-      if (dateISO < fromDate || dateISO > toDate) continue;
+      if (targetDate < fromDate || targetDate > toDate) continue;
 
       const includeDays = Array.isArray(ov?.includeWeekdays) ? ov.includeWeekdays : [];
       if (includeDays.length > 0 && !includeDays.includes(dayKey)) continue;
@@ -971,8 +1018,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           dayKey,
           dayLabel: WEEKDAY_LABEL_AR[dayKey],
           enabled: false,
-          openTime: safeTimeHHMM((dayHoursBase as any)?.start, "10:00"),
-          closeTime: safeTimeHHMM((dayHoursBase as any)?.end, "22:00"),
+          openTime: weeklyOpen,
+          closeTime: weeklyClose,
         };
       }
 
@@ -980,17 +1027,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         dayKey,
         dayLabel: WEEKDAY_LABEL_AR[dayKey],
         enabled: true,
-        openTime: safeTimeHHMM(String(ov?.start || ""), safeTimeHHMM((dayHoursBase as any)?.start, "10:00")),
-        closeTime: safeTimeHHMM(String(ov?.end || ""), safeTimeHHMM((dayHoursBase as any)?.end, "22:00")),
+        // Do not mix with weekly hours when exception is active.
+        openTime: safeTimeHHMM(String(ov?.start || ""), "10:00"),
+        closeTime: safeTimeHHMM(String(ov?.end || ""), "22:00"),
       };
     }
 
     return {
       dayKey,
       dayLabel: WEEKDAY_LABEL_AR[dayKey],
-      enabled: dayHoursBase?.enabled !== false,
-      openTime: safeTimeHHMM(dayHoursBase?.start, "10:00"),
-      closeTime: safeTimeHHMM(dayHoursBase?.end, "22:00"),
+      enabled: weeklyEnabled,
+      openTime: weeklyOpen,
+      closeTime: weeklyClose,
     };
   };
 
@@ -1208,12 +1256,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   });
   const [manualOverride, setManualOverride] = useState(false);
   const [currentStep, setCurrentStep] = useState<BookingStep>(1);
-  const [staffChoiceMode, setStaffChoiceMode] = useState<"any" | "manual">("any");
-  const [anyStaffAssigningItemId, setAnyStaffAssigningItemId] = useState("");
+  const staffChoiceMode: "manual" = "manual";
   const [, setBookingFlowState] = useState<BookingFlowState>({
     selectedVariantId: "",
     selectedVariantLabel: "",
-    staffChoice: "any",
+    staffChoice: "manual",
     staffEmployeeKey: "",
     staffEmployeeName: "",
     date: "",
@@ -1420,7 +1467,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   >({});
 
   // âœ… Future availability (clients)
-  const [futureAnyStaff, setFutureAnyStaff] = useState(true);
   const [futureSelectedEmployeeKey, setFutureSelectedEmployeeKey] = useState<string>("");
   const [futureStaffNameQuery, setFutureStaffNameQuery] = useState("");
   const [futureLoading, setFutureLoading] = useState(false);
@@ -1434,35 +1480,26 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [futureServiceId, setFutureServiceId] = useState("");
   const [futureTargetItemId, setFutureTargetItemId] = useState("");
   const autoFutureSearchKeyRef = useRef("");
+  const autoStaffDefaultContextRef = useRef<Record<string, string>>({});
   const futureSearchRef = useRef<HTMLDivElement | null>(null);
 
   function openFutureSearchFromItem(it: CartItem) {
     const sid = String(it?.serviceId || "").trim();
     if (!sid) return;
 
-    const anyMode = staffChoiceMode === "any";
-    const employeeKey = anyMode ? "" : String(it?.employeeUid || it?.employeeId || "").trim();
-    const employeeName = anyMode ? "" : String(it?.employeeName || "").trim();
-    const dateISO = String(bookingDate || "").trim();
+    const employeeKey = String(it?.employeeUid || it?.employeeId || "").trim();
+    const employeeName = String(it?.employeeName || "").trim();
+    const dateISO = String(it?.date || bookingDate || "").trim();
 
     setFutureServiceId(sid);
     setFutureTargetItemId(String(it?.id || "").trim());
     setShowFutureSearch(true);
     setFutureResult([]);
     setFutureMsg("");
-    autoFutureSearchKeyRef.current = `${sid}|${dateISO}|${anyMode || !employeeKey ? "any" : "one"}|${employeeKey}`;
-
-    if (anyMode) {
-      setFutureAnyStaff(true);
-      setFutureSelectedEmployeeKey("");
-      setFutureStaffNameQuery("");
-      setFutureGateMsg("اليوم ممتلئ لهذه الخدمة. يمكنكِ البحث عن أقرب يوم متاح.");
-    } else {
-      setFutureAnyStaff(false);
-      setFutureSelectedEmployeeKey(employeeKey);
-      setFutureStaffNameQuery(employeeName || "");
-      setFutureGateMsg("اليوم ممتلئ لهذه الموظفة. يمكنكِ البحث عن أقرب يوم متاح.");
-    }
+    autoFutureSearchKeyRef.current = `${sid}|${dateISO}|one|${employeeKey}`;
+    setFutureSelectedEmployeeKey(employeeKey);
+    setFutureStaffNameQuery(employeeName || "");
+    setFutureGateMsg("اليوم ممتلئ لهذه الموظفة. يمكنكِ البحث عن أقرب يوم متاح.");
 
     setTimeout(() => {
       futureSearchRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -4307,12 +4344,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const sid = String(futureServiceId || servicePicker || "").trim();
     const dateISO = String(bookingDate || "").trim();
     const employeeKey = String(futureSelectedEmployeeKey || "").trim();
-    const effectiveFutureAnyStaff = staffChoiceMode === "any";
-    const contextKey = `${sid}|${dateISO}|${effectiveFutureAnyStaff ? "any" : "one"}|${employeeKey}`;
+    const contextKey = `${sid}|${dateISO}|one|${employeeKey}`;
 
     if (!showFutureSearch || !sid || !dateISO) return;
     if (futureGateLoading || futureLoading) return;
-    if (!effectiveFutureAnyStaff && !employeeKey) return;
+    if (!employeeKey) return;
 
     if (autoFutureSearchKeyRef.current === contextKey) return;
     autoFutureSearchKeyRef.current = contextKey;
@@ -4324,9 +4360,200 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     futureServiceId,
     servicePicker,
     bookingDate,
-    staffChoiceMode,
-    futureAnyStaff,
     futureSelectedEmployeeKey,
+  ]);
+
+  // ✅ Default to first truly available staff only (never on leave/off-hours/inactive).
+  useEffect(() => {
+    if (currentStep !== 2) return;
+    let cancelled = false;
+
+    const isInactiveForBooking = (staff: StaffPublicWithId) => {
+      const statusRaw = String((staff as any)?.status || "").trim().toLowerCase();
+      return (
+        (staff as any)?.active === false ||
+        (staff as any)?.showOnBooking === false ||
+        statusRaw === "inactive" ||
+        statusRaw === "disabled" ||
+        statusRaw === "suspended"
+      );
+    };
+
+    async function ensureDefaultStaffSelection() {
+      const items = formData.items || [];
+      if (!items.length) return;
+
+      const patches: Array<{ itemId: string; contextKey: string; patch: Partial<CartItem> }> = [];
+
+      for (const it of items) {
+        if (cancelled) return;
+        if (isSequentialOfferItem(it)) continue;
+
+        const itemId = String(it.id || "").trim();
+        const serviceKey =
+          resolveCanonicalServiceId(
+            String(it.serviceId || "").trim(),
+            String((it as any)?.serviceName || "").trim()
+          ) || String(it.serviceId || "").trim();
+        const dateISO = String(it.date || bookingDate || "").trim();
+        if (!itemId || !serviceKey || !dateISO) continue;
+        const dayCfg = getDaySettingsForDate(dateISO);
+        if (!dayCfg.enabled) continue;
+        const dayOpenTime = safeTimeHHMM(dayCfg.openTime, openTime);
+        const dayCloseTime = safeTimeHHMM(dayCfg.closeTime, closeTime);
+        const baseSlotsForDate = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
+        if (!baseSlotsForDate.length) continue;
+
+        const contextKey = `${serviceKey}|${dateISO}`;
+        const serviceStaff = (staffByService[serviceKey] || []) as StaffPublicWithId[];
+        if (!serviceStaff.length) continue;
+
+        const bookingVisibleStaff = serviceStaff.filter(
+          (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
+        );
+
+        const candidateStaff = bookingVisibleStaff.filter((st) => {
+          const leave = getStaffLeaveMetaForDate(st, dateISO);
+          if (leave.isOnLeave) return false;
+          if (isInactiveForBooking(st)) return false;
+          const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
+            dateISO,
+            slots: baseSlotsForDate,
+            fallbackOpenTime: dayOpenTime,
+            fallbackCloseTime: dayCloseTime,
+          });
+          return workingSlots.length > 0;
+        });
+
+        const hasCurrentSelection =
+          !!String(it.employeeId || "").trim() ||
+          !!String(it.employeeUid || "").trim() ||
+          !!String(it.employeeName || "").trim();
+        const currentEmployeeId = String(it.employeeId || "").trim();
+
+        const hasAvailableStarts = async (staff: StaffPublicWithId) => {
+          const empId = String((staff as any)?.id || "").trim();
+          const empKey = String((staff as any)?.linkedUid || "").trim() || empId;
+          if (!empId || !empKey) return false;
+          const localTaken = getLocalTakenTimesForItem(
+            items,
+            itemId,
+            empKey,
+            dateISO,
+            empId
+          );
+          const starts = await getAvailableStartsForDay({
+            salonId: SALON_ID,
+            employeeKey: empKey,
+            employeeIdFallback: empId,
+            dateISO,
+            durationMin: Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+            take: 1,
+            localTakenTimes: localTaken,
+            staff,
+          });
+          return starts.length > 0;
+        };
+
+        let currentIsTrulyAvailable = false;
+        if (currentEmployeeId) {
+          const selected = candidateStaff.find(
+            (st) => String(st?.id || "").trim() === currentEmployeeId
+          );
+          if (selected) {
+            currentIsTrulyAvailable = await hasAvailableStarts(selected);
+          }
+        }
+        if (currentIsTrulyAvailable) continue;
+
+        let firstTrulyAvailable: StaffPublicWithId | null = null;
+        for (const st of candidateStaff) {
+          if (await hasAvailableStarts(st)) {
+            firstTrulyAvailable = st;
+            break;
+          }
+        }
+
+        if (firstTrulyAvailable) {
+          const nextEmployeeId = String((firstTrulyAvailable as any)?.id || "").trim();
+          const nextEmployeeUid = String((firstTrulyAvailable as any)?.linkedUid || "").trim();
+          const nextEmployeeName = String((firstTrulyAvailable as any)?.name || "").trim();
+
+          const autoPickAllowedForEmpty =
+            !hasCurrentSelection &&
+            autoStaffDefaultContextRef.current[itemId] !== contextKey;
+          const shouldReplaceCurrentUnavailable = hasCurrentSelection;
+          if (!autoPickAllowedForEmpty && !shouldReplaceCurrentUnavailable) continue;
+
+          patches.push({
+            itemId,
+            contextKey,
+            patch: {
+              employeeId: nextEmployeeId,
+              employeeUid: nextEmployeeUid,
+              employeeName: nextEmployeeName,
+              time: "",
+              locked: false,
+            },
+          });
+          continue;
+        }
+
+        // No available staff => keep selection empty and clear stale selection.
+        if (hasCurrentSelection || !!String(it.time || "").trim() || !!it.locked) {
+          patches.push({
+            itemId,
+            contextKey,
+            patch: {
+              employeeId: "",
+              employeeUid: "",
+              employeeName: "",
+              time: "",
+              locked: false,
+            },
+          });
+        }
+      }
+
+      if (cancelled || !patches.length) return;
+
+      setFormData((prev) => {
+        const patchById = new Map(patches.map((p) => [p.itemId, p.patch]));
+        let changed = false;
+        const nextItems = (prev.items || []).map((it) => {
+          const itemId = String(it.id || "").trim();
+          const patch = patchById.get(itemId);
+          if (!patch) return it;
+          const willChange = Object.entries(patch).some(([k, v]) => (it as any)?.[k] !== v);
+          if (!willChange) return it;
+          changed = true;
+          return { ...it, ...patch };
+        });
+        return changed ? { ...prev, items: nextItems } : prev;
+      });
+
+      patches.forEach((p) => {
+        const pickedEmployeeId = String((p.patch as any)?.employeeId || "").trim();
+        if (pickedEmployeeId) {
+          autoStaffDefaultContextRef.current[p.itemId] = p.contextKey;
+        }
+      });
+    }
+
+    void ensureDefaultStaffSelection();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentStep,
+    formData.items,
+    staffByService,
+    timeSlots,
+    openTime,
+    closeTime,
+    slotStepMin,
+    bufferMin,
+    bookingDate,
   ]);
 
   async function collectTakenTimesForEmployeeDay(args: {
@@ -4395,10 +4622,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       staff,
     } = args;
 
-    const baseSlots =
-      timeSlots.length > 0
-        ? timeSlots
-        : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
+    const dayCfg = getDaySettingsForDate(dateISO);
+    if (!dayCfg.enabled) return [];
+    const dayOpenTime = safeTimeHHMM(dayCfg.openTime, openTime);
+    const dayCloseTime = safeTimeHHMM(dayCfg.closeTime, closeTime);
+
+    const baseSlots = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
 
     if (!baseSlots.length) return [];
 
@@ -4415,7 +4644,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const normalizedDuration = Number(durationMin || DEFAULT_SERVICE_DURATION_MIN);
     const slotsForThisService = filterSlotsByServiceEnd(
       baseSlots,
-      closeTime,
+      dayCloseTime,
       normalizedDuration,
       bufferMin,
       ALLOW_OVERTIME_MIN
@@ -4423,14 +4652,29 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
     if (!slotsForThisService.length) return [];
 
-    const staffScopedSlots = staff
-      ? filterStaffSlotsByWorkingHours(staff as any, {
-          dateISO,
-          slots: slotsForThisService,
-          fallbackOpenTime: openTime,
-          fallbackCloseTime: closeTime,
-        })
-      : slotsForThisService;
+    let staffScopedSlots = slotsForThisService;
+    if (staff) {
+      const staffWindow = resolveStaffWorkingWindowForDate(staff as any, {
+        dateISO,
+        fallbackOpenTime: dayOpenTime,
+        fallbackCloseTime: dayCloseTime,
+      });
+      if (!staffWindow.enabled) return [];
+      const workingStarts = filterStaffSlotsByWorkingHours(staff as any, {
+        dateISO,
+        slots: slotsForThisService,
+        fallbackOpenTime: dayOpenTime,
+        fallbackCloseTime: dayCloseTime,
+      });
+      staffScopedSlots = filterSlotsByServiceEnd(
+        workingStarts,
+        staffWindow.end,
+        normalizedDuration,
+        bufferMin,
+        ALLOW_OVERTIME_MIN
+      );
+    }
+
     if (!staffScopedSlots.length) return [];
 
     const greens = getGreenStartTimes({
@@ -4451,184 +4695,87 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     return list.slice(0, Math.max(1, take));
   }
 
-  const requestBookingDateChange = (nextDateISO: string, onConfirmed?: () => void) => {
-    const nextDate = String(nextDateISO || "").trim();
-    if (!nextDate) return;
-
-    const currentDate = String(bookingDate || "").trim();
-    const applyAndContinue = () => {
-      if (nextDate !== currentDate) {
-        applyBookingDate(nextDate);
-      }
-      onConfirmed?.();
-    };
-
-    if (!currentDate || nextDate === currentDate) {
-      applyAndContinue();
-      return;
-    }
-
-    openModal(
-      {
-        title: "تأكيد تغيير تاريخ الحجز",
-        message: `سيتم تغيير تاريخ الحجز إلى ${formatISODateAr(nextDate)} وإعادة تعيين الموظفة والوقت للخدمات الحالية. هل تريدين المتابعة؟`,
-        variant: "info",
-        confirmText: "نعم، متابعة",
-      },
-      applyAndContinue
-    );
-  };
-
   async function applyFutureTimeSelection(dateISO: string, time24: string) {
     const serviceId = String(futureServiceId || servicePicker || "").trim();
     const chosenDate = String(dateISO || "").trim();
     const chosenTime = String(time24 || "").trim();
-    const effectiveFutureAnyStaff = staffChoiceMode === "any";
     if (!serviceId || !chosenDate || !chosenTime) return;
 
-    const continueApply = async () => {
-      const target =
-        (formData.items || []).find(
-          (it) =>
-            String(it.id || "").trim() === String(futureTargetItemId || "").trim() &&
-            String(it.serviceId || "").trim() === serviceId
-        ) ||
-        (formData.items || []).find(
-          (it) => String(it.serviceId || "").trim() === serviceId && !it.locked
-        ) ||
-        (formData.items || []).find((it) => String(it.serviceId || "").trim() === serviceId);
+    const target =
+      (formData.items || []).find(
+        (it) =>
+          String(it.id || "").trim() === String(futureTargetItemId || "").trim() &&
+          String(it.serviceId || "").trim() === serviceId
+      ) ||
+      (formData.items || []).find(
+        (it) => String(it.serviceId || "").trim() === serviceId && !it.locked
+      ) ||
+      (formData.items || []).find((it) => String(it.serviceId || "").trim() === serviceId);
 
-      if (!target) return;
-      const targetItemId = String(target.id || "").trim();
+    if (!target) return;
+    const targetItemId = String(target.id || "").trim();
 
-      const sv = getServiceById(serviceId);
-      const durationMin = Number(
-        sv?.durationMin ||
-          target?.durationMin ||
-          DEFAULT_SERVICE_DURATION_MIN
-      );
+    const sv = getServiceById(serviceId);
+    const durationMin = Number(
+      sv?.durationMin ||
+        target?.durationMin ||
+        DEFAULT_SERVICE_DURATION_MIN
+    );
 
-      let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
-      if (!Object.prototype.hasOwnProperty.call(staffByService, serviceId)) {
-        const res = await listStaffForService(serviceId, sv);
-        staffList = (res || []) as StaffPublicWithId[];
-        setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
-      }
+    let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
+    if (!Object.prototype.hasOwnProperty.call(staffByService, serviceId)) {
+      const res = await listStaffForService(serviceId, sv);
+      staffList = (res || []) as StaffPublicWithId[];
+      setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
+    }
 
-      const preferredEmployeeKey = String(
-        futureSelectedEmployeeKey ||
-        target.employeeUid ||
-        target.employeeId ||
-        ""
-      ).trim();
+    const fixedKey = String(futureSelectedEmployeeKey || target.employeeUid || target.employeeId || "").trim();
+    let chosenStaff: StaffPublicWithId | null =
+      staffList.find((s: any) => String(s.linkedUid || s.id || "").trim() === fixedKey) ||
+      staffList.find((s: any) => String(s.id || "").trim() === fixedKey) ||
+      null;
 
-      let chosenStaff: StaffPublicWithId | null = null;
-
-      if (!effectiveFutureAnyStaff) {
-        const fixedKey = String(futureSelectedEmployeeKey || "").trim();
-        if (fixedKey) {
-          chosenStaff =
-            staffList.find((s: any) => String(s.linkedUid || s.id || "").trim() === fixedKey) ||
-            staffList.find((s: any) => String(s.id || "").trim() === fixedKey) ||
-            null;
-        }
-      } else {
-        const availableStaffRaw = staffList.filter((st: any) =>
-          isStaffAvailableForDate(st, chosenDate, { requireShowOnBooking: false })
-        );
-        const availableStaff = preferredEmployeeKey
-          ? [
-              ...availableStaffRaw.filter(
-                (st: any) =>
-                  String(st?.linkedUid || st?.id || "").trim() === preferredEmployeeKey ||
-                  String(st?.id || "").trim() === preferredEmployeeKey
-              ),
-              ...availableStaffRaw.filter(
-                (st: any) =>
-                  String(st?.linkedUid || st?.id || "").trim() !== preferredEmployeeKey &&
-                  String(st?.id || "").trim() !== preferredEmployeeKey
-              ),
-            ]
-          : availableStaffRaw;
-
-        for (const st of availableStaff) {
-          const empKey = String((st as any)?.linkedUid || "").trim() || String((st as any)?.id || "").trim();
-          const empIdFallback = String((st as any)?.id || "").trim();
-          if (!empKey) continue;
-          const localTaken = targetItemId
-            ? getLocalTakenTimesForItem(
-                formData.items || [],
-                targetItemId,
-                empKey,
-                chosenDate,
-                empIdFallback
-              )
-            : new Set<string>();
-
-          const starts = await getAvailableStartsForDay({
-            salonId: SALON_ID,
-            employeeKey: empKey,
-            employeeIdFallback: empIdFallback,
-            dateISO: chosenDate,
-            durationMin,
-            take: 288,
-            localTakenTimes: localTaken,
-            staff: st,
-          });
-          if (starts.includes(chosenTime)) {
-            chosenStaff = st;
-            break;
-          }
-        }
-      }
-
-      if (!effectiveFutureAnyStaff && chosenStaff) {
-        const chosenKey =
-          String((chosenStaff as any)?.linkedUid || "").trim() ||
-          String((chosenStaff as any)?.id || "").trim();
-        const chosenId = String((chosenStaff as any)?.id || "").trim();
-        const localTaken = targetItemId
-          ? getLocalTakenTimesForItem(
-              formData.items || [],
-              targetItemId,
-              chosenKey,
-              chosenDate,
-              chosenId
-            )
-          : new Set<string>();
-        const starts = await getAvailableStartsForDay({
-          salonId: SALON_ID,
-          employeeKey: chosenKey,
-          employeeIdFallback: chosenId,
-          dateISO: chosenDate,
-          durationMin,
-          take: 288,
-          localTakenTimes: localTaken,
-          staff: chosenStaff,
-        });
-        if (!starts.includes(chosenTime)) {
-          chosenStaff = null;
-        }
-      }
-
-      if (!chosenStaff) {
-        setFutureMsg("تم تحديد اليوم والوقت. اختاري الموظفة لإكمال الخدمة.");
-        updateItem(target.id, { time: chosenTime, locked: false });
-        return;
-      }
-
-      updateItem(target.id, {
-        date: chosenDate,
-        time: chosenTime,
-        employeeId: String((chosenStaff as any)?.id || "").trim(),
-        employeeUid: String((chosenStaff as any)?.linkedUid || "").trim(),
-        employeeName: String((chosenStaff as any)?.name || "").trim(),
-        locked: false,
+    if (chosenStaff) {
+      const chosenKey =
+        String((chosenStaff as any)?.linkedUid || "").trim() ||
+        String((chosenStaff as any)?.id || "").trim();
+      const chosenId = String((chosenStaff as any)?.id || "").trim();
+      const localTaken = targetItemId
+        ? getLocalTakenTimesForItem(
+            formData.items || [],
+            targetItemId,
+            chosenKey,
+            chosenDate,
+            chosenId
+          )
+        : new Set<string>();
+      const starts = await getAvailableStartsForDay({
+        salonId: SALON_ID,
+        employeeKey: chosenKey,
+        employeeIdFallback: chosenId,
+        dateISO: chosenDate,
+        durationMin,
+        take: 288,
+        localTakenTimes: localTaken,
+        staff: chosenStaff,
       });
-    };
+      if (!starts.includes(chosenTime)) {
+        chosenStaff = null;
+      }
+    }
 
-    requestBookingDateChange(chosenDate, () => {
-      void continueApply();
+    if (!chosenStaff) {
+      setFutureMsg("اختاري موظفة ثم أعيدي البحث لنفس الخدمة.");
+      return;
+    }
+
+    applyDateToSingleItem(target.id, chosenDate);
+    updateItem(target.id, {
+      time: chosenTime,
+      employeeId: String((chosenStaff as any)?.id || "").trim(),
+      employeeUid: String((chosenStaff as any)?.linkedUid || "").trim(),
+      employeeName: String((chosenStaff as any)?.name || "").trim(),
+      locked: false,
     });
   }
 
@@ -4676,14 +4823,17 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         (x) => String(x.name || "").trim() === String(futureStaffNameQuery || "").trim()
       )?.key || "";
 
-    const effectiveFutureAnyStaff = staffChoiceMode === "any";
     const fixedEmployeeKey = String(futureSelectedEmployeeKey || resolvedByName || "").trim();
-    if (!effectiveFutureAnyStaff && !fixedEmployeeKey) {
+    if (!fixedEmployeeKey) {
       setFutureMsg("اختاري موظفة لإكمال البحث.");
       return;
     }
 
-    const startISO = String(bookingDate || "").trim() || todayISO();
+    const targetItem =
+      (formData.items || []).find((it) => String(it.id || "").trim() === targetItemId) ||
+      itemFromCart ||
+      null;
+    const startISO = String(targetItem?.date || bookingDate || "").trim() || todayISO();
     const scanDays = 60;
 
     setFutureLoading(true);
@@ -4699,111 +4849,47 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         let dayTimes: string[] = [];
         let dayNote = "";
 
-        if (!effectiveFutureAnyStaff && fixedEmployeeKey) {
-          const staff =
-            staffList.find((s: any) => String(s.linkedUid || s.id || "") === fixedEmployeeKey) ||
-            staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
-          const employeeIdFallback = String(staff?.id || "").trim();
-          const fixedName = String((staff as any)?.name || "").trim();
-          const fixedAvailable = staff
-            ? isStaffAvailableForDate(staff as any, dateISO, { requireShowOnBooking: false })
-            : false;
+        const staff =
+          staffList.find((s: any) => String(s.linkedUid || s.id || "") === fixedEmployeeKey) ||
+          staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
+        const employeeIdFallback = String(staff?.id || "").trim();
+        const fixedName = String((staff as any)?.name || "").trim();
+        const fixedAvailable = staff
+          ? isStaffAvailableForDate(staff as any, dateISO, { requireShowOnBooking: false })
+          : false;
 
-          if (!fixedAvailable) {
-            dayTimes = [];
-            dayNote = "";
-          } else {
-            const localTaken = targetItemId
-              ? getLocalTakenTimesForItem(
-                  formData.items || [],
-                  targetItemId,
-                  fixedEmployeeKey,
-                  dateISO,
-                  employeeIdFallback
-                )
-              : new Set<string>();
-            dayTimes = await getAvailableStartsForDay({
-              salonId: SALON_ID,
-              employeeKey: fixedEmployeeKey,
-              employeeIdFallback,
-              dateISO,
-              durationMin,
-              take: 5,
-              localTakenTimes: localTaken,
-              staff: staff || null,
-            });
-
-            if (dayTimes.length && fixedName) {
-              dayNote = `المتاح لدى: ${fixedName}`;
-            }
-          }
-          const fixedContributors = fixedName ? [fixedName] : [];
-          if (dayTimes.length) {
-            results.push({ date: dateISO, times: dayTimes, note: dayNote, contributors: fixedContributors });
-            if (results.length >= 5) break;
-          }
+        if (!fixedAvailable) {
+          dayTimes = [];
+          dayNote = "";
         } else {
-          const merged = new Set<string>();
-          const timeToStaff = new Map<string, Set<string>>();
-          const availableStaff = staffList.filter((st) =>
-            isStaffAvailableForDate(st as any, dateISO, { requireShowOnBooking: false })
-          );
-          for (const st of availableStaff) {
-            const empKey = String((st as any)?.linkedUid || "").trim() || String((st as any)?.id || "").trim();
-            const empIdFallback = String((st as any)?.id || "").trim();
-            if (!empKey) continue;
-            const localTaken = targetItemId
-              ? getLocalTakenTimesForItem(
-                  formData.items || [],
-                  targetItemId,
-                  empKey,
-                  dateISO,
-                  empIdFallback
-                )
-              : new Set<string>();
+          const localTaken = targetItemId
+            ? getLocalTakenTimesForItem(
+                formData.items || [],
+                targetItemId,
+                fixedEmployeeKey,
+                dateISO,
+                employeeIdFallback
+              )
+            : new Set<string>();
+          dayTimes = await getAvailableStartsForDay({
+            salonId: SALON_ID,
+            employeeKey: fixedEmployeeKey,
+            employeeIdFallback,
+            dateISO,
+            durationMin,
+            take: 5,
+            localTakenTimes: localTaken,
+            staff: staff || null,
+          });
 
-            const times = await getAvailableStartsForDay({
-              salonId: SALON_ID,
-              employeeKey: empKey,
-              employeeIdFallback: empIdFallback,
-              dateISO,
-              durationMin,
-              take: 5,
-              localTakenTimes: localTaken,
-              staff: st,
-            });
-            if (times.length) {
-              const stName = String((st as any)?.name || "").trim();
-              times.forEach((t) => {
-                merged.add(t);
-                if (!stName) return;
-                const owners = timeToStaff.get(t) || new Set<string>();
-                owners.add(stName);
-                timeToStaff.set(t, owners);
-              });
-            }
+          if (dayTimes.length && fixedName) {
+            dayNote = `المتاح لدى: ${fixedName}`;
           }
-
-          dayTimes = sortTimesBySlotOrder(Array.from(merged.values()), baseSlots).slice(0, 5);
-
-          if (dayTimes.length) {
-            const visibleContributors = new Set<string>();
-            dayTimes.forEach((t) => {
-              const owners = timeToStaff.get(t);
-              if (!owners) return;
-              owners.forEach((name) => visibleContributors.add(name));
-            });
-            if (visibleContributors.size) {
-              dayNote = `المتاح لدى: ${Array.from(visibleContributors).slice(0, 3).join("، ")}`;
-            }
-            results.push({
-              date: dateISO,
-              times: dayTimes,
-              note: dayNote,
-              contributors: Array.from(visibleContributors),
-            });
-            if (results.length >= 5) break;
-          }
+        }
+        const fixedContributors = fixedName ? [fixedName] : [];
+        if (dayTimes.length) {
+          results.push({ date: dateISO, times: dayTimes, note: dayNote, contributors: fixedContributors });
+          if (results.length >= 5) break;
         }
       }
 
@@ -4957,10 +5043,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
     async function loadBusyForItems() {
       const items = formData.items || [];
-      const baseSlots =
-        timeSlots.length > 0
-          ? timeSlots
-          : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
 
       for (const it of items) {
         if (cancelled) return;
@@ -4975,6 +5057,26 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
         if (!employeeId || !date) {
           setBusyByItem((p) => ({ ...p, [itemId]: { ...emptyBusyState() } }));
+          continue;
+        }
+
+        const dayCfg = getDaySettingsForDate(date);
+        if (!dayCfg.enabled) {
+          setBusyByItem((p) => ({
+            ...p,
+            [itemId]: { ...emptyBusyState(), hint: "اليوم مغلق للحجوزات." },
+          }));
+          continue;
+        }
+
+        const dayOpenTime = safeTimeHHMM(dayCfg.openTime, openTime);
+        const dayCloseTime = safeTimeHHMM(dayCfg.closeTime, closeTime);
+        const baseSlots = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
+        if (!baseSlots.length) {
+          setBusyByItem((p) => ({
+            ...p,
+            [itemId]: { ...emptyBusyState(), hint: "لا توجد شبكة أوقات لهذا اليوم." },
+          }));
           continue;
         }
 
@@ -5019,14 +5121,46 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           // âœ… أوقات ممكن تبدأ منها (حسب نهاية الخدمة + سماح)
           const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
-          // فقط الأوقات اللي ما تتجاوز نهاية الدوام
-          const slotsForThisService = filterSlotsByServiceEnd(
+          // فقط الأوقات اللي ما تتجاوز نهاية الدوام النهائي (صالون + موظفة)
+          let slotsForThisService = filterSlotsByServiceEnd(
             baseSlots,
-            closeTime,
+            dayCloseTime,
             durationMin,
             bufferMin,
             ALLOW_OVERTIME_MIN
           );
+          const serviceKey =
+            resolveCanonicalServiceId(
+              String(it.serviceId || "").trim(),
+              String((it as any)?.serviceName || "").trim()
+            ) || String(it.serviceId || "").trim();
+          const serviceStaff = (staffByService[serviceKey] || []) as StaffPublicWithId[];
+          const selectedStaff =
+            serviceStaff.find((s: any) => String(s?.id || "").trim() === employeeId) || null;
+          if (selectedStaff) {
+            const staffWindow = resolveStaffWorkingWindowForDate(selectedStaff as any, {
+              dateISO: date,
+              fallbackOpenTime: dayOpenTime,
+              fallbackCloseTime: dayCloseTime,
+            });
+            const staffWorkingSlots = staffWindow.enabled
+              ? filterStaffSlotsByWorkingHours(selectedStaff as any, {
+                  dateISO: date,
+                  slots: slotsForThisService,
+                  fallbackOpenTime: dayOpenTime,
+                  fallbackCloseTime: dayCloseTime,
+                })
+              : [];
+            slotsForThisService = staffWindow.enabled
+              ? filterSlotsByServiceEnd(
+                  staffWorkingSlots,
+                  staffWindow.end,
+                  durationMin,
+                  bufferMin,
+                  ALLOW_OVERTIME_MIN
+                )
+              : [];
+          }
 
           // âœ… هذه هي “البدايات الصحيحة” فعلياً (تضمن أن كل قطع الوقت المطلوبة فاضية)
           const greens = getGreenStartTimes({
@@ -5105,7 +5239,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.items, sequentialBooking, timeSlots, slotStepMin, bufferMin, openTime, closeTime]);
+  }, [formData.items, sequentialBooking, slotStepMin, bufferMin, openTime, closeTime, staffByService]);
 
   // =========================
   // Handlers
@@ -5162,6 +5296,65 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     }));
   };
 
+  const focusBookingDatePicker = () => {
+    try {
+      (dateRef.current as any)?.showPicker?.();
+    } catch {
+      // ignore unsupported showPicker
+    }
+    dateRef.current?.focus();
+  };
+
+  const applyDateToSingleItem = (itemId: string, nextDateISO: string) => {
+    const nextDate = String(nextDateISO || "").trim();
+    if (!itemId || !nextDate) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      items: (prev.items || []).map((it) => {
+        if (String(it.id || "").trim() !== String(itemId || "").trim()) return it;
+
+        const sv = getServiceById(String(it.serviceId || "").trim());
+        const basePatch: CartItem = {
+          ...it,
+          date: nextDate,
+          time: "",
+          locked: false,
+        };
+
+        if (!sv) return basePatch;
+
+        const eff = pickEffectivePrice({
+          basePrice: Number(sv.basePrice || 0),
+          seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
+          appSettings,
+          dateISO: nextDate,
+        });
+
+        const serviceBasePrice = Number(eff.price || 0);
+        const toolsEligible = isToolsOptionEligibleForService(sv);
+        const toolsSource = toolsEligible
+          ? (String((it as any)?.toolsSource || "").trim() === "salon" ? "salon" : "client")
+          : undefined;
+        const priced = buildItemPriceWithTools(serviceBasePrice, toolsSource, toolsEligible);
+
+        return {
+          ...basePatch,
+          serviceSectionId: String(sv.sectionId || "").trim(),
+          serviceSectionTitle: String(sv.sectionTitle || "").trim() || undefined,
+          serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
+          serviceCategoryName: String(sv.category || "").trim() || undefined,
+          toolsSource,
+          serviceBasePrice: priced.serviceBasePrice,
+          toolsFeeApplied: priced.toolsFeeApplied,
+          basePrice: priced.basePrice,
+          priceText: priced.priceText,
+        };
+      }),
+    }));
+    setBusyByItem((prev) => ({ ...prev, [itemId]: { ...emptyBusyState() } }));
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -5176,115 +5369,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     setSelectedCategory("");
     setServicePicker("");
     setShowHairGuide(false);
-  };
-
-  const assignAnyStaffForItemTime = async (item: CartItem, dateISO: string, time24: string) => {
-    const itemId = String(item?.id || "").trim();
-    const serviceIdRaw = String(item?.serviceId || "").trim();
-    const date = String(dateISO || "").trim();
-    const time = String(time24 || "").trim();
-    if (!itemId || !serviceIdRaw || !date || !time) return;
-
-    setAnyStaffAssigningItemId(itemId);
-    try {
-      const serviceId =
-        resolveCanonicalServiceId(serviceIdRaw, String(item?.serviceName || "").trim()) || serviceIdRaw;
-      const sv = getServiceById(serviceId) || getServiceById(serviceIdRaw);
-      let staffList = (staffByService[serviceId] || staffByService[serviceIdRaw] || []) as StaffPublicWithId[];
-      const hasCache =
-        Object.prototype.hasOwnProperty.call(staffByService, serviceId) ||
-        Object.prototype.hasOwnProperty.call(staffByService, serviceIdRaw);
-
-      if (!hasCache) {
-        const res = await listStaffForService(serviceId, sv);
-        staffList = (res || []) as StaffPublicWithId[];
-        setStaffByService((prev) => ({ ...prev, [serviceId]: staffList }));
-      }
-
-      const visibleStaff = (staffList || []).filter((st: any) => {
-        if (isStaffEmploymentEndedForDate(st as any, date)) return false;
-        return isStaffAvailableForDate(st as any, date, { requireShowOnBooking: false });
-      });
-
-      if (!visibleStaff.length) {
-        openModal({
-          title: "لا توجد موظفات متاحات",
-          message: "لا توجد موظفات متاحات لهذه الخدمة في اليوم المختار.",
-          variant: "danger",
-          confirmText: "حسنًا",
-        });
-        return;
-      }
-
-      const preferredKey = String(item.employeeUid || item.employeeId || "").trim();
-      const orderedStaff = preferredKey
-        ? [
-            ...visibleStaff.filter(
-              (st: any) =>
-                String(st?.linkedUid || st?.id || "").trim() === preferredKey ||
-                String(st?.id || "").trim() === preferredKey
-            ),
-            ...visibleStaff.filter(
-              (st: any) =>
-                String(st?.linkedUid || st?.id || "").trim() !== preferredKey &&
-                String(st?.id || "").trim() !== preferredKey
-            ),
-          ]
-        : visibleStaff;
-
-      const durationMin = Math.max(1, Number(item.durationMin || DEFAULT_SERVICE_DURATION_MIN));
-      let chosenStaff: StaffPublicWithId | null = null;
-      for (const st of orderedStaff) {
-        const empId = String((st as any)?.id || "").trim();
-        const empKey = String((st as any)?.linkedUid || "").trim() || empId;
-        if (!empId || !empKey) continue;
-
-        const localTaken = getLocalTakenTimesForItem(
-          formData.items || [],
-          itemId,
-          empKey,
-          date,
-          empId
-        );
-
-        const starts = await getAvailableStartsForDay({
-          salonId: SALON_ID,
-          employeeKey: empKey,
-          employeeIdFallback: empId,
-          dateISO: date,
-          durationMin,
-          take: 288,
-          localTakenTimes: localTaken,
-          staff: st,
-        });
-
-        if (starts.includes(time)) {
-          chosenStaff = st;
-          break;
-        }
-      }
-
-      if (!chosenStaff) {
-        openModal({
-          title: "الوقت غير متاح",
-          message: "هذا الوقت غير متاح الآن. اختاري وقتًا آخر.",
-          variant: "danger",
-          confirmText: "حسنًا",
-        });
-        return;
-      }
-
-      updateItem(itemId, {
-        date,
-        time,
-        employeeId: String((chosenStaff as any)?.id || "").trim(),
-        employeeUid: String((chosenStaff as any)?.linkedUid || "").trim(),
-        employeeName: String((chosenStaff as any)?.name || "").trim(),
-        locked: false,
-      });
-    } finally {
-      setAnyStaffAssigningItemId((prev) => (prev === itemId ? "" : prev));
-    }
   };
 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -5570,25 +5654,69 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const date = String(it.date || "").trim();
     const time = String(it.time || "").trim();
     if (!employeeKey || !date || !time) return { ok: false, msg: "بيانات الوقت ناقصة" };
-    const staffList = (staffByService[String(it.serviceId || "").trim()] || []) as StaffPublicWithId[];
+
+    const dayCfg = getDaySettingsForDate(date);
+    if (!dayCfg.enabled) {
+      return { ok: false, msg: "اليوم المختار مغلق للحجوزات." };
+    }
+    const dayOpenTime = safeTimeHHMM(dayCfg.openTime, openTime);
+    const dayCloseTime = safeTimeHHMM(dayCfg.closeTime, closeTime);
+    const baseSlotsForDay = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
+    if (!baseSlotsForDay.some((s) => String(s.value24 || "").trim() === time)) {
+      return { ok: false, msg: "الوقت المختار خارج دوام الصالون في هذا اليوم." };
+    }
+
+    const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+    const salonAllowedStarts = filterSlotsByServiceEnd(
+      baseSlotsForDay,
+      dayCloseTime,
+      durationMin,
+      bufferMin,
+      ALLOW_OVERTIME_MIN
+    );
+    if (!salonAllowedStarts.some((s) => String(s.value24 || "").trim() === time)) {
+      return { ok: false, msg: "هذا الوقت لا يكفي لإنهاء الخدمة ضمن دوام الصالون." };
+    }
+
+    const serviceKey =
+      resolveCanonicalServiceId(
+        String(it.serviceId || "").trim(),
+        String((it as any)?.serviceName || "").trim()
+      ) || String(it.serviceId || "").trim();
+    const staffList = (staffByService[serviceKey] || []) as StaffPublicWithId[];
     const staff = staffList.find((s: any) => String(s?.id || "").trim() === String(it.employeeId || "").trim());
-    if (
-      staff &&
-      !isStaffWorkingAtTime(staff as any, {
+    if (staff) {
+      const staffWindow = resolveStaffWorkingWindowForDate(staff as any, {
         dateISO: date,
-        time24: time,
-        fallbackOpenTime: openTime,
-        fallbackCloseTime: closeTime,
-      })
-    ) {
-      return { ok: false, msg: "الوقت المختار خارج ساعات عمل الموظفة في هذا اليوم." };
+        fallbackOpenTime: dayOpenTime,
+        fallbackCloseTime: dayCloseTime,
+      });
+      if (!staffWindow.enabled) {
+        return { ok: false, msg: "الموظفة غير متاحة في هذا اليوم." };
+      }
+      const staffWorkingStarts = filterStaffSlotsByWorkingHours(staff as any, {
+        dateISO: date,
+        slots: salonAllowedStarts,
+        fallbackOpenTime: dayOpenTime,
+        fallbackCloseTime: dayCloseTime,
+      });
+      const staffAllowedStarts = filterSlotsByServiceEnd(
+        staffWorkingStarts,
+        staffWindow.end,
+        durationMin,
+        bufferMin,
+        ALLOW_OVERTIME_MIN
+      );
+      if (!staffAllowedStarts.some((s) => String(s.value24 || "").trim() === time)) {
+        return { ok: false, msg: "هذا الوقت لا يكفي لإنهاء الخدمة ضمن دوام الموظفة." };
+      }
     }
 
     const timesToCheck = getTimesToLock(
-      timeSlots,
+      baseSlotsForDay,
       slotStepMin,
       time,
-      Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+      durationMin,
       bufferMin
     );
 
@@ -5696,19 +5824,51 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       const t = String(it.time || "").trim();
       if (!d || !t) return false;
       const cfg = getDaySettingsForDate(d);
-      const slots = generateSalonTimeSlots(cfg.openTime, cfg.closeTime, slotStepMin);
+      if (!cfg.enabled) return true;
+      const dayOpenTime = safeTimeHHMM(cfg.openTime, openTime);
+      const dayCloseTime = safeTimeHHMM(cfg.closeTime, closeTime);
+      const slots = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
       if (!slots.some((s) => String(s.value24 || "").trim() === t)) return true;
-      const staffList = (staffByService[String(it.serviceId || "").trim()] || []) as StaffPublicWithId[];
+
+      const salonAllowedStarts = filterSlotsByServiceEnd(
+        slots,
+        dayCloseTime,
+        Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+        bufferMin,
+        ALLOW_OVERTIME_MIN
+      );
+      if (!salonAllowedStarts.some((s) => String(s.value24 || "").trim() === t)) return true;
+
+      const serviceKey =
+        resolveCanonicalServiceId(
+          String(it.serviceId || "").trim(),
+          String((it as any)?.serviceName || "").trim()
+        ) || String(it.serviceId || "").trim();
+      const staffList = (staffByService[serviceKey] || []) as StaffPublicWithId[];
       const staff = staffList.find(
         (s: any) => String(s?.id || "").trim() === String(it.employeeId || "").trim()
       );
       if (!staff) return false;
-      return !isStaffWorkingAtTime(staff as any, {
+      const staffWindow = resolveStaffWorkingWindowForDate(staff as any, {
         dateISO: d,
-        time24: t,
-        fallbackOpenTime: cfg.openTime,
-        fallbackCloseTime: cfg.closeTime,
+        fallbackOpenTime: dayOpenTime,
+        fallbackCloseTime: dayCloseTime,
       });
+      if (!staffWindow.enabled) return true;
+      const staffWorkingStarts = filterStaffSlotsByWorkingHours(staff as any, {
+        dateISO: d,
+        slots: salonAllowedStarts,
+        fallbackOpenTime: dayOpenTime,
+        fallbackCloseTime: dayCloseTime,
+      });
+      const staffAllowedStarts = filterSlotsByServiceEnd(
+        staffWorkingStarts,
+        staffWindow.end,
+        Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+        bufferMin,
+        ALLOW_OVERTIME_MIN
+      );
+      return !staffAllowedStarts.some((s) => String(s.value24 || "").trim() === t);
     });
     if (outOfHoursItem) {
       const d = String(outOfHoursItem.date || bookingDate || "").trim();
@@ -6582,6 +6742,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
       localStorage.setItem("allBookings", JSON.stringify(createdBookings));
       localStorage.setItem("currentBooking", JSON.stringify(createdBookings[0] || null));
+      localStorage.setItem("booking_success_mode", "created");
       localStorage.removeItem("bookingDraft");
 
       navigate("/success");
@@ -6743,6 +6904,10 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   const shouldShowAuthLoader = !internalMode && !authResolved;
   const bookingDateSafe = String(bookingDate || "").trim() || todayISO();
   const hasSelectedBookingDate = !!String(bookingDate || "").trim();
+  const bookingDateDisplayValue = bookingDate
+    ? formatBookingDateForView(String(bookingDate || "").trim(), calendarViewMode)
+    : "";
+  const calendarViewModeLabel = calendarViewMode === "hijri" ? "هجري" : "ميلادي";
   const cartItems = formData.items || [];
   const firstCartItem = cartItems[0] || null;
   const selectedVariantId = String(firstCartItem?.serviceId || servicePicker || "").trim();
@@ -6787,10 +6952,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       : step1SummaryRows
           .map((row) => `${row.index}- ${row.label}`)
           .join("\n");
-  const staffSummaryText =
-    staffChoiceMode === "any"
-      ? "أي موظفة متاحة"
-      : (selectedStaffEmployeeName || "اختيار يدوي");
+  const staffSummaryText = selectedStaffEmployeeName || "اختيار يدوي";
   const step2TimeSummary =
     selectedTime && selectedDate
       ? `${selectedDate} - ${formatTime12ForClient(selectedTime)}`
@@ -6802,7 +6964,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   ].filter(Boolean).join(" - ") || "اختياري";
   const step4SummaryText = `${finalPrice.toFixed(0)} ريال`;
   const step1HintText = `عدد الخدمات المضافة (${cartItems.length})`;
-  const futureAnyStaffEffective = staffChoiceMode === "any";
   const stepRows: Array<{ id: BookingStep; title: string; hint: string; summary: string }> = [
     { id: 1, title: "الخدمة", hint: step1HintText, summary: step1SummaryText },
     { id: 2, title: "الوقت والموظفة", hint: "اختاري اليوم والوقت ثم الموظفة المناسبة", summary: step2SummaryText },
@@ -6821,7 +6982,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const nextFlow: BookingFlowState = {
       selectedVariantId,
       selectedVariantLabel: step1SummaryText,
-      staffChoice: staffChoiceMode,
+      staffChoice: "manual",
       staffEmployeeKey: selectedStaffEmployeeKey,
       staffEmployeeName: selectedStaffEmployeeName,
       date: selectedDate,
@@ -6850,7 +7011,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   }, [
     selectedVariantId,
     step1SummaryText,
-    staffChoiceMode,
     selectedStaffEmployeeKey,
     selectedStaffEmployeeName,
     selectedDate,
@@ -7082,35 +7242,65 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                   </div>
                   <div className="row">
                   <div className="col-12 mb-4">
-                    <label htmlFor="bookingDate" className="form-label">تاريخ الحجز</label>
+                    <div className="booking-date-field">
+                      <div className="booking-date-field__head">
+                        <label htmlFor="bookingDate" className="form-label mb-0">تاريخ الحجز</label>
+                        <div className="booking-calendar-toggle" role="group" aria-label="نوع عرض التاريخ">
+                          <button
+                            type="button"
+                            className={`booking-calendar-toggle__btn ${calendarViewMode === "gregorian" ? "is-active" : ""}`}
+                            onClick={() => setCalendarViewMode("gregorian")}
+                          >
+                            ميلادي
+                          </button>
+                          <button
+                            type="button"
+                            className={`booking-calendar-toggle__btn ${calendarViewMode === "hijri" ? "is-active" : ""}`}
+                            onClick={() => setCalendarViewMode("hijri")}
+                          >
+                            هجري
+                          </button>
+                        </div>
+                      </div>
 
-                    <div
-                      className="input-group"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        (dateRef.current as any)?.showPicker?.();
-                        dateRef.current?.focus();
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
+                      <div
+                        className={`booking-date-shell ${bookingDate ? "is-filled" : "is-empty"}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
                           (dateRef.current as any)?.showPicker?.();
                           dateRef.current?.focus();
-                        }
-                      }}
-
-                    >
-                      <input
-                        ref={dateRef}
-                        type="date"
-                        className="form-control"
-                        id="bookingDate"
-                        value={bookingDate}
-                        onChange={(e) => applyBookingDate(String(e.target.value || "").trim())}
-
-                        min={todayISO()}
-                      />
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            (dateRef.current as any)?.showPicker?.();
+                            dateRef.current?.focus();
+                          }
+                        }}
+                      >
+                        <span className="booking-date-shell__icon" aria-hidden="true">
+                          <FontAwesomeIcon icon={faCalendarAlt} />
+                        </span>
+                        <div className="booking-date-shell__text">
+                          <span className={`booking-date-shell__value ${bookingDate ? "" : "is-placeholder"}`}>
+                            {bookingDate ? bookingDateDisplayValue : "اختر تاريخ الحجز"}
+                          </span>
+                          <span className="booking-date-shell__meta">
+                            {bookingDate ? `عرض ${calendarViewModeLabel}` : `التقويم الحالي: ${calendarViewModeLabel}`}
+                          </span>
+                        </div>
+                        <input
+                          ref={dateRef}
+                          type="date"
+                          className="booking-date-shell__native booking-date-input"
+                          id="bookingDate"
+                          value={bookingDate}
+                          onChange={(e) => applyBookingDate(String(e.target.value || "").trim())}
+                          min={todayISO()}
+                          aria-label="اختر تاريخ الحجز"
+                        />
+                      </div>
                     </div>
                     {bookingDate && !selectedDayOpen && (
                       <div
@@ -7400,32 +7590,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
                 {currentStep === 2 ? (
                   <div className={`booking-step-card-shell mb-4 ${hasSelectedBookingDate ? "" : "booking-step-card-shell--disabled"}`}>
-                    <div className="booking-step-card-shell__title">تبغين موظفة معينة؟ (اختياري)</div>
-                    <div className="booking-staff-choice">
-                      <button
-                        type="button"
-                        className={`btn ${staffChoiceMode === "any" ? "btn-dark" : "btn-outline-dark"}`}
-                        disabled={!hasSelectedBookingDate}
-                        onClick={() => setStaffChoiceMode("any")}
-                      >
-                        أي موظفة متاحة
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn ${staffChoiceMode === "manual" ? "btn-dark" : "btn-outline-dark"}`}
-                        disabled={!hasSelectedBookingDate}
-                        onClick={() => setStaffChoiceMode("manual")}
-                      >
-                        اختيار يدوي
-                      </button>
+                    <div className="booking-step-card-shell__title">اختيار الموظفة (يدوي)</div>
+                    <div className="small text-muted mt-2">
+                      {!hasSelectedBookingDate
+                        ? "لن يتفعل اختيار الموظفة إلا بعد تحديد تاريخ الحجز."
+                        : "اختاري الموظفة يدويًا من السلة بعد تحديد التاريخ والوقت."}
                     </div>
-                    {!hasSelectedBookingDate || staffChoiceMode === "manual" ? (
-                      <div className="small text-muted mt-2">
-                        {!hasSelectedBookingDate
-                          ? "لن يتفعل اختيار الموظفة إلا بعد تحديد تاريخ الحجز."
-                          : "اختاري الموظفة يدويًا من السلة بعد تحديد التاريخ والوقت."}
-                      </div>
-                    ) : null}
                   </div>
                 ) : null}
 
@@ -7492,10 +7662,15 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         const busy = busyByItem[it.id] || emptyBusyState();
                         const canEditThis = canEditByLockedPrev(itemsList, it.id);
                         const isLocked = !!it.locked;
-                        const baseSlotsForUi =
-                          timeSlots.length > 0
-                            ? timeSlots
-                            : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
+                        const dateISO = String(it.date || "").trim();
+                        const daySettingsForItem = getDaySettingsForDate(
+                          dateISO || String(bookingDate || "").trim() || todayISO()
+                        );
+                        const dayOpenTimeForItem = safeTimeHHMM(daySettingsForItem.openTime, openTime);
+                        const dayCloseTimeForItem = safeTimeHHMM(daySettingsForItem.closeTime, closeTime);
+                        const baseSlotsForUi = daySettingsForItem.enabled
+                          ? generateSalonTimeSlots(dayOpenTimeForItem, dayCloseTimeForItem, slotStepMin)
+                          : [];
 
                         const dur = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
                         const rawSectionLabel =
@@ -7528,21 +7703,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                               : "الأدوات: من العميلة (بدون رسوم)"
                           )
                           : "";
-                        const greenStarts = getGreenStartTimes({
-                          allSlots: baseSlotsForUi,
-                          slotStepMin,
-                          durationMin: dur,
-                          bufferMin,
-                          takenAll: busy.busyTimes
-                        });
-
                         const serviceKeyForStaff =
                           resolveCanonicalServiceId(
                             String(it.serviceId || "").trim(),
                             String((it as any)?.serviceName || "").trim()
                           ) || String(it.serviceId || "").trim();
                         const serviceStaff = staffByService[serviceKeyForStaff] || [];
-                        const dateISO = String(it.date || "").trim();
                         const bookingVisibleStaff = serviceStaff.filter(
                           (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
                         );
@@ -7551,31 +7717,36 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                           const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
                             dateISO,
                             slots: baseSlotsForUi,
-                            fallbackOpenTime: openTime,
-                            fallbackCloseTime: closeTime,
+                            fallbackOpenTime: dayOpenTimeForItem,
+                            fallbackCloseTime: dayCloseTimeForItem,
                           });
+                          const statusRaw = String((st as any)?.status || "").trim().toLowerCase();
+                          const isInactive =
+                            (st as any)?.active === false ||
+                            (st as any)?.showOnBooking === false ||
+                            statusRaw === "inactive" ||
+                            statusRaw === "disabled" ||
+                            statusRaw === "suspended";
                           return {
                             staff: st,
                             leave,
                             hasWorkingHours: workingSlots.length > 0,
+                            isInactive,
                           };
                         });
                         const availableStaff = staffWithLeaveMeta
-                          .filter((x) => !x.leave.isOnLeave && x.hasWorkingHours)
+                          .filter((x) => !x.leave.isOnLeave && x.hasWorkingHours && !x.isInactive)
                           .map((x) => x.staff);
                         const leaveBlockedStaff = staffWithLeaveMeta.filter((x) => x.leave.isOnLeave);
+                        const inactiveBlockedStaff = staffWithLeaveMeta.filter((x) => x.isInactive);
                         const workingHoursBlockedStaff = staffWithLeaveMeta.filter(
-                          (x) => !x.leave.isOnLeave && !x.hasWorkingHours
+                          (x) => !x.leave.isOnLeave && !x.isInactive && !x.hasWorkingHours
                         );
                         const staffLoading = !!staffLoadingByService[serviceKeyForStaff];
                         const staffError = staffErrorByService[serviceKeyForStaff] || "";
                         const selectedEmployeeAvailable = availableStaff.some(
                           (emp) => String(emp?.id || "").trim() === String(it.employeeId || "").trim()
                         );
-                        const isManualStaffChoice = staffChoiceMode === "manual";
-                        const isAnyStaffAssigning =
-                          staffChoiceMode === "any" &&
-                          String(anyStaffAssigningItemId || "").trim() === String(it.id || "").trim();
                         const packageRunMeta = packageRunId ? packageRunMetaByRun[packageRunId] : undefined;
                         const quickEligibility = packageRunId ? packageQuickEligibilityByRun[packageRunId] : undefined;
                         const quickCommonStaff = quickEligibility?.commonStaff || [];
@@ -7588,7 +7759,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                           !!packageRunMeta &&
                           packageRunMeta.items.length > 1 &&
                           quickCommonStaff.length > 0;
-                        const usePackageQuickMode = hasPackageQuickMode && staffChoiceMode === "manual";
+                        const usePackageQuickMode = hasPackageQuickMode;
                         const isPackageRunFollower = !!packageRunMeta && !isPackageRunLeader;
                         const packageName = String(it.packageSnapshot?.packageName || "").trim();
                         const packageFinalPrice = Math.max(0, Number(it.packageSnapshot?.finalPriceAtBooking || 0));
@@ -7613,97 +7784,114 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         const staffUnavailableMsg = (!staffLoading && !staffError && bookingVisibleStaff.length && !availableStaff.length)
                           ? "لا توجد موظفات متاحات لهذا التاريخ."
                           : "";
-                        const hideAnyModeTimeSelection = !isManualStaffChoice && !!staffUnavailableMsg;
-                        const dayFullyBookedMsg = isManualStaffChoice
-                          ? "اليوم ممتلئ لهذه الموظفة. يمكنكِ البحث عن أقرب يوم متاح."
-                          : "اليوم ممتلئ لهذه الخدمة. يمكنكِ البحث عن أقرب يوم متاح.";
-                        const futureSearchBtnLabel = isManualStaffChoice
-                          ? "بحث أوقات للأيام القادمة لهذه الموظفة"
-                          : "بحث أوقات للأيام القادمة لهذه الخدمة";
-
-                        const suggested = String(busy.suggestedSlot || "").trim();
+                        const dayFullyBookedMsg = "لا توجد أوقات متاحة لهذا التاريخ. يمكنكِ تغيير التاريخ لنفس الخدمة.";
+                        const futureSearchBtnLabel = "بحث أوقات للأيام القادمة لهذه الموظفة";
                         const slotsForThisService = filterSlotsByServiceEnd(
                           baseSlotsForUi,
-                          closeTime,
+                          dayCloseTimeForItem,
                           Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
                           bufferMin,
                           ALLOW_OVERTIME_MIN
                         );
-                        const selectedStaffForTime = isManualStaffChoice
-                          ? bookingVisibleStaff.find(
-                              (x) => String(x.id || "").trim() === String(it.employeeId || "").trim()
-                            )
-                          : null;
-                        const slotsForSelectedStaff = selectedStaffForTime
+                        const selectedStaffForTime = bookingVisibleStaff.find(
+                          (x) => String(x.id || "").trim() === String(it.employeeId || "").trim()
+                        );
+                        const staffWorkingSlots = selectedStaffForTime
                           ? filterStaffSlotsByWorkingHours(selectedStaffForTime as any, {
                               dateISO,
-                              slots: slotsForThisService,
-                              fallbackOpenTime: openTime,
-                              fallbackCloseTime: closeTime,
+                              slots: baseSlotsForUi,
+                              fallbackOpenTime: dayOpenTimeForItem,
+                              fallbackCloseTime: dayCloseTimeForItem,
                             })
-                          : slotsForThisService;
-                        const exactCartTakenStarts = isManualStaffChoice
-                          ? getLocalExactTakenStartTimesForItem(
-                              itemsList,
-                              it.id,
-                              String(it.employeeId || "").trim(),
-                              dateISO
-                            )
-                          : new Set<string>();
-                        const anyModePackageTakenLocks =
-                          !isManualStaffChoice && packageRunId
-                            ? (() => {
-                                const occupied = new Set<string>();
-                                itemsList
-                                  .filter((x) => String(x.id || "").trim() !== String(it.id || "").trim())
-                                  .filter((x) => String(x.packageRunId || "").trim() === packageRunId)
-                                  .filter((x) => String(x.date || "").trim() === dateISO)
-                                  .forEach((x) => {
-                                    const otherStart = String(x.time || "").trim();
-                                    if (!otherStart) return;
-                                    const otherDuration = Math.max(
-                                      1,
-                                      Number(x.durationMin || DEFAULT_SERVICE_DURATION_MIN)
-                                    );
-                                    getTimesToLock(
-                                      baseSlotsForUi,
-                                      slotStepMin,
-                                      otherStart,
-                                      otherDuration,
-                                      bufferMin
-                                    ).forEach((t) => occupied.add(String(t || "").trim()));
-                                  });
-                                return occupied;
-                              })()
-                            : new Set<string>();
-                        const anyModePackageDisabledStarts =
-                          !isManualStaffChoice && packageRunId
-                            ? new Set<string>(
-                                slotsForSelectedStaff
-                                  .map((s) => String(s.value24 || "").trim())
-                                  .filter(Boolean)
-                                  .filter((start) => {
-                                    const needed = getTimesToLock(
-                                      baseSlotsForUi,
-                                      slotStepMin,
-                                      start,
-                                      Math.max(1, Number(dur || DEFAULT_SERVICE_DURATION_MIN)),
-                                      bufferMin
-                                    );
-                                    return needed.some((t) => anyModePackageTakenLocks.has(String(t || "").trim()));
-                                  })
-                              )
-                            : new Set<string>();
-                        const availableSlotsForItem = slotsForSelectedStaff.filter(
-                          (s) =>
-                            (!isManualStaffChoice || !busy.disabledStartTimes.has(s.value24)) &&
-                            (!isManualStaffChoice || !exactCartTakenStarts.has(String(s.value24 || "").trim())) &&
-                            (isManualStaffChoice || !anyModePackageDisabledStarts.has(String(s.value24 || "").trim()))
+                          : [];
+                        const staffAllowedStarts = selectedStaffForTime
+                          ? (() => {
+                              const window = resolveStaffWorkingWindowForDate(
+                                selectedStaffForTime as any,
+                                {
+                                  dateISO,
+                                  fallbackOpenTime: dayOpenTimeForItem,
+                                  fallbackCloseTime: dayCloseTimeForItem,
+                                }
+                              );
+                              if (!window.enabled) return [];
+                              return filterSlotsByServiceEnd(
+                                staffWorkingSlots,
+                                window.end,
+                                Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                                bufferMin,
+                                ALLOW_OVERTIME_MIN
+                              );
+                            })()
+                          : [];
+                        const staffWorkingSet = new Set(
+                          staffWorkingSlots.map((s) => String(s.value24 || "").trim()).filter(Boolean)
                         );
-                        const nearestAvailableStart =
-                          suggested && availableSlotsForItem.some((s) => s.value24 === suggested)
-                            ? suggested
-                            : (availableSlotsForItem[0]?.value24 || "");
+                        const serviceStartAllowedSet = new Set(
+                          slotsForThisService.map((s) => String(s.value24 || "").trim()).filter(Boolean)
+                        );
+                        const staffStartAllowedSet = new Set(
+                          staffAllowedStarts.map((s) => String(s.value24 || "").trim()).filter(Boolean)
+                        );
+                        const exactCartTakenStarts = getLocalExactTakenStartTimesForItem(
+                          itemsList,
+                          it.id,
+                          String(it.employeeId || "").trim(),
+                          dateISO
+                        );
+                        const slotCards = baseSlotsForUi.map((slot) => {
+                          const value24 = String(slot.value24 || "").trim();
+                          const inStaffHours = staffWorkingSet.has(value24);
+                          const canStartBySalonDuration = serviceStartAllowedSet.has(value24);
+                          const canStartByStaffDuration = !selectedStaffForTime || staffStartAllowedSet.has(value24);
+                          const canStartByDuration = canStartBySalonDuration && canStartByStaffDuration;
+                          const neededSlots =
+                            inStaffHours && canStartByDuration
+                              ? getTimesToLock(
+                                  baseSlotsForUi,
+                                  slotStepMin,
+                                  value24,
+                                  Math.max(1, Number(dur || DEFAULT_SERVICE_DURATION_MIN)),
+                                  bufferMin
+                                )
+                              : [];
+                          const hasBusyConflict =
+                            neededSlots.some((t) => busy.busyTimes.has(String(t || "").trim())) ||
+                            exactCartTakenStarts.has(value24);
+                          const disabledByRules = busy.disabledStartTimes.has(value24);
+
+                          let state: SlotChipState = "available";
+                          let reason = "متاح";
+
+                          if (!selectedStaffForTime) {
+                            state = "unavailable";
+                            reason = "اختاري الموظفة أولاً";
+                          } else if (!inStaffHours) {
+                            state = "unavailable";
+                            reason = "خارج دوام الموظفة";
+                          } else if (!canStartBySalonDuration) {
+                            state = "unavailable";
+                            reason = "غير متاح لإنهاء الخدمة ضمن دوام الصالون";
+                          } else if (!canStartByStaffDuration) {
+                            state = "unavailable";
+                            reason = "غير متاح لإنهاء الخدمة ضمن دوام الموظفة";
+                          } else if (hasBusyConflict) {
+                            state = "booked";
+                            reason = "محجوز";
+                          } else if (disabledByRules) {
+                            state = "unavailable";
+                            reason = "غير متاح بسبب التعارض أو البفر";
+                          }
+
+                          return {
+                            slot,
+                            value24,
+                            state,
+                            reason,
+                            isSelected: String(it.time || "").trim() === value24,
+                          };
+                        });
+                        const availableSlotsForItem = slotCards.filter((x) => x.state === "available");
 
 	                        // âœ… شكل الكرت وهو مقفول (تم التأكيد)
 	                        if (isLocked) {
@@ -8006,16 +8194,32 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                 <div className="col-md-6">
                                   <label className="form-label small fw-bold">1. اختاري الموظفة</label>
                                   <div className="bk-staff-card-grid">
-                                    {staffWithLeaveMeta.map(({ staff: emp, leave, hasWorkingHours }) => {
-                                      const disabled = leave.isOnLeave || !hasWorkingHours;
+                                    {staffWithLeaveMeta.map(({ staff: emp, leave, hasWorkingHours, isInactive }) => {
+                                      const disabled = leave.isOnLeave || !hasWorkingHours || isInactive;
                                       const selected =
                                         selectedEmployeeAvailable &&
                                         String(it.employeeId || "").trim() === String(emp.id || "").trim();
+                                      const unavailableType = isInactive
+                                        ? "inactive"
+                                        : leave.isOnLeave
+                                          ? "leave"
+                                          : !hasWorkingHours
+                                            ? "offhours"
+                                            : "";
+                                      const badgeText = unavailableType === "leave"
+                                        ? "في إجازة"
+                                        : unavailableType === "offhours"
+                                          ? "خارج الدوام"
+                                          : unavailableType === "inactive"
+                                            ? "غير متاحة"
+                                            : "";
                                       const stateText = leave.isOnLeave
                                         ? leave.label
-                                        : !hasWorkingHours
-                                          ? "خارج ساعات العمل"
-                                          : "";
+                                        : isInactive
+                                          ? "الموظفة غير نشطة أو غير متاحة للحجز حالياً"
+                                          : !hasWorkingHours
+                                            ? "غير متاحة في هذا اليوم"
+                                            : "";
                                       return (
                                         <button
                                           key={emp.id}
@@ -8024,8 +8228,10 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                             "bk-staff-card-btn",
                                             selected ? "is-selected" : "",
                                             disabled ? "is-disabled" : "",
+                                            unavailableType ? `is-disabled-${unavailableType}` : "",
                                           ].join(" ").trim()}
                                           disabled={disabled}
+                                          title={stateText || undefined}
                                           onClick={() => {
                                             if (selected) {
                                               updateItem(it.id, {
@@ -8071,6 +8277,9 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                             </svg>
                                           </span>
                                           <span className="bk-staff-card-name">{String(emp.name || "").trim() || "موظفة"}</span>
+                                          {badgeText ? (
+                                            <span className={`bk-staff-card-badge is-${unavailableType}`}>{badgeText}</span>
+                                          ) : null}
                                           {stateText ? <span className="bk-staff-card-state">{stateText}</span> : null}
                                         </button>
                                       );
@@ -8082,6 +8291,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                   {leaveBlockedStaff.length > 0 && (
                                     <div className="text-muted small mt-1">
                                       الموظفات المعلّمات بعبارة "في إجازة" لا يمكن اختيارهن.
+                                    </div>
+                                  )}
+                                  {inactiveBlockedStaff.length > 0 && (
+                                    <div className="text-muted small mt-1">
+                                      الموظفات غير النشطة تظهر كـ "غير متاحة" ولا يمكن اختيارهن.
                                     </div>
                                   )}
                                   {workingHoursBlockedStaff.length > 0 && (
@@ -8097,99 +8311,79 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                 </div>
                                 )}
 
-                                {hasSelectedBookingDate && !usePackageQuickMode && hideAnyModeTimeSelection && (
+                                {hasSelectedBookingDate && !usePackageQuickMode ? (
                                   <div className="col-12">
-                                    <label className="form-label small fw-bold">1. اختاري الوقت المتاح</label>
-                                    <div className="text-warning small mb-2">{staffUnavailableMsg}</div>
-                                    <div className="mt-2 d-grid">
-                                      <button
-                                        type="button"
-                                        className="btn btn-outline-dark btn-sm bk-future-search-btn"
-                                        onClick={() => openFutureSearchFromItem(it)}
-                                      >
-                                        {futureSearchBtnLabel}
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {hasSelectedBookingDate && !usePackageQuickMode && !hideAnyModeTimeSelection && (staffChoiceMode === "any" || (it.employeeId && selectedEmployeeAvailable)) && (
-                                  <div className="col-12">
-                                    <label className="form-label small fw-bold">
-                                      {staffChoiceMode === "any" ? "1. اختاري الوقت المتاح" : "2. اختاري الوقت المتاح"}
-                                    </label>
-                                    {staffChoiceMode === "any" && staffUnavailableMsg ? (
-                                      <div className="text-warning small mb-2">{staffUnavailableMsg}</div>
-                                    ) : null}
+                                    <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
                                     <div className="bk-time-grid">
-                                      {availableSlotsForItem.length === 0 ? (
-                                        <div className="text-warning small" style={{ padding: 8 }}>
-                                          {dayFullyBookedMsg}
-                                        </div>
-                                      ) : (
-                                        slotsForSelectedStaff.map((slot) => {
-                                          const value24 = slot.value24;
-                                          const isGreen = greenStarts.has(value24);
-                                          const isSelected = it.time === value24;
-                                          const isSequentialSuggested = sequentialBooking && suggested === value24;
-                                          const isDisabledByBusy =
-                                            isManualStaffChoice && busy.disabledStartTimes.has(String(value24 || "").trim());
-                                          const isDisabledByCartManual =
-                                            isManualStaffChoice && exactCartTakenStarts.has(String(value24 || "").trim());
-                                          const isDisabledByPackageAny =
-                                            !isManualStaffChoice &&
-                                            anyModePackageDisabledStarts.has(String(value24 || "").trim());
-                                          const isDisabledByCart = isDisabledByCartManual || isDisabledByPackageAny;
-                                          const isDisabled = isDisabledByBusy || isDisabledByCart || isAnyStaffAssigning;
+                                      {slotCards.map((slotCard) => {
+                                        const isAvailable = slotCard.state === "available";
+                                        const isBooked = slotCard.state === "booked";
+                                        const isUnavailable = slotCard.state === "unavailable";
+                                        const isSequentialSuggested =
+                                          sequentialBooking &&
+                                          !!isAvailable &&
+                                          String(busy.suggestedSlot || "").trim() === String(slotCard.value24 || "").trim();
+                                        const statusLabel = isAvailable
+                                          ? "✅ متاح"
+                                          : isBooked
+                                            ? "⛔ محجوز"
+                                            : "🚫 غير متاح";
 
-                                          return (
-                                            <button
-                                              key={value24}
-                                              type="button"
-                                              className={[
-                                                "bk-time-chip",
-                                                isGreen && !sequentialBooking && !isDisabled ? "is-green" : "",
-                                                isSequentialSuggested ? "is-sequential-suggested" : "",
-                                                isSelected ? "is-selected" : "",
-                                                isDisabled ? "is-disabled" : "",
-                                              ].join(" ")}
-                                              disabled={isDisabled}
-                                              onClick={() => {
-                                                if (staffChoiceMode === "any") {
-                                                  void assignAnyStaffForItemTime(it, dateISO, value24);
-                                                  return;
-                                                }
-                                                updateItem(it.id, { time: value24 });
-                                              }}
-                                              title={
-                                                isDisabledByPackageAny
-                                                  ? "هذا الوقت يتعارض مع خدمة أخرى في نفس البكج"
-                                                  : isDisabledByCart
-                                                  ? "هذا الوقت مستخدم داخل السلة لنفس الموظفة في نفس التاريخ"
-                                                  : undefined
-                                              }
-                                            >
-                                              {slot.label12}
-                                            </button>
-                                          );
-                                        })
-                                      )}
+                                        return (
+                                          <button
+                                            key={slotCard.value24}
+                                            type="button"
+                                            className={[
+                                              "bk-time-chip",
+                                              isAvailable ? "is-available" : "",
+                                              isBooked ? "is-booked" : "",
+                                              isUnavailable ? "is-unavailable" : "",
+                                              isSequentialSuggested ? "is-sequential-suggested" : "",
+                                              slotCard.isSelected ? "is-selected" : "",
+                                              !isAvailable ? "is-disabled" : "",
+                                            ].join(" ").trim()}
+                                            disabled={!isAvailable}
+                                            onClick={() => {
+                                              if (!isAvailable) return;
+                                              updateItem(it.id, { time: slotCard.value24 });
+                                            }}
+                                            title={slotCard.reason}
+                                          >
+                                            <span className="bk-time-chip__time">{slotCard.slot.label12}</span>
+                                            <span className="bk-time-chip__status">{statusLabel}</span>
+                                          </button>
+                                        );
+                                      })}
                                     </div>
-                                    {isAnyStaffAssigning ? (
-                                      <div className="small text-muted mt-2">
-                                        <FontAwesomeIcon icon={faSpinner} spin /> جاري تحديد الموظفة المتاحة...
-                                      </div>
-                                    ) : null}
 
-                                    {availableSlotsForItem.length === 0 ? (
-                                      <div className="mt-2 d-grid">
-                                        <button
-                                          type="button"
-                                          className="btn btn-outline-dark btn-sm bk-future-search-btn"
-                                          onClick={() => openFutureSearchFromItem(it)}
-                                        >
-                                          {futureSearchBtnLabel}
-                                        </button>
+                                    {selectedStaffForTime && availableSlotsForItem.length === 0 ? (
+                                      <div className="bk-no-slots-panel">
+                                        <div className="bk-no-slots-panel__title">{dayFullyBookedMsg}</div>
+                                        <div className="bk-no-slots-panel__actions">
+                                          <input
+                                            type="date"
+                                            className="form-control"
+                                            min={todayISO()}
+                                            value={String(it.date || bookingDate || todayISO()).trim()}
+                                            onChange={(e) => applyDateToSingleItem(it.id, String(e.target.value || "").trim())}
+                                          />
+                                          <div className="bk-no-slots-panel__buttons">
+                                            <button
+                                              type="button"
+                                              className="btn btn-outline-dark btn-sm"
+                                              onClick={focusBookingDatePicker}
+                                            >
+                                              فتح تقويم الحجز
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="btn btn-outline-dark btn-sm bk-future-search-btn"
+                                              onClick={() => openFutureSearchFromItem(it)}
+                                            >
+                                              {futureSearchBtnLabel}
+                                            </button>
+                                          </div>
+                                        </div>
                                       </div>
                                     ) : null}
 
@@ -8203,7 +8397,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                         <button
                                           type="button"
                                           className="btn btn-success w-100 py-2 fw-bold"
-                                          disabled={isAnyStaffAssigning}
                                           onClick={() => updateItem(it.id, { locked: true })}
                                         >
                                           تأكيد الموظفة والوقت لهذه الخدمة
@@ -8211,7 +8404,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                       </div>
                                     )}
                                   </div>
-                                )}
+                                ) : null}
                               </div>
                             )}
                             </div>
@@ -8334,64 +8527,67 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                       <div style={{ fontWeight: 800, color: "#0d0d0d" }}>بحث أوقات للأيام القادمة</div>
                       <span className="text-muted" style={{ fontSize: 12 }}>يعرض أول 5 أيام متاحة بعد التاريخ المختار</span>
                     </div>
+                    {futureGateMsg ? (
+                      <div className="alert alert-warning mb-2 py-2">
+                        {futureGateMsg}
+                      </div>
+                    ) : null}
 
                     <div className="row g-2 align-items-end">
-                      {staffChoiceMode !== "any" ? (
-                        <div className="col-12">
-                          <label className="form-label">اختاري الموظفة</label>
-                          {!String(futureServiceId || servicePicker || "").trim() ? (
-                            <div className="alert alert-danger mb-2 py-2">
-                              اختاري الخدمة أولاً.
-                            </div>
-                          ) : null}
-                          {String(futureServiceId || servicePicker || "").trim() &&
-                          staffLoadingByService[String(futureServiceId || servicePicker || "").trim()] ? (
-                            <div className="small text-muted mt-1">
-                              <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الموظفات...
-                            </div>
-                          ) : null}
-                          {String(futureServiceId || servicePicker || "").trim() &&
-                          staffErrorByService[String(futureServiceId || servicePicker || "").trim()] ? (
-                            <div className="small text-danger mt-1">
-                              {staffErrorByService[String(futureServiceId || servicePicker || "").trim()]}
-                            </div>
-                          ) : null}
-                          {String(futureServiceId || servicePicker || "").trim() &&
-                          !staffLoadingByService[String(futureServiceId || servicePicker || "").trim()] &&
-                          !staffErrorByService[String(futureServiceId || servicePicker || "").trim()] &&
-                          futureStaffOptions.length === 0 ? (
-                            <div className="text-warning small mt-1">
-                              لا توجد موظفات لهذه الخدمة حالياً.
-                            </div>
-                          ) : null}
-                          {futureStaffOptions.length > 0 ? (
-                            <div className="bk-staff-card-grid mt-2">
-                              {futureStaffOptions.map((st) => {
-                                const selected =
-                                  String(futureSelectedEmployeeKey || "").trim() === String(st.key || "").trim();
-                                return (
-                                  <button
-                                    key={st.key}
-                                    type="button"
-                                    className={[
-                                      "bk-staff-card-btn",
-                                      selected ? "is-selected" : "",
-                                    ].join(" ").trim()}
-                                    onClick={() => {
-                                      const nextKey = selected ? "" : st.key;
-                                      setFutureSelectedEmployeeKey(nextKey);
-                                      setFutureStaffNameQuery(selected ? "" : st.name);
-                                    }}
-                                  >
-                                    <span className="bk-staff-card-name">{st.name}</span>
-                                    {selected ? <span className="bk-staff-card-state">محددة</span> : null}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
+                      <div className="col-12">
+                        <label className="form-label">اختاري الموظفة</label>
+                        {!String(futureServiceId || servicePicker || "").trim() ? (
+                          <div className="alert alert-danger mb-2 py-2">
+                            اختاري الخدمة أولاً.
+                          </div>
+                        ) : null}
+                        {String(futureServiceId || servicePicker || "").trim() &&
+                        staffLoadingByService[String(futureServiceId || servicePicker || "").trim()] ? (
+                          <div className="small text-muted mt-1">
+                            <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الموظفات...
+                          </div>
+                        ) : null}
+                        {String(futureServiceId || servicePicker || "").trim() &&
+                        staffErrorByService[String(futureServiceId || servicePicker || "").trim()] ? (
+                          <div className="small text-danger mt-1">
+                            {staffErrorByService[String(futureServiceId || servicePicker || "").trim()]}
+                          </div>
+                        ) : null}
+                        {String(futureServiceId || servicePicker || "").trim() &&
+                        !staffLoadingByService[String(futureServiceId || servicePicker || "").trim()] &&
+                        !staffErrorByService[String(futureServiceId || servicePicker || "").trim()] &&
+                        futureStaffOptions.length === 0 ? (
+                          <div className="text-warning small mt-1">
+                            لا توجد موظفات لهذه الخدمة حالياً.
+                          </div>
+                        ) : null}
+                        {futureStaffOptions.length > 0 ? (
+                          <div className="bk-staff-card-grid mt-2">
+                            {futureStaffOptions.map((st) => {
+                              const selected =
+                                String(futureSelectedEmployeeKey || "").trim() === String(st.key || "").trim();
+                              return (
+                                <button
+                                  key={st.key}
+                                  type="button"
+                                  className={[
+                                    "bk-staff-card-btn",
+                                    selected ? "is-selected" : "",
+                                  ].join(" ").trim()}
+                                  onClick={() => {
+                                    const nextKey = selected ? "" : st.key;
+                                    setFutureSelectedEmployeeKey(nextKey);
+                                    setFutureStaffNameQuery(selected ? "" : st.name);
+                                  }}
+                                >
+                                  <span className="bk-staff-card-name">{st.name}</span>
+                                  {selected ? <span className="bk-staff-card-state">محددة</span> : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
 
                       <div className="col-12 d-grid">
                         <button
@@ -8400,7 +8596,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                           onClick={runFutureAvailabilitySearch}
                           disabled={
                             futureLoading ||
-                            (!futureAnyStaffEffective && !String(futureSelectedEmployeeKey || "").trim())
+                            !String(futureSelectedEmployeeKey || "").trim()
                           }
                         >
                           {futureLoading ? "جاري البحث..." : "بحث"}
@@ -8418,24 +8614,22 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                       {futureResult.length ? (
                         <div className="col-12">
                           <div className="bk-future-inline">
-                            {futureAnyStaffEffective ? (
-                              <div className="small text-muted mb-2">
-                                الأوقات التالية قد تكون عند موظفات مختلفات، وسيتم تحديد الموظفة بعد اختيار اليوم.
-                              </div>
-                            ) : null}
                             <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                               <div className="bk-future-title">نتائج البحث</div>
-                              <button
-                                type="button"
-                                className="btn btn-sm bk-future-pill"
-                                onClick={() => {
-                                  const nearestDate = String(futureResult[0]?.date || "").trim();
-                                  if (!nearestDate) return;
-                                  requestBookingDateChange(nearestDate);
-                                }}
-                              >
-                                اختيار أقرب موعد
-                              </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm bk-future-pill"
+                                  onClick={() => {
+                                    const nearestDate = String(futureResult[0]?.date || "").trim();
+                                    if (!nearestDate) return;
+                                    const targetItemId = String(futureTargetItemId || "").trim();
+                                    if (!targetItemId) return;
+                                    applyDateToSingleItem(targetItemId, nearestDate);
+                                    setFutureMsg("تم تحديث التاريخ لنفس الخدمة. اختاري الوقت المناسب من الشبكية.");
+                                  }}
+                                >
+                                  اختيار أقرب موعد
+                                </button>
                             </div>
 
                             <div className="table-responsive">

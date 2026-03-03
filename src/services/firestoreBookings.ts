@@ -18,7 +18,7 @@ import {
 } from "firebase/firestore";
 
 // ✅ generate same time slots list used by Booking page
-import { generateSalonTimeSlots } from "../helpers/timeSlots";
+import { generateSalonTimeSlots, filterSlotsByServiceEnd } from "../helpers/timeSlots";
 
 // ✅ read slotStep/buffer from settings/app (source of truth)
 import { AppSettingsService } from "./AppSettingsService";
@@ -152,6 +152,7 @@ const SALON_ID = "main";
 const BOOKINGS_COL = ["salons", SALON_ID, "bookings"] as const;
 const SLOTS_COL = ["salons", SALON_ID, "booking_slots"] as const;
 const TRACKS_COL = ["salons", SALON_ID, "booking_tracks"] as const;
+const ALLOW_OVERTIME_MIN = 15;
 
 // ✅ Income collection
 const INCOME_COL = ["salons", SALON_ID, "income"] as const;
@@ -562,9 +563,11 @@ function readBookingHourOverrides(raw: any): BookingHourOverride[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .map((x: any) => {
-      const fromDate = normalizeISODate(x?.fromDate);
-      const toDate = normalizeISODate(x?.toDate);
-      if (!fromDate || !toDate) return null;
+      const fromDateRaw = normalizeISODate(x?.fromDate);
+      const toDateRaw = normalizeISODate(x?.toDate);
+      if (!fromDateRaw || !toDateRaw) return null;
+      const fromDate = fromDateRaw <= toDateRaw ? fromDateRaw : toDateRaw;
+      const toDate = fromDateRaw <= toDateRaw ? toDateRaw : fromDateRaw;
       const mode: BookingHourOverrideMode = String(x?.mode || "").trim() === "closed" ? "closed" : "hours";
       return {
         id: String(x?.id || "").trim() || undefined,
@@ -588,10 +591,13 @@ function resolveSlotSettings(source: any, dateISO?: string): SlotSettings {
   const dateKey = normalizeISODate(dateISO);
   const dayKey = resolveWeekdayFromISO(dateKey || String(dateISO || "").trim());
   const dayHoursBase = businessHours?.[dayKey] || {};
+  const weeklyEnabled = dayHoursBase?.enabled !== false;
+  const weeklyOpen = safeTimeHHMM(dayHoursBase?.start, "10:00");
+  const weeklyClose = safeTimeHHMM(dayHoursBase?.end, "22:00");
 
-  let enabled = dayHoursBase?.enabled !== false;
-  let openTime = safeTimeHHMM(dayHoursBase?.start, "10:00");
-  let closeTime = safeTimeHHMM(dayHoursBase?.end, "22:00");
+  let enabled = weeklyEnabled;
+  let openTime = weeklyOpen;
+  let closeTime = weeklyClose;
 
   if (dateKey) {
     for (let i = bookingHourOverrides.length - 1; i >= 0; i--) {
@@ -606,8 +612,9 @@ function resolveSlotSettings(source: any, dateISO?: string): SlotSettings {
         enabled = false;
       } else {
         enabled = true;
-        openTime = safeTimeHHMM(String(ov?.start || ""), openTime);
-        closeTime = safeTimeHHMM(String(ov?.end || ""), closeTime);
+        // Active exception wins as a single source for this date (no mixing with weekly row).
+        openTime = safeTimeHHMM(String(ov?.start || ""), "10:00");
+        closeTime = safeTimeHHMM(String(ov?.end || ""), "22:00");
       }
       break;
     }
@@ -899,6 +906,24 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     (slot) => String(slot.value24 || "").trim() === requestedStartTime
   );
   if (!hasRequestedStart) throw bookingTimeOutOfHoursError();
+
+  const requestedBufferMin = Math.max(
+    0,
+    Number.isFinite(Number((data as any).bufferMinAtBooking))
+      ? Number((data as any).bufferMinAtBooking)
+      : daySlotSettings.bufferMin
+  );
+  const allowedStartsByDuration = filterSlotsByServiceEnd(
+    allSlotsForDay,
+    daySlotSettings.closeTime,
+    durationMin,
+    requestedBufferMin,
+    ALLOW_OVERTIME_MIN
+  );
+  const isAllowedByDuration = allowedStartsByDuration.some(
+    (slot) => String(slot.value24 || "").trim() === requestedStartTime
+  );
+  if (!isAllowedByDuration) throw bookingTimeOutOfHoursError();
 
   const timesToLock = getTimesToLock(
     requestedStartTime,
@@ -1236,6 +1261,24 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
       (slot) => String(slot.value24 || "").trim() === requestedStartTime
     );
     if (!hasRequestedStart) throw bookingTimeOutOfHoursError();
+
+    const requestedBufferMin = Math.max(
+      0,
+      Number.isFinite(Number((it as any).bufferMinAtBooking))
+        ? Number((it as any).bufferMinAtBooking)
+        : daySlotSettings.bufferMin
+    );
+    const allowedStartsByDuration = filterSlotsByServiceEnd(
+      allSlotsForDay,
+      daySlotSettings.closeTime,
+      durationMin,
+      requestedBufferMin,
+      ALLOW_OVERTIME_MIN
+    );
+    const isAllowedByDuration = allowedStartsByDuration.some(
+      (slot) => String(slot.value24 || "").trim() === requestedStartTime
+    );
+    if (!isAllowedByDuration) throw bookingTimeOutOfHoursError();
 
     const timesToLock = getTimesToLock(
       requestedStartTime,

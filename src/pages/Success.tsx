@@ -63,8 +63,17 @@ type LocalBookingRef = {
   publicId?: string;
 };
 
+type SuccessMode = "created" | "updated";
+type SuccessLocationState = {
+  mode?: SuccessMode;
+  action?: string;
+  updated?: boolean;
+  isUpdate?: boolean;
+};
+
 const BOOKING_KEY = "currentBooking";
 const ALL_BOOKINGS_KEY = "allBookings";
+const SUCCESS_MODE_KEY = "booking_success_mode";
 
 const SALON_ID = "main";
 const SALON_WHATSAPP = "966548440401";
@@ -191,7 +200,8 @@ async function resolveServiceName(serviceId: string): Promise<string> {
     const ref = doc(db, "salons", SALON_ID, "services", serviceId);
     const snap = await getDoc(ref);
     if (!snap.exists()) return "—";
-    return (snap.data() as any)?.name || (snap.data() as any)?.الاسم || "—";
+    const data = (snap.data() as Record<string, any>) || {};
+    return String(data.name || data.nameAr || data.title || "").trim() || "—";
   } catch {
     return "—";
   }
@@ -234,10 +244,32 @@ function readLocalBookingRefs(): LocalBookingRef[] {
   return [];
 }
 
+function readSuccessModeFromStorage(): SuccessMode {
+  const raw = String(localStorage.getItem(SUCCESS_MODE_KEY) || "").trim().toLowerCase();
+  return raw === "updated" ? "updated" : "created";
+}
+
+function resolveSuccessModeFromLocation(state: unknown): SuccessMode | null {
+  const raw = (state || {}) as SuccessLocationState;
+  if (raw.mode === "updated" || raw.mode === "created") return raw.mode;
+
+  const action = String(raw.action || "").trim().toLowerCase();
+  if (action === "update" || action === "updated" || action === "reschedule" || action === "rescheduled") {
+    return "updated";
+  }
+
+  if (raw.updated === true || raw.isUpdate === true) return "updated";
+  return null;
+}
+
 export default function Success() {
   const navigate = useNavigate();
   const location = useLocation();
-  void location;
+  const locationSuccessMode = useMemo(
+    () => resolveSuccessModeFromLocation(location.state),
+    [location.state]
+  );
+  const successMode: SuccessMode = locationSuccessMode || readSuccessModeFromStorage();
 
   const [loading, setLoading] = useState(true);
   const [views, setViews] = useState<UiBookingView[]>([]);
@@ -252,6 +284,10 @@ export default function Success() {
     window.clearTimeout((showToast as any)._t);
     (showToast as any)._t = window.setTimeout(() => setToastMsg(""), 1600);
   };
+
+  useEffect(() => {
+    localStorage.setItem(SUCCESS_MODE_KEY, successMode);
+  }, [successMode]);
 
   const bookingRefs = useMemo(() => readLocalBookingRefs(), []);
 
@@ -456,16 +492,34 @@ export default function Success() {
   const isConfirmed = st === "confirmed" || first?.status === "مؤكد";
 
   const heroTitle =
-    views.length > 1
-      ? isConfirmed
-        ? "تم تأكيد حجوزاتك بنجاح! 🎉"
-        : "تم استلام طلب حجوزاتك بنجاح"
-      : isConfirmed
-      ? "تم تأكيد حجزك بنجاح! 🎉"
-      : "تم استلام طلب حجزك بنجاح";
+    successMode === "updated"
+      ? views.length > 1
+        ? "تم تحديث مواعيد الخدمات بنجاح"
+        : "تم تحديث موعد الخدمة بنجاح"
+      : views.length > 1
+        ? isConfirmed
+          ? "تم تأكيد حجوزاتك بنجاح"
+          : "تم استلام طلب حجوزاتك بنجاح"
+        : isConfirmed
+          ? "تم تأكيد حجزك بنجاح"
+          : "تم استلام طلب حجزك بنجاح";
 
-  // ✅ هنا النص اللي أرسلته أنت
-  const heroDesc = isConfirmed
+  const heroDesc =
+    successMode === "updated"
+      ? "تم حفظ التحديث بنجاح. التفاصيل أدناه تعرض الموعد الجديد للخدمة."
+      : isConfirmed
+        ? "تفاصيل الموعد مؤكدة ويمكنك متابعة حالة الحجز أو التواصل عبر واتساب عند الحاجة."
+        : "الطلب محفوظ بانتظار التأكيد. يُرجى إكمال التأكيد عبر واتساب لإتمام الحجز.";
+  const ctaTitle = successMode === "updated" ? "تأكيد تحديث الموعد عبر واتساب" : "تأكيد الحجز عبر واتساب";
+  const ctaText =
+    successMode === "updated"
+      ? "تم تحديث الموعد. للتأكيد النهائي والمتابعة، يرجى التواصل عبر واتساب."
+      : "يرجى التواصل عبر واتساب، وسيتم إرسال رابط الدفع لإتمام التأكيد.";
+  const confirmedNote =
+    successMode === "updated"
+      ? "تم اعتماد التحديث بنجاح، وهذه هي بيانات الموعد بعد التعديل."
+      : "تم تأكيد الموعد، ننتظرك بكل حب.";
+
   const firstMk = String(first?.publicId || "").trim() || "—";
   const canTrack = firstMk !== "—";
 
@@ -489,10 +543,10 @@ export default function Success() {
           {!isConfirmed && (
             <div className="success-cta-box" role="note" aria-label="تنبيه تأكيد عبر واتساب">
               <div className="success-cta-title qs-wine">
-                <span>تأكيد الحجز عبر واتساب</span>
+                <span>{ctaTitle}</span>
               </div>
               <div className="success-cta-text qs-wine">
-                يرجى التواصل عبر واتساب، وسيتم إرسال رابط الدفع لإتمام التأكيد 🤍
+                {ctaText}
               </div>
 
             </div>
@@ -502,7 +556,7 @@ export default function Success() {
           {isConfirmed && (
             <div className="success-confirmed-note">
               <FontAwesomeIcon icon={faCircleCheck} />
-              <span>تم تأكيد الموعد ✅ ننتظرك بكل حب</span>
+              <span>{confirmedNote}</span>
             </div>
           )}
         </div>

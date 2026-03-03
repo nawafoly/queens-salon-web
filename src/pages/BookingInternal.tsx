@@ -261,7 +261,7 @@ const SALON_ID = "main";
 const DEFAULT_SERVICE_DURATION_MIN = 60;
 const PACKAGE_SECTION_ID = "service-packages";
 const PACKAGE_SECTION_TITLE = "البكيجات";
-const ALLOW_OVERTIME_MIN = 20;
+const ALLOW_OVERTIME_MIN = 15;
 const TAKEN_TIMES_CACHE_TTL_MS = 20_000;
 const BOOKED_META_CACHE_TTL_MS = 20_000;
 const MANI_PEDI_SECTION_KEYWORDS = [
@@ -1226,19 +1226,19 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   );
 
   const getDaySettingsForDate = (dateISO: string) => {
-    const dayKey = resolveWeekdayFromISO(String(dateISO || "").trim() || todayISO());
-    const dayHoursBase = (businessHours as any)?.[dayKey] || {
-      enabled: true,
-      start: "10:00",
-      end: "22:00",
-    };
+    const targetDate = String(dateISO || "").trim() || todayISO();
+    const dayKey = resolveWeekdayFromISO(targetDate);
+    const weeklyDay = (businessHours as any)?.[dayKey];
+    const weeklyEnabled = weeklyDay?.enabled !== false;
+    const weeklyOpen = safeTimeHHMM(weeklyDay?.start, "10:00");
+    const weeklyClose = safeTimeHHMM(weeklyDay?.end, "22:00");
 
     for (let i = bookingHourOverrides.length - 1; i >= 0; i--) {
       const ov = bookingHourOverrides[i];
       const fromDate = String(ov?.fromDate || "").trim();
       const toDate = String(ov?.toDate || "").trim();
       if (!fromDate || !toDate) continue;
-      if (dateISO < fromDate || dateISO > toDate) continue;
+      if (targetDate < fromDate || targetDate > toDate) continue;
 
       const includeDays = Array.isArray(ov?.includeWeekdays) ? ov.includeWeekdays : [];
       if (includeDays.length > 0 && !includeDays.includes(dayKey)) continue;
@@ -1249,8 +1249,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           dayKey,
           dayLabel: WEEKDAY_LABEL_AR[dayKey],
           enabled: false,
-          openTime: safeTimeHHMM((dayHoursBase as any)?.start, "10:00"),
-          closeTime: safeTimeHHMM((dayHoursBase as any)?.end, "22:00"),
+          openTime: weeklyOpen,
+          closeTime: weeklyClose,
         };
       }
 
@@ -1258,17 +1258,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         dayKey,
         dayLabel: WEEKDAY_LABEL_AR[dayKey],
         enabled: true,
-        openTime: safeTimeHHMM(String(ov?.start || ""), safeTimeHHMM((dayHoursBase as any)?.start, "10:00")),
-        closeTime: safeTimeHHMM(String(ov?.end || ""), safeTimeHHMM((dayHoursBase as any)?.end, "22:00")),
+        openTime: safeTimeHHMM(String(ov?.start || ""), "10:00"),
+        closeTime: safeTimeHHMM(String(ov?.end || ""), "22:00"),
       };
     }
 
     return {
       dayKey,
       dayLabel: WEEKDAY_LABEL_AR[dayKey],
-      enabled: dayHoursBase?.enabled !== false,
-      openTime: safeTimeHHMM((dayHoursBase as any)?.start, "10:00"),
-      closeTime: safeTimeHHMM((dayHoursBase as any)?.end, "22:00"),
+      enabled: weeklyEnabled,
+      openTime: weeklyOpen,
+      closeTime: weeklyClose,
     };
   };
   const selectedDaySettings = useMemo(

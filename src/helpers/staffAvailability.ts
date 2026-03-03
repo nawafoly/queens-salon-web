@@ -26,6 +26,18 @@ type StaffAvailabilityOptions = {
   requireShowOnBooking?: boolean;
 };
 
+export type StaffWorkingWindowSource =
+  | "staff_override"
+  | "staff_fixed"
+  | "salon_fallback";
+
+export type ResolvedStaffWorkingWindow = {
+  enabled: boolean;
+  start: string;
+  end: string;
+  source: StaffWorkingWindowSource;
+};
+
 function isISODate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -138,43 +150,69 @@ export function isStaffAvailableForDate(
   return true;
 }
 
-function resolveStaffWorkingWindowForDate(
+function hasStaffFixedWorkingHours(staff: StaffAvailabilityLike) {
+  if (!staff?.useCustomWorkingHours) return false;
+  const rows = staff?.customWorkingHours;
+  if (!rows || typeof rows !== "object") return false;
+  return Object.values(rows).some((row) => row && typeof row === "object");
+}
+
+function resolveStaffFixedWindowForDate(
   staff: StaffAvailabilityLike,
-  dateISO: string,
-  fallbackOpenTime: string,
-  fallbackCloseTime: string
-) {
-  const date = normalizeISODate(dateISO) || todayISO();
-  const fallbackStart = normalizeTimeHHMM(fallbackOpenTime) || "10:00";
-  const fallbackEnd = normalizeTimeHHMM(fallbackCloseTime) || "22:00";
-  const useCustom = !!staff?.useCustomWorkingHours;
-  const weekday = weekdayFromISO(date);
+  dateISO: string
+): ResolvedStaffWorkingWindow | null {
+  if (!hasStaffFixedWorkingHours(staff)) return null;
+  const weekday = weekdayFromISO(dateISO);
+  const dayCfg = weekday
+    ? ((staff?.customWorkingHours || {}) as any)[weekday]
+    : undefined;
+
+  if (!dayCfg || typeof dayCfg !== "object") {
+    // No fixed row for this weekday => treat as "no fixed schedule for today"
+    // and fall back to salon hours.
+    return null;
+  }
+
+  const enabled = dayCfg.enabled !== false;
+  const start = normalizeTimeHHMM(dayCfg.start) || "10:00";
+  const end = normalizeTimeHHMM(dayCfg.end) || "22:00";
+  return { enabled, start, end, source: "staff_fixed" };
+}
+
+export function resolveStaffWorkingWindowForDate(
+  staff: StaffAvailabilityLike,
+  args: {
+    dateISO: string;
+    fallbackOpenTime: string;
+    fallbackCloseTime: string;
+  }
+): ResolvedStaffWorkingWindow {
+  const date = normalizeISODate(args.dateISO) || todayISO();
+  const fallbackStart = normalizeTimeHHMM(args.fallbackOpenTime) || "10:00";
+  const fallbackEnd = normalizeTimeHHMM(args.fallbackCloseTime) || "22:00";
 
   const overrides = Array.isArray(staff?.customWorkingHourOverrides)
     ? staff.customWorkingHourOverrides
     : [];
   const override = overrides.find((x) => normalizeISODate(x?.date) === date);
   if (override) {
+    // Staff exception has the highest priority for this date.
     const enabled = override.enabled !== false;
-    const start = normalizeTimeHHMM(override.start) || fallbackStart;
-    const end = normalizeTimeHHMM(override.end) || fallbackEnd;
-    return { enabled, start, end };
+    const start = normalizeTimeHHMM(override.start) || "10:00";
+    const end = normalizeTimeHHMM(override.end) || "22:00";
+    return { enabled, start, end, source: "staff_override" };
   }
 
-  if (!useCustom) {
-    return { enabled: true, start: fallbackStart, end: fallbackEnd };
-  }
+  const fixed = resolveStaffFixedWindowForDate(staff, date);
+  if (fixed) return fixed;
 
-  const dayCfg = weekday
-    ? ((staff?.customWorkingHours || {}) as any)[weekday]
-    : undefined;
-  if (!dayCfg || dayCfg.enabled === false) {
-    return { enabled: false, start: fallbackStart, end: fallbackEnd };
-  }
-
-  const start = normalizeTimeHHMM(dayCfg.start) || fallbackStart;
-  const end = normalizeTimeHHMM(dayCfg.end) || fallbackEnd;
-  return { enabled: true, start, end };
+  // No staff exception and no fixed staff hours => fallback to salon hours.
+  return {
+    enabled: true,
+    start: fallbackStart,
+    end: fallbackEnd,
+    source: "salon_fallback",
+  };
 }
 
 export function isStaffWorkingAtTime(
@@ -188,9 +226,11 @@ export function isStaffWorkingAtTime(
 ) {
   const window = resolveStaffWorkingWindowForDate(
     staff,
-    args.dateISO,
-    args.fallbackOpenTime,
-    args.fallbackCloseTime
+    {
+      dateISO: args.dateISO,
+      fallbackOpenTime: args.fallbackOpenTime,
+      fallbackCloseTime: args.fallbackCloseTime,
+    }
   );
   if (!window.enabled) return false;
   const time = normalizeTimeHHMM(args.time24);
@@ -209,9 +249,11 @@ export function filterStaffSlotsByWorkingHours<T extends { value24: string }>(
 ) {
   const window = resolveStaffWorkingWindowForDate(
     staff,
-    args.dateISO,
-    args.fallbackOpenTime,
-    args.fallbackCloseTime
+    {
+      dateISO: args.dateISO,
+      fallbackOpenTime: args.fallbackOpenTime,
+      fallbackCloseTime: args.fallbackCloseTime,
+    }
   );
   if (!window.enabled) return [] as T[];
   return (args.slots || []).filter((slot) =>
