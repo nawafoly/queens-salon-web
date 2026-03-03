@@ -302,14 +302,18 @@ const Login: React.FC = () => {
       } else {
         localStorage.removeItem("userAvatar");
       }
-      const role = String(profile?.role || "").toLowerCase().trim() as UiRole;
+      const isMalikatAuth = isMalikatAdminEmail(String(u?.email || ""));
+      let role = String(profile?.role || "").toLowerCase().trim() as UiRole;
+      if (isMalikatAuth && (role === "client" || role === "guest")) {
+        role = "pending";
+      }
 
       if (role === "pending") {
         navigate("/dashboard-pending", { replace: true });
         return;
       }
       if (canAccessDashboard(role)) {
-        navigate("/dashboard/overview", { replace: true });
+        navigate("/dashboard", { replace: true });
         return;
       }
       if (role === "client") navigate(clientLandingPath, { replace: true });
@@ -519,7 +523,7 @@ const Login: React.FC = () => {
           if (role === "pending") {
             navigate("/dashboard-pending", { replace: true });
           } else {
-            navigate("/dashboard/overview", { replace: true });
+            navigate("/dashboard", { replace: true });
           }
           return;
 
@@ -555,7 +559,7 @@ const Login: React.FC = () => {
 
         // توجيه حسب الدور
         if (canAccessDashboard(profile.role)) {
-          navigate("/dashboard/overview", { replace: true });
+          navigate("/dashboard", { replace: true });
         } else {
           navigate(clientLandingPath, { replace: true });
         }
@@ -777,7 +781,7 @@ const Login: React.FC = () => {
               navigate(
                 role === "pending"
                   ? "/dashboard-pending"
-                  : "/dashboard/overview",
+                  : "/dashboard",
                 { replace: true }
               );
               return;

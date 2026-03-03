@@ -39,6 +39,13 @@ import { formatTime12 } from "../helpers/timeDisplay";
 const SUPPORT_PHONE = "966573235247"; // ✅ بدون +
 const SUPPORT_MSG = "مرحباً، أحتاج مساعدة في حسابي في صالون ملكات.";
 
+function isMalikatAdminEmail(email: unknown) {
+  return String(email || "")
+    .toLowerCase()
+    .trim()
+    .endsWith("@malikat.com");
+}
+
 function getWhatsAppLink(phoneDigits: string, msg: string) {
   return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(msg)}`;
 }
@@ -338,6 +345,14 @@ const Profile: React.FC = () => {
       setProfileMode("firebase");
       setFirebaseUid(user.uid);
       setAuthChecked(true);
+
+      // Hard block: admin-domain accounts should never open client profile UI.
+      if (isMalikatAdminEmail(user.email)) {
+        if (leavingForBookingRef.current) return;
+        clearClientCacheOnly();
+        navigate("/dashboard-pending", { replace: true });
+        return;
+      }
 
       if (cachedProfile && String((cachedProfile as any)?.uid || "").trim() === user.uid) {
         setProfileDoc(cachedProfile as UserProfile);

@@ -117,6 +117,11 @@ function isBootstrapAdminEmail(email: string) {
   return e === "nawafaaa0@gmail.com" || e === "nawafaaa6@gmail.com";
 }
 
+function isMalikatAdminEmail(email: string) {
+  const e = String(email || "").toLowerCase().trim();
+  return e.endsWith("@malikat.com");
+}
+
 function writeLocalCache(profile: UserProfile) {
   localStorage.setItem("user_profile_v1", JSON.stringify(profile));
   localStorage.setItem("userName", profile.name);
@@ -229,17 +234,28 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
   const snapSalon = await getDoc(refSalon);
 
   const isBootstrap = isBootstrapAdminEmail(emailLower);
+  const isMalikatDomain = isMalikatAdminEmail(emailLower);
 
   // ✅ 1) موجود: نقرأه ونرجع بدون لعب (إلا bootstrap يفرض owner)
   if (snapSalon.exists()) {
     const data = snapSalon.data() as any;
 
-    const active = data?.active !== false; // الافتراضي true
+    // For @malikat.com accounts, activation must be explicit (active === true).
+    let active =
+      !isBootstrap && isMalikatDomain
+        ? data?.active === true
+        : data?.active !== false; // default true for non-admin-domain users
 
     let role = normalizeRole(data?.role);
 
     // ✅ إذا غير مفعّل => Pending (حتى لو role مكتوب admin بالغلط)
     if (!active) role = "pending";
+
+    // Harden legacy/bad docs where @malikat.com was stored as client/guest.
+    if (!isBootstrap && isMalikatDomain && (role === "client" || role === "guest")) {
+      role = "pending";
+      active = false;
+    }
 
     // ✅ Bootstrap يفرض owner دائماً
     if (isBootstrap) role = "owner";
@@ -280,7 +296,9 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       updatedAt: data?.updatedAt,
     };
 
-    // ✅ patch خفيف: فقط حقول ناقصة — ولا نغير role إلا bootstrap أو role غير موجود
+    // ✅ patch خفيف: فقط حقول ناقصة
+    // IMPORTANT: do not mutate role/active here for non-bootstrap users
+    // because rules block self privilege changes by design.
     const patch: any = {};
     if (!safeStr(data?.email) && authEmail) patch.email = authEmail;
     const storedName = safeStr(data?.name).trim();
@@ -298,12 +316,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     if (!data?.createdAt) patch.createdAt = serverTimestamp();
 
     // role:
-    // - لو ما كان موجود => نكتب role المحسوب
-    // - لو غير مفعّل => نثبت pending
-    // - لو bootstrap => نثبت owner
-    if (!data?.role) patch.role = role;
-    if (!active && String(data?.role || "").toLowerCase().trim() !== "pending")
-      patch.role = "pending";
+    // - only bootstrap account can self-heal role -> owner
     if (isBootstrap && String(data?.role || "").toLowerCase().trim() !== "owner")
       patch.role = "owner";
 
@@ -332,8 +345,13 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
   }
 
   // ✅ 2) مفقود: قبل ما نقول client… نفحص Invite بالإيميل
-  let role: UiRole = isBootstrap ? "owner" : "client";
-  let active = true;
+  // @malikat.com defaults to pending (not client) until explicitly activated.
+  let role: UiRole = isBootstrap
+    ? "owner"
+    : isMalikatDomain
+      ? "pending"
+      : "client";
+  let active = isBootstrap ? true : isMalikatDomain ? false : true;
 
   let inviteId: string | null = null;
 
@@ -353,6 +371,11 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     } catch {
       // ignore
     }
+  }
+
+  // Safety: admin-domain accounts must never auto-fallback to client/guest.
+  if (!isBootstrap && isMalikatDomain) {
+    if (role === "pending") active = false;
   }
 
   const name = authDisplayName || buildDefaultName(role);

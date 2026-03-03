@@ -718,6 +718,13 @@ function mapProfileRoleToDashboardRole(role: ProfileRole): UiRole | null {
   return null;
 }
 
+function isMalikatAdminEmail(email: unknown) {
+  return String(email || "")
+    .toLowerCase()
+    .trim()
+    .endsWith("@malikat.com");
+}
+
 const Dashboard: React.FC = () => {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [dashError, setDashError] = useState<string>("");
@@ -1090,17 +1097,18 @@ const Dashboard: React.FC = () => {
         }
 
         step = `profile:loaded role=${profile?.role || "-"}`;
+        const isMalikatAuth = isMalikatAdminEmail(user.email);
 
         step = "profile:canAccessDashboard";
         if (!canAccessDashboard(profile.role)) {
-          navigate("/profile");
+          navigate(isMalikatAuth ? "/dashboard-pending" : "/profile");
           return;
         }
 
         step = "profile:mapRoleToDashboardRole";
         const dashRole = mapProfileRoleToDashboardRole(profile.role);
         if (!dashRole) {
-          navigate("/profile");
+          navigate(isMalikatAuth ? "/dashboard-pending" : "/profile");
           return;
         }
 

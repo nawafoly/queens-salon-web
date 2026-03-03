@@ -1,5 +1,6 @@
 // src/pages/DashboardEmployees.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
   getDocs,
@@ -20,8 +21,6 @@ import {
   faRotateRight,
   faUserTie,
   faXmark,
-  faToggleOn,
-  faToggleOff,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
@@ -202,7 +201,6 @@ type SummarySourceGroup = {
    Const
 ========================= */
 const SALON_ID = "main";
-const STAFF_CHIPS_PREVIEW_COUNT = 8;
 const DEFAULT_OPEN_TIME = "10:00";
 const DEFAULT_CLOSE_TIME = "22:00";
 const REVENUE_STATUSES = new Set<BookingStatus>(["confirmed", "completed"]);
@@ -234,6 +232,42 @@ function getAuthUser(): AuthUser | null {
   } catch {
     return null;
   }
+}
+
+type FirestoreErrorLike = { code?: string; message?: string };
+
+function toFirestoreErrorMessage(error: unknown, fallback: string): string {
+  const e = (error || {}) as FirestoreErrorLike;
+  const code = String(e.code || "").toLowerCase();
+  if (code.includes("permission-denied")) {
+    return "لا توجد صلاحية لتنفيذ العملية على بيانات الموظفات.";
+  }
+  if (code.includes("failed-precondition")) {
+    return "تعذر تنفيذ الاستعلام. قد يكون هناك Index مطلوب في Firestore.";
+  }
+  if (code.includes("not-found")) {
+    return "السجل المطلوب غير موجود أو تم حذفه.";
+  }
+  if (code.includes("unavailable")) {
+    return "الخدمة غير متاحة مؤقتًا. حاول مرة أخرى.";
+  }
+  const msg = String(e.message || "").trim();
+  return msg || fallback;
+}
+
+function toComparableTimestamp(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value && typeof (value as { toMillis?: unknown }).toMillis === "function") {
+    try {
+      const ms = Number((value as { toMillis: () => unknown }).toMillis());
+      return Number.isFinite(ms) ? ms : 0;
+    } catch {
+      return 0;
+    }
+  }
+  const seconds = Number((value as { seconds?: unknown } | null)?.seconds);
+  if (Number.isFinite(seconds)) return seconds * 1000;
+  return 0;
 }
 
 function getNameInitials(name: string): string {
@@ -328,9 +362,6 @@ function isAdministrativeStaffRecord(
     /admin|owner|reception|manager|اداري|إداري|مدير|ادارة|إدارة/.test(name) ||
     /admin|owner|reception|manager|اداري|إداري|مدير|ادارة|إدارة/.test(idKey);
   if (looksAdminByName) return true;
-
-  const hasNoSpecialties = normalizeSpecialties(data?.specialties).length === 0;
-  if (hasNoSpecialties && (data?.showOnBooking === false || data?.active === false)) return true;
 
   return false;
 }
@@ -561,7 +592,7 @@ function formatHijriInputFromIso(v?: string) {
 
 function parseHijriDateInput(v: string): HijriDateParts | null {
   const normalized = normalizeArabicDigits(v)
-    .replace(/[.\-]/g, "/")
+    .replace(/[.-]/g, "/")
     .replace(/\s+/g, "")
     .trim();
   const m = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
@@ -831,7 +862,11 @@ function buildWorkingHourOverrideGroups(
     });
   });
 
-  return out.map(({ _sig, ...group }) => group);
+  return out.map((group) => {
+    const copy = { ...group };
+    delete (copy as any)._sig;
+    return copy;
+  });
 }
 
 function weekdayFromIso(dateIso: string): WeekdayKey | "" {
@@ -998,18 +1033,19 @@ function intersectTimeWindows(
    Component
 ========================= */
 export default function DashboardEmployees() {
-  const authUser = useMemo(() => getAuthUser(), []);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthUser());
   const canManage =
     authUser?.role === "owner" ||
     authUser?.role === "admin" ||
     authUser?.role === "reception";
 
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [list, setList] = useState<StaffPublicUi[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
+  const busy = loading || saving;
 
   const [statsLoading, setStatsLoading] = useState(false);
-  const specialtiesMigrationDoneRef = useRef(false);
   const modalHourOverrideHijriPickerRef = useRef<HTMLDivElement>(null);
   const [bookingStats, setBookingStats] =
     useState<Record<string, StaffBookingStats>>({});
@@ -1088,10 +1124,7 @@ export default function DashboardEmployees() {
 
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
-  const [expandedSpecialtiesByStaff, setExpandedSpecialtiesByStaff] = useState<Record<string, boolean>>({});
-  const [leaveExceptionWeekdayByStaff, setLeaveExceptionWeekdayByStaff] = useState<
-    Record<string, WeekdayKey | "">
-  >({});
+  const serviceOptionsRef = useRef<ServiceOption[]>([]);
 
   const [srvQ, setSrvQ] = useState("");
   const [srvSection, setSrvSection] = useState<string>("all");
@@ -1109,6 +1142,27 @@ export default function DashboardEmployees() {
     if (!modalHourOverrideHijriMonthDays.length) return 0;
     return hijriWeekdayColumnFromIso(modalHourOverrideHijriMonthDays[0].iso);
   }, [modalHourOverrideHijriMonthDays]);
+
+  useEffect(() => {
+    serviceOptionsRef.current = serviceOptions;
+  }, [serviceOptions]);
+
+  useEffect(() => {
+    const syncAuthUser = () => setAuthUser(getAuthUser());
+    syncAuthUser();
+    window.addEventListener("storage", syncAuthUser);
+    window.addEventListener("focus", syncAuthUser);
+    return () => {
+      window.removeEventListener("storage", syncAuthUser);
+      window.removeEventListener("focus", syncAuthUser);
+    };
+  }, []);
+
+  const ensureCanManage = useCallback(() => {
+    if (canManage) return true;
+    setErrorMsg("ليست لديك صلاحية لإدارة الموظفات.");
+    return false;
+  }, [canManage]);
 
   const resetForm = () => {
     setEditId(null);
@@ -1241,97 +1295,7 @@ export default function DashboardEmployees() {
     resetForm();
   };
 
-  const load = async () => {
-    setLoading(true);
-    setErrorMsg("");
-    try {
-      const adminLikeDocIds: string[] = [];
-      const linkedUserRoleByUid = new Map<string, string>();
-      try {
-        const userSnap = await getDocs(usersCol());
-        userSnap.docs.forEach((u) => {
-          const x = u.data() as any;
-          const uid = String(u.id || "").trim();
-          const role = String(x?.role || "").trim();
-          if (uid && role) linkedUserRoleByUid.set(uid, role);
-        });
-      } catch (e) {
-        console.warn("load users roles skipped:", e);
-      }
-
-      const snap = await getDocs(staffPublicCol());
-      const rows: StaffPublicUi[] = [];
-      snap.docs.forEach((d) => {
-        const data = d.data() as any;
-        if (isAdministrativeStaffRecord(d.id, data, linkedUserRoleByUid)) {
-          adminLikeDocIds.push(d.id);
-          return;
-        }
-        const payrollCfg = normalizePayrollConfig(data);
-        rows.push({
-          id: d.id,
-          name: data?.name ?? "",
-          active: !!data?.active,
-
-          // ✅ جديد (افتراضي: تظهر إذا ما كان الحقل موجود)
-          showOnAbout: data?.showOnAbout !== false,
-          showOnBooking: data?.showOnBooking !== false,
-          employmentEndDate: normalizeLeaveUntil(data?.employmentEndDate),
-          onLeave: !!data?.onLeave,
-          leaveUntil: normalizeLeaveUntil(data?.leaveUntil),
-          leaveNote: String(data?.leaveNote || ""),
-          exceptionalLeaveDates: normalizeExceptionalLeaveDates(data?.exceptionalLeaveDates),
-          exceptionalLeaveWeekdays: normalizeExceptionalLeaveWeekdays(data?.exceptionalLeaveWeekdays),
-          useCustomWorkingHours: !!data?.useCustomWorkingHours,
-          customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
-          customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
-          monthlySalary: payrollCfg.monthlySalary,
-          overtimeMethod: payrollCfg.method,
-          overtimeDaysPerMonth: payrollCfg.daysPerMonth,
-          overtimeBaseHoursPerDay: payrollCfg.baseHoursPerDay,
-          overtimeSeasonBaseHoursPerDay: payrollCfg.seasonBaseHoursPerDay,
-          overtimeHoursBasis: payrollCfg.hoursBasis,
-          overtimePercent: payrollCfg.overtimePercent,
-          overtimeInvoicePercent: payrollCfg.invoicePercent,
-
-          specialties: canonicalizeSpecialties(data?.specialties, serviceOptions),
-          bio: data?.bio ?? "",
-          avatarUrl: resolveAvatarFromAssets(pickAvatarUrl(data)),
-          cvUrl: data?.cvUrl ?? "",
-          leaveBalanceDays: Number(data?.leaveBalanceDays || 0),
-          leaveEntitlementDate: String(data?.leaveEntitlementDate || ""),
-          leaveEntries: Array.isArray(data?.leaveEntries) ? data.leaveEntries : [],
-          createdAt: data?.createdAt,
-          updatedAt: data?.updatedAt,
-        } as StaffPublicUi);
-      });
-      rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
-      setList(rows);
-      setLeaveExceptionWeekdayByStaff({});
-
-      // Remove admin-like records from staff_public (not just hide) for management roles.
-      if (
-        adminLikeDocIds.length > 0 &&
-        (authUser?.role === "owner" || authUser?.role === "admin")
-      ) {
-        const uniqueIds = Array.from(new Set(adminLikeDocIds.filter(Boolean)));
-        const results = await Promise.allSettled(
-          uniqueIds.map((id) => deleteDoc(staffPublicDoc(id)))
-        );
-        const failed = results.filter((r) => r.status === "rejected").length;
-        if (failed > 0) {
-          setErrorMsg(`تم استبعاد ${uniqueIds.length - failed} سجل إداري، وتعذر حذف ${failed}.`);
-        }
-      }
-    } catch {
-      setErrorMsg("تعذر تحميل الموظفات");
-      setList([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadServiceOptions = async () => {
+  const loadServiceOptions = useCallback(async (): Promise<ServiceOption[]> => {
     try {
       const qSrv = query(servicesCol(), orderBy("name", "asc"));
       const snap = await getDocs(qSrv);
@@ -1351,20 +1315,113 @@ export default function DashboardEmployees() {
         .filter((s) => s.active !== false);
 
       setServiceOptions(opts);
+      return opts;
     } catch (e) {
-      console.warn("loadServiceOptions error:", e);
       setServiceOptions([]);
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر تحميل الخدمات."));
+      return [];
     }
-  };
+  }, []);
+
+  const load = useCallback(
+    async (optionsOverride?: ServiceOption[]) => {
+      setLoading(true);
+      setErrorMsg("");
+      try {
+        const linkedUserRoleByUid = new Map<string, string>();
+        try {
+          const userSnap = await getDocs(usersCol());
+          userSnap.docs.forEach((u) => {
+            const x = u.data() as any;
+            const uid = String(u.id || "").trim();
+            const role = String(x?.role || "").trim();
+            if (uid && role) linkedUserRoleByUid.set(uid, role);
+          });
+        } catch {
+          // skip optional role enrichment
+        }
+
+        const serviceLookup = optionsOverride ?? serviceOptionsRef.current;
+        const snap = await getDocs(staffPublicCol());
+        const deduped = new Map<string, StaffPublicUi>();
+
+        snap.docs.forEach((d) => {
+          const data = d.data() as any;
+          if (isAdministrativeStaffRecord(d.id, data, linkedUserRoleByUid)) {
+            return;
+          }
+          const payrollCfg = normalizePayrollConfig(data);
+          const row: StaffPublicUi = {
+            id: d.id,
+            name: data?.name ?? "",
+            active: data?.active !== false,
+            showOnAbout: data?.showOnAbout !== false,
+            showOnBooking: data?.showOnBooking !== false,
+            employmentEndDate: normalizeLeaveUntil(data?.employmentEndDate),
+            onLeave: !!data?.onLeave,
+            leaveUntil: normalizeLeaveUntil(data?.leaveUntil),
+            leaveNote: String(data?.leaveNote || ""),
+            exceptionalLeaveDates: normalizeExceptionalLeaveDates(data?.exceptionalLeaveDates),
+            exceptionalLeaveWeekdays: normalizeExceptionalLeaveWeekdays(data?.exceptionalLeaveWeekdays),
+            useCustomWorkingHours: !!data?.useCustomWorkingHours,
+            customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
+            customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
+            monthlySalary: payrollCfg.monthlySalary,
+            overtimeMethod: payrollCfg.method,
+            overtimeDaysPerMonth: payrollCfg.daysPerMonth,
+            overtimeBaseHoursPerDay: payrollCfg.baseHoursPerDay,
+            overtimeSeasonBaseHoursPerDay: payrollCfg.seasonBaseHoursPerDay,
+            overtimeHoursBasis: payrollCfg.hoursBasis,
+            overtimePercent: payrollCfg.overtimePercent,
+            overtimeInvoicePercent: payrollCfg.invoicePercent,
+            specialties: canonicalizeSpecialties(data?.specialties, serviceLookup),
+            bio: data?.bio ?? "",
+            avatarUrl: resolveAvatarFromAssets(pickAvatarUrl(data)),
+            cvUrl: data?.cvUrl ?? "",
+            leaveBalanceDays: Number(data?.leaveBalanceDays || 0),
+            leaveEntitlementDate: String(data?.leaveEntitlementDate || ""),
+            leaveEntries: Array.isArray(data?.leaveEntries) ? data.leaveEntries : [],
+            createdAt: data?.createdAt,
+            updatedAt: data?.updatedAt,
+          };
+
+          const linkedUid = String(data?.linkedUid || "").trim();
+          const dedupeKey = linkedUid ? `uid:${linkedUid}` : `doc:${d.id}`;
+          const existing = deduped.get(dedupeKey);
+          if (!existing) {
+            deduped.set(dedupeKey, row);
+            return;
+          }
+
+          const rowTs = toComparableTimestamp(row.updatedAt) || toComparableTimestamp(row.createdAt);
+          const existingTs =
+            toComparableTimestamp(existing.updatedAt) || toComparableTimestamp(existing.createdAt);
+          if (rowTs >= existingTs) deduped.set(dedupeKey, row);
+        });
+
+        const rows = Array.from(deduped.values()).sort((a, b) =>
+          (a.name || "").localeCompare(b.name || "", "ar")
+        );
+        setList(rows);
+      } catch (e) {
+        setErrorMsg(toFirestoreErrorMessage(e, "تعذر تحميل الموظفات."));
+        setList([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
   // ✅ Original logic for fixing bookings
   const fixBookingsEmployeeUid = async () => {
-    if (!canManage) return;
+    if (!ensureCanManage()) return;
     const ok = confirm(
       "سيتم إصلاح الحجوزات القديمة بإضافة employeeUid/employeeKey. هل تريد المتابعة؟"
     );
     if (!ok) return;
-    setLoading(true);
+    setSaving(true);
+    setErrorMsg("");
     try {
       const staffSnap = await getDocs(staffPublicCol());
       const uidByEmployeeId = new Map<string, string>();
@@ -1399,215 +1456,28 @@ export default function DashboardEmployees() {
       await batch.commit();
       alert("✅ تم إصلاح الحجوزات");
     } catch (e) {
-      console.warn(e);
-      setErrorMsg("خطأ في الإصلاح");
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر إكمال إصلاح الحجوزات."));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  // ✅ Toggle Active (نشط/غير نشط)
-  const toggleActiveQuick = async (x: StaffPublicUi) => {
-    if (!canManage) return;
-    setLoading(true);
-    setErrorMsg("");
-    try {
-      const next = !x.active;
-      await updateDoc(staffPublicDoc(x.id), {
-        active: next,
-        updatedAt: serverTimestamp(),
-      } as any);
-      setList((prev) => prev.map((r) => (r.id === x.id ? { ...r, active: next } : r)));
-    } catch (e) {
-      console.warn("toggleActiveQuick error:", e);
-      setErrorMsg("تعذر تغيير حالة الموظفة");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ✅ Toggle ShowOnAbout (يظهر في About أو لا)
-  const toggleShowOnAboutQuick = async (x: StaffPublicUi) => {
-    if (!canManage) return;
-    setLoading(true);
-    setErrorMsg("");
-    try {
-      const cur = (x as any).showOnAbout !== false;
-      const next = !cur;
-      await updateDoc(staffPublicDoc(x.id), {
-        showOnAbout: next,
-        updatedAt: serverTimestamp(),
-      } as any);
-      setList((prev) =>
-        prev.map((r) => (r.id === x.id ? { ...r, showOnAbout: next } : r))
-      );
-    } catch (e) {
-      console.warn("toggleShowOnAboutQuick error:", e);
-      setErrorMsg("تعذر تغيير ظهور الموظفة في صفحة من نحن");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updateStaffBookingDraft = (
-    staffId: string,
-    patch: Partial<
-      Pick<
-        StaffPublicUi,
-        | "showOnBooking"
-        | "onLeave"
-        | "leaveUntil"
-        | "leaveNote"
-        | "exceptionalLeaveDates"
-        | "exceptionalLeaveWeekdays"
-      >
-    >
-  ) => {
-    setList((prev) =>
-      prev.map((row) =>
-        row.id === staffId
-          ? ({
-              ...row,
-              ...patch,
-            } as StaffPublicUi)
-          : row
-      )
-    );
-  };
-
-  const addExceptionalLeaveWeekday = (staffId: string) => {
-    const nextWeekday = normalizeWeekdayKey(leaveExceptionWeekdayByStaff[staffId]);
-    if (!nextWeekday) return;
-    setList((prev) =>
-      prev.map((row) => {
-        if (row.id !== staffId) return row;
-        const current = normalizeExceptionalLeaveWeekdays(
-          (row as any).exceptionalLeaveWeekdays
-        );
-        return {
-          ...row,
-          exceptionalLeaveWeekdays: normalizeExceptionalLeaveWeekdays([
-            ...current,
-            nextWeekday,
-          ]),
-        } as StaffPublicUi;
-      })
-    );
-    setLeaveExceptionWeekdayByStaff((prev) => ({ ...prev, [staffId]: "" }));
-  };
-
-  const removeExceptionalLeaveWeekday = (staffId: string, dayKey: WeekdayKey) => {
-    setList((prev) =>
-      prev.map((row) => {
-        if (row.id !== staffId) return row;
-        const current = normalizeExceptionalLeaveWeekdays(
-          (row as any).exceptionalLeaveWeekdays
-        );
-        return {
-          ...row,
-          exceptionalLeaveWeekdays: current.filter((d) => d !== dayKey),
-        } as StaffPublicUi;
-      })
-    );
-  };
-
-  const saveStaffBookingSettings = async (staff: StaffPublicUi) => {
-    if (!canManage) return;
-
-    const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
-    const employmentEndDate = normalizeLeaveUntil((staff as any).employmentEndDate);
-    const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
-    const effectiveOnLeave = !!(staff as any).onLeave && !leaveExpired;
-    const leaveNote = String((staff as any).leaveNote || "").trim();
-    const exceptionalLeaveDates = normalizeExceptionalLeaveDates(
-      (staff as any).exceptionalLeaveDates
-    );
-    const exceptionalLeaveWeekdays = normalizeExceptionalLeaveWeekdays(
-      (staff as any).exceptionalLeaveWeekdays
-    );
-
-    setLoading(true);
-    setErrorMsg("");
-    try {
-      await updateDoc(staffPublicDoc(staff.id), {
-        showOnBooking: (staff as any).showOnBooking !== false,
-        employmentEndDate,
-        onLeave: effectiveOnLeave,
-        leaveUntil,
-        leaveNote,
-        exceptionalLeaveDates,
-        exceptionalLeaveWeekdays,
-        updatedAt: serverTimestamp(),
-      } as any);
-
-      setList((prev) =>
-        prev.map((row) =>
-          row.id === staff.id
-            ? ({
-                ...row,
-                showOnBooking: (staff as any).showOnBooking !== false,
-                employmentEndDate,
-                onLeave: effectiveOnLeave,
-                leaveUntil,
-                leaveNote,
-                exceptionalLeaveDates,
-                exceptionalLeaveWeekdays,
-              } as StaffPublicUi)
-            : row
-        )
-      );
-    } catch (e) {
-      console.warn("saveStaffBookingSettings error:", e);
-      setErrorMsg("تعذر حفظ إعدادات الحجز للموظفة");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const reloadData = useCallback(async () => {
+    const opts = await loadServiceOptions();
+    await load(opts);
+  }, [load, loadServiceOptions]);
 
   useEffect(() => {
-    load();
-    loadServiceOptions();
-  }, []);
-
-  useEffect(() => {
-    if (specialtiesMigrationDoneRef.current) return;
-    if (!serviceOptions.length || !list.length) return;
-    specialtiesMigrationDoneRef.current = true;
-
-    const run = async () => {
-      const updates: Array<{ id: string; specialties: string[] }> = [];
-      list.forEach((row) => {
-        const before = normalizeSpecialties(row.specialties);
-        const after = canonicalizeSpecialties(before, serviceOptions);
-        if (JSON.stringify(before) !== JSON.stringify(after)) {
-          updates.push({ id: row.id, specialties: after });
-        }
-      });
-
-      if (!updates.length) return;
-
-      try {
-        await Promise.all(
-          updates.map((u) =>
-            updateDoc(staffPublicDoc(u.id), {
-              specialties: u.specialties,
-              updatedAt: serverTimestamp(),
-            })
-          )
-        );
-        setList((prev) =>
-          prev.map((r) => {
-            const hit = updates.find((u) => u.id === r.id);
-            return hit ? { ...r, specialties: hit.specialties } : r;
-          })
-        );
-      } catch (e) {
-        console.warn("specialties migration failed:", e);
-      }
+    let alive = true;
+    const bootstrap = async () => {
+      if (!alive) return;
+      await reloadData();
     };
-
-    void run();
-  }, [list, serviceOptions]);
+    void bootstrap();
+    return () => {
+      alive = false;
+    };
+  }, [reloadData]);
 
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 60_000);
@@ -1799,19 +1669,21 @@ export default function DashboardEmployees() {
   };
 
   const save = async () => {
-    if (!canManage) return;
+    if (!ensureCanManage()) return;
     const cleanName = name.trim();
     const specialtiesFixed = canonicalizeSpecialties(specialties, serviceOptions);
+    const effectiveShowOnBooking = specialtiesFixed.length > 0 ? !!showOnBooking : false;
     if (!cleanName) {
       setErrorMsg("اكتب اسم الموظفة");
       return;
     }
-    if (specialtiesFixed.length === 0) {
-      setErrorMsg("اختَر خدمة واحدة على الأقل");
-      return;
+    // Allow saving basic data even when no services are assigned.
+    // In that case, force-hide from booking until services are added.
+    if (specialtiesFixed.length === 0 && showOnBooking) {
+      setShowOnBooking(false);
     }
     // ✅ منع "النسيان": موظفة نشطة لكن مخفية من الحجز
-    if (active && !showOnBooking) {
+    if (active && !effectiveShowOnBooking) {
       const ok = confirm(
         "⚠️ تنبيه: الموظفة (نشطة) لكن (مخفية من الحجز).\nهل تريد الحفظ بهذا الشكل؟"
       );
@@ -1837,7 +1709,7 @@ export default function DashboardEmployees() {
     }
 
 
-    setLoading(true);
+    setSaving(true);
     setErrorMsg("");
     const normalizedModalLeaveUntil = normalizeLeaveUntil(modalLeaveUntil);
     const normalizedEmploymentEndDate = normalizeLeaveUntil(employmentEndDate);
@@ -1855,7 +1727,7 @@ export default function DashboardEmployees() {
       name: cleanName,
       active: !!active,
       showOnAbout: !!showOnAbout,
-      showOnBooking: !!showOnBooking,
+      showOnBooking: effectiveShowOnBooking,
       employmentEndDate: normalizedEmploymentEndDate,
       onLeave: effectiveModalOnLeave,
       leaveUntil: normalizedModalLeaveUntil,
@@ -1907,18 +1779,17 @@ export default function DashboardEmployees() {
         setMode("view");
       }
       await load();
-    } catch (e: any) {
-      console.warn("save staff_public error:", e);
-      setErrorMsg(String(e?.message || "تعذر حفظ الموظفة"));
+    } catch (e) {
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ الموظفة."));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   const remove = async (id: string) => {
-    if (!canManage) return;
+    if (!ensureCanManage()) return;
     if (!confirm("متأكد حذف الموظفة؟")) return;
-    setLoading(true);
+    setSaving(true);
     setErrorMsg("");
     try {
       await deleteDoc(staffPublicDoc(id));
@@ -1930,10 +1801,9 @@ export default function DashboardEmployees() {
       }
       await load();
     } catch (e) {
-      console.warn("delete staff_public error:", e);
-      setErrorMsg("تعذر حذف الموظفة");
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حذف الموظفة."));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -2415,7 +2285,6 @@ export default function DashboardEmployees() {
     overtimeHoursBasis,
     overtimePercent,
     overtimeInvoicePercent,
-    nowTick,
   ]);
   const modalTabs: Array<{ key: EmployeeModalTab; label: string }> = editingStaff
     ? [
@@ -2855,7 +2724,7 @@ export default function DashboardEmployees() {
         modalHourOverrideMode !== "specific" ||
         (!!day && modalHourOverrideApplyWeekdays.includes(day));
       if (allowed) {
-        let rowStart = start;
+        const rowStart = start;
         let rowEnd = end;
         let rowEnabled = modalHourOverrideEnabled;
         if (modalHourOverrideQuickMode === "closed") {
@@ -2978,7 +2847,7 @@ export default function DashboardEmployees() {
 
     const nextEntries = [entry, ...currentEntries].slice(0, 200);
 
-    setLoading(true);
+    setSaving(true);
     setErrorMsg("");
     try {
       await updateDoc(staffPublicDoc(editingStaff.id), {
@@ -3009,10 +2878,9 @@ export default function DashboardEmployees() {
         meta: { leaveAction: mode, days, opDate, staffName: editingStaff.name },
       });
     } catch (e) {
-      console.warn("leave change error:", e);
-      setErrorMsg("تعذر حفظ حركة الإجازة.");
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ حركة الإجازة."));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -3023,7 +2891,7 @@ export default function DashboardEmployees() {
       setErrorMsg("تاريخ الاستحقاق غير صحيح.");
       return;
     }
-    setLoading(true);
+    setSaving(true);
     setErrorMsg("");
     try {
       await updateDoc(staffPublicDoc(editingStaff.id), {
@@ -3034,10 +2902,9 @@ export default function DashboardEmployees() {
         prev.map((r) => (r.id === editingStaff.id ? ({ ...r, leaveEntitlementDate: d } as StaffPublicUi) : r))
       );
     } catch (e) {
-      console.warn("save entitlement date error:", e);
-      setErrorMsg("تعذر حفظ تاريخ الاستحقاق.");
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ تاريخ الاستحقاق."));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -3092,11 +2959,8 @@ export default function DashboardEmployees() {
             )}
             <button
               className="exp-btn"
-              onClick={async () => {
-                await loadServiceOptions();
-                await load();
-              }}
-              disabled={loading}
+              onClick={() => void reloadData()}
+              disabled={busy}
               type="button"
             >
               <FontAwesomeIcon icon={faRotateRight} /> تحديث
@@ -3258,7 +3122,7 @@ export default function DashboardEmployees() {
                           className="exp-btn primary sm"
                           type="button"
                           onClick={save}
-                          disabled={loading}
+                          disabled={busy}
                         >
                           حفظ
                         </button>
@@ -3546,7 +3410,7 @@ export default function DashboardEmployees() {
                           min={0}
                           step="0.01"
                           value={monthlySalary}
-                          disabled={loading}
+                          disabled={busy}
                           onChange={(e) => setMonthlySalary(e.target.value)}
                           placeholder="مثال: 5000"
                         />
@@ -3556,7 +3420,7 @@ export default function DashboardEmployees() {
                         <select
                           className="dash-select"
                           value={overtimeMethod}
-                          disabled={loading}
+                          disabled={busy}
                           onChange={(e) => setOvertimeMethod(e.target.value as StaffPayrollMethod)}
                         >
                           <option value="hours_from_salary">من الراتب + الساعات الإضافية</option>
@@ -3573,7 +3437,7 @@ export default function DashboardEmployees() {
                               min={1}
                               step={1}
                               value={overtimeDaysPerMonth}
-                              disabled={loading}
+                              disabled={busy}
                               onChange={(e) => setOvertimeDaysPerMonth(e.target.value)}
                               placeholder="مثال: 30"
                             />
@@ -3586,7 +3450,7 @@ export default function DashboardEmployees() {
                               min={1}
                               step="0.25"
                               value={overtimeBaseHoursPerDay}
-                              disabled={loading}
+                              disabled={busy}
                               onChange={(e) => setOvertimeBaseHoursPerDay(e.target.value)}
                               placeholder="مثال: 8"
                             />
@@ -3599,7 +3463,7 @@ export default function DashboardEmployees() {
                               min={1}
                               step="0.25"
                               value={overtimeSeasonBaseHoursPerDay}
-                              disabled={loading}
+                              disabled={busy}
                               onChange={(e) => setOvertimeSeasonBaseHoursPerDay(e.target.value)}
                               placeholder="مثال: 6"
                             />
@@ -3609,7 +3473,7 @@ export default function DashboardEmployees() {
                             <select
                               className="dash-select"
                               value={overtimeHoursBasis}
-                              disabled={loading}
+                              disabled={busy}
                               onChange={(e) =>
                                 setOvertimeHoursBasis(
                                   e.target.value === "season" ? "season" : "regular"
@@ -3628,7 +3492,7 @@ export default function DashboardEmployees() {
                               min={0}
                               step="0.01"
                               value={overtimePercent}
-                              disabled={loading}
+                              disabled={busy}
                               onChange={(e) => setOvertimePercent(e.target.value)}
                               placeholder="مثال: 25"
                             />
@@ -3643,7 +3507,7 @@ export default function DashboardEmployees() {
                             min={0}
                             step="0.01"
                             value={overtimeInvoicePercent}
-                            disabled={loading}
+                            disabled={busy}
                             onChange={(e) => setOvertimeInvoicePercent(e.target.value)}
                             placeholder="مثال: 40"
                           />
@@ -3745,7 +3609,7 @@ export default function DashboardEmployees() {
                           <input
                             type="checkbox"
                             checked={modalOnLeave}
-                            disabled={loading}
+                            disabled={busy}
                             onChange={(e) => setModalOnLeave(e.target.checked)}
                           />
                           في إجازة الآن
@@ -3758,7 +3622,7 @@ export default function DashboardEmployees() {
                           className="dash-input"
                           type="date"
                           value={modalLeaveUntil}
-                          disabled={loading}
+                          disabled={busy}
                           onChange={(e) => setModalLeaveUntil(e.target.value)}
                         />
                       </div>
@@ -3768,7 +3632,7 @@ export default function DashboardEmployees() {
                         <input
                           className="dash-input"
                           value={modalLeaveNote}
-                          disabled={loading}
+                          disabled={busy}
                           onChange={(e) => setModalLeaveNote(e.target.value)}
                           placeholder="مثال: عودة يوم الأحد"
                         />
@@ -3780,7 +3644,7 @@ export default function DashboardEmployees() {
                           <select
                             className="dash-select"
                             value={String(modalLeaveWeekdayDraft || "")}
-                            disabled={loading}
+                            disabled={busy}
                             onChange={(e) => setModalLeaveWeekdayDraft(e.target.value as WeekdayKey | "")}
                           >
                             <option value="">اختاري اليوم</option>
@@ -3814,7 +3678,7 @@ export default function DashboardEmployees() {
                                 key={`modal_leave_chip_${d}`}
                                 type="button"
                                 className="exp-btn ghost sm"
-                                disabled={loading}
+                                disabled={busy}
                                 onClick={() =>
                                   setModalExceptionalLeaveWeekdays((prev) =>
                                     prev.filter((day) => day !== d)
@@ -3851,7 +3715,7 @@ export default function DashboardEmployees() {
                           className="exp-btn"
                           type="button"
                           onClick={saveEntitlementDate}
-                          disabled={loading}
+                          disabled={busy}
                         >
                           حفظ الاستحقاق
                         </button>
@@ -3884,7 +3748,7 @@ export default function DashboardEmployees() {
                         <button
                           className="exp-btn primary"
                           type="button"
-                          disabled={loading}
+                          disabled={busy}
                           onClick={() => applyLeaveChange("add")}
                         >
                           إضافة رصيد
@@ -3892,7 +3756,7 @@ export default function DashboardEmployees() {
                         <button
                           className="exp-btn ghost"
                           type="button"
-                          disabled={loading}
+                          disabled={busy}
                           onClick={() => applyLeaveChange("deduct")}
                         >
                           تسجيل إجازة (خصم)
@@ -3995,7 +3859,7 @@ export default function DashboardEmployees() {
                       className="dash-input"
                       type="date"
                       value={employmentEndDate}
-                      disabled={loading}
+                      disabled={busy}
                       onChange={(e) => setEmploymentEndDate(e.target.value)}
                     />
                     <div className="emp-field-note danger">
@@ -4009,7 +3873,7 @@ export default function DashboardEmployees() {
                       <input
                         type="checkbox"
                         checked={modalUseCustomWorkingHours}
-                        disabled={loading}
+                        disabled={busy}
                         onChange={(e) => setModalUseCustomWorkingHours(e.target.checked)}
                       />
                       ساعات عمل خاصة لهذه الموظفة
@@ -4036,7 +3900,7 @@ export default function DashboardEmployees() {
                                 <input
                                   type="checkbox"
                                   checked={row.enabled !== false}
-                                  disabled={loading}
+                                  disabled={busy}
                                   onChange={(e) =>
                                     updateModalWorkingDay(d.key, { enabled: e.target.checked })
                                   }
@@ -4064,7 +3928,7 @@ export default function DashboardEmployees() {
                               <button
                                 type="button"
                                 className="exp-btn ghost sm emp-working-copy-btn"
-                                disabled={loading}
+                                disabled={busy}
                                 onClick={() => copyModalWorkingDayToAll(d.key)}
                                 title={`نسخ ساعات ${d.label} لكل الأيام`}
                               >
@@ -4121,7 +3985,7 @@ export default function DashboardEmployees() {
                               <button
                                 type="button"
                                 className="exp-btn ghost sm"
-                                disabled={loading}
+                                disabled={busy}
                               onClick={fillModalHourOverrideFromBaseDay}
                             >
                               نسخ ساعات يوم البداية
@@ -4129,7 +3993,7 @@ export default function DashboardEmployees() {
                             <button
                               type="button"
                               className={`exp-btn ghost sm ${modalHourOverrideQuickMode === "full" ? "is-active" : ""}`}
-                              disabled={loading}
+                              disabled={busy}
                               onClick={() => {
                                 fillModalHourOverrideFromBaseDay();
                                 setModalHourOverrideQuickMode("full");
@@ -4140,7 +4004,7 @@ export default function DashboardEmployees() {
                             <button
                               type="button"
                               className={`exp-btn ghost sm ${modalHourOverrideQuickMode === "closed" ? "is-active" : ""}`}
-                              disabled={loading}
+                              disabled={busy}
                               onClick={() => setModalHourOverrideQuickMode("closed")}
                             >
                               إغلاق
@@ -4148,7 +4012,7 @@ export default function DashboardEmployees() {
                             <button
                               type="button"
                               className={`exp-btn ghost sm ${modalHourOverrideQuickMode === "plus1" ? "is-active" : ""}`}
-                              disabled={loading}
+                              disabled={busy}
                               onClick={() => setModalHourOverrideQuickMode("plus1")}
                             >
                               +1 ساعة
@@ -4156,7 +4020,7 @@ export default function DashboardEmployees() {
                             <button
                               type="button"
                               className={`exp-btn ghost sm ${modalHourOverrideQuickMode === "plus2" ? "is-active" : ""}`}
-                              disabled={loading}
+                              disabled={busy}
                               onClick={() => setModalHourOverrideQuickMode("plus2")}
                             >
                               +2 ساعة
@@ -4164,7 +4028,7 @@ export default function DashboardEmployees() {
                             <button
                               type="button"
                               className={`exp-btn ghost sm ${modalHourOverrideQuickMode === "manual" ? "is-active" : ""}`}
-                              disabled={loading}
+                              disabled={busy}
                               onClick={() => setModalHourOverrideQuickMode("manual")}
                             >
                               يدوي
@@ -4172,7 +4036,7 @@ export default function DashboardEmployees() {
                             <button
                               type="button"
                               className="exp-btn ghost sm"
-                              disabled={loading}
+                              disabled={busy}
                               onClick={() => {
                                 setModalHourOverrideQuickMode("manual");
                                 setModalHourOverrideEnabled(true);
@@ -4185,7 +4049,7 @@ export default function DashboardEmployees() {
                             <button
                               type="button"
                               className="exp-btn ghost sm"
-                              disabled={loading}
+                              disabled={busy}
                               onClick={() => {
                                 setModalHourOverrideQuickMode("manual");
                                 setModalHourOverrideEnabled(true);
@@ -4202,7 +4066,7 @@ export default function DashboardEmployees() {
                                 type="radio"
                                 name="overrideApplyMethod"
                                 checked={!modalHourOverrideUpdateExistingOnly}
-                                disabled={loading}
+                                disabled={busy}
                                 onChange={() => {
                                   setModalHourOverrideApplyMethod("replace");
                                   setModalHourOverrideOverwriteExisting(true);
@@ -4218,7 +4082,7 @@ export default function DashboardEmployees() {
                                 type="radio"
                                 name="overrideApplyMethod"
                                 checked={modalHourOverrideUpdateExistingOnly}
-                                disabled={loading}
+                                disabled={busy}
                                 onChange={() => {
                                   const ok = setModalHourOverrideRangeFromExisting();
                                   if (!ok) return;
@@ -4243,7 +4107,7 @@ export default function DashboardEmployees() {
                               <button
                                 type="button"
                                 className={`exp-btn ghost sm ${modalHourOverrideCalendar === "gregory" ? "is-active" : ""}`}
-                                disabled={loading}
+                                disabled={busy}
                                 onClick={() => {
                                   setModalHourOverrideCalendar("gregory");
                                   setModalHourOverrideHijriPickerOpen(false);
@@ -4254,7 +4118,7 @@ export default function DashboardEmployees() {
                               <button
                                 type="button"
                                 className={`exp-btn ghost sm ${modalHourOverrideCalendar === "hijri" ? "is-active" : ""}`}
-                                disabled={loading}
+                                disabled={busy}
                                 onClick={() => {
                                   setModalHourOverrideCalendar("hijri");
                                   openModalHourOverrideHijriPicker("from");
@@ -4280,7 +4144,7 @@ export default function DashboardEmployees() {
                                     inputMode="numeric"
                                     value={modalHourOverrideFromDateHijri}
                                     placeholder="مثال: 09/09/1447"
-                                    disabled={loading}
+                                    disabled={busy}
                                     onChange={(e) =>
                                       applyModalHourOverrideHijriInput("from", e.target.value, false)
                                     }
@@ -4291,7 +4155,7 @@ export default function DashboardEmployees() {
                                   <button
                                     type="button"
                                     className="exp-btn ghost sm emp-ov-hijri-pick-btn"
-                                    disabled={loading}
+                                    disabled={busy}
                                     onClick={() => openModalHourOverrideHijriPicker("from")}
                                   >
                                     اختيار التاريخ
@@ -4306,7 +4170,7 @@ export default function DashboardEmployees() {
                                 className="dash-input"
                                 type="date"
                                 value={modalHourOverrideFromDate}
-                                disabled={loading}
+                                disabled={busy}
                                 onChange={(e) => setModalHourOverrideFromGregorian(e.target.value)}
                               />
                             )}
@@ -4368,7 +4232,7 @@ export default function DashboardEmployees() {
                                   <button
                                     type="button"
                                     className="exp-btn ghost sm"
-                                    disabled={loading}
+                                    disabled={busy}
                                     onClick={() =>
                                       setModalHourOverrideHijriViewMonthISO((prev) =>
                                         shiftHijriMonthStartIso(prev, -1)
@@ -4389,7 +4253,7 @@ export default function DashboardEmployees() {
                                   <button
                                     type="button"
                                     className="exp-btn ghost sm"
-                                    disabled={loading}
+                                    disabled={busy}
                                     onClick={() =>
                                       setModalHourOverrideHijriViewMonthISO((prev) =>
                                         shiftHijriMonthStartIso(prev, 1)
@@ -4424,7 +4288,7 @@ export default function DashboardEmployees() {
                                         key={`ov_hijri_day_${cell.iso}`}
                                         type="button"
                                         className={`emp-ov-hijri-day ${isActive ? "is-active" : ""}`}
-                                        disabled={loading}
+                                        disabled={busy}
                                         onClick={() => applyModalHourOverrideHijriPick(cell.iso)}
                                       >
                                         {String(cell.hijriDay)}
@@ -4469,7 +4333,7 @@ export default function DashboardEmployees() {
                             <input
                               className="dash-input"
                               value={modalHourOverrideNote}
-                              disabled={loading}
+                              disabled={busy}
                               onChange={(e) => setModalHourOverrideNote(e.target.value)}
                               placeholder="مثال: رمضان / موسم"
                             />
@@ -4496,7 +4360,7 @@ export default function DashboardEmployees() {
                             <button
                               type="button"
                               className="exp-btn ghost sm emp-ov-cancel"
-                              disabled={loading}
+                              disabled={busy}
                               onClick={cancelModalWorkingHourOverrideEdit}
                             >
                               إلغاء التعديل
@@ -4520,7 +4384,7 @@ export default function DashboardEmployees() {
                                     key={`ov_day_${d.key}`}
                                     type="button"
                                     className={`emp-weekday-chip ${active ? "active" : ""}`}
-                                    disabled={loading}
+                                    disabled={busy}
                                     onClick={() => toggleModalHourOverrideWeekday(d.key)}
                                   >
                                     {d.label}
@@ -4579,7 +4443,7 @@ export default function DashboardEmployees() {
                               <button
                                 type="button"
                                 className="exp-btn ghost sm"
-                                disabled={loading}
+                                disabled={busy}
                                 onClick={() => setModalCustomHourOverrides([])}
                               >
                                 حذف الكل
@@ -4634,7 +4498,7 @@ export default function DashboardEmployees() {
                                     <button
                                       type="button"
                                       className="exp-btn ghost sm"
-                                      disabled={loading}
+                                      disabled={busy}
                                       onClick={() => startModalWorkingHourOverrideGroupEdit(group)}
                                     >
                                       تعديل النطاق
@@ -4642,7 +4506,7 @@ export default function DashboardEmployees() {
                                     <button
                                       type="button"
                                       className="exp-btn ghost sm"
-                                      disabled={loading}
+                                      disabled={busy}
                                       onClick={() => removeModalWorkingHourOverrideGroup(group)}
                                     >
                                       حذف النطاق
@@ -4765,8 +4629,8 @@ export default function DashboardEmployees() {
                 <button className="exp-btn" onClick={closeModal} type="button">
                   إلغاء
                 </button>
-                <button className="exp-btn primary" onClick={save} disabled={loading} type="button">
-                  {loading ? "جاري الحفظ..." : "حفظ التغييرات"}
+                <button className="exp-btn primary" onClick={save} disabled={busy} type="button">
+                  {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
                 </button>
               </div>
             )}

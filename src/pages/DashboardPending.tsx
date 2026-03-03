@@ -86,7 +86,7 @@ export default function DashboardPending() {
             window.dispatchEvent(new Event("authChanged"));
 
             // ✅ تحويل تلقائي
-            navigate("/dashboard/overview", { replace: true });
+            navigate("/dashboard", { replace: true });
             return;
           }
 

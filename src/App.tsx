@@ -87,6 +87,13 @@ function isPendingRole(role: UiRole) {
   return role === "pending";
 }
 
+function isMalikatAdminEmail(email: unknown) {
+  return String(email || "")
+    .toLowerCase()
+    .trim()
+    .endsWith("@malikat.com");
+}
+
 function getNameFromStorage(): string {
   try {
     const p = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
@@ -245,14 +252,24 @@ const App: React.FC = () => {
       }
 
       try {
+        const isMalikatAuth = isMalikatAdminEmail(user.email);
         const profile = await createOrLoadUserProfile(user);
         if (currentSeq !== seq) return;
-        setUserRole(normalizeRole(profile.role));
+        let nextRole = normalizeRole(profile.role);
+        if (isMalikatAuth && (nextRole === "client" || nextRole === "guest")) {
+          nextRole = "pending";
+        }
+        setUserRole(nextRole);
         setUserName(profile.name || user.displayName || "");
       } catch {
         if (currentSeq !== seq) return;
-        // Fail-closed: never keep admin permissions if profile lookup fails.
-        setUserRole("guest");
+        // For admin-domain users, fail-safe to pending instead of client/login loops.
+        if (isMalikatAdminEmail(user.email)) {
+          setUserRole("pending");
+        } else {
+          // Fail-closed: never keep admin permissions if profile lookup fails.
+          setUserRole("guest");
+        }
         setUserName(user.displayName || "");
       } finally {
         if (currentSeq !== seq) return;
@@ -280,6 +297,12 @@ const App: React.FC = () => {
   const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
+    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+
+    if (isMalikatAuth) {
+      if (isDashboardRole(role)) return <>{children}</>;
+      return <Navigate to="/dashboard-pending" replace />;
+    }
 
     if (isPendingRole(role))
       return <Navigate to="/dashboard-pending" replace />;
@@ -292,6 +315,12 @@ const App: React.FC = () => {
   const ClientGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
+    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+
+    if (isMalikatAuth) {
+      if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+      return <Navigate to="/dashboard-pending" replace />;
+    }
 
     if (isClientRole(role)) return <>{children}</>;
     if (isPendingRole(role))
@@ -303,13 +332,29 @@ const App: React.FC = () => {
   const ProfileGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
-    if (role === "guest") return <Navigate to="/login" replace />;
-    return <>{children}</>;
+    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+
+    if (isMalikatAuth) {
+      if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+      return <Navigate to="/dashboard-pending" replace />;
+    }
+
+    if (isClientRole(role)) return <>{children}</>;
+    if (isPendingRole(role))
+      return <Navigate to="/dashboard-pending" replace />;
+    if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/login" replace />;
   };
 
   const PendingGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
+    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+
+    if (isMalikatAuth) {
+      if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+      return <>{children}</>;
+    }
 
     if (isPendingRole(role)) return <>{children}</>;
     if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
