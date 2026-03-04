@@ -469,7 +469,7 @@ type BookingHourOverride = {
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const AR_SA_LATN_LOCALE = "ar-SA-u-nu-latn";
 const AR_SA_GREGORY_LATN_LOCALE = "ar-SA-u-ca-gregory-nu-latn";
-const AR_SA_HIJRI_LATN_LOCALE = "ar-SA-u-ca-islamic-nu-latn";
+const AR_SA_HIJRI_LATN_LOCALE = "ar-SA-u-ca-islamic-umalqura-nu-latn";
 const BOOKING_CALENDAR_PREF_KEY = "booking_calendar_view";
 const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
   sat: "السبت",
@@ -824,6 +824,85 @@ function formatBookingDateForView(dateISO: string, mode: CalendarViewMode) {
   }).format(d);
 }
 
+function hijriNumericParts(iso: string): { day: number; month: number; year: number } | null {
+  const dateISO = normalizeISODate(iso);
+  if (!dateISO) return null;
+  const d = new Date(`${dateISO}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-u-ca-islamic-umalqura", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+  }).formatToParts(d);
+  const day = Number(parts.find((p) => p.type === "day")?.value || NaN);
+  const month = Number(parts.find((p) => p.type === "month")?.value || NaN);
+  const year = Number(parts.find((p) => p.type === "year")?.value || NaN);
+  if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year)) return null;
+  return { day, month, year };
+}
+
+function findHijriMonthStartISO(anchorISO: string) {
+  const anchor = normalizeISODate(anchorISO) || todayISO();
+  const base = hijriNumericParts(anchor);
+  if (!base) return anchor;
+  let cursor = anchor;
+  for (let i = 0; i < 35; i++) {
+    const prev = addDaysISO(cursor, -1);
+    const prevParts = hijriNumericParts(prev);
+    if (!prevParts || prevParts.month !== base.month || prevParts.year !== base.year) {
+      return cursor;
+    }
+    cursor = prev;
+  }
+  return cursor;
+}
+
+function buildHijriMonthDays(anchorISO: string) {
+  const start = findHijriMonthStartISO(anchorISO);
+  const base = hijriNumericParts(start);
+  if (!base) return [] as Array<{ iso: string; hijriDay: number }>;
+  const out: Array<{ iso: string; hijriDay: number }> = [];
+  let cursor = start;
+  for (let i = 0; i < 35; i++) {
+    const p = hijriNumericParts(cursor);
+    if (!p || p.month !== base.month || p.year !== base.year) break;
+    out.push({ iso: cursor, hijriDay: p.day });
+    cursor = addDaysISO(cursor, 1);
+  }
+  return out;
+}
+
+function shiftHijriMonthStartISO(currentMonthStartISO: string, delta: number) {
+  const currentStart = findHijriMonthStartISO(currentMonthStartISO);
+  if (delta === 0) return currentStart;
+  if (delta > 0) {
+    let nextStart = currentStart;
+    for (let i = 0; i < delta; i++) {
+      const days = buildHijriMonthDays(nextStart);
+      if (!days.length) return nextStart;
+      nextStart = addDaysISO(days[days.length - 1].iso, 1);
+    }
+    return findHijriMonthStartISO(nextStart);
+  }
+  let prevStart = currentStart;
+  for (let i = 0; i < Math.abs(delta); i++) {
+    prevStart = findHijriMonthStartISO(addDaysISO(prevStart, -1));
+  }
+  return prevStart;
+}
+
+function toHijriMonthYearLabel(iso: string) {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d
+    .toLocaleDateString("ar-SA-u-ca-islamic-umalqura", {
+      month: "long",
+      year: "numeric",
+    })
+    .replace(/\s*(هـ|AD|AH)\.?$/iu, "")
+    .trim();
+}
+
 function getStaffLeaveMetaForDate(staff: any, dateISO: string) {
   const target = normalizeISODate(dateISO) || todayISO();
   const exceptionalDates = Array.isArray(staff?.exceptionalLeaveDates)
@@ -949,6 +1028,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const dateRef = useRef<HTMLInputElement>(null);
+  const hijriPickerRef = useRef<HTMLDivElement>(null);
   const bookingCardRef = useRef<HTMLDivElement>(null);
   const lastStepRef = useRef<BookingStep | null>(null);
   const stepScrollTimersRef = useRef<number[]>([]);
@@ -976,6 +1056,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (/^ar-SA/i.test(docLang) || /^ar-SA/i.test(navLang)) return "hijri";
     return "gregorian";
   });
+  const [hijriPickerOpen, setHijriPickerOpen] = useState(false);
+  const [hijriViewMonthISO, setHijriViewMonthISO] = useState<string>(() =>
+    findHijriMonthStartISO(todayISO())
+  );
 
 
   const businessHours = (booking as any)?.businessHours || {};
@@ -991,6 +1075,22 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       // ignore
     }
   }, [calendarViewMode]);
+
+  const hijriMonthTitle = useMemo(() => toHijriMonthYearLabel(hijriViewMonthISO), [hijriViewMonthISO]);
+  const hijriMonthDays = useMemo(() => buildHijriMonthDays(hijriViewMonthISO), [hijriViewMonthISO]);
+
+  useEffect(() => {
+    if (!hijriPickerOpen) return;
+    const onDocClick = (ev: MouseEvent) => {
+      const root = hijriPickerRef.current;
+      if (!root) return;
+      const target = ev.target as Node | null;
+      if (target && root.contains(target)) return;
+      setHijriPickerOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [hijriPickerOpen]);
 
   const getDaySettingsForDate = (dateISO: string) => {
     const targetDate = String(dateISO || "").trim() || todayISO();
@@ -5246,6 +5346,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   // =========================
   const applyBookingDate = (v: string) => {
     setBookingDate(v);
+    if (calendarViewMode === "hijri") setHijriPickerOpen(false);
 
     setFormData((prev) => ({
       ...prev,
@@ -5296,13 +5397,23 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     }));
   };
 
-  const focusBookingDatePicker = () => {
+  const openBookingDatePicker = () => {
+    if (calendarViewMode === "hijri") {
+      const base = normalizeISODate(bookingDate) || todayISO();
+      setHijriViewMonthISO(findHijriMonthStartISO(base));
+      setHijriPickerOpen(true);
+      return;
+    }
     try {
       (dateRef.current as any)?.showPicker?.();
     } catch {
       // ignore unsupported showPicker
     }
     dateRef.current?.focus();
+  };
+
+  const focusBookingDatePicker = () => {
+    openBookingDatePicker();
   };
 
   const applyDateToSingleItem = (itemId: string, nextDateISO: string) => {
@@ -7249,57 +7360,109 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                           <button
                             type="button"
                             className={`booking-calendar-toggle__btn ${calendarViewMode === "gregorian" ? "is-active" : ""}`}
-                            onClick={() => setCalendarViewMode("gregorian")}
+                            onClick={() => {
+                              setCalendarViewMode("gregorian");
+                              setHijriPickerOpen(false);
+                            }}
                           >
                             ميلادي
                           </button>
                           <button
                             type="button"
                             className={`booking-calendar-toggle__btn ${calendarViewMode === "hijri" ? "is-active" : ""}`}
-                            onClick={() => setCalendarViewMode("hijri")}
+                            onClick={() => {
+                              setCalendarViewMode("hijri");
+                              const base = normalizeISODate(bookingDate) || todayISO();
+                              setHijriViewMonthISO(findHijriMonthStartISO(base));
+                            }}
                           >
                             هجري
                           </button>
                         </div>
                       </div>
 
-                      <div
-                        className={`booking-date-shell ${bookingDate ? "is-filled" : "is-empty"}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => {
-                          (dateRef.current as any)?.showPicker?.();
-                          dateRef.current?.focus();
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            (dateRef.current as any)?.showPicker?.();
-                            dateRef.current?.focus();
-                          }
-                        }}
-                      >
-                        <span className="booking-date-shell__icon" aria-hidden="true">
-                          <FontAwesomeIcon icon={faCalendarAlt} />
-                        </span>
-                        <div className="booking-date-shell__text">
-                          <span className={`booking-date-shell__value ${bookingDate ? "" : "is-placeholder"}`}>
-                            {bookingDate ? bookingDateDisplayValue : "اختر تاريخ الحجز"}
+                      <div className="booking-date-shell-wrap" ref={hijriPickerRef}>
+                        <div
+                          className={`booking-date-shell ${bookingDate ? "is-filled" : "is-empty"}`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={openBookingDatePicker}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              openBookingDatePicker();
+                            }
+                          }}
+                        >
+                          <span className="booking-date-shell__icon" aria-hidden="true">
+                            <FontAwesomeIcon icon={faCalendarAlt} />
                           </span>
-                          <span className="booking-date-shell__meta">
-                            {bookingDate ? `عرض ${calendarViewModeLabel}` : `التقويم الحالي: ${calendarViewModeLabel}`}
-                          </span>
+                          <div className="booking-date-shell__text">
+                            <span className={`booking-date-shell__value ${bookingDate ? "" : "is-placeholder"}`}>
+                              {bookingDate ? bookingDateDisplayValue : "اختر تاريخ الحجز"}
+                            </span>
+                            <span className="booking-date-shell__meta">
+                              {bookingDate ? `عرض ${calendarViewModeLabel}` : `التقويم الحالي: ${calendarViewModeLabel}`}
+                            </span>
+                          </div>
+                          {calendarViewMode === "gregorian" && (
+                            <input
+                              ref={dateRef}
+                              key={`bookingDatePicker-${calendarViewMode}`}
+                              type="date"
+                              lang="ar-SA-u-ca-gregory"
+                              className="booking-date-shell__native booking-date-input"
+                              id="bookingDate"
+                              value={bookingDate}
+                              onChange={(e) => applyBookingDate(String(e.target.value || "").trim())}
+                              min={todayISO()}
+                              aria-label="اختر تاريخ الحجز"
+                            />
+                          )}
                         </div>
-                        <input
-                          ref={dateRef}
-                          type="date"
-                          className="booking-date-shell__native booking-date-input"
-                          id="bookingDate"
-                          value={bookingDate}
-                          onChange={(e) => applyBookingDate(String(e.target.value || "").trim())}
-                          min={todayISO()}
-                          aria-label="اختر تاريخ الحجز"
-                        />
+                        {calendarViewMode === "hijri" && hijriPickerOpen && (
+                          <div className="booking-hijri-picker">
+                            <div className="booking-hijri-picker__head">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-dark"
+                                onClick={() => setHijriViewMonthISO((prev) => shiftHijriMonthStartISO(prev, -1))}
+                              >
+                                السابق
+                              </button>
+                              <strong>{hijriMonthTitle || "التقويم الهجري"}</strong>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-dark"
+                                onClick={() => setHijriViewMonthISO((prev) => shiftHijriMonthStartISO(prev, 1))}
+                              >
+                                التالي
+                              </button>
+                            </div>
+                            <div className="booking-hijri-picker__grid booking-hijri-picker__weekdays">
+                              {["س", "ح", "ن", "ث", "ر", "خ", "ج"].map((w) => (
+                                <span key={w}>{w}</span>
+                              ))}
+                            </div>
+                            <div className="booking-hijri-picker__grid">
+                              {hijriMonthDays.map((cell) => {
+                                const isPast = cell.iso < todayISO();
+                                const isActive = cell.iso === bookingDate;
+                                return (
+                                  <button
+                                    key={cell.iso}
+                                    type="button"
+                                    className={["booking-hijri-day", isActive ? "is-active" : ""].join(" ").trim()}
+                                    disabled={isPast}
+                                    onClick={() => applyBookingDate(cell.iso)}
+                                  >
+                                    {String(cell.hijriDay)}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                     {bookingDate && !selectedDayOpen && (

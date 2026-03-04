@@ -672,14 +672,25 @@
 .success-toast {
   position: fixed;
   bottom: 18px;
-  left: 18px;
+  right: 18px;
+  left: auto;
   z-index: 9999;
 
-  padding: 10px 14px;
+  padding: 11px 14px;
   border-radius: 14px;
+  max-width: min(92vw, 420px);
 
   background: rgba(245, 245, 244, 0.95);
   border: 1px solid rgba(13, 13, 13, 0.12);
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: right;
+  direction: rtl;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
 
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.18);
   font-weight: 900;
@@ -1811,5 +1822,109 @@
   font-size: 17px !important;
   font-weight: 700 !important;
   color: rgba(13, 13, 13, 0.74) !important;
+}
+
+/* Notes + IBAN block (used by /success summary card) */
+.success-policy-note-line {
+  margin: 8px 0 0;
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.85;
+  color: rgba(13, 13, 13, 0.88);
+}
+
+.success-policy-iban-label {
+  margin: 14px 0 6px;
+  text-align: center;
+  font-weight: 900;
+  font-size: 14px;
+  color: rgba(64, 1, 13, 0.92);
+}
+
+.success-policy-iban-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.success-booking-id-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.success-policy-iban-value {
+  margin: 0;
+  text-align: center;
+  font-family: "IBM Plex Sans Arabic", "Tajawal", "Cairo", sans-serif;
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 0.35px;
+  color: rgba(13, 13, 13, 0.95);
+}
+
+.success-iban-copy-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(64, 1, 13, 0.24);
+  background: rgba(255, 255, 255, 0.85);
+  color: rgba(64, 1, 13, 0.9);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.success-iban-copy-btn:hover {
+  transform: translateY(-1px);
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(64, 1, 13, 0.12);
+}
+
+.success-booking-copy-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.success-page .success-copy-actions.is-single {
+  grid-template-columns: 1fr !important;
+  width: min(420px, 100%);
+}
+
+/* Multi-value readability in summary rows (line breaks + numbering from TSX) */
+.success-page .detail-value {
+  white-space: pre-line;
+}
+
+@media (max-width: 640px) {
+  .success-policy-note-line {
+    font-size: 12.5px;
+    line-height: 1.8;
+  }
+
+  .success-policy-iban-label {
+    font-size: 13px;
+  }
+
+  .success-policy-iban-value {
+    font-size: 15px;
+    letter-spacing: 0.2px;
+  }
+
+  .success-iban-copy-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .success-booking-copy-btn {
+    width: 26px;
+    height: 26px;
+  }
 }
 
