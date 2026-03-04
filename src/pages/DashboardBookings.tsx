@@ -62,6 +62,7 @@ const NOTES_KEY = "dashboard_booking_notes_v1";
 const BOOKING_SEEN_KEY = "dashboard_booking_seen_v1";
 const BOOKING_ACTION_PIN = "598867395";
 const APP_TIME_ZONE = "Asia/Riyadh";
+const NEW_BOOKINGS_SEEN_AT_KEY = "dashboard_bookings_seen_at_v1";
 
 const statusLabel: Record<BookingStatus, string> = {
   confirmed: "مؤكد",
@@ -735,6 +736,15 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const [actionPin, setActionPin] = useState("");
   const [actionPinError, setActionPinError] = useState("");
   const [pendingSensitiveAction, setPendingSensitiveAction] = useState<SensitiveBookingAction | null>(null);
+  const [newBookingsSeenAt, setNewBookingsSeenAt] = useState<number>(() => {
+    try {
+      if (typeof window === "undefined") return 0;
+      const raw = Number(window.localStorage.getItem(NEW_BOOKINGS_SEEN_AT_KEY) || "0");
+      return Number.isFinite(raw) && raw > 0 ? raw : 0;
+    } catch {
+      return 0;
+    }
+  });
 
   const uiRole = currentRole;
   const authUser = getAuthUserSafe();
@@ -1345,6 +1355,40 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return out;
   }, [filtered]);
 
+  const unseenNewBookings = useMemo(() => {
+    return bookings
+      .filter((b) => {
+        if (!(b.status === "pending" || b.status === "confirmed")) return false;
+        const createdAtMs = toMillisSafe((b as any)?.createdAt);
+        return createdAtMs > newBookingsSeenAt;
+      })
+      .sort((a, b) => {
+        const aMs = toMillisSafe((a as any)?.createdAt);
+        const bMs = toMillisSafe((b as any)?.createdAt);
+        return bMs - aMs;
+      });
+  }, [bookings, newBookingsSeenAt]);
+
+  const unseenNewPreviewBookings = useMemo(() => unseenNewBookings.slice(0, 6), [unseenNewBookings]);
+
+  const markNewBookingsSeen = useCallback(() => {
+    const latestCreatedAt = bookings.reduce((max, b) => {
+      const createdAtMs = toMillisSafe((b as any)?.createdAt);
+      return createdAtMs > max ? createdAtMs : max;
+    }, 0);
+
+    const nextSeenAt = Math.max(newBookingsSeenAt, latestCreatedAt);
+    setNewBookingsSeenAt(nextSeenAt);
+
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(NEW_BOOKINGS_SEEN_AT_KEY, String(nextSeenAt));
+      }
+    } catch {
+      // ignore storage failures
+    }
+  }, [bookings, newBookingsSeenAt]);
+
   const staleStatusBookings = useMemo(() => {
     const nowMs = Date.now();
     return bookings
@@ -1943,6 +1987,53 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         </div>
 
         <div className="bk-mini">
+          {unseenNewBookings.length > 0 ? (
+            <div className="bk-new-alert" role="status" aria-live="polite">
+              <div className="bk-new-alert-head">
+                <strong>تنبيه: يوجد {unseenNewBookings.length} حجز جديد.</strong>
+                <span>حجوزات جديدة منذ آخر مرة تم الاطلاع عليها.</span>
+              </div>
+
+              <div className="bk-new-alert-actions">
+                <button
+                  type="button"
+                  className="bk-new-alert-btn is-primary"
+                  onClick={() => setStatusFilter("pending")}
+                >
+                  عرض الحجوزات الجديدة
+                </button>
+                <button type="button" className="bk-new-alert-btn" onClick={markNewBookingsSeen}>
+                  تم الاطلاع
+                </button>
+              </div>
+
+              <div className="bk-new-alert-list">
+                {unseenNewPreviewBookings.map((b) => (
+                  <button
+                    key={`new_${b.id}`}
+                    type="button"
+                    className="bk-new-alert-item"
+                    onClick={() => setSelectedBooking(b)}
+                    title="فتح تفاصيل الحجز"
+                  >
+                    <span className="bk-new-alert-ref">
+                      {bookingRef(b)} • {b.customerName || "—"}
+                    </span>
+                    <span className="bk-new-alert-meta">
+                      {b.date} {formatTime12(b.time)} • {statusLabel[b.status]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {unseenNewBookings.length > unseenNewPreviewBookings.length ? (
+                <div className="bk-new-alert-more">
+                  +{unseenNewBookings.length - unseenNewPreviewBookings.length} حجوزات جديدة إضافية
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {staleStatusBookings.length > 0 ? (
             <div className="bk-stale-alert" role="status" aria-live="polite">
               <div className="bk-stale-alert-head">
