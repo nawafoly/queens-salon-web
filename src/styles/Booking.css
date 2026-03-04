@@ -604,20 +604,32 @@ textarea.form-control {
 }
 
 .booking-page .booking-calendar-toggle__btn {
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
-  color: #344054;
+  color: #1f2937;
   font-size: 0.82rem;
   font-weight: 800;
   border-radius: 999px;
-  padding: 5px 12px;
+  padding: 5px 14px;
   line-height: 1.15;
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
 }
 
 .booking-page .booking-calendar-toggle__btn.is-active {
-  background: #253140;
-  color: #fff;
-  box-shadow: 0 8px 20px rgba(37, 49, 64, 0.2);
+  background: #1f2f44;
+  color: #ffffff !important;
+  border-color: #1f2f44;
+  box-shadow: 0 8px 20px rgba(31, 47, 68, 0.28);
+}
+
+.booking-page .booking-calendar-toggle__btn:hover:not(.is-active) {
+  background: rgba(31, 47, 68, 0.1);
+  color: #111827;
+}
+
+.booking-page .booking-calendar-toggle__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.16rem rgba(31, 47, 68, 0.22);
 }
 
 .booking-page .booking-date-shell {
@@ -695,6 +707,69 @@ textarea.form-control {
   cursor: pointer;
   border: 0;
   background: transparent;
+}
+
+.booking-page .booking-date-shell-wrap {
+  position: relative;
+}
+
+.booking-page .booking-hijri-picker {
+  margin-top: 8px;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8f8f7 100%);
+  padding: 10px;
+  box-shadow: 0 12px 28px rgba(13, 13, 13, 0.08);
+}
+
+.booking-page .booking-hijri-picker__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.booking-page .booking-hijri-picker__head strong {
+  font-size: 0.94rem;
+  font-weight: 900;
+  color: #111827;
+}
+
+.booking-page .booking-hijri-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.booking-page .booking-hijri-picker__weekdays {
+  margin-bottom: 6px;
+  color: rgba(17, 24, 39, 0.7);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.booking-page .booking-hijri-day {
+  border: 1px solid rgba(13, 13, 13, 0.14);
+  background: #fff;
+  color: #111827;
+  border-radius: 9px;
+  min-height: 34px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.booking-page .booking-hijri-day.is-active {
+  background: #253140;
+  border-color: #253140;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(37, 49, 64, 0.25);
+}
+
+.booking-page .booking-hijri-day:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* =========================

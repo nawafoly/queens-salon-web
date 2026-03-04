@@ -11,6 +11,8 @@ import {
   faUserTie,
   faMoneyBill,
   faCircleInfo,
+  faLayerGroup,
+  faTags,
   faArrowRight,
   faCopy,
   faCircleCheck,
@@ -21,9 +23,9 @@ import "../styles/Success.css";
 import LoadingBrand from "../components/LoadingBrand";
 
 // Firestore
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit, query, where } from "firebase/firestore";
 import { db } from "../services/firebase";
-import { getBookingById } from "../services/firestoreBookings";
+import { getBookingById, getTrackById, getTrackByPublicId } from "../services/firestoreBookings";
 
 /* =========================
    Types & Const
@@ -60,6 +62,7 @@ type UiBookingView = {
 type LocalBookingRef = {
   id?: string;
   bookingId?: string;
+  trackId?: string;
   publicId?: string;
 };
 
@@ -77,6 +80,7 @@ const SUCCESS_MODE_KEY = "booking_success_mode";
 
 const SALON_ID = "main";
 const SALON_WHATSAPP = "966548440401";
+const SALON_IBAN = "SA4710000001400007036306";
 
 /* =========================
    Helpers
@@ -87,6 +91,18 @@ function normalizeMk(raw: string) {
   const digits = s.match(/\d{3,}/)?.[0] || "";
   if (!digits) return "";
   return `MK-${digits}`;
+}
+
+function normalizeMkLookup(raw: string) {
+  const src = toEnglishDigits(String(raw || ""))
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  if (!src) return "";
+  const mk = src.match(/^MK-?(\d{3,})$/i);
+  if (mk?.[1]) return `MK-${mk[1]}`;
+  if (/^\d{3,}$/.test(src)) return `MK-${src}`;
+  return "";
 }
 
 function safeNum(v: any) {
@@ -127,8 +143,9 @@ function toArabicLabel(value: string, fallback = "-") {
 }
 
 function formatTime12ForClient(time24: string) {
-  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (!m) return String(time24 || "-");
+  const raw = toEnglishDigits(String(time24 || "").trim());
+  const m = raw.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return raw || "-";
   const h24 = Number(m[1]);
   const mm = m[2];
   const h12 = h24 % 12 || 12;
@@ -155,6 +172,100 @@ function statusClass(s: string) {
   if (v === "completed" || s === "مكتمل") return "completed";
   if (v === "cancelled" || s === "ملغي") return "cancelled";
   return "default";
+}
+
+function toEnglishDigits(input: string) {
+  const arabicIndic = "٠١٢٣٤٥٦٧٨٩";
+  const easternArabic = "۰۱۲۳۴۵۶۷۸۹";
+  return String(input || "")
+    .replace(/[٠-٩]/g, (d) => String(arabicIndic.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String(easternArabic.indexOf(d)));
+}
+
+function normalizeDisplayValue(value: string) {
+  return toEnglishDigits(String(value || "")).replace(/\s+/g, " ").trim();
+}
+
+function isDisplayPlaceholder(value: string) {
+  const v = normalizeDisplayValue(value);
+  if (!v) return true;
+  if (v === "-" || v === "—") return true;
+  if (v === "غير محدد") return true;
+  if (v === "تعيين تلقائي") return true;
+  return false;
+}
+
+function uniqueDisplayValues(values: Array<string | undefined | null>) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  values.forEach((raw) => {
+    const v = normalizeDisplayValue(String(raw ?? ""));
+    if (isDisplayPlaceholder(v)) return;
+    const key = v.toLocaleLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(v);
+  });
+
+  return out;
+}
+
+function formatDisplayValues(values: string[], mode: "inline" | "stack" = "stack") {
+  if (!values.length) return "—";
+  if (values.length === 1) return values[0];
+  if (mode === "inline") return values.join("،\u00A0\u00A0\u00A0");
+  return values.map((v, idx) => `${idx + 1}. ${v}`).join("\n");
+}
+
+function formatDateForClient(dateRaw: string) {
+  const s = normalizeDisplayValue(dateRaw);
+  if (!s || s === "-" || s === "—") return "—";
+
+  let d: Date | null = null;
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    const y = Number(iso[1]);
+    const m = Number(iso[2]) - 1;
+    const day = Number(iso[3]);
+    d = new Date(y, m, day, 12, 0, 0);
+  } else {
+    const parsed = Date.parse(s);
+    if (Number.isFinite(parsed)) d = new Date(parsed);
+  }
+
+  if (!d || Number.isNaN(d.getTime())) return s;
+
+  try {
+    const gregorian = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    }).format(d);
+
+    let hijri = "";
+    try {
+      hijri = new Intl.DateTimeFormat("ar-SA-u-ca-islamic-umalqura-nu-latn", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      }).format(d);
+    } catch {
+      hijri = "";
+    }
+
+    const g = toEnglishDigits(gregorian);
+    const h = toEnglishDigits(hijri);
+    if (!h || h === g) return g;
+    return `${g} | ${h}`;
+  } catch {
+    return s;
+  }
+}
+
+function formatNumberEn(value: number) {
+  if (!Number.isFinite(value)) return "0";
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
 function buildWhatsappMessageAll(bookings: UiBookingView[]) {
@@ -207,21 +318,41 @@ async function resolveServiceName(serviceId: string): Promise<string> {
   }
 }
 
+function mergeBookingRefs(refs: LocalBookingRef[]) {
+  const out: LocalBookingRef[] = [];
+  const seen = new Set<string>();
+  for (const row of refs) {
+    const id = String(row?.id || "").trim();
+    const bookingId = String(row?.bookingId || "").trim();
+    const trackId = String(row?.trackId || "").trim();
+    const publicId = String(row?.publicId || "").trim();
+    const key = `${id}|${bookingId}|${trackId}|${publicId}`.toLowerCase();
+    if (!id && !bookingId && !trackId && !publicId) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id, bookingId, trackId, publicId });
+  }
+  return out;
+}
+
 /** اقرأ allBookings (الجديد) ثم fallback لـ currentBooking (قديم) */
 function readLocalBookingRefs(): LocalBookingRef[] {
+  const refs: LocalBookingRef[] = [];
+
   // 1) allBookings
   try {
     const rawAll = localStorage.getItem(ALL_BOOKINGS_KEY);
     const parsedAll = rawAll ? JSON.parse(rawAll) : null;
 
     if (Array.isArray(parsedAll) && parsedAll.length) {
-      return parsedAll
-        .map((x: any) => ({
+      refs.push(
+        ...parsedAll.map((x: any) => ({
           id: x?.id,
           bookingId: x?.bookingId,
+          trackId: x?.trackId,
           publicId: x?.publicId,
         }))
-        .filter((x) => String(x?.id || x?.bookingId || "").trim());
+      );
     }
   } catch {
     // ignore
@@ -234,14 +365,17 @@ function readLocalBookingRefs(): LocalBookingRef[] {
     const one: LocalBookingRef = {
       id: parsed?.id,
       bookingId: parsed?.bookingId,
+      trackId: parsed?.trackId,
       publicId: parsed?.publicId,
     };
-    if (String(one?.id || one?.bookingId || "").trim()) return [one];
+    refs.push(one);
   } catch {
     // ignore
   }
 
-  return [];
+  return mergeBookingRefs(refs).filter((x) =>
+    !!String(x?.id || x?.bookingId || x?.trackId || x?.publicId || "").trim()
+  );
 }
 
 function readSuccessModeFromStorage(): SuccessMode {
@@ -306,30 +440,126 @@ export default function Success() {
         }
 
         const results: UiBookingView[] = [];
+        const pushedIds = new Set<string>();
+        const loadedGroupIds = new Set<string>();
+        const bookingLookupCache = new Map<string, any | null>();
+        const publicLookupCache = new Map<string, any | null>();
 
-        for (const ref of bookingRefs) {
-          const bookingId = String(ref?.id || ref?.bookingId || "").trim();
-          if (!bookingId) continue;
+        const findBookingByIdSafe = async (idRaw: string) => {
+          const bookingId = String(idRaw || "").trim();
+          if (!bookingId) return null;
+          if (bookingLookupCache.has(bookingId)) return bookingLookupCache.get(bookingId) || null;
+          try {
+            const docData: any = await getBookingById(bookingId);
+            const out = docData ? { ...docData, id: docData.id || bookingId } : null;
+            bookingLookupCache.set(bookingId, out);
+            return out;
+          } catch {
+            bookingLookupCache.set(bookingId, null);
+            return null;
+          }
+        };
 
-          const docData: any = await getBookingById(bookingId);
-          if (!docData) continue;
+        const findBookingByPublicId = async (publicIdRaw: string) => {
+          const mk = normalizeMkLookup(publicIdRaw);
+          if (!mk) return null;
+          if (publicLookupCache.has(mk)) return publicLookupCache.get(mk) || null;
+          try {
+            const byPublicQ = query(
+              collection(db, "salons", SALON_ID, "bookings"),
+              where("publicId", "==", mk),
+              limit(1)
+            );
+            const byPublicSnap = await getDocs(byPublicQ);
+            if (!byPublicSnap.empty) {
+              const row = byPublicSnap.docs[0];
+              const out = { id: row.id, ...(row.data() as any) };
+              publicLookupCache.set(mk, out);
+              return out;
+            }
+          } catch {
+            // ignore lookup failures
+          }
+          publicLookupCache.set(mk, null);
+          return null;
+        };
 
-          const serviceId = String(docData.serviceId ?? docData.serviceName ?? "").trim();
-          const snapName = String(docData.serviceSnapshot?.serviceNameAtBooking ?? "").trim();
+        const resolveBookingDocFromRef = async (ref: LocalBookingRef) => {
+          const candidates = Array.from(
+            new Set(
+              [ref?.id, ref?.bookingId, ref?.trackId]
+                .map((x) => String(x || "").trim())
+                .filter(Boolean)
+            )
+          );
+
+          for (const candidate of candidates) {
+            const direct = await findBookingByIdSafe(candidate);
+            if (direct) return direct;
+
+            try {
+              const trackData: any = await getTrackById(candidate);
+              const trackBookingId = String(trackData?.bookingId || "").trim();
+              const viaTrack = await findBookingByIdSafe(trackBookingId);
+              if (viaTrack) return viaTrack;
+            } catch {
+              // ignore track-id fallback
+            }
+
+            const mkFromCandidate = normalizeMkLookup(candidate);
+            if (mkFromCandidate) {
+              const byPublic = await findBookingByPublicId(mkFromCandidate);
+              if (byPublic) return byPublic;
+
+              try {
+                const trackByPublic: any = await getTrackByPublicId(mkFromCandidate);
+                const trackBookingId = String(trackByPublic?.bookingId || "").trim();
+                const viaPublicTrack = await findBookingByIdSafe(trackBookingId);
+                if (viaPublicTrack) return viaPublicTrack;
+              } catch {
+                // ignore track-by-public fallback
+              }
+            }
+          }
+
+          const mkHint = normalizeMkLookup(String(ref?.publicId || ""));
+          if (mkHint) {
+            const byPublic = await findBookingByPublicId(mkHint);
+            if (byPublic) return byPublic;
+
+            try {
+              const trackByPublic: any = await getTrackByPublicId(mkHint);
+              const trackBookingId = String(trackByPublic?.bookingId || "").trim();
+              const viaPublicTrack = await findBookingByIdSafe(trackBookingId);
+              if (viaPublicTrack) return viaPublicTrack;
+            } catch {
+              // ignore track-by-public fallback
+            }
+          }
+
+          return null;
+        };
+
+        const pushBookingView = async (rawDoc: any, refHint?: LocalBookingRef) => {
+          const bookingIdResolved = String(rawDoc?.id || refHint?.id || refHint?.bookingId || "").trim();
+          if (!bookingIdResolved || pushedIds.has(bookingIdResolved)) return;
+
+          const serviceId = String(rawDoc.serviceId ?? rawDoc.serviceName ?? "").trim();
+          const snapName = String(rawDoc.serviceSnapshot?.serviceNameAtBooking ?? "").trim();
           const serviceNameRaw = snapName || (await resolveServiceName(serviceId));
           const sectionLabelRaw = String(
-            docData?.serviceSnapshot?.sectionTitleAtBooking ||
-              docData?.serviceSnapshot?.sectionIdAtBooking ||
+            rawDoc?.serviceSnapshot?.sectionTitleAtBooking ||
+              rawDoc?.serviceSnapshot?.sectionIdAtBooking ||
               ""
           ).trim();
           const categoryLabelRaw = String(
-            docData?.serviceSnapshot?.categoryNameAtBooking ||
-              docData?.serviceSnapshot?.categoryIdAtBooking ||
+            rawDoc?.serviceSnapshot?.categoryNameAtBooking ||
+              rawDoc?.serviceSnapshot?.categoryIdAtBooking ||
               ""
           ).trim();
-          const packageNameRaw = String(docData?.packageSnapshot?.packageName || "").trim();
-          const packageServices = Array.isArray(docData?.packageSnapshot?.services)
-            ? docData.packageSnapshot.services
+          const packageNameRaw = String(rawDoc?.packageSnapshot?.packageName || "").trim();
+          const packageServices = Array.isArray(rawDoc?.packageSnapshot?.services)
+            ? rawDoc.packageSnapshot.services
                 .map((x: any) => ({
                   serviceName: toArabicLabel(String(x?.serviceName || x?.serviceId || "").trim(), "-"),
                   sectionLabel: toArabicLabel(String(x?.sectionTitle || x?.sectionId || "").trim(), "") || undefined,
@@ -340,7 +570,7 @@ export default function Success() {
                 .filter((x: any) => !!x.serviceName)
             : [];
 
-          const rawEmployeeName = toArabicLabel(String(docData.employeeName || "-"), "-");
+          const rawEmployeeName = toArabicLabel(String(rawDoc.employeeName || "-"), "-");
           const shouldResolveFromSubs =
             rawEmployeeName === "تعيين تلقائي" ||
             rawEmployeeName === "-" ||
@@ -349,15 +579,16 @@ export default function Success() {
           let employeeNameResolved = rawEmployeeName;
           if (shouldResolveFromSubs) {
             try {
+              const groupIdForNames = String(rawDoc.bookingGroupId || bookingIdResolved).trim();
               const groupQ = query(
                 collection(db, "salons", SALON_ID, "bookings"),
-                where("bookingGroupId", "==", bookingId)
+                where("bookingGroupId", "==", groupIdForNames)
               );
               const subSnap = await getDocs(groupQ);
               const names = Array.from(
                 new Set(
                   subSnap.docs
-                    .filter((d) => String(d.id || "").trim() !== bookingId)
+                    .filter((d) => String(d.id || "").trim() !== bookingIdResolved)
                     .map((d) => toArabicLabel(String((d.data() as any)?.employeeName || "").trim(), ""))
                     .filter((n) => n && n !== "تعيين تلقائي")
                 )
@@ -375,10 +606,10 @@ export default function Success() {
           if (!mounted) return;
 
           results.push({
-            id: docData.id || bookingId,
-            publicId: normalizeMk(docData.publicId || ref.publicId || ""),
-            clientName: docData.clientName || "-",
-            clientPhone: docData.clientPhone || "-",
+            id: bookingIdResolved,
+            publicId: normalizeMk(rawDoc.publicId || refHint?.publicId || ""),
+            clientName: rawDoc.clientName || "-",
+            clientPhone: rawDoc.clientPhone || "-",
 
             serviceId,
             serviceName: toArabicLabel(serviceNameRaw, "-"),
@@ -388,12 +619,40 @@ export default function Success() {
             packageServices,
 
             employeeName: employeeNameResolved,
-            date: docData.date || "-",
-            time: docData.time || "-",
+            date: rawDoc.date || "-",
+            time: rawDoc.time || "-",
 
-            total: safeNum(docData.finalPrice ?? docData.total),
-            status: docData.status || "pending",
+            total: safeNum(rawDoc.finalPrice ?? rawDoc.total),
+            status: rawDoc.status || "pending",
           });
+          pushedIds.add(bookingIdResolved);
+        };
+
+        for (const ref of bookingRefs) {
+          const docData: any = await resolveBookingDocFromRef(ref);
+          if (!docData) continue;
+          await pushBookingView({ ...docData, id: docData.id }, ref);
+
+          const groupId = String(docData.bookingGroupId || docData.id).trim();
+          if (!groupId || loadedGroupIds.has(groupId)) continue;
+          loadedGroupIds.add(groupId);
+
+          try {
+            const groupQ = query(
+              collection(db, "salons", SALON_ID, "bookings"),
+              where("bookingGroupId", "==", groupId)
+            );
+            const groupSnap = await getDocs(groupQ);
+            for (const gd of groupSnap.docs) {
+              const gData: any = gd.data() || {};
+              await pushBookingView(
+                { ...gData, id: gd.id },
+                { id: gd.id, bookingId: gd.id, publicId: gData.publicId }
+              );
+            }
+          } catch {
+            // ignore group expansion failures, keep primary booking
+          }
         }
 
         if (!results.length) {
@@ -449,6 +708,15 @@ export default function Success() {
     }
   };
 
+  const copyIban = async () => {
+    try {
+      await navigator.clipboard.writeText(SALON_IBAN);
+      showToast("تم نسخ رقم الآيبان ✅", "success");
+    } catch {
+      showToast("تعذر نسخ رقم الآيبان", "error");
+    }
+  };
+
   const openWhatsapp = () => {
     if (!views.length) return showToast("بيانات الحجز غير متوفرة", "error");
 
@@ -459,6 +727,80 @@ export default function Success() {
     const url = `https://wa.me/${SALON_WHATSAPP}?text=${encodeURIComponent(msg)}`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
+
+  const first = views[0];
+  const st = normStatus(first?.status || "pending");
+  const isConfirmed = st === "confirmed" || first?.status === "مؤكد";
+
+  const heroTitle =
+    successMode === "updated"
+      ? views.length > 1
+        ? "تم تحديث مواعيد الخدمات بنجاح"
+        : "تم تحديث موعد الخدمة بنجاح"
+      : views.length > 1
+        ? isConfirmed
+          ? "تم تأكيد حجوزاتك بنجاح"
+          : "تم استلام طلب حجوزاتك بنجاح"
+        : isConfirmed
+          ? "تم تأكيد حجزك بنجاح"
+          : "تم استلام طلب حجزك بنجاح";
+
+  const heroDesc =
+    successMode === "updated"
+      ? "تم حفظ التحديث بنجاح. التفاصيل أدناه تعرض الموعد الجديد للخدمة."
+      : isConfirmed
+        ? "تفاصيل الموعد مؤكدة ويمكنك متابعة حالة الحجز أو التواصل عبر واتساب عند الحاجة."
+        : "";
+  const ctaTitle = successMode === "updated" ? "تأكيد تحديث الموعد عبر واتساب" : "تأكيد الحجز عبر واتساب";
+  const ctaText =
+    successMode === "updated"
+      ? "تم تحديث الموعد. للتأكيد النهائي والمتابعة، يرجى التواصل عبر واتساب."
+      : "رقم الآيبان مرفق بالأسفل لإتمام الدفع. بعد التحويل، يرجى إرسال إيصال الدفع عبر واتساب لتأكيد الحجز.";
+  const confirmedNote =
+    successMode === "updated"
+      ? "تم اعتماد التحديث بنجاح، وهذه هي بيانات الموعد بعد التعديل."
+      : "تم تأكيد الموعد، ننتظرك بكل حب.";
+
+  const summary = useMemo(() => {
+    const bookingIds = uniqueDisplayValues(views.map((v) => v.publicId));
+    const clientNames = uniqueDisplayValues(views.map((v) => v.clientName));
+    const clientPhones = uniqueDisplayValues(views.map((v) => v.clientPhone));
+    const serviceNames = uniqueDisplayValues(views.map((v) => v.serviceName));
+    const sectionValues = uniqueDisplayValues(views.map((v) => v.sectionLabel));
+    const categoryValues = uniqueDisplayValues(views.map((v) => v.categoryLabel));
+    const employeeNames = uniqueDisplayValues(views.map((v) => v.employeeName));
+    const dateValues = uniqueDisplayValues(views.map((v) => formatDateForClient(v.date)));
+    const timeValues = uniqueDisplayValues(views.map((v) => formatTime12ForClient(v.time)));
+    const statusValues = uniqueDisplayValues(views.map((v) => statusLabel(v.status)));
+    const total = views.reduce((s, v) => s + safeNum(v.total), 0);
+    return {
+      bookingIds,
+      clientNames,
+      clientPhones,
+      serviceNames,
+      sectionValues,
+      categoryValues,
+      employeeNames,
+      dateValues,
+      timeValues,
+      statusValues,
+      total,
+    };
+  }, [views]);
+
+  const summaryStatus = summary.statusValues.length === 1 ? summary.statusValues[0] : "متعدد";
+  const bookingIdLabel = summary.bookingIds.length > 1 ? "أرقام الحجز:" : "رقم الحجز:";
+  const clientLabel = summary.clientNames.length > 1 ? "العميلات" : "الملكة";
+  const phoneLabel = summary.clientPhones.length > 1 ? "أرقام الجوال" : "الجوال";
+  const serviceLabel = summary.serviceNames.length > 1 ? "الخدمات" : "الخدمة";
+  const sectionLabelText = summary.sectionValues.length > 1 ? "الأقسام" : "القسم";
+  const categoryLabelText = summary.categoryValues.length > 1 ? "التصنيفات" : "التصنيف";
+  const employeeLabel = summary.employeeNames.length > 1 ? "الموظفات" : "الموظفة";
+  const dateLabel = summary.dateValues.length > 1 ? "التواريخ" : "التاريخ";
+  const timeLabel = summary.timeValues.length > 1 ? "الأوقات" : "الوقت";
+  const totalLabel = views.length > 1 ? "إجمالي الحجوزات" : "الإجمالي";
+  const firstMk = summary.bookingIds[0] || String(first?.publicId || "").trim() || "—";
+  const canTrack = firstMk !== "—";
 
   if (loading) {
     return <LoadingBrand text="جاري تحميل البيانات..." />;
@@ -487,44 +829,6 @@ export default function Success() {
     );
   }
 
-  const first = views[0];
-  const st = normStatus(first?.status || "pending");
-  const isConfirmed = st === "confirmed" || first?.status === "مؤكد";
-
-  const heroTitle =
-    successMode === "updated"
-      ? views.length > 1
-        ? "تم تحديث مواعيد الخدمات بنجاح"
-        : "تم تحديث موعد الخدمة بنجاح"
-      : views.length > 1
-        ? isConfirmed
-          ? "تم تأكيد حجوزاتك بنجاح"
-          : "تم استلام طلب حجوزاتك بنجاح"
-        : isConfirmed
-          ? "تم تأكيد حجزك بنجاح"
-          : "تم استلام طلب حجزك بنجاح";
-
-  const heroDesc =
-    successMode === "updated"
-      ? "تم حفظ التحديث بنجاح. التفاصيل أدناه تعرض الموعد الجديد للخدمة."
-      : isConfirmed
-        ? "تفاصيل الموعد مؤكدة ويمكنك متابعة حالة الحجز أو التواصل عبر واتساب عند الحاجة."
-        : "الطلب محفوظ بانتظار التأكيد. يُرجى إكمال التأكيد عبر واتساب لإتمام الحجز.";
-  const ctaTitle = successMode === "updated" ? "تأكيد تحديث الموعد عبر واتساب" : "تأكيد الحجز عبر واتساب";
-  const ctaText =
-    successMode === "updated"
-      ? "تم تحديث الموعد. للتأكيد النهائي والمتابعة، يرجى التواصل عبر واتساب."
-      : "يرجى التواصل عبر واتساب، وسيتم إرسال رابط الدفع لإتمام التأكيد.";
-  const confirmedNote =
-    successMode === "updated"
-      ? "تم اعتماد التحديث بنجاح، وهذه هي بيانات الموعد بعد التعديل."
-      : "تم تأكيد الموعد، ننتظرك بكل حب.";
-
-  const firstMk = String(first?.publicId || "").trim() || "—";
-  const canTrack = firstMk !== "—";
-
-  const totalAll = views.reduce((s, v) => s + safeNum(v.total), 0);
-
   return (
     <div className="success-page">
       <div className="success-card">
@@ -536,7 +840,7 @@ export default function Success() {
           </div>
 
           <h1 className="success-title">{heroTitle}</h1>
-          <p className="success-subtitle">{heroDesc}</p>
+          {heroDesc ? <p className="success-subtitle">{heroDesc}</p> : null}
 
 
           {/* ✅ CTA واضح إذا Pending */}
@@ -561,148 +865,119 @@ export default function Success() {
           )}
         </div>
 
-        {/* ✅ قائمة/بطاقات الحجوزات */}
+        {/* ✅ ملخص حجوزات العملية في بطاقة واحدة */}
         <div className="success-details">
-          {views.map((v, idx) => {
-            const mk = String(v.publicId || "").trim() || "—";
-            return (
-              <div key={v.id} className={`success-booking-block ${idx > 0 ? "is-following" : ""}`}>
-                {idx > 0 && <div className="success-sep is-soft" />}
-
-                <div className="detail-row detail-row--full success-booking-id-row">
-                  <div className="success-booking-id-pill">
-                    <span className="success-booking-id-label">رقم الحجز:</span>
-                    <span className="success-booking-id-value">{mk}</span>
-                  </div>
-                </div>
-
-                <div className="detail-row">
-                  <FontAwesomeIcon icon={faUser} className="detail-ico" />
-                  <span className="detail-label">الملكة</span>
-                  <span className="detail-value">{v.clientName}</span>
-                </div>
-
-                <div className="detail-row">
-                  <FontAwesomeIcon icon={faPhone} className="detail-ico" />
-                  <span className="detail-label">الجوال</span>
-                  <span className="detail-value">{v.clientPhone}</span>
-                </div>
-
-                <div className="detail-row">
-                  <FontAwesomeIcon icon={faScissors} className="detail-ico" />
-                  <span className="detail-label">الخدمة</span>
-                  <span className="detail-value">{v.serviceName}</span>
-                </div>
-                <div className="detail-row">
-                  <FontAwesomeIcon icon={faCircleInfo} className="detail-ico" />
-                  <span className="detail-label">القسم</span>
-                  <span className="detail-value">{v.sectionLabel || "—"}</span>
-                </div>
-                <div className="detail-row">
-                  <FontAwesomeIcon icon={faCircleInfo} className="detail-ico" />
-                  <span className="detail-label">التصنيف</span>
-                  <span className="detail-value">{v.categoryLabel || "—"}</span>
-                </div>
-                {v.packageName ? (
-                  <div className="detail-row detail-row--full">
-                    <span className="detail-label">تفاصيل الباكيج</span>
-                    <span className="detail-value">
-                      {v.packageName}
-                      {Array.isArray(v.packageServices) && v.packageServices.length > 0 ? (
-                        <div style={{ marginTop: 6 }}>
-                          {v.packageServices.map((s, sIdx) => (
-                            <div key={`pkg-svc-${v.id}-${sIdx}`} style={{ fontSize: 13 }}>
-                              {sIdx + 1}) {s.serviceName}
-                              {s.sectionLabel ? ` | ${s.sectionLabel}` : ""}
-                              {s.categoryLabel ? ` | ${s.categoryLabel}` : ""}
-                              {Number(s.durationMin || 0) > 0 ? ` | ${s.durationMin} د` : ""}
-                              {Number(s.price || 0) > 0 ? ` | ${s.price} ر.س` : ""}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </span>
-                  </div>
-                ) : null}
-
-                <div className="detail-row">
-                  <FontAwesomeIcon icon={faUserTie} className="detail-ico" />
-                  <span className="detail-label">الموظفة</span>
-                  <span className="detail-value">{v.employeeName}</span>
-                </div>
-
-                <div className="detail-row">
-                  <FontAwesomeIcon icon={faCalendarAlt} className="detail-ico" />
-                  <span className="detail-label">التاريخ</span>
-                  <span className="detail-value">{v.date}</span>
-                </div>
-
-                <div className="detail-row">
-                  <FontAwesomeIcon icon={faClock} className="detail-ico" />
-                  <span className="detail-label">الوقت</span>
-                  <span className="detail-value">{formatTime12ForClient(v.time)}</span>
-                </div>
-
-                <div className="detail-row detail-row--full">
-                  <span className={`status-pill ${statusClass(v.status)}`}>{statusLabel(v.status)}</span>
-                </div>
-
-                <div className="total-row">
-                  <FontAwesomeIcon icon={faMoneyBill} />
-                  <span>{v.total ? `${v.total.toLocaleString()} ريال` : "—"}</span>
+          <div className="success-booking-block">
+            <div className="detail-row detail-row--full success-booking-id-row">
+              <div className="success-booking-id-pill">
+                <span className="success-booking-id-label">{bookingIdLabel}</span>
+                <div className="success-booking-id-inline" dir="ltr">
+                  <span className="success-booking-id-value">
+                    {formatDisplayValues(summary.bookingIds, "inline")}
+                  </span>
+                  <button
+                    type="button"
+                    className="success-iban-copy-btn success-booking-copy-btn"
+                    onClick={summary.bookingIds.length > 1 ? copyAll : () => copyOne(firstMk)}
+                    title={summary.bookingIds.length > 1 ? "نسخ كل أرقام الحجوزات" : "نسخ رقم الحجز"}
+                    aria-label={summary.bookingIds.length > 1 ? "نسخ كل أرقام الحجوزات" : "نسخ رقم الحجز"}
+                  >
+                    <FontAwesomeIcon icon={faCopy} />
+                  </button>
                 </div>
               </div>
-            );
-          })}
-
-          {views.length > 1 && (
-            <div className="total-row total-row--summary">
-              <FontAwesomeIcon icon={faMoneyBill} />
-              <span className="total-row-label">
-                الإجمالي لكل الحجوزات: {totalAll ? `${totalAll.toLocaleString()} ريال` : "—"}
-              </span>
             </div>
-          )}
+
+            <div className="detail-row">
+              <FontAwesomeIcon icon={faUser} className="detail-ico" />
+              <span className="detail-label">{clientLabel}</span>
+              <span className="detail-value">{formatDisplayValues(summary.clientNames)}</span>
+            </div>
+
+            <div className="detail-row">
+              <FontAwesomeIcon icon={faPhone} className="detail-ico" />
+              <span className="detail-label">{phoneLabel}</span>
+              <span className="detail-value">{formatDisplayValues(summary.clientPhones)}</span>
+            </div>
+
+            <div className="detail-row">
+              <FontAwesomeIcon icon={faScissors} className="detail-ico" />
+              <span className="detail-label">{serviceLabel}</span>
+              <span className="detail-value">{formatDisplayValues(summary.serviceNames)}</span>
+            </div>
+
+            <div className="detail-row">
+              <FontAwesomeIcon icon={faLayerGroup} className="detail-ico" />
+              <span className="detail-label">{sectionLabelText}</span>
+              <span className="detail-value">{formatDisplayValues(summary.sectionValues)}</span>
+            </div>
+
+            <div className="detail-row">
+              <FontAwesomeIcon icon={faTags} className="detail-ico" />
+              <span className="detail-label">{categoryLabelText}</span>
+              <span className="detail-value">{formatDisplayValues(summary.categoryValues)}</span>
+            </div>
+
+            <div className="detail-row">
+              <FontAwesomeIcon icon={faUserTie} className="detail-ico" />
+              <span className="detail-label">{employeeLabel}</span>
+              <span className="detail-value">{formatDisplayValues(summary.employeeNames)}</span>
+            </div>
+
+            <div className="detail-row">
+              <FontAwesomeIcon icon={faCalendarAlt} className="detail-ico" />
+              <span className="detail-label">{dateLabel}</span>
+              <span className="detail-value">{formatDisplayValues(summary.dateValues)}</span>
+            </div>
+
+            <div className="detail-row">
+              <FontAwesomeIcon icon={faClock} className="detail-ico" />
+              <span className="detail-label">{timeLabel}</span>
+              <span className="detail-value">{formatDisplayValues(summary.timeValues)}</span>
+            </div>
+
+            <div className="detail-row detail-row--full">
+              <span className={`status-pill ${statusClass(summaryStatus)}`}>{statusLabel(summaryStatus)}</span>
+            </div>
+
+            <div className="total-row">
+              <FontAwesomeIcon icon={faMoneyBill} />
+              <span>{`${totalLabel}: ${summary.total ? `${formatNumberEn(summary.total)} ريال` : "—"}`}</span>
+            </div>
+          </div>
         </div>
 
-        {/* ✅ أزرار النسخ/واتساب (Grid) */}
-        <div className="success-copy-actions">
-          <button
-            type="button"
-            className="success-copy-btn"
-            onClick={views.length > 1 ? copyAll : () => copyOne(firstMk)}
-          >
-            <FontAwesomeIcon icon={faCopy} /> {views.length > 1 ? "نسخ كل أرقام الحجوزات (MK)" : "نسخ رقم الحجز (MK)"}
-          </button>
-
+        {/* ✅ أزرار واتساب */}
+        <div className="success-copy-actions is-single">
           <button type="button" className="success-copy-btn is-whatsapp is-green" onClick={openWhatsapp}>
             <FontAwesomeIcon icon={faWhatsapp} /> تأكيد الحجز عبر واتساب
           </button>
         </div>
 
-        {/* ✅ سياسة التأكيد + الملاحظات */}
+        {/* ✅ ملاحظات مهمة */}
         <div className="success-policy">
           <div className="success-policy-top">
-            <span className="success-policy-title">سياسة التأكيد</span>
-          </div>
-
-          <p className="success-policy-lead">
-            يتطلب تأكيد الحجز دفع المبلغ المستحق خلال مدة أقصاها ساعتان من وقت إنشاء الحجز.
-            في حال عدم إتمام الدفع خلال هذه الفترة، سيتم إلغاء الحجز تلقائيًا.
-            في حال تم تأكيد الحجز المبلغ غير قابل للاسترداد، ويمكن نقل قيمته إلى موعد آخر عند إعادة الجدولة خلال مدة شهر واحد.
-          </p>
-
-          <div className="success-policy-top is-spaced">
             <span className="success-policy-title">ملاحظات مهمة</span>
           </div>
 
-          <ul className="success-policy-list">
-            <li>يرجى الحضور قبل الموعد بـ 10 دقائق.</li>
-            <li>في حال التأخير لأكثر من 10 دقائق قد يتم اعتبار الموعد ملغيًا.</li>
-            <li>يمنع دخول الأطفال حرصًا على راحة جميع العميلات.</li>
-          </ul>
-
-          <div className="success-policy-footer">شكرًا لاختيارك صالون ملكات، نسعد بخدمتك دائمًا ✨</div>
+          <p className="success-policy-note-line">
+            سيتم التأكد من السعر النهائي بعد معاينة الشعر، وقد تكون هناك زيادة إذا كانت الأطوال مختلفة.
+          </p>
+          <p className="success-policy-note-line">يرجى الحضور قبل الموعد بـ 10 دقائق.</p>
+          <p className="success-policy-note-line">نرجو منكم إتمام عملية الدفع لتأكيد حجزكم.</p>
+          <p className="success-policy-iban-label">رقم آيبان البنك الأهلي:</p>
+          <div className="success-policy-iban-inline" dir="ltr">
+            <p className="success-policy-iban-value">{SALON_IBAN}</p>
+            <button
+              type="button"
+              className="success-iban-copy-btn"
+              onClick={copyIban}
+              title="نسخ رقم الآيبان"
+              aria-label="نسخ رقم الآيبان"
+            >
+              <FontAwesomeIcon icon={faCopy} />
+            </button>
+          </div>
         </div>
 
         {/* ✅ أكشنز */}
