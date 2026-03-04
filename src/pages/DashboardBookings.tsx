@@ -33,7 +33,6 @@ import {
   createDashboardBooking,
   updateBookingDetails as updateBookingFields,
   deleteBooking,
-  markBookingViewed,
   type BookingStatus,
 } from "../services/firestoreBookings";
 import { listAllIncomeFS, removeIncomeFS, upsertIncomeFS } from "../services/firestoreIncome";
@@ -56,12 +55,10 @@ import "../styles/DashboardBookings.css";
    Constants / Types
 ========================= */
 
-type StatusOption = BookingStatus | "all" | "new";
+type StatusOption = BookingStatus | "all";
 
 const NOTES_KEY = "dashboard_booking_notes_v1";
-const BOOKING_SEEN_KEY = "dashboard_booking_seen_v1";
 const BOOKING_ACTION_PIN = "598867395";
-const APP_TIME_ZONE = "Asia/Riyadh";
 const NEW_BOOKINGS_SEEN_AT_KEY = "dashboard_bookings_seen_at_v1";
 
 const statusLabel: Record<BookingStatus, string> = {
@@ -103,11 +100,15 @@ function parseBookingDateTimeMs(dateISO: string, timeHHMM: string): number | nul
   const minute = Number(t[2]);
   if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
 
-  const stamp = Date.parse(
-    `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00+03:00`
-  );
-  if (!Number.isFinite(stamp) || stamp <= 0) return null;
-  return stamp;
+  const stamp = new Date(year, Math.max(0, month - 1), day, hour, minute, 0, 0);
+  if (
+    stamp.getFullYear() !== year ||
+    stamp.getMonth() !== month - 1 ||
+    stamp.getDate() !== day
+  ) {
+    return null;
+  }
+  return stamp.getTime();
 }
 
 function downloadCSV(filename: string, rows: string[][]) {
@@ -147,29 +148,6 @@ function loadNotesMap(): Record<string, string> {
 
 function saveNotesMap(map: Record<string, string>) {
   localStorage.setItem(NOTES_KEY, JSON.stringify(map));
-}
-
-function loadSeenMap(): Record<string, number> {
-  try {
-    const raw = localStorage.getItem(BOOKING_SEEN_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    const out: Record<string, number> = {};
-    Object.entries(parsed as Record<string, any>).forEach(([id, ts]) => {
-      const key = String(id || "").trim();
-      const when = Number(ts);
-      if (!key || !Number.isFinite(when) || when <= 0) return;
-      out[key] = when;
-    });
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-function saveSeenMap(map: Record<string, number>) {
-  localStorage.setItem(BOOKING_SEEN_KEY, JSON.stringify(map));
 }
 
 function getAuthUserSafe(): { displayName: string; email: string } {
@@ -287,92 +265,6 @@ function toMillisSafe(v: any) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function dateTimePartsInTimeZone(ms: number, timeZone = APP_TIME_ZONE) {
-  if (!Number.isFinite(ms) || ms <= 0) return null;
-  try {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(new Date(ms));
-    const out: Record<string, string> = {};
-    parts.forEach((p) => {
-      if (p.type !== "literal") out[p.type] = p.value;
-    });
-    const year = out.year || "";
-    const month = out.month || "";
-    const day = out.day || "";
-    const hour = out.hour || "00";
-    const minute = out.minute || "00";
-    if (!year || !month || !day) return null;
-    return { year, month, day, hour, minute };
-  } catch {
-    return null;
-  }
-}
-
-function isoDateInTimeZone(ms: number, timeZone = APP_TIME_ZONE): string {
-  const p = dateTimePartsInTimeZone(ms, timeZone);
-  if (!p) return "";
-  return `${p.year}-${p.month}-${p.day}`;
-}
-
-function formatDateTimeInTimeZone(ms: number, timeZone = APP_TIME_ZONE): string {
-  const p = dateTimePartsInTimeZone(ms, timeZone);
-  if (!p) return "-";
-  return `${p.year}-${p.month}-${p.day} ${formatTime12(`${p.hour}:${p.minute}`)}`;
-}
-
-function normalizeISODateLoose(v: any): string {
-  const raw = String(v || "").trim();
-  if (!raw) return "";
-  const strict = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (strict) return `${strict[1]}-${strict[2]}-${strict[3]}`;
-
-  const loose = raw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
-  if (loose) {
-    const y = Number(loose[1]);
-    const m = Number(loose[2]);
-    const d = Number(loose[3]);
-    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return "";
-    if (m < 1 || m > 12 || d < 1 || d > 31) return "";
-    return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  }
-
-  const ms = toMillisSafe(raw);
-  if (ms <= 0) return "";
-  return isoDateInTimeZone(ms);
-}
-
-function resolveBookingDateISO(rawDate: any, createdAt?: any, updatedAt?: any): string {
-  const explicit = normalizeISODateLoose(rawDate);
-  if (explicit) return explicit;
-  const fallbackMs = Math.max(toMillisSafe(createdAt), toMillisSafe(updatedAt));
-  if (fallbackMs <= 0) return "";
-  return isoDateInTimeZone(fallbackMs);
-}
-
-function resolveBookingCreatedAtMs(raw: any): number {
-  const createdMs = toMillisSafe(raw?.createdAt);
-  const updatedMs = toMillisSafe(raw?.updatedAt);
-  return Math.max(createdMs, updatedMs, 0);
-}
-
-function resolveBookingViewedAtMs(raw: any): number {
-  const viewedTsMs = toMillisSafe(raw?.viewedAt);
-  const viewedNumMs = Number(raw?.viewedAtMs || 0);
-  const safeViewedNumMs = Number.isFinite(viewedNumMs) ? viewedNumMs : 0;
-  return Math.max(viewedTsMs, safeViewedNumMs, 0);
-}
-
-function compactSearchText(v: string): string {
-  return String(v || "").trim().toLowerCase().replace(/[\s\-_./]+/g, "");
-}
-
 function bookingPublicBase(publicId?: string) {
   const up = String(publicId || "").trim().toUpperCase();
   if (!up) return "";
@@ -412,21 +304,46 @@ function channelLabel(channel?: string) {
 
 function formatEventAt(v: any) {
   try {
-    const ms = toMillisSafe(v);
-    if (!ms) return "-";
-    return formatDateTimeInTimeZone(ms);
+    const ms =
+      typeof v?.toMillis === "function"
+        ? v.toMillis()
+        : typeof v?.seconds === "number"
+          ? Number(v.seconds) * 1000
+          : 0;
+    if (!ms) return "—";
+    const d = new Date(ms);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${formatTime12(`${hh}:${mi}`)}`;
   } catch {
-    return "-";
+    return "—";
   }
 }
 
 function formatAnyDateTime(v: any) {
   try {
-    const ms = toMillisSafe(v);
-    if (!Number.isFinite(ms) || ms <= 0) return "-";
-    return formatDateTimeInTimeZone(ms);
+    if (!v) return "—";
+    const ms =
+      typeof v?.toMillis === "function"
+        ? v.toMillis()
+        : typeof v?.seconds === "number"
+          ? Number(v.seconds) * 1000
+          : typeof v === "number"
+            ? v
+            : Date.parse(String(v));
+    if (!Number.isFinite(ms) || ms <= 0) return "—";
+    const d = new Date(ms);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${formatTime12(`${hh}:${mi}`)}`;
   } catch {
-    return "-";
+    return "—";
   }
 }
 
@@ -627,11 +544,6 @@ type Booking = {
   finalPrice?: number;
   createdAt?: any;
   updatedAt?: any;
-  viewedAt?: any;
-  viewedAtMs?: number;
-  viewedByUid?: string | null;
-  viewedByEmail?: string | null;
-  viewedByName?: string | null;
 };
 
 type ClientLoyaltyInfo = {
@@ -685,13 +597,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const [statusFilter, setStatusFilter] = useState<StatusOption>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [dateFilterBasis, setDateFilterBasis] = useState<"bookingDate" | "createdAt">("bookingDate");
 
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [notesMap, setNotesMap] = useState<Record<string, string>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
-  const [seenMap, setSeenMap] = useState<Record<string, number>>(() => loadSeenMap());
-  const [markAllSeenBusy, setMarkAllSeenBusy] = useState(false);
   const [savedNoteId, setSavedNoteId] = useState("");
   const [clientLoyalty, setClientLoyalty] = useState<ClientLoyaltyInfo | null>(null);
   const [clientLoyaltyLoading, setClientLoyaltyLoading] = useState(false);
@@ -749,88 +658,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const uiRole = currentRole;
   const authUser = getAuthUserSafe();
   const canEditBookings = uiRole === "owner" || uiRole === "admin";
-
-  const isBookingSeen = useCallback(
-    (booking: Booking) => {
-      const id = String(booking?.id || "").trim();
-      if (!id) return true;
-      if (resolveBookingViewedAtMs(booking) > 0) return true;
-      return !!seenMap[id];
-    },
-    [seenMap]
-  );
-
-  const markBookingSeen = useCallback((bookingId: string, persist = true) => {
-    const id = String(bookingId || "").trim();
-    if (!id) return;
-    const writeLocalSeen = () => {
-      setSeenMap((prev) => {
-        if (prev[id]) return prev;
-        const next = { ...prev, [id]: Date.now() };
-        saveSeenMap(next);
-        return next;
-      });
-    };
-    if (!persist) {
-      writeLocalSeen();
-      return;
-    }
-    void (async () => {
-      try {
-        await markBookingViewed(id);
-        writeLocalSeen();
-      } catch (err) {
-        console.error("markBookingViewed failed:", err);
-      }
-    })();
-  }, []);
-
-  const markAllBookingsSeen = useCallback(async () => {
-    if (markAllSeenBusy) return;
-    const targetIds = bookings
-      .filter((b) => !isBookingSeen(b))
-      .map((b) => String(b.id || "").trim())
-      .filter(Boolean);
-    if (!targetIds.length) return;
-
-    setMarkAllSeenBusy(true);
-    try {
-      const successIds: string[] = [];
-      await Promise.all(
-        targetIds.map(async (id) => {
-          try {
-            await markBookingViewed(id);
-            successIds.push(id);
-          } catch (err) {
-            console.error("markBookingViewed failed:", id, err);
-          }
-        })
-      );
-      if (!successIds.length) return;
-      setSeenMap((prev) => {
-        const next = { ...prev };
-        let changed = false;
-        successIds.forEach((id) => {
-          if (next[id]) return;
-          next[id] = Date.now();
-          changed = true;
-        });
-        if (changed) saveSeenMap(next);
-        return changed ? next : prev;
-      });
-    } finally {
-      setMarkAllSeenBusy(false);
-    }
-  }, [bookings, isBookingSeen, markAllSeenBusy]);
-
-  const openBookingDetails = useCallback(
-    (booking: Booking) => {
-      markBookingSeen(booking.id, true);
-      setSelectedBooking(booking);
-    },
-    [markBookingSeen]
-  );
-
   const closeBookingModal = useCallback(() => setSelectedBooking(null), []);
   const closeCancelModal = useCallback(() => setCancelTarget(null), []);
   const closeRefundModal = useCallback(() => {
@@ -1099,7 +926,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         return {
           id: b.id,
           ref: bookingRef(b),
-          date: resolveBookingDateISO(b.date, b.createdAt, b.updatedAt),
+          date: String(b.date || ""),
           time: String(b.time || ""),
           note,
         };
@@ -1111,208 +938,57 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, [selectedBooking, bookings, notesMap]);
 
   const filteredBase = useMemo(() => {
-    const rawSearch = String(q || "").trim();
-    const searchLower = rawSearch.toLowerCase();
-    const searchNormalized = normalizeArabicName(rawSearch);
-    const searchDigits = digitsOnly(rawSearch);
-    const searchCompact = compactSearchText(rawSearch);
-    const searchTokens = rawSearch
-      .split(/\s+/)
-      .map((t) => String(t || "").trim())
-      .filter(Boolean);
-    const hasSearch = !!rawSearch;
-    const nowMs = Date.now();
-
-    const prepared = bookings
-      .map((b) => {
-        const bookingDateISO = resolveBookingDateISO(b.date, b.createdAt, b.updatedAt);
-        const createdAtMs = resolveBookingCreatedAtMs(b);
-        const createdDateISO = createdAtMs > 0 ? isoDateInTimeZone(createdAtMs) : "";
-        const bookingMs = parseBookingDateTimeMs(bookingDateISO, String(b.time || "").trim());
-        const refRaw = bookingRef(b);
-        const refLower = refRaw.toLowerCase();
-        const refDigits = digitsOnly(refRaw);
-        const refCompact = compactSearchText(refRaw);
-        const publicIdLower = String(b.publicId || "").trim().toLowerCase();
-        const idLower = String(b.id || "").trim().toLowerCase();
-        const phoneRawLower = String(b.phone || "").trim().toLowerCase();
-        const phoneDigits = digitsOnly(phoneRawLower);
-        const nameNormalized = normalizeArabicName(String(b.customerName || ""));
-        const employeeNormalized = normalizeArabicName(String(b.employeeName || ""));
-        return {
-          b,
-          bookingDateISO,
-          createdAtMs,
-          createdDateISO,
-          bookingMs,
-          refLower,
-          refDigits,
-          refCompact,
-          publicIdLower,
-          idLower,
-          phoneRawLower,
-          phoneDigits,
-          nameNormalized,
-          employeeNormalized,
-        };
-      })
-      .filter((row) => {
-        const dateValue = dateFilterBasis === "createdAt" ? row.createdDateISO : row.bookingDateISO;
-        if (dateFrom || dateTo) {
-          if (!inDateRange(dateValue, dateFrom, dateTo)) return false;
-        }
-        return true;
-      })
-      .filter((row) => {
-        if (uiRole !== "staff") return true;
-        const bUid = String(row.b.employeeUid || "").trim();
-        const bId = String(row.b.employeeId || "").trim();
-        const bName = String(row.b.employeeName || "").trim();
+    let list = [...bookings];
+    if (dateFrom || dateTo) {
+      list = list.filter((b) => inDateRange(b.date, dateFrom, dateTo));
+    }
+    const search = normalizeArabicName(q);
+    const searchRaw = String(q || "").trim().toLowerCase();
+    const searchDigits = digitsOnly(searchRaw);
+    if (search || searchRaw) {
+      list = list.filter((b) => {
+        const name = normalizeArabicName(b.customerName || "");
+        const phone = (b.phone || "").toLowerCase();
+        const emp = normalizeArabicName(b.employeeName || "");
+        const ref = bookingRef(b).toLowerCase();
+        const refDigits = digitsOnly(ref);
+        return (
+          (search ? name.includes(search) || emp.includes(search) : false) ||
+          phone.includes(searchRaw) ||
+          ref.includes(searchRaw) ||
+          (!!searchDigits && refDigits.includes(searchDigits))
+        );
+      });
+    }
+    // Filter by role if staff
+    if (uiRole === "staff") {
+      list = list.filter((b) => {
+        const bUid = String(b.employeeUid || "").trim();
+        const bId = String(b.employeeId || "").trim();
+        const bName = String(b.employeeName || "").trim();
         const myUid = auth.currentUser?.uid;
         if (myUid && bUid === myUid) return true;
         if (myUid && bId === myUid) return true;
         return bName && normalizeArabicName(bName).includes(normalizeArabicName(authUser.displayName));
       });
-
-    if (!hasSearch) {
-      return prepared
-        .sort((a, b) => {
-          const dateSort = String(b.bookingDateISO || "").localeCompare(String(a.bookingDateISO || ""));
-          if (dateSort !== 0) return dateSort;
-          const timeSort = String(b.b.time || "").localeCompare(String(a.b.time || ""));
-          if (timeSort !== 0) return timeSort;
-          return (b.createdAtMs || 0) - (a.createdAtMs || 0);
-        })
-        .map((row) => row.b);
     }
-
-    const scored = prepared
-      .map((row) => {
-        let score = 0;
-
-        if (searchNormalized) {
-          if (row.nameNormalized === searchNormalized) score += 110;
-          else if (row.nameNormalized.includes(searchNormalized)) score += 80;
-          if (row.employeeNormalized === searchNormalized) score += 70;
-          else if (row.employeeNormalized.includes(searchNormalized)) score += 45;
-        }
-
-        if (searchDigits) {
-          if (row.phoneDigits === searchDigits) score += 120;
-          else if (row.phoneDigits.includes(searchDigits)) score += 85;
-          if (row.refDigits === searchDigits) score += 160;
-          else if (row.refDigits.includes(searchDigits)) score += 105;
-        }
-
-        if (searchLower) {
-          if (row.refLower === searchLower) score += 180;
-          else if (row.refLower.includes(searchLower)) score += 120;
-          if (row.publicIdLower === searchLower) score += 165;
-          else if (row.publicIdLower.includes(searchLower)) score += 110;
-          if (row.idLower === searchLower) score += 130;
-          else if (row.idLower.includes(searchLower)) score += 90;
-          if (row.phoneRawLower.includes(searchLower)) score += 60;
-        }
-
-        if (searchCompact) {
-          if (row.refCompact === searchCompact) score += 190;
-          else if (row.refCompact.includes(searchCompact)) score += 125;
-          if (compactSearchText(row.publicIdLower).includes(searchCompact)) score += 100;
-        }
-
-        for (const token of searchTokens) {
-          const tNorm = normalizeArabicName(token);
-          const tDigits = digitsOnly(token);
-          const tCompact = compactSearchText(token);
-          const tLower = token.toLowerCase();
-          let tokenMatched = false;
-          if (tNorm && (row.nameNormalized.includes(tNorm) || row.employeeNormalized.includes(tNorm))) {
-            tokenMatched = true;
-            score += 12;
-          }
-          if (tDigits && (row.phoneDigits.includes(tDigits) || row.refDigits.includes(tDigits))) {
-            tokenMatched = true;
-            score += 16;
-          }
-          if (
-            tLower &&
-            (row.refLower.includes(tLower) || row.publicIdLower.includes(tLower) || row.idLower.includes(tLower))
-          ) {
-            tokenMatched = true;
-            score += 18;
-          }
-          if (tCompact && row.refCompact.includes(tCompact)) {
-            tokenMatched = true;
-            score += 20;
-          }
-          if (!tokenMatched) return null;
-        }
-
-        if (score <= 0) return null;
-        return { ...row, score };
-      })
-      .filter(Boolean) as Array<
-      {
-        b: Booking;
-        bookingDateISO: string;
-        createdAtMs: number;
-        createdDateISO: string;
-        bookingMs: number | null;
-        refLower: string;
-        refDigits: string;
-        refCompact: string;
-        publicIdLower: string;
-        idLower: string;
-        phoneRawLower: string;
-        phoneDigits: string;
-        nameNormalized: string;
-        employeeNormalized: string;
-        score: number;
-      }
-    >;
-
-    return scored
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-
-        const aFuture = Number.isFinite(a.bookingMs as number) && (a.bookingMs as number) >= nowMs;
-        const bFuture = Number.isFinite(b.bookingMs as number) && (b.bookingMs as number) >= nowMs;
-        if (aFuture !== bFuture) return aFuture ? -1 : 1;
-
-        const aDistance = Number.isFinite(a.bookingMs as number)
-          ? Math.abs((a.bookingMs as number) - nowMs)
-          : Number.POSITIVE_INFINITY;
-        const bDistance = Number.isFinite(b.bookingMs as number)
-          ? Math.abs((b.bookingMs as number) - nowMs)
-          : Number.POSITIVE_INFINITY;
-        if (aDistance !== bDistance) return aDistance - bDistance;
-
-        return (b.createdAtMs || 0) - (a.createdAtMs || 0);
-      })
-      .map((row) => row.b);
-  }, [bookings, q, dateFrom, dateTo, dateFilterBasis, uiRole, authUser]);
+    return list.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+  }, [bookings, q, dateFrom, dateTo, uiRole, authUser]);
 
   const filtered = useMemo(() => {
     if (statusFilter === "all") return filteredBase;
-    if (statusFilter === "new") return filteredBase.filter((b) => !isBookingSeen(b));
     return filteredBase.filter((b) => b.status === statusFilter);
-  }, [filteredBase, statusFilter, isBookingSeen]);
+  }, [filteredBase, statusFilter]);
 
   const statusTabCounts = useMemo(
     () => ({
       all: filteredBase.length,
-      new: filteredBase.filter((b) => !isBookingSeen(b)).length,
       pending: filteredBase.filter((b) => b.status === "pending").length,
       confirmed: filteredBase.filter((b) => b.status === "confirmed").length,
       completed: filteredBase.filter((b) => b.status === "completed").length,
       cancelled: filteredBase.filter((b) => b.status === "cancelled").length,
     }),
-    [filteredBase, isBookingSeen]
-  );
-
-  const unreadCount = useMemo(
-    () => bookings.filter((b) => !isBookingSeen(b)).length,
-    [bookings, isBookingSeen]
+    [filteredBase]
   );
 
   const totalRemainingAmount = useMemo(
@@ -1344,9 +1020,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const out = Array.from(blocks.values());
     out.forEach((block) => {
       block.rows.sort((a, b) => {
-        const aDate = resolveBookingDateISO(a.date, a.createdAt, a.updatedAt);
-        const bDate = resolveBookingDateISO(b.date, b.createdAt, b.updatedAt);
-        const d = String(aDate || "").localeCompare(String(bDate || ""));
+        const d = String(a.date || "").localeCompare(String(b.date || ""));
         if (d !== 0) return d;
         return String(a.time || "").localeCompare(String(b.time || ""));
       });
@@ -1394,16 +1068,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return bookings
       .filter((b) => {
         if (!(b.status === "pending" || b.status === "confirmed")) return false;
-        const bookingDateISO = resolveBookingDateISO(b.date, b.createdAt, b.updatedAt);
-        const bookingMs = parseBookingDateTimeMs(bookingDateISO, String(b.time || ""));
+        const bookingMs = parseBookingDateTimeMs(String(b.date || ""), String(b.time || ""));
         if (bookingMs === null) return false;
         return bookingMs < nowMs;
       })
       .sort((a, b) => {
-        const aDateISO = resolveBookingDateISO(a.date, a.createdAt, a.updatedAt);
-        const bDateISO = resolveBookingDateISO(b.date, b.createdAt, b.updatedAt);
-        const aMs = parseBookingDateTimeMs(aDateISO, String(a.time || "")) || 0;
-        const bMs = parseBookingDateTimeMs(bDateISO, String(b.time || "")) || 0;
+        const aMs = parseBookingDateTimeMs(String(a.date || ""), String(a.time || "")) || 0;
+        const bMs = parseBookingDateTimeMs(String(b.date || ""), String(b.time || "")) || 0;
         return aMs - bMs;
       });
   }, [bookings]);
@@ -1624,7 +1295,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       customerName: String(b.customerName || "").trim(),
       phone: String(b.phone || "").trim(),
       note: String((b as any)?.note || "").trim(),
-      date: resolveBookingDateISO(b.date, b.createdAt, b.updatedAt),
+      date: String(b.date || "").trim(),
       time: String(b.time || "").trim(),
       price: String(readBookingTotalAmount(b)),
       paymentType: payment.paymentType,
@@ -1931,7 +1602,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         b.phone || "—",
         serviceSummaryForTable(b),
         b.employeeName || "—",
-        resolveBookingDateISO(b.date, b.createdAt, b.updatedAt),
+        b.date,
         formatTime12(b.time),
         statusLabel[b.status],
         String(payment.totalAmount),
@@ -1967,22 +1638,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         <div className="bookings-header">
           <h1>إدارة الحجوزات</h1>
           <p>عرض وتعديل كافة الحجوزات في النظام</p>
-          <div className="bk-new-summary">
-            <span className={`bk-new-count ${unreadCount > 0 ? "is-has-new" : ""}`}>
-              {unreadCount > 0 ? `${unreadCount} حجز جديد` : "لا يوجد حجوزات جديدة"}
-            </span>
-            <button
-              type="button"
-              className="exp-btn ghost sm"
-              onClick={() => {
-                void markAllBookingsSeen();
-              }}
-              disabled={unreadCount <= 0 || markAllSeenBusy}
-              title={unreadCount > 0 ? "تمييز كل الحجوزات كمطّلع عليها" : "لا يوجد حجوزات جديدة"}
-            >
-              {markAllSeenBusy ? "جاري التحديث..." : "تمييز الكل كمطّلع عليه"}
-            </button>
-          </div>
           {error && <div className="bookings-error">{error}</div>}
         </div>
 
@@ -2049,14 +1704,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     key={`stale_${b.id}`}
                     type="button"
                     className="bk-stale-alert-item"
-                    onClick={() => openBookingDetails(b)}
+                    onClick={() => setSelectedBooking(b)}
                     title="فتح تفاصيل الحجز"
                   >
                     <span className="bk-stale-alert-ref">
                       {bookingRef(b)} • {b.customerName || "—"}
                     </span>
                     <span className="bk-stale-alert-meta">
-                      {resolveBookingDateISO(b.date, b.createdAt, b.updatedAt)} {formatTime12(b.time)} • {statusLabel[b.status]}
+                      {b.date} {formatTime12(b.time)} • {statusLabel[b.status]}
                     </span>
                   </button>
                 ))}
@@ -2079,14 +1734,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               >
                 الكل
                 <span>{statusTabCounts.all}</span>
-              </button>
-              <button
-                type="button"
-                className={`bk-status-tab ${statusFilter === "new" ? "is-active" : ""}`}
-                onClick={() => setStatusFilter("new")}
-              >
-                جديد
-                <span>{statusTabCounts.new}</span>
               </button>
               <button
                 type="button"
@@ -2136,21 +1783,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="none"
-                placeholder="اسم / جوال / MK / رقم الطلب..." 
+                placeholder="اسم، هاتف، موظفة، أو رقم الحجز (MK)..." 
                 value={q} 
                 onChange={e => setQ(e.target.value)} 
               />
-            </div>
-            <div className="bk-field bk-field-date">
-              <label>مرجع التاريخ</label>
-              <select
-                className="bk-input bk-date-input"
-                value={dateFilterBasis}
-                onChange={(e) => setDateFilterBasis(e.target.value as "bookingDate" | "createdAt")}
-              >
-                <option value="bookingDate">تاريخ الحجز</option>
-                <option value="createdAt">تاريخ الإنشاء</option>
-              </select>
             </div>
             <div className="bk-field bk-field-date">
               <label>من تاريخ</label>
@@ -2187,7 +1823,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             <button className="exp-btn" onClick={handleExport}>
               <FontAwesomeIcon icon={faFileCsv} /> تصدير CSV
             </button>
-            <button className="exp-btn ghost" onClick={() => { setQ(""); setStatusFilter("all"); setDateFrom(""); setDateTo(""); setDateFilterBasis("bookingDate"); }}>
+            <button className="exp-btn ghost" onClick={() => { setQ(""); setStatusFilter("all"); setDateFrom(""); setDateTo(""); }}>
               <FontAwesomeIcon icon={faRotate} /> إعادة ضبط
             </button>
           </div>
@@ -2232,14 +1868,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     )
                       ? (b.status as BookingStatus)
                       : "pending";
-                    const isSeen = isBookingSeen(b);
                     const payment = resolveBookingPaymentSummary(b);
                     rows.push(
-                      <tr key={b.id} className={`bk-row bk-row-${safeStatus}${isSeen ? "" : " bk-row-unseen"}`}>
+                      <tr key={b.id} className={`bk-row bk-row-${safeStatus}`}>
                         <td>
                           <div className="bk-ref-cell">
                             <div className="bk-ref-code">{bookingRef(b)}</div>
-                            {!isSeen ? <span className="bk-new-badge">جديد</span> : null}
                             <span className={`status-badge ${safeStatus}`}>{statusLabel[safeStatus]}</span>
                           </div>
                         </td>
@@ -2255,9 +1889,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           <span className="bk-employee-pill">{b.employeeName || "—"}</span>
                         </td>
                         <td>
-                          <div className="bk-datetime-date">
-                            {resolveBookingDateISO(b.date, b.createdAt, b.updatedAt)}
-                          </div>
+                          <div className="bk-datetime-date">{b.date}</div>
                           <div className="bk-datetime-time">{formatTime12(b.time)}</div>
                         </td>
                         <td>
@@ -2284,7 +1916,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td className="bk-actions-cell">
                           <div className="bk-actions-row">
-                            <button className="exp-btn ghost sm" onClick={() => openBookingDetails(b)}>
+                            <button className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
                               تفاصيل
                             </button>
                             {canEditBookings && (
@@ -2363,11 +1995,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   </div>
                 ) : null}
                 {block.rows.map((b) => {
-                  const isSeen = isBookingSeen(b);
                   const payment = resolveBookingPaymentSummary(b);
                   return (
-                  <div key={b.id} className={`bk-mobile-card bk-mobile-card-${b.status || "pending"}${isSeen ? "" : " is-unseen"}`}>
-                    {!isSeen ? <div className="bk-new-badge bk-new-badge-mobile">جديد</div> : null}
+                  <div key={b.id} className={`bk-mobile-card bk-mobile-card-${b.status || "pending"}`}>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">رقم الحجز:</span>
                       <span className="bk-mobile-val" style={{fontWeight: 900}}>{bookingRef(b)}</span>
@@ -2393,9 +2023,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     </div>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">التاريخ:</span>
-                      <span className="bk-mobile-val bk-mobile-date-val">
-                        {resolveBookingDateISO(b.date, b.createdAt, b.updatedAt)} {formatTime12(b.time)}
-                      </span>
+                      <span className="bk-mobile-val bk-mobile-date-val">{b.date} {formatTime12(b.time)}</span>
                     </div>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">الحالة:</span>
@@ -2409,7 +2037,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       </span>
                     </div>
                     <div className="bk-mobile-actions">
-                       <button className="exp-btn ghost sm w-100" onClick={() => openBookingDetails(b)}>تفاصيل</button>
+                       <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
                        {canEditBookings && (
                          <button className="exp-btn ghost sm w-100" onClick={() => openEditBookingModal(b)}>
                            تعديل
@@ -2510,9 +2138,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 </div>
                 <div className="bk-item">
                   <span className="bk-item-label">التاريخ</span>
-                  <span className="bk-item-val">
-                    {resolveBookingDateISO(selectedBooking.date, selectedBooking.createdAt, selectedBooking.updatedAt)}
-                  </span>
+                  <span className="bk-item-val">{selectedBooking.date}</span>
                 </div>
                 <div className="bk-item">
                   <span className="bk-item-label">الوقت</span>
@@ -3104,9 +2730,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             <div className="bk-cancel-meta">
               <span>رقم الحجز: {bookingRef(cancelTarget)}</span>
               <span>العميلة: {cancelTarget?.customerName || "—"}</span>
-              <span>
-                التاريخ: {resolveBookingDateISO(cancelTarget?.date, cancelTarget?.createdAt, cancelTarget?.updatedAt) || "—"} - {formatTime12(cancelTarget?.time || "")}
-              </span>
+              <span>التاريخ: {cancelTarget?.date || "—"} - {formatTime12(cancelTarget?.time || "")}</span>
             </div>
           </div>
           <div className="bk-cancel-foot">
