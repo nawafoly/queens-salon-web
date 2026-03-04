@@ -42,6 +42,7 @@ type BookingPaymentType = "full" | "partial";
 type BookingMeta = {
   bookingRef: string;
   clientName: string;
+  bookingDate?: string;
   paymentType: BookingPaymentType;
   paidAmount: number;
   remainingAmount: number;
@@ -91,6 +92,11 @@ function todayISO() {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function normalizeISODate(value: unknown): string {
+  const s = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
 }
 
 function methodLabel(m: PaymentMethod) {
@@ -565,6 +571,7 @@ export default function DashboardIncome() {
               clientName: String(
                 b.clientName || b.customerName || b.name || b.client?.name || b.customer?.name || ""
               ).trim(),
+              bookingDate: normalizeISODate(b?.date),
               paymentType: payment.paymentType,
               paidAmount: payment.paidAmount,
               remainingAmount: payment.remainingAmount,
@@ -593,11 +600,17 @@ export default function DashboardIncome() {
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
+    const effectiveDateOf = (x: IncomeItem) => {
+      const linkedBookingId = resolveLinkedBookingId(x);
+      const bm = bookingMetaById[linkedBookingId];
+      return normalizeISODate(bm?.bookingDate) || normalizeISODate(x.date) || String(x.date || "").trim();
+    };
     return items
       .filter((x) => {
         if (fMethod !== "all" && x.method !== fMethod) return false;
-        if (from && x.date < from) return false;
-        if (to && x.date > to) return false;
+        const effectiveDate = effectiveDateOf(x);
+        if (from && effectiveDate < from) return false;
+        if (to && effectiveDate > to) return false;
 
         if (!qq) return true;
         const linkedBookingId = resolveLinkedBookingId(x);
@@ -606,17 +619,22 @@ export default function DashboardIncome() {
         const noteText = formatIncomeNote(x.note);
         const effectiveAmount = bm ? Number(bm.paidAmount || 0) : Number(x.amount || 0);
         const a =
-          `${x.date} ${effectiveAmount} ${sourceLabel(x.source || "")} ${x.note || ""} ${noteText} ${
+          `${effectiveDate} ${effectiveAmount} ${sourceLabel(x.source || "")} ${x.note || ""} ${noteText} ${
             x.bookingId || ""
           } ${x.id} ${bm?.clientName || ""} ${bm?.bookingRef || ""} ${paymentSummary}`.toLowerCase();
         return a.includes(qq);
       })
-      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      .sort((a, b) => effectiveDateOf(b).localeCompare(effectiveDateOf(a)));
   }, [items, q, fMethod, from, to, bookingMetaById]);
 
   const rowBookingMeta = (item: IncomeItem) => {
     const linkedBookingId = resolveLinkedBookingId(item);
     return bookingMetaById[linkedBookingId];
+  };
+
+  const rowEffectiveDate = (item: IncomeItem) => {
+    const bm = rowBookingMeta(item);
+    return normalizeISODate(bm?.bookingDate) || normalizeISODate(item.date) || String(item.date || "").trim();
   };
 
   const rowEffectiveAmount = (item: IncomeItem) => {
@@ -877,7 +895,8 @@ export default function DashboardIncome() {
   };
 
   const exportCsv = () => {
-    const csv = toCsv(filtered);
+    const csvRows = filtered.map((x) => ({ ...x, date: rowEffectiveDate(x) }));
+    const csv = toCsv(csvRows);
     downloadTextFile(`income_${todayISO()}.csv`, csv);
   };
 
@@ -1134,7 +1153,7 @@ export default function DashboardIncome() {
                         : "income-payment-line-paid";
                     return (
                       <tr key={x.id} className={"income-row income-row-" + x.method}>
-                        <td className="income-col-date income-date">{x.date}</td>
+                        <td className="income-col-date income-date">{rowEffectiveDate(x)}</td>
                         <td className="income-col-amount">
                           <span className="income-amount">
                             {(Number(amountToShow) || 0).toLocaleString()} ريال
@@ -1246,7 +1265,7 @@ export default function DashboardIncome() {
                   <article className="income-mobile-card" key={"mob_" + x.id}>
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">التاريخ</span>
-                      <span className="income-mobile-value income-mobile-value--date">{x.date}</span>
+                      <span className="income-mobile-value income-mobile-value--date">{rowEffectiveDate(x)}</span>
                     </div>
                     <div className="income-mobile-row">
                       <span className="income-mobile-label">المبلغ</span>

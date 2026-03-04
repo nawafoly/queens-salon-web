@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../services/firebase";
 import "../styles/DashboardDayAudit.css";
 
@@ -84,17 +84,39 @@ function escapeHtml(value: unknown): string {
 
 function normalizeAuditPaymentMethod(rawMethod: unknown, rawNote: unknown): PaymentChannel {
   const method = String(rawMethod ?? "").toLowerCase().trim();
-  if (method === "cash" || method === "كاش" || method === "نقد") return "cash";
+
+  if (method === "cash" || method === "\u0646\u0642\u062f" || method === "\u0643\u0627\u0634") return "cash";
+
   if (
     method === "card" ||
     method === "pos_card" ||
     method === "mada_online" ||
-    method === "شبكة" ||
-    method === "مدى"
+    method === "network" ||
+    method === "mada" ||
+    method === "visa" ||
+    method === "mastercard" ||
+    method === "master_card" ||
+    method === "credit_card" ||
+    method === "debit_card" ||
+    method === "apple_pay" ||
+    method === "applepay" ||
+    method === "tap" ||
+    method === "\u0634\u0628\u0643\u0629" ||
+    method === "\u0645\u062f\u0649"
   ) {
     return "card";
   }
-  if (method === "transfer" || method === "تحويل" || method === "بنكي") return "transfer";
+
+  if (/(card|network|mada|visa|master|pos|apple|credit|debit)/.test(method)) return "card";
+
+  if (
+    method === "transfer" ||
+    method === "bank_transfer" ||
+    method === "\u062a\u062d\u0648\u064a\u0644" ||
+    method === "\u0628\u0646\u0643\u064a"
+  ) {
+    return "transfer";
+  }
 
   const note = String(rawNote ?? "").toLowerCase();
   if (note.includes("payment_method:cash") || note.includes("invoice_from_reception:cash")) return "cash";
@@ -102,11 +124,12 @@ function normalizeAuditPaymentMethod(rawMethod: unknown, rawNote: unknown): Paym
   if (note.includes("payment_method:transfer") || note.includes("invoice_from_reception:transfer")) {
     return "transfer";
   }
-  if (note.includes("شبكة") || note.includes("مدى") || /\bcard\b/.test(note)) return "card";
-  if (note.includes("كاش") || note.includes("نقد") || /\bcash\b/.test(note)) return "cash";
-  if (note.includes("تحويل") || note.includes("بنكي") || /\btransfer\b|\bbank\b/.test(note)) {
-    return "transfer";
+
+  if (/(network|mada|visa|mastercard|master|credit|debit|pos|apple ?pay|card|\u0634\u0628\u0643\u0629|\u0645\u062f\u0649|\u0628\u0637\u0627\u0642\u0629)/.test(note)) {
+    return "card";
   }
+  if (/(cash|\u0646\u0642\u062f|\u0643\u0627\u0634)/.test(note)) return "cash";
+  if (/(transfer|bank|\u062a\u062d\u0648\u064a\u0644|\u0628\u0646\u0643\u064a)/.test(note)) return "transfer";
 
   return "transfer";
 }
@@ -133,6 +156,8 @@ function resolveAuditPaidAmount(raw: Record<string, unknown>): number {
   const normalizedType = normalizePaymentType(raw?.paymentType);
   const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
   const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
+  const hasExplicitRemaining = Number.isFinite(Number(raw?.remainingAmount));
+  const explicitRemaining = hasExplicitRemaining ? Number(raw?.remainingAmount) : NaN;
   const status = String(raw?.status || "").trim().toLowerCase();
   const isRevenueStatus = status === "confirmed" || status === "completed";
 
@@ -140,6 +165,8 @@ function resolveAuditPaidAmount(raw: Record<string, unknown>): number {
   let paidAmount: number;
   if (hasExplicitPaid) {
     paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
+  } else if (hasExplicitRemaining) {
+    paidAmount = Math.max(0, Math.min(totalAmount, totalAmount - explicitRemaining));
   } else if (paymentType === "partial") {
     paidAmount = 0;
   } else {
@@ -152,6 +179,90 @@ function resolveAuditPaidAmount(raw: Record<string, unknown>): number {
     paymentType = paidAmount >= totalAmount ? "full" : "partial";
   }
   return Math.round(Math.max(0, Math.min(totalAmount, paidAmount)) * 100) / 100;
+}
+
+function toMillisSafe(v: unknown): number {
+  if (typeof v === "number") return v;
+  if (v && typeof (v as any).toMillis === "function") return (v as any).toMillis();
+  if (v && typeof (v as any).seconds === "number") return Number((v as any).seconds) * 1000;
+  const parsed = Date.parse(String(v || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeIsoDateLoose(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const strict = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (strict) return `${strict[1]}-${strict[2]}-${strict[3]}`;
+  const withPrefix = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (withPrefix?.[1]) return withPrefix[1];
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return "";
+  return todayISO(new Date(parsed));
+}
+
+function normalizeIncomeSource(rawSource: unknown): string {
+  return String(rawSource || "").trim().toLowerCase();
+}
+
+function isSystemBookingSource(source: string): boolean {
+  return (
+    source === "booking" ||
+    source === "invoice" ||
+    source === "\u062d\u062c\u0632" ||
+    source === "\u0641\u0627\u062a\u0648\u0631\u0629"
+  );
+}
+
+function resolveIncomeBookingId(raw: Record<string, unknown>, docId: string): string {
+  const explicitBookingId = String(raw?.bookingId || "").trim();
+  if (explicitBookingId) return explicitBookingId;
+
+  const source = normalizeIncomeSource(raw?.source);
+  if (!isSystemBookingSource(source)) return "";
+  return String(docId || "").trim();
+}
+
+function resolveIncomeDateForAudit(raw: Record<string, unknown>, bookingDateOverride?: string): string {
+  const bookingDate = normalizeIsoDateLoose(bookingDateOverride);
+  if (bookingDate) return bookingDate;
+
+  const explicit = normalizeIsoDateLoose(raw?.date);
+  if (explicit) return explicit;
+
+  const createdAtMs = toMillisSafe(raw?.createdAt ?? raw?.updatedAt);
+  const createdISO = createdAtMs > 0 ? todayISO(new Date(createdAtMs)) : "";
+  return createdISO;
+}
+
+function isBookingIncomeRow(raw: Record<string, unknown>): boolean {
+  const source = normalizeIncomeSource(raw?.source);
+  if (
+    isSystemBookingSource(source) ||
+    source === "refund" ||
+    source === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639"
+  ) {
+    return true;
+  }
+  return !!String(raw?.bookingId || "").trim();
+}
+
+function isVoidedIncomeStatus(rawStatus: unknown): boolean {
+  const status = String(rawStatus || "").trim().toLowerCase();
+  return status === "voided" || status === "void" || status === "cancelled" || status === "canceled";
+}
+
+function resolveIncomeAuditIdentity(raw: Record<string, unknown>, docId: string, amount: number): string {
+  const source = normalizeIncomeSource(raw?.source);
+  const bookingId = resolveIncomeBookingId(raw, docId);
+  const isRefund =
+    source === "refund" ||
+    source === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639" ||
+    String(docId || "").startsWith("refund_") ||
+    amount < 0;
+
+  if (bookingId) return `${isRefund ? "refund" : "booking"}:${bookingId}`;
+  return `doc:${String(docId || "").trim() || "unknown"}`;
 }
 
 function loadLockMap(): Record<string, LockSnapshot> {
@@ -171,6 +282,8 @@ function saveLockMap(next: Record<string, LockSnapshot>) {
 
 export default function DashboardDayAudit() {
   const [todayKey, setTodayKey] = useState(() => todayISO());
+  const [todayLimitKey, setTodayLimitKey] = useState(() => todayISO());
+  const [bookingDateById, setBookingDateById] = useState<Record<string, string>>({});
   const [revenueLive, setRevenueLive] = useState<RevenueBreakdown>({
     total: 0,
     cash: 0,
@@ -195,41 +308,72 @@ export default function DashboardDayAudit() {
 
   useEffect(() => {
     const t = window.setInterval(() => {
-      setTodayKey((prev) => {
-        const next = todayISO();
-        if (prev !== next) {
-          setManualCashInput("");
-          setErrorText("");
-        }
-        return next;
-      });
+      setTodayLimitKey(todayISO());
     }, 60_000);
     return () => window.clearInterval(t);
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, "salons", SALON_ID, "bookings"), where("date", "==", todayKey));
+    const bookingsCol = collection(db, "salons", SALON_ID, "bookings");
+    const unsub = onSnapshot(bookingsCol, (snap) => {
+      const next: Record<string, string> = {};
+      snap.docs.forEach((d) => {
+        const raw = d.data() as Record<string, unknown>;
+        const iso = normalizeIsoDateLoose(raw?.date);
+        if (iso) next[String(d.id || "").trim()] = iso;
+      });
+      setBookingDateById(next);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const incomeCol = collection(db, "salons", SALON_ID, "income");
     const unsub = onSnapshot(
-      q,
+      incomeCol,
       (snap) => {
         let total = 0;
         let cash = 0;
         let card = 0;
         let transfer = 0;
+        const dedupRows = new Map<
+          string,
+          { amount: number; method: PaymentChannel; sortMs: number }
+        >();
 
         snap.docs.forEach((d) => {
           const x = d.data() as Record<string, unknown>;
-          const status = String(x?.status || "").toLowerCase().trim();
-          if (status !== "confirmed" && status !== "completed") return;
+          if (!isBookingIncomeRow(x)) return;
+          if (isVoidedIncomeStatus(x?.status)) return;
+          const docId = String(d.id || "").trim();
+          const source = normalizeIncomeSource(x?.source);
+          const bookingId = resolveIncomeBookingId(x, docId);
+          const bookingDate = isSystemBookingSource(source) && bookingId ? bookingDateById[bookingId] : "";
+          if (resolveIncomeDateForAudit(x, bookingDate) !== todayKey) return;
 
-          const amount = resolveAuditPaidAmount(x);
-          if (amount <= 0) return;
-          total += amount;
+          const amount = Math.round(toNum(x?.amount) * 100) / 100;
+          if (!Number.isFinite(amount) || amount === 0) return;
 
-          const method = normalizeAuditPaymentMethod(x?.paymentMethod, x?.note);
-          if (method === "cash") cash += amount;
-          else if (method === "card") card += amount;
-          else transfer += amount;
+          const method = normalizeAuditPaymentMethod(x?.method ?? x?.paymentMethod, x?.note);
+          const identity = resolveIncomeAuditIdentity(x, docId, amount);
+          const sortMs = Math.max(toMillisSafe(x?.updatedAt), toMillisSafe(x?.createdAt));
+          const prev = dedupRows.get(identity);
+          if (!prev || sortMs >= prev.sortMs) {
+            dedupRows.set(identity, { amount, method, sortMs });
+          }
+        });
+
+        dedupRows.forEach((row) => {
+          if (row.method === "cash") {
+            cash += row.amount;
+            total += row.amount;
+          } else if (row.method === "card") {
+            card += row.amount;
+            total += row.amount;
+          } else {
+            // transfer is informational only and does not enter day lock totals
+            transfer += row.amount;
+          }
         });
 
         setRevenueLive({ total, cash, card, transfer });
@@ -238,7 +382,7 @@ export default function DashboardDayAudit() {
       () => setLoadedDateKey(todayKey)
     );
     return () => unsub();
-  }, [todayKey]);
+  }, [todayKey, bookingDateById]);
 
   const dateLabel = useMemo(() => {
     const m = todayKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -246,6 +390,15 @@ export default function DashboardDayAudit() {
     const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
     return new Intl.DateTimeFormat("ar-SA", { dateStyle: "short" }).format(dt);
   }, [todayKey]);
+
+  const applyDateSelection = (rawDate: string) => {
+    const raw = String(rawDate || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
+    const bounded = raw > todayLimitKey ? todayLimitKey : raw;
+    setErrorText("");
+    setManualCashInput("");
+    setTodayKey(bounded);
+  };
 
   const closePendingAuditPrintPopup = () => {
     const popup = pendingPrintPopupRef.current;
@@ -291,18 +444,12 @@ export default function DashboardDayAudit() {
     const lockedRow = payload.isLocked
       ? `<tr><td>وقت الإغلاق</td><td>${escapeHtml(payload.lockTimeLabel)}</td></tr>`
       : "";
-    const cardRow =
-      payload.cardRevenue > 0
-        ? `<div class="summary-row"><span>إيراد الشبكة</span><strong>${escapeHtml(
-            formatAmount(payload.cardRevenue)
-          )}</strong></div>`
-        : "";
-    const transferRow =
-      payload.transferRevenue > 0
-        ? `<div class="summary-row"><span>إيراد التحويل</span><strong>${escapeHtml(
-            formatAmount(payload.transferRevenue)
-          )}</strong></div>`
-        : "";
+    const cardRow = `<div class="summary-row"><span>إيراد الشبكة</span><strong>${escapeHtml(
+      formatAmount(payload.cardRevenue)
+    )}</strong></div>`;
+    const transferRow = `<div class="summary-row"><span>إيراد التحويل (خارج القفل)</span><strong>${escapeHtml(
+      formatAmount(payload.transferRevenue)
+    )}</strong></div>`;
 
     return `<!doctype html>
 <html lang="ar" dir="rtl">
@@ -399,7 +546,7 @@ export default function DashboardDayAudit() {
     </table>
     <div class="summary">
       <div class="summary-row">
-        <span>إيراد الحجوزات (الكل)</span>
+        <span>إيراد الجرد (الكاش + الشبكة)</span>
         <strong>${escapeHtml(formatAmount(payload.totalRevenue))}</strong>
       </div>
       <div class="summary-row">
@@ -535,8 +682,28 @@ export default function DashboardDayAudit() {
       <div className="day-audit-card" id="day-audit-print">
         <div className="day-audit-head">
           <div className="day-audit-head-main">
-            <h2>جرد اليوم</h2>
-            <p>اطبع ملخص اليوم وأدخل مبلغ الكاش لليوم قبل الطباعة والإغلاق.</p>
+            <h2>جرد يوم</h2>
+            <p>اختر تاريخ الجرد، وأدخل مبلغ الكاش الفعلي قبل الطباعة والإغلاق.</p>
+            <div className="day-audit-date-controls no-print">
+              <label htmlFor="day-audit-date">تاريخ الجرد</label>
+              <div className="day-audit-date-row">
+                <input
+                  id="day-audit-date"
+                  type="date"
+                  value={todayKey}
+                  max={todayLimitKey}
+                  onChange={(e) => applyDateSelection(String(e.target.value || ""))}
+                />
+                <button
+                  type="button"
+                  className="day-audit-btn day-audit-btn--ghost day-audit-btn--mini"
+                  onClick={() => applyDateSelection(todayLimitKey)}
+                  disabled={todayKey === todayLimitKey}
+                >
+                  اليوم
+                </button>
+              </div>
+            </div>
           </div>
           <div className={`day-audit-badge ${lock ? "is-locked" : "is-open"}`}>
             {lock ? "مقفل" : "مفتوح"}
@@ -555,7 +722,7 @@ export default function DashboardDayAudit() {
             <div className="day-audit-kpi-value">{dateLabel}</div>
           </div>
           <div className="day-audit-kpi day-audit-kpi--revenue">
-            <div className="day-audit-kpi-label">إيراد الحجوزات (مؤكد + مكتمل)</div>
+            <div className="day-audit-kpi-label">إيراد الجرد (الكاش + الشبكة)</div>
             <div className="day-audit-kpi-value">
               {loading ? "جاري التحميل..." : formatAmount(bookingsRevenue)}
             </div>
@@ -597,25 +764,21 @@ export default function DashboardDayAudit() {
 
         <div className="day-audit-summary">
           <div className="day-audit-summary-row day-audit-summary-row--revenue">
-            <span>إيراد الحجوزات (الكل)</span>
+            <span>إيراد الجرد (الكاش + الشبكة)</span>
             <strong>{formatAmount(bookingsRevenue)}</strong>
           </div>
           <div className="day-audit-summary-row day-audit-summary-row--cash-bookings">
             <span>إيراد الكاش</span>
             <strong>{formatAmount(cashRevenue)}</strong>
           </div>
-          {cardRevenue > 0 && (
-            <div className="day-audit-summary-row day-audit-summary-row--card">
-              <span>إيراد الشبكة</span>
-              <strong>{formatAmount(cardRevenue)}</strong>
-            </div>
-          )}
-          {transferRevenue > 0 && (
-            <div className="day-audit-summary-row day-audit-summary-row--transfer">
-              <span>إيراد التحويل</span>
-              <strong>{formatAmount(transferRevenue)}</strong>
-            </div>
-          )}
+          <div className="day-audit-summary-row day-audit-summary-row--card">
+            <span>إيراد الشبكة</span>
+            <strong>{formatAmount(cardRevenue)}</strong>
+          </div>
+          <div className="day-audit-summary-row day-audit-summary-row--transfer">
+            <span>إيراد التحويل (خارج القفل)</span>
+            <strong>{formatAmount(transferRevenue)}</strong>
+          </div>
           <div className="day-audit-summary-row day-audit-summary-row--cash">
             <span>الكاش اليدوي</span>
             <strong>{formatAmount(manualCash)}</strong>

@@ -414,6 +414,13 @@ function round2(v: number): number {
   return Math.round((Number(v) || 0) * 100) / 100;
 }
 
+function localISODate(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function resolveBookingPaymentState(raw: any): {
   paymentType: BookingPaymentType;
   paidAmount: number;
@@ -1042,6 +1049,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const incomeAmount = paymentState.paidAmount;
   const incomeMethod = resolvedPaymentMethod || "transfer";
   const incomeStatus = statusNow === "completed" ? "completed" : "confirmed";
+  const incomeDateOnCreate = normalizeISODate(data.date) || localISODate();
 
   // ✅✅✅ FIX: reads before writes inside transaction
   const { bookingId, publicId } = await runTransaction(db, async (tx) => {
@@ -1154,7 +1162,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
           amount: incomeAmount,
           status: incomeStatus,
           method: incomeMethod,
-          date: data.date,
+          date: incomeDateOnCreate,
           clientName: data.clientName,
           clientNameLower: String(data.clientName || "").toLowerCase(),
           clientPhone: data.clientPhone,
@@ -1939,6 +1947,7 @@ if (status === "confirmed" || status === "completed") {
   // ✅ 2) Best-effort: income خارج الترانزاكشن (ما يمنع تعديل الحجز)
   try {
     const bookingForIncome = txResult.booking;
+    const incomeDateNow = normalizeISODate(bookingForIncome.date) || localISODate();
     const resolvedPaymentMethod =
       txResult.resolvedPaymentMethod ||
       resolvePaymentMethodForStatus(status, (bookingForIncome as any).paymentMethod, bookingForIncome.note) ||
@@ -1968,7 +1977,7 @@ if (status === "confirmed" || status === "completed") {
             status: "confirmed",
             method: resolvedPaymentMethod,
 
-            date: bookingForIncome.date,
+            date: incomeDateNow,
             clientName: bookingForIncome.clientName,
             clientPhone: bookingForIncome.clientPhone,
 
@@ -1991,7 +2000,7 @@ if (status === "confirmed" || status === "completed") {
               amount: Number(amount || 0),
               status: "confirmed",
               method: resolvedPaymentMethod,
-              date: bookingForIncome.date,
+              date: incomeDateNow,
               clientName: bookingForIncome.clientName,
               clientPhone: bookingForIncome.clientPhone,
               serviceName:
@@ -2046,7 +2055,7 @@ if (status === "confirmed" || status === "completed") {
               amount: Number(amount || 0),
               status: "completed",
               method: resolvedPaymentMethod,
-              date: bookingForIncome.date,
+              date: incomeDateNow,
               clientName: bookingForIncome.clientName,
               clientPhone: bookingForIncome.clientPhone,
               serviceName:
@@ -2185,10 +2194,19 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
       const incomeRefs = new Map<string, any>();
       const primaryIncomeRef = doc(db, ...INCOME_COL, bookingId);
       const primaryIncomeSnap = await getDoc(primaryIncomeRef);
+      let existingIncomeDate = "";
+      if (primaryIncomeSnap.exists()) {
+        existingIncomeDate = String((primaryIncomeSnap.data() as any)?.date || "").trim();
+      }
       if (primaryIncomeSnap.exists()) incomeRefs.set(primaryIncomeRef.id, primaryIncomeRef);
       const linkedIncomeQ = query(collection(db, ...INCOME_COL), where("bookingId", "==", bookingId));
       const linkedIncomeSnap = await getDocs(linkedIncomeQ);
-      linkedIncomeSnap.docs.forEach((d) => incomeRefs.set(d.id, d.ref));
+      linkedIncomeSnap.docs.forEach((d) => {
+        if (!existingIncomeDate) {
+          existingIncomeDate = String((d.data() as any)?.date || "").trim();
+        }
+        incomeRefs.set(d.id, d.ref);
+      });
 
       const freshSnap = await getDoc(bookingRef);
       const freshBooking = freshSnap.exists() ? normalizeBooking(freshSnap.data()) : null;
@@ -2207,6 +2225,7 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
       const method = normalizePaymentMethod(
         (freshBooking as any)?.paymentMethod ?? patch.paymentMethod
       ) || "transfer";
+      const bookingDateISO = normalizeISODate(freshBooking?.date);
       const serviceName = String(
         freshBooking?.serviceSnapshot?.serviceNameAtBooking ??
           freshBooking?.serviceName ??
@@ -2219,7 +2238,7 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
         amount: Number(getAmount((freshBooking || {}) as BookingDoc) || 0),
         status: freshStatus,
         method,
-        date: String(freshBooking?.date || "").trim(),
+        date: bookingDateISO || existingIncomeDate || localISODate(),
         clientName: String(freshBooking?.clientName || "").trim(),
         clientNameLower: String(freshBooking?.clientName || "").toLowerCase().trim(),
         clientPhone: String(freshBooking?.clientPhone || "").trim(),

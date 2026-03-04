@@ -6598,7 +6598,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               await upsertIncomeFS(
                 {
                   id: String(groupRes.parentId || "").trim(),
-                  date: todayISO(),
+                  date: normalizeIsoDate(runDateISO) || todayISO(),
                   amount: Number(groupPayment.paidAmount || 0),
                   method: incomeMethod as any,
                   source: "booking",

@@ -742,6 +742,14 @@ export default function DashboardReports() {
     return map;
   }, [bookings]);
 
+  const incomeEffectiveDate = (item: IncomeRow): string => {
+    const linkedBookingId = resolveLinkedBookingId(item);
+    const bookingDate = linkedBookingId ? String(bookingById[linkedBookingId]?.date || "").trim() : "";
+    if (isIsoDate(bookingDate)) return bookingDate;
+    const rowDate = String(item.date || "").trim();
+    return isIsoDate(rowDate) ? rowDate : "";
+  };
+
   const bookingMetaById = useMemo(() => {
     const map: Record<string, BookingMeta> = {};
     bookings.forEach((b) => {
@@ -759,7 +767,8 @@ export default function DashboardReports() {
 
   const incomeRowsInRange = useMemo(() => {
     return incomeRows.filter((x) => {
-      if (!inDateRange(x.date, range.from, range.to)) return false;
+      const effectiveDate = incomeEffectiveDate(x);
+      if (!inDateRange(effectiveDate, range.from, range.to)) return false;
       if (incomeMethodFilter !== "all" && x.method !== incomeMethodFilter) return false;
       const kind = sourceKind(x.source);
       if (incomeSourceFilter !== "all" && kind !== incomeSourceFilter) return false;
@@ -776,7 +785,7 @@ export default function DashboardReports() {
       }
       return true;
     });
-  }, [incomeRows, range.from, range.to, incomeMethodFilter, incomeSourceFilter, incomeStatusFilter]);
+  }, [incomeRows, range.from, range.to, incomeMethodFilter, incomeSourceFilter, incomeStatusFilter, bookingById]);
 
   const payrollMonthKeys = useMemo(() => {
     const set = new Set<string>();
@@ -786,6 +795,10 @@ export default function DashboardReports() {
     });
     expenses.forEach((x) => {
       const mk = monthKeyFromIsoDate(String(x.date || ""));
+      if (mk) set.add(mk);
+    });
+    incomeRows.forEach((x) => {
+      const mk = monthKeyFromIsoDate(incomeEffectiveDate(x));
       if (mk) set.add(mk);
     });
     monthKeysBetween(range.from, range.to).forEach((mk) => set.add(mk));
@@ -805,7 +818,7 @@ export default function DashboardReports() {
       if (next) expanded.add(next);
     });
     return Array.from(expanded).sort((a, b) => a.localeCompare(b));
-  }, [bookings, expenses, range.from, range.to]);
+  }, [bookings, expenses, range.from, range.to, incomeRows, bookingById]);
 
   const autoPayrollExpenses = useMemo<ExpenseRow[]>(() => {
     if (!staffRows.length || !payrollMonthKeys.length) return [];
@@ -903,7 +916,7 @@ export default function DashboardReports() {
         const linkedMeta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
         return {
           id: `income_${x.id}`,
-          date: x.date,
+          date: incomeEffectiveDate(x),
           time: x.time || "-",
           source: kind,
           mkRef: linkedMeta?.bookingRef || toBookingRef(linkedBooking?.publicId),
@@ -938,7 +951,7 @@ export default function DashboardReports() {
 
     const filteredIncomeByMonth = (key: string) =>
       incomeRows.filter((x) => {
-        if (!String(x.date || "").startsWith(`${key}-`)) return false;
+        if (!incomeEffectiveDate(x).startsWith(`${key}-`)) return false;
         if (incomeMethodFilter !== "all" && x.method !== incomeMethodFilter) return false;
         const kind = sourceKind(x.source);
         if (incomeSourceFilter !== "all" && kind !== incomeSourceFilter) return false;
@@ -998,6 +1011,7 @@ export default function DashboardReports() {
     range.to,
     incomeRows,
     expensesWithPayroll,
+    bookingById,
     bookingMetaById,
     incomeMethodFilter,
     incomeSourceFilter,

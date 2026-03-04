@@ -41,6 +41,43 @@
   font-weight: 700;
 }
 
+.day-audit-date-controls {
+  margin-top: 10px;
+}
+
+.day-audit-date-controls label {
+  display: block;
+  margin: 0 0 6px;
+  color: #0d0d0d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.day-audit-date-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.day-audit-date-row input[type="date"] {
+  min-width: 190px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(64, 1, 13, 0.2);
+  background: #fff;
+  padding: 0 10px;
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.day-audit-date-row input[type="date"]:focus {
+  outline: none;
+  border-color: rgba(64, 1, 13, 0.36);
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.1);
+}
+
 .day-audit-badge {
   padding: 8px 14px;
   border-radius: 999px;
@@ -250,6 +287,12 @@
   transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
+.day-audit-btn--mini {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
 .day-audit-btn:hover:not(:disabled) {
   transform: translateY(-1px);
 }
@@ -315,6 +358,16 @@
   }
 
   .day-audit-btn {
+    width: 100%;
+  }
+
+  .day-audit-date-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .day-audit-date-row input[type="date"] {
+    min-width: 0;
     width: 100%;
   }
 }

@@ -309,6 +309,8 @@ function resolveBookingPayment(raw: any): {
   const normalizedType = normalizePaymentType(raw?.paymentType);
   const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
   const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
+  const hasExplicitRemaining = Number.isFinite(Number(raw?.remainingAmount));
+  const explicitRemaining = hasExplicitRemaining ? Number(raw?.remainingAmount) : NaN;
   const status = String(raw?.status || "").trim().toLowerCase();
   const isRevenueStatus = status === "confirmed" || status === "completed";
 
@@ -316,6 +318,8 @@ function resolveBookingPayment(raw: any): {
   let paidAmount: number;
   if (hasExplicitPaid) {
     paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
+  } else if (hasExplicitRemaining) {
+    paidAmount = Math.max(0, Math.min(totalAmount, totalAmount - explicitRemaining));
   } else if (paymentType === "partial") {
     paidAmount = 0;
   } else {
@@ -336,18 +340,57 @@ function resolveBookingPayment(raw: any): {
   };
 }
 
+function hasReliableBookingPayment(raw: any): boolean {
+  if (Number.isFinite(Number(raw?.paidAmount))) return true;
+  if (Number.isFinite(Number(raw?.remainingAmount))) return true;
+  const normalizedType = normalizePaymentType(raw?.paymentType);
+  const status = String(raw?.status || "").trim().toLowerCase();
+  const isRevenueStatus = status === "confirmed" || status === "completed";
+  return normalizedType === "full" && isRevenueStatus;
+}
+
 function resolveLinkedBookingIdFromIncome(item: any): string {
   const explicit = String(item?.bookingId || "").trim();
   if (explicit) return explicit;
   const source = String(item?.source || "").trim().toLowerCase();
-  if (source === "booking" || source === "حجز") return String(item?.id || "").trim();
+  if (source === "booking" || source === "\u062d\u062c\u0632") return String(item?.id || "").trim();
   return "";
+}
+
+function isoDayIndex(iso: string): number {
+  const m = String(iso || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return NaN;
+  return Math.floor(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86_400_000);
+}
+
+function isLikelySystemIncomeSource(sourceRaw: unknown): boolean {
+  const source = String(sourceRaw || "").trim().toLowerCase();
+  return (
+    source === "booking" ||
+    source === "invoice" ||
+    source === "\u062d\u062c\u0632" ||
+    source === "\u0641\u0627\u062a\u0648\u0631\u0629"
+  );
+}
+
+function resolveIncomeDateForTodayFilter(item: any): string {
+  const explicit = normalizeISODateLoose(item?.date);
+  const createdAtMs = toMillisSafe(item?.createdAt || item?.updatedAt);
+  const createdAtISO = createdAtMs > 0 ? formatLocalDateISO(new Date(createdAtMs)) : "";
+  return explicit || createdAtISO;
+}
+
+function isIncomeOnDate(item: any, targetDateISO: string): boolean {
+  const target = normalizeISODateLoose(targetDateISO);
+  if (!target) return false;
+  return resolveIncomeDateForTodayFilter(item) === target;
 }
 
 function resolveIncomeEffectiveAmount(item: any, bookingPaidById: Record<string, number>): number {
   const linkedBookingId = resolveLinkedBookingIdFromIncome(item);
   if (linkedBookingId && Object.prototype.hasOwnProperty.call(bookingPaidById, linkedBookingId)) {
-    return Number(bookingPaidById[linkedBookingId] || 0);
+    const resolved = Number(bookingPaidById[linkedBookingId]);
+    if (Number.isFinite(resolved)) return resolved;
   }
   return Number(item?.amount || 0);
 }
@@ -945,9 +988,16 @@ const Dashboard: React.FC = () => {
         const id = String(b?.id || "").trim();
         if (!id) return acc;
         const payment = resolveBookingPayment(b);
-        acc[id] = Number(payment.paidAmount || 0);
+        acc[id] = hasReliableBookingPayment(b) ? Number(payment.paidAmount || 0) : Number.NaN;
         return acc;
       }, {} as Record<string, number>);
+      const bookingDateById = docs.reduce((acc, b: any) => {
+        const id = String(b?.id || "").trim();
+        if (!id) return acc;
+        const dateISO = resolveBookingDateISO(b?.date, b?.createdAt, b?.updatedAt);
+        acc[id] = dateISO;
+        return acc;
+      }, {} as Record<string, string>);
 
       step = "bookings:mapFirestoreToUiBooking";
       const uiBookings = await Promise.all(docs.map(mapFirestoreToUiBooking));
@@ -984,6 +1034,11 @@ const Dashboard: React.FC = () => {
         const incomes = await listAllIncomeFS("main");
         const effectiveIncomeAmount = (x: any) =>
           resolveIncomeEffectiveAmount(x, bookingPaidById);
+        const effectiveIncomeDate = (x: any) => {
+          const linkedBookingId = resolveLinkedBookingIdFromIncome(x);
+          const linkedDate = String(bookingDateById[linkedBookingId] || "").trim();
+          return linkedDate || resolveIncomeDateForTodayFilter(x);
+        };
 
         step = "income:sum";
         const incomeTotal = incomes.reduce(
@@ -992,7 +1047,7 @@ const Dashboard: React.FC = () => {
         );
 
         todayRevenue = incomes
-          .filter((x: any) => String(x?.date || "").trim() === todayStr)
+          .filter((x: any) => normalizeISODateLoose(effectiveIncomeDate(x)) === todayStr)
           .reduce((sum: number, x: any) => sum + effectiveIncomeAmount(x), 0);
 
         setIncomeTotalFS(incomeTotal);
@@ -1009,7 +1064,7 @@ const Dashboard: React.FC = () => {
         setExpensesTotalFS(expensesTotal);
 
         const incomeToday = incomes
-          .filter((x: any) => String(x?.date || "").trim() === todayStr)
+          .filter((x: any) => normalizeISODateLoose(effectiveIncomeDate(x)) === todayStr)
           .reduce((sum: number, x: any) => sum + effectiveIncomeAmount(x), 0);
 
         const expensesToday = expenses
@@ -1029,7 +1084,7 @@ const Dashboard: React.FC = () => {
             String(x?.note || "").trim() ||
             financeSourceLabelAr(x?.source),
           amount: effectiveIncomeAmount(x),
-          date: String(x?.date || ""),
+          date: effectiveIncomeDate(x),
           createdAt: Number(x?.createdAt || 0) || Date.now(),
         }));
 

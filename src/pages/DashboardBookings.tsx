@@ -715,7 +715,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     method: "transfer",
     reason: "",
     details: "",
-    date: new Date().toISOString().slice(0, 10),
+    date: todayISOLocal(),
   });
   const saveHintTimerRef = useRef<number | null>(null);
   const [editTarget, setEditTarget] = useState<Booking | null>(null);
@@ -1374,10 +1374,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               ? `عربون: ${round2(paidAmount)} ر.س | المتبقي: ${remainingAmount} ر.س`
               : undefined;
 
+          const incomeDate = safeISODate(String(confirmTarget.date || "")) || todayISOLocal();
           await upsertIncomeFS({
             id: bookingId,
             bookingId,
-            date: new Date().toISOString().slice(0, 10),
+            date: incomeDate,
             amount: round2(paidAmount),
             method: syncMethod,
             source: "booking",
@@ -1660,7 +1661,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       method: existing?.method || fallbackMethod || "transfer",
       reason: existing?.reason || "",
       details: existing?.details || "",
-      date: existing?.date || new Date().toISOString().slice(0, 10),
+      date: existing?.date || todayISOLocal(),
     });
     setRefundError("");
     setRefundTarget(b);
@@ -1703,7 +1704,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setRefundError("");
       await upsertIncomeFS({
         id: `refund_${bookingId}`,
-        date: refundDraft.date || new Date().toISOString().slice(0, 10),
+        date: refundDraft.date || todayISOLocal(),
         amount: refundAmount,
         method,
         source: "استرجاع",
