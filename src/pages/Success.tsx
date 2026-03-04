@@ -24,7 +24,7 @@ import LoadingBrand from "../components/LoadingBrand";
 
 // Firestore
 import { collection, doc, getDoc, getDocs, limit, query, where } from "firebase/firestore";
-import { db } from "../services/firebase";
+import { auth, db } from "../services/firebase";
 import { getBookingById, getTrackById, getTrackByPublicId } from "../services/firestoreBookings";
 
 /* =========================
@@ -268,6 +268,19 @@ function formatNumberEn(value: number) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+function toMillisSafe(v: any) {
+  if (!v) return 0;
+  if (typeof v?.toMillis === "function") return Number(v.toMillis()) || 0;
+  if (typeof v?.seconds === "number") {
+    const sec = Number(v.seconds || 0);
+    const ns = Number(v.nanoseconds || 0);
+    return sec * 1000 + Math.floor(ns / 1_000_000);
+  }
+  if (typeof v === "number") return Number(v) || 0;
+  const parsed = Date.parse(String(v));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function buildWhatsappMessageAll(bookings: UiBookingView[]) {
   const lines: string[] = [];
   lines.push("مرحباً 🌷");
@@ -333,6 +346,94 @@ function mergeBookingRefs(refs: LocalBookingRef[]) {
     out.push({ id, bookingId, trackId, publicId });
   }
   return out;
+}
+
+function splitRefValues(raw: string) {
+  return String(raw || "")
+    .split(/[,\s|;]+/g)
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+}
+
+function readQueryBookingRefs(search: string): LocalBookingRef[] {
+  try {
+    const params = new URLSearchParams(String(search || ""));
+    const refs: LocalBookingRef[] = [];
+
+    const addRef = (partial: LocalBookingRef) => {
+      refs.push({
+        id: String(partial?.id || "").trim() || undefined,
+        bookingId: String(partial?.bookingId || "").trim() || undefined,
+        trackId: String(partial?.trackId || "").trim() || undefined,
+        publicId: String(partial?.publicId || "").trim() || undefined,
+      });
+    };
+
+    addRef({
+      id: params.get("id") || undefined,
+      bookingId: params.get("bookingId") || params.get("booking_id") || undefined,
+      trackId: params.get("trackId") || params.get("track_id") || undefined,
+      publicId: params.get("publicId") || params.get("public_id") || params.get("mk") || undefined,
+    });
+
+    const multiPublic = [
+      ...splitRefValues(params.get("publicIds") || ""),
+      ...splitRefValues(params.get("public_ids") || ""),
+      ...splitRefValues(params.get("mks") || ""),
+    ];
+    multiPublic.forEach((mk) => addRef({ publicId: mk }));
+
+    const multiIds = [
+      ...splitRefValues(params.get("bookingIds") || ""),
+      ...splitRefValues(params.get("booking_ids") || ""),
+      ...splitRefValues(params.get("ids") || ""),
+    ];
+    multiIds.forEach((id) => addRef({ id, bookingId: id, trackId: id }));
+
+    return mergeBookingRefs(refs);
+  } catch {
+    return [];
+  }
+}
+
+function readStateBookingRefs(state: unknown): LocalBookingRef[] {
+  try {
+    const raw = (state || {}) as Record<string, any>;
+    const refs: LocalBookingRef[] = [];
+    const addRef = (partial: LocalBookingRef) => {
+      refs.push({
+        id: String(partial?.id || "").trim() || undefined,
+        bookingId: String(partial?.bookingId || "").trim() || undefined,
+        trackId: String(partial?.trackId || "").trim() || undefined,
+        publicId: String(partial?.publicId || "").trim() || undefined,
+      });
+    };
+
+    addRef({
+      id: raw?.id,
+      bookingId: raw?.bookingId || raw?.booking_id,
+      trackId: raw?.trackId || raw?.track_id,
+      publicId: raw?.publicId || raw?.public_id || raw?.mk,
+    });
+
+    const rows = Array.isArray(raw?.bookings)
+      ? raw.bookings
+      : Array.isArray(raw?.allBookings)
+        ? raw.allBookings
+        : [];
+    rows.forEach((row: any) =>
+      addRef({
+        id: row?.id,
+        bookingId: row?.bookingId,
+        trackId: row?.trackId,
+        publicId: row?.publicId || row?.mk,
+      })
+    );
+
+    return mergeBookingRefs(refs);
+  } catch {
+    return [];
+  }
 }
 
 /** اقرأ allBookings (الجديد) ثم fallback لـ currentBooking (قديم) */
@@ -423,7 +524,15 @@ export default function Success() {
     localStorage.setItem(SUCCESS_MODE_KEY, successMode);
   }, [successMode]);
 
-  const bookingRefs = useMemo(() => readLocalBookingRefs(), []);
+  const bookingRefs = useMemo(
+    () =>
+      mergeBookingRefs([
+        ...readLocalBookingRefs(),
+        ...readQueryBookingRefs(location.search),
+        ...readStateBookingRefs(location.state),
+      ]),
+    [location.search, location.state]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -434,9 +543,81 @@ export default function Success() {
         setError("");
         setViews([]);
 
-        if (!bookingRefs.length) {
-          setError("رقم الحجز غير موجود");
-          return;
+        const recoverRecentBookings = async () => {
+          const out = new Map<string, any>();
+          const bookingsCol = collection(db, "salons", SALON_ID, "bookings");
+
+          const readCurrentBookingPhone = () => {
+            try {
+              const raw = localStorage.getItem(BOOKING_KEY);
+              const parsed = raw ? JSON.parse(raw) : null;
+              return String(parsed?.clientPhone || parsed?.phone || "").trim();
+            } catch {
+              return "";
+            }
+          };
+
+          const phoneCandidates = Array.from(
+            new Set(
+              [
+                readCurrentBookingPhone(),
+                String(localStorage.getItem("userPhone") || "").trim(),
+              ].filter(Boolean)
+            )
+          );
+
+          const pushSnap = (snap: any) => {
+            snap?.docs?.forEach((d: any) => {
+              const id = String(d?.id || "").trim();
+              if (!id || out.has(id)) return;
+              out.set(id, { id, ...(d.data() as any) });
+            });
+          };
+
+          const uid = String(auth.currentUser?.uid || "").trim();
+          if (uid) {
+            try {
+              const byUid = await getDocs(
+                query(bookingsCol, where("userId", "==", uid), limit(12))
+              );
+              pushSnap(byUid);
+            } catch {
+              // ignore uid fallback failure
+            }
+          }
+
+          for (const phone of phoneCandidates.slice(0, 4)) {
+            try {
+              const byPhone = await getDocs(
+                query(bookingsCol, where("clientPhone", "==", phone), limit(8))
+              );
+              pushSnap(byPhone);
+            } catch {
+              // ignore phone fallback failure
+            }
+          }
+
+          const rows = Array.from(out.values()).sort((a, b) => {
+            const aMs = Math.max(toMillisSafe(a?.createdAt), toMillisSafe(a?.updatedAt));
+            const bMs = Math.max(toMillisSafe(b?.createdAt), toMillisSafe(b?.updatedAt));
+            return bMs - aMs;
+          });
+
+          if (!rows.length) return [];
+          const nowMs = Date.now();
+          const recentRows = rows.filter((r) => {
+            const ms = Math.max(toMillisSafe(r?.createdAt), toMillisSafe(r?.updatedAt));
+            if (!ms) return false;
+            return nowMs - ms <= 7 * 24 * 60 * 60 * 1000;
+          });
+
+          return (recentRows.length ? recentRows : rows).slice(0, 6);
+        };
+
+        const recoveredWhenNoRefs = !bookingRefs.length ? await recoverRecentBookings() : [];
+        if (!bookingRefs.length && !recoveredWhenNoRefs.length) {
+            setError("رقم الحجز غير موجود");
+            return;
         }
 
         const results: UiBookingView[] = [];
@@ -608,8 +789,9 @@ export default function Success() {
           results.push({
             id: bookingIdResolved,
             publicId: normalizeMk(rawDoc.publicId || refHint?.publicId || ""),
-            clientName: rawDoc.clientName || "-",
-            clientPhone: rawDoc.clientPhone || "-",
+            clientName: String(rawDoc.clientName || rawDoc.customerName || rawDoc.name || "-").trim() || "-",
+            clientPhone:
+              String(rawDoc.clientPhone || rawDoc.phone || rawDoc.customerPhone || "-").trim() || "-",
 
             serviceId,
             serviceName: toArabicLabel(serviceNameRaw, "-"),
@@ -627,6 +809,16 @@ export default function Success() {
           });
           pushedIds.add(bookingIdResolved);
         };
+
+        if (!bookingRefs.length && recoveredWhenNoRefs.length) {
+          for (const row of recoveredWhenNoRefs) {
+            await pushBookingView(row, {
+              id: row?.id,
+              bookingId: row?.id,
+              publicId: row?.publicId,
+            });
+          }
+        }
 
         for (const ref of bookingRefs) {
           const docData: any = await resolveBookingDocFromRef(ref);
@@ -656,8 +848,18 @@ export default function Success() {
         }
 
         if (!results.length) {
-          setError("لم يتم العثور على الحجز");
-          return;
+          const recovered = await recoverRecentBookings();
+          if (!recovered.length) {
+            setError("لم يتم العثور على الحجز");
+            return;
+          }
+          for (const row of recovered) {
+            await pushBookingView(row, {
+              id: row?.id,
+              bookingId: row?.id,
+              publicId: row?.publicId,
+            });
+          }
         }
 
         results.sort((a, b) => {
