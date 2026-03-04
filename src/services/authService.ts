@@ -25,6 +25,20 @@ function cleanEmail(v: string) {
   return String(v || "").trim().toLowerCase();
 }
 
+function isClientPlaceholderName(raw: string) {
+  const normalized = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/ة/g, "ه");
+  return (
+    normalized === "عميله" ||
+    normalized === "client" ||
+    normalized === "user" ||
+    normalized === "مستخدم"
+  );
+}
+
 export async function loginWithEmail(email: string, password: string): Promise<User> {
   const e = cleanEmail(email);
   const p = String(password || "").trim();
@@ -63,10 +77,12 @@ export async function registerClientWithEmail(params: {
   city?: string;
   birthdate?: string;
 }): Promise<User> {
-  const name = String(params.name || "").trim() || "عميلة";
+  const name = String(params.name || "").trim();
   const email = cleanEmail(params.email);
   const password = String(params.password || "").trim();
 
+  if (!name) throw new Error("الاسم مطلوب.");
+  if (isClientPlaceholderName(name)) throw new Error("الرجاء كتابة الاسم الحقيقي.");
   if (!email || !email.includes("@")) throw new Error("صيغة البريد الإلكتروني غير صحيحة.");
   if (!password || password.length < 6) throw new Error("كلمة المرور لازم 6 أحرف على الأقل.");
 

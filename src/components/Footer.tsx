@@ -13,6 +13,9 @@ import {
 import logo from "../assets/images/ssunnamed.png";
 import "../styles/Footer.css";
 
+const INSTAGRAM_URL =
+  "https://www.instagram.com/malikat_sallon?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==";
+
 const Footer: React.FC = () => {
   return (
     <footer className="footer-dark" dir="rtl">
@@ -45,7 +48,7 @@ const Footer: React.FC = () => {
           <p>تواصلي الآن مع فريقنا المتخصص لاختيار أفضل الخدمات</p>
 
           <div className="social-links">
-            <a href="#" aria-label="Instagram" target="_blank" rel="noopener noreferrer">
+            <a href={INSTAGRAM_URL} aria-label="Instagram" target="_blank" rel="noopener noreferrer">
               <FontAwesomeIcon icon={faInstagram} />
             </a>
             <a href="#" aria-label="YouTube" target="_blank" rel="noopener noreferrer">

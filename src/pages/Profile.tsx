@@ -9,13 +9,13 @@ import {
   LuCalendarRange,
   LuClock3,
   LuHourglass,
+  LuHouse,
   LuIdCard,
   LuInstagram,
   LuImage,
   LuMapPin,
   LuPencil,
   LuPhone,
-  LuQrCode,
   LuReceipt,
   LuScissors,
   LuSettings,
@@ -50,7 +50,8 @@ function getWhatsAppLink(phoneDigits: string, msg: string) {
   return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(msg)}`;
 }
 
-const INSTAGRAM_URL = "https://instagram.com/";
+const INSTAGRAM_URL =
+  "https://www.instagram.com/malikat_sallon?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==";
 
 
 // =======================
@@ -1094,9 +1095,9 @@ const Profile: React.FC = () => {
           onClick={handleBottomProfile}
           aria-label="Profile Home"
         >
-          <LuQrCode />
+          <LuHouse />
         </button>
-        <a className="p-bottom-item is-instagram" href={INSTAGRAM_URL} target="_blank" rel="noreferrer" aria-label="Instagram">
+        <a className="p-bottom-item is-instagram" href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" aria-label="Instagram">
           <LuInstagram />
         </a>
         <button className="p-bottom-item" type="button" onClick={() => setShowEditModal(true)} aria-label="Settings">

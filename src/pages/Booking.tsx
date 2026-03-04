@@ -999,6 +999,16 @@ function normalizeSearchText(v: string) {
     .replace(/\s+/g, " ");
 }
 
+function isPlaceholderClientName(raw: string) {
+  const normalized = normalizeSearchText(raw).replace(/ة/g, "ه");
+  return (
+    normalized === "عميله" ||
+    normalized === "client" ||
+    normalized === "user" ||
+    normalized === "مستخدم"
+  );
+}
+
 function isManiPediSectionByInfo(sectionId: string, sectionTitle?: string) {
   const hay = normalizeSearchText(`${sectionId || ""} ${sectionTitle || ""}`);
   if (!hay) return false;
@@ -5992,6 +6002,20 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   // =========================
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    const customerName = String(formData.name || "").trim();
+    if (!customerName || isPlaceholderClientName(customerName)) {
+      openModal(
+        {
+          title: "الاسم غير مكتمل",
+          message: "قبل إتمام الحجز، حدّثي اسمك الحقيقي من الملف الشخصي.",
+          variant: "danger",
+          confirmText: "فتح الملف الشخصي",
+        },
+        () => navigate("/profile")
+      );
+      return;
+    }
 
     const phone = (formData.phone ?? "").replace(/\D/g, "");
     const isValidSaudiMobile = /^05\d{8}$/.test(phone);

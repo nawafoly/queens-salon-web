@@ -95,6 +95,12 @@ function buildDefaultName(role: UiRole) {
   return "مستخدم";
 }
 
+function buildPersistedDefaultName(role: UiRole) {
+  // Avoid persisting a generic placeholder for clients.
+  if (role === "client") return "";
+  return buildDefaultName(role);
+}
+
 function isPlaceholderName(name: string, role: UiRole) {
   const n = String(name || "").trim();
   if (!n) return true;
@@ -262,16 +268,19 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
 
     const dataName = safeStr(data?.name).trim();
     const dataDisplayName = safeStr(data?.displayName).trim();
+    const storedNameCandidate = dataName || dataDisplayName;
 
     let name =
-      dataName ||
-      dataDisplayName ||
+      storedNameCandidate ||
       authDisplayName ||
-      buildDefaultName(role);
+      buildPersistedDefaultName(role);
 
     // لو الاسم الموجود في الدوك افتراضي وعندنا displayName من Auth، خذ اسم Auth
-    if (authDisplayName && isPlaceholderName(dataName || dataDisplayName, role)) {
+    if (authDisplayName && isPlaceholderName(storedNameCandidate, role)) {
       name = authDisplayName;
+    }
+    if (role === "client" && !authDisplayName && isPlaceholderName(name, role)) {
+      name = "";
     }
 
 
@@ -308,8 +317,8 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     if (authDisplayName && isPlaceholderName(storedDisplayName, role)) patch.displayName = name;
     
     // لو كانت فاضية تمامًا
-    if (!storedName) patch.name = name;
-    if (!storedDisplayName) patch.displayName = name;
+    if (!storedName && name) patch.name = name;
+    if (!storedDisplayName && name) patch.displayName = name;
     
 
     // ✅ FIX: لو createdAt ناقص (حساب قديم) نكتبه مرة وحدة فقط
@@ -378,7 +387,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     if (role === "pending") active = false;
   }
 
-  const name = authDisplayName || buildDefaultName(role);
+  const name = authDisplayName || buildPersistedDefaultName(role);
 
   const membershipId =
     role === "client"

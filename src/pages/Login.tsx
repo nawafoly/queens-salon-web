@@ -17,7 +17,7 @@ import "../styles/Login.css";
 
 // ✅ Firebase Auth
 import { auth, db } from "../services/firebase";
-import { createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
+import { createUserWithEmailAndPassword, onAuthStateChanged, updateProfile } from "firebase/auth";
 
 // ✅ Firestore
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -108,6 +108,20 @@ function resolveStableAvatarUrl(raw: unknown): string {
   } catch {
     return "";
   }
+}
+
+function isClientPlaceholderName(raw: string) {
+  const normalized = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/ة/g, "ه");
+  return (
+    normalized === "عميله" ||
+    normalized === "client" ||
+    normalized === "user" ||
+    normalized === "مستخدم"
+  );
 }
 
 /**
@@ -366,14 +380,15 @@ const Login: React.FC = () => {
     localStorage.removeItem("currentUser");
 
     // ✅ دايم نخزن الأساسيات (جلسة)
-    const finalName =
-      String((profile as any).name || "").trim() ||
-      defaultNameByRole(String(uiRole));
+    const profileName = String((profile as any).name || "").trim();
+    const finalName = profileName || defaultNameByRole(String(uiRole));
+    const persistedSessionName = uiRole === "client" ? profileName : finalName;
 
     localStorage.setItem("authToken", "firebase");
     localStorage.setItem("userUid", String((profile as any).uid || ""));
     localStorage.setItem("userRole", String(uiRole));
-    localStorage.setItem("userName", finalName);
+    if (persistedSessionName) localStorage.setItem("userName", persistedSessionName);
+    else localStorage.removeItem("userName");
     localStorage.setItem("showWelcome", "true");
 
     if ((profile as any).email)
@@ -399,7 +414,7 @@ const Login: React.FC = () => {
         "user_profile_v1",
         JSON.stringify({
           ...(profile as any),
-          name: finalName,
+          name: profileName,
           avatarUrl: stableAvatar || (profile as any)?.avatarUrl || "",
         })
       );
@@ -532,10 +547,10 @@ const Login: React.FC = () => {
         // ✅ B) غير الإداري: عميلة (source of truth userProfile)
         const profileRaw = await createOrLoadUserProfile(authUser);
 
-        const fixedName =
-          (profileRaw.name || "").trim() || defaultNameByRole(profileRaw.role);
+        const rawProfileName = String(profileRaw.name || "").trim();
+        const fixedName = rawProfileName || defaultNameByRole(profileRaw.role);
 
-        if (!(profileRaw.name || "").trim()) {
+        if (!rawProfileName && profileRaw.role !== "client") {
           try {
             await updateUserProfile(profileRaw.uid, { name: fixedName } as any);
           } catch {
@@ -543,7 +558,10 @@ const Login: React.FC = () => {
           }
         }
 
-        const profile: UserProfile = { ...profileRaw, name: fixedName };
+        const profile: UserProfile = {
+          ...profileRaw,
+          name: rawProfileName || (profileRaw.role === "client" ? "" : fixedName),
+        };
 
         storeFirebaseSession(profile);
 
@@ -611,6 +629,20 @@ const Login: React.FC = () => {
     setErrorMsg(null);
     setSuccessMsg(null);
 
+    const trimmedName = String(registerData.name || "").trim();
+    const normalizedPhone = String(registerData.phone || "").trim();
+    const normalizedCity = String(registerData.city || "").trim();
+    const normalizedBirthdate = String(registerData.birthdate || "").trim();
+    const normalizedEmail = registerData.email.trim();
+
+    if (!trimmedName) {
+      setErrorMsg("الاسم الكامل مطلوب.");
+      return;
+    }
+    if (isClientPlaceholderName(trimmedName)) {
+      setErrorMsg("الرجاء كتابة اسمك الحقيقي بدل الاسم الافتراضي.");
+      return;
+    }
     if (!isPhone(registerData.phone)) {
       setErrorMsg("رقم الجوال يجب أن يبدأ بـ 05 ويكون مكون من 10 أرقام.");
       return;
@@ -630,12 +662,18 @@ const Login: React.FC = () => {
       // ✅ 1) إنشاء مستخدم في Firebase Auth
       const cred = await createUserWithEmailAndPassword(
         auth,
-        registerData.email.trim(),
+        normalizedEmail,
         registerData.password
       );
 
+      try {
+        await updateProfile(cred.user, { displayName: trimmedName });
+      } catch (e) {
+        console.warn("updateProfile displayName failed:", e);
+      }
+
       // ✅ 2) لو اليميل إداري @malikat.com → أنشئه Pending من users + staff_public (مو عميلة)
-      const email = cleanEmail(registerData.email);
+      const email = cleanEmail(normalizedEmail);
 
       if (isMalikatAdminEmail(email)) {
         let sp: {
@@ -651,16 +689,16 @@ const Login: React.FC = () => {
           sp = await ensureAdminSessionFromUsers({
             uid: cred.user.uid,
             email,
-            displayName: registerData.name.trim() || "",
+            displayName: trimmedName || "",
           });
         } catch (e) {
           console.warn("ensureAdminSessionFromUsers failed:", e);
           sp = {
             role: "pending",
             active: false,
-            name: registerData.name.trim() || "",
+            name: trimmedName || "",
             email,
-            phone: registerData.phone.trim() || "",
+            phone: normalizedPhone || "",
             staffDocId: cred.user.uid,
           };
         }
@@ -670,9 +708,9 @@ const Login: React.FC = () => {
         const profileForSession: any = {
           uid: cred.user.uid,
           role,
-          name: sp.name || registerData.name.trim() || defaultNameByRole(role),
+          name: sp.name || trimmedName || defaultNameByRole(role),
           email: sp.email || email,
-          phone: sp.phone || registerData.phone.trim() || "",
+          phone: sp.phone || normalizedPhone || "",
           staffDocId: sp.staffDocId,
         };
 
@@ -705,11 +743,11 @@ const Login: React.FC = () => {
       // ✅ 4) حدّث بيانات العميلة (بدون role)
       try {
         await updateUserProfile(profile.uid, {
-          name: registerData.name.trim(),
-          phone: registerData.phone.trim(),
-          city: (registerData.city || "").trim(),
-          birthdate: (registerData.birthdate || "").trim(),
-          email: registerData.email.trim(),
+          name: trimmedName,
+          phone: normalizedPhone,
+          city: normalizedCity,
+          birthdate: normalizedBirthdate,
+          email: normalizedEmail,
         } as any);
       } catch (e) {
         console.warn("updateUserProfile after register failed:", e);
@@ -761,7 +799,7 @@ const Login: React.FC = () => {
                 uid: u.uid,
                 email,
                 displayName:
-                  u.displayName || registerData.name.trim() || "",
+                  u.displayName || trimmedName || "",
               });
 
               const role: AdminRole = sp.active ? (sp.role as any) : "pending";
@@ -771,10 +809,10 @@ const Login: React.FC = () => {
                 role,
                 name:
                   sp.name ||
-                  registerData.name.trim() ||
+                  trimmedName ||
                   defaultNameByRole(role),
                 email: sp.email || email,
-                phone: sp.phone || registerData.phone.trim() || "",
+                phone: sp.phone || normalizedPhone || "",
                 staffDocId: sp.staffDocId,
               } as any);
 
