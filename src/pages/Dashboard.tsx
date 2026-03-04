@@ -97,6 +97,15 @@ type SectionKey =
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 type BusinessHoursDay = { enabled?: boolean; start?: string; end?: string };
 type BusinessHoursMap = Partial<Record<WeekdayKey, BusinessHoursDay>>;
+type BookingHourOverride = {
+  fromDate?: string;
+  toDate?: string;
+  mode?: "hours" | "closed";
+  start?: string;
+  end?: string;
+  includeWeekdays?: WeekdayKey[];
+  blockedWeekdays?: WeekdayKey[];
+};
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 function formatLocalDateISO(date: Date): string {
@@ -163,6 +172,8 @@ type AppSettings = {
   };
   booking?: {
     businessHours?: BusinessHoursMap;
+    bookingHourOverrides?: BookingHourOverride[];
+    autoCloseGraceMin?: number;
   };
 };
 
@@ -1245,6 +1256,7 @@ const Dashboard: React.FC = () => {
   // ملاحظة: إلغاء pending تلقائيًا يتم من السيرفر (Cloud Function) فقط
   // لتجنب الإلغاء الخاطئ بسبب ساعة/منطقة جهاز المتصفح.
   // ✅ حماية: يشتغل Owner/Admin فقط
+  // ✅ يعتمد على وقت التقفيلة الفعلي (اليومي + الاستثناءات) مع مهلة إضافية قبل قلب اليوم
   useEffect(() => {
     if (!userInfo) return;
 
@@ -1253,6 +1265,14 @@ const Dashboard: React.FC = () => {
 
     const role = userInfo.role; // ✅ ثبت الدور هنا عشان TS ما يقول userInfo ممكن null
     const businessHoursMap = (settings as any)?.booking?.businessHours || {};
+    const bookingHourOverrides = Array.isArray((settings as any)?.booking?.bookingHourOverrides)
+      ? ((settings as any).booking.bookingHourOverrides as BookingHourOverride[])
+      : [];
+    const configuredGrace = Number((settings as any)?.booking?.autoCloseGraceMin);
+    const autoCloseGraceMin =
+      Number.isFinite(configuredGrace) && configuredGrace >= 0
+        ? Math.trunc(configuredGrace)
+        : 30;
 
     let alive = true;
     let running = false;
@@ -1263,7 +1283,8 @@ const Dashboard: React.FC = () => {
       const hh = Number(m[1]);
       const mm = Number(m[2]);
       if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-      return { hh, mm };
+      if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+      return { hh, mm, totalMin: hh * 60 + mm };
     };
 
     const parseISODate = (dateStr: string) => {
@@ -1283,40 +1304,99 @@ const Dashboard: React.FC = () => {
       return JS_DAY_TO_WEEKDAY[dt.getDay()] || null;
     };
 
-    const toMinutesFromHHMM = (timeStr: string): number | null => {
+    const safeTimeHHMM = (timeStr: string, fallback: string): string => {
       const t = parseHHMM(timeStr);
-      if (!t) return null;
-      return t.hh * 60 + t.mm;
+      if (!t) return fallback;
+      return `${String(t.hh).padStart(2, "0")}:${String(t.mm).padStart(2, "0")}`;
+    };
+
+    const normalizeWeekdayList = (raw: any): WeekdayKey[] => {
+      if (!Array.isArray(raw)) return [];
+      const valid = new Set<WeekdayKey>(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
+      const out: WeekdayKey[] = [];
+      raw.forEach((x) => {
+        const day = String(x || "").trim().toLowerCase() as WeekdayKey;
+        if (valid.has(day) && !out.includes(day)) out.push(day);
+      });
+      return out;
+    };
+
+    const resolveDaySettings = (dateStr: string) => {
+      const dayKey = resolveWeekdayFromISO(dateStr) || "sat";
+      const dayCfg = (businessHoursMap as any)?.[dayKey] || {};
+
+      let enabled = dayCfg?.enabled !== false;
+      let openTime = safeTimeHHMM(String(dayCfg?.start || ""), "10:00");
+      let closeTime = safeTimeHHMM(String(dayCfg?.end || ""), "22:00");
+
+      for (let i = bookingHourOverrides.length - 1; i >= 0; i--) {
+        const ov = bookingHourOverrides[i] || {};
+        const rawFrom = String(ov?.fromDate || "").trim();
+        const rawTo = String(ov?.toDate || "").trim();
+        if (!parseISODate(rawFrom) || !parseISODate(rawTo)) continue;
+        const fromDate = rawFrom <= rawTo ? rawFrom : rawTo;
+        const toDate = rawFrom <= rawTo ? rawTo : rawFrom;
+        if (dateStr < fromDate || dateStr > toDate) continue;
+
+        const includeWeekdays = normalizeWeekdayList(ov?.includeWeekdays);
+        if (includeWeekdays.length > 0 && !includeWeekdays.includes(dayKey)) continue;
+
+        const blockedWeekdays = normalizeWeekdayList(ov?.blockedWeekdays);
+        const mode = String(ov?.mode || "hours").trim().toLowerCase();
+        if (blockedWeekdays.includes(dayKey) || mode === "closed") {
+          enabled = false;
+        } else {
+          enabled = true;
+          openTime = safeTimeHHMM(String(ov?.start || ""), openTime);
+          closeTime = safeTimeHHMM(String(ov?.end || ""), closeTime);
+        }
+        break;
+      }
+
+      const open = parseHHMM(openTime);
+      const close = parseHHMM(closeTime);
+      const isOvernight = !!open && !!close && open.totalMin > close.totalMin;
+      return {
+        enabled,
+        openTime,
+        closeTime,
+        closeMin: close?.totalMin ?? null,
+        isOvernight,
+      };
     };
 
     // ✅ ليلية-aware:
     // - الحجز يظل business-date كما هو
     // - لكن لو اليوم Overnight (start > end) والوقت بعد منتصف الليل (< end) نحسبه اليوم التالي فعليًا
-    const toEffectiveDateStart = (dateStr: string, timeStr: string) => {
+    const toEffectiveDateStart = (
+      dateStr: string,
+      timeStr: string,
+      daySettings: ReturnType<typeof resolveDaySettings>
+    ) => {
       const p = parseISODate(dateStr);
       const t = parseHHMM(timeStr);
       if (!p || !t) return null;
 
       const start = new Date(p.y, Math.max(0, p.mo - 1), p.d, t.hh, t.mm, 0, 0);
-
-      const dayKey = resolveWeekdayFromISO(dateStr);
-      if (!dayKey) return start;
-
-      const dayCfg = (businessHoursMap as any)?.[dayKey] || {};
-      const openMin = toMinutesFromHHMM(String(dayCfg?.start || ""));
-      const closeMin = toMinutesFromHHMM(String(dayCfg?.end || ""));
-      const slotMin = t.hh * 60 + t.mm;
-
-      const isOvernight =
-        openMin !== null &&
-        closeMin !== null &&
-        openMin > closeMin;
-
-      if (isOvernight && closeMin !== null && slotMin < closeMin) {
+      if (daySettings.isOvernight && daySettings.closeMin !== null && t.totalMin < daySettings.closeMin) {
         start.setDate(start.getDate() + 1);
       }
 
       return start;
+    };
+
+    const buildCloseGateDate = (
+      dateStr: string,
+      daySettings: ReturnType<typeof resolveDaySettings>
+    ) => {
+      const p = parseISODate(dateStr);
+      const close = parseHHMM(daySettings.closeTime);
+      if (!p || !close) return null;
+
+      const closeAt = new Date(p.y, Math.max(0, p.mo - 1), p.d, close.hh, close.mm, 0, 0);
+      if (daySettings.isOvernight) closeAt.setDate(closeAt.getDate() + 1);
+      closeAt.setMinutes(closeAt.getMinutes() + autoCloseGraceMin);
+      return closeAt;
     };
 
     async function tick() {
@@ -1326,7 +1406,7 @@ const Dashboard: React.FC = () => {
 
       try {
         const rows = await listAllBookingsFS();
-        const now = new Date();
+        const nowMs = Date.now();
 
         for (const b of rows) {
           if (!b?.date || !b?.time) continue;
@@ -1334,16 +1414,21 @@ const Dashboard: React.FC = () => {
           const st = String(b.status || "pending");
           if (st !== "pending" && st !== "confirmed") continue;
 
-          const start = toEffectiveDateStart(String(b.date || ""), String(b.time || ""));
+          const daySettings = resolveDaySettings(String(b.date || ""));
+          const start = toEffectiveDateStart(String(b.date || ""), String(b.time || ""), daySettings);
           if (!start) continue;
 
           // ✅ SAFE duration (بدون كراش)
           const duration =
             Number(b?.serviceSnapshot?.durationAtBooking ?? b?.durationMin ?? 0) || 60;
+          const bufferMin = Number(b?.bufferMinAtBooking ?? 0);
+          const safeBuffer = Number.isFinite(bufferMin) ? Math.max(0, Math.trunc(bufferMin)) : 0;
 
-          const end = new Date(start.getTime() + duration * 60_000);
+          const end = new Date(start.getTime() + (duration + safeBuffer) * 60_000);
+          const closeGate = buildCloseGateDate(String(b.date || ""), daySettings);
+          const readyAtMs = Math.max(end.getTime(), closeGate?.getTime() || 0);
 
-          if (now < end) continue;
+          if (nowMs < readyAtMs) continue;
 
           if (st === "confirmed") {
             await updateBookingStatusFS(b.id, "completed");
@@ -1365,7 +1450,12 @@ const Dashboard: React.FC = () => {
       alive = false;
       window.clearInterval(id);
     };
-  }, [userInfo?.role, settings.booking?.businessHours]);
+  }, [
+    userInfo?.role,
+    settings.booking?.businessHours,
+    settings.booking?.bookingHourOverrides,
+    settings.booking?.autoCloseGraceMin,
+  ]);
 
   const handleLogout = async () => {
     try {

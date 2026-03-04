@@ -46,6 +46,166 @@ function authHeaderBasic(secret: string) {
   return `Basic ${token}`;
 }
 
+const RIYADH_TZ_OFFSET = "+03:00";
+const AUTO_CLOSE_GRACE_MIN_DEFAULT = 30;
+type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+type BookingDayHours = {
+  enabled: boolean;
+  openTime: string; // HH:MM
+  closeTime: string; // HH:MM
+};
+
+type BookingHourOverride = {
+  fromDate?: string;
+  toDate?: string;
+  mode?: "hours" | "closed";
+  start?: string;
+  end?: string;
+  includeWeekdays?: WeekdayKey[];
+  blockedWeekdays?: WeekdayKey[];
+};
+
+function safeTimeHHMM(value: any, fallback: string) {
+  const m = String(value || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return fallback;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return fallback;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return fallback;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function parseHHMM(value: string): { hh: number; mm: number; totalMin: number } | null {
+  const m = String(value || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return { hh, mm, totalMin: hh * 60 + mm };
+}
+
+function parseISODateYMD(value: string): { y: number; m: number; d: number } | null {
+  const m = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return { y, m: mo, d };
+}
+
+function toDateAtRiyadh(dateYMD: string, timeHHMM: string): Date | null {
+  const d = parseISODateYMD(dateYMD);
+  const t = parseHHMM(timeHHMM);
+  if (!d || !t) return null;
+  const iso = `${String(d.y).padStart(4, "0")}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}T${String(t.hh).padStart(2, "0")}:${String(t.mm).padStart(2, "0")}:00${RIYADH_TZ_OFFSET}`;
+  const out = new Date(iso);
+  return Number.isFinite(out.getTime()) ? out : null;
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function normalizeWeekdayList(v: any): WeekdayKey[] {
+  if (!Array.isArray(v)) return [];
+  const valid = new Set<WeekdayKey>(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
+  const out: WeekdayKey[] = [];
+  for (const item of v) {
+    const day = String(item || "").trim().toLowerCase() as WeekdayKey;
+    if (valid.has(day) && !out.includes(day)) out.push(day);
+  }
+  return out;
+}
+
+function resolveWeekdayFromISO(dateYMD: string): WeekdayKey | null {
+  const d = parseISODateYMD(dateYMD);
+  if (!d) return null;
+  const dt = new Date(d.y, d.m - 1, d.d);
+  return JS_DAY_TO_WEEKDAY[dt.getDay()] || null;
+}
+
+function resolveBookingDayHours(settingsRaw: any, dateYMD: string): BookingDayHours {
+  const booking = (settingsRaw as any)?.booking || {};
+  const businessHours = booking?.businessHours || {};
+  const overridesRaw = Array.isArray(booking?.bookingHourOverrides)
+    ? booking.bookingHourOverrides
+    : [];
+
+  const dayKey = resolveWeekdayFromISO(dateYMD) || "sat";
+  const base = (businessHours as any)?.[dayKey] || {};
+  const fallbackBase = { enabled: true, start: "10:00", end: "22:00" };
+
+  let enabled = base?.enabled !== false && fallbackBase.enabled;
+  let openTime = safeTimeHHMM(base?.start, fallbackBase.start);
+  let closeTime = safeTimeHHMM(base?.end, fallbackBase.end);
+
+  const overrides = overridesRaw as BookingHourOverride[];
+  for (let i = overrides.length - 1; i >= 0; i--) {
+    const ov = overrides[i] || {};
+    const rawFrom = String(ov?.fromDate || "").trim();
+    const rawTo = String(ov?.toDate || "").trim();
+    if (!parseISODateYMD(rawFrom) || !parseISODateYMD(rawTo)) continue;
+
+    const fromDate = rawFrom <= rawTo ? rawFrom : rawTo;
+    const toDate = rawFrom <= rawTo ? rawTo : rawFrom;
+    if (dateYMD < fromDate || dateYMD > toDate) continue;
+
+    const includeWeekdays = normalizeWeekdayList(ov?.includeWeekdays);
+    if (includeWeekdays.length && !includeWeekdays.includes(dayKey)) continue;
+
+    const blockedWeekdays = normalizeWeekdayList(ov?.blockedWeekdays);
+    const mode = String(ov?.mode || "hours").trim().toLowerCase();
+    if (blockedWeekdays.includes(dayKey) || mode === "closed") {
+      enabled = false;
+    } else {
+      enabled = true;
+      openTime = safeTimeHHMM(ov?.start, openTime);
+      closeTime = safeTimeHHMM(ov?.end, closeTime);
+    }
+    break;
+  }
+
+  return { enabled, openTime, closeTime };
+}
+
+function resolveEffectiveBookingStartAt(
+  dateYMD: string,
+  timeHHMM: string,
+  dayHours: BookingDayHours
+): Date | null {
+  const startAt = toDateAtRiyadh(dateYMD, timeHHMM);
+  const slot = parseHHMM(timeHHMM);
+  const open = parseHHMM(dayHours.openTime);
+  const close = parseHHMM(dayHours.closeTime);
+  if (!startAt || !slot || !open || !close) return startAt;
+
+  const isOvernight = open.totalMin > close.totalMin;
+  if (isOvernight && slot.totalMin < close.totalMin) {
+    return addDays(startAt, 1);
+  }
+  return startAt;
+}
+
+function resolveCloseGateAt(
+  dateYMD: string,
+  dayHours: BookingDayHours,
+  graceMin: number
+): Date | null {
+  const closeAtBase = toDateAtRiyadh(dateYMD, dayHours.closeTime);
+  const open = parseHHMM(dayHours.openTime);
+  const close = parseHHMM(dayHours.closeTime);
+  if (!closeAtBase || !open || !close) return closeAtBase;
+
+  const isOvernight = open.totalMin > close.totalMin;
+  const closeAt = isOvernight ? addDays(closeAtBase, 1) : closeAtBase;
+  return new Date(closeAt.getTime() + Math.max(0, graceMin) * 60 * 1000);
+}
+
 /* =========================================================
    ✅ AUTO JOB: كل 5 دقائق
    - pending انتهى وقتها → cancelled + فك الأقفال
@@ -71,30 +231,32 @@ export const autoCloseBookings = onSchedule(
       .doc(salonId)
       .collection("booking_slots");
 
-    const now = new Date();
+    const nowMs = Date.now();
+
+    let settingsRaw: any = {};
+    try {
+      const settingsSnap = await db
+        .collection("salons")
+        .doc(salonId)
+        .collection("settings")
+        .doc("app")
+        .get();
+      settingsRaw = settingsSnap.exists ? settingsSnap.data() || {} : {};
+    } catch (e) {
+      logger.warn("[autoCloseBookings] failed to read settings/app, fallback defaults", e as any);
+      settingsRaw = {};
+    }
+
+    const configuredGraceMin = Number((settingsRaw as any)?.booking?.autoCloseGraceMin);
+    const autoCloseGraceMin =
+      Number.isFinite(configuredGraceMin) && configuredGraceMin >= 0
+        ? Math.trunc(configuredGraceMin)
+        : AUTO_CLOSE_GRACE_MIN_DEFAULT;
 
     const [pendingSnap, confirmedSnap] = await Promise.all([
       bookingsCol.where("status", "==", "pending").limit(500).get(),
       bookingsCol.where("status", "==", "confirmed").limit(500).get(),
     ]);
-
-    const parseHHMM = (time: string) => {
-      const m = String(time || "")
-        .trim()
-        .match(/^(\d{1,2}):(\d{2})$/);
-      if (!m) return null;
-      const hh = Number(m[1]);
-      const mm = Number(m[2]);
-      if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
-      return { hh, mm };
-    };
-
-    const toLocalDate = (dateYMD: string, timeHHMM: string) => {
-      const [y, mo, d] = String(dateYMD || "").split("-").map(Number);
-      const t = parseHHMM(timeHHMM);
-      if (!y || !mo || !d || !t) return null;
-      return new Date(y, mo - 1, d, t.hh, t.mm, 0, 0);
-    };
 
     const getDurationMin = (b: any) => {
       const d1 = Number(b?.durationMin ?? 0);
@@ -119,15 +281,29 @@ export const autoCloseBookings = onSchedule(
     const scan = (docs: FirebaseFirestore.QueryDocumentSnapshot[]) => {
       for (const docSnap of docs) {
         const b = docSnap.data() || {};
-        const start = toLocalDate(String(b.date || ""), String(b.time || ""));
+        const bookingDate = String(b.date || "").trim();
+        const bookingTime = String(b.time || "").trim();
+        if (!parseISODateYMD(bookingDate) || !parseHHMM(bookingTime)) continue;
+
+        const dayHours = resolveBookingDayHours(settingsRaw, bookingDate);
+        const start = resolveEffectiveBookingStartAt(bookingDate, bookingTime, dayHours);
         if (!start) continue;
 
-        const end = new Date(
+        const endAt = new Date(
           start.getTime() +
             (getDurationMin(b) + getBufferMin(b)) * 60 * 1000
         );
+        const closeGateAt = resolveCloseGateAt(
+          bookingDate,
+          dayHours,
+          autoCloseGraceMin
+        );
+        const readyAtMs = Math.max(
+          endAt.getTime(),
+          closeGateAt?.getTime() || 0
+        );
 
-        if (now < end) continue;
+        if (nowMs < readyAtMs) continue;
 
         const st = String(b.status || "");
         if (st === "pending") toCancel.push(docSnap.id);
@@ -176,6 +352,7 @@ export const autoCloseBookings = onSchedule(
     logger.info("[autoCloseBookings] done", {
       cancelled: toCancel.length,
       completed: toComplete.length,
+      graceMin: autoCloseGraceMin,
     });
   }
 );

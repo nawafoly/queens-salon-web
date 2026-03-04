@@ -229,9 +229,29 @@ function bookingNoOf(b: any) {
 }
 
 const NOTES_KEY = "dashboard_client_notes_v1";
+const SALON_IBAN = "SA4710000001400007036306";
 
 const SALON_ID = "main";
 const CLIENTS_COLLECTION = ["salons", SALON_ID, "clients"] as const;
+
+function buildClientWhatsAppMessage(clientName: string) {
+  const safeName = String(clientName || "").trim() || "عميلتنا الكريمة";
+  return [
+    `مرحبًا ${safeName}،`,
+    "تأكيد الحجز يتم بعد تحويل المبلغ على رقم الآيبان التالي:",
+    SALON_IBAN,
+    "بعد التحويل يسعدنا استلام إيصال التحويل عبر الواتساب لإكمال تأكيد الحجز.",
+    "شاكرين لك ثقتك، ونسعد بخدمتك دائمًا.",
+  ].join("\n");
+}
+
+function buildClientWhatsAppHref(client: Pick<ClientRow, "name" | "phone">) {
+  const normalized = normalizeSaudiPhone(client.phone);
+  const phoneForWa = String(normalized.digits || phoneDigits(client.phone) || "").trim();
+  if (!phoneForWa) return "https://wa.me/";
+  const msg = buildClientWhatsAppMessage(client.name);
+  return `https://wa.me/${phoneForWa}?text=${encodeURIComponent(msg)}`;
+}
 
 function pickHeader(obj: any, keys: string[]) {
   for (const k of keys) {
@@ -1028,7 +1048,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
                               <a
                                 className="cl-iconBtn is-whatsapp"
                                 title="واتساب"
-                                href={`https://wa.me/${c.phone.replace(/^0/, "966")}`}
+                                href={buildClientWhatsAppHref(c)}
                                 target="_blank"
                                 rel="noreferrer"
                               >
@@ -1124,7 +1144,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
                     <a
                       className="cl-iconBtn is-whatsapp"
                       title="واتساب"
-                      href={`https://wa.me/${c.phone.replace(/^0/, "966")}`}
+                      href={buildClientWhatsAppHref(c)}
                       target="_blank"
                       rel="noreferrer"
                     >

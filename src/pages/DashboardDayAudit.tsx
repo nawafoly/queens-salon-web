@@ -536,7 +536,7 @@ export default function DashboardDayAudit() {
         <div className="day-audit-head">
           <div className="day-audit-head-main">
             <h2>جرد اليوم</h2>
-            <p>اطبع ملخص اليوم وأدخل الكاش اليدوي قبل الطباعة والإغلاق.</p>
+            <p>اطبع ملخص اليوم وأدخل مبلغ الكاش لليوم قبل الطباعة والإغلاق.</p>
           </div>
           <div className={`day-audit-badge ${lock ? "is-locked" : "is-open"}`}>
             {lock ? "مقفل" : "مفتوح"}
@@ -574,7 +574,7 @@ export default function DashboardDayAudit() {
         </div>
 
         <div className="day-audit-manual">
-          <label htmlFor="day-audit-manual-cash">الكاش اليدوي قبل الطباعة</label>
+          <label htmlFor="day-audit-manual-cash">ادخل مبلغ الكاش لليوم</label>
           <input
             id="day-audit-manual-cash"
             type="number"
