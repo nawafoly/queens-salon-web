@@ -88,6 +88,23 @@ function inDateRange(bookingDate: string, from: string, to: string) {
   return true;
 }
 
+function todayISOLocal() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function dateISOFromMillisLocal(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const d = new Date(ms);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function parseBookingDateTimeMs(dateISO: string, timeHHMM: string): number | null {
   const d = String(dateISO || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const t = String(timeHHMM || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
@@ -630,6 +647,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     date: "",
     time: "",
     price: "",
+    paymentMethod: "transfer" as PaymentMethod,
     paymentType: "full" as BookingPaymentType,
     paidAmount: "",
   });
@@ -1089,6 +1107,31 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   );
   const stalePreviewBookings = useMemo(() => staleStatusBookings.slice(0, 6), [staleStatusBookings]);
 
+  const expiredPendingDayBookings = useMemo(() => {
+    const today = todayISOLocal();
+    return bookings
+      .filter((b) => {
+        if (b.status !== "pending") return false;
+        const createdAtMs = toMillisSafe((b as any)?.createdAt);
+        const createdDateISO = dateISOFromMillisLocal(createdAtMs);
+        if (!createdDateISO) return false;
+        return createdDateISO < today;
+      })
+      .sort((a, b) => {
+        const aMs = toMillisSafe((a as any)?.createdAt);
+        const bMs = toMillisSafe((b as any)?.createdAt);
+        if (aMs !== bMs) return aMs - bMs;
+        const d = String(a.date || "").localeCompare(String(b.date || ""));
+        if (d !== 0) return d;
+        return String(a.time || "").localeCompare(String(b.time || ""));
+      });
+  }, [bookings]);
+
+  const expiredPendingDayPreview = useMemo(
+    () => expiredPendingDayBookings.slice(0, 6),
+    [expiredPendingDayBookings]
+  );
+
   const getAllowedStatusOptions = (b: Booking): BookingStatus[] => {
     if (uiRole === "owner" || uiRole === "admin") return allStatusOptions;
     if (uiRole === "reception") {
@@ -1291,6 +1334,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       return;
     }
     const payment = resolveBookingPaymentSummary(b);
+    const paymentMethod = detectPaymentMethod(b);
     setEditDraft({
       customerName: String(b.customerName || "").trim(),
       phone: String(b.phone || "").trim(),
@@ -1298,6 +1342,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       date: String(b.date || "").trim(),
       time: String(b.time || "").trim(),
       price: String(readBookingTotalAmount(b)),
+      paymentMethod,
       paymentType: payment.paymentType,
       paidAmount: String(payment.paidAmount || 0),
     });
@@ -1355,6 +1400,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const fallbackPrice = readBookingTotalAmount(editTarget);
     const price = priceInput === "" ? fallbackPrice : Number(priceInput);
     const paymentType = editDraft.paymentType === "partial" ? "partial" : "full";
+    const paymentMethod = (["cash", "card", "transfer"] as const).includes(
+      editDraft.paymentMethod as any
+    )
+      ? (editDraft.paymentMethod as PaymentMethod)
+      : "transfer";
     let paidAmount = paymentType === "full" ? price : Number(editDraft.paidAmount || 0);
 
     if (!customerName) {
@@ -1405,6 +1455,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         time,
         finalPrice: price,
         total: price,
+        paymentMethod,
         paymentType: nextPaymentType,
         paidAmount: round2(paidAmount),
         remainingAmount,
@@ -1423,6 +1474,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 time,
                 finalPrice: price,
                 total: price,
+                paymentMethod,
                 paymentType: nextPaymentType,
                 paidAmount: round2(paidAmount),
                 remainingAmount,
@@ -1442,6 +1494,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               time,
               finalPrice: price,
               total: price,
+              paymentMethod,
               paymentType: nextPaymentType,
               paidAmount: round2(paidAmount),
               remainingAmount,
@@ -1720,6 +1773,48 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               {staleStatusBookings.length > stalePreviewBookings.length ? (
                 <div className="bk-stale-alert-more">
                   +{staleStatusBookings.length - stalePreviewBookings.length} حجوزات قديمة إضافية
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {expiredPendingDayBookings.length > 0 ? (
+            <div className="bk-stale-alert" role="status" aria-live="polite">
+              <div className="bk-stale-alert-head">
+                <strong>تنبيه: يوجد {expiredPendingDayBookings.length} حجز في الانتظار لم يتم تاكيدها من تاريخ انشاء الحجز .</strong>
+                <span>يرجى مراجعتها وإغلاقها بالحالة المناسبة.</span>
+              </div>
+
+              <div className="bk-stale-alert-list">
+                {expiredPendingDayPreview.map((b) => (
+                  <button
+                    key={`expired_pending_${b.id}`}
+                    type="button"
+                    className="bk-stale-alert-item"
+                    onClick={() => setSelectedBooking(b)}
+                    title="فتح تفاصيل الحجز"
+                  >
+                    {(() => {
+                      const createdAtMs = toMillisSafe((b as any)?.createdAt);
+                      const createdISO = dateISOFromMillisLocal(createdAtMs) || "—";
+                      return (
+                        <>
+                          <span className="bk-stale-alert-ref">
+                            {bookingRef(b)} • {b.customerName || "—"}
+                          </span>
+                          <span className="bk-stale-alert-meta">
+                            إنشاء: {createdISO} • الموعد: {b.date} {formatTime12(b.time)} • في الانتظار
+                          </span>
+                        </>
+                      );
+                    })()}
+                  </button>
+                ))}
+              </div>
+
+              {expiredPendingDayBookings.length > expiredPendingDayPreview.length ? (
+                <div className="bk-stale-alert-more">
+                  +{expiredPendingDayBookings.length - expiredPendingDayPreview.length} حجوزات انتظار إضافية
                 </div>
               ) : null}
             </div>
@@ -2646,6 +2741,25 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 >
                   <option value="full">دفع كامل</option>
                   <option value="partial">عربون / بدون دفع</option>
+                </select>
+              </label>
+
+              <label>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>طريقة الدفع</div>
+                <select
+                  className="bk-select"
+                  value={editDraft.paymentMethod}
+                  onChange={(e) =>
+                    setEditDraft((p) => ({
+                      ...p,
+                      paymentMethod: (e.target.value as PaymentMethod) || "transfer",
+                    }))
+                  }
+                  disabled={editSaving}
+                >
+                  <option value="cash">كاش</option>
+                  <option value="card">شبكة</option>
+                  <option value="transfer">تحويل</option>
                 </select>
               </label>
 
