@@ -6,6 +6,7 @@ import { collection, onSnapshot } from "firebase/firestore";
 import "../styles/DashboardReports.css";
 import { db } from "../services/firebase";
 import { AppSettingsService } from "../services/AppSettingsService";
+import type { PaymentMethod } from "../types/finance";
 import {
   buildPayrollExpenseRowsForMonths,
   PAYROLL_CLOSE_DAY,
@@ -18,6 +19,8 @@ import {
 type PeriodKey = "day" | "week" | "month" | "year" | "custom";
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 type BookingPaymentType = "full" | "partial";
+type IncomeSourceKind = "booking" | "invoice" | "internal" | "manual" | "refund" | "other";
+type IncomeStatusFilter = "all" | "active" | "refunded" | "voided";
 
 type BookingRow = {
   id: string;
@@ -42,7 +45,9 @@ type IncomeRow = {
   date: string;
   time: string;
   amount: number;
+  method: PaymentMethod;
   source: string;
+  status: string;
   bookingId: string;
   note: string;
   createdAtMs: number;
@@ -63,15 +68,23 @@ type RevenueDetailsRow = {
   id: string;
   date: string;
   time: string;
-  source: "booking" | "manual" | "refund";
+  source: IncomeSourceKind;
   mkRef: string;
   employeeName: string;
   amount: number;
   statusLabel: string;
 };
 
+type BookingMeta = {
+  bookingRef: string;
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+  employeeName: string;
+};
+
 const SALON_ID = "main";
-const REVENUE_STATUSES = new Set<BookingStatus>(["confirmed", "completed"]);
 const MONTHS_AR = [
   "يناير",
   "فبراير",
@@ -153,6 +166,78 @@ function normalizeSource(raw: string) {
   if (s === "booking" || s === "invoice" || s === "حجز") return "booking";
   if (s === "refund" || s === "استرجاع") return "refund";
   return "manual";
+}
+
+function sourceKind(raw: string): IncomeSourceKind {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return "other";
+  if (s === "booking" || s === "حجز") return "booking";
+  if (s === "invoice" || s === "فاتورة") return "invoice";
+  if (s === "internal_booking") return "internal";
+  if (s === "manual" || s === "يدوي") return "manual";
+  if (s === "refund" || s === "استرجاع") return "refund";
+  return "other";
+}
+
+function sourceLabel(kind: IncomeSourceKind) {
+  if (kind === "booking") return "حجز";
+  if (kind === "invoice") return "فاتورة";
+  if (kind === "internal") return "داخلي";
+  if (kind === "manual") return "يدوي";
+  if (kind === "refund") return "استرجاع";
+  return "أخرى";
+}
+
+function normalizePaymentMethod(raw: any): PaymentMethod {
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (s === "cash") return "cash";
+  if (s === "card" || s === "pos_card" || s === "mada_online") return "card";
+  if (s === "transfer") return "transfer";
+  if (s === "other") return "other";
+  if (s.includes("كاش") || s.includes("نقد")) return "cash";
+  if (s.includes("شبكة") || s.includes("مدى") || s.includes("بطاق")) return "card";
+  if (s.includes("تحويل")) return "transfer";
+  return "other";
+}
+
+function toBookingRef(v?: string) {
+  const raw = String(v || "").trim().toUpperCase();
+  if (!raw) return "-";
+  if (/^MK-\d+$/.test(raw)) return raw;
+  if (/^\d+$/.test(raw)) return `MK-${raw}`;
+  return raw;
+}
+
+function round2(v: number): number {
+  return Math.round((Number(v) || 0) * 100) / 100;
+}
+
+function resolveLinkedBookingId(item: Pick<IncomeRow, "id" | "bookingId" | "source">): string {
+  const explicit = String(item.bookingId || "").trim();
+  if (explicit) return explicit;
+  const kind = sourceKind(item.source);
+  if (kind === "booking") return String(item.id || "").trim();
+  return "";
+}
+
+function isRefundIncomeRow(item: Pick<IncomeRow, "id" | "source" | "amount">): boolean {
+  const kind = sourceKind(item.source);
+  return kind === "refund" || Number(item.amount || 0) < 0 || String(item.id || "").startsWith("refund_");
+}
+
+function statusLabelForIncome(item: IncomeRow): string {
+  const status = String(item.status || "").trim().toLowerCase();
+  if (status === "active" || status === "confirmed" || status === "completed") return "نشط";
+  if (status === "refunded" || status === "refund") return "استرجاع";
+  if (status === "voided" || status === "void" || status === "cancelled" || status === "canceled") return "ملغي";
+  if (isRefundIncomeRow(item)) return "استرجاع";
+  return "نشط";
+}
+
+function rowEffectiveAmount(item: IncomeRow, bookingMetaById: Record<string, BookingMeta>) {
+  const linkedBookingId = resolveLinkedBookingId(item);
+  const meta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
+  return meta ? Number(meta.paidAmount || 0) : Number(item.amount || 0);
 }
 
 function normalizePaymentType(raw: any): BookingPaymentType | null {
@@ -434,6 +519,9 @@ export default function DashboardReports() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [trendMode, setTrendMode] = useState<"month" | "day">("month");
+  const [incomeMethodFilter, setIncomeMethodFilter] = useState<PaymentMethod | "all">("all");
+  const [incomeSourceFilter, setIncomeSourceFilter] = useState<IncomeSourceKind | "all">("all");
+  const [incomeStatusFilter, setIncomeStatusFilter] = useState<IncomeStatusFilter>("all");
 
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [incomeRows, setIncomeRows] = useState<IncomeRow[]>([]);
@@ -530,7 +618,9 @@ export default function DashboardReports() {
             date,
             time,
             amount: Number(raw?.amount ?? 0) || 0,
+            method: normalizePaymentMethod(raw?.method),
             source: String(raw?.source || "").trim(),
+            status: String(raw?.status || "").trim().toLowerCase(),
             bookingId: String(raw?.bookingId || "").trim(),
             note: String(raw?.note || "").trim(),
             createdAtMs,
@@ -652,36 +742,41 @@ export default function DashboardReports() {
     return map;
   }, [bookings]);
 
-  const bookingRevenueRows = useMemo(
-    () =>
-      bookings.filter(
-        (b) =>
-          REVENUE_STATUSES.has(b.status) &&
-          inDateRange(b.date, range.from, range.to) &&
-          Number(b.amount || 0) > 0
-      ),
-    [bookings, range.from, range.to]
-  );
+  const bookingMetaById = useMemo(() => {
+    const map: Record<string, BookingMeta> = {};
+    bookings.forEach((b) => {
+      map[String(b.id)] = {
+        bookingRef: toBookingRef(String(b.publicId || "")),
+        paymentType: b.paymentType,
+        paidAmount: round2(Number(b.paidAmount || 0)),
+        remainingAmount: round2(Number(b.remainingAmount || 0)),
+        totalAmount: round2(Number(b.totalAmount || 0)),
+        employeeName: String(b.employeeName || "").trim(),
+      };
+    });
+    return map;
+  }, [bookings]);
 
-  const manualIncomeRows = useMemo(() => {
+  const incomeRowsInRange = useMemo(() => {
     return incomeRows.filter((x) => {
       if (!inDateRange(x.date, range.from, range.to)) return false;
-      const source = normalizeSource(x.source);
-      const isLinkedBooking = !!String(x.bookingId || "").trim() || source === "booking";
-      const isRefund = source === "refund" || x.amount < 0 || String(x.id || "").startsWith("refund_");
-      if (isLinkedBooking) return false;
-      if (isRefund) return false;
-      return Number(x.amount || 0) > 0;
+      if (incomeMethodFilter !== "all" && x.method !== incomeMethodFilter) return false;
+      const kind = sourceKind(x.source);
+      if (incomeSourceFilter !== "all" && kind !== incomeSourceFilter) return false;
+      if (incomeStatusFilter === "refunded" && !isRefundIncomeRow(x)) return false;
+      if (incomeStatusFilter === "active") {
+        const st = String(x.status || "").trim().toLowerCase();
+        const isVoided = st === "voided" || st === "void" || st === "cancelled" || st === "canceled";
+        if (isRefundIncomeRow(x) || isVoided) return false;
+      }
+      if (incomeStatusFilter === "voided") {
+        const st = String(x.status || "").trim().toLowerCase();
+        const isVoided = st === "voided" || st === "void" || st === "cancelled" || st === "canceled";
+        if (!isVoided) return false;
+      }
+      return true;
     });
-  }, [incomeRows, range.from, range.to]);
-
-  const refundRows = useMemo(() => {
-    return incomeRows.filter((x) => {
-      if (!inDateRange(x.date, range.from, range.to)) return false;
-      const source = normalizeSource(x.source);
-      return source === "refund" || x.amount < 0 || String(x.id || "").startsWith("refund_");
-    });
-  }, [incomeRows, range.from, range.to]);
+  }, [incomeRows, range.from, range.to, incomeMethodFilter, incomeSourceFilter, incomeStatusFilter]);
 
   const payrollMonthKeys = useMemo(() => {
     const set = new Set<string>();
@@ -800,58 +895,37 @@ export default function DashboardReports() {
   }, [expensesInPayrollCycle, payrollCycleRange.to, payrollCycleMonthKey]);
 
   const revenueRowsDetailed = useMemo<RevenueDetailsRow[]>(() => {
-    const fromBookings: RevenueDetailsRow[] = bookingRevenueRows.map((b) => ({
-      id: `booking_${b.id}`,
-      date: b.date,
-      time: b.time || "-",
-      source: "booking",
-      mkRef: b.publicId || "-",
-      employeeName: b.employeeName || "-",
-      amount: Number(b.amount || 0),
-      statusLabel: bookingStatusLabel(b.status),
-    }));
-
-    const fromManual: RevenueDetailsRow[] = manualIncomeRows.map((x) => ({
-      id: `manual_${x.id}`,
-      date: x.date,
-      time: x.time || "-",
-      source: "manual",
-      mkRef: "-",
-      employeeName: "-",
-      amount: Number(x.amount || 0),
-      statusLabel: "دخل يدوي",
-    }));
-
-    const fromRefund: RevenueDetailsRow[] = refundRows.map((x) => {
-      const linked = bookingById[String(x.bookingId || "").trim()];
-      return {
-        id: `refund_${x.id}`,
-        date: x.date,
-        time: x.time || "-",
-        source: "refund",
-        mkRef: linked?.publicId || "-",
-        employeeName: linked?.employeeName || "-",
-        amount: Number(x.amount || 0),
-        statusLabel: "استرجاع",
-      };
-    });
-
-    return [...fromBookings, ...fromManual, ...fromRefund].sort((a, b) => {
-      const aKey = `${a.date} ${a.time}`;
-      const bKey = `${b.date} ${b.time}`;
-      return bKey.localeCompare(aKey);
-    });
-  }, [bookingRevenueRows, manualIncomeRows, refundRows, bookingById]);
+    return incomeRowsInRange
+      .map((x) => {
+        const kind = sourceKind(x.source);
+        const linkedBookingId = resolveLinkedBookingId(x);
+        const linkedBooking = linkedBookingId ? bookingById[linkedBookingId] : undefined;
+        const linkedMeta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
+        return {
+          id: `income_${x.id}`,
+          date: x.date,
+          time: x.time || "-",
+          source: kind,
+          mkRef: linkedMeta?.bookingRef || toBookingRef(linkedBooking?.publicId),
+          employeeName:
+            String(linkedMeta?.employeeName || linkedBooking?.employeeName || "").trim() || "-",
+          amount: rowEffectiveAmount(x, bookingMetaById),
+          statusLabel: statusLabelForIncome(x),
+        };
+      })
+      .sort((a, b) => {
+        const aKey = `${a.date} ${a.time}`;
+        const bKey = `${b.date} ${b.time}`;
+        return bKey.localeCompare(aKey);
+      });
+  }, [incomeRowsInRange, bookingById, bookingMetaById]);
 
   const totals = useMemo(() => {
-    const bookingsRevenue = bookingRevenueRows.reduce((s, x) => s + Number(x.amount || 0), 0);
-    const manualRevenue = manualIncomeRows.reduce((s, x) => s + Number(x.amount || 0), 0);
-    const refunds = refundRows.reduce((s, x) => s + Number(x.amount || 0), 0);
-    const revenue = bookingsRevenue + manualRevenue + refunds;
+    const revenue = revenueRowsDetailed.reduce((s, x) => s + Number(x.amount || 0), 0);
     const expensesTotal = expensesInRange.reduce((s, x) => s + Number(x.amount || 0), 0);
     const net = revenue - expensesTotal;
     return { revenue, expenses: expensesTotal, net };
-  }, [bookingRevenueRows, manualIncomeRows, refundRows, expensesInRange]);
+  }, [revenueRowsDetailed, expensesInRange]);
 
   const monthCompare = useMemo(() => {
     const monthFromRange = monthKeyFromIsoDate(String(range.to || "").trim());
@@ -862,46 +936,36 @@ export default function DashboardReports() {
         : monthFromRange || toMonthKey(new Date());
     const previousKey = previousMonthKey(currentKey) || currentKey;
 
-    const bookingRevenueByMonth = (key: string) =>
-      bookings
-        .filter(
-          (b) =>
-            REVENUE_STATUSES.has(b.status) &&
-            String(b.date || "").startsWith(`${key}-`) &&
-            Number(b.amount || 0) > 0
-        )
-        .reduce((s, x) => s + Number(x.amount || 0), 0);
+    const filteredIncomeByMonth = (key: string) =>
+      incomeRows.filter((x) => {
+        if (!String(x.date || "").startsWith(`${key}-`)) return false;
+        if (incomeMethodFilter !== "all" && x.method !== incomeMethodFilter) return false;
+        const kind = sourceKind(x.source);
+        if (incomeSourceFilter !== "all" && kind !== incomeSourceFilter) return false;
+        if (incomeStatusFilter === "refunded" && !isRefundIncomeRow(x)) return false;
+        if (incomeStatusFilter === "active") {
+          const st = String(x.status || "").trim().toLowerCase();
+          const isVoided = st === "voided" || st === "void" || st === "cancelled" || st === "canceled";
+          if (isRefundIncomeRow(x) || isVoided) return false;
+        }
+        if (incomeStatusFilter === "voided") {
+          const st = String(x.status || "").trim().toLowerCase();
+          const isVoided = st === "voided" || st === "void" || st === "cancelled" || st === "canceled";
+          if (!isVoided) return false;
+        }
+        return true;
+      });
 
-    const manualRevenueByMonth = (key: string) =>
-      incomeRows
-        .filter((x) => {
-          if (!String(x.date || "").startsWith(`${key}-`)) return false;
-          const source = normalizeSource(x.source);
-          const isLinkedBooking = !!String(x.bookingId || "").trim() || source === "booking";
-          const isRefund = source === "refund" || x.amount < 0 || String(x.id || "").startsWith("refund_");
-          if (isLinkedBooking || isRefund) return false;
-          return Number(x.amount || 0) > 0;
-        })
-        .reduce((s, x) => s + Number(x.amount || 0), 0);
-
-    const refundsByMonth = (key: string) =>
-      incomeRows
-        .filter((x) => {
-          if (!String(x.date || "").startsWith(`${key}-`)) return false;
-          const source = normalizeSource(x.source);
-          return source === "refund" || x.amount < 0 || String(x.id || "").startsWith("refund_");
-        })
-        .reduce((s, x) => s + Number(x.amount || 0), 0);
+    const incomeRevenueByMonth = (key: string) =>
+      filteredIncomeByMonth(key).reduce((s, x) => s + rowEffectiveAmount(x, bookingMetaById), 0);
 
     const expensesByMonth = (key: string) =>
       expensesWithPayroll
         .filter((x) => String(x.date || "").startsWith(`${key}-`))
         .reduce((s, x) => s + Number(x.amount || 0), 0);
 
-    const currentRevenue =
-      bookingRevenueByMonth(currentKey) + manualRevenueByMonth(currentKey) + refundsByMonth(currentKey);
-    const previousRevenue =
-      bookingRevenueByMonth(previousKey) + manualRevenueByMonth(previousKey) + refundsByMonth(previousKey);
+    const currentRevenue = incomeRevenueByMonth(currentKey);
+    const previousRevenue = incomeRevenueByMonth(previousKey);
 
     const currentExpenses = expensesByMonth(currentKey);
     const previousExpenses = expensesByMonth(previousKey);
@@ -928,7 +992,17 @@ export default function DashboardReports() {
         net: calcDeltaPct(currentNet, previousNet),
       },
     };
-  }, [period, selectedMonth, range.to, bookings, incomeRows, expensesWithPayroll]);
+  }, [
+    period,
+    selectedMonth,
+    range.to,
+    incomeRows,
+    expensesWithPayroll,
+    bookingMetaById,
+    incomeMethodFilter,
+    incomeSourceFilter,
+    incomeStatusFilter,
+  ]);
 
   const chartsModel = useMemo(() => {
     const selectedYear = Number(String(range.to || "").slice(0, 4)) || new Date().getFullYear();
@@ -1050,11 +1124,19 @@ export default function DashboardReports() {
       value: statusCount[k],
     }));
 
-    const sourceRaw = [
-      { label: "الحجز", key: "booking", value: revenueRowsDetailed.filter((x) => x.source === "booking").length, color: "#40010D" },
-      { label: "يدوي", key: "manual", value: revenueRowsDetailed.filter((x) => x.source === "manual").length, color: "#0D0D0D" },
-      { label: "استرجاع", key: "refund", value: revenueRowsDetailed.filter((x) => x.source === "refund").length, color: "#888C8C" },
+    const sourceRaw: Array<{ label: string; key: IncomeSourceKind; value: number; color: string }> = [
+      { label: sourceLabel("booking"), key: "booking", value: 0, color: "#40010D" },
+      { label: sourceLabel("invoice"), key: "invoice", value: 0, color: "#7A1F3D" },
+      { label: sourceLabel("internal"), key: "internal", value: 0, color: "#5C0A9D" },
+      { label: sourceLabel("manual"), key: "manual", value: 0, color: "#0D0D0D" },
+      { label: sourceLabel("refund"), key: "refund", value: 0, color: "#888C8C" },
+      { label: sourceLabel("other"), key: "other", value: 0, color: "#2F6C74" },
     ];
+    revenueRowsDetailed.forEach((x) => {
+      const row = sourceRaw.find((it) => it.key === x.source);
+      if (!row) return;
+      row.value += 1;
+    });
     const sourceTotal = sourceRaw.reduce((s, x) => s + x.value, 0);
     const pie = sourceRaw.filter((x) => x.value > 0);
     const pieTotal = pie.reduce((s, x) => s + x.value, 0);
@@ -1109,9 +1191,10 @@ export default function DashboardReports() {
         <div>
           <h1>اللوحة المالية</h1>
           <p>
-            المصدر الرسمي: إيراد الحجوزات من الحجوزات (مؤكد/مكتمل) + دخل يدوي/استرجاع من income، والمصروفات من
-            expenses + الرواتب/الأوفر تايم المحسوبة تلقائيًا. العرض الشهري هنا تقويمي (1-آخر الشهر)، بينما الرواتب
-            تُغلق بدورة 28-27.
+            المصدر الرسمي للإيرادات هنا هو قائمة الدخل `income` فقط (بنفس منطق صفحة الإيرادات:
+            المبلغ الفعلي للحجوزات = `paidAmount`، وغير المرتبط بالحجوزات = `amount`). المصروفات من
+            `expenses` مع إضافة الرواتب/الأوفر تايم المحسوبة تلقائيًا. العرض الشهري هنا تقويمي
+            (1-آخر الشهر)، بينما الرواتب تُغلق بدورة 28-27.
           </p>
           <small className="reports-v2__sync">
             <FontAwesomeIcon icon={faClockRotateLeft} /> آخر مزامنة: {lastSyncLabel}
@@ -1185,6 +1268,49 @@ export default function DashboardReports() {
           </div>
         )}
 
+        <div className="reports-v2__custom-range">
+          <label>
+            طريقة الدفع
+            <select
+              value={incomeMethodFilter}
+              onChange={(e) => setIncomeMethodFilter(e.target.value as PaymentMethod | "all")}
+            >
+              <option value="all">الكل</option>
+              <option value="cash">كاش</option>
+              <option value="card">شبكة</option>
+              <option value="transfer">تحويل</option>
+              <option value="other">أخرى</option>
+            </select>
+          </label>
+          <label>
+            المصدر
+            <select
+              value={incomeSourceFilter}
+              onChange={(e) => setIncomeSourceFilter(e.target.value as IncomeSourceKind | "all")}
+            >
+              <option value="all">الكل</option>
+              <option value="booking">حجز</option>
+              <option value="invoice">فاتورة</option>
+              <option value="internal">داخلي</option>
+              <option value="manual">يدوي</option>
+              <option value="refund">استرجاع</option>
+              <option value="other">أخرى</option>
+            </select>
+          </label>
+          <label>
+            الحالة
+            <select
+              value={incomeStatusFilter}
+              onChange={(e) => setIncomeStatusFilter(e.target.value as IncomeStatusFilter)}
+            >
+              <option value="all">الكل</option>
+              <option value="active">نشط</option>
+              <option value="refunded">مسترجع</option>
+              <option value="voided">ملغي/Voided</option>
+            </select>
+          </label>
+        </div>
+
         <div className="reports-v2__range-caption">
           <FontAwesomeIcon icon={faCalendarDays} /> الفترة: {range.from} إلى {range.to}
         </div>
@@ -1214,9 +1340,9 @@ export default function DashboardReports() {
             <p>مسجل يوميًا بتاريخ يومه الفعلي</p>
           </article>
           <article className="payroll-chip">
-            <h4>إجمالي مصروفات الدورة</h4>
-            <strong>{formatMoney(payrollCycleTotals.total)}</strong>
-            <p>رواتب + أوفر تايم + باقي المصروفات</p>
+            <h4>مصروفات أخرى</h4>
+            <strong>{formatMoney(payrollCycleTotals.other)}</strong>
+            <p>باقي المصروفات</p>
           </article>
         </div>
       </section>
@@ -1469,7 +1595,7 @@ export default function DashboardReports() {
                   <tr key={row.id}>
                     <td data-label="التاريخ/الوقت">{formatDateTime(row.date, row.time)}</td>
                     <td data-label="المصدر">
-                      {row.source === "booking" ? "حجز" : row.source === "refund" ? "استرجاع" : "يدوي"}
+                      {sourceLabel(row.source)}
                     </td>
                     <td data-label="رقم الحجز MK">{row.mkRef}</td>
                     <td data-label="الموظفة">{row.employeeName || "-"}</td>

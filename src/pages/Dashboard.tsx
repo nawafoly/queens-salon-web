@@ -79,6 +79,7 @@ import {
 import { AppSettingsService } from "../services/AppSettingsService";
 
 import { resolveServiceName } from "../services/serviceResolver";
+import { normalizeTimeToHHMM, timeToMinutes } from "../helpers/timeContract";
 
 /** ===== Settings (LocalStorage fallback) ===== */
 type SectionKey =
@@ -103,6 +104,43 @@ function formatLocalDateISO(date: Date): string {
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const dd = String(date.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function normalizeISODateLoose(value: any): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const strict = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (strict) return `${strict[1]}-${strict[2]}-${strict[3]}`;
+
+  const loose = raw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (loose) {
+    const year = Number(loose[1]);
+    const month = Number(loose[2]);
+    const day = Number(loose[3]);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return "";
+    if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+    return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return "";
+  return formatLocalDateISO(new Date(parsed));
+}
+
+function resolveBookingDateISO(rawDate: any, createdAt?: any, updatedAt?: any): string {
+  const explicit = normalizeISODateLoose(rawDate);
+  if (explicit) return explicit;
+
+  const fallbackMs = Math.max(toMillisSafe(createdAt), toMillisSafe(updatedAt));
+  if (!Number.isFinite(fallbackMs) || fallbackMs <= 0) return "";
+  return formatLocalDateISO(new Date(fallbackMs));
+}
+
+function isBookingOnDate(booking: Pick<Booking, "date" | "createdAt">, targetDateISO: string): boolean {
+  const target = normalizeISODateLoose(targetDateISO);
+  if (!target) return false;
+  return resolveBookingDateISO(booking.date, booking.createdAt) === target;
 }
 
 function weekdayKeyFromISODate(dateStr: string): WeekdayKey | null {
@@ -182,9 +220,7 @@ function formatTime12(time24: string) {
 }
 
 function parseTimeToMinutes(time24: string): number | null {
-  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (!m) return null;
-  return Number(m[1]) * 60 + Number(m[2]);
+  return timeToMinutes(time24);
 }
 
 function toMillisSafe(v: any): number {
@@ -231,6 +267,80 @@ function financeSourceLabelAr(raw: unknown): string {
   return String(raw || "").trim() || "إيراد";
 }
 
+function round2(v: number): number {
+  return Math.round((Number(v) || 0) * 100) / 100;
+}
+
+function normalizePaymentType(raw: unknown): "full" | "partial" | null {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return null;
+  if (s === "full" || s === "complete" || s === "كامل") return "full";
+  if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
+  return null;
+}
+
+function resolveBookingPayment(raw: any): {
+  paidAmount: number;
+  totalAmount: number;
+  paymentType: "full" | "partial";
+  remainingAmount: number;
+} {
+  const totalAmount = Math.max(
+    0,
+    Number(
+      raw?.finalPrice ??
+        raw?.total ??
+        raw?.serviceSnapshot?.priceAtBooking ??
+        raw?.packageSnapshot?.finalPriceAtBooking ??
+        0
+    ) || 0
+  );
+  const normalizedType = normalizePaymentType(raw?.paymentType);
+  const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
+  const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
+  const status = String(raw?.status || "").trim().toLowerCase();
+  const isRevenueStatus = status === "confirmed" || status === "completed";
+
+  let paymentType: "full" | "partial" = normalizedType || (isRevenueStatus ? "full" : "partial");
+  let paidAmount: number;
+  if (hasExplicitPaid) {
+    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
+  } else if (paymentType === "partial") {
+    paidAmount = 0;
+  } else {
+    paidAmount = isRevenueStatus ? totalAmount : 0;
+  }
+
+  if (paymentType === "full") {
+    paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
+  } else {
+    paymentType = paidAmount >= totalAmount ? "full" : "partial";
+  }
+
+  return {
+    paidAmount: round2(Math.max(0, Math.min(totalAmount, paidAmount))),
+    totalAmount: round2(totalAmount),
+    paymentType,
+    remainingAmount: round2(Math.max(0, totalAmount - paidAmount)),
+  };
+}
+
+function resolveLinkedBookingIdFromIncome(item: any): string {
+  const explicit = String(item?.bookingId || "").trim();
+  if (explicit) return explicit;
+  const source = String(item?.source || "").trim().toLowerCase();
+  if (source === "booking" || source === "حجز") return String(item?.id || "").trim();
+  return "";
+}
+
+function resolveIncomeEffectiveAmount(item: any, bookingPaidById: Record<string, number>): number {
+  const linkedBookingId = resolveLinkedBookingIdFromIncome(item);
+  if (linkedBookingId && Object.prototype.hasOwnProperty.call(bookingPaidById, linkedBookingId)) {
+    return Number(bookingPaidById[linkedBookingId] || 0);
+  }
+  return Number(item?.amount || 0);
+}
+
 function bookingStatusLabelAr(status: BookingStatus | string): string {
   const s = String(status || "").toLowerCase().trim();
   if (s === "confirmed") return "مؤكد";
@@ -243,6 +353,9 @@ function bookingStatusLabelAr(status: BookingStatus | string): string {
 /** ✅ تحويل حجز Firestore لشكل Booking اللي تستخدمه الواجهة */
 async function mapFirestoreToUiBooking(b: BookingDocWithId): Promise<Booking> {
   const serviceId = (b as any)?.serviceId || b.serviceName || "";
+  const normalizedDate = resolveBookingDateISO(b.date, (b as any)?.createdAt, (b as any)?.updatedAt);
+  const rawTime = String(b.time || "").trim();
+  const normalizedTime = normalizeTimeToHHMM(rawTime) || rawTime;
 
   return {
     id: b.id,
@@ -262,8 +375,8 @@ async function mapFirestoreToUiBooking(b: BookingDocWithId): Promise<Booking> {
       (b as any)?.serviceCategoryName ||
       "",
     employeeName: b.employeeName || "",
-    date: b.date || "",
-    time: b.time || "",
+    date: normalizedDate,
+    time: normalizedTime,
     status: (b.status || "pending") as BookingStatus,
     total: Number(b.finalPrice ?? (b as any).total ?? 0),
     createdAt: toMillisSafe((b as any)?.createdAt || (b as any)?.updatedAt) || Date.now(),
@@ -817,6 +930,13 @@ const Dashboard: React.FC = () => {
 
       step = "bookings:listAllBookings";
       const docs = await listAllBookingsFS();
+      const bookingPaidById = docs.reduce((acc, b: any) => {
+        const id = String(b?.id || "").trim();
+        if (!id) return acc;
+        const payment = resolveBookingPayment(b);
+        acc[id] = Number(payment.paidAmount || 0);
+        return acc;
+      }, {} as Record<string, number>);
 
       step = "bookings:mapFirestoreToUiBooking";
       const uiBookings = await Promise.all(docs.map(mapFirestoreToUiBooking));
@@ -825,7 +945,7 @@ const Dashboard: React.FC = () => {
       step = "today:compute";
       const todayStr = formatLocalDateISO(new Date());
 
-      const todayListAll = uiBookings.filter((b) => String(b.date) === todayStr);
+      const todayListAll = uiBookings.filter((b) => isBookingOnDate(b, todayStr));
 
       const todayList = todayListAll.filter(
         (b) => b.status === "confirmed" || b.status === "completed"
@@ -851,31 +971,18 @@ const Dashboard: React.FC = () => {
         // ✅ income
         step = "income:listAllIncomeFS";
         const incomes = await listAllIncomeFS("main");
+        const effectiveIncomeAmount = (x: any) =>
+          resolveIncomeEffectiveAmount(x, bookingPaidById);
 
         step = "income:sum";
-        const incomeTotal = incomes
-          .filter((x: any) => {
-            const source = String(x?.source || "").toLowerCase().trim();
-            if (source === "invoice") return true;
-            const st = String(x?.status || "").toLowerCase().trim();
-            return source === "booking" && (st === "confirmed" || st === "completed");
-          })
-          .reduce((sum: number, x: any) => sum + (Number(x?.amount) || 0), 0);
+        const incomeTotal = incomes.reduce(
+          (sum: number, x: any) => sum + effectiveIncomeAmount(x),
+          0
+        );
 
         todayRevenue = incomes
-          .filter((x: any) => {
-            const source = String(x?.source || "").toLowerCase().trim();
-            if (source === "invoice") {
-              return String(x?.date || "").trim() === todayStr;
-            }
-            const st = String(x?.status || "").toLowerCase().trim();
-            return (
-              source === "booking" &&
-              (st === "confirmed" || st === "completed") &&
-              String(x?.date || "").trim() === todayStr
-            );
-          })
-          .reduce((sum: number, x: any) => sum + (Number(x?.amount) || 0), 0);
+          .filter((x: any) => String(x?.date || "").trim() === todayStr)
+          .reduce((sum: number, x: any) => sum + effectiveIncomeAmount(x), 0);
 
         setIncomeTotalFS(incomeTotal);
 
@@ -892,7 +999,7 @@ const Dashboard: React.FC = () => {
 
         const incomeToday = incomes
           .filter((x: any) => String(x?.date || "").trim() === todayStr)
-          .reduce((sum: number, x: any) => sum + (Number(x?.amount) || 0), 0);
+          .reduce((sum: number, x: any) => sum + effectiveIncomeAmount(x), 0);
 
         const expensesToday = expenses
           .filter((x: any) => String((x as any)?.date || "").trim() === todayStr)
@@ -910,7 +1017,7 @@ const Dashboard: React.FC = () => {
           title:
             String(x?.note || "").trim() ||
             financeSourceLabelAr(x?.source),
-          amount: Number(x?.amount || 0),
+          amount: effectiveIncomeAmount(x),
           date: String(x?.date || ""),
           createdAt: Number(x?.createdAt || 0) || Date.now(),
         }));
@@ -950,7 +1057,7 @@ const Dashboard: React.FC = () => {
 
       setTodayScheduleBookings(
         uiBookings
-          .filter((b) => String(b.date) === scheduleDate && b.status !== "cancelled")
+          .filter((b) => isBookingOnDate(b, scheduleDate) && b.status !== "cancelled")
           .sort((a, b) => {
             const aMin = parseTimeToMinutes(a.time);
             const bMin = parseTimeToMinutes(b.time);
@@ -1333,7 +1440,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     setTodayScheduleBookings(
       (allScheduleBookings || [])
-        .filter((b) => String(b.date) === scheduleDate && b.status !== "cancelled")
+        .filter((b) => isBookingOnDate(b, scheduleDate) && b.status !== "cancelled")
         .sort((a, b) => {
           const aMin = parseTimeToMinutes(a.time);
           const bMin = parseTimeToMinutes(b.time);
