@@ -1222,6 +1222,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const sequentialBooking = !!(booking as any)?.sequentialBooking;
   // ✅ الاستقبال يختار التاريخ أول
   const [bookingDate, setBookingDate] = useState<string>(() => todayISO());
+  const allowPastBookingDate = !!internalMode;
   const [bookingDateCalendar, setBookingDateCalendar] = useState<DateCalendar>("gregory");
   const [hijriPickerOpen, setHijriPickerOpen] = useState(false);
   const [hijriViewMonthISO, setHijriViewMonthISO] = useState<string>(() =>
@@ -7926,7 +7927,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                             className="bk-date-picker-native"
                             lang="ar-SA-u-ca-gregory"
                             value={bookingDate}
-                            min={todayISO()}
+                            min={allowPastBookingDate ? undefined : todayISO()}
                             onClick={openBookingDatePicker}
                             onFocus={openBookingDatePicker}
                             onChange={(e) => {
@@ -7964,6 +7965,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                             {hijriMonthDays.map((cell) => {
                               const isPast = cell.iso < todayISO();
                               const isActive = cell.iso === bookingDate;
+                              const isDisabledDate = !allowPastBookingDate && isPast;
                               return (
                                 <button
                                   key={cell.iso}
@@ -7972,7 +7974,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                     "bk-hijri-day",
                                     isActive ? "is-active" : "",
                                   ].join(" ").trim()}
-                                  disabled={isPast}
+                                  disabled={isDisabledDate}
                                   onClick={() => applyBookingDate(cell.iso)}
                                 >
                                   {String(cell.hijriDay)}
