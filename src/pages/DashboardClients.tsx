@@ -230,6 +230,7 @@ function bookingNoOf(b: any) {
 
 const NOTES_KEY = "dashboard_client_notes_v1";
 const SALON_IBAN = "SA4710000001400007036306";
+const SALON_BANK_NAME = "البنك الأهلي السعودي";
 
 const SALON_ID = "main";
 const CLIENTS_COLLECTION = ["salons", SALON_ID, "clients"] as const;
@@ -238,7 +239,7 @@ function buildClientWhatsAppMessage(clientName: string) {
   const safeName = String(clientName || "").trim() || "عميلتنا الكريمة";
   return [
     `مرحبًا ${safeName}،`,
-    "تأكيد الحجز يتم بعد تحويل المبلغ على رقم الآيبان التالي:",
+    `تأكيد الحجز يتم بعد تحويل المبلغ على ${SALON_BANK_NAME} برقم الآيبان التالي:`,
     SALON_IBAN,
     "بعد التحويل يسعدنا استلام إيصال التحويل عبر الواتساب لإكمال تأكيد الحجز.",
     "شاكرين لك ثقتك، ونسعد بخدمتك دائمًا.",

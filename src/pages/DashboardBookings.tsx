@@ -56,6 +56,8 @@ import "../styles/DashboardBookings.css";
 ========================= */
 
 type StatusOption = BookingStatus | "all";
+type ExcludedStatusOption = "" | BookingStatus;
+type SettlementFilterOption = "all" | "unpaid";
 
 const NOTES_KEY = "dashboard_booking_notes_v1";
 const BOOKING_ACTION_PIN = "598867395";
@@ -70,6 +72,12 @@ const statusLabel: Record<BookingStatus, string> = {
 
 const allStatusOptions: BookingStatus[] = ["pending", "confirmed", "completed", "cancelled"];
 type BookingPaymentType = "full" | "partial";
+type PaymentDisplayLine = {
+  key: string;
+  label: string;
+  tone: "neutral" | "paid" | "remaining" | "total";
+  amount?: number;
+};
 
 /* =========================
    Helpers
@@ -253,6 +261,19 @@ function resolveBookingPaymentSummary(raw: any): {
   };
 }
 
+function isPendingDepositBooking(
+  raw: { status?: string } | null | undefined,
+  payment: { paidAmount: number; remainingAmount: number; totalAmount: number }
+) {
+  const status = String(raw?.status || "").trim().toLowerCase();
+  if (status !== "pending") return false;
+  return (
+    Number(payment.totalAmount || 0) > 0 &&
+    Number(payment.paidAmount || 0) > 0 &&
+    Number(payment.remainingAmount || 0) > 0
+  );
+}
+
 function paymentStatusLabel(payment: {
   paymentType: BookingPaymentType;
   paidAmount: number;
@@ -263,10 +284,56 @@ function paymentStatusLabel(payment: {
   const paid = round2(payment.paidAmount);
   const remaining = round2(payment.remainingAmount);
   if (total <= 0) return "لا يوجد سعر محدد";
-  if (paid <= 0 && remaining > 0) return "غير مدفوع";
+  if (paid <= 0 && remaining > 0) return "غير مدفوع (بانتظار السداد)";
   if (remaining <= 0) return "مدفوع بالكامل";
-  if (payment.paymentType === "partial") return "عربون";
-  return "مدفوع";
+  if (payment.paymentType === "partial") return "عربون (دفع جزئي)";
+  return "مدفوع جزئيًا";
+}
+
+function paymentBreakdownText(payment: {
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+}) {
+  if (round2(payment.totalAmount) <= 0) return paymentStatusLabel(payment);
+  return `${paymentStatusLabel(payment)} - ${paymentAmountsInlineText(payment).replace(/\n/g, " | ")}`;
+}
+
+function paymentAmountsDisplayLines(payment: {
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+}): PaymentDisplayLine[] {
+  const total = round2(payment.totalAmount);
+  const paid = round2(payment.paidAmount);
+  const remaining = round2(payment.remainingAmount);
+  if (total <= 0) {
+    return [{ key: "empty", label: "لا يوجد مبلغ محدد", tone: "neutral" as const }];
+  }
+  if (remaining <= 0) {
+    return [{ key: "paid", label: "مدفوع", amount: paid, tone: "paid" as const }];
+  }
+  if (paid <= 0) {
+    return [{ key: "remaining", label: "متبقي", amount: remaining, tone: "remaining" as const }];
+  }
+  return [
+    { key: "paid", label: "مدفوع", amount: paid, tone: "paid" as const },
+    { key: "remaining", label: "متبقي", amount: remaining, tone: "remaining" as const },
+    { key: "total", label: "إجمالي", amount: total, tone: "total" as const },
+  ];
+}
+
+function paymentAmountsInlineText(payment: {
+  paymentType: BookingPaymentType;
+  paidAmount: number;
+  remainingAmount: number;
+  totalAmount: number;
+}) {
+  return paymentAmountsDisplayLines(payment)
+    .map((line) => (typeof line.amount === "number" ? `${line.label} ${line.amount} ر.س` : line.label))
+    .join("\n");
 }
 
 function toMillisSafe(v: any) {
@@ -280,6 +347,18 @@ function toMillisSafe(v: any) {
   if (typeof v === "number") return Number(v) || 0;
   const parsed = Date.parse(String(v));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function bookingCreationRefMs(b: Partial<Booking> | null | undefined) {
+  const createdAtMs = toMillisSafe((b as any)?.createdAt);
+  if (createdAtMs > 0) return createdAtMs;
+  const createdAtMsLegacy = Number((b as any)?.createdAtMs || 0);
+  if (Number.isFinite(createdAtMsLegacy) && createdAtMsLegacy > 0) return createdAtMsLegacy;
+  const pendingAtMs = Number((b as any)?.pendingAt || 0);
+  if (Number.isFinite(pendingAtMs) && pendingAtMs > 0) return pendingAtMs;
+  const updatedAtMs = toMillisSafe((b as any)?.updatedAt);
+  if (updatedAtMs > 0) return updatedAtMs;
+  return 0;
 }
 
 function bookingPublicBase(publicId?: string) {
@@ -612,6 +691,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusOption>("all");
+  const [excludedStatus, setExcludedStatus] = useState<ExcludedStatusOption>("");
+  const [settlementFilter, setSettlementFilter] = useState<SettlementFilterOption>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -994,19 +1075,45 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, [bookings, q, dateFrom, dateTo, uiRole, authUser]);
 
   const filtered = useMemo(() => {
-    if (statusFilter === "all") return filteredBase;
-    return filteredBase.filter((b) => b.status === statusFilter);
-  }, [filteredBase, statusFilter]);
+    const statusScoped =
+      statusFilter === "all"
+        ? excludedStatus
+          ? filteredBase.filter((b) => b.status !== excludedStatus)
+          : filteredBase
+        : filteredBase.filter((b) => b.status === statusFilter);
+
+    if (settlementFilter === "unpaid") {
+      return statusScoped.filter((b) => resolveBookingPaymentSummary(b).remainingAmount > 0);
+    }
+
+    return statusScoped;
+  }, [filteredBase, statusFilter, excludedStatus, settlementFilter]);
 
   const statusTabCounts = useMemo(
-    () => ({
-      all: filteredBase.length,
-      pending: filteredBase.filter((b) => b.status === "pending").length,
-      confirmed: filteredBase.filter((b) => b.status === "confirmed").length,
-      completed: filteredBase.filter((b) => b.status === "completed").length,
-      cancelled: filteredBase.filter((b) => b.status === "cancelled").length,
-    }),
-    [filteredBase]
+    () => {
+      const pending = filteredBase.filter((b) => b.status === "pending").length;
+      const confirmed = filteredBase.filter((b) => b.status === "confirmed").length;
+      const completed = filteredBase.filter((b) => b.status === "completed").length;
+      const cancelled = filteredBase.filter((b) => b.status === "cancelled").length;
+      const excludedCount =
+        excludedStatus === "pending"
+          ? pending
+          : excludedStatus === "confirmed"
+            ? confirmed
+            : excludedStatus === "completed"
+              ? completed
+              : excludedStatus === "cancelled"
+                ? cancelled
+                : 0;
+      return {
+        all: Math.max(0, filteredBase.length - excludedCount),
+        pending,
+        confirmed,
+        completed,
+        cancelled,
+      };
+    },
+    [filteredBase, excludedStatus]
   );
 
   const totalRemainingAmount = useMemo(
@@ -1112,14 +1219,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return bookings
       .filter((b) => {
         if (b.status !== "pending") return false;
-        const createdAtMs = toMillisSafe((b as any)?.createdAt);
+        const createdAtMs = bookingCreationRefMs(b);
         const createdDateISO = dateISOFromMillisLocal(createdAtMs);
         if (!createdDateISO) return false;
         return createdDateISO < today;
       })
       .sort((a, b) => {
-        const aMs = toMillisSafe((a as any)?.createdAt);
-        const bMs = toMillisSafe((b as any)?.createdAt);
+        const aMs = bookingCreationRefMs(a);
+        const bMs = bookingCreationRefMs(b);
         if (aMs !== bMs) return aMs - bMs;
         const d = String(a.date || "").localeCompare(String(b.date || ""));
         if (d !== 0) return d;
@@ -1127,8 +1234,20 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       });
   }, [bookings]);
 
-  const expiredPendingDayPreview = useMemo(
-    () => expiredPendingDayBookings.slice(0, 6),
+  const expiredPendingDayDepositBookings = useMemo(
+    () =>
+      expiredPendingDayBookings.filter((b) => {
+        const payment = resolveBookingPaymentSummary(b);
+        return isPendingDepositBooking(b, payment);
+      }),
+    [expiredPendingDayBookings]
+  );
+  const expiredPendingDayNoPaymentBookings = useMemo(
+    () =>
+      expiredPendingDayBookings.filter((b) => {
+        const payment = resolveBookingPaymentSummary(b);
+        return !isPendingDepositBooking(b, payment);
+      }),
     [expiredPendingDayBookings]
   );
 
@@ -1630,6 +1749,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     () => resolveBookingPaymentSummary(selectedBooking || {}),
     [selectedBooking]
   );
+  const selectedBookingIsPendingDeposit = useMemo(
+    () => isPendingDepositBooking(selectedBooking || null, selectedBookingPayment),
+    [selectedBooking, selectedBookingPayment]
+  );
 
   const handleExport = () => {
     const rows = [
@@ -1778,24 +1901,27 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </div>
           ) : null}
 
-          {expiredPendingDayBookings.length > 0 ? (
+          {expiredPendingDayDepositBookings.length > 0 ? (
             <div className="bk-stale-alert" role="status" aria-live="polite">
               <div className="bk-stale-alert-head">
-                <strong>تنبيه: يوجد {expiredPendingDayBookings.length} حجز في الانتظار لم يتم تاكيدها من تاريخ انشاء الحجز .</strong>
+                <strong>
+                  تنبيه: يوجد {expiredPendingDayDepositBookings.length} حجز في الانتظار (
+                  <span className="bk-stale-alert-keyword">عربون</span>) لم يتم تاكيدها من تاريخ انشاء الحجز .
+                </strong>
                 <span>يرجى مراجعتها وإغلاقها بالحالة المناسبة.</span>
               </div>
 
               <div className="bk-stale-alert-list">
-                {expiredPendingDayPreview.map((b) => (
+                {expiredPendingDayDepositBookings.map((b) => (
                   <button
-                    key={`expired_pending_${b.id}`}
+                    key={`expired_pending_deposit_${b.id}`}
                     type="button"
                     className="bk-stale-alert-item"
                     onClick={() => setSelectedBooking(b)}
                     title="فتح تفاصيل الحجز"
                   >
                     {(() => {
-                      const createdAtMs = toMillisSafe((b as any)?.createdAt);
+                      const createdAtMs = bookingCreationRefMs(b);
                       const createdISO = dateISOFromMillisLocal(createdAtMs) || "—";
                       return (
                         <>
@@ -1803,7 +1929,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                             {bookingRef(b)} • {b.customerName || "—"}
                           </span>
                           <span className="bk-stale-alert-meta">
-                            إنشاء: {createdISO} • الموعد: {b.date} {formatTime12(b.time)} • في الانتظار
+                            إنشاء: {createdISO} • الموعد: {b.date} {formatTime12(b.time)} • في الانتظار (عربون)
                           </span>
                         </>
                       );
@@ -1812,11 +1938,46 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 ))}
               </div>
 
-              {expiredPendingDayBookings.length > expiredPendingDayPreview.length ? (
-                <div className="bk-stale-alert-more">
-                  +{expiredPendingDayBookings.length - expiredPendingDayPreview.length} حجوزات انتظار إضافية
-                </div>
-              ) : null}
+            </div>
+          ) : null}
+
+          {expiredPendingDayNoPaymentBookings.length > 0 ? (
+            <div className="bk-stale-alert" role="status" aria-live="polite">
+              <div className="bk-stale-alert-head">
+                <strong>
+                  تنبيه: يوجد {expiredPendingDayNoPaymentBookings.length} حجز في الانتظار (
+                  <span className="bk-stale-alert-keyword">بدون دفع</span>) لم يتم تاكيدها من تاريخ انشاء الحجز .
+                </strong>
+                <span>يرجى مراجعتها وإغلاقها بالحالة المناسبة.</span>
+              </div>
+
+              <div className="bk-stale-alert-list">
+                {expiredPendingDayNoPaymentBookings.map((b) => (
+                  <button
+                    key={`expired_pending_unpaid_${b.id}`}
+                    type="button"
+                    className="bk-stale-alert-item"
+                    onClick={() => setSelectedBooking(b)}
+                    title="فتح تفاصيل الحجز"
+                  >
+                    {(() => {
+                      const createdAtMs = bookingCreationRefMs(b);
+                      const createdISO = dateISOFromMillisLocal(createdAtMs) || "—";
+                      return (
+                        <>
+                          <span className="bk-stale-alert-ref">
+                            {bookingRef(b)} • {b.customerName || "—"}
+                          </span>
+                          <span className="bk-stale-alert-meta">
+                            إنشاء: {createdISO} • الموعد: {b.date} {formatTime12(b.time)} • في الانتظار (بدون دفع)
+                          </span>
+                        </>
+                      );
+                    })()}
+                  </button>
+                ))}
+              </div>
+
             </div>
           ) : null}
 
@@ -1913,12 +2074,49 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 }}
               />
             </div>
+            <div className="bk-field">
+              <label>استثناء (في الكل)</label>
+              <select
+                className="bk-select"
+                value={excludedStatus}
+                onChange={(e) => setExcludedStatus(e.target.value as ExcludedStatusOption)}
+                disabled={statusFilter !== "all"}
+              >
+                <option value="">بدون استثناء</option>
+                {allStatusOptions.map((s) => (
+                  <option key={`exclude_${s}`} value={s}>
+                    {`استثناء: ${statusLabel[s]}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="bk-field">
+              <label>السداد</label>
+              <select
+                className="bk-select"
+                value={settlementFilter}
+                onChange={(e) => setSettlementFilter(e.target.value as SettlementFilterOption)}
+              >
+                <option value="all">الكل</option>
+                <option value="unpaid">لم يتم السداد</option>
+              </select>
+            </div>
           </div>
           <div className="bk-actions">
             <button className="exp-btn" onClick={handleExport}>
               <FontAwesomeIcon icon={faFileCsv} /> تصدير CSV
             </button>
-            <button className="exp-btn ghost" onClick={() => { setQ(""); setStatusFilter("all"); setDateFrom(""); setDateTo(""); }}>
+            <button
+              className="exp-btn ghost"
+              onClick={() => {
+                setQ("");
+                setStatusFilter("all");
+                setExcludedStatus("");
+                setSettlementFilter("all");
+                setDateFrom("");
+                setDateTo("");
+              }}
+            >
               <FontAwesomeIcon icon={faRotate} /> إعادة ضبط
             </button>
           </div>
@@ -1936,6 +2134,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   <th>التاريخ والوقت</th>
                   <th>آخر تحديث</th>
                   <th>السعر</th>
+                  <th>تفاصيل الدفع</th>
                   <th>إجراءات</th>
                 </tr>
               </thead>
@@ -1945,7 +2144,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   if (block.rows.length > 1) {
                     rows.push(
                       <tr key={`group-${block.key}`} className="bookings-group-row">
-                        <td colSpan={8}>
+                        <td colSpan={9}>
                           <div className="bookings-group-row-inner">
                             <span className="bookings-group-title">حجز مجمّع</span>
                             <span className="bookings-group-meta">
@@ -1964,12 +2163,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       ? (b.status as BookingStatus)
                       : "pending";
                     const payment = resolveBookingPaymentSummary(b);
+                    const isPendingDeposit = isPendingDepositBooking(b, payment);
                     rows.push(
-                      <tr key={b.id} className={`bk-row bk-row-${safeStatus}`}>
+                      <tr
+                        key={b.id}
+                        className={`bk-row bk-row-${safeStatus}${isPendingDeposit ? " bk-row-pending-deposit" : ""}`}
+                      >
                         <td>
                           <div className="bk-ref-cell">
                             <div className="bk-ref-code">{bookingRef(b)}</div>
-                            <span className={`status-badge ${safeStatus}`}>{statusLabel[safeStatus]}</span>
+                            <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
+                              {statusLabel[safeStatus]}
+                            </span>
                           </div>
                         </td>
                         <td>
@@ -2005,8 +2210,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                             >
                               {paymentStatusLabel(payment)}
                             </span>
-                            <span className="bk-payment-line">دفعت {payment.paidAmount} ر.س</span>
-                            <span className="bk-payment-line">المتبقي {payment.remainingAmount} ر.س</span>
+                          </div>
+                        </td>
+                        <td className="bk-payment-details-cell">
+                          <div className="bk-payment-breakdown">
+                            {paymentAmountsDisplayLines(payment).map((line) => (
+                              <div key={line.key} className={`bk-payment-metric-row ${line.tone}`}>
+                                <span className="bk-payment-metric-label">{line.label}</span>
+                                {typeof line.amount === "number" ? (
+                                  <span className="bk-payment-metric-value">{line.amount} ر.س</span>
+                                ) : null}
+                              </div>
+                            ))}
                           </div>
                         </td>
                         <td className="bk-actions-cell">
@@ -2090,9 +2305,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   </div>
                 ) : null}
                 {block.rows.map((b) => {
+                  const safeStatus = (["pending", "confirmed", "completed", "cancelled"] as const).includes(
+                    b.status as any
+                  )
+                    ? (b.status as BookingStatus)
+                    : "pending";
                   const payment = resolveBookingPaymentSummary(b);
+                  const isPendingDeposit = isPendingDepositBooking(b, payment);
                   return (
-                  <div key={b.id} className={`bk-mobile-card bk-mobile-card-${b.status || "pending"}`}>
+                  <div
+                    key={b.id}
+                    className={`bk-mobile-card bk-mobile-card-${safeStatus}${isPendingDeposit ? " is-pending-deposit" : ""}`}
+                  >
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">رقم الحجز:</span>
                       <span className="bk-mobile-val" style={{fontWeight: 900}}>{bookingRef(b)}</span>
@@ -2122,14 +2346,25 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     </div>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">الحالة:</span>
-                      <span className={`status-badge ${b.status}`}>{statusLabel[b.status]}</span>
+                      <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
+                        {statusLabel[safeStatus]}
+                      </span>
                     </div>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">الدفع:</span>
-                      <span className="bk-mobile-val">
-                        {paymentStatusLabel(payment)} - دفعت {payment.paidAmount} ر.س - المتبقي{" "}
-                        {payment.remainingAmount} ر.س
-                      </span>
+                      <div className="bk-mobile-val bk-mobile-payment-val">
+                        <strong>{paymentStatusLabel(payment)}</strong>
+                        <div className="bk-mobile-payment-line">
+                          {paymentAmountsDisplayLines(payment).map((line) => (
+                            <div key={`mob_pay_${b.id}_${line.key}`} className={`bk-payment-metric-row ${line.tone}`}>
+                              <span className="bk-payment-metric-label">{line.label}</span>
+                              {typeof line.amount === "number" ? (
+                                <span className="bk-payment-metric-value">{line.amount} ر.س</span>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                     <div className="bk-mobile-actions">
                        <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
@@ -2272,7 +2507,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 <div className="bk-item">
                   <span className="bk-item-label">الحالة</span>
                   <span className="bk-item-val">
-                    <span className={`status-badge ${selectedBooking.status}`}>{statusLabel[selectedBooking.status]}</span>
+                    <span
+                      className={`status-badge ${selectedBooking.status}${selectedBookingIsPendingDeposit ? " pending-deposit" : ""}`}
+                    >
+                      {statusLabel[selectedBooking.status]}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -2623,7 +2862,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       ? total
                       : Math.max(0, Number(confirmDraft.paidAmount || 0));
                   const remaining = round2(Math.max(0, total - paid));
-                  return `دفعت ${round2(paid)} ر.س - المتبقي ${remaining} ر.س`;
+                  return paymentBreakdownText({
+                    paymentType: confirmDraft.paymentType === "full" ? "full" : "partial",
+                    paidAmount: round2(paid),
+                    remainingAmount: remaining,
+                    totalAmount: total,
+                  });
                 })()}
               </div>
             </div>

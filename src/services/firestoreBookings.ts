@@ -494,6 +494,27 @@ function getAmount(b: BookingDoc): number {
   return resolveBookingPaymentState(b).paidAmount;
 }
 
+function shouldAutoConfirmClientPendingOnCreate(
+  raw: Partial<BookingDoc>,
+  requestedStatus: BookingStatus
+): boolean {
+  if (requestedStatus !== "pending") return false;
+  if (String(raw?.channel || "").trim().toLowerCase() !== "client") return false;
+
+  const payment = resolveBookingPaymentState({
+    ...raw,
+    status: requestedStatus,
+  });
+  const total = Number(payment.totalAmount || 0);
+  if (!Number.isFinite(total) || total <= 0) return false;
+
+  return (
+    payment.paymentType === "full" &&
+    Number(payment.paidAmount || 0) >= total &&
+    Number(payment.remainingAmount || 0) <= 0
+  );
+}
+
 function buildStatusAuditPatch(
   status: BookingStatus,
   nowMs: number,
@@ -890,7 +911,10 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const durationMin = Math.max(0, Number(data.durationMin || 0)) || 60;
   const nowMs = Date.now();
   const actorUid = String(data.userId || getAuth().currentUser?.uid || "").trim() || undefined;
-  const statusNow = ((data.status as BookingStatus) || "pending") as BookingStatus;
+  const requestedStatus = ((data.status as BookingStatus) || "pending") as BookingStatus;
+  const statusNow: BookingStatus = shouldAutoConfirmClientPendingOnCreate(data, requestedStatus)
+    ? "confirmed"
+    : requestedStatus;
   const statusAuditPatch = buildStatusAuditPatch(statusNow, nowMs, actorUid);
   const resolvedPaymentMethod = resolvePaymentMethodForStatus(
     statusNow,
@@ -1007,6 +1031,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     paymentType: paymentState.paymentType,
     paidAmount: paymentState.paidAmount,
     remainingAmount: paymentState.remainingAmount,
+    status: statusNow,
     ...statusAuditPatch,
 
     createdAt: serverTimestamp(),
@@ -1180,7 +1205,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         slotStepMinAtBooking: (payloadBase as any).slotStepMinAtBooking,
         bufferMinAtBooking: (payloadBase as any).bufferMinAtBooking,
 
-        status: data.status,
+        status: statusNow,
         slotId: startSlotId,
         ...statusAuditPatch,
 
@@ -1227,7 +1252,10 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
 
   const nowMs = Date.now();
   const actorUid = String(parent.userId || getAuth().currentUser?.uid || "").trim() || undefined;
-  const status: BookingStatus = (parent.status as BookingStatus) || "pending";
+  const requestedStatus: BookingStatus = (parent.status as BookingStatus) || "pending";
+  const status: BookingStatus = shouldAutoConfirmClientPendingOnCreate(parent, requestedStatus)
+    ? "confirmed"
+    : requestedStatus;
   const statusAuditPatch = buildStatusAuditPatch(status, nowMs, actorUid);
 
   const parentRef = doc(collection(db, ...BOOKINGS_COL));
@@ -2053,6 +2081,31 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
       updatedAt: serverTimestamp(),
     }) as any
   );
+
+  // ✅ Auto-confirm for client bookings only:
+  // If booking is still pending and payment became fully paid, promote to confirmed.
+  // (Does not affect internal flow because channel must be "client".)
+  if (
+    patch.status === undefined &&
+    (patch.paymentType !== undefined ||
+      patch.paidAmount !== undefined ||
+      patch.remainingAmount !== undefined ||
+      patch.finalPrice !== undefined ||
+      patch.total !== undefined)
+  ) {
+    try {
+      const freshSnap = await getDoc(bookingRef);
+      if (freshSnap.exists()) {
+        const fresh = normalizeBooking(freshSnap.data());
+        const freshStatus = (String(fresh.status || "").trim().toLowerCase() || "pending") as BookingStatus;
+        if (shouldAutoConfirmClientPendingOnCreate(fresh, freshStatus)) {
+          await updateBookingStatus(bookingId, "confirmed");
+        }
+      }
+    } catch (e) {
+      console.warn("[updateBookingDetails] auto-confirm check failed (ignored):", e);
+    }
+  }
 
   // ✅ booking log: details updated (best effort)
   await writeBookingLog({

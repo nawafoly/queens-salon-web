@@ -306,6 +306,13 @@
   font-weight: 900;
 }
 
+.bk-page-wrapper .bk-stale-alert-head .bk-stale-alert-keyword {
+  color: #b42318;
+  font-weight: 900;
+  font-size: 1.16em;
+  line-height: 1;
+}
+
 .bk-page-wrapper .bk-stale-alert-head span {
   color: #9a3412;
   font-size: 12px;
@@ -357,7 +364,7 @@
 
 .bk-page-wrapper .bk-filters {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   align-items: end;
   min-width: 0;
@@ -584,6 +591,10 @@
   background: linear-gradient(180deg, rgba(234, 179, 8, 0.06), rgba(234, 179, 8, 0.02));
 }
 
+.bk-page-wrapper .bookings-table .bk-row.bk-row-pending-deposit td {
+  background: linear-gradient(180deg, rgba(30, 58, 138, 0.16), rgba(30, 58, 138, 0.06));
+}
+
 .bk-page-wrapper .bookings-table .bk-row.bk-row-cancelled td {
   background: linear-gradient(180deg, rgba(239, 68, 68, 0.05), rgba(239, 68, 68, 0.02));
 }
@@ -606,6 +617,10 @@
 
 .bk-page-wrapper .bookings-table .bk-row.bk-row-pending td:first-child {
   border-right-color: rgba(234, 179, 8, 0.7);
+}
+
+.bk-page-wrapper .bookings-table .bk-row.bk-row-pending-deposit td:first-child {
+  border-right-color: rgba(30, 58, 138, 0.94);
 }
 
 .bk-page-wrapper .bookings-table .bk-row.bk-row-cancelled td:first-child {
@@ -657,9 +672,11 @@
 .bk-page-wrapper .bookings-table th:nth-child(6),
 .bk-page-wrapper .bookings-table td:nth-child(6) { width: 155px; }
 .bk-page-wrapper .bookings-table th:nth-child(7),
-.bk-page-wrapper .bookings-table td:nth-child(7) { width: 185px; }
+.bk-page-wrapper .bookings-table td:nth-child(7) { width: 160px; }
 .bk-page-wrapper .bookings-table th:nth-child(8),
-.bk-page-wrapper .bookings-table td:nth-child(8) { width: 240px; }
+.bk-page-wrapper .bookings-table td:nth-child(8) { width: 250px; }
+.bk-page-wrapper .bookings-table th:nth-child(9),
+.bk-page-wrapper .bookings-table td:nth-child(9) { width: 240px; }
 
 .bk-page-wrapper .bk-ref-cell {
   display: grid;
@@ -820,6 +837,63 @@
   line-height: 1.3;
 }
 
+.bk-page-wrapper .bk-payment-details-cell {
+  text-align: right;
+  vertical-align: middle;
+  padding-inline: 10px;
+}
+
+.bk-page-wrapper .bk-payment-breakdown {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.bk-page-wrapper .bk-payment-metric-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.bk-page-wrapper .bk-payment-metric-label {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.bk-page-wrapper .bk-payment-metric-value {
+  color: #0f172a;
+  font-weight: 900;
+  direction: ltr;
+  unicode-bidi: plaintext;
+}
+
+.bk-page-wrapper .bk-payment-metric-row.paid .bk-payment-metric-value {
+  color: #166534;
+}
+
+.bk-page-wrapper .bk-payment-metric-row.remaining .bk-payment-metric-value {
+  color: #b45309;
+}
+
+.bk-page-wrapper .bk-payment-metric-row.total .bk-payment-metric-value {
+  color: #1e3a8a;
+}
+
+.bk-page-wrapper .bk-payment-metric-row.neutral {
+  justify-content: center;
+}
+
+.bk-page-wrapper .bk-payment-metric-row.neutral .bk-payment-metric-label {
+  color: #475569;
+}
+
 .bk-page-wrapper .bk-actions-cell {
   min-width: 220px;
   padding-inline: 8px;
@@ -911,6 +985,13 @@
   border-color: rgba(234, 179, 8, 0.24);
 }
 
+.bk-page-wrapper .status-badge.pending.pending-deposit {
+  background: #1e3a8a;
+  color: #fff;
+  border-color: #1e40af;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+}
+
 .bk-page-wrapper .status-badge.cancelled {
   background: rgba(239, 68, 68, 0.1);
   color: #991b1b;
@@ -968,6 +1049,12 @@
   background: linear-gradient(180deg, rgba(234, 179, 8, 0.08), #fff);
 }
 
+.bk-page-wrapper .bk-mobile-card.bk-mobile-card-pending.is-pending-deposit {
+  border-color: rgba(30, 58, 138, 0.65);
+  background: linear-gradient(180deg, rgba(30, 58, 138, 0.2), rgba(30, 58, 138, 0.04) 70%, #fff);
+  box-shadow: 0 6px 16px rgba(30, 58, 138, 0.12);
+}
+
 .bk-page-wrapper .bk-mobile-card.bk-mobile-card-cancelled {
   border-color: rgba(239, 68, 68, 0.34);
   background: linear-gradient(180deg, rgba(239, 68, 68, 0.07), #fff);
@@ -1016,6 +1103,40 @@
   text-align: right;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.bk-page-wrapper .bk-mobile-payment-val {
+  display: grid;
+  gap: 3px;
+}
+
+.bk-page-wrapper .bk-mobile-payment-val strong {
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.bk-page-wrapper .bk-mobile-payment-val > span {
+  font-size: 12px;
+  color: #334155;
+}
+
+.bk-page-wrapper .bk-mobile-payment-val .bk-mobile-payment-line {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  margin-top: 2px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  direction: rtl;
+}
+
+.bk-page-wrapper .bk-mobile-payment-line .bk-payment-metric-row {
+  font-size: 12px;
+}
+
+.bk-page-wrapper .bk-mobile-payment-line .bk-payment-metric-row + .bk-payment-metric-row {
+  margin-top: 4px;
 }
 
 .bk-page-wrapper .bk-mobile-date-val {
@@ -1090,6 +1211,12 @@
 @media (max-width: 1100px) {
   .bk-page-wrapper .bk-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1400px) {
+  .bk-page-wrapper .bk-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
