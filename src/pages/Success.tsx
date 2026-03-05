@@ -331,6 +331,48 @@ function toMillisSafe(v: any) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function isMissingMergeValue(value: any) {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "string") {
+    const normalized = normalizeDisplayValue(value);
+    if (!normalized) return true;
+    if (isDisplayPlaceholder(normalized)) return true;
+  }
+  return false;
+}
+
+function mergeWithLocalFallback(
+  rawDoc: Record<string, any> | null | undefined,
+  localHint: LocalBookingSnapshot | null | undefined
+) {
+  const merged: Record<string, any> = { ...(rawDoc || {}) };
+  if (!localHint || typeof localHint !== "object") return merged;
+
+  for (const [key, localValue] of Object.entries(localHint)) {
+    if (isMissingMergeValue(merged[key])) {
+      merged[key] = localValue;
+    }
+  }
+
+  const mergeNested = (field: "serviceSnapshot" | "packageSnapshot") => {
+    const localObj = (localHint as any)?.[field];
+    if (!localObj || typeof localObj !== "object") return;
+
+    const base: Record<string, any> =
+      merged[field] && typeof merged[field] === "object" ? { ...merged[field] } : {};
+
+    for (const [k, v] of Object.entries(localObj)) {
+      if (isMissingMergeValue(base[k])) base[k] = v;
+    }
+    merged[field] = base;
+  };
+
+  mergeNested("serviceSnapshot");
+  mergeNested("packageSnapshot");
+
+  return merged;
+}
+
 function buildWhatsappMessageAll(bookings: UiBookingView[]) {
   const lines: string[] = [];
   lines.push("مرحباً 🌷");
@@ -842,7 +884,7 @@ export default function Success() {
           refHint?: LocalBookingRef,
           localHint?: LocalBookingSnapshot | null
         ) => {
-          const merged = { ...(localHint || {}), ...(rawDoc || {}) };
+          const merged = mergeWithLocalFallback(rawDoc || {}, localHint || null);
           const bookingIdResolved = String(
             merged?.id ||
               merged?.bookingId ||

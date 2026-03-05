@@ -39,7 +39,8 @@ import {
   isStaffAvailableForDate,
   filterStaffSlotsByWorkingHours,
   isStaffEmploymentEndedForDate,
-  resolveStaffWorkingWindowForDate,
+  resolveStaffWorkingWindowsForDate,
+  type ResolvedStaffWorkingWindowRange,
 } from "../helpers/staffAvailability";
 import {
   pickEffectivePrice as resolveEffectiveSeasonPrice,
@@ -513,6 +514,13 @@ type BookingHourOverride = {
   blockedWeekdays?: WeekdayKey[];
   reason?: string;
 };
+type TimeSlotCard = {
+  slot: TimeSlot;
+  value24: string;
+  state: SlotChipState;
+  reason: string;
+  isSelected: boolean;
+};
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const AR_SA_LATN_LOCALE = "ar-SA-u-nu-latn";
 const AR_SA_GREGORY_LATN_LOCALE = "ar-SA-u-ca-gregory-nu-latn";
@@ -640,6 +648,25 @@ function minutesToTime24(totalMin: number) {
 function roundUpToStep(totalMin: number, stepMin: number) {
   const step = Math.max(1, Number(stepMin || 1));
   return Math.ceil(Number(totalMin || 0) / step) * step;
+}
+
+function isTimeInsideWindowRange(time24: string, start24: string, end24: string) {
+  const t = toMinutes(time24);
+  const s = toMinutes(start24);
+  const e = toMinutes(end24);
+  if (s === e) return false;
+  if (s < e) return t >= s && t < e;
+  return t >= s || t < e;
+}
+
+function buildStaffWindowLabel(window: ResolvedStaffWorkingWindowRange, index: number, total: number) {
+  const start = String(window.start || "").trim();
+  const end = String(window.end || "").trim();
+  const range = `${start}–${end}`;
+  if (total === 1) return `الفترة: ${range}`;
+  if (index === 0) return `الفترة الصباحية: ${range}`;
+  if (index === 1) return `الفترة المسائية: ${range}`;
+  return `الفترة ${index + 1}: ${range}`;
 }
 
 function calcDiscount(basePrice: number, offer: FsOffer) {
@@ -4846,25 +4873,53 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
     let staffScopedSlots = slotsForThisService;
     if (staff) {
-      const staffWindow = resolveStaffWorkingWindowForDate(staff as any, {
+      const staffWindows = resolveStaffWorkingWindowsForDate(staff as any, {
         dateISO,
         fallbackOpenTime: dayOpenTime,
         fallbackCloseTime: dayCloseTime,
       });
-      if (!staffWindow.enabled) return [];
+      if (!staffWindows.length) return [];
       const workingStarts = filterStaffSlotsByWorkingHours(staff as any, {
         dateISO,
         slots: slotsForThisService,
         fallbackOpenTime: dayOpenTime,
         fallbackCloseTime: dayCloseTime,
       });
-      staffScopedSlots = filterSlotsByServiceEnd(
-        workingStarts,
-        staffWindow.end,
-        normalizedDuration,
-        bufferMin,
-        ALLOW_OVERTIME_MIN
+      const orderedByValue = new Map<string, TimeSlot>(
+        (slotsForThisService || [])
+          .map((slot) => [String(slot?.value24 || "").trim(), slot] as const)
+          .filter(([k]) => !!k)
       );
+      const allowedByValue = new Set<string>();
+      for (const window of staffWindows) {
+        const scopedWindowStarts = (workingStarts || []).filter((slot) =>
+          isTimeInsideWindowRange(
+            String(slot?.value24 || "").trim(),
+            String(window.start || "").trim(),
+            String(window.end || "").trim()
+          )
+        );
+        const allowedInWindow = filterSlotsByServiceEnd(
+          scopedWindowStarts,
+          String(window.end || "").trim(),
+          normalizedDuration,
+          bufferMin,
+          ALLOW_OVERTIME_MIN
+        );
+        for (const slot of allowedInWindow) {
+          const value = String(slot?.value24 || "").trim();
+          if (value) allowedByValue.add(value);
+        }
+      }
+      staffScopedSlots = (slotsForThisService || []).filter((slot) =>
+        allowedByValue.has(String(slot?.value24 || "").trim())
+      );
+      if (!staffScopedSlots.length) {
+        // Keep deterministic order from the original day slots.
+        staffScopedSlots = Array.from(orderedByValue.entries())
+          .filter(([value]) => allowedByValue.has(value))
+          .map(([, slot]) => slot);
+      }
     }
 
     if (!staffScopedSlots.length) return [];
@@ -5330,12 +5385,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           const selectedStaff =
             serviceStaff.find((s: any) => String(s?.id || "").trim() === employeeId) || null;
           if (selectedStaff) {
-            const staffWindow = resolveStaffWorkingWindowForDate(selectedStaff as any, {
+            const staffWindows = resolveStaffWorkingWindowsForDate(selectedStaff as any, {
               dateISO: date,
               fallbackOpenTime: dayOpenTime,
               fallbackCloseTime: dayCloseTime,
             });
-            const staffWorkingSlots = staffWindow.enabled
+            const staffWorkingSlots = staffWindows.length
               ? filterStaffSlotsByWorkingHours(selectedStaff as any, {
                   dateISO: date,
                   slots: slotsForThisService,
@@ -5343,15 +5398,34 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                   fallbackCloseTime: dayCloseTime,
                 })
               : [];
-            slotsForThisService = staffWindow.enabled
-              ? filterSlotsByServiceEnd(
-                  staffWorkingSlots,
-                  staffWindow.end,
+            if (!staffWindows.length) {
+              slotsForThisService = [];
+            } else {
+              const allowedByValue = new Set<string>();
+              for (const window of staffWindows) {
+                const startsInWindow = (staffWorkingSlots || []).filter((slot) =>
+                  isTimeInsideWindowRange(
+                    String(slot?.value24 || "").trim(),
+                    String(window.start || "").trim(),
+                    String(window.end || "").trim()
+                  )
+                );
+                const allowedInWindow = filterSlotsByServiceEnd(
+                  startsInWindow,
+                  String(window.end || "").trim(),
                   durationMin,
                   bufferMin,
                   ALLOW_OVERTIME_MIN
-                )
-              : [];
+                );
+                for (const slot of allowedInWindow) {
+                  const value = String(slot?.value24 || "").trim();
+                  if (value) allowedByValue.add(value);
+                }
+              }
+              slotsForThisService = (slotsForThisService || []).filter((slot) =>
+                allowedByValue.has(String(slot?.value24 || "").trim())
+              );
+            }
           }
 
           // âœ… هذه هي “البدايات الصحيحة” فعلياً (تضمن أن كل قطع الوقت المطلوبة فاضية)
@@ -5931,12 +6005,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const staffList = (staffByService[serviceKey] || []) as StaffPublicWithId[];
     const staff = staffList.find((s: any) => String(s?.id || "").trim() === String(it.employeeId || "").trim());
     if (staff) {
-      const staffWindow = resolveStaffWorkingWindowForDate(staff as any, {
+      const staffWindows = resolveStaffWorkingWindowsForDate(staff as any, {
         dateISO: date,
         fallbackOpenTime: dayOpenTime,
         fallbackCloseTime: dayCloseTime,
       });
-      if (!staffWindow.enabled) {
+      if (!staffWindows.length) {
         return { ok: false, msg: "الموظفة غير متاحة في هذا اليوم." };
       }
       const staffWorkingStarts = filterStaffSlotsByWorkingHours(staff as any, {
@@ -5945,12 +6019,29 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         fallbackOpenTime: dayOpenTime,
         fallbackCloseTime: dayCloseTime,
       });
-      const staffAllowedStarts = filterSlotsByServiceEnd(
-        staffWorkingStarts,
-        staffWindow.end,
-        durationMin,
-        bufferMin,
-        ALLOW_OVERTIME_MIN
+      const staffAllowedSet = new Set<string>();
+      for (const window of staffWindows) {
+        const startsInWindow = (staffWorkingStarts || []).filter((slot) =>
+          isTimeInsideWindowRange(
+            String(slot?.value24 || "").trim(),
+            String(window.start || "").trim(),
+            String(window.end || "").trim()
+          )
+        );
+        const allowedInWindow = filterSlotsByServiceEnd(
+          startsInWindow,
+          String(window.end || "").trim(),
+          durationMin,
+          bufferMin,
+          ALLOW_OVERTIME_MIN
+        );
+        for (const slot of allowedInWindow) {
+          const value = String(slot?.value24 || "").trim();
+          if (value) staffAllowedSet.add(value);
+        }
+      }
+      const staffAllowedStarts = (staffWorkingStarts || []).filter((slot) =>
+        staffAllowedSet.has(String(slot?.value24 || "").trim())
       );
       if (!staffAllowedStarts.some((s) => String(s.value24 || "").trim() === time)) {
         return { ok: false, msg: "هذا الوقت لا يكفي لإنهاء الخدمة ضمن دوام الموظفة." };
@@ -6108,24 +6199,41 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         (s: any) => String(s?.id || "").trim() === String(it.employeeId || "").trim()
       );
       if (!staff) return false;
-      const staffWindow = resolveStaffWorkingWindowForDate(staff as any, {
+      const staffWindows = resolveStaffWorkingWindowsForDate(staff as any, {
         dateISO: d,
         fallbackOpenTime: dayOpenTime,
         fallbackCloseTime: dayCloseTime,
       });
-      if (!staffWindow.enabled) return true;
+      if (!staffWindows.length) return true;
       const staffWorkingStarts = filterStaffSlotsByWorkingHours(staff as any, {
         dateISO: d,
         slots: salonAllowedStarts,
         fallbackOpenTime: dayOpenTime,
         fallbackCloseTime: dayCloseTime,
       });
-      const staffAllowedStarts = filterSlotsByServiceEnd(
-        staffWorkingStarts,
-        staffWindow.end,
-        Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-        bufferMin,
-        ALLOW_OVERTIME_MIN
+      const staffAllowedSet = new Set<string>();
+      for (const window of staffWindows) {
+        const startsInWindow = (staffWorkingStarts || []).filter((slot) =>
+          isTimeInsideWindowRange(
+            String(slot?.value24 || "").trim(),
+            String(window.start || "").trim(),
+            String(window.end || "").trim()
+          )
+        );
+        const allowedInWindow = filterSlotsByServiceEnd(
+          startsInWindow,
+          String(window.end || "").trim(),
+          Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+          bufferMin,
+          ALLOW_OVERTIME_MIN
+        );
+        for (const slot of allowedInWindow) {
+          const value = String(slot?.value24 || "").trim();
+          if (value) staffAllowedSet.add(value);
+        }
+      }
+      const staffAllowedStarts = (staffWorkingStarts || []).filter((slot) =>
+        staffAllowedSet.has(String(slot?.value24 || "").trim())
       );
       return !staffAllowedStarts.some((s) => String(s.value24 || "").trim() === t);
     });
@@ -8260,94 +8368,88 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                               fallbackCloseTime: dayCloseTimeForItem,
                             })
                           : [];
-                        const staffAllowedStarts = selectedStaffForTime
-                          ? (() => {
-                              const window = resolveStaffWorkingWindowForDate(
-                                selectedStaffForTime as any,
-                                {
-                                  dateISO,
-                                  fallbackOpenTime: dayOpenTimeForItem,
-                                  fallbackCloseTime: dayCloseTimeForItem,
-                                }
-                              );
-                              if (!window.enabled) return [];
-                              return filterSlotsByServiceEnd(
-                                staffWorkingSlots,
-                                window.end,
-                                Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-                                bufferMin,
-                                ALLOW_OVERTIME_MIN
-                              );
-                            })()
+                        const staffWindows = selectedStaffForTime
+                          ? resolveStaffWorkingWindowsForDate(selectedStaffForTime as any, {
+                              dateISO,
+                              fallbackOpenTime: dayOpenTimeForItem,
+                              fallbackCloseTime: dayCloseTimeForItem,
+                            })
                           : [];
-                        const staffWorkingSet = new Set(
-                          staffWorkingSlots.map((s) => String(s.value24 || "").trim()).filter(Boolean)
-                        );
-                        const serviceStartAllowedSet = new Set(
-                          slotsForThisService.map((s) => String(s.value24 || "").trim()).filter(Boolean)
-                        );
-                        const staffStartAllowedSet = new Set(
-                          staffAllowedStarts.map((s) => String(s.value24 || "").trim()).filter(Boolean)
-                        );
                         const exactCartTakenStarts = getLocalExactTakenStartTimesForItem(
                           itemsList,
                           it.id,
                           String(it.employeeId || "").trim(),
                           dateISO
                         );
-                        const slotCards = baseSlotsForUi.map((slot) => {
-                          const value24 = String(slot.value24 || "").trim();
-                          const inStaffHours = staffWorkingSet.has(value24);
-                          const canStartBySalonDuration = serviceStartAllowedSet.has(value24);
-                          const canStartByStaffDuration = !selectedStaffForTime || staffStartAllowedSet.has(value24);
-                          const canStartByDuration = canStartBySalonDuration && canStartByStaffDuration;
-                          const neededSlots =
-                            inStaffHours && canStartByDuration
-                              ? getTimesToLock(
-                                  baseSlotsForUi,
-                                  slotStepMin,
-                                  value24,
-                                  Math.max(1, Number(dur || DEFAULT_SERVICE_DURATION_MIN)),
-                                  bufferMin
-                                )
-                              : [];
-                          const hasBusyConflict =
-                            neededSlots.some((t) => busy.busyTimes.has(String(t || "").trim())) ||
-                            exactCartTakenStarts.has(value24);
-                          const disabledByRules = busy.disabledStartTimes.has(value24);
-
-                          let state: SlotChipState = "available";
-                          let reason = "متاح";
-
-                          if (!selectedStaffForTime) {
-                            state = "unavailable";
-                            reason = "اختاري الموظفة أولاً";
-                          } else if (!inStaffHours) {
-                            state = "unavailable";
-                            reason = "خارج دوام الموظفة";
-                          } else if (!canStartBySalonDuration) {
-                            state = "unavailable";
-                            reason = "غير متاح لإنهاء الخدمة ضمن دوام الصالون";
-                          } else if (!canStartByStaffDuration) {
-                            state = "unavailable";
-                            reason = "غير متاح لإنهاء الخدمة ضمن دوام الموظفة";
-                          } else if (hasBusyConflict) {
-                            state = "booked";
-                            reason = "محجوز";
-                          } else if (disabledByRules) {
-                            state = "unavailable";
-                            reason = "غير متاح بسبب التعارض أو البفر";
-                          }
-
-                          return {
-                            slot,
-                            value24,
-                            state,
-                            reason,
-                            isSelected: String(it.time || "").trim() === value24,
-                          };
-                        });
-                        const availableSlotsForItem = slotCards.filter((x) => x.state === "available");
+                        const staffWindowSections: Array<{
+                          key: string;
+                          label: string;
+                          slotCards: TimeSlotCard[];
+                        }> = selectedStaffForTime
+                          ? staffWindows.map((window, idx) => {
+                                const windowSlots = staffWorkingSlots.filter((slot) =>
+                                  isTimeInsideWindowRange(
+                                    String(slot?.value24 || "").trim(),
+                                    String(window.start || "").trim(),
+                                    String(window.end || "").trim()
+                                  )
+                                );
+                                const startCandidates = filterSlotsByServiceEnd(
+                                  windowSlots,
+                                  String(window.end || "").trim(),
+                                  Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                                  bufferMin,
+                                  ALLOW_OVERTIME_MIN
+                                );
+                                const slotCards: TimeSlotCard[] = startCandidates.map((slot) => {
+                                  const value24 = String(slot?.value24 || "").trim();
+                                  const neededSlots = getTimesToLock(
+                                    baseSlotsForUi,
+                                    slotStepMin,
+                                    value24,
+                                    Math.max(1, Number(dur || DEFAULT_SERVICE_DURATION_MIN)),
+                                    bufferMin
+                                  );
+                                  const hasBusyConflict =
+                                    neededSlots.some((t) => busy.busyTimes.has(String(t || "").trim())) ||
+                                    exactCartTakenStarts.has(value24);
+                                  const disabledByRules = busy.disabledStartTimes.has(value24);
+                                  if (hasBusyConflict) {
+                                    return {
+                                      slot,
+                                      value24,
+                                      state: "booked" as SlotChipState,
+                                      reason: "محجوز",
+                                      isSelected: String(it.time || "").trim() === value24,
+                                    };
+                                  }
+                                  if (disabledByRules) {
+                                    return {
+                                      slot,
+                                      value24,
+                                      state: "unavailable" as SlotChipState,
+                                      reason: "غير متاح بسبب التعارض أو البفر",
+                                      isSelected: String(it.time || "").trim() === value24,
+                                    };
+                                  }
+                                  return {
+                                    slot,
+                                    value24,
+                                    state: "available" as SlotChipState,
+                                    reason: "متاح",
+                                    isSelected: String(it.time || "").trim() === value24,
+                                  };
+                                });
+                                return {
+                                  key: `${idx}_${window.start}_${window.end}`,
+                                  label: buildStaffWindowLabel(window, idx, staffWindows.length),
+                                  slotCards,
+                                };
+                              })
+                          : [];
+                        const availableSlotsForItem = staffWindowSections.flatMap((x) =>
+                          x.slotCards.filter((slot) => slot.state === "available")
+                        );
 
 	                        // âœ… شكل الكرت وهو مقفول (تم التأكيد)
 	                        if (isLocked) {
@@ -8776,47 +8878,66 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                 {hasSelectedBookingDate && !usePackageQuickMode ? (
                                   <div className="col-12">
                                     <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
-                                    <div className="bk-time-grid">
-                                      {slotCards.map((slotCard) => {
-                                        const isAvailable = slotCard.state === "available";
-                                        const isBooked = slotCard.state === "booked";
-                                        const isUnavailable = slotCard.state === "unavailable";
-                                        const isSequentialSuggested =
-                                          sequentialBooking &&
-                                          !!isAvailable &&
-                                          String(busy.suggestedSlot || "").trim() === String(slotCard.value24 || "").trim();
-                                        const statusLabel = isAvailable
-                                          ? "✅ متاح"
-                                          : isBooked
-                                            ? "⛔ محجوز"
-                                            : "🚫 غير متاح";
-
-                                        return (
-                                          <button
-                                            key={slotCard.value24}
-                                            type="button"
-                                            className={[
-                                              "bk-time-chip",
-                                              isAvailable ? "is-available" : "",
-                                              isBooked ? "is-booked" : "",
-                                              isUnavailable ? "is-unavailable" : "",
-                                              isSequentialSuggested ? "is-sequential-suggested" : "",
-                                              slotCard.isSelected ? "is-selected" : "",
-                                              !isAvailable ? "is-disabled" : "",
-                                            ].join(" ").trim()}
-                                            disabled={!isAvailable}
-                                            onClick={() => {
-                                              if (!isAvailable) return;
-                                              updateItem(it.id, { time: slotCard.value24 });
-                                            }}
-                                            title={slotCard.reason}
-                                          >
-                                            <span className="bk-time-chip__time">{slotCard.slot.label12}</span>
-                                            <span className="bk-time-chip__status">{statusLabel}</span>
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
+                                    {!selectedStaffForTime ? (
+                                      <div className="bk-time-window-empty">اختاري الموظفة أولاً لعرض الفترات المتاحة.</div>
+                                    ) : (
+                                      <div className="bk-time-windows">
+                                        {staffWindowSections.length === 0 ? (
+                                          <div className="bk-time-window-empty">لا توجد فترات عمل لهذه الموظفة في هذا اليوم.</div>
+                                        ) : (
+                                          staffWindowSections.map((section) => (
+                                            <div key={section.key} className="bk-time-window-section">
+                                              <div className="bk-time-window-title">{section.label}</div>
+                                              {section.slotCards.length > 0 ? (
+                                                <div className="bk-time-grid">
+                                                  {section.slotCards.map((slotCard) => {
+                                                    const isAvailable = slotCard.state === "available";
+                                                    const isSequentialSuggested =
+                                                      sequentialBooking &&
+                                                      !!isAvailable &&
+                                                      String(busy.suggestedSlot || "").trim() === String(slotCard.value24 || "").trim();
+                                                    return (
+                                                      <button
+                                                        key={`${section.key}_${slotCard.value24}`}
+                                                        type="button"
+                                                        className={[
+                                                          "bk-time-chip",
+                                                          slotCard.state === "booked"
+                                                            ? "is-booked"
+                                                            : slotCard.state === "unavailable"
+                                                              ? "is-unavailable"
+                                                              : "is-available",
+                                                          !isAvailable ? "is-disabled" : "",
+                                                          isSequentialSuggested ? "is-sequential-suggested" : "",
+                                                          slotCard.isSelected ? "is-selected" : "",
+                                                        ].join(" ").trim()}
+                                                        disabled={!isAvailable}
+                                                        onClick={() => {
+                                                          if (!isAvailable) return;
+                                                          updateItem(it.id, { time: slotCard.value24 });
+                                                        }}
+                                                        title={slotCard.reason}
+                                                      >
+                                                        <span className="bk-time-chip__time">{slotCard.slot.label12}</span>
+                                                        <span className="bk-time-chip__status">
+                                                          {slotCard.state === "booked"
+                                                            ? "محجوز"
+                                                            : slotCard.state === "unavailable"
+                                                              ? "غير متاح"
+                                                              : "✅ متاح"}
+                                                        </span>
+                                                      </button>
+                                                    );
+                                                  })}
+                                                </div>
+                                              ) : (
+                                                <div className="bk-time-window-empty">لا يوجد مواعيد متاحة في هذه الفترة.</div>
+                                              )}
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+                                    )}
 
                                     {selectedStaffForTime && availableSlotsForItem.length === 0 ? (
                                       <div className="bk-no-slots-panel">

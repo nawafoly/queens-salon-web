@@ -1304,6 +1304,37 @@ textarea.form-control {
 }
 
 /* ✅ Time grid chips (Green available start times) */
+.bk-time-windows {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.bk-time-window-section {
+  border: 1px solid rgba(13, 13, 13, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 10px;
+}
+
+.bk-time-window-title {
+  font-size: 0.82rem;
+  font-weight: 900;
+  color: #40010d;
+  margin-bottom: 8px;
+}
+
+.bk-time-window-empty {
+  border: 1px dashed rgba(13, 13, 13, 0.18);
+  border-radius: 10px;
+  background: rgba(241, 245, 249, 0.52);
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 10px;
+  text-align: center;
+}
+
 .bk-time-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));

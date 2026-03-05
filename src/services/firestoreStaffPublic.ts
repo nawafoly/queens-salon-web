@@ -18,7 +18,14 @@ export type StaffPublicDoc = {
   customWorkingHours?: Partial<
     Record<
       "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri",
-      { enabled?: boolean; start?: string; end?: string }
+      {
+        enabled?: boolean;
+        start?: string;
+        end?: string;
+        shifts?: Array<{ enabled?: boolean; start?: string; end?: string }>;
+        windows?: Array<{ enabled?: boolean; start?: string; end?: string }>;
+        periods?: Array<{ enabled?: boolean; start?: string; end?: string }>;
+      }
     >
   >;
   customWorkingHourOverrides?: Array<{
@@ -26,6 +33,9 @@ export type StaffPublicDoc = {
     enabled?: boolean;
     start?: string;
     end?: string;
+    shifts?: Array<{ enabled?: boolean; start?: string; end?: string }>;
+    windows?: Array<{ enabled?: boolean; start?: string; end?: string }>;
+    periods?: Array<{ enabled?: boolean; start?: string; end?: string }>;
   }>;
 };
 
@@ -145,18 +155,53 @@ function normalizeTimeHHMM(v: any): string {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
+function normalizeSplitWindows(v: any) {
+  const rows = Array.isArray(v) ? v : [];
+  return rows
+    .map((row: any) => ({
+      enabled: row?.enabled !== false,
+      start: normalizeTimeHHMM(row?.start) || "10:00",
+      end: normalizeTimeHHMM(row?.end) || "22:00",
+    }))
+    .filter((row) => row.start !== row.end);
+}
+
 function normalizeWorkingHours(v: any) {
-  const out: Record<string, { enabled: boolean; start: string; end: string }> = {};
+  const out: Record<
+    string,
+    {
+      enabled: boolean;
+      start: string;
+      end: string;
+      shifts?: Array<{ enabled: boolean; start: string; end: string }>;
+      windows?: Array<{ enabled: boolean; start: string; end: string }>;
+      periods?: Array<{ enabled: boolean; start: string; end: string }>;
+    }
+  > = {};
   const src = v && typeof v === "object" ? v : {};
   const keys = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"];
   keys.forEach((k) => {
     const row = (src as any)?.[k];
     if (!row || typeof row !== "object") return;
-    out[k] = {
+    const next: {
+      enabled: boolean;
+      start: string;
+      end: string;
+      shifts?: Array<{ enabled: boolean; start: string; end: string }>;
+      windows?: Array<{ enabled: boolean; start: string; end: string }>;
+      periods?: Array<{ enabled: boolean; start: string; end: string }>;
+    } = {
       enabled: row.enabled !== false,
       start: normalizeTimeHHMM(row.start) || "10:00",
       end: normalizeTimeHHMM(row.end) || "22:00",
     };
+    const shifts = normalizeSplitWindows((row as any)?.shifts);
+    const windows = normalizeSplitWindows((row as any)?.windows);
+    const periods = normalizeSplitWindows((row as any)?.periods);
+    if (shifts.length) next.shifts = shifts;
+    if (windows.length) next.windows = windows;
+    if (periods.length) next.periods = periods;
+    out[k] = next;
   });
   return out;
 }
@@ -164,12 +209,29 @@ function normalizeWorkingHours(v: any) {
 function normalizeWorkingHourOverrides(v: any) {
   const rows = Array.isArray(v) ? v : [];
   return rows
-    .map((row: any) => ({
-      date: String(row?.date || "").trim(),
-      enabled: row?.enabled !== false,
-      start: normalizeTimeHHMM(row?.start) || "10:00",
-      end: normalizeTimeHHMM(row?.end) || "22:00",
-    }))
+    .map((row: any) => {
+      const next: {
+        date: string;
+        enabled: boolean;
+        start: string;
+        end: string;
+        shifts?: Array<{ enabled: boolean; start: string; end: string }>;
+        windows?: Array<{ enabled: boolean; start: string; end: string }>;
+        periods?: Array<{ enabled: boolean; start: string; end: string }>;
+      } = {
+        date: String(row?.date || "").trim(),
+        enabled: row?.enabled !== false,
+        start: normalizeTimeHHMM(row?.start) || "10:00",
+        end: normalizeTimeHHMM(row?.end) || "22:00",
+      };
+      const shifts = normalizeSplitWindows((row as any)?.shifts);
+      const windows = normalizeSplitWindows((row as any)?.windows);
+      const periods = normalizeSplitWindows((row as any)?.periods);
+      if (shifts.length) next.shifts = shifts;
+      if (windows.length) next.windows = windows;
+      if (periods.length) next.periods = periods;
+      return next;
+    })
     .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date));
 }
 

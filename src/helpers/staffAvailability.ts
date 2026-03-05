@@ -7,10 +7,18 @@ type StaffAvailabilityLike = {
   exceptionalLeaveDates?: string[];
   exceptionalLeaveWeekdays?: string[];
   useCustomWorkingHours?: boolean;
+  // Backward-compatible row shape + optional split shifts.
   customWorkingHours?: Partial<
     Record<
       "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri",
-      { enabled?: boolean; start?: string; end?: string }
+      {
+        enabled?: boolean;
+        start?: string;
+        end?: string;
+        shifts?: Array<{ enabled?: boolean; start?: string; end?: string }>;
+        windows?: Array<{ enabled?: boolean; start?: string; end?: string }>;
+        periods?: Array<{ enabled?: boolean; start?: string; end?: string }>;
+      }
     >
   >;
   customWorkingHourOverrides?: Array<{
@@ -18,6 +26,9 @@ type StaffAvailabilityLike = {
     enabled?: boolean;
     start?: string;
     end?: string;
+    shifts?: Array<{ enabled?: boolean; start?: string; end?: string }>;
+    windows?: Array<{ enabled?: boolean; start?: string; end?: string }>;
+    periods?: Array<{ enabled?: boolean; start?: string; end?: string }>;
   }>;
 };
 
@@ -33,6 +44,12 @@ export type StaffWorkingWindowSource =
 
 export type ResolvedStaffWorkingWindow = {
   enabled: boolean;
+  start: string;
+  end: string;
+  source: StaffWorkingWindowSource;
+};
+
+export type ResolvedStaffWorkingWindowRange = {
   start: string;
   end: string;
   source: StaffWorkingWindowSource;
@@ -111,6 +128,44 @@ function isTimeInsideWindow(time24: string, start24: string, end24: string) {
   return t >= s || t < e;
 }
 
+function readSplitWindowsFromRow(row: any): Array<{ start: string; end: string }> {
+  if (!row || typeof row !== "object") return [];
+  const candidates: any[] = [];
+  if (Array.isArray((row as any).shifts)) candidates.push(...(row as any).shifts);
+  if (Array.isArray((row as any).windows)) candidates.push(...(row as any).windows);
+  if (Array.isArray((row as any).periods)) candidates.push(...(row as any).periods);
+
+  const out: Array<{ start: string; end: string }> = [];
+  for (const w of candidates) {
+    if (!w || typeof w !== "object") continue;
+    if ((w as any).enabled === false) continue;
+    const start = normalizeTimeHHMM((w as any).start);
+    const end = normalizeTimeHHMM((w as any).end);
+    if (!start || !end || start === end) continue;
+    out.push({ start, end });
+  }
+  return out;
+}
+
+function normalizeAndSortWindows(
+  windows: Array<{ start: string; end: string }>,
+  source: StaffWorkingWindowSource
+): ResolvedStaffWorkingWindowRange[] {
+  const uniq = new Map<string, ResolvedStaffWorkingWindowRange>();
+  for (const w of windows) {
+    const start = normalizeTimeHHMM(w?.start);
+    const end = normalizeTimeHHMM(w?.end);
+    if (!start || !end || start === end) continue;
+    const key = `${start}|${end}`;
+    if (!uniq.has(key)) uniq.set(key, { start, end, source });
+  }
+  return Array.from(uniq.values()).sort((a, b) => {
+    const d = toMinutes(a.start) - toMinutes(b.start);
+    if (d !== 0) return d;
+    return toMinutes(a.end) - toMinutes(b.end);
+  });
+}
+
 function isLeaveActiveForDate(staff: StaffAvailabilityLike, dateISO?: string) {
   const target = normalizeISODate(dateISO) || todayISO();
   const exceptional = Array.isArray(staff?.exceptionalLeaveDates)
@@ -179,6 +234,81 @@ function resolveStaffFixedWindowForDate(
   return { enabled, start, end, source: "staff_fixed" };
 }
 
+function resolveStaffOverrideWindowsForDate(
+  staff: StaffAvailabilityLike,
+  dateISO: string
+): ResolvedStaffWorkingWindowRange[] | null {
+  const overrides = Array.isArray(staff?.customWorkingHourOverrides)
+    ? staff.customWorkingHourOverrides
+    : [];
+  const matched = overrides.filter((x) => normalizeISODate((x as any)?.date) === dateISO);
+  if (!matched.length) return null;
+
+  const collected: Array<{ start: string; end: string }> = [];
+  for (const ov of matched) {
+    if (!ov || typeof ov !== "object") continue;
+    if ((ov as any).enabled === false) continue;
+
+    const split = readSplitWindowsFromRow(ov);
+    if (split.length) {
+      collected.push(...split);
+      continue;
+    }
+
+    const start = normalizeTimeHHMM((ov as any).start) || "10:00";
+    const end = normalizeTimeHHMM((ov as any).end) || "22:00";
+    if (start && end && start !== end) collected.push({ start, end });
+  }
+
+  // Overrides matched this date but all are disabled => day closed for staff.
+  if (!collected.length) return [];
+  return normalizeAndSortWindows(collected, "staff_override");
+}
+
+function resolveStaffFixedWindowsForDate(
+  staff: StaffAvailabilityLike,
+  dateISO: string
+): ResolvedStaffWorkingWindowRange[] | null {
+  if (!hasStaffFixedWorkingHours(staff)) return null;
+  const weekday = weekdayFromISO(dateISO);
+  const dayCfg = weekday
+    ? ((staff?.customWorkingHours || {}) as any)[weekday]
+    : undefined;
+
+  if (!dayCfg || typeof dayCfg !== "object") return null;
+  if ((dayCfg as any).enabled === false) return [];
+
+  const split = readSplitWindowsFromRow(dayCfg);
+  if (split.length) return normalizeAndSortWindows(split, "staff_fixed");
+
+  const start = normalizeTimeHHMM((dayCfg as any).start) || "10:00";
+  const end = normalizeTimeHHMM((dayCfg as any).end) || "22:00";
+  if (!start || !end || start === end) return [];
+  return [{ start, end, source: "staff_fixed" }];
+}
+
+export function resolveStaffWorkingWindowsForDate(
+  staff: StaffAvailabilityLike,
+  args: {
+    dateISO: string;
+    fallbackOpenTime: string;
+    fallbackCloseTime: string;
+  }
+): ResolvedStaffWorkingWindowRange[] {
+  const date = normalizeISODate(args.dateISO) || todayISO();
+  const fallbackStart = normalizeTimeHHMM(args.fallbackOpenTime) || "10:00";
+  const fallbackEnd = normalizeTimeHHMM(args.fallbackCloseTime) || "22:00";
+
+  const overrideWindows = resolveStaffOverrideWindowsForDate(staff, date);
+  if (overrideWindows !== null) return overrideWindows;
+
+  const fixedWindows = resolveStaffFixedWindowsForDate(staff, date);
+  if (fixedWindows !== null) return fixedWindows;
+
+  if (!fallbackStart || !fallbackEnd || fallbackStart === fallbackEnd) return [];
+  return [{ start: fallbackStart, end: fallbackEnd, source: "salon_fallback" }];
+}
+
 export function resolveStaffWorkingWindowForDate(
   staff: StaffAvailabilityLike,
   args: {
@@ -187,31 +317,25 @@ export function resolveStaffWorkingWindowForDate(
     fallbackCloseTime: string;
   }
 ): ResolvedStaffWorkingWindow {
-  const date = normalizeISODate(args.dateISO) || todayISO();
   const fallbackStart = normalizeTimeHHMM(args.fallbackOpenTime) || "10:00";
   const fallbackEnd = normalizeTimeHHMM(args.fallbackCloseTime) || "22:00";
-
-  const overrides = Array.isArray(staff?.customWorkingHourOverrides)
-    ? staff.customWorkingHourOverrides
-    : [];
-  const override = overrides.find((x) => normalizeISODate(x?.date) === date);
-  if (override) {
-    // Staff exception has the highest priority for this date.
-    const enabled = override.enabled !== false;
-    const start = normalizeTimeHHMM(override.start) || "10:00";
-    const end = normalizeTimeHHMM(override.end) || "22:00";
-    return { enabled, start, end, source: "staff_override" };
+  const windows = resolveStaffWorkingWindowsForDate(staff, args);
+  if (!windows.length) {
+    return {
+      enabled: false,
+      start: fallbackStart,
+      end: fallbackEnd,
+      source: "salon_fallback",
+    };
   }
 
-  const fixed = resolveStaffFixedWindowForDate(staff, date);
-  if (fixed) return fixed;
-
-  // No staff exception and no fixed staff hours => fallback to salon hours.
+  const first = windows[0];
+  const last = windows[windows.length - 1];
   return {
     enabled: true,
-    start: fallbackStart,
-    end: fallbackEnd,
-    source: "salon_fallback",
+    start: first.start,
+    end: last.end,
+    source: first.source,
   };
 }
 
@@ -224,18 +348,15 @@ export function isStaffWorkingAtTime(
     fallbackCloseTime: string;
   }
 ) {
-  const window = resolveStaffWorkingWindowForDate(
-    staff,
-    {
-      dateISO: args.dateISO,
-      fallbackOpenTime: args.fallbackOpenTime,
-      fallbackCloseTime: args.fallbackCloseTime,
-    }
-  );
-  if (!window.enabled) return false;
+  const windows = resolveStaffWorkingWindowsForDate(staff, {
+    dateISO: args.dateISO,
+    fallbackOpenTime: args.fallbackOpenTime,
+    fallbackCloseTime: args.fallbackCloseTime,
+  });
+  if (!windows.length) return false;
   const time = normalizeTimeHHMM(args.time24);
   if (!time) return false;
-  return isTimeInsideWindow(time, window.start, window.end);
+  return windows.some((w) => isTimeInsideWindow(time, w.start, w.end));
 }
 
 export function filterStaffSlotsByWorkingHours<T extends { value24: string }>(
@@ -247,16 +368,13 @@ export function filterStaffSlotsByWorkingHours<T extends { value24: string }>(
     fallbackCloseTime: string;
   }
 ) {
-  const window = resolveStaffWorkingWindowForDate(
-    staff,
-    {
-      dateISO: args.dateISO,
-      fallbackOpenTime: args.fallbackOpenTime,
-      fallbackCloseTime: args.fallbackCloseTime,
-    }
-  );
-  if (!window.enabled) return [] as T[];
+  const windows = resolveStaffWorkingWindowsForDate(staff, {
+    dateISO: args.dateISO,
+    fallbackOpenTime: args.fallbackOpenTime,
+    fallbackCloseTime: args.fallbackCloseTime,
+  });
+  if (!windows.length) return [] as T[];
   return (args.slots || []).filter((slot) =>
-    isTimeInsideWindow(String(slot?.value24 || ""), window.start, window.end)
+    windows.some((w) => isTimeInsideWindow(String(slot?.value24 || ""), w.start, w.end))
   );
 }

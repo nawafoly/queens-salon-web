@@ -1560,6 +1560,17 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       paidAmount = price;
     }
     const remainingAmount = round2(Math.max(0, price - paidAmount));
+    const isFullyPaidAfterEdit = price > 0 && remainingAmount <= 0;
+    let statusAfterEdit: BookingStatus | null = null;
+    if (
+      isFullyPaidAfterEdit &&
+      (editTarget.status === "pending" || editTarget.status === "confirmed")
+    ) {
+      const chooseCompleted = window.confirm(
+        "تم سداد الحجز كاملًا.\n\nاضغطي \"موافق\" لتحويل الحالة إلى \"مكتمل\".\nاضغطي \"إلغاء\" للإبقاء على الحالة \"مؤكد\"."
+      );
+      statusAfterEdit = chooseCompleted ? "completed" : "confirmed";
+    }
 
     try {
       setEditSaving(true);
@@ -1581,6 +1592,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         remainingAmount,
       } as any;
       await updateBookingFields(editTarget.id, patch);
+      if (statusAfterEdit && statusAfterEdit !== editTarget.status) {
+        await updateBookingStatus(editTarget.id, statusAfterEdit);
+      }
+
+      const resolvedStatus = statusAfterEdit || editTarget.status;
 
       setBookings((prev) =>
         prev.map((row) =>
@@ -1598,6 +1614,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 paymentType: nextPaymentType,
                 paidAmount: round2(paidAmount),
                 remainingAmount,
+                status: resolvedStatus,
               }
             : row
         )
@@ -1618,6 +1635,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               paymentType: nextPaymentType,
               paidAmount: round2(paidAmount),
               remainingAmount,
+              status: resolvedStatus,
             }
           : prev
       );
