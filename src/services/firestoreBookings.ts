@@ -501,12 +501,13 @@ function getAmount(b: BookingDoc): number {
   return resolveBookingPaymentState(b).paidAmount;
 }
 
-function shouldAutoConfirmClientPendingOnCreate(
+function shouldAutoConfirmPendingOnFullPayment(
   raw: Partial<BookingDoc>,
   requestedStatus: BookingStatus
 ): boolean {
   if (requestedStatus !== "pending") return false;
-  if (String(raw?.channel || "").trim().toLowerCase() !== "client") return false;
+  const channel = String(raw?.channel || "").trim().toLowerCase();
+  if (channel === "internal") return false;
 
   const payment = resolveBookingPaymentState({
     ...raw,
@@ -919,7 +920,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const nowMs = Date.now();
   const actorUid = String(data.userId || getAuth().currentUser?.uid || "").trim() || undefined;
   const requestedStatus = ((data.status as BookingStatus) || "pending") as BookingStatus;
-  const statusNow: BookingStatus = shouldAutoConfirmClientPendingOnCreate(data, requestedStatus)
+  const statusNow: BookingStatus = shouldAutoConfirmPendingOnFullPayment(data, requestedStatus)
     ? "confirmed"
     : requestedStatus;
   const statusAuditPatch = buildStatusAuditPatch(statusNow, nowMs, actorUid);
@@ -1261,7 +1262,7 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
   const nowMs = Date.now();
   const actorUid = String(parent.userId || getAuth().currentUser?.uid || "").trim() || undefined;
   const requestedStatus: BookingStatus = (parent.status as BookingStatus) || "pending";
-  const status: BookingStatus = shouldAutoConfirmClientPendingOnCreate(parent, requestedStatus)
+  const status: BookingStatus = shouldAutoConfirmPendingOnFullPayment(parent, requestedStatus)
     ? "confirmed"
     : requestedStatus;
   const statusAuditPatch = buildStatusAuditPatch(status, nowMs, actorUid);
@@ -2091,9 +2092,8 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
     }) as any
   );
 
-  // ✅ Auto-confirm for client bookings only:
-  // If booking is still pending and payment became fully paid, promote to confirmed.
-  // (Does not affect internal flow because channel must be "client".)
+  // ✅ Auto-confirm pending bookings when fully paid.
+  // Keep internal flow unchanged (channel=internal does not auto-promote).
   if (
     patch.status === undefined &&
     (patch.paymentType !== undefined ||
@@ -2107,7 +2107,7 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
       if (freshSnap.exists()) {
         const fresh = normalizeBooking(freshSnap.data());
         const freshStatus = (String(fresh.status || "").trim().toLowerCase() || "pending") as BookingStatus;
-        if (shouldAutoConfirmClientPendingOnCreate(fresh, freshStatus)) {
+        if (shouldAutoConfirmPendingOnFullPayment(fresh, freshStatus)) {
           await updateBookingStatus(bookingId, "confirmed");
         }
       }

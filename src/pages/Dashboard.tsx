@@ -1485,9 +1485,9 @@ const Dashboard: React.FC = () => {
 
           if (nowMs < readyAtMs) continue;
 
-          if (st === "confirmed") {
-            await updateBookingStatusFS(b.id, "completed");
-          }
+          // Business rule (manual completion only):
+          // confirmed bookings stay confirmed until staff marks them completed manually.
+          if (st === "confirmed") continue;
         }
 
         await refreshDashboard(role); // ✅ بدل userInfo.role

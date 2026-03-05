@@ -942,16 +942,38 @@
   border-color: rgba(125, 140, 160, 0.25);
 }
 
+.bk-internal .bk-payment-line-paid-full {
+  color: #0f5132 !important;
+  background: linear-gradient(135deg, #d1fae5 0%, #b7f0d5 100%) !important;
+  border-color: rgba(16, 185, 129, 0.62) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+
+.bk-internal .bk-payment-line-unpaid {
+  color: #991b1b !important;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
+  border-color: rgba(220, 38, 38, 0.52) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.56);
+}
+
 .bk-internal .bk-payment-line-remaining {
-  color: #7f3614;
-  background: linear-gradient(135deg, #fff5e1 0%, #ffe7bf 100%);
-  border-color: rgba(188, 113, 35, 0.42);
+  color: #991b1b !important;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
+  border-color: rgba(220, 38, 38, 0.52) !important;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
+.bk-internal .bk-payment-line-remaining-unpaid {
+  color: #991b1b !important;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
+  border-color: rgba(220, 38, 38, 0.52) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.56);
+}
+
 .bk-internal .bk-payment-line-remaining.is-secondary {
-  color: #7b3514;
-  background: linear-gradient(135deg, #fff4df 0%, #ffe2b6 100%);
+  color: #991b1b !important;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
+  border-color: rgba(220, 38, 38, 0.52) !important;
 }
 
 .bk-internal .bk-payment-empty {
