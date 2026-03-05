@@ -143,6 +143,7 @@ export type BookingDoc = {
   cancelledByUid?: string;
   paidAt?: number;
   paidByUid?: string;
+  createdAtMs?: number;
 
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
@@ -313,6 +314,7 @@ function normalizeBooking(raw: any): BookingDoc {
     viewedByUid: raw?.viewedByUid ? String(raw.viewedByUid) : undefined,
     viewedByEmail: raw?.viewedByEmail ? String(raw.viewedByEmail) : undefined,
     viewedByName: raw?.viewedByName ? String(raw.viewedByName) : undefined,
+    createdAtMs: Number(raw?.createdAtMs || 0) || undefined,
     createdAt: raw?.createdAt,
     updatedAt: raw?.updatedAt,
   };
@@ -520,6 +522,13 @@ function shouldAutoConfirmPendingOnFullPayment(
     payment.paymentType === "full" &&
     Number(payment.paidAmount || 0) >= total &&
     Number(payment.remainingAmount || 0) <= 0
+  );
+}
+
+function shouldForceClientPendingUnpaidOnCreate(raw: Partial<BookingDoc>): boolean {
+  return (
+    String(raw?.channel || "").trim().toLowerCase() === "client" &&
+    String(raw?.createdBy || "").trim().toLowerCase() === "client"
   );
 }
 
@@ -920,9 +929,12 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const nowMs = Date.now();
   const actorUid = String(data.userId || getAuth().currentUser?.uid || "").trim() || undefined;
   const requestedStatus = ((data.status as BookingStatus) || "pending") as BookingStatus;
-  const statusNow: BookingStatus = shouldAutoConfirmPendingOnFullPayment(data, requestedStatus)
-    ? "confirmed"
-    : requestedStatus;
+  const forceClientPendingUnpaid = shouldForceClientPendingUnpaidOnCreate(data);
+  const statusNow: BookingStatus = forceClientPendingUnpaid
+    ? "pending"
+    : shouldAutoConfirmClientPendingOnCreate(data, requestedStatus)
+      ? "confirmed"
+      : requestedStatus;
   const statusAuditPatch = buildStatusAuditPatch(statusNow, nowMs, actorUid);
   const resolvedPaymentMethod = resolvePaymentMethodForStatus(
     statusNow,
@@ -999,12 +1011,19 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const fallbackPrice = Number(snapFromInput?.priceAtBooking ?? data.finalPrice ?? data.total ?? 0);
   const fallbackDur = Number(snapFromInput?.durationAtBooking ?? durationMin);
   const totalAmount = Number.isFinite(fallbackPrice) ? Math.max(0, fallbackPrice) : 0;
-  const paymentState = resolveBookingPaymentState({
-    ...data,
-    status: statusNow,
-    total: totalAmount,
-    finalPrice: totalAmount,
-  });
+  const paymentState = forceClientPendingUnpaid
+    ? {
+        paymentType: "partial" as BookingPaymentType,
+        paidAmount: 0,
+        remainingAmount: round2(totalAmount),
+        totalAmount: round2(totalAmount),
+      }
+    : resolveBookingPaymentState({
+        ...data,
+        status: statusNow,
+        total: totalAmount,
+        finalPrice: totalAmount,
+      });
 
   const serviceSnapshot: ServiceSnapshot = stripUndefined({
     serviceNameAtBooking: fallbackName || "-",
@@ -1041,6 +1060,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     remainingAmount: paymentState.remainingAmount,
     status: statusNow,
     ...statusAuditPatch,
+    createdAtMs: nowMs,
 
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -1217,6 +1237,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         status: statusNow,
         slotId: startSlotId,
         ...statusAuditPatch,
+        createdAtMs: nowMs,
 
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -1262,10 +1283,29 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
   const nowMs = Date.now();
   const actorUid = String(parent.userId || getAuth().currentUser?.uid || "").trim() || undefined;
   const requestedStatus: BookingStatus = (parent.status as BookingStatus) || "pending";
-  const status: BookingStatus = shouldAutoConfirmPendingOnFullPayment(parent, requestedStatus)
+  const status: BookingStatus = shouldAutoConfirmClientPendingOnCreate(parent, requestedStatus)
     ? "confirmed"
     : requestedStatus;
   const statusAuditPatch = buildStatusAuditPatch(status, nowMs, actorUid);
+  const parentTotalAmount = readTotalAmount(parent);
+  const parentPaymentState = forceClientPendingUnpaid
+    ? {
+        paymentType: "partial" as BookingPaymentType,
+        paidAmount: 0,
+        remainingAmount: round2(parentTotalAmount),
+        totalAmount: round2(parentTotalAmount),
+      }
+    : resolveBookingPaymentState({
+        ...parent,
+        status,
+        total: parentTotalAmount,
+        finalPrice: parentTotalAmount,
+      });
+  const parentResolvedPaymentMethod = resolvePaymentMethodForStatus(
+    status,
+    (parent as any).paymentMethod,
+    parent.note
+  );
 
   const parentRef = doc(collection(db, ...BOOKINGS_COL));
   const itemRefs = items.map(() => doc(collection(db, ...BOOKINGS_COL)));
@@ -1358,6 +1398,25 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
       categoryIdAtBooking: it?.serviceSnapshot?.categoryIdAtBooking,
       categoryNameAtBooking: it?.serviceSnapshot?.categoryNameAtBooking,
     }) as ServiceSnapshot;
+    const totalAmount = Number.isFinite(fallbackPrice) ? Math.max(0, fallbackPrice) : 0;
+    const paymentState = forceClientPendingUnpaid
+      ? {
+          paymentType: "partial" as BookingPaymentType,
+          paidAmount: 0,
+          remainingAmount: round2(totalAmount),
+          totalAmount: round2(totalAmount),
+        }
+      : resolveBookingPaymentState({
+          ...it,
+          status,
+          total: totalAmount,
+          finalPrice: totalAmount,
+        });
+    const resolvedPaymentMethod = resolvePaymentMethodForStatus(
+      status,
+      (it as any).paymentMethod,
+      it.note
+    );
 
     const payloadBase = stripUndefined({
       ...it,
@@ -1371,8 +1430,13 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
       packageSnapshot: it.packageSnapshot ?? undefined,
       slotStepMinAtBooking: (it as any).slotStepMinAtBooking ?? daySlotSettings.slotStepMin,
       bufferMinAtBooking: (it as any).bufferMinAtBooking ?? daySlotSettings.bufferMin,
+      paymentMethod: resolvedPaymentMethod,
+      paymentType: paymentState.paymentType,
+      paidAmount: paymentState.paidAmount,
+      remainingAmount: paymentState.remainingAmount,
       status,
       ...statusAuditPatch,
+      createdAtMs: nowMs,
       updatedAt: serverTimestamp(),
     });
 
@@ -1437,8 +1501,13 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
       isSubBooking: false,
       subBookingCount: prepared.length,
       publicId: parentPublicId,
+      paymentMethod: parentResolvedPaymentMethod,
+      paymentType: parentPaymentState.paymentType,
+      paidAmount: parentPaymentState.paidAmount,
+      remainingAmount: parentPaymentState.remainingAmount,
       status,
       ...statusAuditPatch,
+      createdAtMs: nowMs,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });

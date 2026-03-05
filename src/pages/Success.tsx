@@ -66,6 +66,30 @@ type LocalBookingRef = {
   publicId?: string;
 };
 
+type LocalBookingSnapshot = {
+  id?: string;
+  bookingId?: string;
+  trackId?: string;
+  publicId?: string;
+  clientName?: string;
+  customerName?: string;
+  name?: string;
+  clientPhone?: string;
+  customerPhone?: string;
+  phone?: string;
+  serviceId?: string;
+  serviceName?: string;
+  service?: string;
+  employeeName?: string;
+  employee?: string;
+  date?: string;
+  time?: string;
+  total?: number;
+  finalPrice?: number;
+  status?: string;
+  [key: string]: any;
+};
+
 type SuccessMode = "created" | "updated";
 type SuccessLocationState = {
   mode?: SuccessMode;
@@ -103,6 +127,32 @@ function normalizeMkLookup(raw: string) {
   if (mk?.[1]) return `MK-${mk[1]}`;
   if (/^\d{3,}$/.test(src)) return `MK-${src}`;
   return "";
+}
+
+function asIdKey(raw: any) {
+  const id = String(raw || "").trim();
+  return id ? `id:${id}` : "";
+}
+
+function asMkKey(raw: any) {
+  const mk = normalizeMkLookup(String(raw || ""));
+  return mk ? `mk:${mk}` : "";
+}
+
+function collectSnapshotKeys(row: LocalBookingSnapshot): string[] {
+  const keys = new Set<string>();
+
+  [row?.id, row?.bookingId, row?.trackId].forEach((v) => {
+    const k = asIdKey(v);
+    if (k) keys.add(k);
+  });
+
+  [row?.publicId, row?.id, row?.bookingId, row?.trackId].forEach((v) => {
+    const k = asMkKey(v);
+    if (k) keys.add(k);
+  });
+
+  return Array.from(keys);
 }
 
 function safeNum(v: any) {
@@ -479,6 +529,65 @@ function readLocalBookingRefs(): LocalBookingRef[] {
   );
 }
 
+function readLocalBookingSnapshots(): LocalBookingSnapshot[] {
+  const rows: LocalBookingSnapshot[] = [];
+
+  try {
+    const rawAll = localStorage.getItem(ALL_BOOKINGS_KEY);
+    const parsedAll = rawAll ? JSON.parse(rawAll) : null;
+    if (Array.isArray(parsedAll)) {
+      parsedAll.forEach((row: any) => {
+        if (row && typeof row === "object") rows.push(row as LocalBookingSnapshot);
+      });
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const rawOne = localStorage.getItem(BOOKING_KEY);
+    const parsedOne = rawOne ? JSON.parse(rawOne) : null;
+    if (parsedOne && typeof parsedOne === "object") {
+      rows.push(parsedOne as LocalBookingSnapshot);
+    }
+  } catch {
+    // ignore
+  }
+
+  return rows;
+}
+
+function buildLocalBookingSnapshotIndex(rows: LocalBookingSnapshot[]) {
+  const idx = new Map<string, LocalBookingSnapshot>();
+  rows.forEach((row) => {
+    collectSnapshotKeys(row).forEach((k) => {
+      if (!idx.has(k)) idx.set(k, row);
+    });
+  });
+  return idx;
+}
+
+function resolveLocalSnapshotForRef(
+  ref: LocalBookingRef | null | undefined,
+  idx: Map<string, LocalBookingSnapshot>
+): LocalBookingSnapshot | null {
+  if (!ref) return null;
+  const keys = new Set<string>();
+  [ref?.id, ref?.bookingId, ref?.trackId].forEach((v) => {
+    const k = asIdKey(v);
+    if (k) keys.add(k);
+  });
+  [ref?.publicId, ref?.id, ref?.bookingId, ref?.trackId].forEach((v) => {
+    const k = asMkKey(v);
+    if (k) keys.add(k);
+  });
+  for (const k of keys) {
+    const row = idx.get(k);
+    if (row) return row;
+  }
+  return null;
+}
+
 function readSuccessModeFromStorage(): SuccessMode {
   const raw = String(localStorage.getItem(SUCCESS_MODE_KEY) || "").trim().toLowerCase();
   return raw === "updated" ? "updated" : "created";
@@ -542,6 +651,8 @@ export default function Success() {
         setLoading(true);
         setError("");
         setViews([]);
+        const localSnapshots = readLocalBookingSnapshots();
+        const localSnapshotIndex = buildLocalBookingSnapshotIndex(localSnapshots);
 
         const recoverRecentBookings = async () => {
           const out = new Map<string, any>();
@@ -551,7 +662,12 @@ export default function Success() {
             try {
               const raw = localStorage.getItem(BOOKING_KEY);
               const parsed = raw ? JSON.parse(raw) : null;
-              return String(parsed?.clientPhone || parsed?.phone || "").trim();
+              const fromCurrent = String(parsed?.clientPhone || parsed?.phone || "").trim();
+              if (fromCurrent) return fromCurrent;
+              const fromSnapshots = localSnapshots.find(
+                (x) => String(x?.clientPhone || x?.phone || "").trim().length > 0
+              );
+              return String(fromSnapshots?.clientPhone || fromSnapshots?.phone || "").trim();
             } catch {
               return "";
             }
@@ -721,26 +837,52 @@ export default function Success() {
           return null;
         };
 
-        const pushBookingView = async (rawDoc: any, refHint?: LocalBookingRef) => {
-          const bookingIdResolved = String(rawDoc?.id || refHint?.id || refHint?.bookingId || "").trim();
-          if (!bookingIdResolved || pushedIds.has(bookingIdResolved)) return;
+        const pushBookingView = async (
+          rawDoc: any,
+          refHint?: LocalBookingRef,
+          localHint?: LocalBookingSnapshot | null
+        ) => {
+          const merged = { ...(localHint || {}), ...(rawDoc || {}) };
+          const bookingIdResolved = String(
+            merged?.id ||
+              merged?.bookingId ||
+              merged?.trackId ||
+              refHint?.id ||
+              refHint?.bookingId ||
+              refHint?.trackId ||
+              ""
+          ).trim();
+          const publicIdResolved = normalizeMk(
+            String(merged?.publicId || refHint?.publicId || "").trim()
+          );
+          const rowKey = bookingIdResolved
+            ? `id:${bookingIdResolved}`
+            : publicIdResolved
+              ? `mk:${publicIdResolved}`
+              : "";
+          if (!rowKey || pushedIds.has(rowKey)) return;
 
-          const serviceId = String(rawDoc.serviceId ?? rawDoc.serviceName ?? "").trim();
-          const snapName = String(rawDoc.serviceSnapshot?.serviceNameAtBooking ?? "").trim();
-          const serviceNameRaw = snapName || (await resolveServiceName(serviceId));
+          const serviceId = String(
+            merged?.serviceId ?? merged?.service ?? merged?.serviceName ?? ""
+          ).trim();
+          const snapName = String(merged?.serviceSnapshot?.serviceNameAtBooking ?? "").trim();
+          const serviceNameRaw =
+            snapName ||
+            String(merged?.serviceName || merged?.service || "").trim() ||
+            (await resolveServiceName(serviceId));
           const sectionLabelRaw = String(
-            rawDoc?.serviceSnapshot?.sectionTitleAtBooking ||
-              rawDoc?.serviceSnapshot?.sectionIdAtBooking ||
+            merged?.serviceSnapshot?.sectionTitleAtBooking ||
+              merged?.serviceSnapshot?.sectionIdAtBooking ||
               ""
           ).trim();
           const categoryLabelRaw = String(
-            rawDoc?.serviceSnapshot?.categoryNameAtBooking ||
-              rawDoc?.serviceSnapshot?.categoryIdAtBooking ||
+            merged?.serviceSnapshot?.categoryNameAtBooking ||
+              merged?.serviceSnapshot?.categoryIdAtBooking ||
               ""
           ).trim();
-          const packageNameRaw = String(rawDoc?.packageSnapshot?.packageName || "").trim();
-          const packageServices = Array.isArray(rawDoc?.packageSnapshot?.services)
-            ? rawDoc.packageSnapshot.services
+          const packageNameRaw = String(merged?.packageSnapshot?.packageName || "").trim();
+          const packageServices = Array.isArray(merged?.packageSnapshot?.services)
+            ? merged.packageSnapshot.services
                 .map((x: any) => ({
                   serviceName: toArabicLabel(String(x?.serviceName || x?.serviceId || "").trim(), "-"),
                   sectionLabel: toArabicLabel(String(x?.sectionTitle || x?.sectionId || "").trim(), "") || undefined,
@@ -751,7 +893,10 @@ export default function Success() {
                 .filter((x: any) => !!x.serviceName)
             : [];
 
-          const rawEmployeeName = toArabicLabel(String(rawDoc.employeeName || "-"), "-");
+          const rawEmployeeName = toArabicLabel(
+            String(merged?.employeeName || merged?.employee || "-"),
+            "-"
+          );
           const shouldResolveFromSubs =
             rawEmployeeName === "تعيين تلقائي" ||
             rawEmployeeName === "-" ||
@@ -760,7 +905,7 @@ export default function Success() {
           let employeeNameResolved = rawEmployeeName;
           if (shouldResolveFromSubs) {
             try {
-              const groupIdForNames = String(rawDoc.bookingGroupId || bookingIdResolved).trim();
+              const groupIdForNames = String(merged?.bookingGroupId || bookingIdResolved).trim();
               const groupQ = query(
                 collection(db, "salons", SALON_ID, "bookings"),
                 where("bookingGroupId", "==", groupIdForNames)
@@ -787,11 +932,14 @@ export default function Success() {
           if (!mounted) return;
 
           results.push({
-            id: bookingIdResolved,
-            publicId: normalizeMk(rawDoc.publicId || refHint?.publicId || ""),
-            clientName: String(rawDoc.clientName || rawDoc.customerName || rawDoc.name || "-").trim() || "-",
+            id: bookingIdResolved || publicIdResolved,
+            publicId: publicIdResolved || undefined,
+            clientName:
+              String(merged?.clientName || merged?.customerName || merged?.name || "-").trim() ||
+              "-",
             clientPhone:
-              String(rawDoc.clientPhone || rawDoc.phone || rawDoc.customerPhone || "-").trim() || "-",
+              String(merged?.clientPhone || merged?.phone || merged?.customerPhone || "-").trim() ||
+              "-",
 
             serviceId,
             serviceName: toArabicLabel(serviceNameRaw, "-"),
@@ -801,13 +949,13 @@ export default function Success() {
             packageServices,
 
             employeeName: employeeNameResolved,
-            date: rawDoc.date || "-",
-            time: rawDoc.time || "-",
+            date: merged?.date || "-",
+            time: merged?.time || "-",
 
-            total: safeNum(rawDoc.finalPrice ?? rawDoc.total),
-            status: rawDoc.status || "pending",
+            total: safeNum(merged?.finalPrice ?? merged?.total),
+            status: merged?.status || "pending",
           });
-          pushedIds.add(bookingIdResolved);
+          pushedIds.add(rowKey);
         };
 
         if (!bookingRefs.length && recoveredWhenNoRefs.length) {
@@ -821,9 +969,11 @@ export default function Success() {
         }
 
         for (const ref of bookingRefs) {
+          const localHint = resolveLocalSnapshotForRef(ref, localSnapshotIndex);
           const docData: any = await resolveBookingDocFromRef(ref);
+          if (!docData && !localHint) continue;
+          await pushBookingView(docData ? { ...docData, id: docData.id } : {}, ref, localHint);
           if (!docData) continue;
-          await pushBookingView({ ...docData, id: docData.id }, ref);
 
           const groupId = String(docData.bookingGroupId || docData.id).trim();
           if (!groupId || loadedGroupIds.has(groupId)) continue;
