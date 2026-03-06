@@ -1223,6 +1223,21 @@ textarea.form-control {
   border-color: rgba(82, 82, 91, 0.34);
 }
 
+.booking-page .bk-staff-card-btn.is-full-day {
+  border-color: rgba(220, 38, 38, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.18);
+  background: linear-gradient(180deg, #fff7f7 0%, #fff1f2 100%);
+}
+
+.booking-page .bk-staff-card-btn.is-full-day .bk-staff-card-icon {
+  color: #b91c1c;
+}
+
+.booking-page .bk-staff-card-btn.is-full-day .bk-staff-card-name,
+.booking-page .bk-staff-card-btn.is-full-day .bk-staff-card-state {
+  color: #991b1b;
+}
+
 .booking-page .bk-staff-card-badge {
   display: inline-flex;
   align-items: center;
@@ -1253,6 +1268,12 @@ textarea.form-control {
   color: #3f3f46;
   background: rgba(113, 113, 122, 0.16);
   border-color: rgba(82, 82, 91, 0.32);
+}
+
+.booking-page .bk-staff-card-badge.is-full {
+  color: #991b1b;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(220, 38, 38, 0.3);
 }
 
 .booking-page .bk-staff-card-btn.is-disabled .bk-staff-card-state {

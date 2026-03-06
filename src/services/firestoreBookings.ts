@@ -525,6 +525,14 @@ function shouldAutoConfirmPendingOnFullPayment(
   );
 }
 
+// Backward-compatible alias for create flows that still reference the old name.
+function shouldAutoConfirmClientPendingOnCreate(
+  raw: Partial<BookingDoc>,
+  requestedStatus: BookingStatus
+): boolean {
+  return shouldAutoConfirmPendingOnFullPayment(raw, requestedStatus);
+}
+
 function shouldForceClientPendingUnpaidOnCreate(raw: Partial<BookingDoc>): boolean {
   return (
     String(raw?.channel || "").trim().toLowerCase() === "client" &&
@@ -1283,6 +1291,7 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
   const nowMs = Date.now();
   const actorUid = String(parent.userId || getAuth().currentUser?.uid || "").trim() || undefined;
   const requestedStatus: BookingStatus = (parent.status as BookingStatus) || "pending";
+  const forceClientPendingUnpaid = shouldForceClientPendingUnpaidOnCreate(parent);
   const status: BookingStatus = shouldAutoConfirmClientPendingOnCreate(parent, requestedStatus)
     ? "confirmed"
     : requestedStatus;

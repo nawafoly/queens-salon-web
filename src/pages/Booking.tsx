@@ -1663,6 +1663,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   // âœ… busy/disabled per item
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
+  const [staffFullDayByItem, setStaffFullDayByItem] = useState<
+    Record<string, Record<string, boolean>>
+  >({});
   const [packageQuickByRun, setPackageQuickByRun] = useState<Record<string, PackageQuickState>>({});
   const [packageQuickEligibilityByRun, setPackageQuickEligibilityByRun] = useState<
     Record<string, PackageQuickEligibility>
@@ -1670,44 +1673,40 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   // âœ… Future availability (clients)
   const [futureSelectedEmployeeKey, setFutureSelectedEmployeeKey] = useState<string>("");
-  const [futureStaffNameQuery, setFutureStaffNameQuery] = useState("");
   const [futureLoading, setFutureLoading] = useState(false);
-  const [futureResult, setFutureResult] = useState<
-    { date: string; times: string[]; note?: string; contributors?: string[] }[]
-  >([]);
+  const [futureResult, setFutureResult] = useState<{ date: string; times: string[] }[]>([]);
   const [futureMsg, setFutureMsg] = useState("");
-  const [futureGateLoading, setFutureGateLoading] = useState(false);
-  const [showFutureSearch, setShowFutureSearch] = useState(false);
-  const [futureGateMsg, setFutureGateMsg] = useState("");
   const [futureServiceId, setFutureServiceId] = useState("");
   const [futureTargetItemId, setFutureTargetItemId] = useState("");
-  const autoFutureSearchKeyRef = useRef("");
   const autoStaffDefaultContextRef = useRef<Record<string, string>>({});
   const manualStaffChoiceContextRef = useRef<Record<string, string>>({});
-  const futureSearchRef = useRef<HTMLDivElement | null>(null);
 
-  function openFutureSearchFromItem(it: CartItem) {
+  async function openFutureSearchFromItem(it: CartItem) {
     const sid = String(it?.serviceId || "").trim();
     if (!sid) return;
 
     const employeeKey = String(it?.employeeUid || it?.employeeId || "").trim();
-    const employeeName = String(it?.employeeName || "").trim();
     const dateISO = String(it?.date || bookingDate || "").trim();
+    const targetItemId = String(it?.id || "").trim();
+    if (!targetItemId) return;
 
     setFutureServiceId(sid);
-    setFutureTargetItemId(String(it?.id || "").trim());
-    setShowFutureSearch(true);
-    setFutureResult([]);
+    setFutureTargetItemId(targetItemId);
     setFutureMsg("");
-    autoFutureSearchKeyRef.current = `${sid}|${dateISO}|one|${employeeKey}`;
+    setFutureResult([]);
     setFutureSelectedEmployeeKey(employeeKey);
-    setFutureStaffNameQuery(employeeName || "");
-    setFutureGateMsg("اليوم ممتلئ لهذه الموظفة. يمكنكِ البحث عن أقرب يوم متاح.");
 
-    setTimeout(() => {
-      futureSearchRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      void runFutureAvailabilitySearch();
-    }, 0);
+    if (!employeeKey) {
+      setFutureMsg("اختاري الموظفة أولاً.");
+      return;
+    }
+
+    await runFutureAvailabilitySearch({
+      serviceId: sid,
+      targetItemId,
+      employeeKey,
+      startISO: dateISO || todayISO(),
+    });
   }
 
   // âœ… Staff per serviceId
@@ -4034,85 +4033,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.items]);
 
-  // âœ… تحميل موظفات الخدمة المختارة في الـ picker (حتى قبل الإضافة للسلة)
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadStaffForFuturePicker() {
-      const sid = String(futureServiceId || servicePicker || "").trim();
-      if (!sid) return;
-      const hasCache = Object.prototype.hasOwnProperty.call(staffByService, sid);
-      if (hasCache) return;
-      const sv = getServiceById(sid);
-      const resolverKey = buildStaffResolverKey(sid, sv);
-      const cachedRows = staffByResolverCacheRef.current[resolverKey];
-      if (Array.isArray(cachedRows)) {
-        setStaffByService((p) => ({ ...p, [sid]: cachedRows as any }));
-        return;
-      }
-
-      try {
-        setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
-        setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
-        const res = await listStaffForService(sid, sv);
-
-        if (cancelled) return;
-
-        const normalized = (res || []).filter((st: any) => {
-          const name = String(st?.name || "").trim();
-          if (!name) return false;
-          return true;
-        });
-
-        setStaffByService((p) => ({ ...p, [sid]: normalized as any }));
-      } catch (e: any) {
-        if (cancelled) return;
-        const msg = String(e?.message || "");
-        let err = "تعذر تحميل قائمة الموظفات.";
-        if (msg.toLowerCase().includes("requires an index")) {
-          err = "Firestore يحتاج Index للاستعلام. افتح Console واضغط Create index.";
-        }
-        if (msg.toLowerCase().includes("missing or insufficient permissions")) {
-          err = "صلاحيات قراءة الموظفات غير كافية (staff_public).";
-        }
-        setStaffByService((p) => ({ ...p, [sid]: [] }));
-        setStaffErrorByService((p) => ({ ...p, [sid]: err }));
-      } finally {
-        if (!cancelled) {
-          setStaffLoadingByService((p) => ({ ...p, [sid]: false }));
-        }
-      }
-    }
-
-    loadStaffForFuturePicker();
-    return () => {
-      cancelled = true;
-    };
-  }, [futureServiceId, servicePicker, staffByService]);
-
-  const futureStaffOptions = useMemo(() => {
-    const sid = String(futureServiceId || servicePicker || "").trim();
-    if (!sid) return [] as { key: string; name: string; id: string }[];
-
-    return ((staffByService[sid] || []) as StaffPublicWithId[])
-      .map((st: any) => {
-        const key = String(st?.linkedUid || st?.id || "").trim();
-        const id = String(st?.id || "").trim();
-        const name = String(st?.name || "").trim();
-        if (!key || !name) return null;
-        return { key, id, name };
-      })
-      .filter(Boolean) as { key: string; name: string; id: string }[];
-  }, [servicePicker, staffByService]);
-
-  const filteredFutureStaffOptions = useMemo(() => {
-    const q = String(futureStaffNameQuery || "").trim().toLowerCase();
-    if (!q) return futureStaffOptions;
-    return futureStaffOptions.filter((x) =>
-      String(x.name || "").toLowerCase().includes(q)
-    );
-  }, [futureStaffOptions, futureStaffNameQuery]);
-
   const packageRunMetaByRun = useMemo(() => {
     const byRun: Record<string, PackageRunMeta> = {};
     const grouped = new Map<string, CartItem[]>();
@@ -4571,30 +4491,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     }
   };
 
-  // âœ… Auto-run future search once per context when the block becomes visible
-  useEffect(() => {
-    const sid = String(futureServiceId || servicePicker || "").trim();
-    const dateISO = String(bookingDate || "").trim();
-    const employeeKey = String(futureSelectedEmployeeKey || "").trim();
-    const contextKey = `${sid}|${dateISO}|one|${employeeKey}`;
-
-    if (!showFutureSearch || !sid || !dateISO) return;
-    if (futureGateLoading || futureLoading) return;
-    if (!employeeKey) return;
-
-    if (autoFutureSearchKeyRef.current === contextKey) return;
-    autoFutureSearchKeyRef.current = contextKey;
-    void runFutureAvailabilitySearch();
-  }, [
-    showFutureSearch,
-    futureGateLoading,
-    futureLoading,
-    futureServiceId,
-    servicePicker,
-    bookingDate,
-    futureSelectedEmployeeKey,
-  ]);
-
   // ✅ Default to first truly available staff only (never on leave/off-hours/inactive).
   useEffect(() => {
     if (currentStep !== 2) return;
@@ -4775,6 +4671,148 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     bookingDate,
   ]);
 
+  useEffect(() => {
+    if (currentStep !== 2) {
+      setStaffFullDayByItem({});
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadStaffFullDayState() {
+      const items = formData.items || [];
+      if (!items.length) {
+        if (!cancelled) setStaffFullDayByItem({});
+        return;
+      }
+
+      const nextState: Record<string, Record<string, boolean>> = {};
+      const availabilityCache = new Map<string, Promise<boolean>>();
+      const tasks: Promise<void>[] = [];
+
+      for (const it of items) {
+        if (isSequentialOfferItem(it)) continue;
+
+        const itemId = String(it.id || "").trim();
+        const dateISO = String(it.date || bookingDate || "").trim();
+        if (!itemId || !dateISO) continue;
+
+        const dayCfg = getDaySettingsForDate(dateISO);
+        if (!dayCfg.enabled) continue;
+
+        const dayOpenTime = safeTimeHHMM(dayCfg.openTime, openTime);
+        const dayCloseTime = safeTimeHHMM(dayCfg.closeTime, closeTime);
+        const baseSlotsForDate = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
+        if (!baseSlotsForDate.length) continue;
+
+        const serviceKey =
+          resolveCanonicalServiceId(
+            String(it.serviceId || "").trim(),
+            String((it as any)?.serviceName || "").trim()
+          ) || String(it.serviceId || "").trim();
+        if (!serviceKey) continue;
+
+        const serviceStaff = (staffByService[serviceKey] || []) as StaffPublicWithId[];
+        if (!serviceStaff.length) continue;
+
+        const bookingVisibleStaff = serviceStaff.filter(
+          (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
+        );
+        if (!bookingVisibleStaff.length) continue;
+
+        nextState[itemId] = nextState[itemId] || {};
+
+        for (const st of bookingVisibleStaff) {
+          const empId = String((st as any)?.id || "").trim();
+          if (!empId) continue;
+          nextState[itemId][empId] = false;
+
+          tasks.push(
+            (async () => {
+              const leave = getStaffLeaveMetaForDate(st as any, dateISO);
+              const statusRaw = String((st as any)?.status || "").trim().toLowerCase();
+              const isInactive =
+                (st as any)?.active === false ||
+                (st as any)?.showOnBooking === false ||
+                statusRaw === "inactive" ||
+                statusRaw === "disabled" ||
+                statusRaw === "suspended";
+              const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
+                dateISO,
+                slots: baseSlotsForDate,
+                fallbackOpenTime: dayOpenTime,
+                fallbackCloseTime: dayCloseTime,
+              });
+
+              if (leave.isOnLeave || isInactive || !workingSlots.length) {
+                nextState[itemId][empId] = false;
+                return;
+              }
+
+              const empKey = String((st as any)?.linkedUid || "").trim() || empId;
+              const localTaken = getLocalTakenTimesForItem(
+                items,
+                itemId,
+                empKey,
+                dateISO,
+                empId
+              );
+              const cacheKey = [
+                serviceKey,
+                empId,
+                dateISO,
+                String(Math.max(1, Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN))),
+                Array.from(localTaken).sort().join(","),
+              ].join("__");
+
+              if (!availabilityCache.has(cacheKey)) {
+                availabilityCache.set(
+                  cacheKey,
+                  getAvailableStartsForDay({
+                    salonId: SALON_ID,
+                    employeeKey: empKey,
+                    employeeIdFallback: empId,
+                    dateISO,
+                    durationMin: Math.max(
+                      1,
+                      Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+                    ),
+                    take: 1,
+                    localTakenTimes: localTaken,
+                    staff: st,
+                  })
+                    .then((starts) => starts.length > 0)
+                    .catch(() => true)
+                );
+              }
+
+              const hasAvailable = await availabilityCache.get(cacheKey)!;
+              nextState[itemId][empId] = !hasAvailable;
+            })()
+          );
+        }
+      }
+
+      await Promise.all(tasks);
+      if (cancelled) return;
+      setStaffFullDayByItem(nextState);
+    }
+
+    void loadStaffFullDayState();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentStep,
+    formData.items,
+    staffByService,
+    bookingDate,
+    openTime,
+    closeTime,
+    slotStepMin,
+    bufferMin,
+  ]);
+
   async function collectTakenTimesForEmployeeDay(args: {
     salonId: string;
     employeeKey: string;
@@ -4942,6 +4980,121 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     return list.slice(0, Math.max(1, take));
   }
 
+  async function runFutureAvailabilitySearch(opts?: {
+    serviceId?: string;
+    targetItemId?: string;
+    employeeKey?: string;
+    startISO?: string;
+  }) {
+    setFutureMsg("");
+    setFutureResult([]);
+    const serviceId = String(opts?.serviceId || futureServiceId || servicePicker || "").trim();
+    if (!serviceId) {
+      setFutureMsg("اختاري الخدمة أولاً.");
+      return [] as { date: string; times: string[] }[];
+    }
+
+    const sv = getServiceById(serviceId);
+    const itemFromCart = (formData.items || []).find(
+      (it) => String(it?.serviceId || "").trim() === serviceId
+    );
+    const targetItemId = String(
+      opts?.targetItemId ||
+        futureTargetItemId ||
+        itemFromCart?.id ||
+        ""
+    ).trim();
+
+    const durationMin = Number(
+      sv?.durationMin ||
+      itemFromCart?.durationMin ||
+      DEFAULT_SERVICE_DURATION_MIN
+    );
+    if (!durationMin || durationMin <= 0) {
+      setFutureMsg("مدة الخدمة غير صحيحة.");
+      return [] as { date: string; times: string[] }[];
+    }
+
+    let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
+    const hasStaffCache = Object.prototype.hasOwnProperty.call(staffByService, serviceId);
+    if (!hasStaffCache) {
+      const res = await listStaffForService(serviceId, sv);
+      staffList = (res || []).filter((st: any) => String(st?.name || "").trim()) as any;
+
+      setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
+    }
+
+    const fixedEmployeeKey = String(opts?.employeeKey || futureSelectedEmployeeKey || "").trim();
+    if (!fixedEmployeeKey) {
+      setFutureMsg("اختاري موظفة لإكمال البحث.");
+      return [] as { date: string; times: string[] }[];
+    }
+
+    const targetItem =
+      (formData.items || []).find((it) => String(it.id || "").trim() === targetItemId) ||
+      itemFromCart ||
+      null;
+    const startISO = String(opts?.startISO || targetItem?.date || bookingDate || "").trim() || todayISO();
+    const scanDays = 60;
+
+    setFutureLoading(true);
+    try {
+      const results: { date: string; times: string[] }[] = [];
+
+      for (let i = 0; i < scanDays; i++) {
+        const dateISO = addDaysISO(startISO, i);
+
+        const staff =
+          staffList.find((s: any) => String(s.linkedUid || s.id || "") === fixedEmployeeKey) ||
+          staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
+        if (!staff) continue;
+
+        const employeeIdFallback = String(staff?.id || "").trim();
+        const fixedAvailable = staff
+          ? isStaffAvailableForDate(staff as any, dateISO, { requireShowOnBooking: false })
+          : false;
+        if (!fixedAvailable) continue;
+
+        const localTaken = targetItemId
+          ? getLocalTakenTimesForItem(
+              formData.items || [],
+              targetItemId,
+              fixedEmployeeKey,
+              dateISO,
+              employeeIdFallback
+            )
+          : new Set<string>();
+        const dayTimes = await getAvailableStartsForDay({
+          salonId: SALON_ID,
+          employeeKey: fixedEmployeeKey,
+          employeeIdFallback,
+          dateISO,
+          durationMin,
+          take: 5,
+          localTakenTimes: localTaken,
+          staff: staff || null,
+        });
+        if (dayTimes.length) {
+          results.push({ date: dateISO, times: dayTimes });
+          if (results.length >= 5) break;
+        }
+      }
+
+      if (!results.length) {
+        setFutureMsg("ما لقينا أوقات متاحة ضمن الفترة.");
+        return [] as { date: string; times: string[] }[];
+      }
+
+      setFutureResult(results);
+      return results;
+    } catch (e: any) {
+      setFutureMsg(`صار خطأ أثناء البحث: ${String(e?.message || e)}`);
+      return [] as { date: string; times: string[] }[];
+    } finally {
+      setFutureLoading(false);
+    }
+  }
+
   async function applyFutureTimeSelection(dateISO: string, time24: string) {
     const serviceId = String(futureServiceId || servicePicker || "").trim();
     const chosenDate = String(dateISO || "").trim();
@@ -5017,6 +5170,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     }
 
     applyDateToSingleItem(target.id, chosenDate);
+    setBookingDate(chosenDate);
     updateItem(target.id, {
       time: chosenTime,
       employeeId: String((chosenStaff as any)?.id || "").trim(),
@@ -5025,262 +5179,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       locked: false,
     });
   }
-
-  async function runFutureAvailabilitySearch() {
-    setFutureMsg("");
-    setFutureResult([]);
-
-    const serviceId = String(futureServiceId || servicePicker || "").trim();
-    if (!serviceId) {
-      setFutureMsg("اختاري الخدمة أولاً.");
-      return;
-    }
-
-    const sv = getServiceById(serviceId);
-    const itemFromCart = (formData.items || []).find(
-      (it) => String(it?.serviceId || "").trim() === serviceId
-    );
-    const targetItemId = String(
-      futureTargetItemId ||
-        itemFromCart?.id ||
-        ""
-    ).trim();
-
-    const durationMin = Number(
-      sv?.durationMin ||
-      itemFromCart?.durationMin ||
-      DEFAULT_SERVICE_DURATION_MIN
-    );
-    if (!durationMin || durationMin <= 0) {
-      setFutureMsg("مدة الخدمة غير صحيحة.");
-      return;
-    }
-
-    let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
-    const hasStaffCache = Object.prototype.hasOwnProperty.call(staffByService, serviceId);
-    if (!hasStaffCache) {
-      const res = await listStaffForService(serviceId, sv);
-      staffList = (res || []).filter((st: any) => String(st?.name || "").trim()) as any;
-
-      setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
-    }
-
-    const resolvedByName =
-      futureStaffOptions.find(
-        (x) => String(x.name || "").trim() === String(futureStaffNameQuery || "").trim()
-      )?.key || "";
-
-    const fixedEmployeeKey = String(futureSelectedEmployeeKey || resolvedByName || "").trim();
-    if (!fixedEmployeeKey) {
-      setFutureMsg("اختاري موظفة لإكمال البحث.");
-      return;
-    }
-
-    const targetItem =
-      (formData.items || []).find((it) => String(it.id || "").trim() === targetItemId) ||
-      itemFromCart ||
-      null;
-    const startISO = String(targetItem?.date || bookingDate || "").trim() || todayISO();
-    const scanDays = 60;
-
-    setFutureLoading(true);
-    try {
-      const results: { date: string; times: string[]; note?: string; contributors?: string[] }[] = [];
-      const baseSlots =
-        timeSlots.length > 0
-          ? timeSlots
-          : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
-
-      for (let i = 0; i < scanDays; i++) {
-        const dateISO = addDaysISO(startISO, i);
-        let dayTimes: string[] = [];
-        let dayNote = "";
-
-        const staff =
-          staffList.find((s: any) => String(s.linkedUid || s.id || "") === fixedEmployeeKey) ||
-          staffList.find((s: any) => String(s.id || "") === fixedEmployeeKey);
-        const employeeIdFallback = String(staff?.id || "").trim();
-        const fixedName = String((staff as any)?.name || "").trim();
-        const fixedAvailable = staff
-          ? isStaffAvailableForDate(staff as any, dateISO, { requireShowOnBooking: false })
-          : false;
-
-        if (!fixedAvailable) {
-          dayTimes = [];
-          dayNote = "";
-        } else {
-          const localTaken = targetItemId
-            ? getLocalTakenTimesForItem(
-                formData.items || [],
-                targetItemId,
-                fixedEmployeeKey,
-                dateISO,
-                employeeIdFallback
-              )
-            : new Set<string>();
-          dayTimes = await getAvailableStartsForDay({
-            salonId: SALON_ID,
-            employeeKey: fixedEmployeeKey,
-            employeeIdFallback,
-            dateISO,
-            durationMin,
-            take: 5,
-            localTakenTimes: localTaken,
-            staff: staff || null,
-          });
-
-          if (dayTimes.length && fixedName) {
-            dayNote = `المتاح لدى: ${fixedName}`;
-          }
-        }
-        const fixedContributors = fixedName ? [fixedName] : [];
-        if (dayTimes.length) {
-          results.push({ date: dateISO, times: dayTimes, note: dayNote, contributors: fixedContributors });
-          if (results.length >= 5) break;
-        }
-      }
-
-      if (!results.length) {
-        setFutureMsg("ما لقينا أوقات متاحة ضمن الفترة.");
-        return;
-      }
-
-      setFutureResult(results);
-    } catch (e: any) {
-      setFutureMsg(`صار خطأ أثناء البحث: ${String(e?.message || e)}`);
-    } finally {
-      setFutureLoading(false);
-    }
-  }
-
-  // âœ… Show "future days search" only when selected day is full for selected service
-  useEffect(() => {
-    let cancelled = false;
-
-    async function detectFullDayForService() {
-      const fallbackFromCart =
-        (formData.items || [])
-          .map((it) => String(it?.serviceId || "").trim())
-          .find(Boolean) || "";
-
-      const serviceId = String(servicePicker || fallbackFromCart).trim();
-      const dateISO = String(bookingDate || "").trim();
-
-      if (!serviceId || !dateISO) {
-        if (!cancelled) {
-          setFutureServiceId("");
-          setShowFutureSearch(false);
-          setFutureGateMsg("");
-          setFutureResult([]);
-          setFutureMsg("");
-        }
-        return;
-      }
-
-      const sv = getServiceById(serviceId);
-      const itemFromCart = (formData.items || []).find(
-        (it) => String(it?.serviceId || "").trim() === serviceId
-      );
-
-      if (!cancelled) {
-        setFutureServiceId(serviceId);
-      }
-
-      const durationMin = Number(
-        sv?.durationMin ||
-        itemFromCart?.durationMin ||
-        DEFAULT_SERVICE_DURATION_MIN
-      );
-      setFutureGateLoading(true);
-
-      try {
-        let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
-        const hasStaffCache = Object.prototype.hasOwnProperty.call(staffByService, serviceId);
-
-        if (!hasStaffCache) {
-          const res = await listStaffForService(serviceId, sv);
-          staffList = (res || []).filter((st: any) => String(st?.name || "").trim()) as StaffPublicWithId[];
-
-          if (!cancelled) {
-            setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
-          }
-        }
-
-        const availableStaff = staffList.filter((st) =>
-          isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: false })
-        );
-
-        if (!availableStaff.length) {
-          if (!cancelled) {
-            setShowFutureSearch(false);
-            setFutureGateMsg("");
-            setFutureResult([]);
-            setFutureMsg("");
-          }
-          return;
-        }
-
-        let hasAnyTime = false;
-        for (const st of availableStaff) {
-          const employeeKey = String((st as any)?.linkedUid || (st as any)?.id || "").trim();
-          const employeeIdFallback = String((st as any)?.id || "").trim();
-          if (!employeeKey) continue;
-          const gateTargetItemId = String(itemFromCart?.id || "").trim();
-          const localTaken = gateTargetItemId
-            ? getLocalTakenTimesForItem(
-                formData.items || [],
-                gateTargetItemId,
-                employeeKey,
-                dateISO,
-                employeeIdFallback
-              )
-            : new Set<string>();
-
-          const times = await getAvailableStartsForDay({
-            salonId: SALON_ID,
-            employeeKey,
-            employeeIdFallback,
-            dateISO,
-            durationMin,
-            take: 1,
-            localTakenTimes: localTaken,
-            staff: st,
-          });
-
-          if (times.length) {
-            hasAnyTime = true;
-            break;
-          }
-        }
-
-        if (!cancelled) {
-          if (hasAnyTime) {
-            setShowFutureSearch(false);
-            setFutureGateMsg("");
-            setFutureResult([]);
-            setFutureMsg("");
-          } else {
-            setShowFutureSearch(true);
-            setFutureGateMsg("اليوم ممتلئ لهذه الخدمة. يمكنكِ البحث عن أقرب يوم متاح.");
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setShowFutureSearch(false);
-          setFutureGateMsg("");
-          setFutureResult([]);
-          setFutureMsg("");
-        }
-      } finally {
-        if (!cancelled) setFutureGateLoading(false);
-      }
-    }
-
-    detectFullDayForService();
-    return () => {
-      cancelled = true;
-    };
-  }, [bookingDate, servicePicker, formData.items, staffByService, slotStepMin, bufferMin, timeSlots]);
 
   // =========================
   // âœ… Busy slots per item
@@ -5576,10 +5474,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       // ignore unsupported showPicker
     }
     dateRef.current?.focus();
-  };
-
-  const focusBookingDatePicker = () => {
-    openBookingDatePicker();
   };
 
   const applyDateToSingleItem = (itemId: string, nextDateISO: string) => {
@@ -8348,8 +8242,9 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         const staffUnavailableMsg = (!staffLoading && !staffError && bookingVisibleStaff.length && !availableStaff.length)
                           ? "لا توجد موظفات متاحات لهذا التاريخ."
                           : "";
-                        const dayFullyBookedMsg = "لا توجد أوقات متاحة لهذا التاريخ. يمكنكِ تغيير التاريخ لنفس الخدمة.";
-                        const futureSearchBtnLabel = "بحث أوقات للأيام القادمة لهذه الموظفة";
+                        const dayFullyBookedMsg =
+                          "هذه الموظفة ممتلئ جدولها اليوم. ابحثي عن أقرب يوم متاح لها.";
+                        const futureSearchBtnLabel = "بحث عن أقرب موعد";
                         const slotsForThisService = filterSlotsByServiceEnd(
                           baseSlotsForUi,
                           dayCloseTimeForItem,
@@ -8450,6 +8345,16 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         const availableSlotsForItem = staffWindowSections.flatMap((x) =>
                           x.slotCards.filter((slot) => slot.state === "available")
                         );
+                        const staffFullDayLookupForItem = staffFullDayByItem[it.id] || {};
+                        const selectedStaffIdForTime = String((selectedStaffForTime as any)?.id || "").trim();
+                        const selectedStaffMarkedFullDay =
+                          !!(selectedStaffIdForTime && staffFullDayLookupForItem[selectedStaffIdForTime]);
+                        const selectedStaffFullyBookedToday =
+                          !!selectedStaffForTime &&
+                          (selectedStaffMarkedFullDay ||
+                            (!busy.loading &&
+                              staffWindowSections.length > 0 &&
+                              availableSlotsForItem.length === 0));
 
 	                        // âœ… شكل الكرت وهو مقفول (تم التأكيد)
 	                        if (isLocked) {
@@ -8753,25 +8658,35 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                   <label className="form-label small fw-bold">1. اختاري الموظفة</label>
                                   <div className="bk-staff-card-grid">
                                     {staffWithLeaveMeta.map(({ staff: emp, leave, hasWorkingHours, isInactive }) => {
+                                      const empId = String(emp.id || "").trim();
+                                      const isFullDayStaff =
+                                        !!(empId && staffFullDayLookupForItem[empId]);
                                       const disabled = leave.isOnLeave || !hasWorkingHours || isInactive;
                                       const selected =
                                         selectedEmployeeAvailable &&
                                         String(it.employeeId || "").trim() === String(emp.id || "").trim();
-                                      const unavailableType = isInactive
+                                      const unavailableType = isFullDayStaff
+                                        ? "full"
+                                        : isInactive
                                         ? "inactive"
                                         : leave.isOnLeave
                                           ? "leave"
                                           : !hasWorkingHours
                                             ? "offhours"
                                             : "";
-                                      const badgeText = unavailableType === "leave"
+                                      const badgeText = isFullDayStaff
+                                        ? "ممتلئ اليوم"
+                                        : unavailableType === "leave"
                                         ? "في إجازة"
                                         : unavailableType === "offhours"
                                           ? "خارج الدوام"
                                           : unavailableType === "inactive"
                                             ? "غير متاحة"
                                             : "";
-                                      const stateText = leave.isOnLeave
+                                      const badgeType = isFullDayStaff ? "full" : unavailableType;
+                                      const stateText = isFullDayStaff
+                                        ? ""
+                                        : leave.isOnLeave
                                         ? leave.label
                                         : isInactive
                                           ? "الموظفة غير نشطة أو غير متاحة للحجز حالياً"
@@ -8785,6 +8700,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                           className={[
                                             "bk-staff-card-btn",
                                             selected ? "is-selected" : "",
+                                            isFullDayStaff ? "is-full-day" : "",
                                             disabled ? "is-disabled" : "",
                                             unavailableType ? `is-disabled-${unavailableType}` : "",
                                           ].join(" ").trim()}
@@ -8842,7 +8758,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                           </span>
                                           <span className="bk-staff-card-name">{String(emp.name || "").trim() || "موظفة"}</span>
                                           {badgeText ? (
-                                            <span className={`bk-staff-card-badge is-${unavailableType}`}>{badgeText}</span>
+                                            <span className={`bk-staff-card-badge is-${badgeType}`}>{badgeText}</span>
                                           ) : null}
                                           {stateText ? <span className="bk-staff-card-state">{stateText}</span> : null}
                                         </button>
@@ -8880,6 +8796,80 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                     <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
                                     {!selectedStaffForTime ? (
                                       <div className="bk-time-window-empty">اختاري الموظفة أولاً لعرض الفترات المتاحة.</div>
+                                    ) : selectedStaffFullyBookedToday ? (
+                                      <div className="bk-no-slots-panel">
+                                        <div className="bk-no-slots-panel__title">{dayFullyBookedMsg}</div>
+                                        <div className="bk-no-slots-panel__buttons">
+                                          <button
+                                            type="button"
+                                            className="btn btn-outline-dark btn-sm bk-future-search-btn"
+                                            onClick={() => {
+                                              void openFutureSearchFromItem(it);
+                                            }}
+                                            disabled={futureLoading}
+                                          >
+                                            {futureLoading && String(futureTargetItemId || "").trim() === String(it.id || "").trim()
+                                              ? "جاري البحث..."
+                                              : futureSearchBtnLabel}
+                                          </button>
+                                        </div>
+                                        {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureMsg ? (
+                                          <div className="small text-muted mt-2">{futureMsg}</div>
+                                        ) : null}
+                                        {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureResult.length ? (
+                                          <div className="mt-2">
+                                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                                              <div className="small fw-bold">نتائج البحث</div>
+                                              <button
+                                                type="button"
+                                                className="btn btn-sm bk-future-pill"
+                                                onClick={() => {
+                                                  const nearestDate = String(futureResult[0]?.date || "").trim();
+                                                  if (!nearestDate) return;
+                                                  applyDateToSingleItem(it.id, nearestDate);
+                                                  setBookingDate(nearestDate);
+                                                  setFutureMsg("تم تحديث التاريخ لنفس الخدمة. اختاري الوقت المناسب من الشبكية.");
+                                                }}
+                                              >
+                                                اختيار أقرب موعد
+                                              </button>
+                                            </div>
+                                            <div className="table-responsive">
+                                              <table className="table align-middle mb-0 bk-future-table">
+                                                <thead>
+                                                  <tr>
+                                                    <th>التاريخ</th>
+                                                    <th>أوقات متاحة</th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody>
+                                                  {futureResult.map((r) => (
+                                                    <tr key={r.date}>
+                                                      <td>{r.date}</td>
+                                                      <td>
+                                                        <div className="d-flex gap-2 flex-wrap">
+                                                          {(r.times || []).map((t) => (
+                                                            <button
+                                                              key={t}
+                                                              type="button"
+                                                              className="btn btn-sm bk-future-pill"
+                                                              onClick={() => {
+                                                                void applyFutureTimeSelection(r.date, t);
+                                                              }}
+                                                            >
+                                                              {formatTime12ForClient(t)}
+                                                            </button>
+                                                          ))}
+                                                        </div>
+                                                      </td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            </div>
+                                          </div>
+                                        ) : null}
+                                      </div>
                                     ) : (
                                       <div className="bk-time-windows">
                                         {staffWindowSections.length === 0 ? (
@@ -8939,39 +8929,84 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                       </div>
                                     )}
 
-                                    {selectedStaffForTime && availableSlotsForItem.length === 0 ? (
+                                    {selectedStaffForTime && availableSlotsForItem.length === 0 && !selectedStaffFullyBookedToday ? (
                                       <div className="bk-no-slots-panel">
                                         <div className="bk-no-slots-panel__title">{dayFullyBookedMsg}</div>
-                                        <div className="bk-no-slots-panel__actions">
-                                          <input
-                                            type="date"
-                                            className="form-control"
-                                            min={todayISO()}
-                                            value={String(it.date || bookingDate || todayISO()).trim()}
-                                            onChange={(e) => applyDateToSingleItem(it.id, String(e.target.value || "").trim())}
-                                          />
-                                          <div className="bk-no-slots-panel__buttons">
-                                            <button
-                                              type="button"
-                                              className="btn btn-outline-dark btn-sm"
-                                              onClick={focusBookingDatePicker}
-                                            >
-                                              فتح تقويم الحجز
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="btn btn-outline-dark btn-sm bk-future-search-btn"
-                                              onClick={() => openFutureSearchFromItem(it)}
-                                            >
-                                              {futureSearchBtnLabel}
-                                            </button>
-                                          </div>
+                                        <div className="bk-no-slots-panel__buttons">
+                                          <button
+                                            type="button"
+                                            className="btn btn-outline-dark btn-sm bk-future-search-btn"
+                                            onClick={() => {
+                                              void openFutureSearchFromItem(it);
+                                            }}
+                                            disabled={futureLoading}
+                                          >
+                                            {futureLoading && String(futureTargetItemId || "").trim() === String(it.id || "").trim()
+                                              ? "جاري البحث..."
+                                              : futureSearchBtnLabel}
+                                          </button>
                                         </div>
+                                        {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureMsg ? (
+                                          <div className="small text-muted mt-2">{futureMsg}</div>
+                                        ) : null}
+                                        {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureResult.length ? (
+                                          <div className="mt-2">
+                                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                                              <div className="small fw-bold">نتائج البحث</div>
+                                              <button
+                                                type="button"
+                                                className="btn btn-sm bk-future-pill"
+                                                onClick={() => {
+                                                  const nearestDate = String(futureResult[0]?.date || "").trim();
+                                                  if (!nearestDate) return;
+                                                  applyDateToSingleItem(it.id, nearestDate);
+                                                  setBookingDate(nearestDate);
+                                                  setFutureMsg("تم تحديث التاريخ لنفس الخدمة. اختاري الوقت المناسب من الشبكية.");
+                                                }}
+                                              >
+                                                اختيار أقرب موعد
+                                              </button>
+                                            </div>
+                                            <div className="table-responsive">
+                                              <table className="table align-middle mb-0 bk-future-table">
+                                                <thead>
+                                                  <tr>
+                                                    <th>التاريخ</th>
+                                                    <th>أوقات متاحة</th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody>
+                                                  {futureResult.map((r) => (
+                                                    <tr key={r.date}>
+                                                      <td>{r.date}</td>
+                                                      <td>
+                                                        <div className="d-flex gap-2 flex-wrap">
+                                                          {(r.times || []).map((t) => (
+                                                            <button
+                                                              key={t}
+                                                              type="button"
+                                                              className="btn btn-sm bk-future-pill"
+                                                              onClick={() => {
+                                                                void applyFutureTimeSelection(r.date, t);
+                                                              }}
+                                                            >
+                                                              {formatTime12ForClient(t)}
+                                                            </button>
+                                                          ))}
+                                                        </div>
+                                                      </td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            </div>
+                                          </div>
+                                        ) : null}
                                       </div>
                                     ) : null}
 
                                     {busy.loading && <div className="small text-muted mt-2"><FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات...</div>}
-                                    {busy.hint && !String(busy.hint).includes("الوقت المقترح") && (
+                                    {busy.hint && !selectedStaffFullyBookedToday && !String(busy.hint).includes("الوقت المقترح") && (
                                       <div className="small text-warning mt-2">{busy.hint}</div>
                                     )}
 
@@ -9093,180 +9128,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 	                    </div>
 	                  </div>
 	                ) : null}
-
-	                {currentStep === 2 && futureGateLoading ? (
-	                  <div className="small text-muted mb-2">
-	                    <FontAwesomeIcon icon={faSpinner} spin /> جاري التحقق من توفر اليوم المختار...
-	                  </div>
-                ) : null}
-
-                {currentStep === 2 && showFutureSearch ? (
-                  <div
-                    ref={futureSearchRef}
-                    className="mb-4"
-                    style={{ border: "1px solid #eee", padding: "15px", borderRadius: "12px", background: "#fafafa" }}
-                  >
-                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                      <div style={{ fontWeight: 800, color: "#0d0d0d" }}>بحث أوقات للأيام القادمة</div>
-                      <span className="text-muted" style={{ fontSize: 12 }}>يعرض أول 5 أيام متاحة بعد التاريخ المختار</span>
-                    </div>
-                    {futureGateMsg ? (
-                      <div className="alert alert-warning mb-2 py-2">
-                        {futureGateMsg}
-                      </div>
-                    ) : null}
-
-                    <div className="row g-2 align-items-end">
-                      <div className="col-12">
-                        <label className="form-label">اختاري الموظفة</label>
-                        {!String(futureServiceId || servicePicker || "").trim() ? (
-                          <div className="alert alert-danger mb-2 py-2">
-                            اختاري الخدمة أولاً.
-                          </div>
-                        ) : null}
-                        {String(futureServiceId || servicePicker || "").trim() &&
-                        staffLoadingByService[String(futureServiceId || servicePicker || "").trim()] ? (
-                          <div className="small text-muted mt-1">
-                            <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الموظفات...
-                          </div>
-                        ) : null}
-                        {String(futureServiceId || servicePicker || "").trim() &&
-                        staffErrorByService[String(futureServiceId || servicePicker || "").trim()] ? (
-                          <div className="small text-danger mt-1">
-                            {staffErrorByService[String(futureServiceId || servicePicker || "").trim()]}
-                          </div>
-                        ) : null}
-                        {String(futureServiceId || servicePicker || "").trim() &&
-                        !staffLoadingByService[String(futureServiceId || servicePicker || "").trim()] &&
-                        !staffErrorByService[String(futureServiceId || servicePicker || "").trim()] &&
-                        futureStaffOptions.length === 0 ? (
-                          <div className="text-warning small mt-1">
-                            لا توجد موظفات لهذه الخدمة حالياً.
-                          </div>
-                        ) : null}
-                        {futureStaffOptions.length > 0 ? (
-                          <div className="bk-staff-card-grid mt-2">
-                            {futureStaffOptions.map((st) => {
-                              const selected =
-                                String(futureSelectedEmployeeKey || "").trim() === String(st.key || "").trim();
-                              return (
-                                <button
-                                  key={st.key}
-                                  type="button"
-                                  className={[
-                                    "bk-staff-card-btn",
-                                    selected ? "is-selected" : "",
-                                  ].join(" ").trim()}
-                                  onClick={() => {
-                                    const nextKey = selected ? "" : st.key;
-                                    setFutureSelectedEmployeeKey(nextKey);
-                                    setFutureStaffNameQuery(selected ? "" : st.name);
-                                  }}
-                                >
-                                  <span className="bk-staff-card-name">{st.name}</span>
-                                  {selected ? <span className="bk-staff-card-state">محددة</span> : null}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="col-12 d-grid">
-                        <button
-                          type="button"
-                          className="btn btn-outline-dark"
-                          onClick={runFutureAvailabilitySearch}
-                          disabled={
-                            futureLoading ||
-                            !String(futureSelectedEmployeeKey || "").trim()
-                          }
-                        >
-                          {futureLoading ? "جاري البحث..." : "بحث"}
-                        </button>
-                      </div>
-
-                      {futureMsg ? (
-                        <div className="col-12">
-                          <div className="alert alert-secondary mb-0 py-2">
-                            {futureMsg}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {futureResult.length ? (
-                        <div className="col-12">
-                          <div className="bk-future-inline">
-                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                              <div className="bk-future-title">نتائج البحث</div>
-                                <button
-                                  type="button"
-                                  className="btn btn-sm bk-future-pill"
-                                  onClick={() => {
-                                    const nearestDate = String(futureResult[0]?.date || "").trim();
-                                    if (!nearestDate) return;
-                                    const targetItemId = String(futureTargetItemId || "").trim();
-                                    if (!targetItemId) return;
-                                    applyDateToSingleItem(targetItemId, nearestDate);
-                                    setFutureMsg("تم تحديث التاريخ لنفس الخدمة. اختاري الوقت المناسب من الشبكية.");
-                                  }}
-                                >
-                                  اختيار أقرب موعد
-                                </button>
-                            </div>
-
-                            <div className="table-responsive">
-                              <table className="table align-middle mb-0 bk-future-table">
-                                <thead>
-                                  <tr>
-                                    <th>التاريخ</th>
-                                    <th>أوقات متاحة</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {futureResult.map((r) => (
-                                    <tr key={r.date}>
-                                      <td>{r.date}</td>
-                                      <td>
-                                        {r.note ? (
-                                          <div className="bk-future-note mb-2">
-                                            <span className="bk-future-note-label">المتاح لدى:</span>
-                                            <span className="bk-future-note-names">
-                                              {(r.contributors && r.contributors.length
-                                                ? r.contributors
-                                                : String(r.note || "").replace("المتاح لدى:", "").split("،").map((x) => x.trim()).filter(Boolean)
-                                              ).slice(0, 3).map((name, idx) => (
-                                                <span key={`${name}-${idx}`} className="bk-future-name-chip">{name}</span>
-                                              ))}
-                                            </span>
-                                          </div>
-                                        ) : null}
-                                        <div className="d-flex gap-2 flex-wrap">
-                                          {(r.times || []).map((t) => (
-                                            <button
-                                              key={t}
-                                              type="button"
-                                              className="btn btn-sm bk-future-pill"
-                                              onClick={() => {
-                                                void applyFutureTimeSelection(r.date, t);
-                                              }}
-                                            >
-                                              {formatTime12ForClient(t)}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
 
                 {currentStep === 2 ? (
                   <div className="d-grid mb-4">
