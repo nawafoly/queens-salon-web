@@ -2610,6 +2610,31 @@ textarea.form-control {
   margin-bottom: 10px;
 }
 
+.booking-page .booking-client-prefill-note {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(64, 1, 13, 0.14);
+  background: linear-gradient(180deg, rgba(255, 248, 242, 0.95) 0%, rgba(247, 235, 226, 0.95) 100%);
+  color: rgba(64, 1, 13, 0.92);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.7;
+  box-shadow: 0 10px 24px rgba(64, 1, 13, 0.08);
+}
+
+.booking-page .booking-client-prefill-note.is-signed {
+  border-color: rgba(10, 111, 83, 0.18);
+  background: linear-gradient(180deg, rgba(240, 253, 248, 0.98) 0%, rgba(227, 252, 242, 0.98) 100%);
+  color: #0a6f53;
+  box-shadow: 0 10px 24px rgba(10, 111, 83, 0.08);
+}
+
+.booking-page .form-control[aria-invalid="true"] {
+  border-color: rgba(176, 0, 32, 0.42) !important;
+  background: linear-gradient(180deg, #fff9f9 0%, #fff3f4 100%) !important;
+}
+
 .booking-page .booking-staff-choice {
   display: flex;
   gap: 8px;

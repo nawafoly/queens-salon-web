@@ -1346,12 +1346,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // âœ… Auto-fill client info (name/phone) from Profile
   // =========================
   const [signedUid, setSignedUid] = useState<string | null>(null);
-  const [authResolved, setAuthResolved] = useState<boolean>(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    function fillFromLocalStorage() {
+    function fillFromSignedInCache() {
+      const currentUser = getAuth().currentUser;
+      if (!currentUser || (currentUser as any).isAnonymous) return;
+
       try {
         const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
         const name = String(cached?.name || localStorage.getItem("userName") || "").trim();
@@ -1360,8 +1362,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         if (!cancelled) {
           setFormData((prev) => ({
             ...prev,
-            name: prev.name || name,
-            phone: prev.phone || phone,
+            name:
+              (!String(prev.name || "").trim() || isPlaceholderClientName(String(prev.name || "").trim())) && name
+                ? name
+                : prev.name,
+            phone:
+              !/^05\d{8}$/.test(phone10Digits(String(prev.phone || "").trim())) && phone
+                ? phone
+                : prev.phone,
           }));
         }
       } catch {
@@ -1369,27 +1377,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       }
     }
 
-    // 1) عبّي من الكاش أولاً
-    fillFromLocalStorage();
-
-    // 2) لو مسجلة دخول: عبّي من Firestore profile
     const auth = getAuth();
     const initialUser = auth.currentUser;
     if (initialUser && !(initialUser as any).isAnonymous) {
       setSignedUid(initialUser.uid);
-      if (!cancelled) setAuthResolved(true);
+      fillFromSignedInCache();
     }
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u || (u as any).isAnonymous) {
         setSignedUid(null);
-        fillFromLocalStorage();
-        if (!cancelled) setAuthResolved(true);
         return;
       }
 
       setSignedUid(u.uid);
-      // لا تنتظر تحميل البروفايل من Firestore لإزالة شاشة "التحقق".
-      if (!cancelled) setAuthResolved(true);
 
       try {
         const p = await createOrLoadUserProfile(u);
@@ -1400,8 +1400,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         if (!cancelled) {
           setFormData((prev) => ({
             ...prev,
-            name: prev.name || name,
-            phone: prev.phone || phone,
+            name:
+              (!String(prev.name || "").trim() || isPlaceholderClientName(String(prev.name || "").trim())) && name
+                ? name
+                : prev.name,
+            phone:
+              !/^05\d{8}$/.test(phone10Digits(String(prev.phone || "").trim())) && phone
+                ? phone
+                : prev.phone,
           }));
         }
 
@@ -1410,12 +1416,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         if (name) localStorage.setItem("userName", name);
         if (phone) localStorage.setItem("userPhone", phone);
       } catch {
-        fillFromLocalStorage();
+        fillFromSignedInCache();
       }
     });
 
     // 3) لو عدّل بياناته من Profile
-    const onChanged = () => fillFromLocalStorage();
+    const onChanged = () => fillFromSignedInCache();
     window.addEventListener("authChanged", onChanged);
 
 
@@ -5528,7 +5534,13 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({
+      ...prev,
+      [name]:
+        name === "phone"
+          ? String(value || "").replace(/\D/g, "").slice(0, 10)
+          : value,
+    }));
   };
 
   const handleSectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -5990,15 +6002,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
     const customerName = String(formData.name || "").trim();
     if (!customerName || isPlaceholderClientName(customerName)) {
-      openModal(
-        {
-          title: "الاسم غير مكتمل",
-          message: "قبل إتمام الحجز، حدّثي اسمك الحقيقي من الملف الشخصي.",
-          variant: "danger",
-          confirmText: "فتح الملف الشخصي",
-        },
-        () => navigate("/profile")
-      );
+      openModal({
+        title: "الاسم غير مكتمل",
+        message: "أدخلي اسمك الحقيقي في الخطوة 3 قبل تأكيد الحجز.",
+        variant: "danger",
+        confirmText: "تعديل",
+      });
       return;
     }
 
@@ -6424,14 +6433,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       }
 
       const authNow = getAuth();
-      const uid = internalMode ? (authNow.currentUser?.uid || "") : (signedUid || "");
+      const uid = internalMode ? (authNow.currentUser?.uid || "") : (signedUid || null);
 
-      if (!uid) {
+      if (internalMode && !uid) {
         openModal({
-          title: internalMode ? "تسجيل دخول الموظف مطلوب" : "تسجيل الدخول مطلوب",
-          message: internalMode
-            ? "لازم موظف/إدارة يكون مسجل دخول عشان الحجز الداخلي."
-            : "لازم تنشئين حساب جديد أو تسجّلين دخول إذا كان عندك حساب.",
+          title: "تسجيل دخول الموظف مطلوب",
+          message: "لازم موظف/إدارة يكون مسجل دخول عشان الحجز الداخلي.",
           variant: "danger",
           confirmText: "تمام",
         });
@@ -7232,10 +7239,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 
-  // âœ… أضف هذا السطر فقط
   const isSignedClient = !!signedUid;
-  const shouldShowAuthGate = !internalMode && authResolved && !isSignedClient;
-  const shouldShowAuthLoader = !internalMode && !authResolved;
   const bookingDateSafe = String(bookingDate || "").trim() || todayISO();
   const hasSelectedBookingDate = !!String(bookingDate || "").trim();
   const bookingDateDisplayValue = bookingDate
@@ -7265,13 +7269,15 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   const selectedDate = String(firstItemWithTime?.date || bookingDateSafe).trim();
   const customerName = String(formData.name || "").trim();
   const customerPhone = phone10Digits(String(formData.phone || "").trim());
+  const isCustomerNameComplete = !!customerName && !isPlaceholderClientName(customerName);
+  const isCustomerPhoneComplete = /^05\d{8}$/.test(customerPhone);
   const isStep1Complete = cartItems.length > 0 && !!selectedVariantId;
   const isStep2Complete =
     !!String(bookingDate || "").trim() &&
     cartItems.length > 0 &&
     cartItems.every((it) => !!String(it.time || "").trim());
   const isStep2ReadyForNext = isStep2Complete && allPreviewLocked;
-  const isStep3Complete = true;
+  const isStep3Complete = isCustomerNameComplete && isCustomerPhoneComplete;
   const maxUnlockedStep: BookingStep = !isStep1Complete
     ? 1
     : !isStep2ReadyForNext
@@ -7293,15 +7299,17 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       : (String(bookingDate || "").trim() ? `${String(bookingDate || "").trim()} - لم يتم تحديد الوقت` : "لم يتم تحديد الوقت");
   const step2SummaryText = `${step2TimeSummary} - ${staffSummaryText}`;
   const step3SummaryText = [
+    isCustomerNameComplete ? customerName : "",
+    isCustomerPhoneComplete ? customerPhone : "",
     String(formData.note || "").trim() ? "تمت إضافة ملاحظة" : "",
     appliedCoupons.length > 0 ? "تم تطبيق كود خصم" : "",
-  ].filter(Boolean).join(" - ") || "اختياري";
+  ].filter(Boolean).join(" - ") || "أدخلي الاسم والجوال";
   const step4SummaryText = `${finalPrice.toFixed(0)} ريال`;
   const step1HintText = `عدد الخدمات المضافة (${cartItems.length})`;
   const stepRows: Array<{ id: BookingStep; title: string; hint: string; summary: string }> = [
     { id: 1, title: "الخدمة", hint: step1HintText, summary: step1SummaryText },
     { id: 2, title: "الوقت والموظفة", hint: "اختاري اليوم والوقت ثم الموظفة المناسبة", summary: step2SummaryText },
-    { id: 3, title: "ملاحظات وكود خصم", hint: "أضيفي ملاحظة أو كود خصم (اختياري)", summary: step3SummaryText },
+    { id: 3, title: "بيانات العميلة", hint: "أدخلي الاسم والجوال ثم أضيفي الملاحظة أو كود الخصم إن رغبتِ", summary: step3SummaryText },
     { id: 4, title: "التأكيد", hint: "راجعي التفاصيل واضغطي تأكيد", summary: step4SummaryText },
   ];
   const activeStepRow = stepRows.find((x) => x.id === currentStep) || stepRows[0];
@@ -7530,40 +7538,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                 </div>
               )}
 
-              {shouldShowAuthLoader ? (
-                <div className="booking-auth-gate booking-auth-gate--loading" role="status" aria-live="polite">
-                  <h3 className="booking-auth-gate__title">جاري التحقق من الحساب</h3>
-                  <p className="booking-auth-gate__text">
-                    نتحقق من حالة الدخول قبل عرض نموذج الحجز.
-                  </p>
-                </div>
-              ) : shouldShowAuthGate ? (
-                <div className="booking-auth-gate" role="alert" aria-live="assertive">
-                  <h3 className="booking-auth-gate__title">إنشاء حساب مطلوب قبل إتمام الحجز</h3>
-                  <p className="booking-auth-gate__text">
-                    لا يمكن إكمال الحجز دون إنشاء حساب عميلة أولًا.
-                  </p>
-                  <p className="booking-auth-gate__text">
-                    إذا كان لديك حساب مسبقًا، يُرجى تسجيل الدخول ثم متابعة إجراءات الحجز.
-                  </p>
-                  <div className="booking-auth-gate__actions">
-                    <button
-                      type="button"
-                      className="btn btn-primary booking-auth-gate__cta"
-                      onClick={() => navigate("/login?mode=register&next=%2Fbooking")}
-                    >
-                      إنشاء حساب جديد
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline-dark booking-auth-gate__cta booking-auth-gate__cta--login"
-                      onClick={() => navigate("/login?mode=login&next=%2Fbooking")}
-                    >
-                      تسجيل الدخول
-                    </button>
-                  </div>
-                </div>
-              ) : (
               <form className="booking-form" onSubmit={handleSubmit}>
                 <div className="booking-step-focus mb-4">
                   <div className="booking-step-focus__top">
@@ -9137,7 +9111,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                       disabled={!isStep2ReadyForNext}
                       onClick={() => setCurrentStep(3)}
                     >
-                      التالي: ملاحظة وكود الخصم
+                      التالي: بيانات العميلة
                     </button>
                     {!allPreviewLocked ? (
                       <div className="small text-warning mt-2 text-center">
@@ -9149,6 +9123,59 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
                 {currentStep === 3 ? (
                 <>
+                <div className="booking-step-card-shell mb-4">
+                  <div className="booking-step-card-shell__title">بيانات العميلة</div>
+                  <div
+                    className={`booking-client-prefill-note ${isSignedClient ? "is-signed" : ""}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {isSignedClient
+                      ? "تم سحب الاسم والجوال من حسابك تلقائيًا، ويمكنك تعديلهما قبل التأكيد."
+                      : "أدخلي اسمك ورقم جوالك لإتمام الحجز بدون الحاجة لتسجيل الدخول."}
+                  </div>
+
+                  <div className="row g-3">
+                    <div className="col-md-6">
+                      <label htmlFor="bookingClientName" className="form-label">الاسم</label>
+                      <input
+                        id="bookingClientName"
+                        type="text"
+                        name="name"
+                        className="form-control"
+                        value={formData.name}
+                        onChange={handleChange}
+                        placeholder="اكتبي اسمك الكامل"
+                        autoComplete="name"
+                        required
+                        aria-invalid={!isCustomerNameComplete && String(formData.name || "").trim().length > 0}
+                      />
+                    </div>
+
+                    <div className="col-md-6">
+                      <label htmlFor="bookingClientPhone" className="form-label">رقم الجوال</label>
+                      <input
+                        id="bookingClientPhone"
+                        type="tel"
+                        name="phone"
+                        className="form-control"
+                        dir="ltr"
+                        inputMode="numeric"
+                        value={formData.phone}
+                        onChange={handleChange}
+                        placeholder="05xxxxxxxx"
+                        autoComplete="tel"
+                        maxLength={10}
+                        required
+                        pattern="05[0-9]{8}"
+                        aria-invalid={!isCustomerPhoneComplete && String(formData.phone || "").trim().length > 0}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="booking-step-card-shell mb-4">
+                  <div className="booking-step-card-shell__title">ملاحظات وكود خصم</div>
                 <div className="mb-4">
                   <label htmlFor="note" className="form-label">ملاحظة (اختياري)</label>
                   <textarea
@@ -9217,6 +9244,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                     </div>
                   )}
                 </div>
+                </div>
                 <div className="d-grid mb-4">
                   <button
                     type="button"
@@ -9226,6 +9254,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                   >
                     التالي: التأكيد
                   </button>
+                  {!isStep3Complete ? (
+                    <div className="small text-warning mt-2 text-center">
+                      لازم تكمّلين الاسم ورقم الجوال الصحيح قبل الانتقال للتأكيد.
+                    </div>
+                  ) : null}
                 </div>
                 </>
                 ) : null}
@@ -9263,7 +9296,6 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                 </>
                 ) : null}
               </form>
-              )}
             </div>
           </div>
         </div>
