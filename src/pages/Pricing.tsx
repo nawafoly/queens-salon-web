@@ -15,6 +15,8 @@ import {
 
 import "../styles/Pricing.css";
 import Modal from "../components/Modal";
+import { AppSettingsService } from "../services/AppSettingsService";
+import { pickEffectivePrice } from "../helpers/seasonPricing";
 
 // ✅ Firestore
 import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
@@ -188,9 +190,20 @@ type FsService = {
   active?: boolean;
   sectionId?: string;
   price?: number;
+  seasonPrice?: number | null;
   // اختياري:
   categoryName?: string; // لو موجود عندك
   note?: string;
+};
+
+type FsSectionDoc = {
+  id: string;
+  data: FsSection;
+};
+
+type FsServiceDoc = {
+  id: string;
+  data: FsService;
 };
 
 const SALON_ID = "main";
@@ -214,10 +227,20 @@ function iconAndColorForSection(sectionIdOrName: string) {
 
 const Pricing: FC = () => {
   const [openSectionId, setOpenSectionId] = useState<string | null>(null);
+  const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
 
   // ✅ Firestore (لو انقرأت)
   const [fsSections, setFsSections] = useState<Record<string, PricingSection> | null>(null);
+  const [, setFsSectionDocs] = useState<FsSectionDoc[] | null>(null);
+  const [, setFsServiceDocs] = useState<FsServiceDoc[] | null>(null);
   const [loadingFs, setLoadingFs] = useState(false);
+
+  useEffect(() => {
+    const unsub = AppSettingsService.subscribe((remote: any) => {
+      setAppSettings(remote || {});
+    });
+    return () => unsub();
+  }, []);
 
   // ===== Fetch from Firestore =====
   useEffect(() => {
@@ -232,20 +255,23 @@ const Pricing: FC = () => {
 
         // Sections
         const sectionsSnap = await getDocs(query(sectionsRef, orderBy("order", "asc")));
-        const sections: Array<{ id: string; data: FsSection }> = sectionsSnap.docs.map((d) => ({
+        const sections: FsSectionDoc[] = sectionsSnap.docs.map((d) => ({
           id: d.id,
           data: d.data() as FsSection,
         }));
 
         // Services (active only)
         const servicesSnap = await getDocs(query(servicesRef, where("active", "==", true)));
-        const services: Array<{ id: string; data: FsService }> = servicesSnap.docs.map((d) => ({
+        const services: FsServiceDoc[] = servicesSnap.docs.map((d) => ({
           id: d.id,
           data: d.data() as FsService,
         }));
 
         if (!sections.length || !services.length) {
-          if (mounted) setFsSections(null);
+          if (mounted) {
+            setFsSectionDocs(null);
+            setFsServiceDocs(null);
+          }
           return;
         }
 
@@ -276,6 +302,15 @@ const Pricing: FC = () => {
           const groupedByCat: Record<string, PriceItem[]> = {};
 
           list.forEach((srv) => {
+            const displayPrice = pickEffectivePrice({
+              basePrice: Number(srv.price || 0),
+              seasonPrice:
+                srv.seasonPrice === null || srv.seasonPrice === undefined || String(srv.seasonPrice) === ""
+                  ? undefined
+                  : Number(srv.seasonPrice || 0),
+              appSettings,
+            }).price;
+            srv.price = Number(displayPrice || 0);
             const cat = String(srv.categoryName || "الخدمات");
             if (!groupedByCat[cat]) groupedByCat[cat] = [];
             groupedByCat[cat].push({
@@ -311,7 +346,7 @@ const Pricing: FC = () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [appSettings]);
 
   // ✅ المصدر النهائي للعرض
   const sourceSections = fsSections ?? pricingSections;

@@ -35,6 +35,7 @@ import "../styles/Offers.css";
 import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { AppSettingsService } from "../services/AppSettingsService";
+import { isSeasonActiveNow, pickEffectivePrice } from "../helpers/seasonPricing";
 
 const SALON_ID = "main";
 const SERVICES_CACHE_KEY = "services_page_cache_v1";
@@ -70,6 +71,7 @@ type UiServiceItem = {
   name: string;
   basePrice: number;
   seasonPrice: number | null;
+  displayPrice: number;
 };
 
 type UiCategory = {
@@ -176,7 +178,7 @@ function writeServicesPageCache(payload: Omit<ServicesPageCache, "savedAt">) {
   }
 }
 
-function formatMoney(n: number) {
+function formatMoney(n: number | null | undefined) {
   return Number(n || 0).toFixed(0);
 }
 
@@ -374,16 +376,7 @@ export default function Services() {
   }, [appSettings]);
 
   const seasonRangeTitle = useMemo(() => {
-    const season = (appSettings as any)?.catalogSeasonPricing || {};
-    const from = String(season?.startDate || season?.from || "").trim();
-    const to = String(season?.endDate || season?.to || "").trim();
-    const today = new Date().toISOString().slice(0, 10);
-    const activeNow =
-      Boolean(season?.enabled) &&
-      Boolean(from) &&
-      Boolean(to) &&
-      today >= from &&
-      today <= to;
+    const activeNow = isSeasonActiveNow(appSettings);
     return activeNow ? "تاريخ أسعار الموسم (فعال الآن)" : "تاريخ أسعار الموسم";
   }, [appSettings]);
 
@@ -487,6 +480,11 @@ export default function Services() {
         name: s.name,
         basePrice,
         seasonPrice,
+        displayPrice: pickEffectivePrice({
+          basePrice,
+          seasonPrice: seasonPrice ?? undefined,
+          appSettings,
+        }).price,
       };
 
       if (s.categoryId) {
@@ -550,7 +548,7 @@ export default function Services() {
         } as UiSection;
       })
       .filter(Boolean) as UiSection[];
-  }, [sections, categories, services, uiBySectionId]);
+  }, [sections, categories, services, uiBySectionId, appSettings]);
 
   return (
     // ✅ مهم: offers-page عشان Offers.css (scoped) يشتغل 1:1
@@ -677,6 +675,11 @@ export default function Services() {
                                         <li key={it.id} className="services-li">
                                           <span className="services-item-name">{it.name}</span>
                                           <span className="services-item-price">
+                                            {`${formatMoney(it.displayPrice)} ريال`}
+                                          </span>
+                                          {false && (
+                                            <>
+                                          <span className="services-item-price">
                                             {`العادي: ${formatMoney(it.basePrice)} ريال`}
                                           </span>
                                           <span
@@ -691,6 +694,8 @@ export default function Services() {
                                                 : `${formatMoney(it.seasonPrice)} ريال`
                                             }`}
                                           </span>
+                                            </>
+                                          )}
                                         </li>
                                       ))}
                                     </ul>

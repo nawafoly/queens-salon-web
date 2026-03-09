@@ -249,7 +249,7 @@ type FlatService = {
 type PriceLookupItem = {
   id: string;
   name: string;
-  price: number;
+  basePrice: number;
   seasonPrice?: number;
   imageUrl: string;
   searchText: string;
@@ -3701,7 +3701,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               id: String(d.id || "").trim(),
               active: raw?.active === true,
               name: String(name || "").trim(),
-              price,
+              basePrice: price,
               seasonPrice,
               imageUrl,
               searchText: normalizeSearchText(`${name} ${variantTerms}`),
@@ -4192,14 +4192,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }, [servicesInSection]);
 
   function servicePickerPriceText(sv: FlatService) {
-    const dateISO = String(bookingDate || "").trim();
-    if (!dateISO) return sv.priceText;
-
     const eff = pickEffectivePrice({
       basePrice: Number(sv.basePrice || 0),
       seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
       appSettings,
-      dateISO,
+      dateISO: String(bookingDate || "").trim() || todayISO(),
     });
 
     const price = Number(eff.price || 0);
@@ -4270,9 +4267,22 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   );
 
   const priceLookupResults = useMemo(() => {
-    if (!priceLookupNeedle) return priceLookupServices;
-    return priceLookupServices.filter((s) => String(s.searchText || "").includes(priceLookupNeedle));
-  }, [priceLookupServices, priceLookupNeedle]);
+    const rows = priceLookupServices.map((s) => {
+      const displayPrice = pickEffectivePrice({
+        basePrice: Number(s.basePrice || 0),
+        seasonPrice: Number(s.seasonPrice || 0) || undefined,
+        appSettings,
+        dateISO: todayISO(),
+      }).price;
+      return {
+        ...s,
+        price: displayPrice,
+        displayPrice,
+      };
+    });
+    if (!priceLookupNeedle) return rows;
+    return rows.filter((s) => String(s.searchText || "").includes(priceLookupNeedle));
+  }, [priceLookupServices, priceLookupNeedle, appSettings]);
 
   const futureStaffOptions = useMemo(() => {
     const sid = String(resolvedFutureServiceId || "").trim();
@@ -8162,12 +8172,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                   </div>
                                 </div>
 
+                                {false && (
                                 <div className="bk-price-list-season">
                                   <div className="bk-price-list-season-label">سعر الموسم</div>
                                   <div className={`bk-price-list-season-value ${seasonPrice > 0 ? "" : "is-empty"}`}>
                                     {seasonPrice > 0 ? `${seasonPrice.toFixed(0)} ريال` : "غير محدد"}
                                   </div>
                                 </div>
+                                )}
                               </div>
                             );
                           })}

@@ -2732,14 +2732,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
   // âœ… عرض السعر في الـ dropdown حسب (طور الموسم/العادي) + تاريخ الحجز المختار
   function servicePickerPriceText(sv: FlatService) {
-    const dateISO = String(bookingDate || "").trim();
-    if (!dateISO) return sv.priceText; // احتياط
-
     const eff = pickEffectivePrice({
       basePrice: Number(sv.basePrice || 0),
       seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
       appSettings,
-      dateISO,
+      dateISO: String(bookingDate || "").trim() || todayISO(),
     });
 
     const price = Number(eff.price || 0);

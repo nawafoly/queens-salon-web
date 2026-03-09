@@ -3,6 +3,7 @@ import { db } from "./firebase";
 import { writeAuditLog } from "./logService";
 import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { STRICT_FIREBASE } from "../config/strictFirebase";
+import { isSeasonEnabledForDate, pickEffectivePrice } from "../helpers/seasonPricing";
 
 
 export type SectionKey =
@@ -586,16 +587,7 @@ export const AppSettingsService = {
 // =========================
 
 export function isSeasonActiveForDateLocal(sp: any, bookingDateISO: string) {
-  const enabled = !!sp?.enabled;
-  const from = String(sp?.from || sp?.startDate || "").trim();
-  const to = String(sp?.to || sp?.endDate || "").trim();
-  if (!enabled || !from || !to) return false;
-
-  // bookingDateISO لازم يكون YYYY-MM-DD
-  const d = String(bookingDateISO || "").trim();
-  if (!d) return false;
-
-  return d >= from && d <= to;
+  return isSeasonEnabledForDate({ catalogSeasonPricing: sp || {} }, bookingDateISO).ok;
 }
 
 
@@ -604,17 +596,15 @@ export function getEffectiveServicePrice(
   settings: any,
   bookingDateISO: string
 ) {
-  const base = Math.max(0, Number(service?.price ?? 0) || 0);
-
-  const rawSP = service?.seasonPrice;
-  const hasSeason = rawSP !== null && rawSP !== undefined && String(rawSP) !== "";
-  const season = Math.max(0, Number(rawSP ?? 0) || 0);
-
-  const cfg = (settings as any)?.catalogSeasonPricing || null;
-  const active = isSeasonActiveForDateLocal(cfg, bookingDateISO);
-
-  if (active && hasSeason) return season;
-  return base;
+  return pickEffectivePrice({
+    basePrice: Math.max(0, Number(service?.price ?? 0) || 0),
+    seasonPrice:
+      service?.seasonPrice === null || service?.seasonPrice === undefined || String(service?.seasonPrice) === ""
+        ? undefined
+        : Math.max(0, Number(service?.seasonPrice ?? 0) || 0),
+    appSettings: settings,
+    dateISO: bookingDateISO,
+  }).price;
 }
 
 
