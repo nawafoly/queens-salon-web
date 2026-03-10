@@ -68,6 +68,10 @@ export type AuditLogInput = {
   entityId?: string;
   description: string;
   source?: LogSource;
+  actorUid?: string;
+  actorEmail?: string;
+  actorName?: string;
+  actorRole?: UiRole;
   before?: unknown;
   after?: unknown;
   meta?: Record<string, unknown>;
@@ -116,6 +120,14 @@ function getAuthUserFromLocalStorage(): AuthUserLS | null {
   }
 
   return null;
+}
+
+function getCachedSessionUserName() {
+  try {
+    return String(localStorage.getItem("userName") || "").trim();
+  } catch {
+    return "";
+  }
 }
 
 function safeJson<T = unknown>(v: T): T | null {
@@ -175,11 +187,20 @@ export async function writeAuditLog(input: AuditLogInput) {
 
   const ls = getAuthUserFromLocalStorage();
   const authUser = auth.currentUser;
+  const cachedSessionUserName = getCachedSessionUserName();
 
-  const userUid = String(ls?.uid || authUser?.uid || "").trim();
-  const userEmail = String(ls?.email || authUser?.email || "").trim();
-  const userRole = String(ls?.role || "guest").trim() as UiRole;
-  const userName = String(ls?.displayName || ls?.name || authUser?.displayName || userEmail || "").trim();
+  const userUid = String(input.actorUid || ls?.uid || authUser?.uid || "").trim();
+  const userEmail = String(input.actorEmail || ls?.email || authUser?.email || "").trim();
+  const userRole = String(input.actorRole || ls?.role || "guest").trim() as UiRole;
+  const userName = String(
+    input.actorName ||
+      ls?.displayName ||
+      ls?.name ||
+      cachedSessionUserName ||
+      authUser?.displayName ||
+      userEmail ||
+      ""
+  ).trim();
 
   const payload: Omit<AuditLogRecord, "logId"> = {
     action: String(input.action || "").trim(),

@@ -26,7 +26,7 @@ import { AppSettingsService } from "./AppSettingsService";
 // ✅ for logging who did the action (best effort)
 import { getAuth } from "firebase/auth";
 
-import { writeAuditLog } from "./logService";
+import { writeAuditLog, type LogSource } from "./logService";
 
 
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
@@ -71,6 +71,9 @@ export type BookingDoc = {
   bufferMinAtBooking?: number;
 
   createdBy: string;
+  createdByUid?: string | null;
+  createdByEmail?: string | null;
+  createdByName?: string | null;
   channel: BookingChannel;
 
   clientName: string;
@@ -135,15 +138,28 @@ export type BookingDoc = {
   viewedByName?: string | null;
   pendingAt?: number;
   pendingByUid?: string;
+  pendingByEmail?: string | null;
+  pendingByName?: string | null;
   confirmedAt?: number;
   confirmedByUid?: string;
+  confirmedByEmail?: string | null;
+  confirmedByName?: string | null;
   completedAt?: number;
   completedByUid?: string;
+  completedByEmail?: string | null;
+  completedByName?: string | null;
   cancelledAt?: number;
   cancelledByUid?: string;
+  cancelledByEmail?: string | null;
+  cancelledByName?: string | null;
   paidAt?: number;
   paidByUid?: string;
+  paidByEmail?: string | null;
+  paidByName?: string | null;
   createdAtMs?: number;
+  updatedByUid?: string | null;
+  updatedByEmail?: string | null;
+  updatedByName?: string | null;
 
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
@@ -210,6 +226,9 @@ function normalizeBooking(raw: any): BookingDoc {
     bufferMinAtBooking: Number(raw?.bufferMinAtBooking ?? 0) || undefined,
 
     createdBy: String(raw?.createdBy ?? ""),
+    createdByUid: raw?.createdByUid ? String(raw.createdByUid) : undefined,
+    createdByEmail: raw?.createdByEmail ? String(raw.createdByEmail) : undefined,
+    createdByName: raw?.createdByName ? String(raw.createdByName) : undefined,
     channel:
       raw?.channel === "internal"
         ? "internal"
@@ -314,7 +333,30 @@ function normalizeBooking(raw: any): BookingDoc {
     viewedByUid: raw?.viewedByUid ? String(raw.viewedByUid) : undefined,
     viewedByEmail: raw?.viewedByEmail ? String(raw.viewedByEmail) : undefined,
     viewedByName: raw?.viewedByName ? String(raw.viewedByName) : undefined,
+    pendingAt: Number(raw?.pendingAt || 0) || undefined,
+    pendingByUid: raw?.pendingByUid ? String(raw.pendingByUid) : undefined,
+    pendingByEmail: raw?.pendingByEmail ? String(raw.pendingByEmail) : undefined,
+    pendingByName: raw?.pendingByName ? String(raw.pendingByName) : undefined,
+    confirmedAt: Number(raw?.confirmedAt || 0) || undefined,
+    confirmedByUid: raw?.confirmedByUid ? String(raw.confirmedByUid) : undefined,
+    confirmedByEmail: raw?.confirmedByEmail ? String(raw.confirmedByEmail) : undefined,
+    confirmedByName: raw?.confirmedByName ? String(raw.confirmedByName) : undefined,
+    completedAt: Number(raw?.completedAt || 0) || undefined,
+    completedByUid: raw?.completedByUid ? String(raw.completedByUid) : undefined,
+    completedByEmail: raw?.completedByEmail ? String(raw.completedByEmail) : undefined,
+    completedByName: raw?.completedByName ? String(raw.completedByName) : undefined,
+    cancelledAt: Number(raw?.cancelledAt || 0) || undefined,
+    cancelledByUid: raw?.cancelledByUid ? String(raw.cancelledByUid) : undefined,
+    cancelledByEmail: raw?.cancelledByEmail ? String(raw.cancelledByEmail) : undefined,
+    cancelledByName: raw?.cancelledByName ? String(raw.cancelledByName) : undefined,
+    paidAt: Number(raw?.paidAt || 0) || undefined,
+    paidByUid: raw?.paidByUid ? String(raw.paidByUid) : undefined,
+    paidByEmail: raw?.paidByEmail ? String(raw.paidByEmail) : undefined,
+    paidByName: raw?.paidByName ? String(raw.paidByName) : undefined,
     createdAtMs: Number(raw?.createdAtMs || 0) || undefined,
+    updatedByUid: raw?.updatedByUid ? String(raw.updatedByUid) : undefined,
+    updatedByEmail: raw?.updatedByEmail ? String(raw.updatedByEmail) : undefined,
+    updatedByName: raw?.updatedByName ? String(raw.updatedByName) : undefined,
     createdAt: raw?.createdAt,
     updatedAt: raw?.updatedAt,
   };
@@ -540,24 +582,156 @@ function shouldForceClientPendingUnpaidOnCreate(raw: Partial<BookingDoc>): boole
   );
 }
 
+type ActorSnapshot = {
+  uid: string;
+  email: string;
+  displayName: string;
+};
+
+const GENERIC_ACTOR_TOKENS = new Set<string>([
+  "",
+  "system",
+  "النظام",
+  "client",
+  "staff",
+  "dashboard",
+  "internal",
+  "owner",
+  "admin",
+  "reception",
+  "guest",
+  "user",
+  "anonymous",
+  "anon",
+  "auto-assigned",
+  "auto assigned",
+  "تعيين تلقائي",
+  "مستخدم",
+  "عميلة",
+  "موظفة",
+]);
+
+function normalizeActorToken(value: unknown) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function emailLocalPart(email: unknown) {
+  const raw = String(email || "").trim();
+  return raw ? raw.split("@")[0] : "";
+}
+
+function isMeaningfulActorName(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  return !GENERIC_ACTOR_TOKENS.has(normalizeActorToken(raw));
+}
+
+function resolveBookingLogSource(channel?: string): LogSource {
+  const raw = String(channel || "").trim().toLowerCase();
+  if (raw === "client") return "client_app";
+  if (raw === "internal") return "internal_booking";
+  return "dashboard";
+}
+
+function resolveActorSnapshot(args?: {
+  booking?: Partial<BookingDoc> | null;
+  uid?: string;
+  email?: string;
+  name?: string;
+}): ActorSnapshot {
+  const auth = getAuth();
+  const u = auth.currentUser;
+  const storedActor = readStoredActorSnapshot();
+  const booking = (args?.booking || {}) as Partial<BookingDoc>;
+
+  const uid = String(
+    args?.uid ||
+      u?.uid ||
+      storedActor.uid ||
+      booking.userId ||
+      booking.updatedByUid ||
+      booking.createdByUid ||
+      ""
+  ).trim();
+  const email = String(
+    args?.email ||
+      u?.email ||
+      storedActor.email ||
+      booking.updatedByEmail ||
+      booking.createdByEmail ||
+      ""
+  ).trim();
+
+  const createdByRaw = String(booking.createdBy || "").trim();
+  const clientName =
+    String((booking as any)?.clientName || (booking as any)?.customerName || "").trim();
+  const roleAwareClientName =
+    String(booking.channel || "").trim().toLowerCase() === "client" ||
+    createdByRaw.toLowerCase() === "client"
+      ? clientName
+      : "";
+
+  const displayNameCandidates = [
+    args?.name,
+    u?.displayName,
+    storedActor.displayName,
+    booking.updatedByName,
+    booking.createdByName,
+    isMeaningfulActorName(createdByRaw) ? createdByRaw : "",
+    roleAwareClientName,
+    emailLocalPart(email),
+    uid,
+  ];
+
+  const displayName =
+    displayNameCandidates.find((value) => isMeaningfulActorName(value)) ||
+    displayNameCandidates.map((value) => String(value || "").trim()).find(Boolean) ||
+    "";
+
+  return { uid, email, displayName: String(displayName || "").trim() };
+}
+
 function buildStatusAuditPatch(
   status: BookingStatus,
   nowMs: number,
-  actorUid?: string
+  actor?: Partial<ActorSnapshot> | null
 ): Record<string, any> {
-  const byUid = String(actorUid || "").trim() || undefined;
+  const byUid = String(actor?.uid || "").trim() || undefined;
+  const byEmail = String(actor?.email || "").trim() || undefined;
+  const byName = String(actor?.displayName || "").trim() || undefined;
 
-  if (status === "pending") return { pendingAt: nowMs, pendingByUid: byUid };
-  if (status === "confirmed") return { confirmedAt: nowMs, confirmedByUid: byUid };
+  if (status === "pending") {
+    return { pendingAt: nowMs, pendingByUid: byUid, pendingByEmail: byEmail, pendingByName: byName };
+  }
+  if (status === "confirmed") {
+    return {
+      confirmedAt: nowMs,
+      confirmedByUid: byUid,
+      confirmedByEmail: byEmail,
+      confirmedByName: byName,
+    };
+  }
   if (status === "completed") {
     return {
       completedAt: nowMs,
       completedByUid: byUid,
+      completedByEmail: byEmail,
+      completedByName: byName,
       paidAt: nowMs,
       paidByUid: byUid,
+      paidByEmail: byEmail,
+      paidByName: byName,
     };
   }
-  return { cancelledAt: nowMs, cancelledByUid: byUid };
+  return {
+    cancelledAt: nowMs,
+    cancelledByUid: byUid,
+    cancelledByEmail: byEmail,
+    cancelledByName: byName,
+  };
 }
 
 // ====== helpers to mirror Booking.tsx ======
@@ -766,21 +940,57 @@ function bookingEventsCol(bookingId: string) {
 
 type BookingLogType = "created" | "status_changed" | "details_updated" | "staff_acknowledged";
 
+function readStoredActorSnapshot(): {
+  uid: string;
+  email: string;
+  displayName: string;
+} {
+  try {
+    const authUserRaw = localStorage.getItem("auth_user");
+    const authUser = authUserRaw ? JSON.parse(authUserRaw) as any : null;
+    const profileRaw = localStorage.getItem("user_profile_v1");
+    const profile = profileRaw ? JSON.parse(profileRaw) as any : null;
+    const fallbackName = String(localStorage.getItem("userName") || "").trim();
+    return {
+      uid: String(authUser?.uid || profile?.uid || "").trim(),
+      email: String(authUser?.email || profile?.email || "").trim(),
+      displayName: String(
+        authUser?.displayName ||
+          profile?.displayName ||
+          profile?.name ||
+          fallbackName ||
+          ""
+      ).trim(),
+    };
+  } catch {
+    return { uid: "", email: "", displayName: "" };
+  }
+}
+
 async function writeBookingLog(args: {
   bookingId: string;
   type: BookingLogType;
   note?: string;
   patch?: any;
+  actor?: Partial<ActorSnapshot> | null;
+  booking?: Partial<BookingDoc> | null;
+  source?: LogSource;
 }) {
-  const auth = getAuth();
-  const u = auth.currentUser;
+  const actor = resolveActorSnapshot({
+    booking: args.booking,
+    uid: String(args.actor?.uid || "").trim() || undefined,
+    email: String(args.actor?.email || "").trim() || undefined,
+    name: String(args.actor?.displayName || "").trim() || undefined,
+  });
   const eventAtMs = Date.now();
+  const source = args.source || resolveBookingLogSource(args.booking?.channel);
 
   const payload = stripUndefined({
     type: args.type,
     bookingId: args.bookingId,
-    byUid: u?.uid || null,
-    byEmail: u?.email || null,
+    byUid: actor.uid || null,
+    byEmail: actor.email || null,
+    byName: actor.displayName || null,
     note: args.note || "",
     patch: args.patch || null,
     eventAtMs,
@@ -817,7 +1027,10 @@ async function writeBookingLog(args: {
       entityId: args.bookingId,
       description: args.note || "تم تحديث الحجز",
       after: args.patch || null,
-      source: "dashboard",
+      source,
+      actorUid: actor.uid || undefined,
+      actorEmail: actor.email || undefined,
+      actorName: actor.displayName || undefined,
       meta: {
         bookingLogType: args.type,
         eventAtMs,
@@ -935,7 +1148,10 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   // ✅ duration (default)
   const durationMin = Math.max(0, Number(data.durationMin || 0)) || 60;
   const nowMs = Date.now();
-  const actorUid = String(data.userId || getAuth().currentUser?.uid || "").trim() || undefined;
+  const actorSnapshot = resolveActorSnapshot({
+    booking: data,
+    uid: String(data.userId || "").trim() || undefined,
+  });
   const requestedStatus = ((data.status as BookingStatus) || "pending") as BookingStatus;
   const forceClientPendingUnpaid = shouldForceClientPendingUnpaidOnCreate(data);
   const statusNow: BookingStatus = forceClientPendingUnpaid
@@ -943,7 +1159,7 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     : shouldAutoConfirmClientPendingOnCreate(data, requestedStatus)
       ? "confirmed"
       : requestedStatus;
-  const statusAuditPatch = buildStatusAuditPatch(statusNow, nowMs, actorUid);
+  const statusAuditPatch = buildStatusAuditPatch(statusNow, nowMs, actorSnapshot);
   const resolvedPaymentMethod = resolvePaymentMethodForStatus(
     statusNow,
     (data as any).paymentMethod,
@@ -1045,6 +1261,12 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
   const payloadBase = stripUndefined({
     ...data,
+    createdByUid: actorSnapshot.uid || null,
+    createdByEmail: actorSnapshot.email || null,
+    createdByName: actorSnapshot.displayName || null,
+    updatedByUid: actorSnapshot.uid || null,
+    updatedByEmail: actorSnapshot.email || null,
+    updatedByName: actorSnapshot.displayName || null,
 
     // ✅ normalize nullables
     employeeId: (data.employeeId ?? null) as any,
@@ -1217,6 +1439,12 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
 
         // ✅ مهم مع rules حقك
         userId: data.userId ?? null,
+        createdByUid: actorSnapshot.uid || null,
+        createdByEmail: actorSnapshot.email || null,
+        createdByName: actorSnapshot.displayName || null,
+        updatedByUid: actorSnapshot.uid || null,
+        updatedByEmail: actorSnapshot.email || null,
+        updatedByName: actorSnapshot.displayName || null,
 
         // legacy + new
         serviceName: data.serviceName,
@@ -1261,6 +1489,9 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     bookingId,
     type: "created",
     note: "تم إنشاء الحجز",
+    actor: actorSnapshot,
+    booking: payloadBase as Partial<BookingDoc>,
+    source: resolveBookingLogSource(data.channel),
     patch: {
       serviceId: data.serviceId ?? null,
       packageId: data.packageId ?? null,
@@ -1272,6 +1503,9 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
       paymentType: paymentState.paymentType,
       paidAmount: paymentState.paidAmount,
       remainingAmount: paymentState.remainingAmount,
+      byUid: actorSnapshot.uid || null,
+      byEmail: actorSnapshot.email || null,
+      byName: actorSnapshot.displayName || null,
     },
   });
 
@@ -1289,13 +1523,16 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
   }
 
   const nowMs = Date.now();
-  const actorUid = String(parent.userId || getAuth().currentUser?.uid || "").trim() || undefined;
+  const actorSnapshot = resolveActorSnapshot({
+    booking: parent,
+    uid: String(parent.userId || "").trim() || undefined,
+  });
   const requestedStatus: BookingStatus = (parent.status as BookingStatus) || "pending";
   const forceClientPendingUnpaid = shouldForceClientPendingUnpaidOnCreate(parent);
   const status: BookingStatus = shouldAutoConfirmClientPendingOnCreate(parent, requestedStatus)
     ? "confirmed"
     : requestedStatus;
-  const statusAuditPatch = buildStatusAuditPatch(status, nowMs, actorUid);
+  const statusAuditPatch = buildStatusAuditPatch(status, nowMs, actorSnapshot);
   const parentTotalAmount = readTotalAmount(parent);
   const parentPaymentState = forceClientPendingUnpaid
     ? {
@@ -1429,6 +1666,12 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
 
     const payloadBase = stripUndefined({
       ...it,
+      createdByUid: actorSnapshot.uid || null,
+      createdByEmail: actorSnapshot.email || null,
+      createdByName: actorSnapshot.displayName || null,
+      updatedByUid: actorSnapshot.uid || null,
+      updatedByEmail: actorSnapshot.email || null,
+      updatedByName: actorSnapshot.displayName || null,
       employeeId: it.employeeId ?? null,
       employeeUid: it.employeeUid ?? null,
       durationMin,
@@ -1494,6 +1737,12 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
 
     const parentPayload = stripUndefined({
       ...parent,
+      createdByUid: actorSnapshot.uid || null,
+      createdByEmail: actorSnapshot.email || null,
+      createdByName: actorSnapshot.displayName || null,
+      updatedByUid: actorSnapshot.uid || null,
+      updatedByEmail: actorSnapshot.email || null,
+      updatedByName: actorSnapshot.displayName || null,
       serviceName: String(parent.serviceName || parent.packageSnapshot?.packageName || "Package Booking"),
       serviceId: parent.serviceId ?? undefined,
       serviceSnapshot: parent.serviceSnapshot ? (stripUndefined(parent.serviceSnapshot as any) as ServiceSnapshot) : undefined,
@@ -1560,6 +1809,60 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
 
     return { parentPublicId };
   });
+
+  await writeBookingLog({
+    bookingId: parentRef.id,
+    type: "created",
+    note: "تم إنشاء الحجز",
+    actor: actorSnapshot,
+    booking: parent,
+    source: resolveBookingLogSource(parent.channel),
+    patch: {
+      publicId: parentPublicId,
+      serviceId: parent.serviceId ?? null,
+      packageId: parent.packageId ?? null,
+      employeeId: parent.employeeId ?? null,
+      employeeUid: parent.employeeUid ?? null,
+      date: parent.date,
+      time: parent.time,
+      total: Number(parent.finalPrice ?? parent.total ?? 0),
+      paymentType: parentPaymentState.paymentType,
+      paidAmount: parentPaymentState.paidAmount,
+      remainingAmount: parentPaymentState.remainingAmount,
+      byUid: actorSnapshot.uid || null,
+      byEmail: actorSnapshot.email || null,
+      byName: actorSnapshot.displayName || null,
+    },
+  });
+
+  await Promise.all(
+    prepared.map((p, idx) =>
+      writeBookingLog({
+        bookingId: itemRefs[idx].id,
+        type: "created",
+        note: "تم إنشاء الحجز",
+        actor: actorSnapshot,
+        booking: p.payloadBase as Partial<BookingDoc>,
+        source: resolveBookingLogSource(p.it?.channel || parent.channel),
+        patch: {
+          publicId: `${parentPublicId}-${String(p.idx + 1).padStart(2, "0")}`,
+          serviceId: p.it?.serviceId ?? null,
+          packageId: p.it?.packageId ?? null,
+          employeeId: p.it?.employeeId ?? null,
+          employeeUid: p.it?.employeeUid ?? null,
+          date: p.it?.date ?? null,
+          time: p.it?.time ?? null,
+          total: Number(p.it?.finalPrice ?? p.it?.total ?? 0),
+          paymentType: p.payloadBase?.paymentType ?? null,
+          paidAmount: p.payloadBase?.paidAmount ?? null,
+          remainingAmount: p.payloadBase?.remainingAmount ?? null,
+          byUid: actorSnapshot.uid || null,
+          byEmail: actorSnapshot.email || null,
+          byName: actorSnapshot.displayName || null,
+        },
+      })
+    )
+  );
 
   return {
     parentId: parentRef.id,
@@ -1893,9 +2196,7 @@ export function watchEmployeeBookings(
 export async function updateBookingStatus(bookingId: string, status: BookingStatus) {
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const trackRef = doc(db, ...TRACKS_COL, bookingId);
-  const actorUid = String(getAuth().currentUser?.uid || "").trim() || undefined;
   const nowMs = Date.now();
-  const statusAuditPatch = buildStatusAuditPatch(status, nowMs, actorUid);
 
   // ✅ ثابت: نخلي income docId = bookingId (يعطيك uniqueness تلقائي)
   const incomeRef = doc(db, ...INCOME_COL, bookingId);
@@ -1907,6 +2208,8 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
 
     const bookingRaw: any = snap.data() || {};
     const booking = normalizeBooking(bookingRaw);
+    const actorSnapshot = resolveActorSnapshot({ booking });
+    const statusAuditPatch = buildStatusAuditPatch(status, nowMs, actorSnapshot);
 
     const resolvedPaymentMethod = resolvePaymentMethodForStatus(
       status,
@@ -1939,6 +2242,9 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         paymentType: nextPaymentState.paymentType,
         paidAmount: nextPaymentState.paidAmount,
         remainingAmount: nextPaymentState.remainingAmount,
+        updatedByUid: actorSnapshot.uid || null,
+        updatedByEmail: actorSnapshot.email || null,
+        updatedByName: actorSnapshot.displayName || null,
         ...statusAuditPatch,
         updatedAt: serverTimestamp(),
       }) as any
@@ -1972,6 +2278,9 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         paymentType: nextPaymentState.paymentType,
         paidAmount: nextPaymentState.paidAmount,
         remainingAmount: nextPaymentState.remainingAmount,
+        updatedByUid: actorSnapshot.uid || null,
+        updatedByEmail: actorSnapshot.email || null,
+        updatedByName: actorSnapshot.displayName || null,
 
         status,
         ...statusAuditPatch,
@@ -1990,8 +2299,14 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         paymentType: nextPaymentState.paymentType,
         paidAmount: nextPaymentState.paidAmount,
         remainingAmount: nextPaymentState.remainingAmount,
+        updatedByUid: actorSnapshot.uid || null,
+        updatedByEmail: actorSnapshot.email || null,
+        updatedByName: actorSnapshot.displayName || null,
+        ...statusAuditPatch,
       } as BookingDoc,
       resolvedPaymentMethod,
+      actorSnapshot,
+      source: resolveBookingLogSource(booking.channel),
     };
   });
 
@@ -2000,7 +2315,16 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
     bookingId,
     type: "status_changed",
     note: `تغيير الحالة إلى: ${status}`,
-    patch: { status, at: nowMs, byUid: actorUid || null },
+    actor: txResult.actorSnapshot,
+    booking: txResult.booking,
+    source: txResult.source,
+    patch: {
+      status,
+      at: nowMs,
+      byUid: txResult.actorSnapshot.uid || null,
+      byEmail: txResult.actorSnapshot.email || null,
+      byName: txResult.actorSnapshot.displayName || null,
+    },
   });
 
 // ✅ إذا صار الحجز ملغي: فك الأقفال
@@ -2160,12 +2484,16 @@ if (status === "confirmed" || status === "completed") {
 export async function updateBookingDetails(bookingId: string, patch: Partial<BookingDoc>) {
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const anyPatch = patch as any;
+  const actorSnapshot = resolveActorSnapshot({ booking: patch });
 
   // ✅ تحديث booking
   await updateDoc(
     bookingRef,
     stripUndefined({
       ...patch,
+      updatedByUid: actorSnapshot.uid || null,
+      updatedByEmail: actorSnapshot.email || null,
+      updatedByName: actorSnapshot.displayName || null,
       updatedAt: serverTimestamp(),
     }) as any
   );
@@ -2199,7 +2527,14 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
     bookingId,
     type: "details_updated",
     note: "تم تعديل بيانات الحجز",
-    patch,
+    actor: actorSnapshot,
+    booking: patch,
+    patch: {
+      ...patch,
+      updatedByUid: actorSnapshot.uid || null,
+      updatedByEmail: actorSnapshot.email || null,
+      updatedByName: actorSnapshot.displayName || null,
+    },
   });
 
   // ✅ best-effort track update (إذا track ناقص أو rules تمنع، لا نكسر حفظ الحجز)
@@ -2241,6 +2576,9 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
 
         status: patch.status,
         slotId: patch.slotId,
+        updatedByUid: actorSnapshot.uid || null,
+        updatedByEmail: actorSnapshot.email || null,
+        updatedByName: actorSnapshot.displayName || null,
 
         updatedAt: serverTimestamp(),
       }) as any,
@@ -2530,6 +2868,8 @@ export async function deleteBooking(bookingId: string) {
   // 1) الحصول على بيانات الحجز قبل الحذف لفك الأقفال
   const snap = await getDoc(bookingRef);
   if (!snap.exists()) return; // حُذف مسبقاً
+  const booking = normalizeBooking(snap.data());
+  const actorSnapshot = resolveActorSnapshot({ booking });
 
   // 2) حذف الوثائق الأساسية
   await deleteDoc(bookingRef);
@@ -2548,5 +2888,14 @@ export async function deleteBooking(bookingId: string) {
     bookingId,
     type: "status_changed",
     note: "تم حذف الحجز نهائياً من الداشبورد",
+    actor: actorSnapshot,
+    booking,
+    source: resolveBookingLogSource(booking.channel),
+    patch: {
+      status: "deleted",
+      byUid: actorSnapshot.uid || null,
+      byEmail: actorSnapshot.email || null,
+      byName: actorSnapshot.displayName || null,
+    },
   });
 }

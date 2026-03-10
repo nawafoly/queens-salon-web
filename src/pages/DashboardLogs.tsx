@@ -60,6 +60,14 @@ type LogRow = {
   atMs: number;
 };
 
+type UserLookupEntry = {
+  name: string;
+  email: string;
+  role: string;
+};
+
+type UserLookupMap = Record<string, UserLookupEntry>;
+
 const ACTION_LABELS: Record<string, string> = {
   user_login: "تسجيل دخول",
   user_logout: "تسجيل خروج",
@@ -156,7 +164,13 @@ function asLabel(map: Record<string, string>, value: string | undefined, fallbac
 }
 
 function getDisplayUser(r: LogRow) {
-  return String(r.userName || r.userEmail || r.userUid || "-").trim();
+  const name = String(r.userName || "").trim();
+  if (name) return name;
+  const email = String(r.userEmail || "").trim();
+  if (email) return email.split("@")[0];
+  const uid = String(r.userUid || "").trim();
+  if (uid) return uid.slice(0, 8);
+  return "النظام";
 }
 
 function roleLabel(roleRaw: string | undefined): string {
@@ -631,10 +645,29 @@ export default function DashboardLogs() {
     try {
       const colRef = collection(db, "salons", SALON_ID, "logs");
       const q = query(colRef, orderBy("createdAt", "desc"), limit(Math.max(50, Math.min(1000, maxRows))));
-      const snap = await getDocs(q);
+      const [snap, usersSnap] = await Promise.all([
+        getDocs(q),
+        getDocs(collection(db, "salons", SALON_ID, "users")),
+      ]);
 
+      const userLookup: UserLookupMap = {};
+      usersSnap.docs.forEach((d) => {
+        const x: any = d.data() || {};
+        const uid = String(d.id || x?.uid || "").trim();
+        if (!uid) return;
+        const name = String(x?.displayName || x?.name || "").trim();
+        const email = String(x?.email || "").trim();
+        const role = String(x?.role || "").trim();
+        userLookup[uid] = {
+          name: name || (email ? email.split("@")[0] : ""),
+          email,
+          role,
+        };
+      });
       const list: LogRow[] = snap.docs.map((d) => {
         const x: any = d.data();
+        const userUid = String(x?.userUid || x?.byUid || "").trim();
+        const lookup = userUid ? userLookup[userUid] : undefined;
         const atMs =
           safeMs(x?.createdAt) ||
           safeMs(x?.at) ||
@@ -647,10 +680,10 @@ export default function DashboardLogs() {
           entityType: String(x?.entityType || x?.entity || ""),
           entityId: String(x?.entityId || ""),
           description: String(x?.description || x?.note || ""),
-          userName: String(x?.userName || ""),
-          userUid: String(x?.userUid || x?.byUid || ""),
-          userRole: String(x?.userRole || x?.byRole || ""),
-          userEmail: String(x?.userEmail || x?.byEmail || ""),
+          userName: String(x?.userName || lookup?.name || ""),
+          userUid,
+          userRole: String(x?.userRole || x?.byRole || lookup?.role || ""),
+          userEmail: String(x?.userEmail || x?.byEmail || lookup?.email || ""),
           source: String(x?.source || ""),
           createdAt: x?.createdAt || x?.at,
           before: x?.before,
@@ -780,7 +813,7 @@ export default function DashboardLogs() {
   const userOptions = useMemo(() => {
     const s = new Set<string>();
     rows.forEach((r) => {
-      const u = String(r.userName || r.userEmail || r.userUid || "").trim();
+      const u = getDisplayUser(r);
       if (u) s.add(u);
     });
     return Array.from(s).sort((a, b) => a.localeCompare(b));
@@ -794,7 +827,7 @@ export default function DashboardLogs() {
       if (entityFilter !== "all" && String(r.entityType || "") !== entityFilter) return false;
       if (sourceFilter !== "all" && String(r.source || "") !== sourceFilter) return false;
 
-      const userToken = String(r.userName || r.userEmail || r.userUid || "");
+      const userToken = getDisplayUser(r);
       if (userFilter !== "all" && userToken !== userFilter) return false;
 
       const actionKey = String(r.action || "").trim().toLowerCase();
@@ -812,7 +845,7 @@ export default function DashboardLogs() {
       if (!t) return true;
 
       const hay = String(
-        `${r.logId || ""} ${r.action || ""} ${r.entityType || ""} ${r.entityId || ""} ${r.userName || ""} ${r.userEmail || ""} ${r.userUid || ""} ${r.userRole || ""} ${r.description || ""} ${r.source || ""}`
+        `${r.logId || ""} ${r.action || ""} ${r.entityType || ""} ${r.entityId || ""} ${getDisplayUser(r)} ${r.userEmail || ""} ${r.userUid || ""} ${r.userRole || ""} ${r.description || ""} ${r.source || ""}`
       ).toLowerCase();
 
       return hay.includes(t);

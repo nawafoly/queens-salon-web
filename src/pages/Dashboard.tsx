@@ -50,7 +50,8 @@ import BookingInternal from "../pages/BookingInternal";
 import logo1 from "../assets/images/ssunnamed3.png";
 
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "../services/firebase";
+import { collection, getDocs } from "firebase/firestore";
+import { auth, db } from "../services/firebase";
 
 import type { Booking, BookingStatus } from "../helpers/dashboardService";
 import { DashboardService } from "../helpers/dashboardService";
@@ -402,6 +403,246 @@ function bookingStatusLabelAr(status: BookingStatus | string): string {
   if (s === "cancelled") return "ملغي";
   if (s === "completed") return "مكتمل";
   return String(status || "-");
+}
+
+type BookingActivityActorKind = "client" | "staff" | "admin" | "system" | "unknown";
+type BookingActivityTone = "default" | "success" | "danger" | "info";
+type BookingActivityItem = {
+  id: string;
+  title: string;
+  actorName: string;
+  actorKind: BookingActivityActorKind;
+  actorKindLabel: string;
+  atLabel: string;
+  changes: string[];
+  note: string;
+  tone: BookingActivityTone;
+  sortMs: number;
+};
+
+function bookingActivityActorKindLabelAr(kind: BookingActivityActorKind) {
+  if (kind === "client") return "العميلة";
+  if (kind === "staff") return "الموظفة";
+  if (kind === "admin") return "الإدارة";
+  if (kind === "system") return "النظام";
+  return "غير محدد";
+}
+
+function isAutomaticBookingActivity(raw: any) {
+  const hay = [
+    raw?.byName,
+    raw?.byEmail,
+    raw?.note,
+    raw?.type,
+  ]
+    .map((v) => String(v || "").toLowerCase().trim())
+    .join(" ");
+
+  return (
+    hay.includes("النظام") ||
+    hay.includes("تلقائي") ||
+    /\b(system|auto|automatic)\b/i.test(hay)
+  );
+}
+
+function resolveBookingActivitySortMs(raw: any) {
+  const direct = Number(raw?.eventAtMs || 0);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const atMs = toMillisSafe(raw?.at);
+  if (atMs > 0) return atMs;
+  return 0;
+}
+
+function resolveBookingActivityTitle(raw: any) {
+  const type = String(raw?.type || "").trim().toLowerCase();
+  const status = String(raw?.patch?.status || "").trim().toLowerCase();
+
+  if (type === "created") return "تم إنشاء الحجز";
+  if (type === "details_updated") return "تم تعديل الحجز";
+  if (type === "staff_acknowledged") return "تم الاطلاع على الحجز";
+  if (type === "status_changed") {
+    if (status === "confirmed") return "تم تأكيد الحجز";
+    if (status === "cancelled" || status === "canceled") return "تم إلغاء الحجز";
+    if (status === "completed") return "تم إكمال الحجز";
+    if (status === "pending") return "تم تحويل الحجز إلى الانتظار";
+    return "تم تغيير حالة الحجز";
+  }
+
+  return "تم تحديث الحجز";
+}
+
+function resolveBookingActivityTone(raw: any): BookingActivityTone {
+  const type = String(raw?.type || "").trim().toLowerCase();
+  const status = String(raw?.patch?.status || "").trim().toLowerCase();
+
+  if (type === "created") return "info";
+  if (type === "details_updated" || type === "staff_acknowledged") return "default";
+  if (status === "confirmed" || status === "completed") return "success";
+  if (status === "cancelled" || status === "canceled") return "danger";
+  return "default";
+}
+
+function resolveBookingActivityActor(raw: any, booking: Booking) {
+  const bookingClientName = String(booking?.customerName || "").trim();
+  const byName = String(raw?.byName || "").trim();
+  const byEmail = String(raw?.byEmail || "").trim();
+  const byUid = String(raw?.byUid || "").trim();
+
+  if (isAutomaticBookingActivity(raw)) {
+    return {
+      actorName: "النظام",
+      actorKind: "system" as BookingActivityActorKind,
+    };
+  }
+
+  if (byName) {
+    const isClient =
+      !!bookingClientName &&
+      normalizeArabicLabel(byName) === normalizeArabicLabel(bookingClientName);
+    return {
+      actorName: isClient ? bookingClientName : byName,
+      actorKind: isClient
+        ? ("client" as BookingActivityActorKind)
+        : String(raw?.type || "").trim().toLowerCase() === "staff_acknowledged"
+          ? ("staff" as BookingActivityActorKind)
+          : isMalikatAdminEmail(byEmail)
+            ? ("admin" as BookingActivityActorKind)
+            : ("unknown" as BookingActivityActorKind),
+    };
+  }
+
+  if (byEmail) {
+    const fallback = byEmail.split("@")[0] || byEmail;
+    const isClient =
+      !!bookingClientName &&
+      normalizeArabicLabel(fallback) === normalizeArabicLabel(bookingClientName);
+    return {
+      actorName: isClient ? bookingClientName : fallback,
+      actorKind: isClient
+        ? ("client" as BookingActivityActorKind)
+        : isMalikatAdminEmail(byEmail)
+          ? ("admin" as BookingActivityActorKind)
+          : ("unknown" as BookingActivityActorKind),
+    };
+  }
+
+  if (byUid) {
+    return {
+      actorName: `#${byUid.slice(0, 8)}`,
+      actorKind:
+        String(raw?.type || "").trim().toLowerCase() === "staff_acknowledged"
+          ? ("staff" as BookingActivityActorKind)
+          : ("unknown" as BookingActivityActorKind),
+    };
+  }
+
+  if (String(raw?.type || "").trim().toLowerCase() === "created" && bookingClientName) {
+    return {
+      actorName: bookingClientName,
+      actorKind: "client" as BookingActivityActorKind,
+    };
+  }
+
+  return {
+    actorName: "غير محدد",
+    actorKind: "unknown" as BookingActivityActorKind,
+  };
+}
+
+function resolveBookingActivityChanges(raw: any) {
+  const patch = raw?.patch && typeof raw.patch === "object" ? raw.patch : {};
+  const changes: string[] = [];
+
+  const push = (value: string) => {
+    const txt = String(value || "").trim();
+    if (!txt) return;
+    if (!changes.includes(txt)) changes.push(txt);
+  };
+
+  const serviceName = String(
+    patch?.serviceSnapshot?.serviceNameAtBooking ||
+      patch?.serviceName ||
+      patch?.serviceId ||
+      ""
+  ).trim();
+  const sectionName = String(
+    patch?.serviceSnapshot?.sectionTitleAtBooking ||
+      patch?.serviceSectionName ||
+      ""
+  ).trim();
+  const categoryName = String(
+    patch?.serviceSnapshot?.categoryNameAtBooking ||
+      patch?.serviceCategoryName ||
+      ""
+  ).trim();
+  const clientName = String(patch?.clientName || patch?.customerName || "").trim();
+  const clientPhone = String(
+    patch?.clientPhone || patch?.customerPhone || patch?.phone || ""
+  ).trim();
+  const totalRaw = Number(patch?.finalPrice ?? patch?.total);
+
+  if (patch?.date) push(`التاريخ إلى ${String(patch.date).trim()}`);
+  if (patch?.time) push(`الوقت إلى ${formatTime12(String(patch.time).trim())}`);
+  if (patch?.employeeName) push(`الموظفة إلى ${String(patch.employeeName).trim()}`);
+  if (serviceName) push(`الخدمة إلى ${serviceName}`);
+  if (sectionName) push(`القسم إلى ${sectionName}`);
+  if (categoryName) push(`التصنيف إلى ${categoryName}`);
+  if (clientName) push(`العميلة إلى ${clientName}`);
+  if (clientPhone) push(`رقم الجوال إلى ${clientPhone}`);
+  if (Number.isFinite(totalRaw) && totalRaw > 0) push(`الإجمالي إلى ${totalRaw} ريال`);
+
+  return changes;
+}
+
+function resolveBookingActivityNote(raw: any) {
+  const note = String(raw?.note || "").trim();
+  if (!note) return "";
+
+  const genericNotes = new Set([
+    "تم إنشاء الحجز",
+    "تم تعديل بيانات الحجز",
+    "تمت مشاهدة الحجز لأول مرة",
+  ]);
+
+  if (genericNotes.has(note)) return "";
+  if (String(raw?.type || "").trim().toLowerCase() === "status_changed") return "";
+  return note;
+}
+
+function mapBookingActivityItem(raw: any, booking: Booking): BookingActivityItem {
+  const actor = resolveBookingActivityActor(raw, booking);
+  const sortMs = resolveBookingActivitySortMs(raw) || toMillisSafe((booking as any)?.createdAt);
+
+  return {
+    id: String(raw?.id || raw?.eventId || `${sortMs}-${raw?.type || "event"}`),
+    title: resolveBookingActivityTitle(raw),
+    actorName: actor.actorName,
+    actorKind: actor.actorKind,
+    actorKindLabel: bookingActivityActorKindLabelAr(actor.actorKind),
+    atLabel: formatDateTimeAr(sortMs),
+    changes: resolveBookingActivityChanges(raw),
+    note: resolveBookingActivityNote(raw),
+    tone: resolveBookingActivityTone(raw),
+    sortMs,
+  };
+}
+
+function buildFallbackCreatedActivity(booking: Booking): BookingActivityItem | null {
+  const createdAtMs = toMillisSafe((booking as any)?.createdAt);
+  if (!createdAtMs) return null;
+
+  return {
+    id: `fallback-created-${booking.id}`,
+    title: "تم إنشاء الحجز",
+    actorName: String(booking.customerName || "").trim() || "غير محدد",
+    actorKind: String(booking.customerName || "").trim() ? "client" : "unknown",
+    actorKindLabel: String(booking.customerName || "").trim() ? "العميلة" : "غير محدد",
+    atLabel: formatDateTimeAr(createdAtMs),
+    changes: [],
+    note: "",
+    tone: "info",
+    sortMs: createdAtMs,
+  };
 }
 
 /** ✅ تحويل حجز Firestore لشكل Booking اللي تستخدمه الواجهة */
@@ -892,6 +1133,20 @@ function isMalikatAdminEmail(email: unknown) {
     .endsWith("@malikat.com");
 }
 
+function normalizeArabicLabel(value: string) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .toLowerCase();
+}
+
+function isProgrammerProfile(userInfo: UserInfo | null) {
+  const normalizedName = normalizeArabicLabel(userInfo?.name || "");
+  return normalizedName.includes("نواف") && normalizedName.includes("العليان");
+}
+
 const Dashboard: React.FC = () => {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [dashError, setDashError] = useState<string>("");
@@ -916,6 +1171,9 @@ const Dashboard: React.FC = () => {
   const [allScheduleBookings, setAllScheduleBookings] = useState<Booking[]>([]);
   const [scheduleDate, setScheduleDate] = useState<string>(() => formatLocalDateISO(new Date()));
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [selectedBookingActivity, setSelectedBookingActivity] = useState<BookingActivityItem[]>([]);
+  const [selectedBookingActivityLoading, setSelectedBookingActivityLoading] = useState(false);
+  const [selectedBookingActivityError, setSelectedBookingActivityError] = useState("");
 
   const [expensesTotalFS, setExpensesTotalFS] = useState(0);
   const [incomeTotalFS, setIncomeTotalFS] = useState(0);
@@ -1571,6 +1829,10 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const displayedRoleTitle = isProgrammerProfile(userInfo)
+    ? "المبرمج"
+    : getRoleTitle(userInfo?.role || "staff");
+
   // ✅ QUICK ACTIONS (تم تعديل newBooking)
   const handleQuickAction = (key: "newBooking" | "bookings" | "reports") => {
     if (key === "newBooking") navigate("/dashboard/booking-internal");
@@ -1581,6 +1843,64 @@ const Dashboard: React.FC = () => {
 
 
   const handleOpenBooking = (booking: Booking) => setSelectedBooking(booking);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadBookingActivity = async () => {
+      if (!selectedBooking?.id) {
+        setSelectedBookingActivity([]);
+        setSelectedBookingActivityError("");
+        setSelectedBookingActivityLoading(false);
+        return;
+      }
+
+      setSelectedBookingActivityLoading(true);
+      setSelectedBookingActivityError("");
+
+      try {
+        const snap = await getDocs(
+          collection(db, "salons", "main", "booking_logs", selectedBooking.id, "events")
+        );
+
+        if (cancelled) return;
+
+        const mapped = snap.docs
+          .map((docSnap) =>
+            mapBookingActivityItem(
+              {
+                id: docSnap.id,
+                ...(docSnap.data() as Record<string, unknown>),
+              },
+              selectedBooking
+            )
+          )
+          .sort((a, b) => b.sortMs - a.sortMs);
+
+        const hasCreatedEvent = mapped.some((item) => item.title === "تم إنشاء الحجز");
+        const fallbackCreated = hasCreatedEvent ? null : buildFallbackCreatedActivity(selectedBooking);
+        const nextItems = fallbackCreated ? [...mapped, fallbackCreated] : mapped;
+
+        setSelectedBookingActivity(
+          nextItems.sort((a, b) => b.sortMs - a.sortMs || b.id.localeCompare(a.id))
+        );
+      } catch (error) {
+        console.error("loadBookingActivity error:", error);
+        if (cancelled) return;
+        const fallbackCreated = buildFallbackCreatedActivity(selectedBooking);
+        setSelectedBookingActivity(fallbackCreated ? [fallbackCreated] : []);
+        setSelectedBookingActivityError("تعذر تحميل سجل الحجز بالكامل حالياً.");
+      } finally {
+        if (!cancelled) setSelectedBookingActivityLoading(false);
+      }
+    };
+
+    void loadBookingActivity();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBooking]);
 
   useEffect(() => {
     setTodayScheduleBookings(
@@ -1656,69 +1976,167 @@ const Dashboard: React.FC = () => {
       <style>
         {`
           .dash-booking-modal {
+            --dash-booking-accent: #40010D;
+            --dash-booking-border: rgba(64, 1, 13, 0.14);
+            --dash-booking-soft: rgba(64, 1, 13, 0.05);
+            --dash-booking-shadow: 0 18px 42px rgba(64, 1, 13, 0.1);
             direction: rtl;
             max-height: none !important;
-            overflow: visible !important;
+            overflow: hidden !important;
           }
 
           .dash-booking-modal .dash-modal-body{
-            max-height: none !important;
-            overflow: visible !important;
+            max-height: min(78vh, 860px) !important;
+            overflow: auto !important;
+            padding-inline-end: 4px;
+            scrollbar-width: thin;
           }
 
           .dash-booking-modal .dash-modal-header{
-            display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            flex-wrap:wrap;
           }
 
-          .dash-booking-modal .dash-modal-title{ display:flex; flex-direction:column; gap:2px; }
-          .dash-booking-modal .dash-modal-title h3{ margin:0; font-weight:900; letter-spacing:.2px; }
-          .dash-booking-modal .dash-modal-title small{ opacity:.7; font-weight:700; }
+          .dash-booking-modal .dash-modal-title{
+            display:flex;
+            flex-direction:column;
+            gap:4px;
+          }
+
+          .dash-booking-modal .dash-modal-title h3{
+            margin:0;
+            font-size:22px;
+            font-weight:900;
+            letter-spacing:.2px;
+            color:#1f1a17;
+          }
+
+          .dash-booking-modal .dash-modal-title small{
+            opacity:.78;
+            font-size:13px;
+            font-weight:700;
+            color:#5f524e;
+          }
+
+          .dash-booking-modal .dash-booking-sheet{
+            display:grid;
+            gap:18px;
+            margin-top:6px;
+          }
+
+          .dash-booking-modal .dash-booking-section{
+            background:
+              linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,243,241,0.98));
+            border:1px solid var(--dash-booking-border);
+            border-radius:22px;
+            padding:18px;
+            box-shadow: var(--dash-booking-shadow);
+          }
+
+          .dash-booking-modal .dash-booking-section--timeline{
+            background:
+              radial-gradient(220px 120px at 100% 0%, rgba(64,1,13,0.07), transparent 72%),
+              linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,246,244,0.98));
+          }
+
+          .dash-booking-modal .dash-section-head{
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:12px;
+            flex-wrap:wrap;
+            margin-bottom:14px;
+          }
+
+          .dash-booking-modal .dash-section-head h4{
+            margin:0;
+            font-size:17px;
+            font-weight:900;
+            color:#201815;
+          }
+
+          .dash-booking-modal .dash-section-head span{
+            display:block;
+            margin-top:4px;
+            font-size:12px;
+            font-weight:700;
+            color:#776864;
+          }
 
           .dash-booking-modal .dash-details-grid{
-            display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; margin-top:14px;
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:14px;
           }
 
           .dash-booking-modal .dash-detail{
-            background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(245,245,244,0.92));
+            background:
+              linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,245,243,0.96));
             border:1px solid rgba(64,1,13,0.12);
-            border-radius:16px;
-            padding:12px 14px;
-            box-shadow:0 10px 22px rgba(64,1,13,0.08);
+            border-radius:18px;
+            padding:14px 16px;
+            box-shadow:0 12px 24px rgba(64,1,13,0.08);
             min-width:0;
+            display:grid;
+            gap:8px;
           }
 
           .dash-booking-modal .dash-detail b{
-            display:block; font-size:12px; opacity:.75; margin-bottom:6px; font-weight:900;
+            display:block;
+            font-size:12px;
+            margin-bottom:0;
+            font-weight:900;
+            letter-spacing:.02em;
+            color:#7a6863;
           }
 
           .dash-booking-modal .dash-detail .dash-value{
-            font-weight:900; font-size:16px; color:#1f1a17; word-break:break-word;
+            font-weight:900;
+            font-size:16px;
+            line-height:1.8;
+            color:#1f1a17;
+            word-break:break-word;
           }
 
           .dash-booking-modal .dash-detail--wide{ grid-column:span 2; }
           .dash-booking-modal .dash-detail--hero{
             grid-column: span 2;
-            border-color: rgba(64,1,13,.2);
+            border-color: rgba(64,1,13,.22);
             background:
-              radial-gradient(420px 180px at 10% 10%, rgba(64,1,13,.09), transparent 60%),
-              linear-gradient(180deg, #fff 0%, #f8f4f0 100%);
+              radial-gradient(420px 180px at 10% 10%, rgba(64,1,13,.1), transparent 60%),
+              linear-gradient(180deg, #fff 0%, #f7f1ed 100%);
+            padding:18px 18px 16px;
           }
+
           .dash-booking-modal .dash-value-sub{
             margin-top: 6px;
             font-size: 12px;
-            color: rgba(13,13,13,.65);
+            color: rgba(13,13,13,.7);
             font-weight: 800;
           }
+
           .dash-booking-modal .dash-created-badge{
-            display:inline-flex; align-items:center; gap:6px;
-            margin-top:8px; padding:6px 10px; border-radius:999px;
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            margin-top:8px;
+            padding:7px 11px;
+            border-radius:999px;
             border:1px solid rgba(64,1,13,.18);
             background: rgba(64,1,13,.06);
-            color:#40010D; font-size:12px; font-weight:900;
+            color:#40010D;
+            font-size:12px;
+            font-weight:900;
           }
 
           .dash-booking-modal .dash-status-row{
-            display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+            display:flex;
+            align-items:center;
+            gap:10px;
+            flex-wrap:wrap;
           }
 
           .dash-booking-modal .dash-select{
@@ -1730,8 +2148,189 @@ const Dashboard: React.FC = () => {
             padding:0 12px !important;
           }
 
+          .dash-booking-modal .dash-activity-empty{
+            border:1px dashed rgba(64,1,13,0.18);
+            border-radius:16px;
+            padding:16px 14px;
+            background: rgba(255,255,255,0.78);
+            font-size:13px;
+            font-weight:700;
+            color:#6c5b56;
+          }
+
+          .dash-booking-modal .dash-activity-timeline{
+            display:grid;
+            gap:14px;
+          }
+
+          .dash-booking-modal .dash-activity-item{
+            display:grid;
+            grid-template-columns: 26px minmax(0, 1fr);
+            gap:14px;
+            align-items:flex-start;
+          }
+
+          .dash-booking-modal .dash-activity-rail{
+            position:relative;
+            display:flex;
+            justify-content:center;
+            min-height:100%;
+          }
+
+          .dash-booking-modal .dash-activity-line{
+            position:absolute;
+            top:18px;
+            bottom:-18px;
+            width:2px;
+            border-radius:999px;
+            background: linear-gradient(180deg, rgba(64,1,13,0.28), rgba(64,1,13,0.08));
+          }
+
+          .dash-booking-modal .dash-activity-item:last-child .dash-activity-line{
+            display:none;
+          }
+
+          .dash-booking-modal .dash-activity-dot{
+            width:14px;
+            height:14px;
+            margin-top:6px;
+            border-radius:999px;
+            border:3px solid #fff;
+            background: var(--dash-booking-accent);
+            box-shadow:0 0 0 1px rgba(64,1,13,0.18), 0 6px 12px rgba(64,1,13,0.12);
+            position:relative;
+            z-index:1;
+          }
+
+          .dash-booking-modal .dash-activity-item--success .dash-activity-dot{
+            background:#15803d;
+            box-shadow:0 0 0 1px rgba(21,128,61,0.18), 0 6px 12px rgba(21,128,61,0.14);
+          }
+
+          .dash-booking-modal .dash-activity-item--danger .dash-activity-dot{
+            background:#b42318;
+            box-shadow:0 0 0 1px rgba(180,35,24,0.2), 0 6px 12px rgba(180,35,24,0.14);
+          }
+
+          .dash-booking-modal .dash-activity-item--info .dash-activity-dot{
+            background:#0f766e;
+            box-shadow:0 0 0 1px rgba(15,118,110,0.18), 0 6px 12px rgba(15,118,110,0.14);
+          }
+
+          .dash-booking-modal .dash-activity-card{
+            border:1px solid rgba(64,1,13,0.12);
+            border-radius:18px;
+            padding:14px 16px;
+            background:
+              linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,246,244,0.98));
+            box-shadow:0 10px 22px rgba(64,1,13,0.08);
+            display:grid;
+            gap:10px;
+            min-width:0;
+          }
+
+          .dash-booking-modal .dash-activity-top{
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:10px 12px;
+            flex-wrap:wrap;
+          }
+
+          .dash-booking-modal .dash-activity-copy{
+            display:grid;
+            gap:6px;
+            min-width:0;
+          }
+
+          .dash-booking-modal .dash-activity-copy strong{
+            font-size:15px;
+            font-weight:900;
+            color:#201815;
+          }
+
+          .dash-booking-modal .dash-activity-time{
+            font-size:12px;
+            font-weight:800;
+            color:#6d5c57;
+            white-space:nowrap;
+          }
+
+          .dash-booking-modal .dash-activity-meta{
+            display:flex;
+            align-items:flex-start;
+            gap:8px;
+            flex-wrap:wrap;
+            font-size:13px;
+            color:#352d2a;
+            line-height:1.8;
+          }
+
+          .dash-booking-modal .dash-activity-meta-label{
+            color:#7b6a65;
+            font-weight:900;
+          }
+
+          .dash-booking-modal .dash-activity-kind{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-height:28px;
+            padding:5px 10px;
+            border-radius:999px;
+            font-size:11px;
+            font-weight:900;
+            border:1px solid rgba(64,1,13,0.12);
+            background: rgba(64,1,13,0.06);
+            color:#40010D;
+          }
+
+          .dash-booking-modal .dash-activity-kind--client{
+            border-color: rgba(14,116,144,0.2);
+            background: rgba(14,116,144,0.08);
+            color:#0f5b6b;
+          }
+
+          .dash-booking-modal .dash-activity-kind--staff{
+            border-color: rgba(180,83,9,0.22);
+            background: rgba(245,158,11,0.14);
+            color:#92400e;
+          }
+
+          .dash-booking-modal .dash-activity-kind--admin{
+            border-color: rgba(64,1,13,0.18);
+            background: rgba(64,1,13,0.08);
+            color:#40010D;
+          }
+
+          .dash-booking-modal .dash-activity-kind--system{
+            border-color: rgba(71,85,105,0.2);
+            background: rgba(148,163,184,0.16);
+            color:#334155;
+          }
+
+          .dash-booking-modal .dash-activity-kind--unknown{
+            border-color: rgba(148,163,184,0.22);
+            background: rgba(248,250,252,0.92);
+            color:#475569;
+          }
+
+          .dash-booking-modal .dash-activity-note{
+            padding:10px 12px;
+            border-radius:14px;
+            background: rgba(64,1,13,0.05);
+            border:1px solid rgba(64,1,13,0.08);
+            font-size:13px;
+            color:#423633;
+            line-height:1.8;
+          }
+
           .dash-booking-modal .dash-modal-actions{
-            display:flex; gap:10px; justify-content:flex-end; margin-top:14px; flex-wrap:wrap;
+            display:flex;
+            gap:10px;
+            justify-content:flex-end;
+            margin-top:16px;
+            flex-wrap:wrap;
           }
 
           /* ألوان أزرار مودال تفاصيل الحجز (هادئة ومتناغمة) */
@@ -1761,12 +2360,22 @@ const Dashboard: React.FC = () => {
             .dash-booking-modal .dash-details-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
             .dash-booking-modal .dash-detail--wide{ grid-column:span 2; }
             .dash-booking-modal .dash-detail--hero{ grid-column:span 2; }
+            .dash-booking-modal .dash-booking-section{ padding:16px; }
           }
 
           @media (max-width: 600px){
+            .dash-booking-modal .dash-modal-title h3{ font-size:19px; }
+            .dash-booking-modal .dash-modal-body{ max-height: min(74vh, 760px) !important; }
+            .dash-booking-modal .dash-booking-sheet{ gap:14px; }
+            .dash-booking-modal .dash-booking-section{ padding:14px; border-radius:18px; }
+            .dash-booking-modal .dash-section-head{ margin-bottom:12px; }
             .dash-booking-modal .dash-details-grid{ grid-template-columns:1fr; }
             .dash-booking-modal .dash-detail--wide{ grid-column:span 1; }
             .dash-booking-modal .dash-detail--hero{ grid-column:span 1; }
+            .dash-booking-modal .dash-detail,
+            .dash-booking-modal .dash-activity-card{ padding:13px 14px; border-radius:16px; }
+            .dash-booking-modal .dash-activity-item{ grid-template-columns:20px minmax(0, 1fr); gap:10px; }
+            .dash-booking-modal .dash-activity-time{ white-space:normal; }
             .dash-booking-modal .dash-modal-actions .exp-btn{ width:100%; justify-content:center; }
           }
         `}
@@ -1802,7 +2411,7 @@ const Dashboard: React.FC = () => {
               </div>
               <div className="user-details">
                 <h5>{userInfo.name}</h5>
-                <p>{getRoleTitle(userInfo.role)}</p>
+                <p>{displayedRoleTitle}</p>
               </div>
             </div>
 
@@ -2071,7 +2680,7 @@ const Dashboard: React.FC = () => {
                   >
                     {isTvQueuePage ? topbarClockText : topbarName || "-"}
                   </span>
-                  {!isTvQueuePage ? <span className="dash-topbar-role">{getRoleTitle(userInfo.role)}</span> : null}
+                  {!isTvQueuePage ? <span className="dash-topbar-role">{displayedRoleTitle}</span> : null}
                 </div>
               </div>
             </div>
@@ -2245,80 +2854,158 @@ const Dashboard: React.FC = () => {
           </div>
 
           <div className="dash-modal-body">
-            <div className="dash-details-grid">
-              <div className="dash-detail dash-detail--hero">
-                <b>رقم الحجز</b>
-                <div className="dash-value">{bookingNoOf(selectedBooking)}</div>
-                <div className="dash-created-badge">
-                  <FontAwesomeIcon icon={faClockRotateLeft} />
-                  تم إنشاء الحجز: {formatDateTimeAr((selectedBooking as any).createdAt)}
+            <div className="dash-booking-sheet">
+              <section className="dash-booking-section">
+                <div className="dash-section-head">
+                  <div>
+                    <h4>بيانات الحجز</h4>
+                    <span>نفس الحقول الحالية مع ترتيب أوضح ومسافات أفضل بين البطاقات.</span>
+                  </div>
                 </div>
-              </div>
 
-              <div className="dash-detail">
-                <b>العميلة</b>
-                <div className="dash-value">{selectedBooking.customerName}</div>
-              </div>
+                <div className="dash-details-grid">
+                  <div className="dash-detail dash-detail--hero">
+                    <b>رقم الحجز</b>
+                    <div className="dash-value">{bookingNoOf(selectedBooking)}</div>
+                    <div className="dash-created-badge">
+                      <FontAwesomeIcon icon={faClockRotateLeft} />
+                      تم إنشاء الحجز: {formatDateTimeAr((selectedBooking as any).createdAt)}
+                    </div>
+                  </div>
 
-              <div className="dash-detail">
-                <b>رقم الجوال</b>
-                <div className="dash-value">{selectedBooking.phone || "—"}</div>
-              </div>
+                  <div className="dash-detail">
+                    <b>العميلة</b>
+                    <div className="dash-value">{selectedBooking.customerName}</div>
+                  </div>
 
-              <div className="dash-detail">
-                <b>الخدمة</b>
-                <div className="dash-value">
-                  {selectedBooking.serviceName || selectedBooking.serviceId || "-"}
+                  <div className="dash-detail">
+                    <b>رقم الجوال</b>
+                    <div className="dash-value">{selectedBooking.phone || "—"}</div>
+                  </div>
+
+                  <div className="dash-detail">
+                    <b>الخدمة</b>
+                    <div className="dash-value">
+                      {selectedBooking.serviceName || selectedBooking.serviceId || "-"}
+                    </div>
+                  </div>
+
+                  <div className="dash-detail">
+                    <b>القسم</b>
+                    <div className="dash-value">{selectedBooking.serviceSectionName || "—"}</div>
+                  </div>
+
+                  <div className="dash-detail">
+                    <b>التصنيف</b>
+                    <div className="dash-value">{selectedBooking.serviceCategoryName || "—"}</div>
+                  </div>
+
+                  <div className="dash-detail">
+                    <b>الموظفة</b>
+                    <div className="dash-value">{selectedBooking.employeeName ?? "-"}</div>
+                  </div>
+
+                  <div className="dash-detail">
+                    <b>التاريخ</b>
+                    <div className="dash-value">{selectedBooking.date}</div>
+                    <div className="dash-value-sub">
+                      {selectedBooking.time ? `الساعة ${formatTime12(selectedBooking.time)}` : ""}
+                    </div>
+                  </div>
+
+                  <div className="dash-detail">
+                    <b>الوقت</b>
+                    <div className="dash-value">{formatTime12(selectedBooking.time)}</div>
+                  </div>
+
+                  <div className="dash-detail">
+                    <b>الإجمالي</b>
+                    <div className="dash-value">
+                      {selectedBooking.total ? `${selectedBooking.total} ريال` : "-"}
+                    </div>
+                  </div>
+
+                  <div className="dash-detail dash-detail--wide">
+                    <b>الحالة</b>
+
+                    <div className="dash-status-row">
+                      <span className={`status-badge ${selectedBooking.status}`}>
+                        {bookingStatusLabelAr(selectedBooking.status)}
+                      </span>
+                      <span style={{ fontSize: 12, opacity: 0.75 }}>
+                        التحكم بالحالة من صفحة إدارة الحجوزات فقط
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </section>
 
-              <div className="dash-detail">
-                <b>القسم</b>
-                <div className="dash-value">{selectedBooking.serviceSectionName || "—"}</div>
-              </div>
-
-              <div className="dash-detail">
-                <b>التصنيف</b>
-                <div className="dash-value">{selectedBooking.serviceCategoryName || "—"}</div>
-              </div>
-
-              <div className="dash-detail">
-                <b>الموظفة</b>
-                <div className="dash-value">{selectedBooking.employeeName ?? "-"}</div>
-              </div>
-
-              <div className="dash-detail">
-                <b>التاريخ</b>
-                <div className="dash-value">{selectedBooking.date}</div>
-                <div className="dash-value-sub">
-                  {selectedBooking.time ? `الساعة ${formatTime12(selectedBooking.time)}` : ""}
+              <section className="dash-booking-section dash-booking-section--timeline">
+                <div className="dash-section-head">
+                  <div>
+                    <h4>سجل الحجز</h4>
+                    <span>تسلسل الأحداث للحجز من الأحدث إلى الأقدم.</span>
+                  </div>
                 </div>
-              </div>
 
-              <div className="dash-detail">
-                <b>الوقت</b>
-                <div className="dash-value">{formatTime12(selectedBooking.time)}</div>
-              </div>
+                {selectedBookingActivityLoading ? (
+                  <div className="dash-activity-empty">جاري تحميل سجل الحجز...</div>
+                ) : selectedBookingActivity.length > 0 ? (
+                  <div className="dash-activity-timeline">
+                    {selectedBookingActivity.map((event) => (
+                      <div
+                        key={event.id}
+                        className={`dash-activity-item dash-activity-item--${event.tone}`}
+                      >
+                        <div className="dash-activity-rail">
+                          <span className="dash-activity-dot" />
+                          <span className="dash-activity-line" />
+                        </div>
 
-              <div className="dash-detail">
-                <b>الإجمالي</b>
-                <div className="dash-value">
-                  {selectedBooking.total ? `${selectedBooking.total} ريال` : "-"}
-                </div>
-              </div>
+                        <div className="dash-activity-card">
+                          <div className="dash-activity-top">
+                            <div className="dash-activity-copy">
+                              <strong>{event.title}</strong>
+                              <div className="dash-activity-meta">
+                                <span
+                                  className={`dash-activity-kind dash-activity-kind--${event.actorKind}`}
+                                >
+                                  {event.actorKindLabel}
+                                </span>
+                                <span>
+                                  <span className="dash-activity-meta-label">بواسطة:</span>{" "}
+                                  {event.actorName}
+                                </span>
+                              </div>
+                            </div>
 
-              <div className="dash-detail dash-detail--wide">
-                <b>الحالة</b>
+                            <div className="dash-activity-time">{event.atLabel}</div>
+                          </div>
 
-                <div className="dash-status-row">
-                  <span className={`status-badge ${selectedBooking.status}`}>
-                    {bookingStatusLabelAr(selectedBooking.status)}
-                  </span>
-                  <span style={{ fontSize: 12, opacity: 0.75 }}>
-                    التحكم بالحالة من صفحة إدارة الحجوزات فقط
-                  </span>
-                </div>
-              </div>
+                          {event.changes.length ? (
+                            <div className="dash-activity-meta">
+                              <span className="dash-activity-meta-label">ما الذي تغير:</span>
+                              <span>{event.changes.join(" • ")}</span>
+                            </div>
+                          ) : null}
+
+                          {event.note ? (
+                            <div className="dash-activity-note">{event.note}</div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="dash-activity-empty">
+                    {selectedBookingActivityError || "لا توجد أحداث مسجلة لهذا الحجز حتى الآن."}
+                  </div>
+                )}
+
+                {selectedBookingActivityError && selectedBookingActivity.length > 0 ? (
+                  <div className="dash-activity-note">{selectedBookingActivityError}</div>
+                ) : null}
+              </section>
             </div>
 
             <div className="dash-modal-actions">

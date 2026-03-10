@@ -170,9 +170,29 @@ type BookingLogEvent = {
   bookingId: string;
   byUid: string;
   byEmail?: string;
+  byName?: string;
   at: any;
   note?: string;
 };
+
+function readCachedStaffDisplayName() {
+  try {
+    const raw = localStorage.getItem("auth_user");
+    if (raw) {
+      const parsed = JSON.parse(raw) as any;
+      const displayName = String(parsed?.displayName || parsed?.name || "").trim();
+      if (displayName) return displayName;
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    return String(localStorage.getItem("userName") || "").trim();
+  } catch {
+    return "";
+  }
+}
 
 type DashboardStaffProps = {
   allowStatusChange?: boolean;
@@ -181,6 +201,7 @@ type DashboardStaffProps = {
 export default function DashboardStaff({ allowStatusChange = false }: DashboardStaffProps) {
   const [myUid, setMyUid] = useState<string>("");
   const [myEmail, setMyEmail] = useState<string>("");
+  const [myName, setMyName] = useState<string>("");
   const [myStaffDocId, setMyStaffDocId] = useState<string>("");
   const [myStaffName, setMyStaffName] = useState<string>("");
 
@@ -200,8 +221,10 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
     const unsub = onAuthStateChanged(auth, (u) => {
       const uid = String(u?.uid || "");
       const email = String(u?.email || "");
+      const displayName = String(u?.displayName || readCachedStaffDisplayName() || "").trim();
       setMyUid(uid);
       setMyEmail(email);
+      setMyName(displayName);
     });
     return () => unsub();
   }, []);
@@ -468,6 +491,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
         bookingId,
         byUid: myUid,
         byEmail: myEmail || "",
+        byName: myName || myEmail || myUid,
         at: serverTimestamp(),
         note: "تم تأكيد استلام الحجز من الموظفة",
       };
@@ -532,6 +556,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
             bookingId: b.id,
             byUid: myUid,
             byEmail: myEmail || "",
+            byName: myName || myEmail || myUid,
             at: serverTimestamp(),
             note: "تم تأكيد استلام الحجز من الموظفة",
           };
