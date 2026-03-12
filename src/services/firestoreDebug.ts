@@ -13,6 +13,7 @@ import {
   limit,
   serverTimestamp,
 } from "firebase/firestore";
+import { backfillAvailabilityDaysFromBookingSlots } from "./firestoreAvailabilityBackfill";
 
 const SALON_ID = "main";
 
@@ -36,6 +37,7 @@ if (import.meta.env.DEV) {
     setDoc,
     addDoc,
     serverTimestamp,
+    backfillAvailabilityDaysFromBookingSlots,
 
     // helpers خاصة بالصالون
     salonCol: (name: string) =>

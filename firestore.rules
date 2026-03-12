@@ -494,6 +494,48 @@ service cloud.firestore {
     }
 
     /* =========================
+       ✅ Aggregated Availability (availability_days)
+       - One doc per employee/day
+       - Used by Booking pages to reduce reads
+    ========================= */
+    match /salons/{salonId}/availability_days/{dateISO}/employees/{employeeId} {
+      allow read: if true;
+
+      function canAdminWriteAvailabilityDay() {
+        return signedIn() && (
+          isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
+        );
+      }
+
+      // Non-admin writes are only allowed to ADD bookings (no deletions) and must not change `complete`.
+      function isBookingActorAvailabilityUpsert() {
+        return request.resource.data.date == dateISO
+          && request.resource.data.employeeId == employeeId
+          && (request.resource.data.employeeKey is string)
+          && (request.resource.data.bookedSlots is map);
+      }
+
+      allow create: if canAdminWriteAvailabilityDay()
+        || (
+          isBookingActorAvailabilityUpsert()
+          && (request.resource.data.complete == false)
+        );
+
+      allow update: if canAdminWriteAvailabilityDay()
+        || (
+          isBookingActorAvailabilityUpsert()
+          && (
+            (!("complete" in request.resource.data) && !("complete" in resource.data))
+            || request.resource.data.complete == resource.data.complete
+          )
+          && (resource.data.bookedSlots is map)
+          && request.resource.data.bookedSlots.keys().hasAll(resource.data.bookedSlots.keys())
+        );
+
+      allow delete: if canAdminWriteAvailabilityDay();
+    }
+
+    /* =========================
        ✅ counters (for publicId)
     ========================= */
     match /salons/{salonId}/counters/{id} {

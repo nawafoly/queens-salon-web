@@ -47,6 +47,7 @@ import {
 } from "../helpers/seasonPricing";
 import { AppSettingsService } from "../services/AppSettingsService";
 import { FirestoreReadStats } from "../services/firestoreReadStats";
+import { normalizeBookedSlotsMap } from "../services/firestoreAvailabilityDays";
 
 import "../styles/Booking.css";
 
@@ -4863,6 +4864,29 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
     const pending = (async () => {
       const takenFs = new Set<string>();
+
+      // ✅ Preferred: 1 doc read per employee/day (availability_days), trusted only when `complete=true`.
+      if (fallbackId) {
+        const aRef = doc(db, "salons", salonId, "availability_days", dateISO, "employees", fallbackId);
+        FirestoreReadStats.bump(aRef.path, logSource, "getDoc");
+        const aSnap = await getDoc(aRef);
+        if (aSnap.exists()) {
+          const a: any = aSnap.data() || {};
+          if (a.complete === true) {
+            const bookedSlots = normalizeBookedSlotsMap(a.bookedSlots);
+            Object.keys(bookedSlots).forEach((t) => {
+              const k = String(t || "").trim();
+              if (k) takenFs.add(k);
+            });
+            takenTimesCacheRef.current[cacheKey] = {
+              ts: Date.now(),
+              values: Array.from(takenFs),
+            };
+            return Array.from(takenFs);
+          }
+        }
+      }
+
       const colSlots = collection(db, "salons", salonId, "booking_slots");
 
       // Canonical: employeeId (staff_public doc id). Avoid doing both queries unless necessary,

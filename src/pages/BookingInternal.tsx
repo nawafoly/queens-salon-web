@@ -49,6 +49,7 @@ import {
 
 import { AppSettingsService } from "../services/AppSettingsService";
 import { FirestoreReadStats } from "../services/firestoreReadStats";
+import { normalizeBookedSlotsMap } from "../services/firestoreAvailabilityDays";
 import Modal from "../components/Modal";
 import BookingDropdown, {
   type BookingDropdownGroup,
@@ -5005,6 +5006,34 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     const pending = (async () => {
       const takenFs = new Set<string>();
+
+      // ✅ Preferred: 1 doc read per employee/day (availability_days), trusted only when `complete=true`.
+      const empId = String(employeeIdFallback || "").trim();
+      if (empId) {
+        const aRef = doc(db, "salons", salonId, "availability_days", dateISO, "employees", empId);
+        FirestoreReadStats.bump(
+          aRef.path,
+          "BookingInternal.collectTakenTimesForEmployeeDay",
+          "getDoc"
+        );
+        const aSnap = await getDoc(aRef);
+        if (aSnap.exists()) {
+          const a: any = aSnap.data() || {};
+          if (a.complete === true) {
+            const bookedSlots = normalizeBookedSlotsMap(a.bookedSlots);
+            Object.keys(bookedSlots).forEach((t) => {
+              const k = String(t || "").trim();
+              if (k) takenFs.add(k);
+            });
+            takenTimesCacheRef.current[cacheKey] = {
+              ts: Date.now(),
+              values: Array.from(takenFs),
+            };
+            return takenFs;
+          }
+        }
+      }
+
       const colSlots = collection(db, "salons", salonId, "booking_slots");
 
       const primaryReads: Promise<any>[] = [

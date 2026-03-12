@@ -14,6 +14,7 @@ import {
   onSnapshot,
   runTransaction,
   deleteDoc,
+  deleteField,
   limit,
 } from "firebase/firestore";
 
@@ -28,6 +29,7 @@ import { getAuth } from "firebase/auth";
 
 import { writeAuditLog, type LogSource } from "./logService";
 import { FirestoreReadStats } from "./firestoreReadStats";
+import { normalizeBookedSlotsMap } from "./firestoreAvailabilityDays";
 
 
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
@@ -1052,7 +1054,59 @@ async function unlockSlotsByBookingId(bookingId: string) {
     const q = query(collection(db, ...SLOTS_COL), where("bookingId", "==", bookingId));
     const snap = await getDocs(q);
     if (snap.empty) return;
+    // Build aggregated availability patches BEFORE deleting legacy slot docs.
+    const timesByAvailPath = new Map<
+      string,
+      { ref: any; dateISO: string; employeeId: string; employeeKey: string; times: Set<string> }
+    >();
+    snap.docs.forEach((d: any) => {
+      if (d?.ref?.path) {
+        FirestoreReadStats.bump(d.ref.path, "firestoreBookings.unlockSlotsByBookingId", "getDocs");
+      }
+      const sd: any = d.data() || {};
+      const dateISO = String(sd.date || "").trim();
+      const time = String(sd.time || "").trim();
+      const employeeId = String(sd.employeeId ?? "").trim();
+      const employeeKey = String(sd.employeeKey ?? "").trim();
+      if (!dateISO || !time || !employeeId) return;
+
+      const aRef = doc(db, "salons", SALON_ID, "availability_days", dateISO, "employees", employeeId);
+      const key = aRef.path;
+      const entry =
+        timesByAvailPath.get(key) || {
+          ref: aRef,
+          dateISO,
+          employeeId,
+          employeeKey: employeeKey || employeeId,
+          times: new Set<string>(),
+        };
+      entry.times.add(time);
+      if (!entry.employeeKey) entry.employeeKey = employeeKey || employeeId;
+      timesByAvailPath.set(key, entry);
+    });
+
+    // 1) Always unlock legacy slot docs first (source of truth today).
     await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+
+    // 2) Best-effort: keep aggregated index in sync (ignore errors).
+    try {
+      await Promise.all(
+        Array.from(timesByAvailPath.values()).map(async (entry) => {
+          const patch: any = {
+            date: entry.dateISO,
+            employeeId: entry.employeeId,
+            employeeKey: entry.employeeKey,
+            updatedAt: serverTimestamp(),
+          };
+          entry.times.forEach((t) => {
+            patch[`bookedSlots.${t}`] = deleteField();
+          });
+          await updateDoc(entry.ref, patch);
+        })
+      );
+    } catch {
+      // ignore: best-effort only
+    }
   } catch {
     // best-effort: لا نكسر تعديل الحالة
   }
@@ -1061,6 +1115,7 @@ async function unlockSlotsByBookingId(bookingId: string) {
 async function lockSlotsFromBooking(bookingId: string) {
   // ✅ نقرأ الحجز ونرجع نقفل كل السلوّتات بناءً على وقت/مدة الحجز
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
+  FirestoreReadStats.bump(bookingRef.path, "firestoreBookings.lockSlotsFromBooking", "getDoc");
   const snap = await getDoc(bookingRef);
   if (!snap.exists()) throw new Error("BOOKING_NOT_FOUND");
 
@@ -1122,6 +1177,54 @@ async function lockSlotsFromBooking(bookingId: string) {
       );
     })
   );
+
+  // ✅ Best-effort: update aggregated availability index (write-through during migration).
+  try {
+    const dateISO = String(b.date || "").trim();
+    if (dateISO) {
+      const availabilityRef = doc(
+        db,
+        "salons",
+        SALON_ID,
+        "availability_days",
+        dateISO,
+        "employees",
+        employeeIdTrimmed
+      );
+
+      const patch: any = {
+        date: dateISO,
+        employeeId: employeeIdTrimmed,
+        employeeKey,
+        updatedAt: serverTimestamp(),
+      };
+      const bookedSlots: Record<string, true> = {};
+      timesToLock.forEach((t) => {
+        const k = String(t || "").trim();
+        if (!k) return;
+        patch[`bookedSlots.${k}`] = true;
+        bookedSlots[k] = true;
+      });
+
+      try {
+        await updateDoc(availabilityRef, patch);
+      } catch (e: any) {
+        // Create if missing (keep complete=false until explicitly backfilled).
+        if (String(e?.code || "").trim() === "not-found") {
+          await setDoc(availabilityRef, {
+            date: dateISO,
+            employeeId: employeeIdTrimmed,
+            employeeKey,
+            bookedSlots,
+            complete: false,
+            updatedAt: serverTimestamp(),
+          } as any);
+        }
+      }
+    }
+  } catch {
+    // ignore: best-effort only
+  }
 }
 
 
@@ -1310,6 +1413,22 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
     FirestoreReadStats.bump(counterRef.path, "firestoreBookings.createBooking.runTransaction", "tx.get");
     const counterSnap = await tx.get(counterRef);
 
+    const availabilityRef = doc(
+      db,
+      "salons",
+      SALON_ID,
+      "availability_days",
+      dateISO,
+      "employees",
+      employeeIdTrimmed
+    );
+    FirestoreReadStats.bump(
+      availabilityRef.path,
+      "firestoreBookings.createBooking.runTransaction",
+      "tx.get"
+    );
+    const availabilitySnap = await tx.get(availabilityRef);
+
     slotRefs.forEach((r) => {
       FirestoreReadStats.bump(r.path, "firestoreBookings.createBooking.runTransaction", "tx.get");
     });
@@ -1357,6 +1476,22 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
       throw slotTakenError();
     }
 
+    // ✅ Aggregated availability sanity check (diagnostic only during migration).
+    // booking_slots is still the source of truth for final conflict prevention.
+    if (availabilitySnap.exists()) {
+      const a: any = availabilitySnap.data() || {};
+      if (a.complete === true) {
+        const bookedSlots = normalizeBookedSlotsMap(a.bookedSlots);
+        const anyBooked = timesToLock.some((t) => bookedSlots[String(t || "").trim()] === true);
+        if (anyBooked && (import.meta as any)?.env?.DEV) {
+          // If this fires, availability_days is stale; the write-through below will heal it.
+          // Don't block booking creation based on the derived index.
+          // eslint-disable-next-line no-console
+          console.warn("[createBooking] availability_days mismatch (ignored):", availabilityRef.path);
+        }
+      }
+    }
+
     // ---------- WRITES AFTER READS ----------
     let next = 10000;
     if (counterSnap.exists()) {
@@ -1402,6 +1537,35 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         clientPhone: data.clientPhone,
         createdAt: serverTimestamp(),
       });
+    }
+
+    // ✅ Update aggregated availability index (write-through during migration).
+    if (availabilitySnap.exists()) {
+      const patch: any = {
+        date: dateISO,
+        employeeId: employeeIdTrimmed,
+        employeeKey,
+        updatedAt: serverTimestamp(),
+      };
+      timesToLock.forEach((t) => {
+        const k = String(t || "").trim();
+        if (k) patch[`bookedSlots.${k}`] = true;
+      });
+      tx.update(availabilityRef, patch);
+    } else {
+      const bookedSlots: Record<string, true> = {};
+      timesToLock.forEach((t) => {
+        const k = String(t || "").trim();
+        if (k) bookedSlots[k] = true;
+      });
+      tx.set(availabilityRef, {
+        date: dateISO,
+        employeeId: employeeIdTrimmed,
+        employeeKey,
+        bookedSlots,
+        complete: false,
+        updatedAt: serverTimestamp(),
+      } as any);
     }
 
     // ✅ write booking
@@ -1716,6 +1880,25 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
     FirestoreReadStats.bump(counterRef.path, "firestoreBookings.createGroupBooking.runTransaction", "tx.get");
     const counterSnap = await tx.get(counterRef);
 
+    // ✅ Aggregated availability docs per employee/day (read once per unique doc).
+    const availabilityRefByPath = new Map<string, any>();
+    prepared.forEach((p) => {
+      const empId = String(p?.it?.employeeId ?? "").trim();
+      const dISO = String(p?.it?.date ?? "").trim();
+      if (!empId || !dISO) return;
+      const ref = doc(db, "salons", SALON_ID, "availability_days", dISO, "employees", empId);
+      availabilityRefByPath.set(ref.path, ref);
+    });
+    const availabilityRefs = Array.from(availabilityRefByPath.values());
+    availabilityRefs.forEach((r: any) => {
+      FirestoreReadStats.bump(r.path, "firestoreBookings.createGroupBooking.runTransaction", "tx.get");
+    });
+    const availabilitySnaps = await Promise.all(availabilityRefs.map((r: any) => tx.get(r)));
+    const availabilitySnapByPath = new Map<string, any>();
+    for (let i = 0; i < availabilityRefs.length; i++) {
+      availabilitySnapByPath.set(String(availabilityRefs[i].path), availabilitySnaps[i]);
+    }
+
     prepared.flatMap((p) => p.slotRefs).forEach((r) => {
       FirestoreReadStats.bump(r.path, "firestoreBookings.createGroupBooking.runTransaction", "tx.get");
     });
@@ -1726,6 +1909,30 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
       const bId = String(sd.bookingId || "").trim();
       if (bId) throw slotTakenError();
       throw slotTakenError();
+    }
+
+    // ✅ Aggregated availability conflict check (only when `complete=true`).
+    for (const p of prepared) {
+      const empId = String(p?.it?.employeeId ?? "").trim();
+      const dISO = String(p?.it?.date ?? "").trim();
+      if (!empId || !dISO) continue;
+      const aRef = doc(db, "salons", SALON_ID, "availability_days", dISO, "employees", empId);
+      const aSnap = availabilitySnapByPath.get(aRef.path);
+      if (!aSnap || !aSnap.exists()) continue;
+      const a: any = aSnap.data() || {};
+      if (a.complete !== true) continue;
+      const bookedSlots = normalizeBookedSlotsMap(a.bookedSlots);
+      const anyBooked = (p.timesToLock || []).some(
+        (t: any) => bookedSlots[String(t || "").trim()] === true
+      );
+      if (anyBooked && (import.meta as any)?.env?.DEV) {
+        // booking_slots is still the source of truth. If this fires, availability_days is stale.
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[createGroupBooking] availability_days mismatch (ignored):",
+          String(aRef.path || "")
+        );
+      }
     }
 
     let next = 10000;
@@ -1814,6 +2021,64 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
       }
 
       tx.set(p.ref, payload as any);
+    }
+
+    // ✅ Update aggregated availability index docs (write-through during migration).
+    const timesByAvailPath = new Map<
+      string,
+      { ref: any; dateISO: string; employeeId: string; employeeKey: string; times: Set<string> }
+    >();
+    for (const p of prepared) {
+      const empId = String(p?.it?.employeeId ?? "").trim();
+      const dISO = String(p?.it?.date ?? "").trim();
+      if (!empId || !dISO) continue;
+      const aRef = doc(db, "salons", SALON_ID, "availability_days", dISO, "employees", empId);
+      const key = aRef.path;
+      const entry =
+        timesByAvailPath.get(key) || {
+          ref: aRef,
+          dateISO: dISO,
+          employeeId: empId,
+          employeeKey: String(p?.employeeKey || "").trim(),
+          times: new Set<string>(),
+        };
+      (p.timesToLock || []).forEach((t: any) => {
+        const k = String(t || "").trim();
+        if (k) entry.times.add(k);
+      });
+      if (!entry.employeeKey) {
+        entry.employeeKey = String(p?.employeeKey || "").trim();
+      }
+      timesByAvailPath.set(key, entry);
+    }
+
+    for (const entry of timesByAvailPath.values()) {
+      const aSnap = availabilitySnapByPath.get(String(entry.ref.path));
+      if (aSnap && aSnap.exists()) {
+        const patch: any = {
+          date: entry.dateISO,
+          employeeId: entry.employeeId,
+          employeeKey: entry.employeeKey,
+          updatedAt: serverTimestamp(),
+        };
+        entry.times.forEach((t) => {
+          patch[`bookedSlots.${t}`] = true;
+        });
+        tx.update(entry.ref, patch);
+      } else {
+        const bookedSlots: Record<string, true> = {};
+        entry.times.forEach((t) => {
+          bookedSlots[t] = true;
+        });
+        tx.set(entry.ref, {
+          date: entry.dateISO,
+          employeeId: entry.employeeId,
+          employeeKey: entry.employeeKey,
+          bookedSlots,
+          complete: false,
+          updatedAt: serverTimestamp(),
+        } as any);
+      }
     }
 
     return { parentPublicId };
