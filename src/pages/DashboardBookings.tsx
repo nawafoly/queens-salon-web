@@ -1,5 +1,5 @@
 // src/pages/DashboardBookings.tsx
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Modal from "../components/Modal";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -48,6 +48,11 @@ import { resolveServiceName } from "../services/serviceResolver";
 import { AppSettingsService, type AppSettings } from "../services/AppSettingsService";
 
 import { isStaffAvailableForDate } from "../helpers/staffAvailability";
+import {
+  formatTime12,
+  round2,
+  toMillisSafeDashboardBookings as toMillisSafe,
+} from "../helpers/pageSharedUtils";
 
 // ✅ Styles
 import "../styles/DashboardBookings.css";
@@ -183,15 +188,6 @@ function getAuthUserSafe(): { displayName: string; email: string } {
   return { displayName, email };
 }
 
-function formatTime12(time24: string) {
-  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (!m) return String(time24 || "-");
-  const h24 = Number(m[1]);
-  const mm = m[2];
-  const h12 = h24 % 12 || 12;
-  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
-}
-
 function bookingRef(b: Partial<Booking> | null | undefined) {
   const raw = String(b?.publicId || "").trim();
   if (!raw) return "—";
@@ -199,10 +195,6 @@ function bookingRef(b: Partial<Booking> | null | undefined) {
   if (/^MK-\d+$/.test(up)) return up;
   if (/^\d+$/.test(up)) return `MK-${up}`;
   return up;
-}
-
-function round2(v: number) {
-  return Math.round((Number(v) || 0) * 100) / 100;
 }
 
 function readBookingTotalAmount(raw: any) {
@@ -260,6 +252,18 @@ function resolveBookingPaymentSummary(raw: any): {
     remainingAmount,
     totalAmount: round2(totalAmount),
   };
+}
+
+function detectPaymentMethod(b: Booking): PaymentMethod {
+  const stored = String((b as any)?.paymentMethod || "").toLowerCase().trim();
+  if (stored === "card" || stored === "cash" || stored === "transfer") {
+    return stored as PaymentMethod;
+  }
+  const s = String((b as any)?.note || "").toLowerCase();
+  if (s.includes("شبكة") || s.includes("مدى") || s.includes("card")) return "card";
+  if (s.includes("تحويل") || s.includes("transfer")) return "transfer";
+  if (s.includes("كاش") || s.includes("cash") || s.includes("نقد")) return "cash";
+  return "transfer";
 }
 
 function isPendingDepositBooking(
@@ -335,19 +339,6 @@ function paymentAmountsInlineText(payment: {
   return paymentAmountsDisplayLines(payment)
     .map((line) => (typeof line.amount === "number" ? `${line.label} ${line.amount} ر.س` : line.label))
     .join("\n");
-}
-
-function toMillisSafe(v: any) {
-  if (!v) return 0;
-  if (typeof v?.toMillis === "function") return Number(v.toMillis()) || 0;
-  if (typeof v?.seconds === "number") {
-    const sec = Number(v.seconds || 0);
-    const ns = Number(v.nanoseconds || 0);
-    return sec * 1000 + Math.floor(ns / 1_000_000);
-  }
-  if (typeof v === "number") return Number(v) || 0;
-  const parsed = Date.parse(String(v));
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function bookingCreationRefMs(b: Partial<Booking> | null | undefined) {
@@ -1356,6 +1347,43 @@ type EditServiceOption = {
   durationMin: number;
 };
 
+type EditBookingDraft = {
+  customerName: string;
+  phone: string;
+  note: string;
+  date: string;
+  time: string;
+  sectionId: string;
+  categoryId: string;
+  serviceId: string;
+  price: string;
+  paymentMethod: EditPaymentMethodOption;
+  paymentType: BookingPaymentType;
+  paidAmount: string;
+};
+
+function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
+  const payment = resolveBookingPaymentSummary(b);
+  const paymentMethod = detectPaymentMethod(b);
+  const primaryService = resolvePrimaryBookingServiceSelection(b);
+  const hasNoPayment = Number(payment.paidAmount || 0) <= 0;
+
+  return {
+    customerName: String(b.customerName || "").trim(),
+    phone: String(b.phone || "").trim(),
+    note: String((b as any)?.note || "").trim(),
+    date: String(b.date || "").trim(),
+    time: String(b.time || "").trim(),
+    sectionId: primaryService.sectionId,
+    categoryId: primaryService.categoryId,
+    serviceId: primaryService.serviceId,
+    price: String(readBookingTotalAmount(b)),
+    paymentMethod: (hasNoPayment ? "none" : paymentMethod) as EditPaymentMethodOption,
+    paymentType: hasNoPayment ? "partial" : payment.paymentType,
+    paidAmount: String(payment.paidAmount || 0),
+  };
+}
+
 function readCatalogLabel(raw: any, fallback = ""): string {
   const obj = raw && typeof raw === "object" ? raw : {};
   const candidates = [
@@ -1542,6 +1570,7 @@ type Booking = {
     categoryIdAtBooking?: string;
     categoryNameAtBooking?: string;
   };
+  packageId?: string | null;
   packageSnapshot?: {
     packageId?: string;
     packageName?: string;
@@ -1632,6 +1661,963 @@ type SensitiveBookingAction =
   | { kind: "refund"; booking: Booking }
   | { kind: "delete"; booking: Booking };
 
+function sensitiveActionDescription(action: SensitiveBookingAction | null) {
+  if (!action) return "";
+  if (action.kind === "status") {
+    return `تغيير حالة الحجز ${action.bookingRef} إلى ${statusLabel[action.nextStatus]}`;
+  }
+  if (action.kind === "edit") return `تعديل بيانات الحجز ${bookingRef(action.booking)}`;
+  if (action.kind === "refund") return `إدارة استرجاع الحجز ${bookingRef(action.booking)}`;
+  return `حذف نهائي للحجز ${bookingRef(action.booking)}`;
+}
+
+type ActionPinModalProps = {
+  action: SensitiveBookingAction | null;
+  onClose: () => void;
+  onConfirm: (action: SensitiveBookingAction) => Promise<void>;
+};
+
+const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm }: ActionPinModalProps) {
+  const open = !!action;
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setPin("");
+    setBusy(false);
+    setError("");
+  }, [open, action?.kind]);
+
+  const handleClose = useCallback(() => {
+    if (busy) return;
+    onClose();
+  }, [busy, onClose]);
+
+  const handleConfirm = useCallback(async () => {
+    if (!action) return;
+    if (String(pin).trim() !== BOOKING_ACTION_PIN) {
+      setError("الرقم السري غير صحيح.");
+      return;
+    }
+
+    let shouldClose = false;
+    setBusy(true);
+    setError("");
+
+    try {
+      await onConfirm(action);
+      shouldClose = true;
+    } catch {
+      setError("تعذر إكمال الإجراء.");
+    } finally {
+      setBusy(false);
+    }
+
+    if (shouldClose) onClose();
+  }, [action, onClose, onConfirm, pin]);
+
+  return (
+    <Modal
+      open={open}
+      onClose={handleClose}
+      ariaLabel="التحقق بالرقم السري"
+      panelClassName="bk-cancel-modal bk-action-pin-modal"
+      size="sm"
+    >
+      <div className="bk-cancel-head">تأكيد الإجراء</div>
+      <div className="bk-cancel-body">
+        <div className="bk-action-pin-summary">
+          <div className="bk-action-pin-summary-label">الإجراء المطلوب</div>
+          <div className="bk-action-pin-summary-value">
+            {sensitiveActionDescription(action) || "إجراء حساس"}
+          </div>
+          {action?.kind === "delete" ? (
+            <div className="bk-action-pin-warning">تنبيه: الحذف النهائي لا يمكن التراجع عنه.</div>
+          ) : null}
+        </div>
+        <div className="bk-action-pin-form">
+          <label className="bk-action-pin-label" htmlFor="booking_action_pin_input">
+            الرقم السري
+          </label>
+          <input
+            id="booking_action_pin_input"
+            type="password"
+            className="bk-input bk-action-pin-input"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              void handleConfirm();
+            }}
+            placeholder="أدخلي الرقم السري"
+            autoComplete="new-password"
+            name="booking_action_pin"
+            inputMode="numeric"
+            disabled={busy}
+            autoFocus
+          />
+          <div className="bk-action-pin-hint">هذا التحقق مخصص لحماية التعديلات الحساسة.</div>
+        </div>
+        {error ? <div className="bk-action-pin-error">{error}</div> : null}
+      </div>
+      <div className="bk-cancel-foot">
+        <button type="button" className="exp-btn ghost" onClick={handleClose} disabled={busy}>
+          إلغاء
+        </button>
+        <button
+          type="button"
+          className={`exp-btn ${action?.kind === "delete" ? "danger" : ""}`}
+          onClick={() => void handleConfirm()}
+          disabled={busy}
+        >
+          {busy ? "جاري التحقق..." : "متابعة"}
+        </button>
+      </div>
+    </Modal>
+  );
+});
+
+type EditBookingCustomerSectionProps = {
+  customerName: string;
+  phone: string;
+  disabled: boolean;
+  onCustomerNameChange: (value: string) => void;
+  onPhoneChange: (value: string) => void;
+};
+
+const EditBookingCustomerSection = memo(function EditBookingCustomerSection({
+  customerName,
+  phone,
+  disabled,
+  onCustomerNameChange,
+  onPhoneChange,
+}: EditBookingCustomerSectionProps) {
+  return (
+    <>
+      <label>
+        <div style={{ fontSize: 13, marginBottom: 4 }}>اسم العميلة</div>
+        <input
+          type="text"
+          className="bk-input"
+          value={customerName}
+          onChange={(e) => onCustomerNameChange(e.target.value)}
+          placeholder="مثال: سارة أحمد"
+          disabled={disabled}
+        />
+      </label>
+
+      <label>
+        <div style={{ fontSize: 13, marginBottom: 4 }}>رقم الجوال</div>
+        <input
+          type="text"
+          className="bk-input"
+          value={phone}
+          onChange={(e) => onPhoneChange(e.target.value)}
+          placeholder="05xxxxxxxx"
+          disabled={disabled}
+        />
+      </label>
+    </>
+  );
+});
+
+type EditBookingCatalogSectionProps = {
+  sectionId: string;
+  categoryId: string;
+  serviceId: string;
+  sections: EditSectionOption[];
+  categories: EditCategoryOption[];
+  services: EditServiceOption[];
+  catalogLoading: boolean;
+  disabled: boolean;
+  onSectionChange: (nextSectionId: string) => void;
+  onCategoryChange: (nextCategoryId: string) => void;
+  onServiceChange: (nextServiceId: string) => void;
+};
+
+const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
+  sectionId,
+  categoryId,
+  serviceId,
+  sections,
+  categories,
+  services,
+  catalogLoading,
+  disabled,
+  onSectionChange,
+  onCategoryChange,
+  onServiceChange,
+}: EditBookingCatalogSectionProps) {
+  return (
+    <>
+      <div className="bk-edit-grid bk-edit-grid--catalog">
+        <label>
+          <div style={{ fontSize: 13, marginBottom: 4 }}>القسم</div>
+          <select
+            className="bk-select"
+            value={sectionId}
+            onChange={(e) => onSectionChange(e.target.value)}
+            disabled={disabled || catalogLoading}
+          >
+            <option value="">اختاري القسم</option>
+            {sections.map((section) => (
+              <option key={`edit_section_${section.id}`} value={section.id}>
+                {section.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          <div style={{ fontSize: 13, marginBottom: 4 }}>التصنيف</div>
+          <select
+            className="bk-select"
+            value={categoryId}
+            onChange={(e) => onCategoryChange(e.target.value)}
+            disabled={disabled || catalogLoading || !sectionId || !categories.length}
+          >
+            <option value="">
+              {categories.length ? "بدون تحديد" : "لا توجد تصنيفات"}
+            </option>
+            {categories.map((category) => (
+              <option key={`edit_category_${category.id}`} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label>
+        <div style={{ fontSize: 13, marginBottom: 4 }}>الخدمة</div>
+        <select
+          className="bk-select"
+          value={serviceId}
+          onChange={(e) => onServiceChange(e.target.value)}
+          disabled={disabled || catalogLoading || !sectionId}
+        >
+          <option value="">{services.length ? "اختاري الخدمة" : "لا توجد خدمات"}</option>
+          {services.map((service) => (
+            <option key={`edit_service_${service.id}`} value={service.id}>
+              {service.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {catalogLoading ? (
+        <div className="bk-edit-helper">جاري تحميل الأقسام والتصنيفات والخدمات...</div>
+      ) : null}
+    </>
+  );
+});
+
+type EditBookingScheduleSectionProps = {
+  date: string;
+  time: string;
+  disabled: boolean;
+  onDateChange: (value: string) => void;
+  onTimeChange: (value: string) => void;
+};
+
+const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
+  date,
+  time,
+  disabled,
+  onDateChange,
+  onTimeChange,
+}: EditBookingScheduleSectionProps) {
+  return (
+    <div className="bk-edit-grid">
+      <label>
+        <div style={{ fontSize: 13, marginBottom: 4 }}>التاريخ</div>
+        <input
+          type="date"
+          className="bk-input"
+          value={date}
+          onChange={(e) => onDateChange(e.target.value)}
+          disabled={disabled}
+        />
+      </label>
+
+      <label>
+        <div style={{ fontSize: 13, marginBottom: 4 }}>الوقت</div>
+        <input
+          type="time"
+          className="bk-input"
+          value={time}
+          onChange={(e) => onTimeChange(e.target.value)}
+          disabled={disabled}
+        />
+      </label>
+    </div>
+  );
+});
+
+type EditBookingPaymentSectionProps = {
+  price: string;
+  paymentMethod: EditPaymentMethodOption;
+  paymentType: BookingPaymentType;
+  paidAmount: string;
+  disabled: boolean;
+  onPriceChange: (value: string) => void;
+  onPaymentModeChange: (mode: UiPaymentMode) => void;
+  onPaymentMethodChange: (method: PaymentMethod) => void;
+  onPaidAmountChange: (value: string) => void;
+};
+
+const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
+  price,
+  paymentMethod,
+  paymentType,
+  paidAmount,
+  disabled,
+  onPriceChange,
+  onPaymentModeChange,
+  onPaymentMethodChange,
+  onPaidAmountChange,
+}: EditBookingPaymentSectionProps) {
+  const remainingAfterEditText = useMemo(() => {
+    const total = Math.max(0, Number(price || 0));
+    const paid =
+      paymentMethod === "none"
+        ? 0
+        : paymentType === "full"
+          ? total
+          : Math.max(0, Number(paidAmount || 0));
+    return `${round2(Math.max(0, total - paid))} ر.س`;
+  }, [paidAmount, paymentMethod, paymentType, price]);
+
+  return (
+    <>
+      <label>
+        <div style={{ fontSize: 13, marginBottom: 4 }}>السعر النهائي</div>
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          className="bk-input"
+          value={price}
+          onChange={(e) => onPriceChange(e.target.value)}
+          placeholder="مثال: 120"
+          disabled={disabled}
+        />
+      </label>
+
+      <label>
+        <div style={{ fontSize: 13, marginBottom: 4 }}>نوع الدفع</div>
+        <select
+          className="bk-select"
+          value={paymentMethod === "none" ? "none" : paymentType}
+          onChange={(e) => onPaymentModeChange(e.target.value as UiPaymentMode)}
+          disabled={disabled}
+        >
+          <option value="full">دفع كامل</option>
+          <option value="partial">عربون</option>
+          <option value="none">بدون دفع</option>
+        </select>
+      </label>
+
+      {paymentMethod !== "none" ? (
+        <label>
+          <div style={{ fontSize: 13, marginBottom: 4 }}>طريقة الدفع</div>
+          <select
+            className="bk-select"
+            value={paymentMethod}
+            onChange={(e) => onPaymentMethodChange((e.target.value as PaymentMethod) || "transfer")}
+            disabled={disabled}
+          >
+            <option value="cash">كاش</option>
+            <option value="card">شبكة</option>
+            <option value="transfer">تحويل</option>
+            <option value="other">أخرى</option>
+          </select>
+        </label>
+      ) : null}
+
+      {paymentMethod !== "none" && paymentType === "partial" ? (
+        <label>
+          <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ العربون</div>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            className="bk-input"
+            value={paidAmount}
+            onChange={(e) => onPaidAmountChange(e.target.value)}
+            placeholder="مثال: 100"
+            disabled={disabled}
+          />
+        </label>
+      ) : null}
+
+      <div style={{ fontSize: 12, color: "#667085" }}>
+        المتبقي بعد التعديل: {remainingAfterEditText}
+      </div>
+    </>
+  );
+});
+
+type EditBookingNoteSectionProps = {
+  note: string;
+  disabled: boolean;
+  onNoteChange: (value: string) => void;
+};
+
+const EditBookingNoteSection = memo(function EditBookingNoteSection({
+  note,
+  disabled,
+  onNoteChange,
+}: EditBookingNoteSectionProps) {
+  return (
+    <label>
+      <div style={{ fontSize: 13, marginBottom: 4 }}>ملاحظة الحجز</div>
+      <textarea
+        className="bk-input"
+        rows={3}
+        value={note}
+        onChange={(e) => onNoteChange(e.target.value)}
+        placeholder="ملاحظة داخلية على نفس الحجز"
+        disabled={disabled}
+      />
+    </label>
+  );
+});
+
+type EditBookingModalProps = {
+  target: Booking | null;
+  onClose: () => void;
+  onSaved: (bookingId: string, patch: Partial<Booking>) => void;
+};
+
+const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSaved }: EditBookingModalProps) {
+  const open = !!target;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [sections, setSections] = useState<EditSectionOption[]>([]);
+  const [categories, setCategories] = useState<EditCategoryOption[]>([]);
+  const [services, setServices] = useState<EditServiceOption[]>([]);
+  const [draft, setDraft] = useState<EditBookingDraft>(() =>
+    target
+      ? buildEditBookingDraftFromBooking(target)
+      : {
+          customerName: "",
+          phone: "",
+          note: "",
+          date: "",
+          time: "",
+          sectionId: "",
+          categoryId: "",
+          serviceId: "",
+          price: "",
+          paymentMethod: "transfer",
+          paymentType: "full",
+          paidAmount: "",
+        }
+  );
+  const draftTargetIdRef = useRef<string>(target?.id || "");
+
+  useEffect(() => {
+    if (!open || !target) return;
+    if (draftTargetIdRef.current === target.id) return;
+    draftTargetIdRef.current = target.id;
+    setDraft(buildEditBookingDraftFromBooking(target));
+    setError("");
+  }, [open, target?.id]);
+
+  const handleClose = useCallback(() => {
+    if (saving) return;
+    onClose();
+  }, [onClose, saving]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEditSections = async () => {
+      if (!open || !target) return;
+
+      setCatalogLoading(true);
+      try {
+        const sectionsCol = collection(db, "salons", "main", "service_sections");
+        let sectionsSnap;
+        try {
+          sectionsSnap = await getDocs(fsQuery(sectionsCol, orderBy("order", "asc")));
+        } catch {
+          sectionsSnap = await getDocs(sectionsCol);
+        }
+
+        if (cancelled) return;
+
+        const nextSections = sectionsSnap.docs
+          .map((docSnap) => {
+            const raw = docSnap.data() as any;
+            return {
+              id: String(docSnap.id || "").trim(),
+              name: readCatalogLabel(raw, String(docSnap.id || "").trim()),
+              active: raw?.active !== false,
+            };
+          })
+          .filter((row) => row.id && row.name && row.active)
+          .map(({ id, name }) => ({ id, name }));
+
+        setSections(nextSections);
+      } catch {
+        if (!cancelled) setSections([]);
+      } finally {
+        if (!cancelled) setCatalogLoading(false);
+      }
+    };
+
+    void loadEditSections();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, target?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEditSectionCatalog = async () => {
+      if (!open || !target || !draft.sectionId) {
+        setCategories([]);
+        setServices([]);
+        return;
+      }
+
+      setCatalogLoading(true);
+      try {
+        const sectionId = String(draft.sectionId || "").trim();
+        const categoriesCol = collection(db, "salons", "main", "service_categories");
+        const servicesCol = collection(db, "salons", "main", "services");
+
+        let categoriesSnap;
+        try {
+          categoriesSnap = await getDocs(
+            fsQuery(categoriesCol, where("sectionId", "==", sectionId), orderBy("order", "asc"))
+          );
+        } catch {
+          categoriesSnap = await getDocs(fsQuery(categoriesCol, where("sectionId", "==", sectionId)));
+        }
+
+        let servicesSnap;
+        try {
+          servicesSnap = await getDocs(
+            fsQuery(servicesCol, where("sectionId", "==", sectionId), orderBy("createdAt", "desc"))
+          );
+        } catch {
+          servicesSnap = await getDocs(fsQuery(servicesCol, where("sectionId", "==", sectionId)));
+        }
+
+        if (cancelled) return;
+
+        const nextCategories = categoriesSnap.docs
+          .map((docSnap) => {
+            const raw = docSnap.data() as any;
+            return {
+              id: String(docSnap.id || "").trim(),
+              name: readCatalogLabel(raw, String(docSnap.id || "").trim()),
+              sectionId: String(raw?.sectionId || sectionId).trim(),
+              active: raw?.active !== false,
+            };
+          })
+          .filter((row) => row.id && row.name && row.active);
+
+        const nextServices = servicesSnap.docs
+          .map((docSnap) => {
+            const raw = docSnap.data() as any;
+            const duration = Number(raw?.durationMin ?? raw?.duration ?? raw?.["المدة"] ?? 60) || 60;
+            const price = Number(raw?.price ?? raw?.["السعر"] ?? 0) || 0;
+            return {
+              id: String(docSnap.id || "").trim(),
+              name: readCatalogLabel(raw, String(docSnap.id || "").trim()),
+              sectionId: String(raw?.sectionId || sectionId).trim(),
+              categoryId: String(raw?.categoryId || "").trim(),
+              price: Math.max(0, price),
+              durationMin: Math.max(5, duration),
+              active: raw?.active !== false,
+            };
+          })
+          .filter((row) => row.id && row.name && row.active);
+
+        setCategories(nextCategories);
+        setServices(nextServices);
+      } catch {
+        if (!cancelled) {
+          setCategories([]);
+          setServices([]);
+        }
+      } finally {
+        if (!cancelled) setCatalogLoading(false);
+      }
+    };
+
+    void loadEditSectionCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.sectionId, open, target?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateEditSelectionFromService = async () => {
+      if (!open || !target || draft.sectionId || !draft.serviceId) return;
+      const currentServiceId = String(draft.serviceId || "").trim();
+      if (!currentServiceId) return;
+
+      try {
+        const snap = await getDoc(doc(db, "salons", "main", "services", currentServiceId));
+        if (cancelled || !snap.exists()) return;
+
+        const raw = snap.data() as any;
+        const nextSectionId = String(raw?.sectionId || "").trim();
+        const nextCategoryId = String(raw?.categoryId || "").trim();
+        if (!nextSectionId) return;
+
+        setDraft((prev) =>
+          prev.serviceId !== currentServiceId
+            ? prev
+            : {
+                ...prev,
+                sectionId: prev.sectionId || nextSectionId,
+                categoryId: prev.categoryId || nextCategoryId,
+              }
+        );
+      } catch {
+        // ignore
+      }
+    };
+
+    void hydrateEditSelectionFromService();
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.sectionId, draft.serviceId, open, target?.id]);
+
+  const filteredServices = useMemo(() => {
+    const selectedCategoryId = String(draft.categoryId || "").trim();
+    if (!selectedCategoryId) return services;
+    const hasStructuredCategories = categories.length > 0;
+    if (!hasStructuredCategories) return services;
+    return services.filter((service) => String(service.categoryId || "").trim() === selectedCategoryId);
+  }, [categories.length, draft.categoryId, services]);
+
+  const onCustomerNameChange = useCallback((value: string) => {
+    setDraft((prev) => (prev.customerName === value ? prev : { ...prev, customerName: value }));
+  }, []);
+  const onPhoneChange = useCallback((value: string) => {
+    setDraft((prev) => (prev.phone === value ? prev : { ...prev, phone: value }));
+  }, []);
+  const onSectionChange = useCallback((nextSectionId: string) => {
+    setDraft((prev) =>
+      prev.sectionId === nextSectionId
+        ? prev
+        : { ...prev, sectionId: nextSectionId, categoryId: "", serviceId: "" }
+    );
+  }, []);
+  const onCategoryChange = useCallback((nextCategoryId: string) => {
+    setDraft((prev) =>
+      prev.categoryId === nextCategoryId ? prev : { ...prev, categoryId: nextCategoryId, serviceId: "" }
+    );
+  }, []);
+  const onServiceChange = useCallback(
+    (nextServiceId: string) => {
+      const nextService = filteredServices.find((service) => service.id === nextServiceId) || null;
+      setDraft((prev) => ({
+        ...prev,
+        serviceId: nextServiceId,
+        categoryId: nextService?.categoryId || prev.categoryId,
+        price: nextService ? String(nextService.price || 0) : prev.price,
+      }));
+    },
+    [filteredServices]
+  );
+  const onDateChange = useCallback((value: string) => {
+    setDraft((prev) => (prev.date === value ? prev : { ...prev, date: value }));
+  }, []);
+  const onTimeChange = useCallback((value: string) => {
+    setDraft((prev) => (prev.time === value ? prev : { ...prev, time: value }));
+  }, []);
+  const onPriceChange = useCallback((value: string) => {
+    setDraft((prev) => (prev.price === value ? prev : { ...prev, price: value }));
+  }, []);
+  const onPaymentModeChange = useCallback((nextMode: UiPaymentMode) => {
+    setDraft((p) => {
+      if (nextMode === "none") {
+        return {
+          ...p,
+          paymentType: "partial",
+          paymentMethod: "none",
+          paidAmount: "0",
+        };
+      }
+      return {
+        ...p,
+        paymentType: nextMode === "full" ? "full" : "partial",
+        paymentMethod: p.paymentMethod === "none" ? "transfer" : p.paymentMethod,
+      };
+    });
+  }, []);
+  const onPaymentMethodChange = useCallback((method: PaymentMethod) => {
+    setDraft((p) => ({ ...p, paymentMethod: method || "transfer" }));
+  }, []);
+  const onPaidAmountChange = useCallback((value: string) => {
+    setDraft((prev) => (prev.paidAmount === value ? prev : { ...prev, paidAmount: value }));
+  }, []);
+  const onNoteChange = useCallback((value: string) => {
+    setDraft((prev) => (prev.note === value ? prev : { ...prev, note: value }));
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!target?.id) return;
+
+    const customerName = String(draft.customerName || "").trim();
+    const phone = String(draft.phone || "").trim();
+    const note = String(draft.note || "").trim();
+    const date = String(draft.date || "").trim();
+    const time = String(draft.time || "").trim();
+    const sectionId = String(draft.sectionId || "").trim();
+    const categoryId = String(draft.categoryId || "").trim();
+    const serviceId = String(draft.serviceId || "").trim();
+    const priceInput = String(draft.price || "").trim();
+    const fallbackPrice = readBookingTotalAmount(target);
+    const price = priceInput === "" ? fallbackPrice : Number(priceInput);
+    const paymentType = draft.paymentType === "partial" ? "partial" : "full";
+    const hasNoPaymentMethod = draft.paymentMethod === "none";
+    const paymentMethod = (["cash", "card", "transfer", "other"] as const).includes(draft.paymentMethod as any)
+      ? (draft.paymentMethod as PaymentMethod)
+      : "transfer";
+
+    const selectedService = services.find((service) => String(service.id || "").trim() === serviceId) || null;
+    const selectedSection = sections.find((section) => String(section.id || "").trim() === sectionId) || null;
+    const selectedCategory =
+      categories.find((category) => String(category.id || "").trim() === categoryId) || null;
+
+    let paidAmount = paymentType === "full" ? price : Number(draft.paidAmount || 0);
+    if (hasNoPaymentMethod) paidAmount = 0;
+
+    if (!customerName) {
+      setError("اسم العميلة مطلوب.");
+      return;
+    }
+    if (!sectionId) {
+      setError("القسم مطلوب.");
+      return;
+    }
+    if (!serviceId || !selectedService) {
+      setError("الخدمة مطلوبة.");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setError("التاريخ غير صحيح.");
+      return;
+    }
+    if (!/^([01]?\\d|2[0-3]):([0-5]\\d)$/.test(time)) {
+      setError("الوقت غير صحيح (HH:MM).");
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      setError("السعر غير صحيح.");
+      return;
+    }
+    if (paymentType === "partial") {
+      if (!Number.isFinite(paidAmount) || paidAmount < 0) {
+        setError("أدخلي مبلغ عربون صحيح (0 أو أكثر).");
+        return;
+      }
+      if (paidAmount > price) {
+        setError("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز.");
+        return;
+      }
+    }
+
+    let nextPaymentType: BookingPaymentType = paymentType;
+    if (hasNoPaymentMethod) nextPaymentType = "partial";
+    if (paidAmount >= price) {
+      nextPaymentType = "full";
+      paidAmount = price;
+    }
+    const remainingAmount = round2(Math.max(0, price - paidAmount));
+    const durationMin = Math.max(5, Number(selectedService?.durationMin || target.durationMin || 60));
+    const serviceName = selectedService?.name || target.serviceName || "";
+    const sectionName = selectedSection?.name || sectionId;
+    const categoryName = selectedCategory?.name || "";
+    const serviceSnapshot = {
+      serviceNameAtBooking: serviceName,
+      priceAtBooking: price,
+      durationAtBooking: durationMin,
+      sectionIdAtBooking: sectionId || undefined,
+      sectionTitleAtBooking: sectionName || undefined,
+      categoryIdAtBooking: categoryId || undefined,
+      categoryNameAtBooking: categoryName || undefined,
+    };
+    const servicesPatch = [
+      {
+        serviceId,
+        serviceName,
+        price,
+        durationMin,
+        sectionId,
+        sectionTitle: sectionName || undefined,
+        categoryId: categoryId || undefined,
+        categoryName: categoryName || undefined,
+      },
+    ];
+
+    const isFullyPaidAfterEdit = price > 0 && remainingAmount <= 0;
+    let statusAfterEdit: BookingStatus | null = null;
+    if (isFullyPaidAfterEdit && (target.status === "pending" || target.status === "confirmed")) {
+      const chooseCompleted = window.confirm(
+        "تم سداد الحجز كاملاً.\n\nاضغطي \"موافق\" لتحويل الحالة إلى \"مكتمل\".\nاضغطي \"إلغاء\" للإبقاء على الحالة \"مؤكد\"."
+      );
+      statusAfterEdit = chooseCompleted ? "completed" : "confirmed";
+    }
+
+    let shouldClose = false;
+    setSaving(true);
+    setError("");
+
+    try {
+      const patch = {
+        clientName: customerName,
+        clientPhone: phone || null,
+        note,
+        customerName,
+        phone: phone || null,
+        customerPhone: phone || null,
+        date,
+        time,
+        serviceId,
+        serviceName,
+        serviceSnapshot,
+        services: servicesPatch,
+        durationMin,
+        packageId: null,
+        packageSnapshot: null,
+        finalPrice: price,
+        total: price,
+        paymentMethod: hasNoPaymentMethod ? null : paymentMethod,
+        paymentType: nextPaymentType,
+        paidAmount: round2(paidAmount),
+        remainingAmount,
+      } as any;
+      await updateBookingFields(target.id, patch);
+      if (statusAfterEdit && statusAfterEdit !== target.status) {
+        await updateBookingStatus(target.id, statusAfterEdit);
+      }
+
+      const resolvedStatus = statusAfterEdit || target.status;
+      onSaved(target.id, {
+        customerName,
+        phone: phone || "",
+        note,
+        date,
+        time,
+        serviceId,
+        serviceName,
+        serviceSnapshot,
+        services: servicesPatch,
+        durationMin,
+        packageId: undefined,
+        packageSnapshot: undefined,
+        finalPrice: price,
+        total: price,
+        paymentMethod: hasNoPaymentMethod ? undefined : paymentMethod,
+        paymentType: nextPaymentType,
+        paidAmount: round2(paidAmount),
+        remainingAmount,
+        status: resolvedStatus,
+      });
+
+      shouldClose = true;
+    } catch {
+      setError("تعذر حفظ تعديل الحجز.");
+    } finally {
+      setSaving(false);
+    }
+
+    if (shouldClose) onClose();
+  }, [categories, draft, onClose, onSaved, sections, services, target]);
+
+  return (
+    <Modal
+      open={open}
+      onClose={handleClose}
+      ariaLabel="تعديل الحجز"
+      panelClassName="bk-edit-modal"
+      size="sm"
+    >
+      <div className="bk-cancel-head">تعديل الحجز</div>
+      <div className="bk-cancel-body">
+        <div className="bk-cancel-meta">
+          <span>رقم الحجز: {bookingRef(target)}</span>
+          <span>الخدمة: {target ? serviceSummaryForTable(target) : "—"}</span>
+        </div>
+
+        <div className="bk-edit-form">
+          <EditBookingCustomerSection
+            customerName={draft.customerName}
+            phone={draft.phone}
+            disabled={saving}
+            onCustomerNameChange={onCustomerNameChange}
+            onPhoneChange={onPhoneChange}
+          />
+
+          <EditBookingCatalogSection
+            sectionId={draft.sectionId}
+            categoryId={draft.categoryId}
+            serviceId={draft.serviceId}
+            sections={sections}
+            categories={categories}
+            services={filteredServices}
+            catalogLoading={catalogLoading}
+            disabled={saving}
+            onSectionChange={onSectionChange}
+            onCategoryChange={onCategoryChange}
+            onServiceChange={onServiceChange}
+          />
+
+          <EditBookingScheduleSection
+            date={draft.date}
+            time={draft.time}
+            disabled={saving}
+            onDateChange={onDateChange}
+            onTimeChange={onTimeChange}
+          />
+
+          <EditBookingPaymentSection
+            price={draft.price}
+            paymentMethod={draft.paymentMethod}
+            paymentType={draft.paymentType}
+            paidAmount={draft.paidAmount}
+            disabled={saving}
+            onPriceChange={onPriceChange}
+            onPaymentModeChange={onPaymentModeChange}
+            onPaymentMethodChange={onPaymentMethodChange}
+            onPaidAmountChange={onPaidAmountChange}
+          />
+
+          <EditBookingNoteSection note={draft.note} disabled={saving} onNoteChange={onNoteChange} />
+        </div>
+
+        {error ? <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{error}</div> : null}
+      </div>
+      <div className="bk-cancel-foot">
+        <button type="button" className="exp-btn ghost" onClick={handleClose} disabled={saving}>
+          رجوع
+        </button>
+        <button type="button" className="exp-btn" onClick={() => void handleSave()} disabled={saving}>
+          {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
+        </button>
+      </div>
+    </Modal>
+  );
+});
+
 /* =========================
    Component
 ========================= */
@@ -1678,26 +2664,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   });
   const saveHintTimerRef = useRef<number | null>(null);
   const [editTarget, setEditTarget] = useState<Booking | null>(null);
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError] = useState("");
-  const [editCatalogLoading, setEditCatalogLoading] = useState(false);
-  const [editSections, setEditSections] = useState<EditSectionOption[]>([]);
-  const [editCategories, setEditCategories] = useState<EditCategoryOption[]>([]);
-  const [editServices, setEditServices] = useState<EditServiceOption[]>([]);
-  const [editDraft, setEditDraft] = useState({
-    customerName: "",
-    phone: "",
-    note: "",
-    date: "",
-    time: "",
-    sectionId: "",
-    categoryId: "",
-    serviceId: "",
-    price: "",
-    paymentMethod: "transfer" as EditPaymentMethodOption,
-    paymentType: "full" as BookingPaymentType,
-    paidAmount: "",
-  });
   const [confirmTarget, setConfirmTarget] = useState<Booking | null>(null);
   const [confirmSaving, setConfirmSaving] = useState(false);
   const [confirmError, setConfirmError] = useState("");
@@ -1706,10 +2672,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     paymentType: "full" as BookingPaymentType,
     paidAmount: "",
   });
-  const [actionPinOpen, setActionPinOpen] = useState(false);
-  const [actionPinBusy, setActionPinBusy] = useState(false);
-  const [actionPin, setActionPin] = useState("");
-  const [actionPinError, setActionPinError] = useState("");
   const [pendingSensitiveAction, setPendingSensitiveAction] = useState<SensitiveBookingAction | null>(null);
   const [newBookingsSeenAt, setNewBookingsSeenAt] = useState<number>(() => {
     try {
@@ -1771,200 +2733,19 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     setRefundTarget(null);
     setRefundError("");
   }, [refundSaving]);
-  const closeEditModal = useCallback(() => {
-    if (editSaving) return;
-    setEditTarget(null);
-    setEditError("");
-  }, [editSaving]);
+  const closeEditModal = useCallback(() => setEditTarget(null), []);
   const closeConfirmModal = useCallback(() => {
     if (confirmSaving) return;
     setConfirmTarget(null);
     setConfirmError("");
   }, [confirmSaving]);
-  const closeActionPinModal = useCallback(() => {
-    if (actionPinBusy) return;
-    setActionPinOpen(false);
-    setActionPin("");
-    setActionPinError("");
-    setPendingSensitiveAction(null);
-  }, [actionPinBusy]);
+  const closeActionPinModal = useCallback(() => setPendingSensitiveAction(null), []);
 
   useEffect(() => {
     return () => {
       if (saveHintTimerRef.current) window.clearTimeout(saveHintTimerRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadEditSections = async () => {
-      if (!editTarget) return;
-
-      setEditCatalogLoading(true);
-      try {
-        const sectionsCol = collection(db, "salons", "main", "service_sections");
-        let sectionsSnap;
-        try {
-          sectionsSnap = await getDocs(fsQuery(sectionsCol, orderBy("order", "asc")));
-        } catch {
-          sectionsSnap = await getDocs(sectionsCol);
-        }
-
-        if (cancelled) return;
-
-        const sections = sectionsSnap.docs
-          .map((docSnap) => {
-            const raw = docSnap.data() as any;
-            return {
-              id: String(docSnap.id || "").trim(),
-              name: readCatalogLabel(raw, String(docSnap.id || "").trim()),
-              active: raw?.active !== false,
-            };
-          })
-          .filter((row) => row.id && row.name && row.active)
-          .map(({ id, name }) => ({ id, name }));
-
-        setEditSections(sections);
-      } catch {
-        if (!cancelled) setEditSections([]);
-      } finally {
-        if (!cancelled) setEditCatalogLoading(false);
-      }
-    };
-
-    void loadEditSections();
-    return () => {
-      cancelled = true;
-    };
-  }, [editTarget]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadEditSectionCatalog = async () => {
-      if (!editTarget || !editDraft.sectionId) {
-        setEditCategories([]);
-        setEditServices([]);
-        return;
-      }
-
-      setEditCatalogLoading(true);
-      try {
-        const sectionId = String(editDraft.sectionId || "").trim();
-        const categoriesCol = collection(db, "salons", "main", "service_categories");
-        const servicesCol = collection(db, "salons", "main", "services");
-
-        let categoriesSnap;
-        try {
-          categoriesSnap = await getDocs(
-            fsQuery(categoriesCol, where("sectionId", "==", sectionId), orderBy("order", "asc"))
-          );
-        } catch {
-          categoriesSnap = await getDocs(fsQuery(categoriesCol, where("sectionId", "==", sectionId)));
-        }
-
-        let servicesSnap;
-        try {
-          servicesSnap = await getDocs(
-            fsQuery(servicesCol, where("sectionId", "==", sectionId), orderBy("createdAt", "desc"))
-          );
-        } catch {
-          servicesSnap = await getDocs(fsQuery(servicesCol, where("sectionId", "==", sectionId)));
-        }
-
-        if (cancelled) return;
-
-        const categories = categoriesSnap.docs
-          .map((docSnap) => {
-            const raw = docSnap.data() as any;
-            return {
-              id: String(docSnap.id || "").trim(),
-              name: readCatalogLabel(raw, String(docSnap.id || "").trim()),
-              sectionId: String(raw?.sectionId || sectionId).trim(),
-              active: raw?.active !== false,
-            };
-          })
-          .filter((row) => row.id && row.name && row.active);
-
-        const services = servicesSnap.docs
-          .map((docSnap) => {
-            const raw = docSnap.data() as any;
-            const duration = Number(raw?.durationMin ?? raw?.duration ?? raw?.["المدة"] ?? 60) || 60;
-            const price = Number(raw?.price ?? raw?.["السعر"] ?? 0) || 0;
-            return {
-              id: String(docSnap.id || "").trim(),
-              name: readCatalogLabel(raw, String(docSnap.id || "").trim()),
-              sectionId: String(raw?.sectionId || sectionId).trim(),
-              categoryId: String(raw?.categoryId || "").trim(),
-              price: Math.max(0, price),
-              durationMin: Math.max(5, duration),
-              active: raw?.active !== false,
-            };
-          })
-          .filter((row) => row.id && row.name && row.active);
-
-        setEditCategories(categories);
-        setEditServices(services);
-      } catch {
-        if (cancelled) {
-          return;
-        }
-        setEditCategories([]);
-        setEditServices([]);
-      } finally {
-        if (!cancelled) setEditCatalogLoading(false);
-      }
-    };
-
-    void loadEditSectionCatalog();
-    return () => {
-      cancelled = true;
-    };
-  }, [editTarget, editDraft.sectionId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const hydrateEditSelectionFromService = async () => {
-      if (!editTarget || editDraft.sectionId || !editDraft.serviceId) return;
-
-      try {
-        const snap = await getDoc(doc(db, "salons", "main", "services", editDraft.serviceId));
-        if (cancelled || !snap.exists()) return;
-
-        const raw = snap.data() as any;
-        const nextSectionId = String(raw?.sectionId || "").trim();
-        const nextCategoryId = String(raw?.categoryId || "").trim();
-        if (!nextSectionId) return;
-
-        setEditDraft((prev) =>
-          prev.serviceId !== editDraft.serviceId
-            ? prev
-            : {
-                ...prev,
-                sectionId: prev.sectionId || nextSectionId,
-                categoryId: prev.categoryId || nextCategoryId,
-              }
-        );
-      } catch {
-        // ignore
-      }
-    };
-
-    void hydrateEditSelectionFromService();
-    return () => {
-      cancelled = true;
-    };
-  }, [editTarget, editDraft.sectionId, editDraft.serviceId]);
-
-  const filteredEditServices = useMemo(() => {
-    const selectedCategoryId = String(editDraft.categoryId || "").trim();
-    if (!selectedCategoryId) return editServices;
-    const hasStructuredCategories = editCategories.length > 0;
-    if (!hasStructuredCategories) return editServices;
-    return editServices.filter((service) => String(service.categoryId || "").trim() === selectedCategoryId);
-  }, [editCategories.length, editDraft.categoryId, editServices]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2577,9 +3358,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
   const requestSensitiveAction = (action: SensitiveBookingAction) => {
     setPendingSensitiveAction(action);
-    setActionPin("");
-    setActionPinError("");
-    setActionPinOpen(true);
   };
 
   const sensitiveActionDescription = (action: SensitiveBookingAction | null) => {
@@ -2799,32 +3577,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     requestSensitiveAction({ kind: "delete", booking: b });
   };
 
-  const openEditBookingModalUnsafe = (b: Booking) => {
+  const openEditBookingModalUnsafe = useCallback((b: Booking) => {
     if (!canEditBookings) {
       alert("التعديل متاح فقط للمالك أو الأدمن.");
       return;
     }
-    const payment = resolveBookingPaymentSummary(b);
-    const paymentMethod = detectPaymentMethod(b);
-    const primaryService = resolvePrimaryBookingServiceSelection(b);
-    const hasNoPayment = Number(payment.paidAmount || 0) <= 0;
-    setEditDraft({
-      customerName: String(b.customerName || "").trim(),
-      phone: String(b.phone || "").trim(),
-      note: String((b as any)?.note || "").trim(),
-      date: String(b.date || "").trim(),
-      time: String(b.time || "").trim(),
-      sectionId: primaryService.sectionId,
-      categoryId: primaryService.categoryId,
-      serviceId: primaryService.serviceId,
-      price: String(readBookingTotalAmount(b)),
-      paymentMethod: hasNoPayment ? "none" : paymentMethod,
-      paymentType: hasNoPayment ? "partial" : payment.paymentType,
-      paidAmount: String(payment.paidAmount || 0),
-    });
-    setEditError("");
     setEditTarget(b);
-  };
+  }, [canEditBookings]);
 
   const openEditBookingModal = (b: Booking) => {
     if (!canEditBookings) {
@@ -2834,6 +3593,24 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     requestSensitiveAction({ kind: "edit", booking: b });
   };
 
+  const applyLocalBookingPatch = useCallback(
+    (bookingId: string, patch: Partial<Booking>) => {
+      const id = String(bookingId || "").trim();
+      if (!id) return;
+
+      const localAuditPatch = getLocalActorAudit();
+      setBookings((prev) =>
+        prev.map((row) => (row.id === id ? { ...row, ...patch, ...localAuditPatch } : row))
+      );
+      setSelectedBooking((prev) =>
+        prev && prev.id === id ? { ...prev, ...patch, ...localAuditPatch } : prev
+      );
+      touchLastUpdate(id, localAuditPatch.atMs);
+    },
+    [getLocalActorAudit, touchLastUpdate]
+  );
+
+  /*
   const confirmSensitiveAction = async () => {
     if (!pendingSensitiveAction) return;
     if (String(actionPin).trim() !== BOOKING_ACTION_PIN) {
@@ -2864,7 +3641,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setActionPinBusy(false);
     }
   };
+  */
 
+  /*
   const handleSaveBookingEdit = async () => {
     if (!editTarget?.id || !canEditBookings) return;
     const customerName = String(editDraft.customerName || "").trim();
@@ -3074,6 +3853,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     }
   };
 
+  */
+
   const canManageRefund = (b: Booking) => {
     if (!(uiRole === "owner" || uiRole === "admin" || uiRole === "reception")) return false;
     if (!(b.status === "confirmed" || b.status === "completed")) return false;
@@ -3082,6 +3863,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return true;
   };
 
+  /*
   const detectPaymentMethod = (b: Booking): PaymentMethod => {
     const stored = String((b as any)?.paymentMethod || "").toLowerCase().trim();
     if (stored === "card" || stored === "cash" || stored === "transfer") {
@@ -3093,6 +3875,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     if (s.includes("كاش") || s.includes("cash") || s.includes("نقد")) return "cash";
     return "transfer";
   };
+  */
 
   const openRefundModalUnsafe = (b: Booking) => {
     if (!canManageRefund(b)) return;
@@ -3115,6 +3898,25 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     if (!canManageRefund(b)) return;
     requestSensitiveAction({ kind: "refund", booking: b });
   };
+
+  const executeSensitiveAction = useCallback(
+    async (action: SensitiveBookingAction) => {
+      if (action.kind === "status") {
+        await executeStatusUpdate(action.bookingId, action.nextStatus);
+        return;
+      }
+      if (action.kind === "edit") {
+        openEditBookingModalUnsafe(action.booking);
+        return;
+      }
+      if (action.kind === "refund") {
+        openRefundModalUnsafe(action.booking);
+        return;
+      }
+      await executeDeleteBooking(action.booking);
+    },
+    [executeDeleteBooking, executeStatusUpdate, openEditBookingModalUnsafe, openRefundModalUnsafe]
+  );
 
   const handleSaveRefund = async () => {
     const b = refundTarget;
@@ -4649,6 +5451,15 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           </Modal>
         )}
 
+        {pendingSensitiveAction ? (
+          <ActionPinModal
+            action={pendingSensitiveAction}
+            onClose={closeActionPinModal}
+            onConfirm={executeSensitiveAction}
+          />
+        ) : null}
+
+        {/*
         <Modal
           open={actionPinOpen}
           onClose={closeActionPinModal}
@@ -4709,6 +5520,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </button>
           </div>
         </Modal>
+        */}
 
         <Modal
           open={!!refundTarget}
@@ -4954,6 +5766,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           </div>
         </Modal>
 
+        {editTarget ? (
+          <EditBookingModal target={editTarget} onClose={closeEditModal} onSaved={applyLocalBookingPatch} />
+        ) : null}
+
+        {/*
         <Modal
           open={!!editTarget}
           onClose={closeEditModal}
@@ -5236,6 +6053,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </button>
           </div>
         </Modal>
+        */}
 
         <Modal
           open={!!cancelTarget}

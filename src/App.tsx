@@ -377,10 +377,10 @@ const App: React.FC = () => {
           <Route path="/services" element={<Services />} />
           <Route path="/about" element={<About />} />
 
-          {/* âœ… Client Booking (Public) */}
+          {/* ✅ Client Booking (Public) */}
           <Route path="/booking" element={<Booking />} />
 
-          {/* âœ… OLD path (keep for backward compatibility) -> redirect into dashboard route */}
+          {/* ✅ OLD path (keep for backward compatibility) -> redirect into dashboard route */}
           <Route path="/booking/internal" element={<Navigate to="/dashboard/booking-internal" replace />} />
 
           {/* Checkout */}

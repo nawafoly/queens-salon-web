@@ -1,7 +1,7 @@
 ﻿// src/pages/Booking.tsx
 
 import { Fragment, useEffect, useMemo, useState, useRef } from "react";
-import type React from "react"; // âœ… ADD: عشان React.ChangeEvent / React.FormEvent
+import type React from "react"; // ✅ ADD: عشان React.ChangeEvent / React.FormEvent
 import type { IconType } from "react-icons";
 import {
   FiScissors,
@@ -34,6 +34,7 @@ import {
   type TimeSlot,
 } from "../helpers/timeSlots";
 import { formatTime12 } from "../helpers/timeDisplay";
+import { extractMinPrice, readDisplayLabel } from "../helpers/pageSharedUtils";
 
 import {
   isStaffAvailableForDate,
@@ -51,7 +52,7 @@ import { normalizeBookedSlotsMap } from "../services/firestoreAvailabilityDays";
 
 import "../styles/Booking.css";
 
-// âœ… Firestore slot availability check
+// ✅ Firestore slot availability check
 import {
   doc,
   getDoc,
@@ -60,19 +61,19 @@ import {
   query,
   where,
   orderBy,
-  setDoc, // âœ… add
+  setDoc, // ✅ add
 } from "firebase/firestore";
 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// âœ… انتبه: لازم firebase.ts يصدّر storage
+// ✅ انتبه: لازم firebase.ts يصدّر storage
 import { db, storage } from "../services/firebase";
 
-// âœ… Firebase Auth (للقراءة فقط)
+// ✅ Firebase Auth (للقراءة فقط)
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 
-// âœ… Firestore Offers
+// ✅ Firestore Offers
 import type { Offer as FsOffer } from "../services/firestoreOffers";
 import {
   findActiveOfferByCode,
@@ -82,13 +83,13 @@ import {
   incrementOfferUsage,
 } from "../services/firestoreOffers";
 
-// âœ… Staff Public (Firestore)
+// ✅ Staff Public (Firestore)
 import {
   listActiveStaffAll,
   type StaffPublicWithId,
 } from "../services/firestoreStaffPublic";
 
-// âœ… Catalog from Firestore (Sections/Categories/Services)
+// ✅ Catalog from Firestore (Sections/Categories/Services)
 import {
   listActiveSections,
   type SectionDoc,
@@ -103,19 +104,20 @@ import {
 } from "../services/firestorePackages";
 import { pricingSections } from "./Pricing";
 
-// âœ… Create booking (Firestore)
+// ✅ Create booking (Firestore)
 import { createBooking } from "../services/firestoreBookings";
 import * as firestoreBookings from "../services/firestoreBookings";
 
 import { createOrLoadUserProfile } from "../services/userProfile";
 
-// âœ… Custom modal بدل alert
-import ConfirmModal from "../components/ConfirmModal";
-import Modal from "../components/Modal";
-
-const createBookingGroup = (
-  firestoreBookings as {
-    createBookingGroup?: (data: any) => Promise<{
+// ✅ Custom modal بدل alert
+	import ConfirmModal from "../components/ConfirmModal";
+	import Modal from "../components/Modal";
+	import type { BookingFormData, CartItem } from "../types/bookingShared";
+	
+	const createBookingGroup = (
+	  firestoreBookings as {
+	    createBookingGroup?: (data: any) => Promise<{
       parentId: string;
       parentPublicId: string;
       itemIds: string[];
@@ -126,67 +128,6 @@ const createBookingGroup = (
 /* =========================
    Types
  ========================= */
-
-type CartItem = {
-  id: string; // local id
-  packageRunId?: string;
-  serviceId: string;
-  serviceName: string;
-  offerSourceId?: string;
-  offerSourceCode?: string;
-  offerSourceTitle?: string;
-  packageId?: string;
-  packageSnapshot?: {
-    packageId: string;
-    packageName: string;
-    finalPriceAtBooking: number;
-    baseTotalPriceAtBooking: number;
-    totalDurationMinAtBooking: number;
-    serviceIds: string[];
-    services: PackageServiceItem[];
-  };
-  serviceSectionId: string; // âœ… القسم الحقيقي للخدمة وقت الإضافة
-  serviceSectionTitle?: string; // âœ… اسم القسم وقت الإضافة (للقواعد المرنة)
-  serviceCategoryId?: string; // âœ… للتوافق (اختياري)
-  serviceCategoryName?: string; // âœ… لو التصنيف نصي (للـ legacy)
-
-  serviceBasePrice?: number; // âœ… سعر الخدمة الأساسي قبل أي رسوم إضافية
-  basePrice: number;
-  priceText: string;
-  durationMin: number;
-
-  employeeId: string; // staff_public doc id
-  employeeUid?: string; // linkedUid
-  employeeName?: string;
-
-  date: string; // YYYY-MM-DD
-  time: string; // slot time: string; // âœ… نخزن 24h "HH:MM" (value24)
-
-  locked?: boolean; // âœ… جديد: هل الكرت تم تأكيده؟
-  toolsSource?: "client" | "salon"; // âœ… أدوات الخدمة: من العميلة أو من الصالون
-  toolsFeeApplied?: number; // âœ… الرسوم المضافة بسبب الأدوات (إن وجدت)
-  sequenceOfferId?: string;
-  sequenceOfferTitle?: string;
-  sequenceStepsSnapshot?: Array<{
-    serviceId: string;
-    orderIndex: number;
-    gapAfterMin: number;
-    titleSnapshot?: string;
-    serviceNameAtBooking: string;
-    priceAtBooking: number;
-    durationAtBooking: number;
-    sectionIdAtBooking?: string;
-  }>;
-};
-
-interface BookingFormData {
-  name: string;
-  phone: string;
-  note?: string;
-
-  // âœ… سلة خدمات: كل خدمة لها (موظفة/تاريخ/وقت)
-  items: CartItem[];
-}
 
 type CouponMessageKind = "success" | "error" | "";
 
@@ -257,56 +198,6 @@ type BookingFlowState = {
   customerPhone: string;
   coupon: string;
 };
-
-function extractMinPrice(priceText: string): number {
-  const cleaned = String(priceText || "").replace(/[^\d\-]/g, "");
-  if (!cleaned) return 0;
-
-  const parts = cleaned
-    .split("-")
-    .filter(Boolean)
-    .map((n) => Number(n))
-    .filter((n) => Number.isFinite(n));
-
-  if (!parts.length) return 0;
-  return Math.min(...parts);
-}
-
-function readDisplayLabel(raw: any, fallback = ""): string {
-  const obj = raw && typeof raw === "object" ? raw : {};
-  const directKeys = [
-    "nameAr",
-    "titleAr",
-    "labelAr",
-    "displayNameAr",
-    "الاسم",
-    "العنوان",
-    "name",
-    "title",
-    "displayName",
-    "label",
-    "categoryName",
-    "category",
-  ];
-  for (const k of directKeys) {
-    const v = String((obj as any)?.[k] ?? "").trim();
-    if (v) return v;
-  }
-  const entries = Object.entries(obj as Record<string, any>);
-  for (const [k, v] of entries) {
-    const key = String(k || "").toLowerCase();
-    if (/(name|title|اسم|عنوان)/i.test(key)) {
-      const txt = String(v ?? "").trim();
-      if (txt) return txt;
-    }
-  }
-  const fb = String(fallback || "").trim();
-  if (!fb) return "";
-  // avoid showing internal slugs/ids like "advanced/catalog" to clients
-  const looksLikeInternalId = /^[a-z0-9/_-]+$/i.test(fb) && /[/_-]/.test(fb);
-  if (looksLikeInternalId) return "";
-  return fb;
-}
 
 function humanizeCatalogToken(value: string) {
   return String(value || "")
@@ -439,24 +330,24 @@ type FlatService = {
   sectionId: string;
   sectionTitle: string;
 
-  // âœ… التصنيف
+  // ✅ التصنيف
   categoryId?: string; // Firestore فقط
   category: string; // اسم التصنيف للعرض (Firestore/Pricing)
   name: string;
 
-  // âœ… حقول تسعير/عرض
+  // ✅ حقول تسعير/عرض
   priceText: string;
   basePrice: number;
-  seasonPrice?: number; // âœ… سعر الموسم (اختياري)
+  seasonPrice?: number; // ✅ سعر الموسم (اختياري)
 
-  // âœ… مدة من Firestore إذا كانت موجودة
+  // ✅ مدة من Firestore إذا كانت موجودة
   durationMin?: number;
   packageId?: string;
   packageServiceIds?: string[];
   packageServices?: PackageServiceItem[];
   packageBaseTotalPrice?: number;
 
-  // âœ… معرفة مصدر الخدمة
+  // ✅ معرفة مصدر الخدمة
   source: "firestore" | "pricing";
 };
 
@@ -538,7 +429,7 @@ const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
   fri: "الجمعة",
 };
 
-// âœ… نفس منطق slotId الموجود في firestoreBookings.ts
+// ✅ نفس منطق slotId الموجود في firestoreBookings.ts
 function safeKey(v: string) {
   return String(v || "").trim().replaceAll("/", "-").replace(/\s+/g, "_");
 }
@@ -563,7 +454,7 @@ function buildSlotId(
 function getTimesToLock(
   allSlots: TimeSlot[],
   slotStepMin: number,
-  startTime24: string, // âœ… "HH:MM"
+  startTime24: string, // ✅ "HH:MM"
   durationMin: number,
   bufferMin: number
 ) {
@@ -592,15 +483,15 @@ function getTimesToLock(
 }
 
 
-// âœ…âœ…âœ… NEW: تحديد الأوقات اللي "تنفع كبداية" حسب مدة الخدمة (تطلع أخضر)
+// ✅✅✅ NEW: تحديد الأوقات اللي "تنفع كبداية" حسب مدة الخدمة (تطلع أخضر)
 function getGreenStartTimes(args: {
   allSlots: TimeSlot[];
   slotStepMin: number;
   durationMin: number;
   bufferMin: number;
-  takenAll: Set<string>; // âœ… times 24h
+  takenAll: Set<string>; // ✅ times 24h
 }) {
-  const greens = new Set<string>(); // âœ… نخزن value24
+  const greens = new Set<string>(); // ✅ نخزن value24
 
   for (const slot of args.allSlots) {
     const start24 = slot.value24;
@@ -696,7 +587,7 @@ function normalizeCouponCode(raw: string) {
 }
 
 /**
- * âœ… صلاحية العرض حسب "تاريخ الحجز" (مو اليوم)
+ * ✅ صلاحية العرض حسب "تاريخ الحجز" (مو اليوم)
  */
 function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {
   if (!bookingDateISO) return { ok: true, reason: "" };
@@ -725,7 +616,7 @@ function isSeasonActiveForDate(season: any, bookingDateISO: string) {
 }
 
 
-// âœ… نبي UID الحقيقي فقط (إذا مسجل دخول) ونرفض anonymous
+// ✅ نبي UID الحقيقي فقط (إذا مسجل دخول) ونرفض anonymous
 function getSignedInUidOrNull(): string | null {
   const auth = getAuth();
   const u = auth.currentUser;
@@ -751,7 +642,7 @@ type BusyState = {
   disabledStartTimes: Set<string>;
   loading: boolean;
   hint: string;
-  suggestedSlot?: string; // âœ… NEW: الوقت المقترح (لطور الموسم فقط)
+  suggestedSlot?: string; // ✅ NEW: الوقت المقترح (لطور الموسم فقط)
 };
 
 type SlotChipState = "available" | "booked" | "unavailable";
@@ -786,7 +677,7 @@ const emptyBusyState = (): BusyState => ({
   disabledStartTimes: new Set(),
   loading: false,
   hint: "",
-  suggestedSlot: "", // âœ… NEW
+  suggestedSlot: "", // ✅ NEW
 });
 
 
@@ -1126,15 +1017,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const stepScrollTimersRef = useRef<number[]>([]);
 
   // =========================
-  // âœ… Settings (live)
+  // ✅ Settings (live)
   // =========================
   const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
   const booking = (appSettings as any)?.booking || {};
   const seasonPricing = (appSettings as any)?.catalogSeasonPricing || {};
 
-  const seasonCfg = seasonPricing; // âœ… موسم الأسعار (Catalog)
+  const seasonCfg = seasonPricing; // ✅ موسم الأسعار (Catalog)
   const sequentialBooking = !!(booking as any)?.sequentialBooking;
-  // âœ… تاريخ الحجز الأساسي (لازم يختاره قبل الخدمات)
+  // ✅ تاريخ الحجز الأساسي (لازم يختاره قبل الخدمات)
   const [bookingDate, setBookingDate] = useState<string>("");
   const [calendarViewMode, setCalendarViewMode] = useState<CalendarViewMode>(() => {
     try {
@@ -1245,11 +1136,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   const slotStepMin = useMemo(() => {
     const v = safeInt((booking as any)?.slotStepMin, 10);
-    // âœ… لا تغيّر هذي القائمة بدون ما تغيّر SettingsBookings.tsx بعده
+    // ✅ لا تغيّر هذي القائمة بدون ما تغيّر SettingsBookings.tsx بعده
     return [5, 10, 15, 30].includes(v) ? v : 10;
   }, [(booking as any)?.slotStepMin]);
 
-  // âœ… NEW: bufferMin from settings (same contract as firestoreBookings)
+  // ✅ NEW: bufferMin from settings (same contract as firestoreBookings)
   const bufferMin = useMemo(() => {
     return Math.max(0, safeInt((booking as any)?.bufferMin, 5));
   }, [(booking as any)?.bufferMin]);
@@ -1263,7 +1154,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
-    // âœ… فتحة المواعيد حسب اليوم المختار
+    // ✅ فتحة المواعيد حسب اليوم المختار
     setTimeSlots(generateSalonTimeSlots(openTime, closeTime, slotStepMin));
   }, [selectedDayOpen, openTime, closeTime, slotStepMin]);
 
@@ -1329,10 +1220,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [offerStartTime, setOfferStartTime] = useState<string>("");
   const [pickerScope, setPickerScope] = useState<PickerScope>("services");
 
-  // âœ… دليل أطوال الشعر (عرض)
+  // ✅ دليل أطوال الشعر (عرض)
   const [showHairGuide, setShowHairGuide] = useState(false);
 
-  // âœ… دليل أطوال الشعر (رابط + رفع للأونر)
+  // ✅ دليل أطوال الشعر (رابط + رفع للأونر)
   const [hairGuideUrl, setHairGuideUrl] = useState<string>(hairGuideImg);
   const [isOwner, setIsOwner] = useState(false);
   const [uploadingGuide, setUploadingGuide] = useState(false);
@@ -1345,7 +1236,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   });
 
   // =========================
-  // âœ… Auto-fill client info (name/phone) from Profile
+  // ✅ Auto-fill client info (name/phone) from Profile
   // =========================
   const [signedUid, setSignedUid] = useState<string | null>(null);
 
@@ -1669,7 +1560,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.items]);
 
-  // âœ… busy/disabled per item
+  // ✅ busy/disabled per item
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
   const [staffFullDayByItem, setStaffFullDayByItem] = useState<
     Record<string, Record<string, boolean>>
@@ -1679,7 +1570,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     Record<string, PackageQuickEligibility>
   >({});
 
-  // âœ… Future availability (clients)
+  // ✅ Future availability (clients)
   const [futureSelectedEmployeeKey, setFutureSelectedEmployeeKey] = useState<string>("");
   const [futureLoading, setFutureLoading] = useState(false);
   const [futureResult, setFutureResult] = useState<{ date: string; times: string[] }[]>([]);
@@ -1717,7 +1608,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     });
   }
 
-  // âœ… Staff per serviceId
+  // ✅ Staff per serviceId
   const [staffByService, setStaffByService] = useState<Record<string, StaffPublicWithId[]>>({});
   const [staffLoadingByService, setStaffLoadingByService] = useState<Record<string, boolean>>({});
   const [staffErrorByService, setStaffErrorByService] = useState<Record<string, string>>({});
@@ -1729,7 +1620,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const takenTimesCacheRef = useRef<Record<string, { ts: number; values: string[] }>>({});
   const takenTimesInFlightRef = useRef<Record<string, Promise<string[]>>>({});
 
-  // âœ… Modal بدل alert
+  // ✅ Modal بدل alert
   const [uiModal, setUiModal] = useState<UiModalState>({
     open: false,
     title: "",
@@ -1751,7 +1642,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   };
 
   // =========================
-  // âœ… Helper: تعارض أوقات داخل السلة نفسها (employeeKey + نفس التاريخ)
+  // ✅ Helper: تعارض أوقات داخل السلة نفسها (employeeKey + نفس التاريخ)
   // =========================
   function getLocalTakenTimesForItem(
     items: CartItem[],
@@ -1768,7 +1659,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       if (!other) continue;
       if (other.id === currentItemId) continue;
 
-      const otherKey = resolveEmployeeKey(other); // âœ… FIX: نفس منطق booking_slots
+      const otherKey = resolveEmployeeKey(other); // ✅ FIX: نفس منطق booking_slots
       const otherEmployeeId = String(other.employeeId || "").trim();
       const d = String(other.date || "").trim();
       const t = String(other.time || "").trim();
@@ -1814,8 +1705,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const b = list[j];
         if (isSequentialOfferItem(a) || isSequentialOfferItem(b)) continue;
 
-        const empA = resolveEmployeeKey(a); // âœ… FIX
-        const empB = resolveEmployeeKey(b); // âœ… FIX
+        const empA = resolveEmployeeKey(a); // ✅ FIX
+        const empB = resolveEmployeeKey(b); // ✅ FIX
         const dateA = String(a.date || "").trim();
         const dateB = String(b.date || "").trim();
         const timeA = String(a.time || "").trim();
@@ -1930,8 +1821,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 }
 
   // =========================
-  // âœ… Use local hair guide image + role (owner/admin)
-  // âœ… FIX: use onAuthStateChanged so role doesn't stay false
+  // ✅ Use local hair guide image + role (owner/admin)
+  // ✅ FIX: use onAuthStateChanged so role doesn't stay false
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -2736,7 +2627,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     return Array.from(map.entries());
   }, [servicesInSection]);
 
-  // âœ… عرض السعر في الـ dropdown حسب (طور الموسم/العادي) + تاريخ الحجز المختار
+  // ✅ عرض السعر في الـ dropdown حسب (طور الموسم/العادي) + تاريخ الحجز المختار
   function servicePickerPriceText(sv: FlatService) {
     const eff = pickEffectivePrice({
       basePrice: Number(sv.basePrice || 0),
@@ -5268,7 +5159,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   }
 
   // =========================
-  // âœ… Busy slots per item
+  // ✅ Busy slots per item
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -5343,7 +5234,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           takenFs.forEach((x) => takenAll.add(x));
           takenLocal.forEach((x) => takenAll.add(x));
 
-          // âœ… currentTime مرة وحدة فقط
+          // ✅ currentTime مرة وحدة فقط
           const currentTime = String(it.time || "").trim();
 
           // 3) حساب الـ Disabled بشكل صحيح (duration + buffer)
@@ -5351,7 +5242,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           let sequentialHint = "";
           let suggestedSlot = "";
 
-          // âœ… أوقات ممكن تبدأ منها (حسب نهاية الخدمة + سماح)
+          // ✅ أوقات ممكن تبدأ منها (حسب نهاية الخدمة + سماح)
           const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
 
           // فقط الأوقات اللي ما تتجاوز نهاية الدوام النهائي (صالون + موظفة)
@@ -5414,7 +5305,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             }
           }
 
-          // âœ… هذه هي “البدايات الصحيحة” فعلياً (تضمن أن كل قطع الوقت المطلوبة فاضية)
+          // ✅ هذه هي “البدايات الصحيحة” فعلياً (تضمن أن كل قطع الوقت المطلوبة فاضية)
           const greens = getGreenStartTimes({
             allSlots: baseSlots,
             slotStepMin,
@@ -5455,11 +5346,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
               disabledStartTimes: disabled,
               loading: false,
               hint: sequentialHint,
-              suggestedSlot, // âœ… NEW
+              suggestedSlot, // ✅ NEW
             },
           }));
 
-          // âœ… FIX الجوهري: منع تصفير الوقت التلقائي إلا في حالات التعارض الحقيقي
+          // ✅ FIX الجوهري: منع تصفير الوقت التلقائي إلا في حالات التعارض الحقيقي
           if (currentTime && disabled.has(currentTime)) {
             const isActuallyTaken = takenAll.has(currentTime);
 
@@ -5953,8 +5844,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
   }
 
   // =========================
-  // âœ… Slot check for one item
-  // âœ… FIX: فحص تعارض السلة قبل Firestore (employeeKey)
+  // ✅ Slot check for one item
+  // ✅ FIX: فحص تعارض السلة قبل Firestore (employeeKey)
   // =========================
   const checkOneItemSlot = async (it: CartItem) => {
     const employeeKey = resolveEmployeeKey(it);
@@ -6044,7 +5935,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       bufferMin
     );
 
-    // âœ… FIX: التأكد من أننا لا نفحص التعارض مع الخدمة نفسها داخل السلة
+    // ✅ FIX: التأكد من أننا لا نفحص التعارض مع الخدمة نفسها داخل السلة
     const localTaken = getLocalTakenTimesForItem(
       formData.items || [],
       it.id,
@@ -6248,7 +6139,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       return false;
     });
 
-    // âœ… ترتيب الحجز: لازم يخلص الخدمة الأولى قبل الثانية
+    // ✅ ترتيب الحجز: لازم يخلص الخدمة الأولى قبل الثانية
     for (let i = 1; i < items.length; i++) {
       const prev = items[i - 1];
       const prevOk = String(prev.employeeId || "").trim() && String(prev.time || "").trim();
@@ -7606,7 +7497,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           <div className="col-lg-8">
             <div className="booking-card" ref={bookingCardRef}>
 
-              {/* âœ… Logo */}
+              {/* ✅ Logo */}
               <div className="text-center mb-3">
                 <img
                   src={logo}
@@ -8031,7 +7922,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                     </div>
                   </div>
 
-                  {/* âœ… دليل أطوال الشعر */}
+                  {/* ✅ دليل أطوال الشعر */}
                   {selectedSectionId && isHairSection && (
                     <div className="mt-3 booking-hair-guide-panel">
                       <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -8114,7 +8005,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                   </div>
                 ) : null}
 
-	                {/* âœ… الخدمات المختارة (السلة) */}
+	                {/* ✅ الخدمات المختارة (السلة) */}
                 {currentStep === 2 ? (
 	                <div className="mb-4">
 	                  <div className="booking-cart-head">
@@ -8413,7 +8304,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                               staffWindowSections.length > 0 &&
                               availableSlotsForItem.length === 0));
 
-	                        // âœ… شكل الكرت وهو مقفول (تم التأكيد)
+	                        // ✅ شكل الكرت وهو مقفول (تم التأكيد)
 	                        if (isLocked) {
 	                          return (
 	                            <Fragment key={it.id}>
@@ -8497,7 +8388,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 	                          );
 	                        }
 
-                        // âœ… شكل الكرت وهو مفتوح (جاري الاختيار)
+                        // ✅ شكل الكرت وهو مفتوح (جاري الاختيار)
                         return (
                           <Fragment key={it.id}>
                             {showPackageRunHeader ? (

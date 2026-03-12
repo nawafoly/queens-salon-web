@@ -38,6 +38,10 @@ import {
 } from "../helpers/timeSlots";
 import { formatTime12 } from "../helpers/timeDisplay";
 import {
+  extractMinPriceInternal as extractMinPrice,
+  readDisplayLabelInternal as readDisplayLabel,
+} from "../helpers/pageSharedUtils";
+import {
   isStaffAvailableForDate,
   filterStaffSlotsByWorkingHours,
   isStaffWorkingAtTime,
@@ -50,6 +54,7 @@ import {
 import { AppSettingsService } from "../services/AppSettingsService";
 import { FirestoreReadStats } from "../services/firestoreReadStats";
 import { normalizeBookedSlotsMap } from "../services/firestoreAvailabilityDays";
+import { backfillAvailabilityDaysFromBookingSlots } from "../services/firestoreAvailabilityBackfill";
 import Modal from "../components/Modal";
 import BookingDropdown, {
   type BookingDropdownGroup,
@@ -120,9 +125,10 @@ import * as firestoreBookings from "../services/firestoreBookings";
 // ✅ ملاحظة: intentionally unused هنا (الاستقبال)
 // import { createOrLoadUserProfile } from "../services/userProfile";
 
-// Modal
-import ConfirmModal from "../components/ConfirmModal";
-import "../styles/BookingInternal.css";
+	// Modal
+	import ConfirmModal from "../components/ConfirmModal";
+	import type { BookingFormData, CartItem } from "../types/bookingShared";
+	import "../styles/BookingInternal.css";
 
 const createBookingGroup = (
   firestoreBookings as {
@@ -139,49 +145,6 @@ const createBookingGroup = (
    Types
 ========================= */
 
-type CartItem = {
-  id: string; // local id
-  packageRunId?: string;
-  serviceId: string;
-  serviceName: string;
-  packageId?: string;
-  packageSnapshot?: {
-    packageId: string;
-    packageName: string;
-    finalPriceAtBooking: number;
-    baseTotalPriceAtBooking: number;
-    totalDurationMinAtBooking: number;
-    serviceIds: string[];
-    services: PackageServiceItem[];
-  };
-  serviceSectionId: string;
-  serviceSectionTitle?: string;
-  serviceCategoryId?: string;
-  serviceCategoryName?: string;
-
-  serviceBasePrice?: number;
-  basePrice: number;
-  priceText: string;
-  toolsSource?: "client" | "salon";
-  toolsFeeApplied?: number;
-  durationMin: number;
-
-  employeeId: string; // staff_public doc id
-  employeeUid?: string; // linkedUid
-  employeeName?: string;
-
-  date: string; // YYYY-MM-DD
-  time: string; // ✅ نخزن 24h "HH:MM" (value24)
-  locked?: boolean;
-};
-
-interface BookingFormData {
-  name: string;
-  phone: string;
-  note?: string;
-  items: CartItem[];
-}
-
 type AppliedOfferResult = {
   discountType: "fixed" | "percent" | null;
   discountValue: number;
@@ -192,38 +155,6 @@ type AppliedOfferResult = {
   couponCode: string;
   applicableItemIndexes: number[];
 };
-
-function extractMinPrice(priceText: string): number {
-  const cleaned = priceText.replace(/[^\d\-]/g, "");
-  if (!cleaned) return 0;
-
-  const parts = cleaned
-    .split("-")
-    .filter(Boolean)
-    .map((n) => Number(n))
-    .filter((n) => Number.isFinite(n));
-
-  if (!parts.length) return 0;
-  return Math.min(...parts);
-}
-
-function readDisplayLabel(raw: any, fallback = ""): string {
-  const obj = raw && typeof raw === "object" ? raw : {};
-  const directKeys = ["name", "title", "category", "categoryName", "الاسم", "العنوان"];
-  for (const k of directKeys) {
-    const v = String((obj as any)?.[k] ?? "").trim();
-    if (v) return v;
-  }
-  const entries = Object.entries(obj as Record<string, any>);
-  for (const [k, v] of entries) {
-    const key = String(k || "").toLowerCase();
-    if (/(name|title|اسم|عنوان)/i.test(key)) {
-      const txt = String(v ?? "").trim();
-      if (txt) return txt;
-    }
-  }
-  return String(fallback || "").trim();
-}
 
 type FlatService = {
   id: string;
@@ -267,6 +198,7 @@ type FsSectionCatalogCacheRow = {
 const QUICK_CLIENT_HISTORY_KEY = "internal_quick_clients_history_v1";
 
 const SALON_ID = "main";
+let availabilityDaysBackfillStartedThisSession = false;
 const DEFAULT_SERVICE_DURATION_MIN = 60;
 const PACKAGE_SECTION_ID = "service-packages";
 const PACKAGE_SECTION_TITLE = "البكيجات";
@@ -3617,6 +3549,56 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       unsubAuth();
     };
   }, []);
+
+  // =========================
+  // ✅ Client-side availability_days backfill (Spark-friendly; no Cloud Functions)
+  // - Runs once per session for admin/owner in BookingInternal
+  // - Range: today - 90 days → today + 90 days
+  // =========================
+  useEffect(() => {
+    if (!isOwner) return;
+    if (availabilityDaysBackfillStartedThisSession) return;
+
+    const sessionKey = `qs_availability_days_backfill__${SALON_ID}__v1`;
+    try {
+      if (sessionStorage.getItem(sessionKey) === "1") return;
+      sessionStorage.setItem(sessionKey, "1");
+    } catch {
+      // ignore (private mode / disabled storage)
+    }
+
+    availabilityDaysBackfillStartedThisSession = true;
+    const ctrl = new AbortController();
+
+    (async () => {
+      const base = todayISO();
+      const fromDateISO = addDaysISO(base, -90);
+      const toDateISO = addDaysISO(base, 90);
+
+      console.log("[availability_backfill] auto-run from BookingInternal", {
+        salonId: SALON_ID,
+        fromDateISO,
+        toDateISO,
+      });
+
+      await backfillAvailabilityDaysFromBookingSlots({
+        salonId: SALON_ID,
+        fromDateISO,
+        toDateISO,
+        maxDays: 200,
+        batchSize: 300,
+        batchDelayMs: 350,
+        dayDelayMs: 75,
+        shouldAbort: () => ctrl.signal.aborted,
+      });
+    })().catch((e: any) => {
+      console.error("[availability_backfill] ERROR:", e?.code, e?.message, e);
+    });
+
+    return () => {
+      ctrl.abort();
+    };
+  }, [isOwner]);
 
   async function uploadHairGuide(file: File) {
     setUploadingGuide(true);

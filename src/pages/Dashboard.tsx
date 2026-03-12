@@ -81,6 +81,11 @@ import { AppSettingsService } from "../services/AppSettingsService";
 
 import { resolveServiceName } from "../services/serviceResolver";
 import { normalizeTimeToHHMM, timeToMinutes } from "../helpers/timeContract";
+import {
+  formatTime12,
+  round2,
+  toMillisSafeDashboard as toMillisSafe,
+} from "../helpers/pageSharedUtils";
 
 /** ===== Settings (LocalStorage fallback) ===== */
 type SectionKey =
@@ -222,26 +227,8 @@ function loadSettings(): AppSettings {
   }
 }
 
-function formatTime12(time24: string) {
-  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (!m) return String(time24 || "-");
-  const h24 = Number(m[1]);
-  const mm = m[2];
-  const h12 = h24 % 12 || 12;
-  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
-}
-
 function parseTimeToMinutes(time24: string): number | null {
   return timeToMinutes(time24);
-}
-
-function toMillisSafe(v: any): number {
-  if (!v) return 0;
-  if (typeof v === "number") return v;
-  if (typeof v?.toMillis === "function") return v.toMillis();
-  if (typeof v?.seconds === "number") return v.seconds * 1000;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
 }
 
 function formatDateTimeAr(v: any): string {
@@ -277,10 +264,6 @@ function financeSourceLabelAr(raw: unknown): string {
   if (s === "manual") return "يدوي";
   if (s === "income" || s === "revenue") return "إيراد";
   return String(raw || "").trim() || "إيراد";
-}
-
-function round2(v: number): number {
-  return Math.round((Number(v) || 0) * 100) / 100;
 }
 
 function normalizePaymentType(raw: unknown): "full" | "partial" | null {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -284,125 +284,25 @@ function keyLabel(key: string): string {
   return map[key] || key;
 }
 
-function shortValue(v: any): string {
-  if (v === undefined || v === null) return "—";
-  if (typeof v === "boolean") return v ? "نعم" : "لا";
-  if (typeof v === "string" || typeof v === "number") return String(v);
-  if (Array.isArray(v)) return `${v.length} عنصر`;
-  return "تم التحديث";
+function isPrimitiveValue(v: any): boolean {
+  return v === null || (typeof v !== "object" && typeof v !== "function");
 }
 
-function extractSettingsFriendlyChanges(before: any, after: any): string[] {
-  if (!isObj(before) || !isObj(after)) return [];
-  const out: string[] = [];
-
-  if (JSON.stringify(before.businessHours) !== JSON.stringify(after.businessHours)) {
-    const b = isObj(before.businessHours) ? before.businessHours : {};
-    const a = isObj(after.businessHours) ? after.businessHours : {};
-    const days = Array.from(new Set([...Object.keys(b), ...Object.keys(a)])).filter(
-      (d) => JSON.stringify(b[d]) !== JSON.stringify(a[d])
-    );
-    if (days.length) {
-      const names = days.map((d) => keyLabel(d));
-      out.push(`تم تعديل ساعات العمل (${names.slice(0, 3).join("، ")}${days.length > 3 ? "..." : ""})`);
-    } else {
-      out.push("تم تعديل ساعات العمل");
-    }
-  }
-
-  if (JSON.stringify(before.policies) !== JSON.stringify(after.policies)) {
-    out.push("تم تعديل السياسات");
-  }
-
-  if (JSON.stringify(before.sections) !== JSON.stringify(after.sections)) {
-    out.push("تم تعديل أقسام الداشبورد");
-  }
-
-  if (JSON.stringify(before.catalogSeasonPricing) !== JSON.stringify(after.catalogSeasonPricing)) {
-    const b = isObj(before.catalogSeasonPricing) ? before.catalogSeasonPricing : {};
-    const a = isObj(after.catalogSeasonPricing) ? after.catalogSeasonPricing : {};
-    if (b.enabled !== a.enabled) {
-      out.push(`تسعير الموسم: ${shortValue(b.enabled)} ← ${shortValue(a.enabled)}`);
-    } else {
-      out.push("تم تعديل تسعير الموسم");
-    }
-  }
-
-  return out;
-}
-
-function pushNestedDiff(
-  out: string[],
-  parentKey: string,
-  before: Record<string, any>,
-  after: Record<string, any>
-) {
-  const nestedKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
-  const nestedChanges: string[] = [];
-
-  nestedKeys.forEach((nk) => {
-    const nb = before[nk];
-    const na = after[nk];
-    if (JSON.stringify(nb) === JSON.stringify(na)) return;
-
-    if (isObj(nb) && isObj(na)) {
-      const deepKeys = Array.from(new Set([...Object.keys(nb), ...Object.keys(na)]));
-      deepKeys.forEach((dk) => {
-        const db = nb[dk];
-        const da = na[dk];
-        if (JSON.stringify(db) === JSON.stringify(da)) return;
-        nestedChanges.push(
-          `${keyLabel(nk)} (${keyLabel(dk)}): ${shortValue(db)} ← ${shortValue(da)}`
-        );
-      });
-      return;
-    }
-
-    nestedChanges.push(`${keyLabel(nk)}: ${shortValue(nb)} ← ${shortValue(na)}`);
-  });
-
-  if (nestedChanges.length) {
-    out.push(`${keyLabel(parentKey)}: ${nestedChanges.slice(0, 8).join(" | ")}`);
-  }
-}
-
-function pushBeforeAfterDiff(out: string[], before: any, after: any) {
-  if (!isObj(before) || !isObj(after)) return;
-
-  // تفاصيل أوضح لإعدادات أقسام الداشبورد
-  if (isObj(before.sections) && isObj(after.sections)) {
-    const sectionKeys = Array.from(
-      new Set([...Object.keys(before.sections), ...Object.keys(after.sections)])
-    );
-    const sectionChanges: string[] = [];
-    sectionKeys.forEach((k) => {
-      const bv = before.sections[k];
-      const av = after.sections[k];
-      if (bv === av) return;
-      sectionChanges.push(`${k}: ${shortValue(bv)} ← ${shortValue(av)}`);
-    });
-    if (sectionChanges.length) {
-      out.push(`أقسام الداشبورد: ${sectionChanges.slice(0, 6).join(" | ")}`);
-    }
-  }
-
-  const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+function shallowChangedKeys(before: Record<string, any>, after: Record<string, any>): string[] {
   const ignored = new Set(["updatedAt", "createdAt", "sections"]);
+  const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+  const changed: string[] = [];
 
   keys.forEach((k) => {
     if (ignored.has(k)) return;
     const bv = before[k];
     const av = after[k];
-    if (JSON.stringify(bv) === JSON.stringify(av)) return;
-
-    // لو قيمة مركبة: اظهر تفاصيل الحقول الداخلية بدل "تم التحديث"
-    if (isObj(bv) && isObj(av)) {
-      pushNestedDiff(out, k, bv, av);
-      return;
-    }
-
-    out.push(`${keyLabel(k)}: ${shortValue(bv)} ← ${shortValue(av)}`);
+    if (Object.is(bv, av)) return;
+    if (isPrimitiveValue(bv) && isPrimitiveValue(av) && bv === av) return;
+    changed.push(k);
   });
+
+  return changed;
 }
 
 function extractImportantChanges(r: LogRow): string[] {
@@ -411,8 +311,7 @@ function extractImportantChanges(r: LogRow): string[] {
   const entityKey = String(r.entityType || "").toLowerCase().trim();
 
   if (actionKey === "settings_updated" || entityKey === "settings") {
-    const friendly = extractSettingsFriendlyChanges(r.before, r.after);
-    if (friendly.length) return friendly.slice(0, 6);
+    out.push("تم تعديل الإعدادات");
   }
 
   const meta = (r.meta && typeof r.meta === "object" ? r.meta : {}) as Record<string, any>;
@@ -436,7 +335,12 @@ function extractImportantChanges(r: LogRow): string[] {
     });
   }
   if (!out.length) {
-    pushBeforeAfterDiff(out, r.before, r.after);
+    if (isObj(r.before) && isObj(r.after)) {
+      const changed = shallowChangedKeys(r.before as Record<string, any>, r.after as Record<string, any>);
+      if (changed.length) {
+        out.push(`تم تعديل: ${changed.slice(0, 8).map((k) => keyLabel(k)).join(" | ")}`);
+      }
+    }
   }
   if (!out.length && r.description) out.push(String(r.description));
   return out.slice(0, 12);
@@ -612,6 +516,167 @@ function detectSensitiveLocal(row: LogRow) {
   );
 }
 
+type PrettyJsonCache = {
+  before: string;
+  after: string;
+  meta: string;
+};
+
+function safePrettyJson(value: any): string {
+  try {
+    return JSON.stringify(value ?? null, null, 2);
+  } catch (e: any) {
+    const msg = String(e?.message || e || "").trim();
+    return msg ? `<<JSON stringify failed: ${msg}>>` : "<<JSON stringify failed>>";
+  }
+}
+
+type LogRowItemProps = {
+  row: LogRow;
+  expanded: boolean;
+  isRestoringAny: boolean;
+  isRestoringThis: boolean;
+  onToggleExpand: (id: string) => void;
+  onOpenRestoreConfirm: (row: LogRow) => void;
+};
+
+const LogRowItem = memo(function LogRowItem({
+  row,
+  expanded,
+  isRestoringAny,
+  isRestoringThis,
+  onToggleExpand,
+  onOpenRestoreConfirm,
+}: LogRowItemProps) {
+  const [rawOpen, setRawOpen] = useState(false);
+  const [prettyJson, setPrettyJson] = useState<PrettyJsonCache | null>(null);
+
+  useEffect(() => {
+    if (!expanded && rawOpen) setRawOpen(false);
+  }, [expanded, rawOpen]);
+
+  useEffect(() => {
+    if (!rawOpen || prettyJson) return;
+    setPrettyJson({
+      before: safePrettyJson(row.before),
+      after: safePrettyJson(row.after),
+      meta: safePrettyJson(row.meta),
+    });
+  }, [rawOpen, prettyJson, row.before, row.after, row.meta]);
+
+  const sensitive = useMemo(() => detectSensitiveLocal(row), [row]);
+  const timeText = useMemo(() => fmtDateTime(row.atMs), [row.atMs]);
+  const restoreKind = useMemo(() => getRestoreKind(row), [row.action]);
+  const canRestore = useMemo(() => canRestoreDeletedLog(row), [row]);
+  const changeLines = useMemo(() => (expanded ? extractImportantChanges(row) : []), [expanded, row]);
+
+  return (
+    <div className={`logs-row ${sensitive ? "logs-row--sensitive" : ""}`}>
+      <div className="logs-time" data-label="الوقت">{timeText}</div>
+      <div className="logs-type" data-label="العملية">
+        <span className={`logs-pill logs-pill--${actionTone(row.action)}`}>
+          {sensitive ? <FontAwesomeIcon className="logs-sensitive-icon" icon={faTriangleExclamation} /> : null}
+          {asLabel(ACTION_LABELS, row.action)}
+        </span>
+      </div>
+      <div className="logs-entity" data-label="العنصر">
+        <span className="logs-chip">{asLabel(ENTITY_LABELS, row.entityType)}</span>
+      </div>
+      <div className="logs-user" data-label="المستخدم">
+        <div className="logs-user-name">{getDisplayUser(row)}</div>
+        <div className="logs-user-meta">
+          {[roleLabel(row.userRole), row.userEmail, row.userUid ? `#${String(row.userUid).slice(0, 8)}` : ""]
+            .filter(Boolean)
+            .join(" | ")}
+        </div>
+      </div>
+      <div className="logs-source" data-label="المصدر">
+        <span className="logs-chip logs-chip--source">{asLabel(SOURCE_LABELS, row.source)}</span>
+      </div>
+      <div className="logs-note" data-label="الملخص">
+        <div className="logs-note-main">{summarizeRow(row)}</div>
+        {row.entityId ? <div className="logs-note-sub">ID: {row.entityId}</div> : null}
+      </div>
+      <div data-label="تفاصيل">
+        <button
+          className="logs-expand-btn"
+          type="button"
+          onClick={() => onToggleExpand(row.id)}
+          aria-expanded={expanded}
+        >
+          {expanded ? <FontAwesomeIcon icon={faChevronUp} /> : <FontAwesomeIcon icon={faChevronDown} />}
+          {expanded ? "إخفاء" : "عرض"}
+        </button>
+      </div>
+
+      {expanded ? (
+        <div className="logs-details" role="region" aria-label="تفاصيل السجل">
+          <div className="logs-detail-top">
+            <span className="logs-mini-chip">الوقت: {timeText}</span>
+            {row.logId ? <span className="logs-mini-chip">Log: {row.logId}</span> : null}
+            {row.entityId ? <span className="logs-mini-chip">Entity: {row.entityId}</span> : null}
+          </div>
+          {restoreKind ? (
+            <div className="logs-detail-actions">
+              <button
+                className="logs-restore-btn"
+                type="button"
+                disabled={!canRestore || isRestoringAny}
+                onClick={() => onOpenRestoreConfirm(row)}
+                title={
+                  canRestore
+                    ? restoreKind === "income"
+                      ? "استرجاع سجل الدخل المحذوف"
+                      : "استرجاع سجل المصروف المحذوف"
+                    : "لا يمكن الاسترجاع لأن بيانات قبل الحذف غير متوفرة"
+                }
+              >
+                {isRestoringThis ? "جاري..." : "استرجاع"}
+              </button>
+            </div>
+          ) : null}
+          <div className="logs-detail-summary">
+            {changeLines.map((line, idx) => (
+              <div key={`${row.id}-line-${idx}`} className="logs-detail-line">
+                {line}
+              </div>
+            ))}
+          </div>
+          <details
+            className="logs-raw-wrap"
+            open={rawOpen}
+            onToggle={(e) => setRawOpen((e.currentTarget as HTMLDetailsElement).open)}
+          >
+            <summary>عرض JSON كامل (View full JSON)</summary>
+            {rawOpen ? (
+              prettyJson ? (
+                <>
+                  <div className="logs-detail-grid">
+                    <div>
+                      <h4>before</h4>
+                      <pre>{prettyJson.before}</pre>
+                    </div>
+                    <div>
+                      <h4>after</h4>
+                      <pre>{prettyJson.after}</pre>
+                    </div>
+                  </div>
+                  <div className="logs-meta-json">
+                    <h4>meta</h4>
+                    <pre>{prettyJson.meta}</pre>
+                  </div>
+                </>
+              ) : (
+                <div className="logs-meta">تحميل JSON...</div>
+              )
+            ) : null}
+          </details>
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
 const SALON_ID = "main";
 
 export default function DashboardLogs() {
@@ -622,6 +687,10 @@ export default function DashboardLogs() {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [errMsg, setErrMsg] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }, []);
 
   const [qText, setQText] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
@@ -715,7 +784,7 @@ export default function DashboardLogs() {
     load();
   }, [canManage, maxRows]);
 
-  const openRestoreConfirm = (r: LogRow) => {
+  const openRestoreConfirm = useCallback((r: LogRow) => {
     const kind = getRestoreKind(r);
     if (!kind) return;
 
@@ -729,7 +798,7 @@ export default function DashboardLogs() {
     }
 
     setRestoreTarget(r);
-  };
+  }, []);
 
   const handleRestore = async () => {
     const r = restoreTarget;
@@ -1113,106 +1182,17 @@ export default function DashboardLogs() {
                 <div>تفاصيل</div>
               </div>
 
-              {filtered.map((r) => {
-                const sensitive = detectSensitiveLocal(r);
-                const expanded = expandedId === r.id;
-                const restoreKind = getRestoreKind(r);
-                const canRestore = canRestoreDeletedLog(r);
-                const rowRestoreBusy = restoringLogId === r.id;
-
-                return (
-                  <div key={r.id} className={`logs-row ${sensitive ? "logs-row--sensitive" : ""}`}>
-                    <div className="logs-time" data-label="الوقت">{fmtDateTime(r.atMs)}</div>
-                    <div className="logs-type" data-label="العملية">
-                      <span className={`logs-pill logs-pill--${actionTone(r.action)}`}>
-                        {sensitive ? <FontAwesomeIcon className="logs-sensitive-icon" icon={faTriangleExclamation} /> : null}
-                        {asLabel(ACTION_LABELS, r.action)}
-                      </span>
-                    </div>
-                    <div className="logs-entity" data-label="العنصر">
-                      <span className="logs-chip">{asLabel(ENTITY_LABELS, r.entityType)}</span>
-                    </div>
-                    <div className="logs-user" data-label="المستخدم">
-                      <div className="logs-user-name">{getDisplayUser(r)}</div>
-                      <div className="logs-user-meta">
-                        {[roleLabel(r.userRole), r.userEmail, r.userUid ? `#${String(r.userUid).slice(0, 8)}` : ""]
-                          .filter(Boolean)
-                          .join(" | ")}
-                      </div>
-                    </div>
-                    <div className="logs-source" data-label="المصدر">
-                      <span className="logs-chip logs-chip--source">{asLabel(SOURCE_LABELS, r.source)}</span>
-                    </div>
-                    <div className="logs-note" data-label="الملخص">
-                      <div className="logs-note-main">{summarizeRow(r)}</div>
-                      {r.entityId ? <div className="logs-note-sub">ID: {r.entityId}</div> : null}
-                    </div>
-                    <div data-label="تفاصيل">
-                      <button
-                        className="logs-expand-btn"
-                        type="button"
-                        onClick={() => setExpandedId(expanded ? null : r.id)}
-                      >
-                        {expanded ? <FontAwesomeIcon icon={faChevronUp} /> : <FontAwesomeIcon icon={faChevronDown} />}
-                        {expanded ? "إخفاء" : "عرض"}
-                      </button>
-                    </div>
-
-                    {expanded ? (
-                      <div className="logs-details" role="region" aria-label="تفاصيل السجل">
-                        <div className="logs-detail-top">
-                          <span className="logs-mini-chip">الوقت: {fmtDateTime(r.atMs)}</span>
-                          {r.logId ? <span className="logs-mini-chip">Log: {r.logId}</span> : null}
-                          {r.entityId ? <span className="logs-mini-chip">Entity: {r.entityId}</span> : null}
-                        </div>
-                        {restoreKind ? (
-                          <div className="logs-detail-actions">
-                            <button
-                              className="logs-restore-btn"
-                              type="button"
-                              disabled={!canRestore || Boolean(restoringLogId)}
-                              onClick={() => openRestoreConfirm(r)}
-                              title={
-                                canRestore
-                                  ? restoreKind === "income"
-                                    ? "استرجاع سجل الدخل المحذوف"
-                                    : "استرجاع سجل المصروف المحذوف"
-                                  : "لا يمكن الاسترجاع لأن بيانات قبل الحذف غير متوفرة"
-                              }
-                            >
-                              {rowRestoreBusy ? "جاري..." : "استرجاع"}
-                            </button>
-                          </div>
-                        ) : null}
-                        <div className="logs-detail-summary">
-                          {extractImportantChanges(r).map((line, idx) => (
-                            <div key={`${r.id}-line-${idx}`} className="logs-detail-line">
-                              {line}
-                            </div>
-                          ))}
-                        </div>
-                        <details className="logs-raw-wrap">
-                          <summary>عرض البيانات الخام (للتقني)</summary>
-                          <div className="logs-detail-grid">
-                            <div>
-                              <h4>before</h4>
-                              <pre>{JSON.stringify(r.before ?? null, null, 2)}</pre>
-                            </div>
-                            <div>
-                              <h4>after</h4>
-                              <pre>{JSON.stringify(r.after ?? null, null, 2)}</pre>
-                            </div>
-                          </div>
-                          <div className="logs-meta-json">
-                            <h4>meta</h4>
-                            <pre>{JSON.stringify(r.meta ?? null, null, 2)}</pre>
-                          </div>
-                        </details>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+              {filtered.map((r) => (
+                <LogRowItem
+                  key={r.id}
+                  row={r}
+                  expanded={expandedId === r.id}
+                  isRestoringAny={Boolean(restoringLogId)}
+                  isRestoringThis={restoringLogId === r.id}
+                  onToggleExpand={toggleExpanded}
+                  onOpenRestoreConfirm={openRestoreConfirm}
+                />
+              ))}
             </div>
           )}
 
