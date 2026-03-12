@@ -18,7 +18,7 @@ type BackfillOpts = {
   toDateISO: string; // YYYY-MM-DD (inclusive)
   dryRun?: boolean;
   // Safety valve: abort if the requested range is too large.
-  maxDays?: number; // default 120
+  maxDays?: number; // default 200 (covers -90/+90)
 };
 
 function parseISODateYMD(value: string): { y: number; m: number; d: number } | null {
@@ -72,7 +72,7 @@ export async function backfillAvailabilityDaysFromBookingSlots(opts: BackfillOpt
   const fromDateISO = String(opts?.fromDateISO || "").trim();
   const toDateISO = String(opts?.toDateISO || "").trim();
   const dryRun = !!opts?.dryRun;
-  const maxDays = Math.max(1, Number(opts?.maxDays ?? 120));
+  const maxDays = Math.max(1, Number(opts?.maxDays ?? 200));
 
   const dates = listISODateRangeInclusive(fromDateISO, toDateISO, maxDays);
 
@@ -133,7 +133,7 @@ export async function backfillAvailabilityDaysFromBookingSlots(opts: BackfillOpt
         bookedSlots,
         complete: true,
         updatedAt: serverTimestamp(),
-      } as any);
+      } as any, { merge: true } as any);
       ops++;
 
       if (ops >= 450) {
@@ -154,4 +154,3 @@ export async function backfillAvailabilityDaysFromBookingSlots(opts: BackfillOpt
     dryRun,
   };
 }
-

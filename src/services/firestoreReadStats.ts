@@ -64,6 +64,108 @@ function topEntries(limit = 30) {
     .slice(0, Math.max(1, limit));
 }
 
+function aggregateBySource(filterPrefix = "") {
+  const prefix = String(filterPrefix || "").trim();
+  const bySource = new Map<string, number>();
+  for (const [path, entry] of stats.entries()) {
+    if (prefix && !path.startsWith(prefix)) continue;
+    const srcs = entry?.bySource || {};
+    for (const [src, n] of Object.entries(srcs)) {
+      const key = String(src || "unknown").trim() || "unknown";
+      bySource.set(key, (bySource.get(key) || 0) + (Number(n || 0) || 0));
+    }
+  }
+  return bySource;
+}
+
+function aggregateByOp(filterPrefix = "") {
+  const prefix = String(filterPrefix || "").trim();
+  const byOp = new Map<FirestoreReadOp, number>();
+  for (const [path, entry] of stats.entries()) {
+    if (prefix && !path.startsWith(prefix)) continue;
+    const ops = entry?.opCounts || {};
+    (Object.entries(ops) as Array<[FirestoreReadOp, number]>).forEach(([op, n]) => {
+      byOp.set(op, (byOp.get(op) || 0) + (Number(n || 0) || 0));
+    });
+  }
+  return byOp;
+}
+
+function topSources(limit = 30, filterPrefix = "") {
+  const rows = Array.from(aggregateBySource(filterPrefix).entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, Math.max(1, limit))
+    .map(([source, total]) => ({ source, total }));
+  return rows;
+}
+
+function dumpSources(limit = 30, filterPrefix = "") {
+  if (!isEnabled()) return [];
+  const rows = topSources(limit, filterPrefix);
+  // eslint-disable-next-line no-console
+  console.table(rows);
+  return rows;
+}
+
+function dumpOps(filterPrefix = "") {
+  if (!isEnabled()) return [];
+  const rows = Array.from(aggregateByOp(filterPrefix).entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([op, total]) => ({ op, total }));
+  // eslint-disable-next-line no-console
+  console.table(rows);
+  return rows;
+}
+
+const DEFAULT_PREFIXES = [
+  // Core booking model
+  "salons/main/booking_slots/",
+  "salons/main/availability_days/",
+  "salons/main/bookings/",
+  "salons/main/booking_tracks/",
+  "salons/main/counters/",
+  // Finance
+  "salons/main/income/",
+  "salons/main/expenses/",
+  // Staff/users
+  "salons/main/staff_public/",
+  "salons/main/users/",
+  "users/",
+];
+
+function dumpPrefixSummary(prefixes = DEFAULT_PREFIXES) {
+  if (!isEnabled()) return [];
+
+  const wanted = (prefixes || []).map((p) => String(p || "").trim()).filter(Boolean);
+  const totalsByPrefix: Array<{ prefix: string; total: number; lastAt: number }> = wanted.map(
+    (prefix) => ({ prefix, total: 0, lastAt: 0 })
+  );
+
+  let grandTotal = 0;
+  for (const [path, entry] of stats.entries()) {
+    grandTotal += Number(entry?.total || 0) || 0;
+    for (const row of totalsByPrefix) {
+      if (!path.startsWith(row.prefix)) continue;
+      row.total += Number(entry?.total || 0) || 0;
+      row.lastAt = Math.max(row.lastAt, Number(entry?.lastAt || 0) || 0);
+      break;
+    }
+  }
+
+  const covered = totalsByPrefix.reduce((s, r) => s + (Number(r.total || 0) || 0), 0);
+  const other = Math.max(0, grandTotal - covered);
+
+  const rows = [
+    ...totalsByPrefix.filter((r) => r.total > 0).sort((a, b) => b.total - a.total),
+    ...(other > 0 ? [{ prefix: "(other)", total: other, lastAt: Date.now() }] : []),
+    { prefix: "(grand_total)", total: grandTotal, lastAt: Date.now() },
+  ];
+
+  // eslint-disable-next-line no-console
+  console.table(rows);
+  return rows;
+}
+
 function reset() {
   stats.clear();
 }
@@ -98,7 +200,11 @@ export const FirestoreReadStats = {
   bump,
   reset,
   dump,
+  dumpSources,
+  dumpOps,
+  dumpPrefixSummary,
   topEntries,
+  topSources,
 };
 
 declare global {

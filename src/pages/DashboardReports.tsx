@@ -6,6 +6,7 @@ import { collection, onSnapshot } from "firebase/firestore";
 import "../styles/DashboardReports.css";
 import { db } from "../services/firebase";
 import { AppSettingsService } from "../services/AppSettingsService";
+import { FirestoreReadStats } from "../services/firestoreReadStats";
 import type { PaymentMethod } from "../types/finance";
 import {
   buildPayrollExpenseRowsForMonths,
@@ -557,9 +558,21 @@ export default function DashboardReports() {
     const expensesQ = collection(db, "salons", SALON_ID, "expenses");
     const staffQ = collection(db, "salons", SALON_ID, "staff_public");
 
+    let firstBookings = true;
+    let firstIncome = true;
+    let firstExpenses = true;
+    let firstStaff = true;
+
     const unsubBookings = onSnapshot(
       bookingsQ,
       (snap) => {
+        const source = "DashboardReports.bookings.onSnapshot";
+        const docs = firstBookings ? snap.docs : snap.docChanges().map((c) => c.doc);
+        docs.forEach((d) => {
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+        });
+        firstBookings = false;
+
         const rows: BookingRow[] = snap.docs.map((d) => {
           const raw = d.data() as any;
           const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
@@ -602,6 +615,13 @@ export default function DashboardReports() {
     const unsubIncome = onSnapshot(
       incomeQ,
       (snap) => {
+        const source = "DashboardReports.income.onSnapshot";
+        const docs = firstIncome ? snap.docs : snap.docChanges().map((c) => c.doc);
+        docs.forEach((d) => {
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+        });
+        firstIncome = false;
+
         const rows: IncomeRow[] = snap.docs.map((d) => {
           const raw = d.data() as any;
           const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
@@ -645,6 +665,13 @@ export default function DashboardReports() {
     const unsubExpenses = onSnapshot(
       expensesQ,
       (snap) => {
+        const source = "DashboardReports.expenses.onSnapshot";
+        const docs = firstExpenses ? snap.docs : snap.docChanges().map((c) => c.doc);
+        docs.forEach((d) => {
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+        });
+        firstExpenses = false;
+
         const rows: ExpenseRow[] = snap.docs.map((d) => {
           const raw = d.data() as any;
           const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
@@ -685,6 +712,13 @@ export default function DashboardReports() {
     const unsubStaff = onSnapshot(
       staffQ,
       (snap) => {
+        const source = "DashboardReports.staff_public.onSnapshot";
+        const docs = firstStaff ? snap.docs : snap.docChanges().map((c) => c.doc);
+        docs.forEach((d) => {
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+        });
+        firstStaff = false;
+
         const rows = normalizeStaffPayrollRows(
           snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
         );

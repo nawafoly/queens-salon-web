@@ -1,5 +1,6 @@
 // src/services/firestoreDebug.ts
-import { auth, db } from "./firebase";
+import { auth, db, functions } from "./firebase";
+import { httpsCallable } from "firebase/functions";
 import {
   doc,
   getDoc,
@@ -18,6 +19,14 @@ import { backfillAvailabilityDaysFromBookingSlots } from "./firestoreAvailabilit
 const SALON_ID = "main";
 
 if (import.meta.env.DEV) {
+  const adminBackfillAvailabilityDaysFromBookingSlots = async (opts: any) => {
+    const fn = httpsCallable(functions, "adminBackfillAvailabilityDaysFromBookingSlots", {
+      timeout: 60 * 60 * 1000,
+    });
+    const res = await fn(opts || {});
+    return (res as any)?.data;
+  };
+
   // ✅ أدوات Debug مربوطة بالهيكلة الصحيحة (salons/main)
   (window as any).__fs = {
     auth,
@@ -37,7 +46,10 @@ if (import.meta.env.DEV) {
     setDoc,
     addDoc,
     serverTimestamp,
+    // ⚠️ Client-side backfill uses Firestore rules and may fail by design.
     backfillAvailabilityDaysFromBookingSlots,
+    // ✅ Server-side backfill (Admin SDK) — recommended.
+    adminBackfillAvailabilityDaysFromBookingSlots,
 
     // helpers خاصة بالصالون
     salonCol: (name: string) =>

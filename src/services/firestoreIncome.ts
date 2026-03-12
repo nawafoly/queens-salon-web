@@ -17,6 +17,7 @@ import {
 
 import type { IncomeItem, PaymentMethod } from "../types/finance";
 import { writeAuditLog } from "./logService";
+import { FirestoreReadStats } from "./firestoreReadStats";
 
 // ✅ ثابت الآن (لاحقًا نخليه ديناميكي)
 const DEFAULT_SALON_ID = "main";
@@ -110,6 +111,9 @@ export async function listAllIncomeFS(salonId?: string): Promise<IncomeItem[]> {
   try {
     const q1 = query(col, orderBy("createdAt", "desc"));
     const snaps1 = await getDocs(q1);
+    snaps1.docs.forEach((d) => {
+      if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, "firestoreIncome.listAllIncomeFS", "getDocs");
+    });
     return snaps1.docs.map((d) => normalizeIncome(d.data(), d.id));
   } catch (e) {
     console.warn(
@@ -118,6 +122,9 @@ export async function listAllIncomeFS(salonId?: string): Promise<IncomeItem[]> {
     );
 
     const snaps2 = await getDocs(col);
+    snaps2.docs.forEach((d) => {
+      if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, "firestoreIncome.listAllIncomeFS", "getDocs");
+    });
     const mapped = snaps2.docs.map((d) => normalizeIncome(d.data(), d.id));
     mapped.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     return mapped;
@@ -128,6 +135,7 @@ export async function listAllIncomeFS(salonId?: string): Promise<IncomeItem[]> {
 export async function upsertIncomeFS(item: IncomeItem, salonId?: string) {
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "income", item.id);
+  FirestoreReadStats.bump(ref.path, "firestoreIncome.upsertIncomeFS", "getDoc");
   const prevSnap = await getDoc(ref);
   const prevData = prevSnap.exists() ? prevSnap.data() : null;
   const isCreate = !prevSnap.exists();
@@ -181,6 +189,7 @@ export async function upsertIncomeFS(item: IncomeItem, salonId?: string) {
 export async function removeIncomeFS(id: string, salonId?: string) {
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "income", id);
+  FirestoreReadStats.bump(ref.path, "firestoreIncome.removeIncomeFS", "getDoc");
   const prevSnap = await getDoc(ref);
   const prevData = prevSnap.exists() ? prevSnap.data() : null;
   await deleteDoc(ref);

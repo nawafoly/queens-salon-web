@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../services/firebase";
+import { FirestoreReadStats } from "../services/firestoreReadStats";
 
 const SALON_ID = "main";
 
@@ -87,6 +88,7 @@ export default function DashboardLoyalty() {
     const loadSettings = async () => {
       try {
         const ref = doc(db, "salons", SALON_ID, "settings", "loyalty");
+        FirestoreReadStats.bump(ref.path, "DashboardLoyalty.loadSettings", "getDoc");
         const snap = await getDoc(ref);
         
         if (snap.exists()) {
@@ -111,6 +113,9 @@ export default function DashboardLoyalty() {
       setLoading(true);
       try {
         const snap = await getDocs(collection(db, "users"));
+        snap.docs.forEach((d) => {
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, "DashboardLoyalty.loadClients", "getDocs");
+        });
         const rows: ClientRow[] = [];
 
         snap.forEach((d) => {

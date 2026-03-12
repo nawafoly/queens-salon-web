@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../services/firebase";
+import { FirestoreReadStats } from "../services/firestoreReadStats";
 import "../styles/DashboardDayAudit.css";
 
 const SALON_ID = "main";
@@ -315,7 +316,15 @@ export default function DashboardDayAudit() {
 
   useEffect(() => {
     const bookingsCol = collection(db, "salons", SALON_ID, "bookings");
+    let first = true;
     const unsub = onSnapshot(bookingsCol, (snap) => {
+      const source = "DashboardDayAudit.bookings.onSnapshot";
+      const docs = first ? snap.docs : snap.docChanges().map((c) => c.doc);
+      docs.forEach((d) => {
+        if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+      });
+      first = false;
+
       const next: Record<string, string> = {};
       snap.docs.forEach((d) => {
         const raw = d.data() as Record<string, unknown>;
@@ -329,9 +338,17 @@ export default function DashboardDayAudit() {
 
   useEffect(() => {
     const incomeCol = collection(db, "salons", SALON_ID, "income");
+    let first = true;
     const unsub = onSnapshot(
       incomeCol,
       (snap) => {
+        const source = "DashboardDayAudit.income.onSnapshot";
+        const docs = first ? snap.docs : snap.docChanges().map((c) => c.doc);
+        docs.forEach((d) => {
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+        });
+        first = false;
+
         let total = 0;
         let cash = 0;
         let card = 0;

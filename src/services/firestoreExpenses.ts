@@ -17,6 +17,7 @@ import {
 
 import type { Expense } from "../types/finance";
 import { writeAuditLog } from "./logService";
+import { FirestoreReadStats } from "./firestoreReadStats";
 
 // ✅ ثابت الآن (لاحقًا نخليه ديناميكي)
 const DEFAULT_SALON_ID = "main";
@@ -153,6 +154,11 @@ export async function listAllExpensesFS(salonId?: string): Promise<Expense[]> {
   try {
     const q1 = query(col, orderBy("createdAt", "desc"));
     const snaps1 = await getDocs(q1);
+    snaps1.docs.forEach((d) => {
+      if (d?.ref?.path) {
+        FirestoreReadStats.bump(d.ref.path, "firestoreExpenses.listAllExpensesFS", "getDocs");
+      }
+    });
     return snaps1.docs.map((d) => normalizeExpense(d.data(), d.id));
   } catch (e) {
     console.warn(
@@ -161,6 +167,11 @@ export async function listAllExpensesFS(salonId?: string): Promise<Expense[]> {
     );
 
     const snaps2 = await getDocs(col);
+    snaps2.docs.forEach((d) => {
+      if (d?.ref?.path) {
+        FirestoreReadStats.bump(d.ref.path, "firestoreExpenses.listAllExpensesFS", "getDocs");
+      }
+    });
     const mapped = snaps2.docs.map((d) => normalizeExpense(d.data(), d.id));
 
     mapped.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -172,6 +183,7 @@ export async function listAllExpensesFS(salonId?: string): Promise<Expense[]> {
 export async function upsertExpenseFS(expense: Expense, salonId?: string) {
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "expenses", expense.id);
+  FirestoreReadStats.bump(ref.path, "firestoreExpenses.upsertExpenseFS", "getDoc");
   const prevSnap = await getDoc(ref);
   const prevData = prevSnap.exists() ? prevSnap.data() : null;
   const isCreate = !prevSnap.exists();
@@ -244,6 +256,7 @@ export async function upsertExpenseFS(expense: Expense, salonId?: string) {
 export async function removeExpenseFS(id: string, salonId?: string) {
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "expenses", id);
+  FirestoreReadStats.bump(ref.path, "firestoreExpenses.removeExpenseFS", "getDoc");
   const prevSnap = await getDoc(ref);
   const prevData = prevSnap.exists() ? prevSnap.data() : null;
   await deleteDoc(ref);
@@ -288,6 +301,11 @@ export async function countMonthlyExpensesMissingNotesFS(
   ).padStart(2, "0")}`;
 
   const snaps = await getDocs(col);
+  snaps.docs.forEach((d) => {
+    if (d?.ref?.path) {
+      FirestoreReadStats.bump(d.ref.path, "firestoreExpenses.countMonthlyExpensesMissingNotesFS", "getDocs");
+    }
+  });
 
   let count = 0;
 

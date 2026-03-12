@@ -4,6 +4,7 @@ import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import {
   onDocumentCreated,
+  onDocumentDeleted,
   onDocumentUpdated,
 } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
@@ -761,3 +762,441 @@ export const adminCreateStaffUser = onCall({ region: "us-central1" }, async (req
 
   return { ok: true, uid, email, role: claimRole, displayName };
 });
+
+/* =========================================================
+   booking_slots -> availability_days (write-through index)
+   هدفها: تقليل fallback إلى booking_slots في صفحات الحجز.
+========================================================= */
+
+function tryParseBookingSlotId(slotId: string): { dateISO: string; time: string; employeeId: string } | null {
+  const raw = String(slotId || "").trim();
+  if (!raw) return null;
+  const parts = raw.split("__");
+  if (parts.length < 4) return null;
+  const dateISO = String(parts[1] || "").trim();
+  const time = String(parts[2] || "").trim();
+  const employeeId = String(parts[3] || "").trim();
+  if (!dateISO || !time || !employeeId) return null;
+  return { dateISO, time, employeeId };
+}
+
+async function rebuildAvailabilityDayEmployeeFromBookingSlots(args: {
+  salonId: string;
+  dateISO: string;
+  employeeId: string;
+  employeeKeyHint?: string;
+}) {
+  const salonId = String(args.salonId || "").trim();
+  const dateISO = String(args.dateISO || "").trim();
+  const employeeId = String(args.employeeId || "").trim();
+  const employeeKeyHint = String(args.employeeKeyHint || "").trim();
+
+  if (!salonId || !dateISO || !employeeId) return;
+
+  const slotsCol = db.collection("salons").doc(salonId).collection("booking_slots");
+  const snaps: FirebaseFirestore.QuerySnapshot[] = [];
+
+  snaps.push(await slotsCol.where("employeeId", "==", employeeId).where("date", "==", dateISO).get());
+
+  // Legacy fallback: if employeeId path yields nothing, try employeeKey (only if different).
+  if (employeeKeyHint && employeeKeyHint !== employeeId && (snaps[0]?.size || 0) === 0) {
+    snaps.push(await slotsCol.where("employeeKey", "==", employeeKeyHint).where("date", "==", dateISO).get());
+  }
+
+  const times = new Set<string>();
+  let resolvedEmployeeKey = employeeKeyHint || employeeId;
+
+  snaps.forEach((snap) => {
+    snap.docs.forEach((d) => {
+      const sd: any = d.data() || {};
+      const t = String(sd?.time || "").trim();
+      if (t) times.add(t);
+      if (!resolvedEmployeeKey) resolvedEmployeeKey = String(sd?.employeeKey || "").trim();
+    });
+  });
+
+  const bookedSlots: Record<string, true> = {};
+  times.forEach((t) => {
+    const k = String(t || "").trim();
+    if (k) bookedSlots[k] = true;
+  });
+
+  const availabilityRef = db
+    .collection("salons")
+    .doc(salonId)
+    .collection("availability_days")
+    .doc(dateISO)
+    .collection("employees")
+    .doc(employeeId);
+
+  await availabilityRef.set(
+    {
+      date: dateISO,
+      employeeId,
+      employeeKey: resolvedEmployeeKey || employeeId,
+      bookedSlots,
+      complete: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+export const onBookingSlotCreatedUpdateAvailabilityDay = onDocumentCreated(
+  {
+    document: "salons/{salonId}/booking_slots/{slotId}",
+    region: "us-central1",
+    retry: true,
+  },
+  async (event) => {
+    const salonId = String(event.params.salonId || "").trim();
+    const slotId = String(event.params.slotId || "").trim();
+    const data: any = event.data?.data() || {};
+
+    const parsed = tryParseBookingSlotId(slotId);
+    const dateISO = String(data?.date || parsed?.dateISO || "").trim();
+    const time = String(data?.time || parsed?.time || "").trim();
+    const employeeId = String(data?.employeeId || parsed?.employeeId || "").trim();
+    const employeeKey = String(data?.employeeKey || employeeId).trim();
+
+    if (!salonId || !dateISO || !employeeId) return;
+
+    const availabilityRef = db
+      .collection("salons")
+      .doc(salonId)
+      .collection("availability_days")
+      .doc(dateISO)
+      .collection("employees")
+      .doc(employeeId);
+
+    // Fast path: if doc already trusted, update incrementally (no query).
+    try {
+      const aSnap = await availabilityRef.get();
+      const a: any = aSnap.exists ? aSnap.data() || {} : {};
+      if (aSnap.exists && a?.complete === true && time) {
+        await availabilityRef.update({
+          date: dateISO,
+          employeeId,
+          employeeKey,
+          complete: true,
+          [`bookedSlots.${time}`]: true,
+          updatedAt: FieldValue.serverTimestamp(),
+        } as any);
+        return;
+      }
+    } catch (e) {
+      logger.warn(
+        "[onBookingSlotCreatedUpdateAvailabilityDay] availability read/update failed, fallback rebuild",
+        e as any
+      );
+    }
+
+    await rebuildAvailabilityDayEmployeeFromBookingSlots({
+      salonId,
+      dateISO,
+      employeeId,
+      employeeKeyHint: employeeKey,
+    });
+  }
+);
+
+export const onBookingSlotDeletedUpdateAvailabilityDay = onDocumentDeleted(
+  {
+    document: "salons/{salonId}/booking_slots/{slotId}",
+    region: "us-central1",
+    retry: true,
+  },
+  async (event) => {
+    const salonId = String(event.params.salonId || "").trim();
+    const slotId = String(event.params.slotId || "").trim();
+    const data: any = event.data?.data() || {};
+
+    const parsed = tryParseBookingSlotId(slotId);
+    const dateISO = String(data?.date || parsed?.dateISO || "").trim();
+    const time = String(data?.time || parsed?.time || "").trim();
+    const employeeId = String(data?.employeeId || parsed?.employeeId || "").trim();
+    const employeeKey = String(data?.employeeKey || employeeId).trim();
+
+    if (!salonId || !dateISO || !employeeId) return;
+
+    const availabilityRef = db
+      .collection("salons")
+      .doc(salonId)
+      .collection("availability_days")
+      .doc(dateISO)
+      .collection("employees")
+      .doc(employeeId);
+
+    // Fast path: if doc already trusted, update incrementally (no query).
+    try {
+      const aSnap = await availabilityRef.get();
+      const a: any = aSnap.exists ? aSnap.data() || {} : {};
+      if (aSnap.exists && a?.complete === true && time) {
+        await availabilityRef.update({
+          date: dateISO,
+          employeeId,
+          employeeKey,
+          complete: true,
+          [`bookedSlots.${time}`]: FieldValue.delete(),
+          updatedAt: FieldValue.serverTimestamp(),
+        } as any);
+        return;
+      }
+    } catch (e) {
+      logger.warn(
+        "[onBookingSlotDeletedUpdateAvailabilityDay] availability read/update failed, fallback rebuild",
+        e as any
+      );
+    }
+
+    await rebuildAvailabilityDayEmployeeFromBookingSlots({
+      salonId,
+      dateISO,
+      employeeId,
+      employeeKeyHint: employeeKey,
+    });
+  }
+);
+
+/* =========================================================
+   ✅ Callable: adminBackfillAvailabilityDaysFromBookingSlots
+   - Runs on server (Admin SDK) to bypass Firestore rules safely.
+   - Writes `complete=true` + `bookedSlots` + `updatedAt`.
+   - Optionally creates empty docs for staff to minimize fallback.
+========================================================= */
+
+function toUTCDate(ymd: { y: number; m: number; d: number }) {
+  return new Date(Date.UTC(ymd.y, ymd.m - 1, ymd.d));
+}
+
+function formatISODateUTC(dt: Date) {
+  const y = dt.getUTCFullYear();
+  const m = dt.getUTCMonth() + 1;
+  const d = dt.getUTCDate();
+  return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function listISODateRangeInclusive(fromISO: string, toISO: string, maxDays: number) {
+  const from = parseISODateYMD(fromISO);
+  const to = parseISODateYMD(toISO);
+  if (!from || !to) throw new Error("INVALID_DATE_RANGE");
+
+  const start = toUTCDate(from);
+  const end = toUTCDate(to);
+  if (start.getTime() > end.getTime()) throw new Error("INVALID_DATE_RANGE");
+
+  const out: string[] = [];
+  let cur = start;
+  for (let i = 0; i < maxDays + 1; i++) {
+    const iso = formatISODateUTC(cur);
+    out.push(iso);
+    if (iso === toISO) break;
+    cur = new Date(cur.getTime() + 24 * 60 * 60 * 1000);
+  }
+
+  if (out[out.length - 1] !== toISO) {
+    throw new Error("DATE_RANGE_TOO_LARGE");
+  }
+
+  return out;
+}
+
+export const adminBackfillAvailabilityDaysFromBookingSlots = onCall(
+  { region: "us-central1", timeoutSeconds: 3600, memory: "1GiB", maxInstances: 1 },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth) throw new HttpsError("unauthenticated", "لازم تسجل دخول.");
+
+    const callerUid = auth.uid;
+    const callerUser = await admin.auth().getUser(callerUid);
+    const callerEmail = String(callerUser.email || "").toLowerCase().trim();
+    const callerRole = await getCallerRole(callerUid);
+    const isBootstrap = isBootstrapEmail(callerEmail);
+
+    if (!isBootstrap && !["owner", "admin", "reception"].includes(callerRole)) {
+      throw new HttpsError("permission-denied", "غير مصرح. فقط Owner/Admin/Reception.");
+    }
+
+    const data: any = request.data || {};
+    const salonId = String(data?.salonId || SALON_ID).trim() || SALON_ID;
+    const fromDateISO = String(data?.fromDateISO || "").trim();
+    const toDateISO = String(data?.toDateISO || "").trim();
+    const dryRun = !!data?.dryRun;
+
+    const maxDays = Math.max(1, Number(data?.maxDays ?? 200));
+    const includeEmptyEmployees =
+      data?.includeEmptyEmployees === false ? false : true; // default true
+
+    if (!fromDateISO || !toDateISO) {
+      throw new HttpsError("invalid-argument", "fromDateISO و toDateISO مطلوبة (YYYY-MM-DD).");
+    }
+
+    let dates: string[] = [];
+    try {
+      dates = listISODateRangeInclusive(fromDateISO, toDateISO, maxDays);
+    } catch (e: any) {
+      const code = String(e?.message || "");
+      throw new HttpsError(
+        "invalid-argument",
+        code === "DATE_RANGE_TOO_LARGE"
+          ? `نطاق الأيام كبير. maxDays=${maxDays}`
+          : "نطاق التاريخ غير صحيح."
+      );
+    }
+
+    const startedAtMs = Date.now();
+    logger.info("[adminBackfillAvailabilityDaysFromBookingSlots] start", {
+      salonId,
+      fromDateISO,
+      toDateISO,
+      days: dates.length,
+      includeEmptyEmployees,
+      dryRun,
+      callerUid,
+      callerRole,
+    });
+
+    // Load staff_public once so we can create empty availability docs and set employeeKey consistently.
+    const staffById = new Map<string, { employeeKey: string }>();
+    if (includeEmptyEmployees) {
+      try {
+        const staffSnap = await db
+          .collection("salons")
+          .doc(salonId)
+          .collection("staff_public")
+          .get();
+        staffSnap.docs.forEach((d) => {
+          const employeeId = String(d.id || "").trim();
+          if (!employeeId) return;
+          const sd: any = d.data() || {};
+          const linkedUid = String(sd?.linkedUid || "").trim();
+          staffById.set(employeeId, { employeeKey: linkedUid || employeeId });
+        });
+      } catch (e) {
+        logger.warn("[adminBackfillAvailabilityDaysFromBookingSlots] staff_public load failed", e as any);
+      }
+    }
+
+    let totalSlotDocs = 0;
+    let totalAvailabilityDocs = 0;
+    let daysProcessed = 0;
+
+    if (!dryRun) {
+      // Batch writes (safety: 500 ops per batch).
+    }
+
+    let batch = db.batch();
+    let ops = 0;
+
+    const commitIfNeeded = async () => {
+      if (dryRun) return;
+      if (ops <= 0) return;
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    };
+
+    for (const dateISO of dates) {
+      const slotsCol = db.collection("salons").doc(salonId).collection("booking_slots");
+      const snap = await slotsCol.where("date", "==", dateISO).get();
+      totalSlotDocs += snap.size;
+
+      const timesByEmployeeId = new Map<string, { employeeKey: string; times: Set<string> }>();
+
+      snap.docs.forEach((d) => {
+        const sd: any = d.data() || {};
+        const employeeId = String(sd?.employeeId ?? "").trim();
+        const employeeKey = String(sd?.employeeKey ?? "").trim();
+        const time = String(sd?.time || "").trim();
+        if (!employeeId || !time) return;
+
+        const fromStaff = staffById.get(employeeId);
+        const entry =
+          timesByEmployeeId.get(employeeId) || {
+            employeeKey: employeeKey || fromStaff?.employeeKey || employeeId,
+            times: new Set<string>(),
+          };
+        entry.times.add(time);
+        if (employeeKey) entry.employeeKey = employeeKey;
+        timesByEmployeeId.set(employeeId, entry);
+      });
+
+      if (includeEmptyEmployees) {
+        for (const [employeeId, info] of staffById.entries()) {
+          const existing = timesByEmployeeId.get(employeeId);
+          if (!existing) {
+            timesByEmployeeId.set(employeeId, { employeeKey: info.employeeKey, times: new Set<string>() });
+          } else if (!existing.employeeKey) {
+            existing.employeeKey = info.employeeKey;
+          }
+        }
+      }
+
+      if (!timesByEmployeeId.size) {
+        daysProcessed++;
+        continue;
+      }
+
+      totalAvailabilityDocs += timesByEmployeeId.size;
+      daysProcessed++;
+
+      if (dryRun) continue;
+
+      for (const [employeeId, entry] of timesByEmployeeId.entries()) {
+        const bookedSlots: Record<string, true> = {};
+        entry.times.forEach((t) => {
+          const k = String(t || "").trim();
+          if (k) bookedSlots[k] = true;
+        });
+
+        const ref = db
+          .collection("salons")
+          .doc(salonId)
+          .collection("availability_days")
+          .doc(dateISO)
+          .collection("employees")
+          .doc(employeeId);
+
+        batch.set(
+          ref,
+          {
+            date: dateISO,
+            employeeId,
+            employeeKey: entry.employeeKey || employeeId,
+            bookedSlots,
+            complete: true,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        ops++;
+
+        if (ops >= 450) {
+          await commitIfNeeded();
+        }
+      }
+    }
+
+    await commitIfNeeded();
+
+    const finishedAtMs = Date.now();
+    const result = {
+      ok: true,
+      salonId,
+      fromDateISO,
+      toDateISO,
+      daysRequested: dates.length,
+      daysProcessed,
+      includeEmptyEmployees,
+      dryRun,
+      totalSlotDocs,
+      totalAvailabilityDocs,
+      durationMs: finishedAtMs - startedAtMs,
+      startedAt: new Date(startedAtMs).toISOString(),
+      finishedAt: new Date(finishedAtMs).toISOString(),
+    };
+
+    logger.info("[adminBackfillAvailabilityDaysFromBookingSlots] done", result);
+    return result;
+  }
+);

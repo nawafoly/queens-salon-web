@@ -16,6 +16,7 @@ import type { Timestamp } from "firebase/firestore";
 
 import { auth, db } from "../services/firebase";
 import { updateBookingStatus as updateBookingStatusFS } from "../services/firestoreBookings";
+import { FirestoreReadStats } from "../services/firestoreReadStats";
 import "../styles/DashboardStaff.css";
 
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
@@ -290,6 +291,23 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
     const rowsByName: { value: BookingWithId[] } = { value: [] };
     const rowsByKeyName: { value: BookingWithId[] } = { value: [] };
 
+    const makeSnapLogger = (label: string) => {
+      let first = true;
+      const src = `DashboardStaff.${String(label || "").trim() || "unknown"}.onSnapshot`;
+      return (snap: any) => {
+        const docs = first ? snap.docs : snap.docChanges().map((c: any) => c.doc);
+        docs.forEach((d: any) => {
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, src, "onSnapshot");
+        });
+        first = false;
+      };
+    };
+    const logKeyUid = makeSnapLogger("employeeKey_uid");
+    const logUid = makeSnapLogger("employeeUid_uid");
+    const logStaffId = makeSnapLogger("employeeId_staffDocId");
+    const logName = makeSnapLogger("employeeName");
+    const logKeyName = makeSnapLogger("employeeKey_safeName");
+
     const mapDocs = (snap: any): BookingWithId[] =>
       snap.docs.map((d: any) => ({
         id: d.id,
@@ -338,6 +356,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
       onSnapshot(
         query(colRef, where("employeeKey", "==", myUid)),
         (snap) => {
+          logKeyUid(snap);
           rowsByKeyUid.value = mapDocs(snap);
           emitMerged();
         },
@@ -349,6 +368,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
       onSnapshot(
         query(colRef, where("employeeUid", "==", myUid)),
         (snap) => {
+          logUid(snap);
           rowsByUid.value = mapDocs(snap);
           emitMerged();
         },
@@ -361,6 +381,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
         onSnapshot(
           query(colRef, where("employeeId", "==", myStaffDocId)),
           (snap) => {
+            logStaffId(snap);
             rowsByStaffId.value = mapDocs(snap);
             emitMerged();
           },
@@ -376,6 +397,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
         onSnapshot(
           query(colRef, where("employeeName", "==", myStaffName)),
           (snap) => {
+            logName(snap);
             rowsByName.value = mapDocs(snap);
             emitMerged();
           },
@@ -387,6 +409,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
         onSnapshot(
           query(colRef, where("employeeKey", "==", keyName)),
           (snap) => {
+            logKeyName(snap);
             rowsByKeyName.value = mapDocs(snap);
             emitMerged();
           },

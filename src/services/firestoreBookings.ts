@@ -2296,6 +2296,11 @@ export async function markBookingViewed(bookingId: string) {
 
 export async function listAllBookings(): Promise<BookingDocWithId[]> {
   const snap = await getDocs(collection(db, ...BOOKINGS_COL));
+  snap.docs.forEach((d) => {
+    if (d?.ref?.path) {
+      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listAllBookings", "getDocs");
+    }
+  });
   return snap.docs
     .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
     .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
@@ -2309,10 +2314,19 @@ export function watchAllBookings(
   onError?: (err: unknown) => void
 ) {
   const q = query(collection(db, ...BOOKINGS_COL));
+  let first = true;
 
   return onSnapshot(
     q,
     (snap) => {
+      // Track billed reads: initial snapshot reads all docs, later snapshots read only changes.
+      const source = "firestoreBookings.watchAllBookings";
+      const docs = first ? snap.docs : snap.docChanges().map((c) => c.doc);
+      docs.forEach((d) => {
+        if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+      });
+      first = false;
+
       const rows = snap.docs
         .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
         .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
@@ -2326,6 +2340,11 @@ export function watchAllBookings(
 export async function listUserBookings(userId: string) {
   const q = query(collection(db, ...BOOKINGS_COL), where("userId", "==", userId));
   const snap = await getDocs(q);
+  snap.docs.forEach((d) => {
+    if (d?.ref?.path) {
+      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listUserBookings", "getDocs");
+    }
+  });
   return snap.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
 }
 
@@ -2353,11 +2372,21 @@ export async function listEmployeeBookings(
   // primary by employeeKey (uid or safeKey or staff_public id)
   const qKey = query(baseCol, where("employeeKey", "==", employeeIdOrUid));
   const sKey = await getDocs(qKey);
+  sKey.docs.forEach((d) => {
+    if (d?.ref?.path) {
+      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listEmployeeBookings", "getDocs");
+    }
+  });
   const rKey = sKey.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
 
   // old way (employeeId)
   const q1 = query(baseCol, where("employeeId", "==", employeeIdOrUid));
   const s1 = await getDocs(q1);
+  s1.docs.forEach((d) => {
+    if (d?.ref?.path) {
+      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listEmployeeBookings", "getDocs");
+    }
+  });
   const r1 = s1.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
 
   let r2: BookingDocWithId[] = [];
@@ -2365,10 +2394,20 @@ export async function listEmployeeBookings(
   if (name) {
     const q2k = query(baseCol, where("employeeKey", "==", safeKey(name)));
     const s2k = await getDocs(q2k);
+    s2k.docs.forEach((d) => {
+      if (d?.ref?.path) {
+        FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listEmployeeBookings", "getDocs");
+      }
+    });
     const r2k = s2k.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
 
     const q2 = query(baseCol, where("employeeName", "==", name));
     const s2 = await getDocs(q2);
+    s2.docs.forEach((d) => {
+      if (d?.ref?.path) {
+        FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listEmployeeBookings", "getDocs");
+      }
+    });
     const r2n = s2.docs.map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }));
 
     r2 = uniqMerge(r2k, r2n);
@@ -2390,6 +2429,22 @@ export function watchEmployeeBookings(
   let rowsByKeyName: BookingDocWithId[] = [];
   let rowsByName: BookingDocWithId[] = [];
 
+  const makeSnapLogger = (label: string) => {
+    let first = true;
+    const src = `firestoreBookings.watchEmployeeBookings.${String(label || "").trim() || "unknown"}`;
+    return (snap: any) => {
+      const docs = first ? snap.docs : snap.docChanges().map((c: any) => c.doc);
+      docs.forEach((d: any) => {
+        if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, src, "onSnapshot");
+      });
+      first = false;
+    };
+  };
+  const logKeyUidSnap = makeSnapLogger("employeeKey");
+  const logIdSnap = makeSnapLogger("employeeId");
+  const logKeyNameSnap = makeSnapLogger("employeeKeyName");
+  const logNameSnap = makeSnapLogger("employeeName");
+
   const emit = () => {
     onData(uniqMerge(uniqMerge(rowsByKeyUid, rowsById), uniqMerge(rowsByKeyName, rowsByName)));
   };
@@ -2398,6 +2453,7 @@ export function watchEmployeeBookings(
   const unsubKeyUid = onSnapshot(
     query(baseCol, where("employeeKey", "==", employeeIdOrUid)),
     (snap) => {
+      logKeyUidSnap(snap);
       rowsByKeyUid = snap.docs
         .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
         .sort(sortByCreatedAtDesc);
@@ -2410,6 +2466,7 @@ export function watchEmployeeBookings(
   const unsubId = onSnapshot(
     query(baseCol, where("employeeId", "==", employeeIdOrUid)),
     (snap) => {
+      logIdSnap(snap);
       rowsById = snap.docs
         .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
         .sort(sortByCreatedAtDesc);
@@ -2425,6 +2482,7 @@ export function watchEmployeeBookings(
     unsubKeyName = onSnapshot(
       query(baseCol, where("employeeKey", "==", safeKey(name))),
       (snap) => {
+        logKeyNameSnap(snap);
         rowsByKeyName = snap.docs
           .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
           .sort(sortByCreatedAtDesc);
@@ -2439,6 +2497,7 @@ export function watchEmployeeBookings(
     unsubName = onSnapshot(
       query(baseCol, where("employeeName", "==", name)),
       (snap) => {
+        logNameSnap(snap);
         rowsByName = snap.docs
           .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
           .sort(sortByCreatedAtDesc);

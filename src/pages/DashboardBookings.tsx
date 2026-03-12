@@ -13,6 +13,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { auth, db } from "../services/firebase";
+import { FirestoreReadStats } from "../services/firestoreReadStats";
 
 import {
   collection,
@@ -1970,6 +1971,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const loadUserNames = async () => {
       try {
         const snap = await getDocs(collection(db, "salons", "main", "users"));
+        snap.docs.forEach((d) => {
+          if (d?.ref?.path) {
+            FirestoreReadStats.bump(d.ref.path, "DashboardBookings.loadUserNames", "getDocs");
+          }
+        });
         const next: Record<string, string> = {};
         snap.docs.forEach((d) => {
           const data: any = d.data() || {};
@@ -2018,7 +2024,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       Promise.all(
         missing.map(async (x) => {
           try {
-            const t = await getDoc(doc(db, "salons", "main", "booking_tracks", x.id));
+            const tr = doc(db, "salons", "main", "booking_tracks", x.id);
+            FirestoreReadStats.bump(tr.path, "DashboardBookings.missingTrackFallback", "getDoc");
+            const t = await getDoc(tr);
             if (!t.exists()) return x;
             const td: any = t.data() || {};
             const name = String(td?.clientName || td?.customerName || td?.name || "").trim();
