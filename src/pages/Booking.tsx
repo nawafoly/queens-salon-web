@@ -46,6 +46,7 @@ import {
   pickEffectivePrice as resolveEffectiveSeasonPrice,
 } from "../helpers/seasonPricing";
 import { AppSettingsService } from "../services/AppSettingsService";
+import { FirestoreReadStats } from "../services/firestoreReadStats";
 
 import "../styles/Booking.css";
 
@@ -1723,6 +1724,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const staffByResolverCacheRef = useRef<Record<string, StaffPublicWithId[]>>({});
   const staffByResolverInFlightRef = useRef<Record<string, Promise<StaffPublicWithId[]>>>({});
 
+  const TAKEN_TIMES_CACHE_TTL_MS = 15_000;
+  const takenTimesCacheRef = useRef<Record<string, { ts: number; values: string[] }>>({});
+  const takenTimesInFlightRef = useRef<Record<string, Promise<string[]>>>({});
+
   // âœ… Modal بدل alert
   const [uiModal, setUiModal] = useState<UiModalState>({
     open: false,
@@ -3214,6 +3219,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           employeeKey: empKey,
           employeeIdFallback: empId,
           dateISO,
+          source: "Booking.autoPickStaffForSteps",
         });
 
         const takenCart = new Set<string>();
@@ -4352,6 +4358,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         employeeKey,
         employeeIdFallback,
         dateISO,
+        source: "Booking.loadPackageQuickTimes",
       });
       const takenLocal = collectLocalTakenOutsidePackageRun({
         runId,
@@ -4442,6 +4449,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         employeeKey,
         employeeIdFallback,
         dateISO,
+        source: "Booking.applyPackageQuickSelection",
       });
       const takenLocal = collectLocalTakenOutsidePackageRun({
         runId,
@@ -4584,6 +4592,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             take: 1,
             localTakenTimes: localTaken,
             staff,
+            source: "Booking.ensureDefaultStaffSelection",
           });
           return starts.length > 0;
         };
@@ -4732,6 +4741,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
           tasks.push(
             (async () => {
+              if (cancelled) return;
               const leave = getStaffLeaveMetaForDate(st as any, dateISO);
               const statusRaw = String((st as any)?.status || "").trim().toLowerCase();
               const isInactive =
@@ -4769,6 +4779,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
               ].join("__");
 
               if (!availabilityCache.has(cacheKey)) {
+                if (cancelled) return;
                 availabilityCache.set(
                   cacheKey,
                   getAvailableStartsForDay({
@@ -4783,12 +4794,14 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                     take: 1,
                     localTakenTimes: localTaken,
                     staff: st,
+                    source: "Booking.loadStaffFullDayState",
                   })
                     .then((starts) => starts.length > 0)
                     .catch(() => true)
                 );
               }
 
+              if (cancelled) return;
               const hasAvailable = await availabilityCache.get(cacheKey)!;
               nextState[itemId][empId] = !hasAvailable;
             })()
@@ -4801,9 +4814,13 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       setStaffFullDayByItem(nextState);
     }
 
-    void loadStaffFullDayState();
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      void loadStaffFullDayState();
+    }, 150);
     return () => {
       cancelled = true;
+      window.clearTimeout(t);
     };
   }, [
     currentStep,
@@ -4821,44 +4838,82 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     employeeKey: string;
     employeeIdFallback: string;
     dateISO: string;
+    forceFresh?: boolean;
+    source?: string;
   }) {
-    const { salonId, employeeKey, employeeIdFallback, dateISO } = args;
-    const takenFs = new Set<string>();
-    const colSlots = collection(db, "salons", salonId, "booking_slots");
-
+    const { salonId, employeeKey, employeeIdFallback, dateISO, forceFresh, source } = args;
     const key = String(employeeKey || "").trim();
     const fallbackId = String(employeeIdFallback || "").trim();
+    const cacheKey = `${String(salonId || "").trim()}__${String(dateISO || "").trim()}__${key}__${fallbackId}`;
+    const now = Date.now();
+    const logSource =
+      String(source || "").trim() || "Booking.collectTakenTimesForEmployeeDay";
 
-    const reads: Promise<any>[] = [];
-    if (key) {
-      reads.push(
-        getDocs(query(colSlots, where("employeeKey", "==", key), where("date", "==", dateISO)))
-      );
-    }
-    if (fallbackId && fallbackId !== key) {
-      reads.push(
-        getDocs(
-          query(colSlots, where("employeeId", "==", fallbackId), where("date", "==", dateISO))
-        )
-      );
-    }
-    if (!reads.length && fallbackId) {
-      reads.push(
-        getDocs(
-          query(colSlots, where("employeeId", "==", fallbackId), where("date", "==", dateISO))
-        )
-      );
+    if (!forceFresh) {
+      const cached = takenTimesCacheRef.current[cacheKey];
+      if (cached && now - Number(cached.ts || 0) <= TAKEN_TIMES_CACHE_TTL_MS) {
+        return new Set<string>(cached.values || []);
+      }
+      const inFlight = takenTimesInFlightRef.current[cacheKey];
+      if (inFlight) {
+        const rows = await inFlight;
+        return new Set<string>(rows);
+      }
     }
 
-    const snaps = await Promise.all(reads);
-    snaps.forEach((snap) => {
-      snap.docs.forEach((d: any) => {
-        const t = String((d.data() as any)?.time || "").trim();
-        if (t) takenFs.add(t);
+    const pending = (async () => {
+      const takenFs = new Set<string>();
+      const colSlots = collection(db, "salons", salonId, "booking_slots");
+
+      // Canonical: employeeId (staff_public doc id). Avoid doing both queries unless necessary,
+      // otherwise the same `booking_slots` docs are read twice (hotspot).
+      const snaps: any[] = [];
+      if (fallbackId) {
+        snaps.push(
+          await getDocs(
+            query(colSlots, where("employeeId", "==", fallbackId), where("date", "==", dateISO))
+          )
+        );
+      } else if (key) {
+        snaps.push(
+          await getDocs(
+            query(colSlots, where("employeeKey", "==", key), where("date", "==", dateISO))
+          )
+        );
+      }
+
+      // Fallback to employeeKey only if employeeId path returned nothing (legacy/inconsistent data).
+      if (key && fallbackId && key !== fallbackId && snaps.length && Number(snaps[0]?.size || 0) === 0) {
+        snaps.push(
+          await getDocs(
+            query(colSlots, where("employeeKey", "==", key), where("date", "==", dateISO))
+          )
+        );
+      }
+
+      snaps.forEach((snap) => {
+        snap.docs.forEach((d: any) => {
+          if (d?.ref?.path) {
+            FirestoreReadStats.bump(d.ref.path, logSource, "getDocs");
+          }
+          const t = String((d.data() as any)?.time || "").trim();
+          if (t) takenFs.add(t);
+        });
       });
-    });
+      takenTimesCacheRef.current[cacheKey] = {
+        ts: Date.now(),
+        values: Array.from(takenFs),
+      };
+      return Array.from(takenFs);
+    })();
 
-    return takenFs;
+    takenTimesInFlightRef.current[cacheKey] = pending;
+    try {
+      const rows = await pending;
+      return new Set<string>(rows);
+    } finally {
+      delete takenTimesInFlightRef.current[cacheKey];
+    }
   }
 
   async function getAvailableStartsForDay(args: {
@@ -4870,6 +4925,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     take: number;
     localTakenTimes?: Set<string>;
     staff?: StaffPublicWithId | null;
+    source?: string;
   }) {
     const {
       salonId,
@@ -4880,6 +4936,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       take,
       localTakenTimes,
       staff,
+      source,
     } = args;
 
     const dayCfg = getDaySettingsForDate(dateISO);
@@ -4896,6 +4953,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       employeeKey,
       employeeIdFallback,
       dateISO,
+      source: source || "Booking.getAvailableStartsForDay",
     });
 
     const takenAll = new Set<string>(takenFs);
@@ -5076,6 +5134,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           take: 5,
           localTakenTimes: localTaken,
           staff: staff || null,
+          source: "Booking.runFutureAvailabilitySearch",
         });
         if (dayTimes.length) {
           results.push({ date: dateISO, times: dayTimes });
@@ -5161,6 +5220,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         take: 288,
         localTakenTimes: localTaken,
         staff: chosenStaff,
+        source: "Booking.applyFutureTimeSelection",
       });
       if (!starts.includes(chosenTime)) {
         chosenStaff = null;
@@ -5242,6 +5302,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             employeeKey: empKey,
             employeeIdFallback: employeeId,
             dateISO: date,
+            source: "Booking.loadBusyForItems",
           });
           if (cancelled) return;
 
@@ -5973,15 +6034,16 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     }
 
     try {
-      const snaps = await Promise.all(
-        timesToCheck.map((t) => {
-          const slotId = buildSlotId(SALON_ID, employeeKey, date, t);
-          return getDoc(doc(db, "salons", SALON_ID, "booking_slots", slotId));
-        })
-      );
-
-      const anyTaken = snaps.some((s) => s.exists());
-      if (anyTaken) {
+      const employeeIdFallback = String(it.employeeId || "").trim();
+      const takenFs = await collectTakenTimesForEmployeeDay({
+        salonId: SALON_ID,
+        employeeKey,
+        employeeIdFallback,
+        dateISO: date,
+        forceFresh: true,
+        source: "Booking.checkOneItemSlot",
+      });
+      if (timesToCheck.some((t) => takenFs.has(t))) {
         return { ok: false, msg: "هذا الوقت محجوز بالفعل لهذه الموظفة. اختاري وقتًا آخر." };
       }
 

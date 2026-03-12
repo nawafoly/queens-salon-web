@@ -48,6 +48,7 @@ import {
 } from "../helpers/seasonPricing";
 
 import { AppSettingsService } from "../services/AppSettingsService";
+import { FirestoreReadStats } from "../services/firestoreReadStats";
 import Modal from "../components/Modal";
 import BookingDropdown, {
   type BookingDropdownGroup,
@@ -5018,6 +5019,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       const primarySnaps = await Promise.all(primaryReads);
       primarySnaps.forEach((snap) => {
         snap.docs.forEach((d: any) => {
+          if (d?.ref?.path) {
+            FirestoreReadStats.bump(
+              d.ref.path,
+              "BookingInternal.collectTakenTimesForEmployeeDay",
+              "getDocs"
+            );
+          }
           const t = String((d.data() as any)?.time || "").trim();
           if (t) takenFs.add(t);
         });
@@ -5035,6 +5043,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         const snaps = await Promise.all(fallbackReads);
         snaps.forEach((snap) => {
           snap.docs.forEach((d: any) => {
+            if (d?.ref?.path) {
+              FirestoreReadStats.bump(
+                d.ref.path,
+                "BookingInternal.collectTakenTimesForEmployeeDay",
+                "getDocs"
+              );
+            }
             const t = String((d.data() as any)?.time || "").trim();
             if (t) takenFs.add(t);
           });

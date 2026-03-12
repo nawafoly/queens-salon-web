@@ -27,6 +27,7 @@ import { AppSettingsService } from "./AppSettingsService";
 import { getAuth } from "firebase/auth";
 
 import { writeAuditLog, type LogSource } from "./logService";
+import { FirestoreReadStats } from "./firestoreReadStats";
 
 
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
@@ -1306,8 +1307,12 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   const { bookingId, publicId } = await runTransaction(db, async (tx) => {
     // ---------- READS FIRST ----------
     const counterRef = doc(db, ...COUNTERS_COL, BOOKINGS_COUNTER_DOC);
+    FirestoreReadStats.bump(counterRef.path, "firestoreBookings.createBooking.runTransaction", "tx.get");
     const counterSnap = await tx.get(counterRef);
 
+    slotRefs.forEach((r) => {
+      FirestoreReadStats.bump(r.path, "firestoreBookings.createBooking.runTransaction", "tx.get");
+    });
     const slotSnaps = await Promise.all(slotRefs.map((r) => tx.get(r)));
 
     let existingBookingId: string | null = null;
@@ -1708,8 +1713,12 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
 
   const { parentPublicId } = await runTransaction(db, async (tx) => {
     const counterRef = doc(db, ...COUNTERS_COL, BOOKINGS_COUNTER_DOC);
+    FirestoreReadStats.bump(counterRef.path, "firestoreBookings.createGroupBooking.runTransaction", "tx.get");
     const counterSnap = await tx.get(counterRef);
 
+    prepared.flatMap((p) => p.slotRefs).forEach((r) => {
+      FirestoreReadStats.bump(r.path, "firestoreBookings.createGroupBooking.runTransaction", "tx.get");
+    });
     const slotSnaps = await Promise.all(prepared.flatMap((p) => p.slotRefs).map((r) => tx.get(r)));
     for (const snap of slotSnaps) {
       if (!snap.exists()) continue;
