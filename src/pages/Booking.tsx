@@ -2,21 +2,6 @@
 
 import { Fragment, useEffect, useMemo, useState, useRef } from "react";
 import type React from "react"; // ✅ ADD: عشان React.ChangeEvent / React.FormEvent
-import type { IconType } from "react-icons";
-import {
-  FiScissors,
-  FiDroplet,
-  FiWind,
-  FiStar,
-  FiPenTool,
-  FiEye,
-  FiEdit3,
-  FiSun,
-  FiHeart,
-  FiZap,
-  FiGift,
-  FiShoppingBag,
-} from "react-icons/fi";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import logo from "../assets/images/ssunnamed2.png";
@@ -35,6 +20,17 @@ import {
 } from "../helpers/timeSlots";
 import { formatTime12 } from "../helpers/timeDisplay";
 import { extractMinPrice, readDisplayLabel } from "../helpers/pageSharedUtils";
+import { pickBookingCardIcon } from "../helpers/serviceIcons";
+import {
+  SALON_ID,
+  DEFAULT_SERVICE_DURATION_MIN,
+  PACKAGE_SECTION_ID,
+  PACKAGE_SECTION_TITLE,
+  ALLOW_OVERTIME_MIN,
+  HOME_SERVICE_MIN_TOTAL_SAR,
+  MANI_PEDI_SECTION_KEYWORDS,
+  HOME_SERVICE_SECTION_KEYWORDS,
+} from "../helpers/bookingSharedConstants";
 
 import {
   isStaffAvailableForDate,
@@ -247,24 +243,6 @@ function arabizeCatalogLabel(value: string) {
   return cleaned || key;
 }
 
-function pickBookingCardIcon(serviceName: string): IconType {
-  const hay = String(serviceName || "").trim().toLowerCase();
-  const has = (keys: string[]) => keys.some((k) => hay.includes(k));
-
-  if (has(["قص", "حلاق", "trim", "cut"])) return FiScissors;
-  if (has(["صبغ", "لون", "color", "dye", "balayage"])) return FiDroplet;
-  if (has(["استشوار", "سشوار", "blow", "dryer"])) return FiWind;
-  if (has(["تسري", "ستايل", "style", "updo"])) return FiStar;
-  if (has(["مكياج", "makeup", "bridal"])) return FiPenTool;
-  if (has(["رموش", "حواج", "lash", "brow"])) return FiEye;
-  if (has(["أظافر", "اظافر", "مناكير", "بدكير", "nail", "manicure", "pedicure"])) return FiEdit3;
-  if (has(["بشر", "عناية", "facial", "skin"])) return FiSun;
-  if (has(["مساج", "spa", "massage", "body"])) return FiHeart;
-  if (has(["واكس", "ليزر", "ازالة", "إزالة", "thread", "wax", "laser"])) return FiZap;
-  if (has(["باكيج", "عرض", "package", "bundle", "offer"])) return FiGift;
-  return FiShoppingBag;
-}
-
 function normalizeUiLabel(value: string) {
   return String(value || "")
     .replace(/\s+/g, " ")
@@ -358,42 +336,7 @@ type FsSectionCatalogCacheRow = {
   services: ServiceDoc[];
 };
 
-const SALON_ID = "main";
-const DEFAULT_SERVICE_DURATION_MIN = 60;
-const PACKAGE_SECTION_ID = "service-packages";
-const PACKAGE_SECTION_TITLE = "البكيجات";
-const ALLOW_OVERTIME_MIN = 15;
 const MANI_PEDI_TOOLS_FEE_FIXED = 15;
-const HOME_SERVICE_MIN_TOTAL_SAR = 1000;
-const MANI_PEDI_SECTION_KEYWORDS = [
-  "manicure",
-  "pedicure",
-  "mani",
-  "pedi",
-  "body care",
-  "bodycare",
-  "mni",
-  "مناكير",
-  "منيكير",
-  "بديكير",
-  "بوديكير",
-  "بدكير",
-  "بوديكير",
-];
-const HOME_SERVICE_SECTION_KEYWORDS = [
-  "home-services",
-  "home service",
-  "home services",
-  "mobile service",
-  "at home",
-  "home",
-  "منزلي",
-  "منزلية",
-  "خدمة منزلية",
-  "خدمات منزلية",
-  "خدمات المنزل",
-  "المنزل",
-];
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 type BookingHourOverrideMode = "hours" | "closed";
 type BookingHourOverride = {

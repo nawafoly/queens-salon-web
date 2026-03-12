@@ -3,20 +3,6 @@ import type React from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconType } from "react-icons";
-import {
-  FiScissors,
-  FiDroplet,
-  FiWind,
-  FiStar,
-  FiPenTool,
-  FiEye,
-  FiEdit3,
-  FiSun,
-  FiHeart,
-  FiZap,
-  FiGift,
-  FiShoppingBag,
-} from "react-icons/fi";
 import logo from "../assets/images/ssunnamed2.png";
 import hairGuideImg from "../assets/images/hair-length-guide.png";
 
@@ -41,6 +27,17 @@ import {
   extractMinPriceInternal as extractMinPrice,
   readDisplayLabelInternal as readDisplayLabel,
 } from "../helpers/pageSharedUtils";
+import { pickPriceLookupIcon as pickPriceLookupIconShared } from "../helpers/serviceIcons";
+import {
+  SALON_ID,
+  DEFAULT_SERVICE_DURATION_MIN,
+  PACKAGE_SECTION_ID,
+  PACKAGE_SECTION_TITLE,
+  ALLOW_OVERTIME_MIN,
+  HOME_SERVICE_MIN_TOTAL_SAR,
+  MANI_PEDI_SECTION_KEYWORDS,
+  HOME_SERVICE_SECTION_KEYWORDS,
+} from "../helpers/bookingSharedConstants";
 import {
   isStaffAvailableForDate,
   filterStaffSlotsByWorkingHours,
@@ -197,44 +194,9 @@ type FsSectionCatalogCacheRow = {
 
 const QUICK_CLIENT_HISTORY_KEY = "internal_quick_clients_history_v1";
 
-const SALON_ID = "main";
 let availabilityDaysBackfillStartedThisSession = false;
-const DEFAULT_SERVICE_DURATION_MIN = 60;
-const PACKAGE_SECTION_ID = "service-packages";
-const PACKAGE_SECTION_TITLE = "البكيجات";
-const ALLOW_OVERTIME_MIN = 15;
 const TAKEN_TIMES_CACHE_TTL_MS = 20_000;
 const BOOKED_META_CACHE_TTL_MS = 20_000;
-const HOME_SERVICE_MIN_TOTAL_SAR = 1000;
-const MANI_PEDI_SECTION_KEYWORDS = [
-  "manicure",
-  "pedicure",
-  "mani",
-  "pedi",
-  "body care",
-  "bodycare",
-  "mni",
-  "مناكير",
-  "منيكير",
-  "بديكير",
-  "بوديكير",
-  "بدكير",
-  "بوديكير",
-];
-const HOME_SERVICE_SECTION_KEYWORDS = [
-  "home-services",
-  "home service",
-  "home services",
-  "mobile service",
-  "at home",
-  "home",
-  "منزلي",
-  "منزلية",
-  "خدمة منزلية",
-  "خدمات منزلية",
-  "خدمات المنزل",
-  "المنزل",
-];
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 type DateCalendar = "gregory" | "hijri";
 type BookingHourOverrideMode = "hours" | "closed";
@@ -860,47 +822,7 @@ type PriceLookupIcon = {
 };
 
 function pickPriceLookupIcon(serviceName: string): PriceLookupIcon {
-  const hay = normalizeSearchText(String(serviceName || ""));
-  const has = (keys: string[]) =>
-    keys.some((k) => {
-      const n = normalizeSearchText(k);
-      return !!n && hay.includes(n);
-    });
-
-  if (has(["قص", "حلاقة", "اطراف", "أطراف", "غرة", "trim", "cut", "hair cut"])) {
-    return { Icon: FiScissors, label: "قص" };
-  }
-  if (has(["صبغ", "صبغة", "لون", "ألوان", "هايلايت", "balayage", "color", "dye"])) {
-    return { Icon: FiDroplet, label: "صبغات" };
-  }
-  if (has(["استشوار", "سشوار", "سيشوار", "blow dry", "blowdry", "dryer"])) {
-    return { Icon: FiWind, label: "استشوار" };
-  }
-  if (has(["تسريحة", "تساريح", "تصفيف", "فير", "updo", "styling", "style"])) {
-    return { Icon: FiStar, label: "تساريح" };
-  }
-  if (has(["مكياج", "ميك اب", "ميكاب", "makeup", "bridal"])) {
-    return { Icon: FiPenTool, label: "مكياج" };
-  }
-  if (has(["رموش", "حواجب", "لاش", "eyelash", "lash", "brow"])) {
-    return { Icon: FiEye, label: "رموش" };
-  }
-  if (has(["أظافر", "اظافر", "مناكير", "بدكير", "بديكير", "nail", "manicure", "pedicure"])) {
-    return { Icon: FiEdit3, label: "أظافر" };
-  }
-  if (has(["بشرة", "عناية", "facial", "skin", "clean"])) {
-    return { Icon: FiSun, label: "عناية" };
-  }
-  if (has(["مساج", "تدليك", "حمام", "spa", "massage", "body"])) {
-    return { Icon: FiHeart, label: "عناية جسم" };
-  }
-  if (has(["واكس", "ليزر", "ازالة", "إزالة", "thread", "wax", "laser"])) {
-    return { Icon: FiZap, label: "إزالة شعر" };
-  }
-  if (has(["باكيج", "عرض", "package", "bundle", "offer"])) {
-    return { Icon: FiGift, label: "باكيج" };
-  }
-  return { Icon: FiShoppingBag, label: "خدمة" };
+  return pickPriceLookupIconShared(serviceName, normalizeSearchText);
 }
 
 function normalizeKsaPhone(raw: string) {

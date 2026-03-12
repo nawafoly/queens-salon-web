@@ -3347,18 +3347,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     [expiredPendingDayBookings]
   );
 
-  const getAllowedStatusOptions = (b: Booking): BookingStatus[] => {
+  const getAllowedStatusOptions = useCallback((b: Booking): BookingStatus[] => {
     if (uiRole === "owner" || uiRole === "admin") return allStatusOptions;
     if (uiRole === "reception") {
       if (b.status === "pending") return ["pending", "confirmed", "cancelled"];
       return [b.status];
     }
     return [b.status];
-  };
+  }, [uiRole]);
 
-  const requestSensitiveAction = (action: SensitiveBookingAction) => {
+  const requestSensitiveAction = useCallback((action: SensitiveBookingAction) => {
     setPendingSensitiveAction(action);
-  };
+  }, []);
 
   const sensitiveActionDescription = (action: SensitiveBookingAction | null) => {
     if (!action) return "";
@@ -3414,7 +3414,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     }
   };
 
-  const handleUpdateStatus = (id: string, newStatus: BookingStatus) => {
+  const handleUpdateStatus = useCallback((id: string, newStatus: BookingStatus) => {
     const target = bookings.find((x) => x.id === id);
     if (!target) return;
     const allowed = getAllowedStatusOptions(target);
@@ -3428,7 +3428,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       nextStatus: newStatus,
       bookingRef: bookingRef(target),
     });
-  };
+  }, [bookings, getAllowedStatusOptions, requestSensitiveAction]);
 
   const handleConfirmPending = async () => {
     if (!confirmTarget?.id) return;
@@ -3569,13 +3569,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     }
   };
 
-  const handleDeleteBooking = (b: Booking) => {
+  const handleDeleteBooking = useCallback((b: Booking) => {
     if (uiRole !== "owner") {
       alert("الحذف النهائي متاح للمالك فقط");
       return;
     }
     requestSensitiveAction({ kind: "delete", booking: b });
-  };
+  }, [requestSensitiveAction, uiRole]);
 
   const openEditBookingModalUnsafe = useCallback((b: Booking) => {
     if (!canEditBookings) {
@@ -3585,13 +3585,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     setEditTarget(b);
   }, [canEditBookings]);
 
-  const openEditBookingModal = (b: Booking) => {
+  const openEditBookingModal = useCallback((b: Booking) => {
     if (!canEditBookings) {
       alert("التعديل متاح فقط للمالك أو الأدمن.");
       return;
     }
     requestSensitiveAction({ kind: "edit", booking: b });
-  };
+  }, [canEditBookings, requestSensitiveAction]);
 
   const applyLocalBookingPatch = useCallback(
     (bookingId: string, patch: Partial<Booking>) => {
@@ -3599,9 +3599,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       if (!id) return;
 
       const localAuditPatch = getLocalActorAudit();
-      setBookings((prev) =>
-        prev.map((row) => (row.id === id ? { ...row, ...patch, ...localAuditPatch } : row))
-      );
+      setBookings((prev) => {
+        const idx = prev.findIndex((row) => row.id === id);
+        if (idx < 0) return prev;
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...patch, ...localAuditPatch };
+        return next;
+      });
       setSelectedBooking((prev) =>
         prev && prev.id === id ? { ...prev, ...patch, ...localAuditPatch } : prev
       );
@@ -3855,13 +3859,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
   */
 
-  const canManageRefund = (b: Booking) => {
+  const canManageRefund = useCallback((b: Booking) => {
     if (!(uiRole === "owner" || uiRole === "admin" || uiRole === "reception")) return false;
     if (!(b.status === "confirmed" || b.status === "completed")) return false;
     const amount = readBookingTotalAmount(b);
     if (!Number.isFinite(amount) || amount <= 0) return false;
     return true;
-  };
+  }, [uiRole]);
 
   /*
   const detectPaymentMethod = (b: Booking): PaymentMethod => {
@@ -3877,7 +3881,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   };
   */
 
-  const openRefundModalUnsafe = (b: Booking) => {
+  const openRefundModalUnsafe = useCallback((b: Booking) => {
     if (!canManageRefund(b)) return;
     const bookingId = String(b.id || "").trim();
     const existing = refundMapByBookingId[bookingId];
@@ -3892,12 +3896,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     });
     setRefundError("");
     setRefundTarget(b);
-  };
+  }, [canManageRefund, refundMapByBookingId]);
 
-  const openRefundModal = (b: Booking) => {
+  const openRefundModal = useCallback((b: Booking) => {
     if (!canManageRefund(b)) return;
     requestSensitiveAction({ kind: "refund", booking: b });
-  };
+  }, [canManageRefund, requestSensitiveAction]);
 
   const executeSensitiveAction = useCallback(
     async (action: SensitiveBookingAction) => {
@@ -4053,7 +4057,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     saveHintTimerRef.current = window.setTimeout(() => setSavedNoteId(""), 1800);
   };
 
-  const renderBookingSection = (section: BookingDisplaySection) => (
+  const renderBookingSection = useCallback((section: BookingDisplaySection) => (
     <section
       key={section.key}
       className={`bk-bookings-section bk-bookings-section--${section.key}`}
@@ -4399,6 +4403,22 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         </div>
       )}
     </section>
+  ), [
+    canEditBookings,
+    canManageRefund,
+    handleDeleteBooking,
+    handleUpdateStatus,
+    lastUpdateMap,
+    openEditBookingModal,
+    openRefundModal,
+    refundBusyId,
+    refundMapByBookingId,
+    uiRole,
+  ]);
+
+  const bookingSectionsView = useMemo(
+    () => bookingSections.map(renderBookingSection),
+    [bookingSections, renderBookingSection]
   );
 
   if (loading) return <div className="p-5 text-center">جاري التحميل...</div>;
@@ -4718,7 +4738,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         </div>
 
         <div className="bk-bookings-sections">
-          {bookingSections.map((section) => renderBookingSection(section))}
+          {bookingSectionsView}
         </div>
 
         {false ? (
