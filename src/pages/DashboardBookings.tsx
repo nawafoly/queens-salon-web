@@ -119,6 +119,7 @@ const NEW_BOOKINGS_SEEN_AT_KEY = "dashboard_bookings_seen_at_v1";
 const LIVE_WINDOW_PAST_DAYS = 90;
 const LIVE_WINDOW_FUTURE_DAYS = 90;
 const LIVE_ACTIVE_STATUSES: BookingStatus[] = ["pending", "confirmed"];
+const NON_LIVE_HISTORY_STATUSES: BookingStatus[] = ["completed", "cancelled"];
 
 const allStatusOptions: BookingStatus[] = ["pending", "confirmed", "completed", "cancelled"];
 
@@ -184,6 +185,56 @@ function detectPaymentMethod(b: Booking): PaymentMethod {
   return "transfer";
 }
 
+function normalizeEditBookingTimeInput(raw: string): string {
+  const arabicIndicDigits = "٠١٢٣٤٥٦٧٨٩";
+  const easternArabicDigits = "۰۱۲۳۴۵۶۷۸۹";
+  const normalized = String(raw || "")
+    .replace(/[٠-٩]/g, (digit) => String(arabicIndicDigits.indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String(easternArabicDigits.indexOf(digit)))
+    .replace(/[\u200e\u200f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return "";
+
+  const match = normalized.match(/^(\d{1,2}):(\d{2})(?:\s*([AaPp]\.?[Mm]\.?|[صم]))?$/u);
+  if (!match) return "";
+
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const meridiem = String(match[3] || "").toLowerCase();
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || minutes < 0 || minutes > 59) {
+    return "";
+  }
+
+  if (meridiem) {
+    if (hours < 1 || hours > 12) return "";
+    const isAm = meridiem === "ص" || meridiem === "am" || meridiem === "a.m.";
+    const isPm = meridiem === "م" || meridiem === "pm" || meridiem === "p.m.";
+    if (!isAm && !isPm) return "";
+    if (isAm) {
+      hours = hours === 12 ? 0 : hours;
+    } else {
+      hours = hours === 12 ? 12 : hours + 12;
+    }
+  } else if (hours < 0 || hours > 23) {
+    return "";
+  }
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function normalizedDigitsOnly(raw: string): string {
+  const arabicIndicDigits = "٠١٢٣٤٥٦٧٨٩";
+  const easternArabicDigits = "۰۱۲۳۴۵۶۷۸۹";
+  return digitsOnly(
+    String(raw || "")
+      .replace(/[٠-٩]/g, (digit) => String(arabicIndicDigits.indexOf(digit)))
+      .replace(/[۰-۹]/g, (digit) => String(easternArabicDigits.indexOf(digit)))
+  );
+}
+
 type UiPaymentMode = BookingPaymentType | "none";
 type EditPaymentMethodOption = PaymentMethod | "none";
 type EditSectionOption = { id: string; name: string };
@@ -223,7 +274,7 @@ function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
     phone: String(b.phone || "").trim(),
     note: String((b as any)?.note || "").trim(),
     date: String(b.date || "").trim(),
-    time: String(b.time || "").trim(),
+    time: normalizeEditBookingTimeInput(String(b.time || "").trim()) || String(b.time || "").trim(),
     sectionId: primaryService.sectionId,
     categoryId: primaryService.categoryId,
     serviceId: primaryService.serviceId,
@@ -1116,7 +1167,8 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     setDraft((prev) => (prev.date === value ? prev : { ...prev, date: value }));
   }, []);
   const onTimeChange = useCallback((value: string) => {
-    setDraft((prev) => (prev.time === value ? prev : { ...prev, time: value }));
+    const normalizedValue = normalizeEditBookingTimeInput(value) || String(value || "").trim();
+    setDraft((prev) => (prev.time === normalizedValue ? prev : { ...prev, time: normalizedValue }));
   }, []);
   const onPriceChange = useCallback((value: string) => {
     setDraft((prev) => (prev.price === value ? prev : { ...prev, price: value }));
@@ -1155,7 +1207,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     const phone = String(draft.phone || "").trim();
     const note = String(draft.note || "").trim();
     const date = String(draft.date || "").trim();
-    const time = String(draft.time || "").trim();
+    const time = normalizeEditBookingTimeInput(String(draft.time || "").trim());
     const sectionId = String(draft.sectionId || "").trim();
     const categoryId = String(draft.categoryId || "").trim();
     const serviceId = String(draft.serviceId || "").trim();
@@ -1192,7 +1244,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
       setError("التاريخ غير صحيح.");
       return;
     }
-    if (!/^([01]?\\d|2[0-3]):([0-5]\\d)$/.test(time)) {
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
       setError("الوقت غير صحيح (HH:MM).");
       return;
     }
@@ -1480,13 +1532,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     [liveBookingsSource, historyBookingsSource]
   );
   const explicitHistoryScope = useMemo(() => {
-    const requestsHistoryByStatus =
-      !dateFrom && !dateTo && (statusFilter === "completed" || statusFilter === "cancelled");
-    const requestsHistoryByDate =
+    const requestsFullHistoryByDate =
       (!!dateFrom && (dateFrom < liveWindowStart || dateFrom > liveWindowEnd)) ||
       (!!dateTo && (dateTo < liveWindowStart || dateTo > liveWindowEnd));
 
-    if (requestsHistoryByDate) {
+    if (requestsFullHistoryByDate) {
       return {
         cacheKey: `range:${dateFrom || ""}:${dateTo || ""}`,
         scope: {
@@ -1496,18 +1546,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       };
     }
 
-    if (requestsHistoryByStatus) {
-      return {
-        cacheKey: `status:${statusFilter}`,
-        scope: {
-          statuses: [statusFilter],
-        },
-      };
-    }
-
-    return null;
-  }, [statusFilter, dateFrom, dateTo, liveWindowStart, liveWindowEnd]);
+    return {
+      cacheKey: `nonlive:${dateFrom || ""}:${dateTo || ""}`,
+      scope: {
+        statuses: NON_LIVE_HISTORY_STATUSES,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+      },
+    };
+  }, [dateFrom, dateTo, liveWindowStart, liveWindowEnd]);
   const authUser = getAuthUserSafe();
+  const authUserUid = String(auth.currentUser?.uid || "").trim();
+  const authUserDisplayName = authUser.displayName;
   const canEditBookings = uiRole === "owner" || uiRole === "admin";
   const getLocalActorAudit = useCallback((atMs = Date.now()) => {
     const currentDisplayName = String(auth.currentUser?.displayName || authUser.displayName || "").trim();
@@ -1634,13 +1684,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const requestId = historyBookingsRequestRef.current + 1;
     historyBookingsRequestRef.current = requestId;
 
-    if (!explicitHistoryScope) {
-      setHistoryBookingsSource([]);
-      return () => {
-        cancelled = true;
-      };
-    }
-
     const cached = historyBookingsCacheRef.current[explicitHistoryScope.cacheKey];
     if (cached) {
       setHistoryBookingsSource(cached);
@@ -1649,6 +1692,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       };
     }
 
+    setHistoryBookingsSource([]);
     void listBookings(explicitHistoryScope.scope)
       .then((rows) => {
         if (cancelled || historyBookingsRequestRef.current !== requestId) return;
@@ -2039,17 +2083,19 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     }
     const search = normalizeArabicName(q);
     const searchRaw = String(q || "").trim().toLowerCase();
-    const searchDigits = digitsOnly(searchRaw);
+    const searchDigits = normalizedDigitsOnly(searchRaw);
     if (search || searchRaw) {
       list = list.filter((b) => {
         const name = normalizeArabicName(b.customerName || "");
-        const phone = (b.phone || "").toLowerCase();
+        const phone = String(b.phone || "").toLowerCase();
+        const phoneDigits = normalizedDigitsOnly(phone);
         const emp = normalizeArabicName(b.employeeName || "");
         const ref = bookingRef(b).toLowerCase();
-        const refDigits = digitsOnly(ref);
+        const refDigits = normalizedDigitsOnly(ref);
         return (
           (search ? name.includes(search) || emp.includes(search) : false) ||
           phone.includes(searchRaw) ||
+          (!!searchDigits && phoneDigits.includes(searchDigits)) ||
           ref.includes(searchRaw) ||
           (!!searchDigits && refDigits.includes(searchDigits))
         );
@@ -2061,14 +2107,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         const bUid = String(b.employeeUid || "").trim();
         const bId = String(b.employeeId || "").trim();
         const bName = String(b.employeeName || "").trim();
-        const myUid = auth.currentUser?.uid;
+        const myUid = authUserUid;
         if (myUid && bUid === myUid) return true;
         if (myUid && bId === myUid) return true;
-        return bName && normalizeArabicName(bName).includes(normalizeArabicName(authUser.displayName));
+        return bName && normalizeArabicName(bName).includes(normalizeArabicName(authUserDisplayName));
       });
     }
     return list.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-  }, [bookings, q, dateFrom, dateTo, uiRole, authUser]);
+  }, [bookings, q, dateFrom, dateTo, uiRole, authUserUid, authUserDisplayName]);
 
   const filtered = useMemo(() => {
     const statusScoped =

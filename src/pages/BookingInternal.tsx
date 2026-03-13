@@ -52,10 +52,48 @@ import {
   toArabicCatalogLabel,
 } from "../helpers/bookingTextUtils";
 import {
+  extractBookingPublicIdBase,
+  formatConfirmExistingBookingPaymentSummary,
+  formatInternalPaymentDraftSummary,
+  formatItemToolsNoteText,
+  formatSarDisplay,
+  formatServicePickerPriceText,
+  formatQuickClientButtonLabel,
+  readBookingCategoryLabel,
+  readBookingSectionLabel,
+  resolveBookingBlockKey,
+} from "../helpers/bookingDisplayUtils";
+import {
+  classifySearchKey,
+  matchesReceptionSearchBooking,
+  normalizeSearchKey,
+  sortBookingsByCreatedAtDesc,
+} from "../helpers/bookingSearchUtils";
+import {
+  buildPackageCartItems,
+  buildPackageSnapshot,
+  buildSingleServiceCartItem,
+  distributePackageServicePrices,
+} from "../helpers/bookingCartUtils";
+import {
+  allocateDiscountAcrossItems as allocateDiscount,
+  buildAppliedDiscountState,
+  buildSavedOffersDropdownOptions,
+  findSelectedOfferById,
+  resolveDiscountApplicableIndexes,
+  sortSelectableOffers,
+  sumDiscountBasePrice,
+} from "../helpers/bookingDiscountUtils";
+import {
   buildEmployeeLookupKeys,
+  buildStaffResolverKey,
   buildUniformReasonByStarts,
+  filterNamedStaffRows,
+  filterStaffForResolverTarget,
+  findCartOverlap,
   formatBlockedRangeLabel,
   getGreenStartTimes,
+  getLocalTakenTimesForItem,
   getTimesToLock,
   resolveEmployeeKey,
   sortTimesBySlotOrder,
@@ -64,7 +102,6 @@ import {
 import {
   allocatePaidAcrossTargets,
   bookingStatusClass,
-  calcManualDiscount,
   canRefundBooking,
   describeBookingPaymentState,
   isCancelledStatus,
@@ -761,28 +798,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     writeQuickClientHistory(history);
   }
 
-  function formatQuickClientLastUsed(lastUsedAt: number): string {
-    if (!Number.isFinite(lastUsedAt) || lastUsedAt <= 0) return "";
-    try {
-      return new Intl.DateTimeFormat("ar-SA", { day: "2-digit", month: "2-digit" }).format(
-        new Date(lastUsedAt)
-      );
-    } catch {
-      return "";
-    }
-  }
-
-  function formatQuickClientButtonLabel(candidate: any): string {
-    const name = String(candidate?.name || candidate?.fullName || "بدون اسم").trim();
-    const phone = phone10Digits(candidate?.phone || candidate?.mobile || candidate?.clientPhone || "");
-    const phoneTail = phone ? phone.slice(-4) : "";
-    const lastUsed = formatQuickClientLastUsed(Number(candidate?.quickLastUsedAt || 0));
-    const pieces = [name];
-    if (phoneTail) pieces.push(phoneTail);
-    if (lastUsed) pieces.push(lastUsed);
-    return pieces.join(" • ");
-  }
-
   function applyClientSelection(found: any) {
     const name = String(found?.name || found?.fullName || "").trim();
     const phone = phone10Digits(found?.phone || found?.mobile || found?.clientPhone || "");
@@ -1182,125 +1197,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return out;
   }, [displayFoundBookings]);
 
-  type ReceptionSearchKind = "empty" | "phone" | "publicId" | "name" | "id";
-
-  function normalizeSearchKey(raw: string) {
-    return normalizeDigits(String(raw || "").trim());
-  }
-
-  function classifySearchKey(q: string): {
-    kind: ReceptionSearchKind;
-    value: string;
-    publicIdCandidates: string[];
-  } {
-    const s = normalizeSearchKey(q);
-    if (!s) return { kind: "empty", value: "", publicIdCandidates: [] };
-
-    // 1) phone
-    const digits10 = phone10Digits(s);
-    if (/^05\d{8}$/.test(digits10)) {
-      return { kind: "phone", value: digits10, publicIdCandidates: [] };
-    }
-
-    // 2) MK / QS / any prefixed publicId
-    const compact = s.replace(/\s+/g, "").replace(/_/g, "-");
-    const prefixed = compact.match(/^([A-Za-z]{2})-?(\d{1,12})$/);
-    if (prefixed) {
-      const prefix = prefixed[1].toUpperCase();
-      const num = prefixed[2];
-      const candidates = Array.from(
-        new Set<string>([
-          `${prefix}-${num}`,
-          `${prefix}${num}`,
-          compact.toUpperCase(),
-        ])
-      );
-      return {
-        kind: "publicId",
-        value: `${prefix}-${num}`,
-        publicIdCandidates: candidates,
-      };
-    }
-
-    if (/^(mk|qs)\b/i.test(s) || /^mk[-_ ]?/i.test(s) || /^qs[-_ ]?/i.test(s)) {
-      const cleaned = compact.toUpperCase();
-      const m = cleaned.match(/^([A-Z]{2})-?(\d+)$/);
-      if (m) {
-        const prefix = m[1];
-        const num = m[2];
-        return {
-          kind: "publicId",
-          value: `${prefix}-${num}`,
-          publicIdCandidates: [`${prefix}-${num}`, `${prefix}${num}`, cleaned],
-        };
-      }
-      return { kind: "publicId", value: cleaned, publicIdCandidates: [cleaned] };
-    }
-
-    // 3) digits only => treat as MK number
-    const onlyDigits = compact.replace(/\D/g, "");
-    if (/^05\d{1,8}$/.test(onlyDigits)) {
-      return { kind: "phone", value: onlyDigits, publicIdCandidates: [] };
-    }
-    if (onlyDigits && onlyDigits.length >= 3 && onlyDigits.length <= 12) {
-      return {
-        kind: "publicId",
-        value: `MK-${onlyDigits}`,
-        publicIdCandidates: [`MK-${onlyDigits}`, `MK${onlyDigits}`, onlyDigits],
-      };
-    }
-
-    // 4) otherwise treat as name
-    const hasLetters = /[A-Za-z\u0600-\u06FF]/.test(s);
-    if (hasLetters) return { kind: "name", value: s.trim(), publicIdCandidates: [] };
-
-    // 5) fallback: doc id
-    return { kind: "id", value: s, publicIdCandidates: [] };
-  }
-
-  function readBookingSectionLabel(booking: any) {
-    return String(
-      booking?.serviceSectionTitle ||
-        booking?.serviceSnapshot?.sectionTitleAtBooking ||
-        booking?.serviceSnapshot?.sectionIdAtBooking ||
-        booking?.serviceSectionId ||
-        ""
-    ).trim();
-  }
-
-  function readBookingCategoryLabel(booking: any) {
-    return String(
-      booking?.serviceCategoryName ||
-        booking?.serviceSnapshot?.categoryNameAtBooking ||
-        booking?.serviceSnapshot?.categoryIdAtBooking ||
-        booking?.serviceCategoryId ||
-        ""
-    ).trim();
-  }
-
-  function extractBookingPublicIdBase(booking: any) {
-    const raw = String(booking?.publicId || booking?.trackPublicId || booking?.mk || "")
-      .trim()
-      .toUpperCase();
-    if (!raw) return "";
-    const m = raw.match(/^(MK-\d+)(?:-\d+)?$/i);
-    return m ? m[1].toUpperCase() : raw;
-  }
-
-  function resolveBookingBlockKey(booking: any) {
-    const groupId = String(booking?.bookingGroupId || booking?.parentBookingId || "").trim();
-    if (groupId) return `group:${groupId}`;
-
-    const raw = String(booking?.publicId || booking?.trackPublicId || booking?.mk || "")
-      .trim()
-      .toUpperCase();
-    const base = extractBookingPublicIdBase(booking);
-    if (base && raw && raw.startsWith(`${base}-`)) return `public:${base}`;
-
-    const id = String(booking?.id || booking?.bookingId || raw || "").trim();
-    return `single:${id || "unknown"}`;
-  }
-
   async function searchBookingsForReception(raw: string) {
     const MAX_RESULTS = 25;
     const q0 = normalizeSearchKey(raw);
@@ -1382,147 +1278,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       .map((v) => normalizeSearchText(v))
       .filter(Boolean);
     const qDocId = normalizeSearchText(q0);
-    const isCancelledStatus = (b: any) => {
-      const s = String(b?.status || "").trim().toLowerCase();
-      return s === "cancelled" || s === "canceled" || s === "rejected";
-    };
-    const isCompletedStatus = (b: any) =>
-      String(b?.status || "").trim().toLowerCase() === "completed";
-
-    const matchesLoose = (b: any) => {
-      const nameCandidate = normalizeSearchText(
-        String(b?.clientName || b?.name || b?.fullName || "")
-      );
-      const phoneCandidate = phone10Digits(
-        String(b?.clientPhone || b?.phone || b?.mobile || "")
-      );
-      const publicIdCandidate = normalizeSearchText(
-        String(b?.publicId || b?.trackPublicId || b?.mk || "")
-      );
-      const publicBaseCandidate = normalizeSearchText(extractBookingPublicIdBase(b));
-      const idCandidate = normalizeSearchText(String(b?.id || b?.bookingId || ""));
-
-      if (q.kind === "phone") return !!qPhone && phoneCandidate.includes(qPhone);
-
-      if (q.kind === "publicId") {
-        return qPublicIds.some(
-          (needle) =>
-            publicIdCandidate.includes(needle) || publicBaseCandidate.includes(needle)
-        );
-      }
-
-      if (q.kind === "name") return !!qName && nameCandidate.includes(qName);
-      if (q.kind === "id") return !!qDocId && idCandidate.includes(qDocId);
-
-      return (
-        (!!qPhone && phoneCandidate.includes(qPhone)) ||
-        (!!qName &&
-          (nameCandidate.includes(qName) ||
-            publicIdCandidate.includes(qName) ||
-            publicBaseCandidate.includes(qName))) ||
-        (!!qDocId && idCandidate.includes(qDocId))
-      );
-    };
-
-    const matchesCancelledStrict = (b: any) => {
-      const nameCandidate = normalizeSearchText(
-        String(b?.clientName || b?.name || b?.fullName || "")
-      );
-      const phoneCandidate = phone10Digits(
-        String(b?.clientPhone || b?.phone || b?.mobile || "")
-      );
-      const publicIdCandidate = normalizeSearchText(
-        String(b?.publicId || b?.trackPublicId || b?.mk || "")
-      );
-      const publicBaseCandidate = normalizeSearchText(extractBookingPublicIdBase(b));
-      const publicDigitsCandidate = String(publicBaseCandidate || "").replace(/\D/g, "");
-      const idCandidate = normalizeSearchText(String(b?.id || b?.bookingId || ""));
-
-      if (q.kind === "phone") {
-        return !!qPhone && qPhone.length === 10 && phoneCandidate === qPhone;
-      }
-
-      if (q.kind === "publicId") {
-        return qPublicIds.some((needle) => {
-          const needleDigits = String(needle || "").replace(/\D/g, "");
-          return (
-            publicIdCandidate === needle ||
-            publicBaseCandidate === needle ||
-            (!!needleDigits && publicDigitsCandidate === needleDigits)
-          );
-        });
-      }
-
-      if (q.kind === "name") {
-        return (
-          !!qName &&
-          (nameCandidate === qName || nameCandidate.startsWith(`${qName} `))
-        );
-      }
-
-      if (q.kind === "id") return !!qDocId && idCandidate === qDocId;
-
-      return (
-        (!!qPhone &&
-          qPhone.length === 10 &&
-          phoneCandidate === qPhone) ||
-        (!!qName &&
-          (nameCandidate === qName || nameCandidate.startsWith(`${qName} `))) ||
-        (!!qDocId && idCandidate === qDocId)
-      );
-    };
-
-    const matchesCompletedStrict = (b: any) => {
-      const nameCandidate = normalizeSearchText(
-        String(b?.clientName || b?.name || b?.fullName || "")
-      );
-      const phoneCandidate = phone10Digits(
-        String(b?.clientPhone || b?.phone || b?.mobile || "")
-      );
-      const publicIdCandidate = normalizeSearchText(
-        String(b?.publicId || b?.trackPublicId || b?.mk || "")
-      );
-      const publicBaseCandidate = normalizeSearchText(extractBookingPublicIdBase(b));
-      const publicDigitsCandidate = String(publicBaseCandidate || "").replace(/\D/g, "");
-      const idCandidate = normalizeSearchText(String(b?.id || b?.bookingId || ""));
-
-      if (q.kind === "phone") {
-        return !!qPhone && qPhone.length === 10 && phoneCandidate === qPhone;
-      }
-
-      if (q.kind === "publicId") {
-        return qPublicIds.some((needle) => {
-          const needleDigits = String(needle || "").replace(/\D/g, "");
-          return (
-            publicIdCandidate === needle ||
-            publicBaseCandidate === needle ||
-            (!!needleDigits && publicDigitsCandidate === needleDigits)
-          );
-        });
-      }
-
-      if (q.kind === "name") {
-        return (
-          !!qName &&
-          (nameCandidate === qName || nameCandidate.startsWith(`${qName} `))
-        );
-      }
-      if (q.kind === "id") return !!qDocId && idCandidate === qDocId;
-
-      return (
-        (!!qPhone &&
-          qPhone.length === 10 &&
-          phoneCandidate === qPhone) ||
-        (!!qName &&
-          (nameCandidate === qName || nameCandidate.startsWith(`${qName} `))) ||
-        (!!qDocId && idCandidate === qDocId)
-      );
-    };
-
-    const isMatch = (b: any) => {
-      if (isCompletedStatus(b)) return matchesCompletedStrict(b);
-      if (isCancelledStatus(b)) return matchesCancelledStrict(b);
-      return matchesLoose(b);
+    const searchMatchArgs = {
+      query: q,
+      qName,
+      qPhone,
+      qPublicIds,
+      qDocId,
     };
 
     // 1) by phone
@@ -1586,36 +1347,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     // 5) broad fallback (helps when lower fields are missing or casing differs)
     if (q.kind === "name" && out.length < 5) {
       await runRecent(220);
-      const filtered = out.filter((b) => isMatch(b));
+      const filtered = out.filter((b) => matchesReceptionSearchBooking(b, searchMatchArgs));
       out.splice(0, out.length, ...filtered);
     }
 
-    const statusAwareResults = out.filter((b) => isMatch(b));
+    const statusAwareResults = out.filter((b) =>
+      matchesReceptionSearchBooking(b, searchMatchArgs)
+    );
     if (statusAwareResults.length !== out.length) {
       out.splice(0, out.length, ...statusAwareResults);
     }
-
-    const toEpoch = (v: any) => {
-      if (!v) return 0;
-      if (typeof v === "number") return v;
-      if (typeof v === "string") {
-        const t = Date.parse(v);
-        return Number.isFinite(t) ? t : 0;
-      }
-      if (typeof v?.toDate === "function") {
-        const t = v.toDate();
-        return t instanceof Date ? t.getTime() : 0;
-      }
-      if (Number.isFinite(v?.seconds)) {
-        const sec = Number(v.seconds);
-        const ns = Number(v.nanoseconds || 0);
-        return sec * 1000 + Math.floor(ns / 1_000_000);
-      }
-      return 0;
-    };
-
-    out.sort((a, b) => toEpoch(b?.createdAt) - toEpoch(a?.createdAt));
-    const finalRows = out.slice(0, MAX_RESULTS);
+    const finalRows = sortBookingsByCreatedAtDesc(out).slice(0, MAX_RESULTS);
     bookingSearchCacheRef.current[cacheKey] = {
       ts: Date.now(),
       rows: finalRows.map((row) => ({ ...(row || {}) })),
@@ -1703,6 +1445,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             targetItemId,
             empKey,
             dateISO,
+            timeSlots,
+            slotStepMin,
+            bufferMin,
+            DEFAULT_SERVICE_DURATION_MIN,
             empIdFallback
           )
           : new Set<string>();
@@ -1737,6 +1483,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           targetItemId,
           chosenKey,
           dateISO,
+          timeSlots,
+          slotStepMin,
+          bufferMin,
+          DEFAULT_SERVICE_DURATION_MIN,
           chosenId
         )
         : new Set<string>();
@@ -1878,7 +1628,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const hasStaffCache = Object.prototype.hasOwnProperty.call(staffByService, serviceId);
     if (!hasStaffCache) {
       const res = await listStaffForService(serviceId, sv);
-      staffList = (res || []).filter((st: any) => String(st?.name || "").trim()) as any;
+      staffList = filterNamedStaffRows(res || []) as any;
 
       setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
     }
@@ -1939,6 +1689,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 targetItemId,
                 fixedEmployeeKey,
                 dateISO,
+                timeSlots,
+                slotStepMin,
+                bufferMin,
+                DEFAULT_SERVICE_DURATION_MIN,
                 employeeIdFallback
               )
               : new Set<string>();
@@ -1980,6 +1734,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 targetItemId,
                 empKey,
                 dateISO,
+                timeSlots,
+                slotStepMin,
+                bufferMin,
+                DEFAULT_SERVICE_DURATION_MIN,
                 empIdFallback
               )
               : new Set<string>();
@@ -2535,43 +2293,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   // =========================
   // Helper: تعارض داخل السلة
   // =========================
-  function getLocalTakenTimesForItem(
-    items: CartItem[],
-    currentItemId: string,
-    employeeKey: string,
-    date: string,
-    employeeIdFallback?: string
-  ) {
-    const taken = new Set<string>();
-    const targetKey = String(employeeKey || "").trim();
-    const targetEmployeeId = String(employeeIdFallback || "").trim();
-
-    for (const other of items) {
-      if (!other) continue;
-      if (other.id === currentItemId) continue;
-
-      const otherKey = resolveEmployeeKey(other);
-      const otherEmployeeId = String(other.employeeId || "").trim();
-      const d = String(other.date || "").trim();
-      const t = String(other.time || "").trim();
-
-      if ((!otherKey && !otherEmployeeId) || !d || !t) continue;
-      const sameByKey = !!targetKey && otherKey === targetKey;
-      const sameByEmployeeId = !!targetEmployeeId && otherEmployeeId === targetEmployeeId;
-      const crossKeyMatch =
-        (!!targetEmployeeId && otherKey === targetEmployeeId) ||
-        (!!targetKey && otherEmployeeId === targetKey);
-      if (!sameByKey && !sameByEmployeeId && !crossKeyMatch) continue;
-      if (d !== date) continue;
-
-      const dur = Number(other.durationMin || DEFAULT_SERVICE_DURATION_MIN);
-      const locked = getTimesToLock(timeSlots, slotStepMin, t, dur, bufferMin);
-      locked.forEach((x) => taken.add(x));
-    }
-
-    return taken;
-  }
-
   function isCartItemStaffAvailable(it: CartItem) {
     const date = String(it?.date || "").trim();
     if (!date) return true;
@@ -2607,57 +2328,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return resolveEffectiveSeasonPrice(args);
   }
 
-  function findCartOverlap(items: CartItem[]) {
-    const list = (items || []).map((x) => ({ ...x }));
-    for (let i = 0; i < list.length; i++) {
-      for (let j = i + 1; j < list.length; j++) {
-        const a = list[i];
-        const b = list[j];
-
-        const empA = resolveEmployeeKey(a);
-        const empB = resolveEmployeeKey(b);
-        const dateA = String(a.date || "").trim();
-        const dateB = String(b.date || "").trim();
-        const timeA = String(a.time || "").trim();
-        const timeB = String(b.time || "").trim();
-
-        if (!empA || !empB || !dateA || !dateB || !timeA || !timeB) continue;
-        if (empA !== empB) continue;
-        if (dateA !== dateB) continue;
-
-        const aLocked = new Set(
-          getTimesToLock(
-            timeSlots,
-            slotStepMin,
-            timeA,
-            Number(a.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-            bufferMin
-          )
-        );
-        const bLocked = new Set(
-          getTimesToLock(
-            timeSlots,
-            slotStepMin,
-            timeB,
-            Number(b.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-            bufferMin
-          )
-        );
-
-        let overlap = false;
-        for (const t of aLocked) {
-          if (bLocked.has(t)) {
-            overlap = true;
-            break;
-          }
-        }
-
-        if (overlap) return { ok: false as const, a, b };
-      }
-    }
-    return { ok: true as const, a: null as any, b: null as any };
-  }
-
   // =========================
   // Use local hair guide image + role
   // =========================
@@ -2691,20 +2361,22 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   // =========================
   // ✅ Client-side availability_days backfill (Spark-friendly; no Cloud Functions)
-  // - Runs once per session for admin/owner in BookingInternal
-  // - Range: today - 90 days → today + 90 days
+  // - Manual only via explicit sessionStorage trigger
+  // - Never auto-runs on BookingInternal load
   // =========================
   useEffect(() => {
     if (!isOwner) return;
     if (availabilityDaysBackfillStartedThisSession) return;
 
-    const sessionKey = `qs_availability_days_backfill__${SALON_ID}__v1`;
+    const manualTriggerKey = `qs_availability_days_backfill_manual__${SALON_ID}__v1`;
+    let shouldRun = false;
     try {
-      if (sessionStorage.getItem(sessionKey) === "1") return;
-      sessionStorage.setItem(sessionKey, "1");
+      shouldRun = sessionStorage.getItem(manualTriggerKey) === "1";
+      if (shouldRun) sessionStorage.removeItem(manualTriggerKey);
     } catch {
-      // ignore (private mode / disabled storage)
+      shouldRun = false;
     }
+    if (!shouldRun) return;
 
     availabilityDaysBackfillStartedThisSession = true;
     const ctrl = new AbortController();
@@ -2714,7 +2386,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       const fromDateISO = addDaysISO(base, -90);
       const toDateISO = addDaysISO(base, 90);
 
-      console.log("[availability_backfill] auto-run from BookingInternal", {
+      console.log("[availability_backfill] manual-run from BookingInternal", {
         salonId: SALON_ID,
         fromDateISO,
         toDateISO,
@@ -3314,25 +2986,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return Array.from(map.entries());
   }, [servicesInSection]);
 
-  function servicePickerPriceText(sv: FlatService) {
-    const eff = pickEffectivePrice({
-      basePrice: Number(sv.basePrice || 0),
-      seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
-      appSettings,
-      dateISO: String(bookingDate || "").trim() || todayISO(),
-    });
-
-    const price = Number(eff.price || 0);
-    return `${price} ريال`;
-  }
-
   const packageOptions = useMemo(() => {
     return servicesFlat
       .filter((s) => s.kind === "package")
       .map((s) => ({
         id: String(s.id || "").trim(),
         title: toArabicCatalogLabel(String(s.name || "").trim() || "باكيج"),
-        priceText: servicePickerPriceText(s),
+        priceText: formatServicePickerPriceText({
+          basePrice: s.basePrice,
+          seasonPrice: (s as any).seasonPrice,
+          appSettings,
+          dateISO: String(bookingDate || "").trim() || todayISO(),
+        }),
       }))
       .filter((x) => x.id);
   }, [servicesFlat, bookingDate, appSettings]);
@@ -3358,7 +3023,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         label: toArabicCatalogLabel(String(catName || "")),
         options: arr.map((sv) => ({
           value: String(sv.id || "").trim(),
-          label: `${toArabicCatalogLabel(String(sv.name || sv.id))} - ${servicePickerPriceText(sv)}`,
+          label: `${toArabicCatalogLabel(String(sv.name || sv.id))} - ${formatServicePickerPriceText({
+            basePrice: sv.basePrice,
+            seasonPrice: (sv as any).seasonPrice,
+            appSettings,
+            dateISO: String(bookingDate || "").trim() || todayISO(),
+          })}`,
         })),
       })),
     ],
@@ -3455,11 +3125,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
         if (cancelled) return;
 
-        const normalized = (res || []).filter((st: any) => {
-          const name = String(st?.name || "").trim();
-          if (!name) return false;
-          return true;
-        });
+        const normalized = filterNamedStaffRows(res || []);
 
         setStaffByService((p) => ({ ...p, [sid]: normalized as any }));
       } catch {
@@ -3516,34 +3182,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return serviceByIdMap.get(key) || null;
   }
 
-  function normalizeSpecialty(v: string) {
-    return String(v || "").trim().toLowerCase();
-  }
-
-  function normalizeStaffSpecialties(st: any) {
-    return Array.isArray(st?.specialties)
-      ? st.specialties.map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean)
-      : [];
-  }
-
-  function buildStaffResolverKey(serviceId: string, target: FlatService | null) {
-    const sid = normalizeSpecialty(serviceId);
-    if (target?.kind === "package") {
-      const needed = Array.from(
-        new Set(
-          [
-            ...(target.packageServiceIds || []),
-            ...((target.packageServices || []).map((x: any) => String(x?.serviceId || "").trim())),
-          ]
-            .map((x) => normalizeSpecialty(String(x || "")))
-            .filter(Boolean)
-        )
-      ).sort();
-      return needed.length ? `pkg:${needed.join("|")}` : `pkg:${sid}`;
-    }
-    return `srv:${sid}`;
-  }
-
   async function getAllActiveStaffCached() {
     if (Array.isArray(staffAllCacheRef.current)) return staffAllCacheRef.current;
     const all = await listActiveStaffAll(SALON_ID);
@@ -3566,35 +3204,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     const loadPromise: Promise<StaffPublicWithId[]> = (async () => {
       const all = await getAllActiveStaffCached();
-      if (target?.kind === "package") {
-        const needed = Array.from(
-          new Set(
-            [
-              ...(target.packageServiceIds || []),
-              ...((target.packageServices || []).map((x: any) => String(x?.serviceId || "").trim())),
-            ]
-              .map((x) => normalizeSpecialty(String(x || "")))
-              .filter(Boolean)
-          )
-        );
-        if (!needed.length) return [] as StaffPublicWithId[];
-
-        const strict = (all || []).filter((st: any) => {
-          const specs = normalizeStaffSpecialties(st);
-          return needed.every((n) => specs.includes(n));
-        });
-        if (strict.length) return strict;
-
-        // Fallback: at least one package service specialty.
-        return (all || []).filter((st: any) => {
-          const specs = normalizeStaffSpecialties(st);
-          return needed.some((n) => specs.includes(n));
-        });
-      }
-
-      const wanted = normalizeSpecialty(sid);
-      if (!wanted) return [] as StaffPublicWithId[];
-      return (all || []).filter((st: any) => normalizeStaffSpecialties(st).includes(wanted));
+      return filterStaffForResolverTarget(all || [], sid, target);
     })();
 
     staffByResolverInFlightRef.current[resolverKey] = loadPromise;
@@ -3650,13 +3260,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   const buildItemToolsNote = (it: CartItem) => {
     if (!isToolsOptionEligibleForItem(it)) return "";
-
-    const source = String(it.toolsSource || "").trim() === "salon" ? "salon" : "client";
-    if (source === "salon") {
-      const fee = Math.max(0, Number(it.toolsFeeApplied || maniPediToolsFee || 0));
-      return `الأدوات: من المشغل (+${fee} ريال)`;
-    }
-    return "الأدوات: من العميلة (بدون رسوم)";
+    return formatItemToolsNoteText(it.toolsSource, it.toolsFeeApplied, maniPediToolsFee);
   };
 
   function focusFutureSearchForCartItem(
@@ -3753,94 +3357,28 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     if (!sv) return;
 
     if (sv.kind === "package") {
-      const pkgServices = Array.isArray(sv.packageServices) ? sv.packageServices : [];
-      const pkgServiceIds = (Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [])
-        .map((x) => String(x || "").trim())
-        .filter(Boolean);
-      const serviceIds = pkgServices.length
-        ? pkgServices.map((x: any) => String(x?.serviceId || "").trim()).filter(Boolean)
-        : pkgServiceIds;
-      if (!serviceIds.length) return;
-
-      const baseByService = serviceIds.map((serviceId, idx) => {
-        const meta = pkgServices[idx] || {};
-        const serviceDoc = getServiceById(serviceId);
-        const base = Math.max(
-          0,
-          Number((meta as any)?.price ?? (serviceDoc as any)?.basePrice ?? 0)
-        );
-        return { serviceId, meta, serviceDoc, base };
+      const distributed = distributePackageServicePrices({
+        service: sv,
+        getServiceById,
       });
+      if (!distributed.length) return;
 
-      const baseTotal = baseByService.reduce((sum, x) => sum + Number(x.base || 0), 0);
-      const packageFinal = Math.max(0, Number(sv.basePrice || 0));
-      const targetTotal = packageFinal > 0 ? packageFinal : baseTotal;
-
-      const splitCount = Math.max(1, baseByService.length);
-      const equalShare = Math.floor((targetTotal / splitCount) * 100) / 100;
-      const remaining = Math.round((targetTotal - equalShare * splitCount) * 100) / 100;
-      const distributed = baseByService.map((row, idx) => {
-        if (idx === splitCount - 1) {
-          const last = Math.max(0, Number((equalShare + remaining).toFixed(2)));
-          return { ...row, price: last };
-        }
-        return { ...row, price: Math.max(0, Number(equalShare.toFixed(2))) };
-      });
       const packageRunId = makeLocalId();
-
-      const packageSnapshot = {
-        packageId: String(sv.packageId || "").trim(),
-        packageName: sv.name,
-        finalPriceAtBooking: targetTotal,
-        baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || baseTotal || targetTotal),
-        totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-        serviceIds: serviceIds,
-        services: pkgServices,
-      };
-
-      const nextItems: CartItem[] = distributed.map((row) => {
-        const serviceDoc = row.serviceDoc;
-        const serviceName = String(
-          (row.meta as any)?.serviceName ||
-            serviceDoc?.name ||
-            row.serviceId
-        ).trim();
-        const durationMin = Math.max(
-          1,
-          Number((row.meta as any)?.durationMin || serviceDoc?.durationMin || DEFAULT_SERVICE_DURATION_MIN)
-        );
-        const sectionId = String((row.meta as any)?.sectionId || serviceDoc?.sectionId || "").trim();
-        const sectionTitle = String(serviceDoc?.sectionTitle || sectionId).trim();
-        const categoryId = String((row.meta as any)?.categoryId || serviceDoc?.categoryId || "").trim();
-        const categoryName = String(serviceDoc?.category || categoryId).trim();
-        const toolsEligible = isManiPediSectionByInfo(sectionId, sectionTitle);
-        const toolsSource = toolsEligible ? "client" : undefined;
-        const priced = buildItemPriceWithTools(Number(row.price || 0), toolsSource, toolsEligible);
-
-        return {
-          id: makeLocalId(),
-          packageRunId,
-          serviceId: row.serviceId,
-          serviceName,
-          packageId: String(sv.packageId || "").trim(),
-          packageSnapshot,
-          serviceBasePrice: priced.serviceBasePrice,
-          basePrice: priced.basePrice,
-          priceText: priced.priceText,
-          durationMin,
-          employeeId: "",
-          employeeUid: "",
-          employeeName: "",
-          date: bookingDate,
-          time: "",
-          locked: false,
-          serviceSectionId: sectionId,
-          serviceSectionTitle: sectionTitle || undefined,
-          serviceCategoryId: categoryId || undefined,
-          serviceCategoryName: categoryName || undefined,
-          toolsSource,
-          toolsFeeApplied: priced.toolsFeeApplied,
-        };
+      const packageSnapshot = buildPackageSnapshot({
+        service: sv,
+        distributedRows: distributed,
+        defaultServiceDurationMin: DEFAULT_SERVICE_DURATION_MIN,
+      });
+      const nextItems: CartItem[] = buildPackageCartItems({
+        service: sv,
+        distributedRows: distributed,
+        packageSnapshot,
+        packageRunId,
+        bookingDate,
+        createLocalId: makeLocalId,
+        defaultServiceDurationMin: DEFAULT_SERVICE_DURATION_MIN,
+        isToolsEligibleForSection: isManiPediSectionByInfo,
+        buildItemPriceWithTools,
       });
 
       setFormData((prev) => ({
@@ -3855,58 +3393,20 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return;
     }
 
-    const dateISO = String(bookingDate || "").trim();
-
-    const eff = pickEffectivePrice({
-      basePrice: Number(sv.basePrice || 0),
-      seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
-      appSettings,
-      dateISO,
-    });
-
-    const serviceBasePrice = Number(eff.price || 0);
-    const toolsEligible = isToolsOptionEligibleForService(sv);
-    const toolsSource = toolsEligible ? "client" : undefined;
-    const priced = buildItemPriceWithTools(serviceBasePrice, toolsSource, toolsEligible);
-
     setFormData((prev) => ({
       ...prev,
       items: [
         ...(prev.items || []),
-        {
-          id: makeLocalId(),
-          serviceId: id,
-          serviceName: sv.name,
-          packageId: sv.kind === "package" ? String(sv.packageId || "").trim() : undefined,
-          packageSnapshot:
-            sv.kind === "package" && sv.packageId
-              ? {
-                  packageId: String(sv.packageId || "").trim(),
-                  packageName: sv.name,
-                  finalPriceAtBooking: Number(sv.basePrice || 0),
-                  baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
-                  totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-                  serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
-                  services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
-                }
-              : undefined,
-          serviceBasePrice: priced.serviceBasePrice,
-          basePrice: priced.basePrice,
-          priceText: priced.priceText,
-          toolsSource,
-          toolsFeeApplied: priced.toolsFeeApplied,
-          durationMin: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-          employeeId: "",
-          employeeUid: "",
-          employeeName: "",
-          date: bookingDate,
-          time: "",
-          locked: false,
-          serviceSectionId: String(sv.sectionId || "").trim(),
-          serviceSectionTitle: String(sv.sectionTitle || "").trim() || undefined,
-          serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
-          serviceCategoryName: String(sv.category || "").trim() || undefined,
-        },
+        buildSingleServiceCartItem({
+          service: sv,
+          bookingDate,
+          appSettings,
+          createLocalId: makeLocalId,
+          defaultServiceDurationMin: DEFAULT_SERVICE_DURATION_MIN,
+          resolveEffectivePrice: pickEffectivePrice,
+          isToolsEligibleForService: isToolsOptionEligibleForService,
+          buildItemPriceWithTools,
+        }),
       ],
     }));
 
@@ -4043,11 +3543,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
           if (cancelled) return;
 
-          const normalized = (res || []).filter((st: any) => {
-            const name = String(st?.name || "").trim();
-            if (!name) return false;
-            return true;
-          });
+          const normalized = filterNamedStaffRows(res || []);
 
           setStaffByService((p) => ({ ...p, [sid]: normalized }));
 
@@ -4543,6 +4039,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             itemId,
             empKey,
             date,
+            timeSlots,
+            slotStepMin,
+            bufferMin,
+            DEFAULT_SERVICE_DURATION_MIN,
             employeeId
           );
 
@@ -4861,61 +4361,28 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }, [formData.items]);
 
   const selectableOffers = useMemo(() => {
-    const rows = Array.isArray(availableOffers) ? availableOffers : [];
-    return rows
-      .filter((o: any) => !isLegacyPackageLinkedOffer(o))
-      .sort((a: any, b: any) => {
-        const at = Number((a as any)?.updatedAt?.seconds || (a as any)?.createdAt?.seconds || 0);
-        const bt = Number((b as any)?.updatedAt?.seconds || (b as any)?.createdAt?.seconds || 0);
-        return bt - at;
-      });
+    return sortSelectableOffers(availableOffers);
   }, [availableOffers]);
 
   const savedOffersDropdownOptions = useMemo<BookingDropdownOption[]>(
-    () => [
-      { value: "", label: "بدون خصم محفوظ" },
-      ...selectableOffers.map((o: any) => {
-        const id = String((o as any)?.id || "").trim();
-        const code = normalizeCouponCode((o as any)?.code);
-        const title = String((o as any)?.title || "").trim() || "عرض";
-        const kind =
-          String((o as any)?.discountType || "").trim() === "percent"
-            ? `${Number((o as any)?.value || 0)}%`
-            : `${Number((o as any)?.value || 0)} ريال`;
-        return {
-          value: id,
-          label: `${title}${code ? ` (${code})` : ""} - ${kind}`,
-        };
-      }),
-    ],
+    () => buildSavedOffersDropdownOptions(selectableOffers),
     [selectableOffers]
   );
 
   const selectedOffer = useMemo(() => {
-    const id = String(selectedOfferId || "").trim();
-    if (!id) return null;
-    return selectableOffers.find((o: any) => String((o as any)?.id || "").trim() === id) || null;
+    return findSelectedOfferById(selectableOffers, selectedOfferId);
   }, [selectableOffers, selectedOfferId]);
 
   const discountApplicableIdx = useMemo(() => {
-    const items = formData.items || [];
-    if (!items.length) return [] as number[];
-    if (!selectedOffer) return items.map((_, idx) => idx);
-    const out: number[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const serviceId = String(items[i]?.serviceId || "").trim();
-      if (!serviceId) continue;
-      if (offerAppliesToService(selectedOffer as Offer, serviceId)) out.push(i);
-    }
-    return out;
+    return resolveDiscountApplicableIndexes(
+      formData.items || [],
+      selectedOffer,
+      offerAppliesToService
+    );
   }, [formData.items, selectedOffer]);
 
   const discountBasePrice = useMemo(() => {
-    if (!discountApplicableIdx.length) return 0;
-    return discountApplicableIdx.reduce((sum, idx) => {
-      const row = (formData.items || [])[idx];
-      return sum + Number(row?.basePrice || 0);
-    }, 0);
+    return sumDiscountBasePrice(formData.items || [], discountApplicableIdx);
   }, [discountApplicableIdx, formData.items]);
 
   const finalPrice = useMemo(() => applied.finalPrice, [applied.finalPrice]);
@@ -4933,63 +4400,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   };
 
   useEffect(() => {
-    const usingOffer = !!selectedOffer;
-    const rawValue = usingOffer ? Number((selectedOffer as any)?.value || 0) : Number(manualDiscountValue);
-    const sourceTypeRaw = usingOffer ? String((selectedOffer as any)?.discountType || "").trim() : manualDiscountType;
-    const hasType = sourceTypeRaw === "fixed" || sourceTypeRaw === "percent";
-    const sourceType = hasType ? (sourceTypeRaw as "fixed" | "percent") : null;
-    const value = Number.isFinite(rawValue) ? Math.max(0, rawValue) : 0;
-    const warningParts: string[] = [];
-    if (sourceType === "percent" && value > 100) {
-      warningParts.push("نسبة الخصم لا يمكن أن تتجاوز 100%.");
-    }
-    if (usingOffer && discountApplicableIdx.length === 0 && (formData.items || []).length > 0) {
-      warningParts.push("العرض المحدد لا ينطبق على الخدمات الموجودة في السلة.");
-    }
-    const normalizedValue = sourceType === "percent" ? Math.min(100, value) : value;
-    const calc = calcManualDiscount(discountBasePrice, sourceType, normalizedValue);
-
-    const code = usingOffer ? normalizeCouponCode((selectedOffer as any)?.code) : "";
-    const title = usingOffer
-      ? String((selectedOffer as any)?.title || "").trim() || (code ? `كود ${code}` : "عرض محفوظ")
-      : hasType && normalizedValue > 0
-      ? sourceType === "percent"
-        ? `خصم يدوي (${normalizedValue.toFixed(0)}%)`
-        : `خصم يدوي (${normalizedValue.toFixed(0)} ريال)`
-      : "";
-
-    const discountAmount = calc.discountAmount;
-    setApplied({
-      discountType: sourceType,
-      discountValue: normalizedValue,
-      title,
-      discountAmount,
-      finalPrice: Math.max(0, Number(basePrice || 0) - Number(discountAmount || 0)),
-      offerId: usingOffer ? String((selectedOffer as any)?.id || "").trim() || null : null,
-      couponCode: usingOffer ? code : "",
-      applicableItemIndexes: discountApplicableIdx,
+    const { applied: nextApplied, warningMessage } = buildAppliedDiscountState({
+      basePrice,
+      cartItemCount: (formData.items || []).length,
+      discountApplicableIndexes: discountApplicableIdx,
+      discountBasePrice,
+      manualDiscountType,
+      manualDiscountValue,
+      selectedOffer,
     });
-    setDiscountMsg(warningParts.join(" "));
+    setApplied(nextApplied);
+    setDiscountMsg(warningMessage);
   }, [basePrice, discountApplicableIdx, discountBasePrice, formData.items, manualDiscountType, manualDiscountValue, selectedOffer]);
-
-  function allocateDiscount(items: CartItem[], discountTotal: number) {
-    const total = items.reduce((s, it) => s + Number(it.basePrice || 0), 0);
-    if (!total || !discountTotal) return items.map(() => 0);
-
-    const raw = items.map((it) => (Number(it.basePrice || 0) / total) * discountTotal);
-    const rounded = raw.map((x) => Math.floor(x));
-    let used = rounded.reduce((s, x) => s + x, 0);
-    let remaining = Math.max(0, Math.round(discountTotal - used));
-
-    let i = 0;
-    while (remaining > 0 && items.length) {
-      rounded[i % items.length] += 1;
-      remaining -= 1;
-      i += 1;
-    }
-
-    return rounded;
-  }
 
   const checkOneItemSlot = async (it: CartItem) => {
     const employeeKey = resolveEmployeeKey(it);
@@ -5054,6 +4476,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       it.id,
       employeeKey,
       date,
+      baseSlots,
+      slotStepMin,
+      bufferMin,
+      DEFAULT_SERVICE_DURATION_MIN,
       String(it.employeeId || "").trim()
     );
     const localConflict = timesToCheck.some((t) => localTaken.has(t));
@@ -5172,6 +4598,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       temp.id,
       employeeKey,
       date,
+      baseSlots,
+      slotStepMin,
+      bufferMin,
+      DEFAULT_SERVICE_DURATION_MIN,
       String(temp.employeeId || "").trim()
     );
     const localConflict = timesToCheck.some((t) => localTaken.has(t));
@@ -5357,7 +4787,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return;
     }
 
-    const overlap = findCartOverlap(items);
+    const overlap = findCartOverlap(
+      items,
+      timeSlots,
+      slotStepMin,
+      bufferMin,
+      DEFAULT_SERVICE_DURATION_MIN
+    );
     if (!overlap.ok) {
       openModal({
         title: "تعارض في الأوقات",
@@ -6162,7 +5598,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       date: String(it.date || bookingDate || "").trim() || "—",
       timeLabel: formatTime12(String(it.time || "").trim(), "—"),
       durationMin: Math.max(0, Number(it.durationMin || 0)),
-      priceLabel: `${Number(it.basePrice || 0).toFixed(0)} ريال`,
+      priceLabel: formatSarDisplay(it.basePrice, 0),
       toolsNote: buildItemToolsNote(it),
       locked: !!it.locked,
     };
@@ -6347,18 +5783,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               </div>
             ) : null}
             <div className="small text-muted mt-2">
-              {(() => {
-                const total = roundMoney2(Math.max(0, Number(finalPrice || 0)));
-                const paid =
-                  internalPaymentTypeDraft === "full"
-                    ? total
-                    : roundMoney2(Math.max(0, Number(internalPaymentPaidAmountDraft || 0)));
-                const remaining = roundMoney2(Math.max(0, total - paid));
-                if (internalPaymentTypeDraft === "partial" && paid <= 0) {
-                  return `بدون دفع الآن - المتبقي ${remaining} ر.س`;
-                }
-                return `دفعت ${paid} ر.س - المتبقي ${remaining} ر.س`;
-              })()}
+              {formatInternalPaymentDraftSummary(
+                finalPrice,
+                internalPaymentTypeDraft,
+                internalPaymentPaidAmountDraft
+              )}
             </div>
             {internalPaymentError ? (
               <div className="small mt-2" style={{ color: "#b42318" }}>
@@ -6513,12 +5942,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             </button>
           </div>
           <div className="small text-muted mt-2">
-            {(() => {
-              const total = resolveExistingBookingPayment(confirmTargetBooking).totalAmount;
-              const paid = roundMoney2(total);
-              const remaining = roundMoney2(Math.max(0, total - paid));
-              return `دفع كامل: ${paid} ر.س - المتبقي بعد التأكيد: ${remaining} ر.س`;
-            })()}
+            {formatConfirmExistingBookingPaymentSummary(
+              resolveExistingBookingPayment(confirmTargetBooking).totalAmount
+            )}
           </div>
           {confirmPaymentError ? (
             <div className="small mt-2" style={{ color: "#b42318" }}>
