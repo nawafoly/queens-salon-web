@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCalendarDays, faChartLine, faClockRotateLeft } from "@fortawesome/free-solid-svg-icons";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 
 import "../styles/DashboardReports.css";
 import { db } from "../services/firebase";
@@ -514,6 +514,50 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
 }
 
+function loadCollectionOnce(
+  ref: any,
+  onNext: (snap: any) => void,
+  onError?: (err: any) => void
+) {
+  let active = true;
+  void getDocs(ref)
+    .then((snap) => {
+      if (!active) return;
+      onNext(snap);
+    })
+    .catch((err) => {
+      if (!active) return;
+      onError?.(err);
+    });
+  return () => {
+    active = false;
+  };
+}
+
+function loadAppSettingsOnce(
+  onNext: (settings: any) => void,
+  onError?: (err: any) => void
+) {
+  let active = true;
+  void AppSettingsService.fetchRemote()
+    .then((remote) => {
+      if (!active) return;
+      FirestoreReadStats.bump(
+        `salons/${SALON_ID}/settings/app`,
+        "DashboardReports.settings.fetchRemote",
+        "getDoc"
+      );
+      onNext(remote || {});
+    })
+    .catch((err) => {
+      if (!active) return;
+      onError?.(err);
+    });
+  return () => {
+    active = false;
+  };
+}
+
 export default function DashboardReports() {
   const [period, setPeriod] = useState<PeriodKey>("month");
   const [selectedMonth, setSelectedMonth] = useState(toMonthKey(new Date()));
@@ -539,13 +583,14 @@ export default function DashboardReports() {
   );
 
   useEffect(() => {
+    let active = true;
     let pending = 5;
     setLoading(true);
     setLoadErr("");
 
     const done = () => {
       pending -= 1;
-      if (pending <= 0) setLoading(false);
+      if (active && pending <= 0) setLoading(false);
     };
     let bookingsReady = false;
     let incomeReady = false;
@@ -563,13 +608,13 @@ export default function DashboardReports() {
     let firstExpenses = true;
     let firstStaff = true;
 
-    const unsubBookings = onSnapshot(
+    const unsubBookings = loadCollectionOnce(
       bookingsQ,
       (snap) => {
-        const source = "DashboardReports.bookings.onSnapshot";
+        const source = "DashboardReports.bookings.getDocs";
         const docs = firstBookings ? snap.docs : snap.docChanges().map((c) => c.doc);
         docs.forEach((d) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
         });
         firstBookings = false;
 
@@ -612,13 +657,13 @@ export default function DashboardReports() {
       }
     );
 
-    const unsubIncome = onSnapshot(
+    const unsubIncome = loadCollectionOnce(
       incomeQ,
       (snap) => {
-        const source = "DashboardReports.income.onSnapshot";
+        const source = "DashboardReports.income.getDocs";
         const docs = firstIncome ? snap.docs : snap.docChanges().map((c) => c.doc);
         docs.forEach((d) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
         });
         firstIncome = false;
 
@@ -662,13 +707,13 @@ export default function DashboardReports() {
       }
     );
 
-    const unsubExpenses = onSnapshot(
+    const unsubExpenses = loadCollectionOnce(
       expensesQ,
       (snap) => {
-        const source = "DashboardReports.expenses.onSnapshot";
+        const source = "DashboardReports.expenses.getDocs";
         const docs = firstExpenses ? snap.docs : snap.docChanges().map((c) => c.doc);
         docs.forEach((d) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
         });
         firstExpenses = false;
 
@@ -709,13 +754,13 @@ export default function DashboardReports() {
       }
     );
 
-    const unsubStaff = onSnapshot(
+    const unsubStaff = loadCollectionOnce(
       staffQ,
       (snap) => {
-        const source = "DashboardReports.staff_public.onSnapshot";
+        const source = "DashboardReports.staff_public.getDocs";
         const docs = firstStaff ? snap.docs : snap.docChanges().map((c) => c.doc);
         docs.forEach((d) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
         });
         firstStaff = false;
 
@@ -738,24 +783,25 @@ export default function DashboardReports() {
       }
     );
 
-    let unsubSettings: undefined | (() => void);
-    try {
-      unsubSettings = AppSettingsService.subscribe((remote: any) => {
+    const unsubSettings = loadAppSettingsOnce(
+      (remote: any) => {
         setAppSettings(remote || {});
         setLastSyncMs(Date.now());
         if (!settingsReady) {
           settingsReady = true;
           done();
         }
-      });
-    } catch {
-      if (!settingsReady) {
-        settingsReady = true;
-        done();
+      },
+      () => {
+        if (!settingsReady) {
+          settingsReady = true;
+          done();
+        }
       }
-    }
+    );
 
     return () => {
+      active = false;
       unsubBookings();
       unsubIncome();
       unsubExpenses();

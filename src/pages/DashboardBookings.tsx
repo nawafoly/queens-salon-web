@@ -18,9 +18,9 @@ import { FirestoreReadStats } from "../services/firestoreReadStats";
 import {
   collection,
   doc,
+  documentId,
   getDoc,
   getDocs,
-  onSnapshot,
   orderBy,
   query as fsQuery,
   limit as fsLimit,
@@ -28,15 +28,16 @@ import {
 } from "firebase/firestore";
 
 import {
-  listAllBookings,
+  listBookings,
   watchAllBookings, // ✅ Realtime
   updateBookingStatus,
   createDashboardBooking,
   updateBookingDetails as updateBookingFields,
   deleteBooking,
+  type BookingPaymentType,
   type BookingStatus,
 } from "../services/firestoreBookings";
-import { listAllIncomeFS, removeIncomeFS, upsertIncomeFS } from "../services/firestoreIncome";
+import { removeIncomeFS, upsertIncomeFS } from "../services/firestoreIncome";
 import type { PaymentMethod } from "../types/finance";
 
 import type { UiRole } from "../services/userProfile";
@@ -53,6 +54,53 @@ import {
   round2,
   toMillisSafeDashboardBookings as toMillisSafe,
 } from "../helpers/pageSharedUtils";
+import {
+  bookingChannelBadgeText,
+  bookingCreationRefMs,
+  bookingRef,
+  buildBookingLifecycleActivityItems,
+  buildDashboardBookingBlocks,
+  buildFallbackCreatedActivity,
+  buildFallbackUpdatedActivity,
+  channelLabel,
+  chunkItems,
+  dateISOFromMillisLocal,
+  deriveLastUpdateForBooking,
+  digitsOnly,
+  extractServicesFromAny,
+  formatAnyDateTime,
+  inDateRange,
+  isPendingDepositBooking,
+  isTemporaryNormalInternalBooking,
+  mapBookingActivityItem,
+  mergeBookingActivityItems,
+  mergeBookingLists,
+  normalizeArabicName,
+  normalizeBookingActivityAuditRaw,
+  normalizeBookingActivityEventRaw,
+  normalizeBookingPaymentType,
+  normalizeBookingTrackFallback,
+  parseBookingDateTimeMs,
+  paymentAmountsDisplayLines,
+  paymentBreakdownText,
+  paymentStatusLabel,
+  readBookingTotalAmount,
+  readCatalogLabel,
+  resolveBookingPaymentSummary,
+  resolveBookingSectionKind,
+  safeISODate,
+  serviceMetaSummaryForTable,
+  serviceSummaryForTable,
+  statusLabel,
+  shiftISODate,
+  toArabicOnlyLabel,
+  todayISOLocal,
+  type BookingActivityItem,
+  type BookingLastUpdate,
+  type BookingTrackFallbackContact,
+  type DashboardBookingDisplaySection,
+  type DashboardBookingServiceItem as BookingServiceItem,
+} from "./DashboardBookings.helpers";
 
 // ✅ Styles
 import "../styles/DashboardBookings.css";
@@ -68,79 +116,15 @@ type SettlementFilterOption = "all" | "unpaid";
 const NOTES_KEY = "dashboard_booking_notes_v1";
 const BOOKING_ACTION_PIN = "598867395";
 const NEW_BOOKINGS_SEEN_AT_KEY = "dashboard_bookings_seen_at_v1";
-
-const statusLabel: Record<BookingStatus, string> = {
-  confirmed: "مؤكد",
-  pending: "في الانتظار",
-  cancelled: "ملغي",
-  completed: "مكتمل",
-};
+const LIVE_WINDOW_PAST_DAYS = 90;
+const LIVE_WINDOW_FUTURE_DAYS = 90;
+const LIVE_ACTIVE_STATUSES: BookingStatus[] = ["pending", "confirmed"];
 
 const allStatusOptions: BookingStatus[] = ["pending", "confirmed", "completed", "cancelled"];
-type BookingPaymentType = "full" | "partial";
-type PaymentDisplayLine = {
-  key: string;
-  label: string;
-  tone: "neutral" | "paid" | "remaining" | "total";
-  amount?: number;
-};
 
 /* =========================
    Helpers
 ========================= */
-
-function safeISODate(d: string | undefined | null) {
-  if (!d) return "";
-  return d.trim();
-}
-
-function inDateRange(bookingDate: string, from: string, to: string) {
-  const d = safeISODate(bookingDate);
-  if (!d) return false;
-  if (from && d < from) return false;
-  if (to && d > to) return false;
-  return true;
-}
-
-function todayISOLocal() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function dateISOFromMillisLocal(ms: number) {
-  if (!Number.isFinite(ms) || ms <= 0) return "";
-  const d = new Date(ms);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function parseBookingDateTimeMs(dateISO: string, timeHHMM: string): number | null {
-  const d = String(dateISO || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const t = String(timeHHMM || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (!d || !t) return null;
-
-  const year = Number(d[1]);
-  const month = Number(d[2]);
-  const day = Number(d[3]);
-  const hour = Number(t[1]);
-  const minute = Number(t[2]);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
-
-  const stamp = new Date(year, Math.max(0, month - 1), day, hour, minute, 0, 0);
-  if (
-    stamp.getFullYear() !== year ||
-    stamp.getMonth() !== month - 1 ||
-    stamp.getDate() !== day
-  ) {
-    return null;
-  }
-  return stamp.getTime();
-}
 
 function downloadCSV(filename: string, rows: string[][]) {
   const escapeCell = (cell: string) => {
@@ -188,72 +172,6 @@ function getAuthUserSafe(): { displayName: string; email: string } {
   return { displayName, email };
 }
 
-function bookingRef(b: Partial<Booking> | null | undefined) {
-  const raw = String(b?.publicId || "").trim();
-  if (!raw) return "—";
-  const up = raw.toUpperCase();
-  if (/^MK-\d+$/.test(up)) return up;
-  if (/^\d+$/.test(up)) return `MK-${up}`;
-  return up;
-}
-
-function readBookingTotalAmount(raw: any) {
-  const n = Number(
-    raw?.finalPrice ??
-      raw?.total ??
-      raw?.serviceSnapshot?.priceAtBooking ??
-      raw?.packageSnapshot?.finalPriceAtBooking ??
-      0
-  );
-  return Number.isFinite(n) ? Math.max(0, n) : 0;
-}
-
-function normalizeBookingPaymentType(raw: any): BookingPaymentType | null {
-  const s = String(raw || "").trim().toLowerCase();
-  if (!s) return null;
-  if (s === "full" || s === "complete" || s === "كامل") return "full";
-  if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
-  return null;
-}
-
-function resolveBookingPaymentSummary(raw: any): {
-  paymentType: BookingPaymentType;
-  paidAmount: number;
-  remainingAmount: number;
-  totalAmount: number;
-} {
-  const totalAmount = readBookingTotalAmount(raw);
-  const normalizedType = normalizeBookingPaymentType(raw?.paymentType);
-  const hasExplicitPaid = Number.isFinite(Number(raw?.paidAmount));
-  const explicitPaid = hasExplicitPaid ? Number(raw?.paidAmount) : NaN;
-  const status = String(raw?.status || "").trim().toLowerCase();
-  const isRevenueStatus = status === "confirmed" || status === "completed";
-
-  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "partial");
-  let paidAmount: number;
-  if (hasExplicitPaid) {
-    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
-  } else if (paymentType === "partial") {
-    paidAmount = 0;
-  } else {
-    paidAmount = isRevenueStatus ? totalAmount : 0;
-  }
-
-  if (paymentType === "full") {
-    paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
-  } else {
-    paymentType = paidAmount >= totalAmount ? "full" : "partial";
-  }
-
-  const remainingAmount = Math.max(0, round2(totalAmount - paidAmount));
-  return {
-    paymentType,
-    paidAmount: round2(Math.max(0, Math.min(totalAmount, paidAmount))),
-    remainingAmount,
-    totalAmount: round2(totalAmount),
-  };
-}
-
 function detectPaymentMethod(b: Booking): PaymentMethod {
   const stored = String((b as any)?.paymentMethod || "").toLowerCase().trim();
   if (stored === "card" || stored === "cash" || stored === "transfer") {
@@ -265,1074 +183,6 @@ function detectPaymentMethod(b: Booking): PaymentMethod {
   if (s.includes("كاش") || s.includes("cash") || s.includes("نقد")) return "cash";
   return "transfer";
 }
-
-function isPendingDepositBooking(
-  raw: { status?: string } | null | undefined,
-  payment: { paidAmount: number; remainingAmount: number; totalAmount: number }
-) {
-  const status = String(raw?.status || "").trim().toLowerCase();
-  if (status !== "pending") return false;
-  return (
-    Number(payment.totalAmount || 0) > 0 &&
-    Number(payment.paidAmount || 0) > 0 &&
-    Number(payment.remainingAmount || 0) > 0
-  );
-}
-
-function paymentStatusLabel(payment: {
-  paymentType: BookingPaymentType;
-  paidAmount: number;
-  remainingAmount: number;
-  totalAmount: number;
-}) {
-  const total = round2(payment.totalAmount);
-  const paid = round2(payment.paidAmount);
-  const remaining = round2(payment.remainingAmount);
-  if (total <= 0) return "لا يوجد سعر محدد";
-  if (paid <= 0 && remaining > 0) return "غير مدفوع (بانتظار السداد)";
-  if (remaining <= 0) return "مدفوع بالكامل";
-  if (payment.paymentType === "partial") return "عربون (دفع جزئي)";
-  return "مدفوع جزئيًا";
-}
-
-function paymentBreakdownText(payment: {
-  paymentType: BookingPaymentType;
-  paidAmount: number;
-  remainingAmount: number;
-  totalAmount: number;
-}) {
-  if (round2(payment.totalAmount) <= 0) return paymentStatusLabel(payment);
-  return `${paymentStatusLabel(payment)} - ${paymentAmountsInlineText(payment).replace(/\n/g, " | ")}`;
-}
-
-function paymentAmountsDisplayLines(payment: {
-  paymentType: BookingPaymentType;
-  paidAmount: number;
-  remainingAmount: number;
-  totalAmount: number;
-}): PaymentDisplayLine[] {
-  const total = round2(payment.totalAmount);
-  const paid = round2(payment.paidAmount);
-  const remaining = round2(payment.remainingAmount);
-  if (total <= 0) {
-    return [{ key: "empty", label: "لا يوجد مبلغ محدد", tone: "neutral" as const }];
-  }
-  if (remaining <= 0) {
-    return [{ key: "paid", label: "مدفوع", amount: paid, tone: "paid" as const }];
-  }
-  if (paid <= 0) {
-    return [{ key: "remaining", label: "متبقي", amount: remaining, tone: "remaining" as const }];
-  }
-  return [
-    { key: "paid", label: "مدفوع", amount: paid, tone: "paid" as const },
-    { key: "remaining", label: "متبقي", amount: remaining, tone: "remaining" as const },
-    { key: "total", label: "إجمالي", amount: total, tone: "total" as const },
-  ];
-}
-
-function paymentAmountsInlineText(payment: {
-  paymentType: BookingPaymentType;
-  paidAmount: number;
-  remainingAmount: number;
-  totalAmount: number;
-}) {
-  return paymentAmountsDisplayLines(payment)
-    .map((line) => (typeof line.amount === "number" ? `${line.label} ${line.amount} ر.س` : line.label))
-    .join("\n");
-}
-
-function bookingCreationRefMs(b: Partial<Booking> | null | undefined) {
-  const createdAtMs = toMillisSafe((b as any)?.createdAt);
-  if (createdAtMs > 0) return createdAtMs;
-  const createdAtMsLegacy = Number((b as any)?.createdAtMs || 0);
-  if (Number.isFinite(createdAtMsLegacy) && createdAtMsLegacy > 0) return createdAtMsLegacy;
-  const pendingAtMs = Number((b as any)?.pendingAt || 0);
-  if (Number.isFinite(pendingAtMs) && pendingAtMs > 0) return pendingAtMs;
-  const updatedAtMs = toMillisSafe((b as any)?.updatedAt);
-  if (updatedAtMs > 0) return updatedAtMs;
-  return 0;
-}
-
-function bookingPublicBase(publicId?: string) {
-  const up = String(publicId || "").trim().toUpperCase();
-  if (!up) return "";
-  const m = up.match(/^(MK-\d+)(?:-\d+)?$/i);
-  return m ? m[1].toUpperCase() : up;
-}
-
-function resolveDashboardBookingBlockKey(b: Booking) {
-  const groupId = String((b as any)?.bookingGroupId || (b as any)?.parentBookingId || "").trim();
-  if (groupId) return `group:${groupId}`;
-
-  const fullPublic = String(b?.publicId || "").trim().toUpperCase();
-  const basePublic = bookingPublicBase(fullPublic);
-  if (basePublic && fullPublic && fullPublic.startsWith(`${basePublic}-`)) {
-    return `public:${basePublic}`;
-  }
-
-  const phone = digitsOnly(String(b?.phone || "").trim());
-  const name = normalizeArabicName(String(b?.customerName || "").trim());
-  const date = String(b?.date || "").trim();
-  const createdMs = toMillisSafe((b as any)?.createdAt);
-  if ((phone || name) && date && createdMs > 0) {
-    const bucket = Math.floor(createdMs / (2 * 60 * 1000));
-    const idPart = phone ? `p:${phone}` : `n:${name}`;
-    return `batch:${String(b?.channel || "").trim()}:${idPart}:${date}:${bucket}`;
-  }
-
-  return `single:${String(b?.id || "").trim() || "unknown"}`;
-}
-
-type BookingBlock = {
-  key: string;
-  label: string;
-  rows: Booking[];
-};
-
-type BookingSectionKind = "normal" | "internal";
-
-type BookingDisplaySection = {
-  key: BookingSectionKind;
-  title: string;
-  description: string;
-  rows: Booking[];
-  blocks: BookingBlock[];
-  temporaryInternalCount: number;
-};
-
-function buildDashboardBookingBlocks(rows: Booking[]): BookingBlock[] {
-  const blocks = new Map<string, BookingBlock>();
-
-  rows.forEach((b) => {
-    const key = resolveDashboardBookingBlockKey(b);
-    const current = blocks.get(key);
-    if (current) {
-      current.rows.push(b);
-      return;
-    }
-
-    const label = bookingPublicBase(String(b.publicId || "").trim()) || bookingRef(b);
-    blocks.set(key, { key, label, rows: [b] });
-  });
-
-  const out = Array.from(blocks.values());
-  out.forEach((block) => {
-    block.rows.sort((a, b) => {
-      const d = String(a.date || "").localeCompare(String(b.date || ""));
-      if (d !== 0) return d;
-      return String(a.time || "").localeCompare(String(b.time || ""));
-    });
-  });
-
-  return out;
-}
-
-function isTemporaryNormalInternalBooking(b: Booking) {
-  if (b.channel !== "internal") return false;
-  if (String(b.status || "").trim().toLowerCase() !== "pending") return false;
-
-  const payment = resolveBookingPaymentSummary(b);
-  if (round2(payment.paidAmount) > 0) return false;
-
-  const bookingMs = parseBookingDateTimeMs(String(b.date || ""), String(b.time || ""));
-  if (bookingMs !== null) return bookingMs > Date.now();
-
-  const bookingDate = safeISODate(String(b.date || ""));
-  return !!bookingDate && bookingDate > todayISOLocal();
-}
-
-function resolveBookingSectionKind(b: Booking): BookingSectionKind {
-  if (b.channel === "internal" && !isTemporaryNormalInternalBooking(b)) return "internal";
-  return "normal";
-}
-
-function bookingChannelBadgeText(b: Booking) {
-  if (b.channel !== "internal") return "";
-  return isTemporaryNormalInternalBooking(b)
-    ? "حجز داخلي مستقبلي قبل الدفع"
-    : "حجز داخلي";
-}
-
-function channelLabel(channel?: string) {
-  if (channel === "client") return "موقع العميلات";
-  if (channel === "dashboard") return "الداشبورد";
-  if (channel === "internal") return "الحجز الداخلي";
-  return "غير محدد";
-}
-
-function formatEventAt(v: any) {
-  try {
-    const ms =
-      typeof v?.toMillis === "function"
-        ? v.toMillis()
-        : typeof v?.seconds === "number"
-          ? Number(v.seconds) * 1000
-          : 0;
-    if (!ms) return "—";
-    const d = new Date(ms);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd} ${formatTime12(`${hh}:${mi}`)}`;
-  } catch {
-    return "—";
-  }
-}
-
-function formatAnyDateTime(v: any) {
-  try {
-    if (!v) return "—";
-    const ms =
-      typeof v?.toMillis === "function"
-        ? v.toMillis()
-        : typeof v?.seconds === "number"
-          ? Number(v.seconds) * 1000
-          : typeof v === "number"
-            ? v
-            : Date.parse(String(v));
-    if (!Number.isFinite(ms) || ms <= 0) return "—";
-    const d = new Date(ms);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd} ${formatTime12(`${hh}:${mi}`)}`;
-  } catch {
-    return "—";
-  }
-}
-
-function digitsOnly(v: string) {
-  return String(v || "").replace(/\D/g, "");
-}
-
-const GENERIC_ACTOR_LABELS = new Set([
-  "",
-  "system",
-  "النظام",
-  "client",
-  "staff",
-  "dashboard",
-  "internal",
-  "owner",
-  "admin",
-  "reception",
-  "guest",
-  "user",
-  "مستخدم",
-  "عميلة",
-  "موظفة",
-  "تعيين تلقائي",
-  "auto-assigned",
-  "auto assigned",
-]);
-
-function normalizeActorLabel(value: unknown) {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-}
-
-function isMeaningfulActorLabel(value: unknown) {
-  const raw = String(value || "").trim();
-  if (!raw) return false;
-  return !GENERIC_ACTOR_LABELS.has(normalizeActorLabel(raw));
-}
-
-function emailLocalPart(email: unknown) {
-  const raw = String(email || "").trim();
-  return raw ? raw.split("@")[0] : "";
-}
-
-function resolveUidActorLabel(
-  uid: unknown,
-  booking?: Partial<Booking> | null,
-  userNamesByUid: Record<string, string> = {}
-) {
-  const rawUid = String(uid || "").trim();
-  if (!rawUid) return "";
-  const mappedName = String(userNamesByUid[rawUid] || "").trim();
-  if (mappedName) return mappedName;
-
-  const bookingUserId = String(booking?.userId || "").trim();
-  const channel = String(booking?.channel || "").trim().toLowerCase();
-  const createdBy = String(booking?.createdBy || "").trim().toLowerCase();
-  const clientName = String(booking?.customerName || "").trim();
-  if (
-    bookingUserId &&
-    rawUid === bookingUserId &&
-    (channel === "client" || createdBy === "client") &&
-    clientName &&
-    clientName !== "غير متوفر"
-  ) {
-    return clientName;
-  }
-
-  return rawUid.slice(0, 8);
-}
-
-function resolveActorLabelFromParts(args: {
-  name?: unknown;
-  email?: unknown;
-  uid?: unknown;
-  booking?: Partial<Booking> | null;
-  userNamesByUid?: Record<string, string>;
-  createdBy?: unknown;
-}) {
-  const name = String(args.name || "").trim();
-  if (isMeaningfulActorLabel(name)) return name;
-
-  const createdBy = String(args.createdBy || "").trim();
-  if (isMeaningfulActorLabel(createdBy)) return createdBy;
-
-  const rawUid = String(args.uid || "").trim();
-  const uidLabel = resolveUidActorLabel(rawUid, args.booking, args.userNamesByUid || {});
-  const emailLabel = emailLocalPart(args.email);
-  if (uidLabel && rawUid && uidLabel !== rawUid.slice(0, 8)) return uidLabel;
-  if (emailLabel) return emailLabel;
-  if (uidLabel) return uidLabel;
-
-  return "";
-}
-
-function resolveBookingActorLabel(
-  booking: Partial<Booking> | null | undefined,
-  userNamesByUid: Record<string, string> = {}
-) {
-  const b = booking || {};
-  const candidates = [
-    { name: b.updatedByName, email: b.updatedByEmail, uid: b.updatedByUid },
-    { name: b.cancelledByName, email: b.cancelledByEmail, uid: b.cancelledByUid },
-    { name: b.completedByName, email: b.completedByEmail, uid: b.completedByUid },
-    { name: b.confirmedByName, email: b.confirmedByEmail, uid: b.confirmedByUid },
-    { name: b.pendingByName, email: b.pendingByEmail, uid: b.pendingByUid },
-    {
-      name: b.createdByName,
-      email: b.createdByEmail,
-      uid: b.createdByUid || b.userId,
-      createdBy: b.createdBy,
-    },
-  ];
-
-  for (const candidate of candidates) {
-    const label = resolveActorLabelFromParts({
-      ...candidate,
-      booking: b,
-      userNamesByUid,
-    });
-    if (label) return label;
-  }
-
-  const clientName = String(b.customerName || "").trim();
-  if (
-    clientName &&
-    clientName !== "غير متوفر" &&
-    (String(b.channel || "").trim().toLowerCase() === "client" ||
-      String(b.createdBy || "").trim().toLowerCase() === "client")
-  ) {
-    return clientName;
-  }
-
-  return "النظام";
-}
-
-function fallbackLastUpdateForBooking(
-  booking: Partial<Booking> | null | undefined,
-  userNamesByUid: Record<string, string> = {}
-) {
-  const fallbackAt = formatAnyDateTime((booking as any)?.updatedAt || (booking as any)?.createdAt);
-  return {
-    by: resolveBookingActorLabel(booking, userNamesByUid),
-    at: fallbackAt,
-  };
-}
-
-function actorLabelFromEvent(
-  ev: any,
-  userNamesByUid: Record<string, string> = {},
-  booking?: Partial<Booking> | null
-) {
-  const label = resolveActorLabelFromParts({
-    name: ev?.byName || ev?.userName || ev?.displayName,
-    email: ev?.byEmail,
-    uid: ev?.byUid || ev?.userUid,
-    booking,
-    userNamesByUid,
-  });
-  return label || resolveBookingActorLabel(booking, userNamesByUid);
-}
-
-type BookingActivityActorKind = "client" | "staff" | "admin" | "system" | "unknown";
-type BookingActivityTone = "default" | "success" | "danger" | "info";
-type BookingActivityItem = {
-  id: string;
-  eventKey: string;
-  title: string;
-  actorName: string;
-  actorKind: BookingActivityActorKind;
-  actorKindLabel: string;
-  atLabel: string;
-  changes: string[];
-  note: string;
-  tone: BookingActivityTone;
-  sortMs: number;
-};
-
-function bookingActivityActorKindLabelAr(kind: BookingActivityActorKind) {
-  if (kind === "client") return "العميلة";
-  if (kind === "staff") return "الموظفة";
-  if (kind === "admin") return "الإدارة";
-  if (kind === "system") return "النظام";
-  return "غير محدد";
-}
-
-function isAutomaticBookingActivity(raw: any) {
-  const hay = [
-    raw?.byName,
-    raw?.byEmail,
-    raw?.note,
-    raw?.type,
-  ]
-    .map((v) => String(v || "").trim().toLowerCase())
-    .join(" ");
-
-  return (
-    hay.includes("النظام") ||
-    hay.includes("تلقائي") ||
-    /\b(system|auto|automatic)\b/i.test(hay)
-  );
-}
-
-function resolveBookingActivitySortMs(raw: any) {
-  const directMs = Number(raw?.eventAtMs || 0);
-  if (Number.isFinite(directMs) && directMs > 0) return directMs;
-  const metaMs = Number(raw?.meta?.eventAtMs || 0);
-  if (Number.isFinite(metaMs) && metaMs > 0) return metaMs;
-  const atMs = toMillisSafe(raw?.at || raw?.createdAt);
-  if (atMs > 0) return atMs;
-  return 0;
-}
-
-function getBookingActivityPatch(raw: any) {
-  const directPatch = raw?.patch;
-  if (directPatch && typeof directPatch === "object" && !Array.isArray(directPatch)) {
-    return directPatch as Record<string, unknown>;
-  }
-
-  const afterPatch = raw?.after;
-  if (afterPatch && typeof afterPatch === "object" && !Array.isArray(afterPatch)) {
-    return afterPatch as Record<string, unknown>;
-  }
-
-  return {} as Record<string, unknown>;
-}
-
-function resolveBookingActivityType(raw: any) {
-  const explicitType = String(raw?.type || raw?.meta?.bookingLogType || "").trim().toLowerCase();
-  if (explicitType) return explicitType;
-
-  const action = String(raw?.action || "").trim().toLowerCase();
-  if (action === "booking_created") return "created";
-  if (action === "booking_updated") return "details_updated";
-  if (action === "booking_viewed") return "staff_acknowledged";
-  if (
-    action === "booking_confirmed" ||
-    action === "booking_completed" ||
-    action === "booking_cancelled" ||
-    action === "booking_status_changed"
-  ) {
-    return "status_changed";
-  }
-
-  return "";
-}
-
-function resolveBookingActivityStatus(raw: any) {
-  const patch = getBookingActivityPatch(raw);
-  const patchStatus = String(patch?.status || raw?.status || "").trim().toLowerCase();
-  if (patchStatus) return patchStatus;
-
-  const action = String(raw?.action || "").trim().toLowerCase();
-  if (action === "booking_confirmed") return "confirmed";
-  if (action === "booking_completed") return "completed";
-  if (action === "booking_cancelled") return "cancelled";
-
-  return "";
-}
-
-function bookingPaymentMethodLabelAr(method: unknown) {
-  const raw = String(method || "").trim().toLowerCase();
-  if (raw === "cash") return "كاش";
-  if (raw === "card") return "شبكة";
-  if (raw === "transfer") return "تحويل";
-  if (raw === "other") return "أخرى";
-  return "";
-}
-
-function bookingPaymentModeLabelAr(args: {
-  paymentType?: unknown;
-  paymentMethod?: unknown;
-  paidAmount?: unknown;
-}) {
-  const paymentType = normalizeBookingPaymentType(args.paymentType);
-  const paymentMethod = String(args.paymentMethod || "").trim().toLowerCase();
-  const paidAmount = Number(args.paidAmount ?? 0);
-
-  if (!paymentMethod && paymentType === "partial" && paidAmount <= 0) return "بدون دفع";
-  if (paymentMethod === "none") return "بدون دفع";
-  if (paymentType === "full") return "دفع كامل";
-  if (paymentType === "partial") return "عربون";
-  return "";
-}
-
-function resolveBookingActivityTitle(raw: any) {
-  const type = resolveBookingActivityType(raw);
-  const status = resolveBookingActivityStatus(raw);
-
-  if (type === "created") return "تم إنشاء الحجز";
-  if (type === "details_updated") return "تم تعديل الحجز";
-  if (type === "staff_acknowledged") return "تم الاطلاع على الحجز";
-  if (type === "status_changed") {
-    if (status === "confirmed") return "تم تأكيد الحجز";
-    if (status === "cancelled" || status === "canceled") return "تم إلغاء الحجز";
-    if (status === "completed") return "تم إكمال الحجز";
-    if (status === "pending") return "تم تحويل الحجز إلى الانتظار";
-    return "تم تغيير حالة الحجز";
-  }
-
-  return "تم تحديث الحجز";
-}
-
-function resolveBookingActivityTone(raw: any): BookingActivityTone {
-  const type = resolveBookingActivityType(raw);
-  const status = resolveBookingActivityStatus(raw);
-
-  if (type === "created") return "info";
-  if (type === "staff_acknowledged") return "info";
-  if (status === "confirmed" || status === "completed") return "success";
-  if (status === "cancelled" || status === "canceled") return "danger";
-  return "default";
-}
-
-function resolveBookingActivityActor(
-  raw: any,
-  booking: Partial<Booking> | null | undefined,
-  userNamesByUid: Record<string, string> = {}
-) {
-  if (isAutomaticBookingActivity(raw)) {
-    return {
-      actorName: "النظام",
-      actorKind: "system" as BookingActivityActorKind,
-    };
-  }
-
-  const explicit = resolveActorLabelFromParts({
-    name: raw?.byName || raw?.userName || raw?.displayName,
-    email: raw?.byEmail,
-    uid: raw?.byUid || raw?.userUid,
-    booking,
-    userNamesByUid,
-  });
-  const bookingFallbackRaw = resolveBookingActorLabel(booking, userNamesByUid);
-  const bookingFallback = bookingFallbackRaw === "النظام" ? "" : bookingFallbackRaw;
-  const actorName = explicit || bookingFallback || "";
-  const bookingClientName = String(booking?.customerName || "").trim();
-  const bookingEmployeeName = String(booking?.employeeName || "").trim();
-  const type = resolveBookingActivityType(raw);
-
-  if (actorName) {
-    if (
-      bookingClientName &&
-      normalizeArabicName(actorName) === normalizeArabicName(bookingClientName)
-    ) {
-      return {
-        actorName: bookingClientName,
-        actorKind: "client" as BookingActivityActorKind,
-      };
-    }
-
-    if (
-      bookingEmployeeName &&
-      normalizeArabicName(actorName) === normalizeArabicName(bookingEmployeeName)
-    ) {
-      return {
-        actorName: bookingEmployeeName,
-        actorKind: "staff" as BookingActivityActorKind,
-      };
-    }
-
-    return {
-      actorName,
-      actorKind:
-        type === "staff_acknowledged"
-          ? ("staff" as BookingActivityActorKind)
-          : ("admin" as BookingActivityActorKind),
-    };
-  }
-
-  if (
-    type === "created" &&
-    bookingClientName &&
-    (String(booking?.channel || "").trim().toLowerCase() === "client" ||
-      String(booking?.createdBy || "").trim().toLowerCase() === "client")
-  ) {
-    return {
-      actorName: bookingClientName,
-      actorKind: "client" as BookingActivityActorKind,
-    };
-  }
-
-  return {
-    actorName: "غير محدد",
-    actorKind: "unknown" as BookingActivityActorKind,
-  };
-}
-
-function resolveBookingActivityChanges(raw: any) {
-  const type = resolveBookingActivityType(raw);
-  const patch = getBookingActivityPatch(raw);
-  const serviceSnapshot =
-    patch?.serviceSnapshot && typeof patch.serviceSnapshot === "object" ? (patch.serviceSnapshot as any) : {};
-  const changes: string[] = [];
-
-  const push = (value: string) => {
-    const txt = String(value || "").trim();
-    if (!txt) return;
-    if (!changes.includes(txt)) changes.push(txt);
-  };
-
-  const serviceName = String(
-    serviceSnapshot?.serviceNameAtBooking ||
-      patch?.serviceName ||
-      patch?.serviceId ||
-      ""
-  ).trim();
-  const sectionName = String(
-    serviceSnapshot?.sectionTitleAtBooking ||
-      patch?.sectionTitle ||
-      patch?.sectionName ||
-      patch?.sectionId ||
-      ""
-  ).trim();
-  const categoryName = String(
-    serviceSnapshot?.categoryNameAtBooking ||
-      patch?.categoryName ||
-      patch?.categoryId ||
-      ""
-  ).trim();
-  const clientName = String(patch?.clientName || patch?.customerName || "").trim();
-  const clientPhone = String(patch?.clientPhone || patch?.customerPhone || patch?.phone || "").trim();
-  const totalRaw = Number(patch?.finalPrice ?? patch?.total);
-  const paidAmountRaw = Number(patch?.paidAmount);
-  const remainingAmountRaw = Number(patch?.remainingAmount);
-  const status = String(patch?.status || "").trim();
-  const paymentMode = bookingPaymentModeLabelAr({
-    paymentType: patch?.paymentType,
-    paymentMethod: patch?.paymentMethod,
-    paidAmount: patch?.paidAmount,
-  });
-  const paymentMethod = bookingPaymentMethodLabelAr(patch?.paymentMethod);
-  const noteText = String(patch?.note || "").trim();
-
-  if (patch?.date) push(`التاريخ إلى ${String(patch.date).trim()}`);
-  if (patch?.time) push(`الوقت إلى ${formatTime12(String(patch.time).trim())}`);
-  if (sectionName) push(`القسم إلى ${toArabicOnlyLabel(sectionName, sectionName)}`);
-  if (categoryName) push(`التصنيف إلى ${toArabicOnlyLabel(categoryName, categoryName)}`);
-  if (patch?.employeeName) push(`الموظفة إلى ${String(patch.employeeName).trim()}`);
-  if (serviceName) push(`الخدمة إلى ${toArabicOnlyLabel(serviceName, serviceName)}`);
-  if (clientName) push(`العميلة إلى ${clientName}`);
-  if (clientPhone) push(`رقم الجوال إلى ${clientPhone}`);
-  if (status) push(`الحالة إلى ${statusLabel[status as BookingStatus] || status}`);
-  if (paymentMode) push(`نوع الدفع إلى ${paymentMode}`);
-  if (paymentMethod) push(`طريقة الدفع إلى ${paymentMethod}`);
-  if (Number.isFinite(paidAmountRaw)) push(`المدفوع إلى ${round2(Math.max(0, paidAmountRaw))} ر.س`);
-  if (Number.isFinite(remainingAmountRaw)) {
-    push(`المتبقي إلى ${round2(Math.max(0, remainingAmountRaw))} ر.س`);
-  }
-  if (Number.isFinite(totalRaw) && totalRaw > 0) push(`الإجمالي إلى ${totalRaw} ر.س`);
-  if (type === "details_updated" && noteText) push("تم تحديث ملاحظة الحجز");
-
-  return changes;
-}
-
-function resolveBookingActivityNote(raw: any) {
-  const note = String(raw?.note || "").trim();
-  if (!note) return "";
-
-  const genericNotes = new Set([
-    "تم إنشاء الحجز",
-    "تم تعديل بيانات الحجز",
-    "تمت مشاهدة الحجز لأول مرة",
-  ]);
-
-  if (genericNotes.has(note)) return "";
-  if (resolveBookingActivityType(raw) === "status_changed") return "";
-  return note;
-}
-
-function mapBookingActivityItem(
-  raw: any,
-  booking: Partial<Booking> | null | undefined,
-  userNamesByUid: Record<string, string> = {}
-): BookingActivityItem {
-  const type = resolveBookingActivityType(raw) || "details_updated";
-  const patch = getBookingActivityPatch(raw);
-  const status = resolveBookingActivityStatus(raw);
-  const detailsKey =
-    type === "details_updated"
-      ? Object.keys(patch)
-          .filter((key) => !/^updatedBy/i.test(key) && key !== "updatedAt")
-          .sort()
-          .join(",")
-      : "";
-  const actor = resolveBookingActivityActor(raw, booking, userNamesByUid);
-  const sortMs =
-    resolveBookingActivitySortMs(raw) ||
-    bookingCreationRefMs(booking) ||
-    Date.now();
-
-  return {
-    id: String(raw?.id || raw?.eventId || `${sortMs}-${raw?.type || "event"}`),
-    eventKey:
-      type === "status_changed"
-        ? `status:${status || "changed"}`
-        : type === "details_updated"
-          ? `details:${detailsKey || "generic"}`
-          : type,
-    title: resolveBookingActivityTitle(raw),
-    actorName: actor.actorName,
-    actorKind: actor.actorKind,
-    actorKindLabel: bookingActivityActorKindLabelAr(actor.actorKind),
-    atLabel: formatAnyDateTime(sortMs),
-    changes: resolveBookingActivityChanges(raw),
-    note: resolveBookingActivityNote(raw),
-    tone: resolveBookingActivityTone(raw),
-    sortMs,
-  };
-}
-
-function buildFallbackCreatedActivity(
-  booking: Partial<Booking> | null | undefined
-): BookingActivityItem | null {
-  const createdAtMs = bookingCreationRefMs(booking);
-  if (!createdAtMs) return null;
-
-  const clientName = String(booking?.customerName || "").trim();
-  const isClientCreated =
-    !!clientName &&
-    (String(booking?.channel || "").trim().toLowerCase() === "client" ||
-      String(booking?.createdBy || "").trim().toLowerCase() === "client");
-
-  return {
-    id: `fallback-created-${String(booking?.id || "booking")}`,
-    eventKey: "created",
-    title: "تم إنشاء الحجز",
-    actorName: isClientCreated ? clientName : "غير محدد",
-    actorKind: isClientCreated ? "client" : "unknown",
-    actorKindLabel: isClientCreated ? "العميلة" : "غير محدد",
-    atLabel: formatAnyDateTime(createdAtMs),
-    changes: [],
-    note: "",
-    tone: "info",
-    sortMs: createdAtMs,
-  };
-}
-
-function buildFallbackUpdatedActivity(
-  booking: Partial<Booking> | null | undefined,
-  userNamesByUid: Record<string, string> = {},
-  existingItems: BookingActivityItem[] = []
-): BookingActivityItem | null {
-  const updatedAtMs = toMillisSafe((booking as any)?.updatedAt);
-  const createdAtMs = bookingCreationRefMs(booking);
-  if (!updatedAtMs) return null;
-  if (createdAtMs > 0 && updatedAtMs <= createdAtMs + 1000) return null;
-
-  const hasNonCreatedEvent = existingItems.some((item) => item.title !== "تم إنشاء الحجز");
-  if (hasNonCreatedEvent) return null;
-
-  return mapBookingActivityItem(
-    {
-      id: `fallback-updated-${String(booking?.id || "booking")}`,
-      type: "details_updated",
-      eventAtMs: updatedAtMs,
-      at: (booking as any)?.updatedAt,
-      byUid: (booking as any)?.updatedByUid || null,
-      byEmail: (booking as any)?.updatedByEmail || null,
-      byName: (booking as any)?.updatedByName || null,
-      patch: {},
-    },
-    booking,
-    userNamesByUid
-  );
-}
-
-function normalizeBookingActivityEventRaw(
-  id: string,
-  data: Record<string, unknown>
-): Record<string, unknown> {
-  const status = resolveBookingActivityStatus(data);
-  const patch = {
-    ...getBookingActivityPatch(data),
-    ...(status ? { status } : {}),
-  };
-
-  return {
-    id: `event_${id}`,
-    ...data,
-    type: resolveBookingActivityType(data) || String(data?.type || "").trim().toLowerCase() || "details_updated",
-    patch,
-    eventAtMs: resolveBookingActivitySortMs(data),
-    at: data?.at,
-  };
-}
-
-function normalizeBookingActivityAuditRaw(
-  id: string,
-  data: Record<string, unknown>
-): Record<string, unknown> | null {
-  const action = String(data?.action || "").trim().toLowerCase();
-  const type = resolveBookingActivityType(data);
-  if (!action.startsWith("booking_") && !type) return null;
-
-  const status = resolveBookingActivityStatus(data);
-  const patch = {
-    ...getBookingActivityPatch(data),
-    ...(status ? { status } : {}),
-  };
-
-  return {
-    id: `audit_${id}`,
-    type: type || "details_updated",
-    action,
-    patch,
-    note: String(data?.description || "").trim(),
-    byUid: data?.userUid || null,
-    byEmail: data?.userEmail || null,
-    byName: data?.userName || null,
-    eventAtMs: resolveBookingActivitySortMs(data),
-    at: data?.createdAt,
-    createdAt: data?.createdAt,
-    meta: data?.meta,
-  };
-}
-
-function buildBookingLifecycleActivityItems(
-  booking: Partial<Booking> | null | undefined,
-  userNamesByUid: Record<string, string> = {}
-) {
-  if (!booking) return [] as BookingActivityItem[];
-
-  const b: any = booking;
-  const totalAmount = readBookingTotalAmount(booking);
-  const basePatch = {
-    customerName: b.customerName || undefined,
-    phone: b.phone || undefined,
-    date: b.date || undefined,
-    time: b.time || undefined,
-    employeeName: b.employeeName || undefined,
-    serviceName: b.serviceName || undefined,
-    serviceSnapshot: b.serviceSnapshot || undefined,
-    finalPrice: totalAmount || undefined,
-    total: totalAmount || undefined,
-    paymentType: b.paymentType || undefined,
-    paymentMethod: b.paymentMethod ?? undefined,
-    paidAmount: Number.isFinite(Number(b.paidAmount)) ? Number(b.paidAmount) : undefined,
-    remainingAmount: Number.isFinite(Number(b.remainingAmount)) ? Number(b.remainingAmount) : undefined,
-    note: String(b.note || "").trim() || undefined,
-  };
-
-  const raws: Array<Record<string, unknown>> = [];
-  const createdAtMs = bookingCreationRefMs(booking);
-  if (createdAtMs > 0) {
-    raws.push({
-      id: `derived_created_${String(b.id || "booking")}`,
-      type: "created",
-      patch: basePatch,
-      byUid: b.createdByUid || b.userId || null,
-      byEmail: b.createdByEmail || null,
-      byName: b.createdByName || null,
-      eventAtMs: createdAtMs,
-      at: b.createdAt || createdAtMs,
-      note: "",
-    });
-  }
-
-  const lifecycleEntries = [
-    {
-      key: "confirmed",
-      at: Number(b.confirmedAt || 0),
-      byUid: b.confirmedByUid || null,
-      byEmail: b.confirmedByEmail || null,
-      byName: b.confirmedByName || null,
-    },
-    {
-      key: "completed",
-      at: Number(b.completedAt || 0),
-      byUid: b.completedByUid || null,
-      byEmail: b.completedByEmail || null,
-      byName: b.completedByName || null,
-    },
-    {
-      key: "cancelled",
-      at: Number(b.cancelledAt || 0),
-      byUid: b.cancelledByUid || null,
-      byEmail: b.cancelledByEmail || null,
-      byName: b.cancelledByName || null,
-    },
-    {
-      key: "pending",
-      at: Number(b.pendingAt || 0),
-      byUid: b.pendingByUid || null,
-      byEmail: b.pendingByEmail || null,
-      byName: b.pendingByName || null,
-    },
-  ];
-
-  lifecycleEntries.forEach((entry) => {
-    if (!Number.isFinite(entry.at) || entry.at <= 0) return;
-    if (entry.key === "pending" && createdAtMs > 0 && entry.at <= createdAtMs + 1000) return;
-
-    raws.push({
-      id: `derived_${entry.key}_${String(b.id || "booking")}_${entry.at}`,
-      type: "status_changed",
-      patch: {
-        status: entry.key,
-      },
-      byUid: entry.byUid,
-      byEmail: entry.byEmail,
-      byName: entry.byName,
-      eventAtMs: entry.at,
-      at: entry.at,
-      note: "",
-    });
-  });
-
-  return raws.map((raw) => mapBookingActivityItem(raw, booking, userNamesByUid));
-}
-
-function normalizeBookingActivityActorMergeKey(item: BookingActivityItem) {
-  const actorName = String(item.actorName || "").trim();
-  if (!actorName) return `${item.actorKind}:unknown`;
-  return `${item.actorKind}:${normalizeArabicName(actorName) || actorName.toLowerCase()}`;
-}
-
-function sanitizeBookingActivityChanges(item: BookingActivityItem) {
-  const redundantStatusChange =
-    item.title === "تم تأكيد الحجز"
-      ? "الحالة إلى مؤكد"
-      : item.title === "تم إلغاء الحجز"
-        ? "الحالة إلى ملغي"
-        : item.title === "تم إكمال الحجز"
-          ? "الحالة إلى مكتمل"
-          : item.title === "تم تحويل الحجز إلى الانتظار"
-            ? "الحالة إلى في الانتظار"
-            : "";
-
-  if (!redundantStatusChange) return Array.from(new Set(item.changes));
-  return Array.from(new Set(item.changes)).filter((change) => change !== redundantStatusChange);
-}
-
-function mergeBookingActivityItems(items: BookingActivityItem[]) {
-  const merged = new Map<string, BookingActivityItem>();
-
-  items.forEach((item) => {
-    const bucket = item.sortMs > 0 ? Math.round(item.sortMs / 1000) : 0;
-    const fingerprint = `${item.eventKey}::${bucket}`;
-    const existing = merged.get(fingerprint);
-
-    if (!existing) {
-      merged.set(fingerprint, { ...item, changes: [...item.changes] });
-      return;
-    }
-
-    const shouldReplaceActor =
-      existing.actorKind === "unknown" && item.actorKind !== "unknown";
-    const mergedChanges = Array.from(new Set([...existing.changes, ...item.changes]));
-
-    merged.set(fingerprint, {
-      ...existing,
-      ...(shouldReplaceActor
-        ? {
-            actorName: item.actorName,
-            actorKind: item.actorKind,
-            actorKindLabel: item.actorKindLabel,
-          }
-        : {}),
-      tone: existing.tone === "default" && item.tone !== "default" ? item.tone : existing.tone,
-      note: existing.note || item.note,
-      changes: mergedChanges,
-    });
-  });
-
-  const exactMerged = Array.from(merged.values())
-    .map((item) => ({
-      ...item,
-      changes: sanitizeBookingActivityChanges(item),
-    }))
-    .sort((a, b) => a.sortMs - b.sortMs || a.id.localeCompare(b.id));
-
-  const collapsed: BookingActivityItem[] = [];
-  const confirmFlowWindowMs = 10_000;
-
-  exactMerged.forEach((item) => {
-    const last = collapsed[collapsed.length - 1];
-    if (!last) {
-      collapsed.push(item);
-      return;
-    }
-
-    const sameActor =
-      normalizeBookingActivityActorMergeKey(last) === normalizeBookingActivityActorMergeKey(item);
-    const withinConfirmFlow =
-      sameActor &&
-      Math.abs(item.sortMs - last.sortMs) <= confirmFlowWindowMs &&
-      (last.title === "تم تأكيد الحجز" || item.title === "تم تأكيد الحجز");
-
-    if (!withinConfirmFlow) {
-      collapsed.push(item);
-      return;
-    }
-
-    const confirmItem = last.title === "تم تأكيد الحجز" ? last : item;
-    const otherItem = confirmItem === last ? item : last;
-
-    collapsed[collapsed.length - 1] = {
-      ...confirmItem,
-      id: `${confirmItem.id}__merged__${otherItem.id}`,
-      sortMs: Math.max(confirmItem.sortMs, otherItem.sortMs),
-      atLabel: formatAnyDateTime(Math.max(confirmItem.sortMs, otherItem.sortMs)),
-      note: confirmItem.note || (otherItem.title === "تم تأكيد الحجز" ? otherItem.note : ""),
-      changes: [],
-    };
-  });
-
-  return collapsed;
-}
-
-function normalizeArabicName(input: string) {
-  const s = String(input || "").trim().toLowerCase();
-  return s
-    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g, "")
-    .replace(/[إأآا]/g, "ا")
-    .replace(/ى/g, "ي")
-    .replace(/ة/g, "ه")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-type BookingServiceItem = {
-  serviceId?: string;
-  serviceName?: string;
-  price?: number;
-  durationMin?: number;
-  sectionLabel?: string;
-  categoryLabel?: string;
-};
 
 type UiPaymentMode = BookingPaymentType | "none";
 type EditPaymentMethodOption = PaymentMethod | "none";
@@ -1384,24 +234,6 @@ function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
   };
 }
 
-function readCatalogLabel(raw: any, fallback = ""): string {
-  const obj = raw && typeof raw === "object" ? raw : {};
-  const candidates = [
-    obj?.name,
-    obj?.title,
-    obj?.serviceName,
-    obj?.categoryName,
-    obj?.sectionTitle,
-    obj?.["الاسم"],
-    obj?.["العنوان"],
-  ];
-  for (const value of candidates) {
-    const txt = String(value || "").trim();
-    if (txt) return txt;
-  }
-  return String(fallback || "").trim();
-}
-
 function resolvePrimaryBookingServiceSelection(booking: Partial<Booking> | null | undefined) {
   const firstService = Array.isArray(booking?.services) && booking?.services?.length ? booking.services[0] : null;
   const firstPackageService =
@@ -1433,113 +265,6 @@ function resolvePrimaryBookingServiceSelection(booking: Partial<Booking> | null 
         ""
     ).trim(),
   };
-}
-
-function toArabicOnlyLabel(value: string, fallback = "—"): string {
-  const raw = String(value || "").trim();
-  if (!raw) return fallback;
-
-  const dict: Record<string, string> = {
-    makeup: "مكياج",
-    "hair care": "العناية بالشعر",
-    "hair-care": "العناية بالشعر",
-    hair: "شعر",
-    nails: "أظافر",
-    skin: "بشرة",
-    eyeliner: "ايلاينر",
-  };
-
-  let s = raw.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-  Object.entries(dict)
-    .sort((a, b) => b[0].length - a[0].length)
-    .forEach(([en, ar]) => {
-      const re = new RegExp(`\\b${en.replace(/\s+/g, "\\s+")}\\b`, "gi");
-      s = s.replace(re, ar);
-    });
-
-  // منع أي كلمات إنجليزية متبقية من الظهور
-  s = s.replace(/\b[A-Za-z]{2,}\b/g, " ").replace(/\s+/g, " ").trim();
-  return s || fallback;
-}
-
-function toStringArray(v: any): string[] {
-  if (Array.isArray(v)) return v.map((x) => String(x ?? "").trim()).filter(Boolean);
-  return [];
-}
-
-function extractServicesFromAny(anyB: any): BookingServiceItem[] {
-  const pkgServices = Array.isArray(anyB?.packageSnapshot?.services) ? anyB.packageSnapshot.services : [];
-  if (pkgServices.length) {
-    return pkgServices
-      .map((x: any) => ({
-        serviceId: String(x?.serviceId ?? "").trim() || undefined,
-        serviceName: toArabicOnlyLabel(String(x?.serviceName ?? "").trim(), "") || undefined,
-        price: Number.isFinite(Number(x?.price)) ? Number(x?.price) : undefined,
-        durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x?.durationMin) : undefined,
-        sectionLabel: toArabicOnlyLabel(String(x?.sectionTitle || x?.sectionId || "").trim(), "") || undefined,
-        categoryLabel: toArabicOnlyLabel(String(x?.categoryName || x?.categoryId || "").trim(), "") || undefined,
-      }))
-      .filter((x: any) => x.serviceId || x.serviceName);
-  }
-
-  const sArr = Array.isArray(anyB?.services) ? anyB.services : null;
-  if (sArr && sArr.length) {
-    return sArr.map((x: any) => ({
-      serviceId: String(x?.serviceId ?? x?.id ?? x?.key ?? "").trim() || undefined,
-      serviceName: toArabicOnlyLabel(String(x?.serviceName ?? x?.name ?? "").trim(), "") || undefined,
-      price: Number.isFinite(Number(x?.price)) ? Number(x?.price) : undefined,
-      durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x?.durationMin) : undefined,
-      sectionLabel: toArabicOnlyLabel(String(x?.sectionTitle || x?.sectionId || "").trim(), "") || undefined,
-      categoryLabel: toArabicOnlyLabel(String(x?.categoryName || x?.categoryId || "").trim(), "") || undefined,
-    })).filter((x: any) => x.serviceId || x.serviceName);
-  }
-  const ids = toStringArray(anyB?.serviceIds);
-  const names = toStringArray(anyB?.serviceNames);
-  if (ids.length || names.length) {
-    const max = Math.max(ids.length, names.length);
-    const out: BookingServiceItem[] = [];
-    for (let i = 0; i < max; i++) {
-      if (ids[i] || names[i]) out.push({ serviceId: ids[i] || undefined, serviceName: names[i] || undefined });
-    }
-    return out;
-  }
-  const serviceId = String(anyB?.serviceId ?? anyB?.service ?? anyB?.serviceKey ?? "").trim();
-  const serviceName = String(anyB?.serviceName ?? "").trim();
-  if (serviceId || serviceName) {
-    return [{
-      serviceId: serviceId || undefined,
-      serviceName: toArabicOnlyLabel(serviceName, "") || undefined,
-      sectionLabel: toArabicOnlyLabel(String(anyB?.serviceSnapshot?.sectionTitleAtBooking || anyB?.serviceSnapshot?.sectionIdAtBooking || "").trim(), "") || undefined,
-      categoryLabel: toArabicOnlyLabel(String(anyB?.serviceSnapshot?.categoryNameAtBooking || anyB?.serviceSnapshot?.categoryIdAtBooking || "").trim(), "") || undefined,
-    }];
-  }
-  return [];
-}
-
-function serviceMetaSummaryForTable(b: Booking): string {
-  const section = String(
-    b?.serviceSnapshot?.sectionTitleAtBooking ||
-      b?.serviceSnapshot?.sectionIdAtBooking ||
-      ""
-  ).trim();
-  const category = String(
-    b?.serviceSnapshot?.categoryNameAtBooking ||
-      b?.serviceSnapshot?.categoryIdAtBooking ||
-      ""
-  ).trim();
-  const pkgName = String(b?.packageSnapshot?.packageName || "").trim();
-  const pkgCount = Array.isArray(b?.packageSnapshot?.services) ? b.packageSnapshot.services.length : 0;
-  if (pkgName) return `${pkgName}${pkgCount > 0 ? ` (${pkgCount} خدمات)` : ""}`;
-  if (section || category) return `${section || "—"}${category ? ` • ${category}` : ""}`;
-  return "—";
-}
-
-function serviceSummaryForTable(b: Booking): string {
-  const list = b.services || [];
-  if (!list.length) return b.serviceName || b.serviceId || "—";
-  const firstName = (list[0]?.serviceName || list[0]?.serviceId || "").trim();
-  if (list.length <= 1) return firstName || b.serviceName || b.serviceId || "—";
-  return `${firstName || (b.serviceName || b.serviceId || "خدمة")} + ${list.length - 1} خدمات`;
 }
 
 type Booking = {
@@ -1626,16 +351,25 @@ type Booking = {
   updatedAt?: any;
 };
 
+type BookingDisplaySection = DashboardBookingDisplaySection<Booking>;
+
 type ClientLoyaltyInfo = {
   points: number;
   loyaltyScore: number;
   isVip: boolean;
 };
 
-type BookingLastUpdate = {
-  by: string;
-  at: string;
-};
+function createEmptyClientLoyaltyInfo(): ClientLoyaltyInfo {
+  return { points: 0, loyaltyScore: 0, isVip: false };
+}
+
+function toClientLoyaltyInfo(raw: any): ClientLoyaltyInfo {
+  return {
+    points: Number(raw?.loyaltyPoints || 0),
+    loyaltyScore: Number(raw?.loyaltyStats?.loyaltyScore || 0),
+    isVip: !!raw?.vip?.isVip,
+  };
+}
 
 type RefundRecord = {
   incomeId: string;
@@ -1654,6 +388,48 @@ type RefundDraft = {
   details: string;
   date: string;
 };
+
+function normalizeIncomePaymentMethod(raw: any): PaymentMethod {
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (s === "cash") return "cash";
+  if (s === "card" || s === "pos_card" || s === "mada_online") return "card";
+  if (s === "transfer") return "transfer";
+  if (s === "other") return "other";
+  if (s.includes("كاش") || s.includes("نقد")) return "cash";
+  if (s.includes("شبكة") || s.includes("مدى") || s.includes("بطاق")) return "card";
+  if (s.includes("تحويل")) return "transfer";
+  return "transfer";
+}
+
+function parseRefundRecordFromIncomeDoc(
+  id: string,
+  raw: Record<string, unknown>
+): RefundRecord | null {
+  const bookingId = String(raw?.bookingId || "").trim();
+  if (!bookingId) return null;
+
+  const amount = Number(raw?.amount || 0);
+  if (!Number.isFinite(amount) || amount >= 0) return null;
+
+  const source = String(raw?.source || "").trim().toLowerCase();
+  if (source !== "استرجاع" && source !== "refund") return null;
+
+  const noteRaw = String(raw?.note || "").trim();
+  const noteWithoutPrefix = noteRaw.replace(/^استرجاع للحجز\s+[^\-]+-\s*/i, "");
+  const [reason, details] = noteWithoutPrefix
+    .split("|")
+    .map((part) => String(part || "").trim());
+
+  return {
+    incomeId: String(id || `refund_${bookingId}`),
+    bookingId,
+    amount: Math.abs(amount),
+    method: normalizeIncomePaymentMethod(raw?.method),
+    reason: reason || noteWithoutPrefix || noteRaw,
+    details: details || "",
+    date: String(raw?.date || ""),
+  };
+}
 
 type SensitiveBookingAction =
   | { kind: "status"; bookingId: string; nextStatus: BookingStatus; bookingRef: string }
@@ -2628,6 +1404,8 @@ type DashboardBookingsProps = {
 export default function DashboardBookings({ currentRole = "guest" }: DashboardBookingsProps) {
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [liveBookingsSource, setLiveBookingsSource] = useState<Booking[]>([]);
+  const [historyBookingsSource, setHistoryBookingsSource] = useState<Booking[]>([]);
   const [error, setError] = useState("");
 
   const [q, setQ] = useState("");
@@ -2643,6 +1421,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const [savedNoteId, setSavedNoteId] = useState("");
   const [clientLoyalty, setClientLoyalty] = useState<ClientLoyaltyInfo | null>(null);
   const [clientLoyaltyLoading, setClientLoyaltyLoading] = useState(false);
+  const clientLoyaltyCacheRef = useRef<Record<string, ClientLoyaltyInfo>>({});
   const [selectedBookingActivity, setSelectedBookingActivity] = useState<BookingActivityItem[]>([]);
   const [selectedBookingActivityLoading, setSelectedBookingActivityLoading] = useState(false);
   const [selectedBookingActivityError, setSelectedBookingActivityError] = useState("");
@@ -2663,6 +1442,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     date: todayISOLocal(),
   });
   const saveHintTimerRef = useRef<number | null>(null);
+  const bookingTrackFallbackCacheRef = useRef<Record<string, BookingTrackFallbackContact>>({});
+  const bookingTrackFallbackRequestRef = useRef(0);
+  const historyBookingsCacheRef = useRef<Record<string, Booking[]>>({});
+  const historyBookingsRequestRef = useRef(0);
   const [editTarget, setEditTarget] = useState<Booking | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<Booking | null>(null);
   const [confirmSaving, setConfirmSaving] = useState(false);
@@ -2684,6 +1467,46 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   });
 
   const uiRole = currentRole;
+  const liveWindowStart = useMemo(
+    () => shiftISODate(todayISOLocal(), -LIVE_WINDOW_PAST_DAYS),
+    []
+  );
+  const liveWindowEnd = useMemo(
+    () => shiftISODate(todayISOLocal(), LIVE_WINDOW_FUTURE_DAYS),
+    []
+  );
+  const mergedBookingSources = useMemo(
+    () => mergeBookingLists(liveBookingsSource, historyBookingsSource),
+    [liveBookingsSource, historyBookingsSource]
+  );
+  const explicitHistoryScope = useMemo(() => {
+    const requestsHistoryByStatus =
+      !dateFrom && !dateTo && (statusFilter === "completed" || statusFilter === "cancelled");
+    const requestsHistoryByDate =
+      (!!dateFrom && (dateFrom < liveWindowStart || dateFrom > liveWindowEnd)) ||
+      (!!dateTo && (dateTo < liveWindowStart || dateTo > liveWindowEnd));
+
+    if (requestsHistoryByDate) {
+      return {
+        cacheKey: `range:${dateFrom || ""}:${dateTo || ""}`,
+        scope: {
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+        },
+      };
+    }
+
+    if (requestsHistoryByStatus) {
+      return {
+        cacheKey: `status:${statusFilter}`,
+        scope: {
+          statuses: [statusFilter],
+        },
+      };
+    }
+
+    return null;
+  }, [statusFilter, dateFrom, dateTo, liveWindowStart, liveWindowEnd]);
   const authUser = getAuthUserSafe();
   const canEditBookings = uiRole === "owner" || uiRole === "admin";
   const getLocalActorAudit = useCallback((atMs = Date.now()) => {
@@ -2782,94 +1605,171 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const loaded = loadNotesMap();
     setNotesMap(loaded);
     setNoteDrafts(loaded);
-    const unsub = watchAllBookings((data) => {
-      const baseList = data.map((b: any) => ({
-        ...b,
-        customerName: String(b?.customerName || b?.clientName || b?.name || "").trim() || "",
-        phone: String(b?.phone || b?.clientPhone || b?.customerPhone || "").trim() || "",
-        services: extractServicesFromAny(b),
-      }));
-      setBookings(
-        baseList.map((x) => ({
-          ...x,
-          customerName: x.customerName || "غير متوفر",
-          phone: x.phone || "غير متوفر",
-        }))
-      );
-      setLoading(false);
-
-      // fallback: بعض السجلات القديمة الاسم/الجوال موجودين فقط في booking_tracks
-      const missing = baseList.filter((x) => !String(x.customerName || "").trim() || !String(x.phone || "").trim());
-      if (!missing.length) return;
-
-      Promise.all(
-        missing.map(async (x) => {
-          try {
-            const tr = doc(db, "salons", "main", "booking_tracks", x.id);
-            FirestoreReadStats.bump(tr.path, "DashboardBookings.missingTrackFallback", "getDoc");
-            const t = await getDoc(tr);
-            if (!t.exists()) return x;
-            const td: any = t.data() || {};
-            const name = String(td?.clientName || td?.customerName || td?.name || "").trim();
-            const phone = String(td?.clientPhone || td?.phone || td?.customerPhone || "").trim();
-            return {
-              ...x,
-              customerName: x.customerName || name || "غير متوفر",
-              phone: x.phone || phone || "غير متوفر",
-            };
-          } catch {
-            return {
-              ...x,
-              customerName: x.customerName || "غير متوفر",
-              phone: x.phone || "غير متوفر",
-            };
-          }
-        })
-      ).then((patched) => {
-        const patchedMap = new Map(patched.map((p) => [p.id, p]));
-        const finalList = baseList.map((x) => {
-          const p = patchedMap.get(x.id);
-          if (!p) {
-            return {
-              ...x,
-              customerName: x.customerName || "غير متوفر",
-              phone: x.phone || "غير متوفر",
-            };
-          }
-          return p;
-        });
-        setBookings(finalList);
-      });
-    }, (err) => {
-      setError("خطأ في تحميل الحجوزات");
-      setLoading(false);
-    });
-    return () => unsub();
   }, []);
 
-  const loadRefundState = useCallback(async () => {
-    const incomeRows = await listAllIncomeFS();
-    const next: Record<string, RefundRecord> = {};
-    incomeRows.forEach((x) => {
-      const bookingId = String(x.bookingId || "").trim();
-      if (!bookingId) return;
-      if (Number(x.amount || 0) >= 0) return;
-      const source = String(x.source || "").trim().toLowerCase();
-      if (source !== "استرجاع" && source !== "refund") return;
-      const noteRaw = String(x.note || "").trim();
-      const noteWithoutPrefix = noteRaw.replace(/^استرجاع للحجز\s+[^\-]+-\s*/i, "");
-      const [reason, details] = noteWithoutPrefix
-        .split("|")
-        .map((p) => String(p || "").trim());
-      next[bookingId] = {
-        incomeId: String(x.id || `refund_${bookingId}`),
-        bookingId,
-        amount: Math.abs(Number(x.amount || 0)),
-        method: (String(x.method || "").trim() as PaymentMethod) || "transfer",
-        reason: reason || noteWithoutPrefix || noteRaw,
-        details: details || "",
-        date: String(x.date || ""),
+  useEffect(() => {
+    let active = true;
+
+    const handleLiveError = () => {
+      if (!active) return;
+      setError("خطأ في تحميل الحجوزات");
+      setLoading(false);
+    };
+
+    const unsub = watchAllBookings((data) => {
+      if (!active) return;
+      setLiveBookingsSource(data as Booking[]);
+      setError("");
+      setLoading(false);
+    }, handleLiveError, { statuses: LIVE_ACTIVE_STATUSES });
+
+    return () => {
+      active = false;
+      unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const requestId = historyBookingsRequestRef.current + 1;
+    historyBookingsRequestRef.current = requestId;
+
+    if (!explicitHistoryScope) {
+      setHistoryBookingsSource([]);
+      return () => {
+        cancelled = true;
       };
+    }
+
+    const cached = historyBookingsCacheRef.current[explicitHistoryScope.cacheKey];
+    if (cached) {
+      setHistoryBookingsSource(cached);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void listBookings(explicitHistoryScope.scope)
+      .then((rows) => {
+        if (cancelled || historyBookingsRequestRef.current !== requestId) return;
+        const nextRows = rows as Booking[];
+        historyBookingsCacheRef.current[explicitHistoryScope.cacheKey] = nextRows;
+        setHistoryBookingsSource(nextRows);
+      })
+      .catch(() => {
+        if (cancelled || historyBookingsRequestRef.current !== requestId) return;
+        setHistoryBookingsSource([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [explicitHistoryScope]);
+
+  useEffect(() => {
+    const baseList = mergedBookingSources.map((b: any) => ({
+      ...b,
+      customerName: String(b?.customerName || b?.clientName || b?.name || "").trim() || "",
+      phone: String(b?.phone || b?.clientPhone || b?.customerPhone || "").trim() || "",
+      services: extractServicesFromAny(b),
+    }));
+    const applyTrackFallback = (row: Booking) => {
+      const fallback = bookingTrackFallbackCacheRef.current[String(row.id || "").trim()];
+      return {
+        ...row,
+        customerName: row.customerName || fallback?.customerName || "غير متوفر",
+        phone: row.phone || fallback?.phone || "غير متوفر",
+      };
+    };
+    setBookings(baseList.map((x) => applyTrackFallback(x)));
+
+    const missingIds = Array.from(
+      new Set(
+        baseList
+          .filter(
+            (x) =>
+              (!String(x.customerName || "").trim() || !String(x.phone || "").trim()) &&
+              !bookingTrackFallbackCacheRef.current[String(x.id || "").trim()]
+          )
+          .map((x) => String(x.id || "").trim())
+          .filter(Boolean)
+      )
+    );
+    if (!missingIds.length) return;
+
+    let active = true;
+    const requestId = bookingTrackFallbackRequestRef.current + 1;
+    bookingTrackFallbackRequestRef.current = requestId;
+    const trackCol = collection(db, "salons", "main", "booking_tracks");
+
+    void Promise.allSettled(
+      chunkItems(missingIds, 10).map(async (ids) => {
+        const q = fsQuery(trackCol, where(documentId(), "in", ids));
+        const snap = await getDocs(q);
+        snap.docs.forEach((d) => {
+          if (d?.ref?.path) {
+            FirestoreReadStats.bump(d.ref.path, "DashboardBookings.missingTrackFallback", "getDocs");
+          }
+        });
+
+        const resolved: Record<string, BookingTrackFallbackContact> = Object.fromEntries(
+          ids.map((id) => [id, { customerName: "غير متوفر", phone: "غير متوفر" }])
+        );
+
+        snap.docs.forEach((docSnap) => {
+          resolved[docSnap.id] = normalizeBookingTrackFallback(docSnap.data());
+        });
+
+        return resolved;
+      })
+    ).then((results) => {
+      if (!active || bookingTrackFallbackRequestRef.current !== requestId) return;
+
+      let hasResolvedBatch = false;
+      const nextCache = { ...bookingTrackFallbackCacheRef.current };
+      results.forEach((result) => {
+        if (result.status !== "fulfilled") return;
+        hasResolvedBatch = true;
+        Object.assign(nextCache, result.value);
+      });
+      if (!hasResolvedBatch) return;
+
+      bookingTrackFallbackCacheRef.current = nextCache;
+      setBookings(
+        baseList.map((x) => {
+          const fallback = nextCache[String(x.id || "").trim()];
+          return {
+            ...x,
+            customerName: x.customerName || fallback?.customerName || "غير متوفر",
+            phone: x.phone || fallback?.phone || "غير متوفر",
+          };
+        })
+      );
+    });
+
+    return () => {
+      active = false;
+      bookingTrackFallbackRequestRef.current += 1;
+    };
+  }, [mergedBookingSources]);
+
+  const loadRefundState = useCallback(async () => {
+    const refundQuery = fsQuery(
+      collection(db, "salons", "main", "income"),
+      where("amount", "<", 0)
+    );
+    const snap = await getDocs(refundQuery);
+    snap.docs.forEach((d) => {
+      if (d?.ref?.path) {
+        FirestoreReadStats.bump(d.ref.path, "DashboardBookings.loadRefundState", "getDocs");
+      }
+    });
+
+    const next: Record<string, RefundRecord> = {};
+    snap.docs.forEach((docSnap) => {
+      const parsed = parseRefundRecordFromIncomeDoc(docSnap.id, docSnap.data() as Record<string, unknown>);
+      if (!parsed) return;
+      next[parsed.bookingId] = parsed;
     });
     setRefundMapByBookingId(next);
   }, []);
@@ -2900,10 +1800,58 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         const phoneRaw = String(selectedBooking.phone || "");
         const phoneDigits = digitsOnly(phoneRaw);
         const nameNorm = normalizeArabicName(String(selectedBooking.customerName || ""));
+        const relatedBooking = bookings.find((booking) => {
+          if (booking.id === selectedBooking.id) return false;
+          const relatedUserId = String(booking.userId || "").trim();
+          if (!relatedUserId) return false;
+
+          const samePhone =
+            !!phoneDigits && digitsOnly(String(booking.phone || "")) === phoneDigits;
+          const sameName =
+            !!nameNorm &&
+            normalizeArabicName(String(booking.customerName || "")) === nameNorm;
+
+          return samePhone || sameName;
+        });
+
+        const userIdCandidates = Array.from(
+          new Set(
+            [selectedBooking.userId, relatedBooking?.userId]
+              .map((value) => String(value || "").trim())
+              .filter(Boolean)
+          )
+        );
+
+        const cacheKeys = Array.from(
+          new Set(
+            [
+              ...userIdCandidates.map((value) => `uid:${value}`),
+              phoneDigits ? `phoneDigits:${phoneDigits}` : "",
+              phoneRaw ? `phoneRaw:${phoneRaw}` : "",
+            ].filter(Boolean)
+          )
+        );
+
+        const cachedKey = cacheKeys.find((key) => clientLoyaltyCacheRef.current[key]);
+        if (cachedKey) {
+          setClientLoyalty(clientLoyaltyCacheRef.current[cachedKey]);
+          return;
+        }
 
         let found: any = null;
+        let foundUserId = "";
 
-        if (phoneDigits) {
+        for (const userId of userIdCandidates) {
+          const userRef = doc(db, "users", userId);
+          FirestoreReadStats.bump(userRef.path, "DashboardBookings.loadClientLoyalty", "getDoc");
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists()) continue;
+          found = userSnap.data();
+          foundUserId = userSnap.id;
+          break;
+        }
+
+        if (!found && phoneDigits) {
           const q1 = fsQuery(
             collection(db, "users"),
             where("role", "==", "client"),
@@ -2911,7 +1859,15 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             fsLimit(1)
           );
           const s1 = await getDocs(q1);
-          if (!s1.empty) found = s1.docs[0].data();
+          s1.docs.forEach((d) => {
+            if (d?.ref?.path) {
+              FirestoreReadStats.bump(d.ref.path, "DashboardBookings.loadClientLoyalty", "getDocs");
+            }
+          });
+          if (!s1.empty) {
+            found = s1.docs[0].data();
+            foundUserId = s1.docs[0].id;
+          }
         }
 
         if (!found && phoneRaw && phoneRaw !== "غير متوفر") {
@@ -2922,32 +1878,29 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             fsLimit(1)
           );
           const s2 = await getDocs(q2);
-          if (!s2.empty) found = s2.docs[0].data();
-        }
-
-        if (!found && nameNorm) {
-          const allClients = await getDocs(fsQuery(collection(db, "users"), where("role", "==", "client")));
-          const match = allClients.docs.find((d) => {
-            const x: any = d.data() || {};
-            return normalizeArabicName(String(x.name || "")) === nameNorm;
+          s2.docs.forEach((d) => {
+            if (d?.ref?.path) {
+              FirestoreReadStats.bump(d.ref.path, "DashboardBookings.loadClientLoyalty", "getDocs");
+            }
           });
-          if (match) found = match.data();
+          if (!s2.empty) {
+            found = s2.docs[0].data();
+            foundUserId = s2.docs[0].id;
+          }
         }
 
         if (cancelled) return;
 
-        if (!found) {
-          setClientLoyalty({ points: 0, loyaltyScore: 0, isVip: false });
-          return;
-        }
-
-        setClientLoyalty({
-          points: Number(found?.loyaltyPoints || 0),
-          loyaltyScore: Number(found?.loyaltyStats?.loyaltyScore || 0),
-          isVip: !!found?.vip?.isVip,
+        const nextInfo = found ? toClientLoyaltyInfo(found) : createEmptyClientLoyaltyInfo();
+        const finalCacheKeys = Array.from(
+          new Set([...cacheKeys, foundUserId ? `uid:${foundUserId}` : ""].filter(Boolean))
+        );
+        finalCacheKeys.forEach((key) => {
+          clientLoyaltyCacheRef.current[key] = nextInfo;
         });
+        setClientLoyalty(nextInfo);
       } catch {
-        if (!cancelled) setClientLoyalty({ points: 0, loyaltyScore: 0, isVip: false });
+        if (!cancelled) setClientLoyalty(createEmptyClientLoyaltyInfo());
       } finally {
         if (!cancelled) setClientLoyaltyLoading(false);
       }
@@ -2956,7 +1909,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return () => {
       cancelled = true;
     };
-  }, [selectedBooking]);
+  }, [selectedBooking, bookings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3133,47 +2086,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, [filteredBase, statusFilter, excludedStatus, settlementFilter]);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadLastUpdates = async () => {
-      const rows = filtered;
-      if (!rows.length) return;
+    const rows = filtered;
+    if (!rows.length) return;
 
-      const entries = await Promise.all(
-        rows.map(async (b) => {
-          try {
-            const q = fsQuery(
-              collection(db, "salons", "main", "booking_logs", b.id, "events"),
-              orderBy("at", "desc"),
-              fsLimit(1)
-            );
-            const snap = await getDocs(q);
-            if (snap.empty) {
-              return [b.id, fallbackLastUpdateForBooking(b, userNamesByUid)] as const;
-            }
-
-            const ev = snap.docs[0].data();
-            const eventAt = formatEventAt(ev?.at);
-            return [
-              b.id,
-              {
-                by: actorLabelFromEvent(ev, userNamesByUid, b),
-                at: eventAt === "—" ? fallbackLastUpdateForBooking(b, userNamesByUid).at : eventAt,
-              },
-            ] as const;
-          } catch {
-            return [b.id, fallbackLastUpdateForBooking(b, userNamesByUid)] as const;
-          }
-        })
-      );
-
-      if (cancelled) return;
-      setLastUpdateMap((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
-    };
-
-    void loadLastUpdates();
-    return () => {
-      cancelled = true;
-    };
+    const entries = Object.fromEntries(
+      rows.map((b) => [b.id, deriveLastUpdateForBooking(b, userNamesByUid)])
+    );
+    setLastUpdateMap((prev) => ({ ...prev, ...entries }));
   }, [filtered, userNamesByUid]);
 
   const statusTabCounts = useMemo(
@@ -3214,7 +2133,17 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     [filtered]
   );
 
-  const groupedFiltered = useMemo(() => buildDashboardBookingBlocks(filtered), [filtered]);
+  const paymentSummaryByBookingId = useMemo<
+    Record<string, ReturnType<typeof resolveBookingPaymentSummary>>
+  >(() => {
+    const next: Record<string, ReturnType<typeof resolveBookingPaymentSummary>> = {};
+    filtered.forEach((b) => {
+      const id = String(b.id || "").trim();
+      if (!id) return;
+      next[id] = resolveBookingPaymentSummary(b);
+    });
+    return next;
+  }, [filtered]);
 
   const bookingSections = useMemo<BookingDisplaySection[]>(() => {
     const normalRows: Booking[] = [];
@@ -3599,13 +2528,17 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       if (!id) return;
 
       const localAuditPatch = getLocalActorAudit();
-      setBookings((prev) => {
+      const applyPatchToRows = (prev: Booking[]) => {
         const idx = prev.findIndex((row) => row.id === id);
         if (idx < 0) return prev;
         const next = [...prev];
         next[idx] = { ...next[idx], ...patch, ...localAuditPatch };
         return next;
-      });
+      };
+
+      setLiveBookingsSource(applyPatchToRows);
+      setHistoryBookingsSource(applyPatchToRows);
+      setBookings(applyPatchToRows);
       setSelectedBooking((prev) =>
         prev && prev.id === id ? { ...prev, ...patch, ...localAuditPatch } : prev
       );
@@ -3962,7 +2895,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         bookingId,
         createdAt: Date.now(),
       });
-      await loadRefundState();
+      setRefundMapByBookingId((prev) => ({
+        ...prev,
+        [bookingId]: {
+          incomeId: `refund_${bookingId}`,
+          bookingId,
+          amount: Math.abs(refundAmount),
+          method,
+          reason,
+          details,
+          date: refundDraft.date || todayISOLocal(),
+        },
+      }));
       setRefundTarget(null);
     } catch {
       setRefundError("تعذر تسجيل الاسترجاع.");
@@ -3983,7 +2927,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setRefundSaving(true);
       setRefundError("");
       await removeIncomeFS(existing.incomeId);
-      await loadRefundState();
+      setRefundMapByBookingId((prev) => {
+        const next = { ...prev };
+        delete next[bookingId];
+        return next;
+      });
       setRefundTarget(null);
     } catch {
       setRefundError("تعذر إلغاء الاسترجاع.");
@@ -4119,7 +3067,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     )
                       ? (b.status as BookingStatus)
                       : "pending";
-                    const payment = resolveBookingPaymentSummary(b);
+                    const payment = paymentSummaryByBookingId[b.id] || resolveBookingPaymentSummary(b);
                     const isPendingDeposit = isPendingDepositBooking(b, payment);
                     const channelBadge = bookingChannelBadgeText(b);
                     const isTemporaryInternal = isTemporaryNormalInternalBooking(b);
@@ -4278,7 +3226,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   )
                     ? (b.status as BookingStatus)
                     : "pending";
-                  const payment = resolveBookingPaymentSummary(b);
+                  const payment = paymentSummaryByBookingId[b.id] || resolveBookingPaymentSummary(b);
                   const isPendingDeposit = isPendingDepositBooking(b, payment);
                   const channelBadge = bookingChannelBadgeText(b);
                   const isTemporaryInternal = isTemporaryNormalInternalBooking(b);
@@ -4411,6 +3359,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     lastUpdateMap,
     openEditBookingModal,
     openRefundModal,
+    paymentSummaryByBookingId,
     refundBusyId,
     refundMapByBookingId,
     uiRole,
@@ -4759,7 +3708,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 </tr>
               </thead>
               <tbody>
-                {groupedFiltered.flatMap((block) => {
+                {bookingSections.flatMap((section) => section.blocks).flatMap((block) => {
                   const rows: any[] = [];
                   if (block.rows.length > 1) {
                     rows.push(
@@ -4916,7 +3865,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           </div>
 
           <div className="bk-mobile-grid">
-            {groupedFiltered.map((block) => (
+            {bookingSections.flatMap((section) => section.blocks).map((block) => (
               <div key={`mob-${block.key}`} className="bk-mobile-group">
                 {block.rows.length > 1 ? (
                   <div className="bk-mobile-group-head">

@@ -22,6 +22,32 @@ import { formatTime12 } from "../helpers/timeDisplay";
 import { extractMinPrice, readDisplayLabel } from "../helpers/pageSharedUtils";
 import { pickBookingCardIcon } from "../helpers/serviceIcons";
 import {
+  addDaysISO,
+  buildHijriMonthDays,
+  findHijriMonthStartISO,
+  formatBookingDateForView,
+  getStaffLeaveMetaForDate,
+  isOfferValidForBookingDate,
+  normalizeCalendarViewMode,
+  normalizeIsoDate as normalizeISODate,
+  readBookingHourOverrides,
+  resolveWeekdayFromISO,
+  safeInt,
+  safeTimeHHMM,
+  shiftHijriMonthStartISO,
+  todayISO,
+  toHijriMonthYearLabel,
+  type BookingCalendarViewMode as CalendarViewMode,
+  WEEKDAY_LABEL_AR,
+} from "../helpers/bookingDateUtils";
+import {
+  getGreenStartTimes,
+  getTimesToLock,
+  resolveEmployeeKey,
+  sortTimesBySlotOrder,
+} from "../helpers/bookingAvailabilityUtils";
+import { normalizeCouponCode } from "../helpers/bookingPaymentUtils";
+import {
   SALON_ID,
   DEFAULT_SERVICE_DURATION_MIN,
   PACKAGE_SECTION_ID,
@@ -180,7 +206,6 @@ type ApplyCouponOptions = {
 };
 
 type BookingStep = 1 | 2 | 3 | 4;
-type CalendarViewMode = "gregorian" | "hijri";
 
 type BookingFlowState = {
   selectedVariantId: string;
@@ -337,19 +362,6 @@ type FsSectionCatalogCacheRow = {
 };
 
 const MANI_PEDI_TOOLS_FEE_FIXED = 15;
-type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
-type BookingHourOverrideMode = "hours" | "closed";
-type BookingHourOverride = {
-  id?: string;
-  fromDate: string;
-  toDate: string;
-  mode: BookingHourOverrideMode;
-  start?: string;
-  end?: string;
-  includeWeekdays?: WeekdayKey[];
-  blockedWeekdays?: WeekdayKey[];
-  reason?: string;
-};
 type TimeSlotCard = {
   slot: TimeSlot;
   value24: string;
@@ -357,122 +369,8 @@ type TimeSlotCard = {
   reason: string;
   isSelected: boolean;
 };
-const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const AR_SA_LATN_LOCALE = "ar-SA-u-nu-latn";
-const AR_SA_GREGORY_LATN_LOCALE = "ar-SA-u-ca-gregory-nu-latn";
-const AR_SA_HIJRI_LATN_LOCALE = "ar-SA-u-ca-islamic-umalqura-nu-latn";
 const BOOKING_CALENDAR_PREF_KEY = "booking_calendar_view";
-const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
-  sat: "السبت",
-  sun: "الأحد",
-  mon: "الإثنين",
-  tue: "الثلاثاء",
-  wed: "الأربعاء",
-  thu: "الخميس",
-  fri: "الجمعة",
-};
-
-// ✅ نفس منطق slotId الموجود في firestoreBookings.ts
-function safeKey(v: string) {
-  return String(v || "").trim().replaceAll("/", "-").replace(/\s+/g, "_");
-}
-
-function resolveEmployeeKey(it: { employeeUid?: string; employeeId: string }) {
-  const uid = String(it.employeeUid || "").trim();
-  if (uid) return uid;
-  return String(it.employeeId || "").trim();
-}
-
-function buildSlotId(
-  salonId: string,
-  employeeKey: string,
-  date: string,
-  time: string
-) {
-  return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(
-    employeeKey
-  )}`;
-}
-
-function getTimesToLock(
-  allSlots: TimeSlot[],
-  slotStepMin: number,
-  startTime24: string, // ✅ "HH:MM"
-  durationMin: number,
-  bufferMin: number
-) {
-  const step = Math.max(1, Number(slotStepMin || 0));
-
-  const totalMin =
-    Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
-
-  if (totalMin <= 0) return [startTime24];
-
-  const slotsToLock = Math.max(1, Math.ceil(totalMin / step));
-  const startIdx = allSlots.findIndex(
-    (s) => String(s.value24 || "").trim() === String(startTime24 || "").trim()
-  );
-
-  if (startIdx < 0) return [startTime24];
-
-  const locked: string[] = [];
-  for (let i = 0; i < slotsToLock; i++) {
-    const slot = allSlots[startIdx + i];
-    if (!slot) break;
-    locked.push(slot.value24);
-  }
-
-  return locked.length ? locked : [startTime24];
-}
-
-
-// ✅✅✅ NEW: تحديد الأوقات اللي "تنفع كبداية" حسب مدة الخدمة (تطلع أخضر)
-function getGreenStartTimes(args: {
-  allSlots: TimeSlot[];
-  slotStepMin: number;
-  durationMin: number;
-  bufferMin: number;
-  takenAll: Set<string>; // ✅ times 24h
-}) {
-  const greens = new Set<string>(); // ✅ نخزن value24
-
-  for (const slot of args.allSlots) {
-    const start24 = slot.value24;
-
-    const needed = getTimesToLock(
-      args.allSlots,
-      args.slotStepMin,
-      start24,
-      args.durationMin,
-      args.bufferMin
-    );
-
-    let ok = true;
-    for (const t of needed) {
-      if (args.takenAll.has(t)) {
-        ok = false;
-        break;
-      }
-    }
-
-    if (ok) greens.add(start24);
-  }
-
-  return greens;
-}
-
-function sortTimesBySlotOrder(times: string[], allSlots: TimeSlot[]) {
-  const order = new Map<string, number>();
-  allSlots.forEach((s, idx) => {
-    const k = String(s.value24 || "").trim();
-    if (k && !order.has(k)) order.set(k, idx);
-  });
-  return [...times].sort(
-    (a, b) =>
-      (order.get(String(a || "").trim()) ?? Number.MAX_SAFE_INTEGER) -
-      (order.get(String(b || "").trim()) ?? Number.MAX_SAFE_INTEGER)
-  );
-}
 
 function minutesToTime24(totalMin: number) {
   const safe = Math.max(0, Math.min(23 * 60 + 59, Number(totalMin || 0)));
@@ -524,40 +422,6 @@ function calcDiscount(basePrice: number, offer: FsOffer) {
     finalPrice: Math.max(0, basePrice - discount),
   };
 }
-
-function normalizeCouponCode(raw: string) {
-  return String(raw || "").trim().toUpperCase();
-}
-
-/**
- * ✅ صلاحية العرض حسب "تاريخ الحجز" (مو اليوم)
- */
-function isOfferValidForBookingDate(offer: any, bookingDateISO: string) {
-  if (!bookingDateISO) return { ok: true, reason: "" };
-
-  const s = normalizeOfferDateISO(offer?.startDate);
-  const e = normalizeOfferDateISO(offer?.endDate ?? offer?.validUntil);
-
-  if (s && bookingDateISO < s) return { ok: false, reason: `العرض يبدأ من ${s}` };
-  if (e && bookingDateISO > e) return { ok: false, reason: `العرض انتهى بتاريخ ${e}` };
-  return { ok: true, reason: "" };
-}
-
-function isSeasonActiveForDate(season: any, bookingDateISO: string) {
-  const enabled = !!season?.enabled;
-  if (!enabled) return false;
-
-  const s = String(season?.startDate || "").trim(); // "YYYY-MM-DD"
-  const e = String(season?.endDate || "").trim();   // "YYYY-MM-DD"
-
-  // إذا ما حطيت تواريخ: اعتبره شغال دايم
-  if (!s && !e) return true;
-
-  if (s && bookingDateISO && bookingDateISO < s) return false;
-  if (e && bookingDateISO && bookingDateISO > e) return false;
-  return true;
-}
-
 
 // ✅ نبي UID الحقيقي فقط (إذا مسجل دخول) ونرفض anonymous
 function getSignedInUidOrNull(): string | null {
@@ -623,238 +487,6 @@ const emptyBusyState = (): BusyState => ({
   suggestedSlot: "", // ✅ NEW
 });
 
-
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function addDaysISO(startISO: string, addDays: number) {
-  const d = new Date(startISO + "T00:00:00");
-  d.setDate(d.getDate() + addDays);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function safeInt(v: any, fallback: number) {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.trunc(n) : fallback;
-}
-
-function safeTimeHHMM(v: any, fallback: string) {
-  const s = String(v || "").trim();
-  const m = s.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return fallback;
-
-  const hh = Number(m[1]);
-  const mm = Number(m[2]);
-
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return fallback;
-  if (hh < 0 || hh > 23) return fallback;
-  if (mm < 0 || mm > 59) return fallback;
-
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-function normalizeISODate(v: any) {
-  const s = String(v || "").trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
-}
-
-function normalizeOfferDateISO(v: any) {
-  const iso = normalizeISODate(v);
-  if (iso) return iso;
-
-  if (typeof v === "string") {
-    const s = v.trim();
-    const datePrefixMatch = s.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
-    if (datePrefixMatch?.[1]) return datePrefixMatch[1];
-    const parsed = new Date(s);
-    if (!Number.isNaN(parsed.getTime())) {
-      const yyyy = parsed.getFullYear();
-      const mm = String(parsed.getMonth() + 1).padStart(2, "0");
-      const dd = String(parsed.getDate()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}`;
-    }
-    return "";
-  }
-
-  if (v instanceof Date) {
-    if (Number.isNaN(v.getTime())) return "";
-    const yyyy = v.getFullYear();
-    const mm = String(v.getMonth() + 1).padStart(2, "0");
-    const dd = String(v.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-  }
-
-  if (typeof v?.toDate === "function") {
-    return normalizeOfferDateISO(v.toDate());
-  }
-
-  if (typeof v?.seconds === "number") {
-    return normalizeOfferDateISO(new Date(v.seconds * 1000));
-  }
-
-  return "";
-}
-
-function formatISODateAr(v: any) {
-  const iso = normalizeISODate(v);
-  if (!iso) return "";
-  const d = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(AR_SA_LATN_LOCALE, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
-
-function normalizeCalendarViewMode(v: any): CalendarViewMode {
-  return String(v || "").trim().toLowerCase() === "hijri" ? "hijri" : "gregorian";
-}
-
-function formatBookingDateForView(dateISO: string, mode: CalendarViewMode) {
-  const iso = normalizeISODate(dateISO);
-  if (!iso) return "";
-  const d = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
-
-  const locale = mode === "hijri" ? AR_SA_HIJRI_LATN_LOCALE : AR_SA_GREGORY_LATN_LOCALE;
-  return new Intl.DateTimeFormat(locale, {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  }).format(d);
-}
-
-function hijriNumericParts(iso: string): { day: number; month: number; year: number } | null {
-  const dateISO = normalizeISODate(iso);
-  if (!dateISO) return null;
-  const d = new Date(`${dateISO}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-u-ca-islamic-umalqura", {
-    day: "numeric",
-    month: "numeric",
-    year: "numeric",
-  }).formatToParts(d);
-  const day = Number(parts.find((p) => p.type === "day")?.value || NaN);
-  const month = Number(parts.find((p) => p.type === "month")?.value || NaN);
-  const year = Number(parts.find((p) => p.type === "year")?.value || NaN);
-  if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year)) return null;
-  return { day, month, year };
-}
-
-function findHijriMonthStartISO(anchorISO: string) {
-  const anchor = normalizeISODate(anchorISO) || todayISO();
-  const base = hijriNumericParts(anchor);
-  if (!base) return anchor;
-  let cursor = anchor;
-  for (let i = 0; i < 35; i++) {
-    const prev = addDaysISO(cursor, -1);
-    const prevParts = hijriNumericParts(prev);
-    if (!prevParts || prevParts.month !== base.month || prevParts.year !== base.year) {
-      return cursor;
-    }
-    cursor = prev;
-  }
-  return cursor;
-}
-
-function buildHijriMonthDays(anchorISO: string) {
-  const start = findHijriMonthStartISO(anchorISO);
-  const base = hijriNumericParts(start);
-  if (!base) return [] as Array<{ iso: string; hijriDay: number }>;
-  const out: Array<{ iso: string; hijriDay: number }> = [];
-  let cursor = start;
-  for (let i = 0; i < 35; i++) {
-    const p = hijriNumericParts(cursor);
-    if (!p || p.month !== base.month || p.year !== base.year) break;
-    out.push({ iso: cursor, hijriDay: p.day });
-    cursor = addDaysISO(cursor, 1);
-  }
-  return out;
-}
-
-function shiftHijriMonthStartISO(currentMonthStartISO: string, delta: number) {
-  const currentStart = findHijriMonthStartISO(currentMonthStartISO);
-  if (delta === 0) return currentStart;
-  if (delta > 0) {
-    let nextStart = currentStart;
-    for (let i = 0; i < delta; i++) {
-      const days = buildHijriMonthDays(nextStart);
-      if (!days.length) return nextStart;
-      nextStart = addDaysISO(days[days.length - 1].iso, 1);
-    }
-    return findHijriMonthStartISO(nextStart);
-  }
-  let prevStart = currentStart;
-  for (let i = 0; i < Math.abs(delta); i++) {
-    prevStart = findHijriMonthStartISO(addDaysISO(prevStart, -1));
-  }
-  return prevStart;
-}
-
-function toHijriMonthYearLabel(iso: string) {
-  const d = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return "";
-  return d
-    .toLocaleDateString("ar-SA-u-ca-islamic-umalqura", {
-      month: "long",
-      year: "numeric",
-    })
-    .replace(/\s*(هـ|AD|AH)\.?$/iu, "")
-    .trim();
-}
-
-function getStaffLeaveMetaForDate(staff: any, dateISO: string) {
-  const target = normalizeISODate(dateISO) || todayISO();
-  const exceptionalDates = Array.isArray(staff?.exceptionalLeaveDates)
-    ? staff.exceptionalLeaveDates.map((d: any) => normalizeISODate(d)).filter(Boolean)
-    : [];
-  if (exceptionalDates.includes(target)) {
-    return { isOnLeave: true, leaveUntil: "", label: "إجازة في هذا اليوم" };
-  }
-
-  const exceptionalWeekdays = Array.isArray(staff?.exceptionalLeaveWeekdays)
-    ? staff.exceptionalLeaveWeekdays
-        .map((d: any) => String(d || "").trim().toLowerCase())
-        .filter(Boolean)
-    : [];
-  const dayKey = resolveWeekdayFromISO(target);
-  if (dayKey && exceptionalWeekdays.includes(dayKey)) {
-    return {
-      isOnLeave: true,
-      leaveUntil: "",
-      label: `إجازة كل ${WEEKDAY_LABEL_AR[dayKey]}`,
-    };
-  }
-
-  const onLeave = !!staff?.onLeave;
-  const leaveUntil = normalizeISODate(staff?.leaveUntil);
-  if (!onLeave) {
-    return { isOnLeave: false, leaveUntil: "", label: "" };
-  }
-
-  const isOnLeave = !leaveUntil || target <= leaveUntil;
-  if (!isOnLeave) {
-    return { isOnLeave: false, leaveUntil, label: "" };
-  }
-
-  const untilLabel = formatISODateAr(leaveUntil);
-  return {
-    isOnLeave: true,
-    leaveUntil,
-    label: untilLabel ? `في إجازة حتى ${untilLabel}` : "في إجازة",
-  };
-}
-
 function normalizeSearchText(v: string) {
   return String(v || "")
     .toLowerCase()
@@ -882,52 +514,6 @@ function isHomeServiceSectionByInfo(sectionId: string, sectionTitle?: string) {
   const hay = normalizeSearchText(`${sectionId || ""} ${sectionTitle || ""}`);
   if (!hay) return false;
   return HOME_SERVICE_SECTION_KEYWORDS.some((k) => hay.includes(normalizeSearchText(k)));
-}
-
-function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
-  const s = String(dateISO || "").trim();
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return JS_DAY_TO_WEEKDAY[new Date().getDay()] || "sat";
-
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  const dt = new Date(y, Math.max(0, mo - 1), d);
-  return JS_DAY_TO_WEEKDAY[dt.getDay()] || "sat";
-}
-
-function normalizeWeekdayList(v: any): WeekdayKey[] {
-  if (!Array.isArray(v)) return [];
-  const allowed = new Set<WeekdayKey>(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
-  const out: WeekdayKey[] = [];
-  for (const d0 of v) {
-    const d = String(d0 || "").trim().toLowerCase() as WeekdayKey;
-    if (allowed.has(d) && !out.includes(d)) out.push(d);
-  }
-  return out;
-}
-
-function readBookingHourOverrides(raw: any): BookingHourOverride[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((x: any) => {
-      const fromDate = String(x?.fromDate || "").trim();
-      const toDate = String(x?.toDate || "").trim();
-      if (!fromDate || !toDate) return null;
-      const mode: BookingHourOverrideMode = String(x?.mode || "").trim() === "closed" ? "closed" : "hours";
-      return {
-        id: String(x?.id || "").trim() || undefined,
-        fromDate,
-        toDate,
-        mode,
-        start: String(x?.start || "").trim() || undefined,
-        end: String(x?.end || "").trim() || undefined,
-        includeWeekdays: normalizeWeekdayList(x?.includeWeekdays),
-        blockedWeekdays: normalizeWeekdayList(x?.blockedWeekdays),
-        reason: String(x?.reason || "").trim() || undefined,
-      };
-    })
-    .filter(Boolean) as BookingHourOverride[];
 }
 
 function formatTime12ForClient(time24: string) {

@@ -2309,11 +2309,53 @@ export async function listAllBookings(): Promise<BookingDocWithId[]> {
 /**
  * ✅ Realtime watcher for all bookings
  */
+export type BookingReadScope = {
+  statuses?: BookingStatus[];
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+function buildBookingsReadQuery(scope?: BookingReadScope) {
+  const constraints: Array<ReturnType<typeof where>> = [];
+  const statuses = Array.from(
+    new Set(
+      (Array.isArray(scope?.statuses) ? scope?.statuses : [])
+        .map((status) => String(status || "").trim())
+        .filter(Boolean)
+    )
+  ) as BookingStatus[];
+  const dateFrom = String(scope?.dateFrom || "").trim();
+  const dateTo = String(scope?.dateTo || "").trim();
+
+  if (statuses.length === 1) {
+    constraints.push(where("status", "==", statuses[0]));
+  } else if (statuses.length > 1) {
+    constraints.push(where("status", "in", statuses.slice(0, 10)));
+  }
+  if (dateFrom) constraints.push(where("date", ">=", dateFrom));
+  if (dateTo) constraints.push(where("date", "<=", dateTo));
+
+  return query(collection(db, ...BOOKINGS_COL), ...constraints);
+}
+
+export async function listBookings(scope?: BookingReadScope): Promise<BookingDocWithId[]> {
+  const snap = await getDocs(buildBookingsReadQuery(scope));
+  snap.docs.forEach((d) => {
+    if (d?.ref?.path) {
+      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listBookings", "getDocs");
+    }
+  });
+  return snap.docs
+    .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
+    .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
+}
+
 export function watchAllBookings(
   onData: (rows: BookingDocWithId[]) => void,
-  onError?: (err: unknown) => void
+  onError?: (err: unknown) => void,
+  scope?: BookingReadScope
 ) {
-  const q = query(collection(db, ...BOOKINGS_COL));
+  const q = buildBookingsReadQuery(scope);
   let first = true;
 
   return onSnapshot(
