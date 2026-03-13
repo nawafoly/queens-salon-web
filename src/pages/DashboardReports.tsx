@@ -612,13 +612,13 @@ export default function DashboardReports() {
       bookingsQ,
       (snap) => {
         const source = "DashboardReports.bookings.getDocs";
-        const docs = firstBookings ? snap.docs : snap.docChanges().map((c) => c.doc);
-        docs.forEach((d) => {
+        const docs = firstBookings ? snap.docs : snap.docChanges().map((c: any) => c.doc);
+        docs.forEach((d: any) => {
           if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
         });
         firstBookings = false;
 
-        const rows: BookingRow[] = snap.docs.map((d) => {
+        const rows: BookingRow[] = snap.docs.map((d: any) => {
           const raw = d.data() as any;
           const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
           const date = normalizeIsoDate(raw?.date, createdAtMs);
@@ -661,13 +661,13 @@ export default function DashboardReports() {
       incomeQ,
       (snap) => {
         const source = "DashboardReports.income.getDocs";
-        const docs = firstIncome ? snap.docs : snap.docChanges().map((c) => c.doc);
-        docs.forEach((d) => {
+        const docs = firstIncome ? snap.docs : snap.docChanges().map((c: any) => c.doc);
+        docs.forEach((d: any) => {
           if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
         });
         firstIncome = false;
 
-        const rows: IncomeRow[] = snap.docs.map((d) => {
+        const rows: IncomeRow[] = snap.docs.map((d: any) => {
           const raw = d.data() as any;
           const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
           const date = normalizeIsoDate(raw?.date, createdAtMs);
@@ -711,13 +711,13 @@ export default function DashboardReports() {
       expensesQ,
       (snap) => {
         const source = "DashboardReports.expenses.getDocs";
-        const docs = firstExpenses ? snap.docs : snap.docChanges().map((c) => c.doc);
-        docs.forEach((d) => {
+        const docs = firstExpenses ? snap.docs : snap.docChanges().map((c: any) => c.doc);
+        docs.forEach((d: any) => {
           if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
         });
         firstExpenses = false;
 
-        const rows: ExpenseRow[] = snap.docs.map((d) => {
+        const rows: ExpenseRow[] = snap.docs.map((d: any) => {
           const raw = d.data() as any;
           const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
           return {
@@ -758,14 +758,14 @@ export default function DashboardReports() {
       staffQ,
       (snap) => {
         const source = "DashboardReports.staff_public.getDocs";
-        const docs = firstStaff ? snap.docs : snap.docChanges().map((c) => c.doc);
-        docs.forEach((d) => {
+        const docs = firstStaff ? snap.docs : snap.docChanges().map((c: any) => c.doc);
+        docs.forEach((d: any) => {
           if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
         });
         firstStaff = false;
 
         const rows = normalizeStaffPayrollRows(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
+          snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) }))
         );
         setStaffRows(rows);
         setLastSyncMs(Date.now());
