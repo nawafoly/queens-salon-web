@@ -3404,7 +3404,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           createLocalId: makeLocalId,
           defaultServiceDurationMin: DEFAULT_SERVICE_DURATION_MIN,
           resolveEffectivePrice: pickEffectivePrice,
-          isToolsEligibleForService: isToolsOptionEligibleForService,
+          isToolsEligibleForService: (service) =>
+            isToolsOptionEligibleForService(service as FlatService),
           buildItemPriceWithTools,
         }),
       ],
