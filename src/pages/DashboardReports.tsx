@@ -20,7 +20,7 @@ import {
 type PeriodKey = "day" | "week" | "month" | "year" | "custom";
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 type BookingPaymentType = "full" | "partial";
-type IncomeSourceKind = "booking" | "invoice" | "internal" | "manual" | "refund" | "other";
+type IncomeSourceKind = "booking" | "invoice" | "internal" | "refund" | "other";
 type IncomeStatusFilter = "all" | "active" | "refunded" | "voided";
 
 type BookingRow = {
@@ -72,6 +72,7 @@ type RevenueDetailsRow = {
   source: IncomeSourceKind;
   mkRef: string;
   employeeName: string;
+  note: string;
   amount: number;
   statusLabel: string;
 };
@@ -161,21 +162,13 @@ function bookingStatusLabel(status: BookingStatus) {
   return "انتظار";
 }
 
-function normalizeSource(raw: string) {
-  const s = String(raw || "").trim().toLowerCase();
-  if (!s) return "manual";
-  if (s === "booking" || s === "invoice" || s === "حجز") return "booking";
-  if (s === "refund" || s === "استرجاع") return "refund";
-  return "manual";
-}
-
 function sourceKind(raw: string): IncomeSourceKind {
   const s = String(raw || "").trim().toLowerCase();
   if (!s) return "other";
   if (s === "booking" || s === "حجز") return "booking";
   if (s === "invoice" || s === "فاتورة") return "invoice";
   if (s === "internal_booking") return "internal";
-  if (s === "manual" || s === "يدوي") return "manual";
+  if (s === "manual" || s === "يدوي") return "other";
   if (s === "refund" || s === "استرجاع") return "refund";
   return "other";
 }
@@ -184,11 +177,20 @@ function sourceLabel(kind: IncomeSourceKind) {
   if (kind === "booking") return "حجز";
   if (kind === "invoice") return "فاتورة";
   if (kind === "internal") return "داخلي";
-  if (kind === "manual") return "يدوي";
   if (kind === "refund") return "استرجاع";
-  return "أخرى";
+  return "دخل آخر";
 }
 
+function isBookingLinkedIncomeSource(raw: string): boolean {
+  const s = String(raw || "").trim().toLowerCase();
+  return (
+    s === "booking" ||
+    s === "invoice" ||
+    s === "internal_booking" ||
+    s === "حجز" ||
+    s === "فاتورة"
+  );
+}
 function normalizePaymentMethod(raw: any): PaymentMethod {
   const s = String(raw ?? "").toLowerCase().trim();
   if (s === "cash") return "cash";
@@ -201,6 +203,70 @@ function normalizePaymentMethod(raw: any): PaymentMethod {
   return "other";
 }
 
+function methodLabelFromRaw(raw?: string): string {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return "\u063a\u064a\u0631 \u0645\u062d\u062f\u062f";
+  if (s === "cash" || s === "\u0643\u0627\u0634") return "\u0643\u0627\u0634";
+  if (
+    s === "card" ||
+    s === "mada" ||
+    s.includes("\u0634\u0628\u0643") ||
+    s.includes("\u0628\u0637\u0627\u0642")
+  )
+    return "\u0634\u0628\u0643\u0629";
+  if (s === "transfer" || s.includes("\u062a\u062d\u0648\u064a\u0644")) return "\u062a\u062d\u0648\u064a\u0644";
+  return String(raw || "").trim();
+}
+
+function formatIncomeNotePart(part: string): string {
+  const p = String(part || "").trim();
+  if (!p) return "";
+  const lower = p.toLowerCase();
+
+  if (lower.startsWith("invoice_from_reception:")) {
+    const method = p.split(":")[1] || "";
+    return `\u0641\u0627\u062a\u0648\u0631\u0629 \u0645\u0646 \u0627\u0644\u0627\u0633\u062a\u0642\u0628\u0627\u0644 (${methodLabelFromRaw(method)})`;
+  }
+  if (lower.startsWith("internal_payment:")) {
+    const method = p.split(":")[1] || "";
+    return `\u062f\u0641\u0639 \u062f\u0627\u062e\u0644\u064a (${methodLabelFromRaw(method)})`;
+  }
+  if (lower.startsWith("payment_method:")) {
+    const method = p.split(":")[1] || "";
+    return `\u0637\u0631\u064a\u0642\u0629 \u0627\u0644\u062f\u0641\u0639 (${methodLabelFromRaw(method)})`;
+  }
+
+  return p;
+}
+
+function formatIncomeNote(raw?: string): string {
+  const note = String(raw || "").trim();
+  if (!note) return "";
+
+  const parts = note
+    .split("|")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  if (!parts.length) return note;
+  return parts.map((p) => formatIncomeNotePart(p)).filter(Boolean).join(" - ");
+}
+
+function resolveIncomeReportNote(sourceRaw: string, noteText: string): string {
+  if (noteText) return noteText;
+
+  const kind = sourceKind(sourceRaw || "");
+  if (kind === "booking") return "\u0633\u062c\u0644 \u062d\u062c\u0632 \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
+  if (kind === "invoice") return "\u0641\u0627\u062a\u0648\u0631\u0629 \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
+  if (kind === "internal") return "\u062f\u0641\u0639 \u062f\u0627\u062e\u0644\u064a \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
+  if (kind === "refund") return "\u0627\u0633\u062a\u0631\u062c\u0627\u0639 \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
+
+  const source = String(sourceRaw || "").trim().toLowerCase();
+  if (source === "manual" || source === "\u064a\u062f\u0648\u064a") {
+    return "\u062f\u062e\u0644 \u064a\u062f\u0648\u064a \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
+  }
+  return "\u062f\u062e\u0644 \u0622\u062e\u0631 \u0628\u062f\u0648\u0646 \u0645\u0644\u0627\u062d\u0638\u0629";
+}
 function toBookingRef(v?: string) {
   const raw = String(v || "").trim().toUpperCase();
   if (!raw) return "-";
@@ -213,10 +279,17 @@ function round2(v: number): number {
   return Math.round((Number(v) || 0) * 100) / 100;
 }
 
-function resolveLinkedBookingId(item: Pick<IncomeRow, "id" | "bookingId" | "source">): string {
-  const explicit = String(item.bookingId || "").trim();
-  if (explicit) return explicit;
+function resolveLinkedBookingId(item: Pick<IncomeRow, "id" | "bookingId" | "source" | "amount">): string {
   const kind = sourceKind(item.source);
+  if (kind === "refund" || Number(item.amount || 0) < 0 || String(item.id || "").startsWith("refund_")) {
+    return "";
+  }
+
+  const explicit = String(item.bookingId || "").trim();
+  if (explicit) {
+    return isBookingLinkedIncomeSource(item.source) ? explicit : "";
+  }
+
   if (kind === "booking") return String(item.id || "").trim();
   return "";
 }
@@ -994,6 +1067,8 @@ export default function DashboardReports() {
         const linkedBookingId = resolveLinkedBookingId(x);
         const linkedBooking = linkedBookingId ? bookingById[linkedBookingId] : undefined;
         const linkedMeta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
+        const noteText = formatIncomeNote(x.note);
+        const displayNote = resolveIncomeReportNote(x.source, noteText);
         return {
           id: `income_${x.id}`,
           date: incomeEffectiveDate(x),
@@ -1002,6 +1077,7 @@ export default function DashboardReports() {
           mkRef: linkedMeta?.bookingRef || toBookingRef(linkedBooking?.publicId),
           employeeName:
             String(linkedMeta?.employeeName || linkedBooking?.employeeName || "").trim() || "-",
+          note: displayNote,
           amount: rowEffectiveAmount(x, bookingMetaById),
           statusLabel: statusLabelForIncome(x),
         };
@@ -1222,7 +1298,6 @@ export default function DashboardReports() {
       { label: sourceLabel("booking"), key: "booking", value: 0, color: "#40010D" },
       { label: sourceLabel("invoice"), key: "invoice", value: 0, color: "#7A1F3D" },
       { label: sourceLabel("internal"), key: "internal", value: 0, color: "#5C0A9D" },
-      { label: sourceLabel("manual"), key: "manual", value: 0, color: "#0D0D0D" },
       { label: sourceLabel("refund"), key: "refund", value: 0, color: "#888C8C" },
       { label: sourceLabel("other"), key: "other", value: 0, color: "#2F6C74" },
     ];
@@ -1386,9 +1461,8 @@ export default function DashboardReports() {
               <option value="booking">حجز</option>
               <option value="invoice">فاتورة</option>
               <option value="internal">داخلي</option>
-              <option value="manual">يدوي</option>
               <option value="refund">استرجاع</option>
-              <option value="other">أخرى</option>
+              <option value="other">دخل آخر</option>
             </select>
           </label>
           <label>
@@ -1675,6 +1749,7 @@ export default function DashboardReports() {
                 <th>المصدر</th>
                 <th>رقم الحجز MK</th>
                 <th>الموظفة</th>
+                <th>الملاحظة</th>
                 <th>المبلغ</th>
                 <th>الحالة</th>
               </tr>
@@ -1682,7 +1757,7 @@ export default function DashboardReports() {
             <tbody>
               {revenueRowsDetailed.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="empty-cell">لا توجد بيانات إيراد داخل الفترة.</td>
+                  <td colSpan={7} className="empty-cell">لا توجد بيانات إيراد داخل الفترة.</td>
                 </tr>
               ) : (
                 revenueRowsDetailed.map((row) => (
@@ -1693,6 +1768,7 @@ export default function DashboardReports() {
                     </td>
                     <td data-label="رقم الحجز MK">{row.mkRef}</td>
                     <td data-label="الموظفة">{row.employeeName || "-"}</td>
+                    <td data-label="الملاحظة">{row.note || "-"}</td>
                     <td data-label="المبلغ" className={row.amount < 0 ? "amount-neg" : "amount-pos"}>
                       {formatMoney(row.amount)}
                     </td>

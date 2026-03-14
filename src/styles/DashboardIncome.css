@@ -680,6 +680,14 @@
 
 /* Income modals */
 .income-page-modal__card {
+  --inc-brand: #5b0015;
+  --inc-brand-strong: #470011;
+  --inc-border: #ead8dd;
+  --inc-line: #edf0f4;
+  --inc-text: #111827;
+  --inc-muted: #6b7280;
+  --inc-surface: #ffffff;
+  --inc-surface-soft: #fcf8f9;
   width: min(860px, 100%);
   border-radius: 18px;
   border: 1px solid #e6e9ef;

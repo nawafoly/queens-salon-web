@@ -262,6 +262,7 @@ function financeSourceLabelAr(raw: unknown): string {
   if (s === "booking") return "حجز";
   if (s === "invoice") return "فاتورة";
   if (s === "manual") return "يدوي";
+  if (s === "other" || s === "دخل آخر") return "دخل آخر";
   if (s === "income" || s === "revenue") return "إيراد";
   return String(raw || "").trim() || "إيراد";
 }
@@ -334,9 +335,16 @@ function hasReliableBookingPayment(raw: any): boolean {
 }
 
 function resolveLinkedBookingIdFromIncome(item: any): string {
-  const explicit = String(item?.bookingId || "").trim();
-  if (explicit) return explicit;
   const source = String(item?.source || "").trim().toLowerCase();
+  const isRefundLike =
+    source === "refund" ||
+    source === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639" ||
+    String(item?.id || "").startsWith("refund_") ||
+    Number(item?.amount || 0) < 0;
+  if (isRefundLike) return "";
+
+  const explicit = String(item?.bookingId || "").trim();
+  if (explicit) return isLikelySystemIncomeSource(source) ? explicit : "";
   if (source === "booking" || source === "\u062d\u062c\u0632") return String(item?.id || "").trim();
   return "";
 }
@@ -352,6 +360,7 @@ function isLikelySystemIncomeSource(sourceRaw: unknown): boolean {
   return (
     source === "booking" ||
     source === "invoice" ||
+    source === "internal_booking" ||
     source === "\u062d\u062c\u0632" ||
     source === "\u0641\u0627\u062a\u0648\u0631\u0629"
   );

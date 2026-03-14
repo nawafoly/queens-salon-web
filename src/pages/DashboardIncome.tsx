@@ -36,6 +36,7 @@ const ALL_BOOKINGS_KEY = "allBookings";
 const LEGACY_INCOME_KEY = "dashboard_income_v1";
 const INCOME_MIGRATED_KEY = "income_migrated_to_firestore_v1";
 const INCOME_EDIT_PIN = "598867395";
+const OTHER_INCOME_LABEL = "\u062f\u062e\u0644 \u0622\u062e\u0631";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 type BookingPaymentType = "full" | "partial";
@@ -114,6 +115,14 @@ function sourceLabel(source: string) {
   if (s === "internal_booking") return "\u062d\u062c\u0632 \u062f\u0627\u062e\u0644\u064a";
   if (s === "manual" || s === "\u064a\u062f\u0648\u064a") return "\u064a\u062f\u0648\u064a";
   if (s === "refund" || s === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639") return "\u0627\u0633\u062a\u0631\u062c\u0627\u0639";
+  if (
+    s === "other" ||
+    s === "other income" ||
+    s === OTHER_INCOME_LABEL ||
+    s === "\u0623\u062e\u0631\u0649" ||
+    s === "\u0627\u062e\u0631\u0649"
+  )
+    return OTHER_INCOME_LABEL;
   return String(source || "").trim();
 }
 
@@ -123,7 +132,7 @@ function sourceKind(source: string): "booking" | "invoice" | "internal" | "manua
   if (s === "booking" || s === "\u062d\u062c\u0632") return "booking";
   if (s === "invoice" || s === "\u0641\u0627\u062a\u0648\u0631\u0629") return "invoice";
   if (s === "internal_booking") return "internal";
-  if (s === "manual" || s === "\u064a\u062f\u0648\u064a") return "manual";
+  if (s === "manual" || s === "\u064a\u062f\u0648\u064a") return "other";
   if (s === "refund" || s === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639") return "refund";
   return "other";
 }
@@ -199,6 +208,16 @@ function round2(v: number): number {
   return Math.round((Number(v) || 0) * 100) / 100;
 }
 
+function isBookingLinkedIncomeSource(raw: string): boolean {
+  const s = String(raw || "").trim().toLowerCase();
+  return (
+    s === "booking" ||
+    s === "invoice" ||
+    s === "internal_booking" ||
+    s === "حجز" ||
+    s === "فاتورة"
+  );
+}
 function normalizeBookingPaymentType(raw: unknown): BookingPaymentType | null {
   const s = String(raw ?? "").trim().toLowerCase();
   if (!s) return null;
@@ -254,10 +273,17 @@ function resolveBookingPayment(raw: any): {
 }
 
 function resolveLinkedBookingId(item: IncomeItem): string {
+  const kind = sourceKind(item.source || "");
+  if (kind === "refund" || Number(item.amount || 0) < 0 || String(item.id || "").startsWith("refund_")) {
+    return "";
+  }
+
   const explicit = String(item.bookingId || "").trim();
-  if (explicit) return explicit;
-  const source = String(item.source || "").trim().toLowerCase();
-  if (source === "booking" || source === "حجز") return String(item.id || "").trim();
+  if (explicit) {
+    return isBookingLinkedIncomeSource(item.source || "") ? explicit : "";
+  }
+
+  if (kind === "booking") return String(item.id || "").trim();
   return "";
 }
 
@@ -408,6 +434,22 @@ function normalizePaymentMethod(x: any): PaymentMethod {
   if (s.includes("تحويل")) return "transfer";
 
   return "other";
+}
+
+function normalizeIncomeSourceInput(raw: string): string {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return "other";
+  const lower = trimmed.toLowerCase();
+  if (lower === "other" || lower === "other income") return "other";
+  if (lower === "manual" || lower === "\u064a\u062f\u0648\u064a") return "other";
+  if (
+    trimmed === OTHER_INCOME_LABEL ||
+    trimmed === "\u062f\u062e\u0644 \u0627\u062e\u0631" ||
+    trimmed === "\u0623\u062e\u0631\u0649" ||
+    trimmed === "\u0627\u062e\u0631\u0649"
+  )
+    return "other";
+  return trimmed;
 }
 
 function normalizeConfirmedPaymentMethod(raw: any): "cash" | "card" | "transfer" | null {
@@ -598,34 +640,45 @@ export default function DashboardIncome() {
     };
   }, []);
 
+  const effectiveDateOf = (x: IncomeItem) => {
+    const linkedBookingId = resolveLinkedBookingId(x);
+    const bm = bookingMetaById[linkedBookingId];
+    return normalizeISODate(bm?.bookingDate) || normalizeISODate(x.date) || String(x.date || "").trim();
+  };
+
+  // Top stat cards should follow period filters only (from/to), not text/method filters.
+  const periodFiltered = useMemo(
+    () =>
+      items
+        .filter((x) => {
+          const effectiveDate = effectiveDateOf(x);
+          if (from && effectiveDate < from) return false;
+          if (to && effectiveDate > to) return false;
+          return true;
+        })
+        .sort((a, b) => effectiveDateOf(b).localeCompare(effectiveDateOf(a))),
+    [items, from, to, bookingMetaById]
+  );
+
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    const effectiveDateOf = (x: IncomeItem) => {
+    return periodFiltered.filter((x) => {
+      if (fMethod !== "all" && x.method !== fMethod) return false;
+      if (!qq) return true;
+
       const linkedBookingId = resolveLinkedBookingId(x);
       const bm = bookingMetaById[linkedBookingId];
-      return normalizeISODate(bm?.bookingDate) || normalizeISODate(x.date) || String(x.date || "").trim();
-    };
-    return items
-      .filter((x) => {
-        if (fMethod !== "all" && x.method !== fMethod) return false;
-        const effectiveDate = effectiveDateOf(x);
-        if (from && effectiveDate < from) return false;
-        if (to && effectiveDate > to) return false;
-
-        if (!qq) return true;
-        const linkedBookingId = resolveLinkedBookingId(x);
-        const bm = bookingMetaById[linkedBookingId];
-        const paymentSummary = buildPaymentSummary(bm);
-        const noteText = formatIncomeNote(x.note);
-        const effectiveAmount = bm ? Number(bm.paidAmount || 0) : Number(x.amount || 0);
-        const a =
-          `${effectiveDate} ${effectiveAmount} ${sourceLabel(x.source || "")} ${x.note || ""} ${noteText} ${
-            x.bookingId || ""
-          } ${x.id} ${bm?.clientName || ""} ${bm?.bookingRef || ""} ${paymentSummary}`.toLowerCase();
-        return a.includes(qq);
-      })
-      .sort((a, b) => effectiveDateOf(b).localeCompare(effectiveDateOf(a)));
-  }, [items, q, fMethod, from, to, bookingMetaById]);
+      const effectiveDate = effectiveDateOf(x);
+      const paymentSummary = buildPaymentSummary(bm);
+      const noteText = formatIncomeNote(x.note);
+      const effectiveAmount = bm ? Number(bm.paidAmount || 0) : Number(x.amount || 0);
+      const a =
+        `${effectiveDate} ${effectiveAmount} ${sourceLabel(x.source || "")} ${x.note || ""} ${noteText} ${
+          x.bookingId || ""
+        } ${x.id} ${bm?.clientName || ""} ${bm?.bookingRef || ""} ${paymentSummary}`.toLowerCase();
+      return a.includes(qq);
+    });
+  }, [periodFiltered, q, fMethod, bookingMetaById]);
 
   const rowBookingMeta = (item: IncomeItem) => {
     const linkedBookingId = resolveLinkedBookingId(item);
@@ -643,50 +696,58 @@ export default function DashboardIncome() {
   };
 
   const total = useMemo(
-    () => filtered.reduce((s, x) => s + rowEffectiveAmount(x), 0),
-    [filtered]
+    () => periodFiltered.reduce((s, x) => s + rowEffectiveAmount(x), 0),
+    [periodFiltered]
   );
 
   const totalCash = useMemo(
     () =>
-      filtered
+      periodFiltered
         .filter((x) => x.method === "cash")
         .reduce((s, x) => s + rowEffectiveAmount(x), 0),
-    [filtered]
+    [periodFiltered]
   );
 
   const totalCard = useMemo(
     () =>
-      filtered
+      periodFiltered
         .filter((x) => x.method === "card")
         .reduce((s, x) => s + rowEffectiveAmount(x), 0),
-    [filtered]
+    [periodFiltered]
   );
 
   const totalTransfer = useMemo(
     () =>
-      filtered
+      periodFiltered
         .filter((x) => x.method === "transfer")
         .reduce((s, x) => s + rowEffectiveAmount(x), 0),
-    [filtered]
+    [periodFiltered]
+  );
+
+  const totalOtherIncome = useMemo(
+    () =>
+      periodFiltered
+        .filter((x) => sourceKind(x.source || "") === "other")
+        .reduce((s, x) => s + rowEffectiveAmount(x), 0),
+    [periodFiltered]
   );
 
   const totalRefund = useMemo(
     () =>
       Math.abs(
-        filtered
+        periodFiltered
           .filter((x) => rowEffectiveAmount(x) < 0)
           .reduce((s, x) => s + rowEffectiveAmount(x), 0)
       ),
-    [filtered]
+    [periodFiltered]
   );
 
   const addIncome = async () => {
     const n = Number(amount);
     const reason = String(note || "").trim();
-    const cleanedSource = String(source || "").trim() || "يدوي";
+    const cleanedSource = normalizeIncomeSourceInput(source);
     if (!date || !n || n <= 0) return setModalMsg("بيانات غير صحيحة");
-    if (!reason) return setModalMsg("سبب/مرجع الدخل اليدوي مطلوب");
+    if (!reason) return setModalMsg("سبب/مرجع الدخل مطلوب");
 
     const item: IncomeItem = {
       id: uid(),
@@ -1032,6 +1093,13 @@ export default function DashboardIncome() {
             <div className="stat-info">
               <h3>{totalTransfer.toLocaleString()} ريال</h3>
               <p>تحويل</p>
+            </div>
+          </div>
+
+          <div className="stat-card stat-card-other">
+            <div className="stat-info">
+              <h3>{totalOtherIncome.toLocaleString()} ريال</h3>
+              <p>دخل آخر</p>
             </div>
           </div>
 
@@ -1425,7 +1493,12 @@ export default function DashboardIncome() {
                     value={source}
                     onChange={(e) => setSource(e.target.value)}
                     className="income-modal-input"
+                    list="income_source_options"
                   />
+                  <datalist id="income_source_options">
+                    <option value="\u064a\u062f\u0648\u064a" />
+                    <option value={OTHER_INCOME_LABEL} />
+                  </datalist>
                 </label>
 
                 <label className="income-modal-field">
