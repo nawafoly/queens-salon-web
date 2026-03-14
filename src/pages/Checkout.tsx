@@ -30,6 +30,7 @@ import "../styles/Checkout.css";
 import { formatTime12 } from "../helpers/timeDisplay";
 
 import ConfirmModal from "../components/ConfirmModal";
+import { buildSuccessNavigationPayload } from "../helpers/successNavigation";
 
 // ✅ NEW: same resolver used in Dashboard (serviceId -> serviceName)
 import { resolveServiceName } from "../services/serviceResolver";
@@ -491,7 +492,10 @@ export default function Checkout() {
       localStorage.setItem(BOOKING_KEY, JSON.stringify(updatedCurrent));
       localStorage.removeItem(ALL_BOOKINGS_KEY);
 
-      navigate("/success");
+      {
+        const successNav = buildSuccessNavigationPayload(updatedCurrent, "created");
+        navigate(successNav.to, { state: successNav.state });
+      }
     } catch (e: any) {
       console.error(e);
 

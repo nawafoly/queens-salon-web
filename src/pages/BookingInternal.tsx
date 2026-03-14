@@ -75,6 +75,7 @@ import {
   buildSingleServiceCartItem,
   distributePackageServicePrices,
 } from "../helpers/bookingCartUtils";
+import { buildSuccessNavigationPayload } from "../helpers/successNavigation";
 import {
   allocateDiscountAcrossItems as allocateDiscount,
   buildAppliedDiscountState,
@@ -5424,7 +5425,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       internalPaidAmountRef.current = null;
 
       if (shouldSaveAsPending) {
-        navigate("/success");
+        const successNav = buildSuccessNavigationPayload(createdBookings, "created");
+        navigate(successNav.to, { state: successNav.state });
       } else {
         if (!openInternalPrintPopup()) notifyInvoicePopupBlocked();
       }

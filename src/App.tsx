@@ -18,6 +18,7 @@ import Home from "./pages/Home";
 import Services from "./pages/Services";
 import About from "./pages/About";
 import Booking from "./pages/Booking";
+import Checkout from "./pages/Checkout";
 import Success from "./pages/Success";
 import Offers from "./pages/Offers";
 import Reviews from "./pages/Reviews";
@@ -384,7 +385,7 @@ const App: React.FC = () => {
           <Route path="/booking/internal" element={<Navigate to="/dashboard/booking-internal" replace />} />
 
           {/* Checkout */}
-          <Route path="/checkout" element={<Navigate to="/success" replace />} />
+          <Route path="/checkout" element={<Checkout />} />
 
           {/* Success */}
           <Route path="/success" element={<Success />} />

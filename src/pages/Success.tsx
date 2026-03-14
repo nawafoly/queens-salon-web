@@ -106,6 +106,44 @@ const SALON_ID = "main";
 const SALON_WHATSAPP = "966548440401";
 const SALON_IBAN = "SA4710000001400007036306";
 
+function shouldDebugSuccess(search: string) {
+  try {
+    const params = new URLSearchParams(String(search || ""));
+    const flag = String(params.get("debugSuccess") || "").trim().toLowerCase();
+    if (flag === "1" || flag === "true") return true;
+  } catch {
+    // ignore query parsing issues
+  }
+
+  try {
+    const flag = String(localStorage.getItem("debug_success_page") || "").trim().toLowerCase();
+    if (flag === "1" || flag === "true") return true;
+  } catch {
+    // ignore localStorage issues
+  }
+
+  return Boolean(import.meta.env?.DEV);
+}
+
+function logSuccessDebug(enabled: boolean, event: string, payload?: unknown) {
+  if (!enabled) return;
+  if (payload === undefined) {
+    console.info(`[SuccessDebug] ${event}`);
+    return;
+  }
+  console.info(`[SuccessDebug] ${event}`, payload);
+}
+
+function debugErrorInfo(error: unknown) {
+  if (!error) return null;
+  const err = error as Record<string, any>;
+  return {
+    name: String(err?.name || ""),
+    code: String(err?.code || ""),
+    message: String(err?.message || ""),
+  };
+}
+
 /* =========================
    Helpers
 ========================= */
@@ -651,6 +689,7 @@ function resolveSuccessModeFromLocation(state: unknown): SuccessMode | null {
 export default function Success() {
   const navigate = useNavigate();
   const location = useLocation();
+  const debugEnabled = useMemo(() => shouldDebugSuccess(location.search), [location.search]);
   const locationSuccessMode = useMemo(
     () => resolveSuccessModeFromLocation(location.state),
     [location.state]
@@ -675,15 +714,42 @@ export default function Success() {
     localStorage.setItem(SUCCESS_MODE_KEY, successMode);
   }, [successMode]);
 
-  const bookingRefs = useMemo(
-    () =>
-      mergeBookingRefs([
-        ...readLocalBookingRefs(),
-        ...readQueryBookingRefs(location.search),
-        ...readStateBookingRefs(location.state),
-      ]),
-    [location.search, location.state]
+  const queryBookingRefs = useMemo(() => readQueryBookingRefs(location.search), [location.search]);
+  const stateBookingRefs = useMemo(() => readStateBookingRefs(location.state), [location.state]);
+  const storedBookingRefs = useMemo(
+    () => readLocalBookingRefs(),
+    [location.key, location.search, location.state]
   );
+  const explicitBookingRefs = useMemo(
+    () => mergeBookingRefs([...queryBookingRefs, ...stateBookingRefs]),
+    [queryBookingRefs, stateBookingRefs]
+  );
+  const bookingRefs = explicitBookingRefs.length ? explicitBookingRefs : storedBookingRefs;
+
+  useEffect(() => {
+    logSuccessDebug(debugEnabled, "page.load", {
+      pathname: location.pathname,
+      search: location.search,
+      state: location.state,
+      successMode,
+      queryBookingRefs,
+      stateBookingRefs,
+      storedBookingRefs,
+      selectedBookingRefs: bookingRefs,
+      usingExplicitRefs: explicitBookingRefs.length > 0,
+    });
+  }, [
+    bookingRefs,
+    debugEnabled,
+    explicitBookingRefs.length,
+    location.pathname,
+    location.search,
+    location.state,
+    queryBookingRefs,
+    stateBookingRefs,
+    storedBookingRefs,
+    successMode,
+  ]);
 
   useEffect(() => {
     let mounted = true;
@@ -695,6 +761,15 @@ export default function Success() {
         setViews([]);
         const localSnapshots = readLocalBookingSnapshots();
         const localSnapshotIndex = buildLocalBookingSnapshotIndex(localSnapshots);
+        const log = (event: string, payload?: unknown) => logSuccessDebug(debugEnabled, event, payload);
+
+        log("loader.start", {
+          bookingRefs,
+          explicitBookingRefs,
+          storedBookingRefs,
+          localSnapshotCount: localSnapshots.length,
+          localSnapshots,
+        });
 
         const recoverRecentBookings = async () => {
           const out = new Map<string, any>();
@@ -738,8 +813,15 @@ export default function Success() {
               const byUid = await getDocs(
                 query(bookingsCol, where("userId", "==", uid), limit(12))
               );
+              log("recovery.query.userId", {
+                incomingId: uid,
+                queryPath: `salons/${SALON_ID}/bookings where userId == ${uid} limit 12`,
+                queryResultCount: byUid.size,
+                rawFetchedData: byUid.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) })),
+              });
               pushSnap(byUid);
-            } catch {
+            } catch (e) {
+              log("recovery.query.userId.error", debugErrorInfo(e));
               // ignore uid fallback failure
             }
           }
@@ -749,8 +831,18 @@ export default function Success() {
               const byPhone = await getDocs(
                 query(bookingsCol, where("clientPhone", "==", phone), limit(8))
               );
+              log("recovery.query.clientPhone", {
+                incomingId: phone,
+                queryPath: `salons/${SALON_ID}/bookings where clientPhone == ${phone} limit 8`,
+                queryResultCount: byPhone.size,
+                rawFetchedData: byPhone.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) })),
+              });
               pushSnap(byPhone);
-            } catch {
+            } catch (e) {
+              log("recovery.query.clientPhone.error", {
+                phone,
+                error: debugErrorInfo(e),
+              });
               // ignore phone fallback failure
             }
           }
@@ -769,11 +861,24 @@ export default function Success() {
             return nowMs - ms <= 7 * 24 * 60 * 60 * 1000;
           });
 
-          return (recentRows.length ? recentRows : rows).slice(0, 6);
+          const recovered = (recentRows.length ? recentRows : rows).slice(0, 6);
+          log("recovery.result", {
+            queryPath: `salons/${SALON_ID}/bookings`,
+            queryResultCount: recovered.length,
+            rawFetchedData: recovered,
+          });
+          return recovered;
         };
 
         const recoveredWhenNoRefs = !bookingRefs.length ? await recoverRecentBookings() : [];
         if (!bookingRefs.length && !recoveredWhenNoRefs.length) {
+          log("loader.guard.noRefs", {
+            incomingId: null,
+            queryPath: null,
+            queryResultCount: 0,
+            rawFetchedData: [],
+            finalMappedState: [],
+          });
             setError("رقم الحجز غير موجود");
             return;
         }
@@ -788,13 +893,28 @@ export default function Success() {
           const bookingId = String(idRaw || "").trim();
           if (!bookingId) return null;
           if (bookingLookupCache.has(bookingId)) return bookingLookupCache.get(bookingId) || null;
+          log("booking.getById.request", {
+            incomingId: bookingId,
+            queryPath: `salons/${SALON_ID}/bookings/${bookingId}`,
+          });
           try {
             const docData: any = await getBookingById(bookingId);
             const out = docData ? { ...docData, id: docData.id || bookingId } : null;
             bookingLookupCache.set(bookingId, out);
+            log("booking.getById.result", {
+              incomingId: bookingId,
+              queryPath: `salons/${SALON_ID}/bookings/${bookingId}`,
+              queryResultCount: out ? 1 : 0,
+              rawFetchedData: out,
+            });
             return out;
-          } catch {
+          } catch (e) {
             bookingLookupCache.set(bookingId, null);
+            log("booking.getById.error", {
+              incomingId: bookingId,
+              queryPath: `salons/${SALON_ID}/bookings/${bookingId}`,
+              error: debugErrorInfo(e),
+            });
             return null;
           }
         };
@@ -803,6 +923,10 @@ export default function Success() {
           const mk = normalizeMkLookup(publicIdRaw);
           if (!mk) return null;
           if (publicLookupCache.has(mk)) return publicLookupCache.get(mk) || null;
+          log("booking.getByPublicId.request", {
+            incomingId: mk,
+            queryPath: `salons/${SALON_ID}/bookings where publicId == ${mk} limit 1`,
+          });
           try {
             const byPublicQ = query(
               collection(db, "salons", SALON_ID, "bookings"),
@@ -814,9 +938,26 @@ export default function Success() {
               const row = byPublicSnap.docs[0];
               const out = { id: row.id, ...(row.data() as any) };
               publicLookupCache.set(mk, out);
+              log("booking.getByPublicId.result", {
+                incomingId: mk,
+                queryPath: `salons/${SALON_ID}/bookings where publicId == ${mk} limit 1`,
+                queryResultCount: byPublicSnap.size,
+                rawFetchedData: out,
+              });
               return out;
             }
-          } catch {
+            log("booking.getByPublicId.result", {
+              incomingId: mk,
+              queryPath: `salons/${SALON_ID}/bookings where publicId == ${mk} limit 1`,
+              queryResultCount: 0,
+              rawFetchedData: null,
+            });
+          } catch (e) {
+            log("booking.getByPublicId.error", {
+              incomingId: mk,
+              queryPath: `salons/${SALON_ID}/bookings where publicId == ${mk} limit 1`,
+              error: debugErrorInfo(e),
+            });
             // ignore lookup failures
           }
           publicLookupCache.set(mk, null);
@@ -824,6 +965,10 @@ export default function Success() {
         };
 
         const resolveBookingDocFromRef = async (ref: LocalBookingRef) => {
+          log("ref.resolve.start", {
+            incomingId: ref?.bookingId || ref?.id || ref?.trackId || ref?.publicId || null,
+            ref,
+          });
           const candidates = Array.from(
             new Set(
               [ref?.id, ref?.bookingId, ref?.trackId]
@@ -834,28 +979,86 @@ export default function Success() {
 
           for (const candidate of candidates) {
             const direct = await findBookingByIdSafe(candidate);
-            if (direct) return direct;
+            if (direct) {
+              log("ref.resolve.hit", {
+                incomingId: candidate,
+                queryPath: `salons/${SALON_ID}/bookings/${candidate}`,
+                queryResultCount: 1,
+                rawFetchedData: direct,
+                matchedBy: "bookingDocId",
+              });
+              return direct;
+            }
 
             try {
               const trackData: any = await getTrackById(candidate);
+              log("track.getById.result", {
+                incomingId: candidate,
+                queryPath: `salons/${SALON_ID}/booking_tracks/${candidate}`,
+                queryResultCount: trackData ? 1 : 0,
+                rawFetchedData: trackData,
+              });
               const trackBookingId = String(trackData?.bookingId || "").trim();
               const viaTrack = await findBookingByIdSafe(trackBookingId);
-              if (viaTrack) return viaTrack;
-            } catch {
+              if (viaTrack) {
+                log("ref.resolve.hit", {
+                  incomingId: candidate,
+                  queryPath: `salons/${SALON_ID}/booking_tracks/${candidate}`,
+                  queryResultCount: 1,
+                  rawFetchedData: viaTrack,
+                  matchedBy: "trackDocId",
+                });
+                return viaTrack;
+              }
+            } catch (e) {
+              log("track.getById.error", {
+                incomingId: candidate,
+                queryPath: `salons/${SALON_ID}/booking_tracks/${candidate}`,
+                error: debugErrorInfo(e),
+              });
               // ignore track-id fallback
             }
 
             const mkFromCandidate = normalizeMkLookup(candidate);
             if (mkFromCandidate) {
               const byPublic = await findBookingByPublicId(mkFromCandidate);
-              if (byPublic) return byPublic;
+              if (byPublic) {
+                log("ref.resolve.hit", {
+                  incomingId: mkFromCandidate,
+                  queryPath: `salons/${SALON_ID}/bookings where publicId == ${mkFromCandidate} limit 1`,
+                  queryResultCount: 1,
+                  rawFetchedData: byPublic,
+                  matchedBy: "bookingPublicId",
+                });
+                return byPublic;
+              }
 
               try {
                 const trackByPublic: any = await getTrackByPublicId(mkFromCandidate);
+                log("track.getByPublicId.result", {
+                  incomingId: mkFromCandidate,
+                  queryPath: `salons/${SALON_ID}/booking_tracks where publicId == ${mkFromCandidate} limit 1`,
+                  queryResultCount: trackByPublic ? 1 : 0,
+                  rawFetchedData: trackByPublic,
+                });
                 const trackBookingId = String(trackByPublic?.bookingId || "").trim();
                 const viaPublicTrack = await findBookingByIdSafe(trackBookingId);
-                if (viaPublicTrack) return viaPublicTrack;
-              } catch {
+                if (viaPublicTrack) {
+                  log("ref.resolve.hit", {
+                    incomingId: mkFromCandidate,
+                    queryPath: `salons/${SALON_ID}/booking_tracks where publicId == ${mkFromCandidate} limit 1`,
+                    queryResultCount: 1,
+                    rawFetchedData: viaPublicTrack,
+                    matchedBy: "trackPublicId",
+                  });
+                  return viaPublicTrack;
+                }
+              } catch (e) {
+                log("track.getByPublicId.error", {
+                  incomingId: mkFromCandidate,
+                  queryPath: `salons/${SALON_ID}/booking_tracks where publicId == ${mkFromCandidate} limit 1`,
+                  error: debugErrorInfo(e),
+                });
                 // ignore track-by-public fallback
               }
             }
@@ -864,18 +1067,53 @@ export default function Success() {
           const mkHint = normalizeMkLookup(String(ref?.publicId || ""));
           if (mkHint) {
             const byPublic = await findBookingByPublicId(mkHint);
-            if (byPublic) return byPublic;
+            if (byPublic) {
+              log("ref.resolve.hit", {
+                incomingId: mkHint,
+                queryPath: `salons/${SALON_ID}/bookings where publicId == ${mkHint} limit 1`,
+                queryResultCount: 1,
+                rawFetchedData: byPublic,
+                matchedBy: "ref.publicId",
+              });
+              return byPublic;
+            }
 
             try {
               const trackByPublic: any = await getTrackByPublicId(mkHint);
+              log("track.getByPublicId.result", {
+                incomingId: mkHint,
+                queryPath: `salons/${SALON_ID}/booking_tracks where publicId == ${mkHint} limit 1`,
+                queryResultCount: trackByPublic ? 1 : 0,
+                rawFetchedData: trackByPublic,
+              });
               const trackBookingId = String(trackByPublic?.bookingId || "").trim();
               const viaPublicTrack = await findBookingByIdSafe(trackBookingId);
-              if (viaPublicTrack) return viaPublicTrack;
-            } catch {
+              if (viaPublicTrack) {
+                log("ref.resolve.hit", {
+                  incomingId: mkHint,
+                  queryPath: `salons/${SALON_ID}/booking_tracks where publicId == ${mkHint} limit 1`,
+                  queryResultCount: 1,
+                  rawFetchedData: viaPublicTrack,
+                  matchedBy: "ref.publicIdTrack",
+                });
+                return viaPublicTrack;
+              }
+            } catch (e) {
+              log("track.getByPublicId.error", {
+                incomingId: mkHint,
+                queryPath: `salons/${SALON_ID}/booking_tracks where publicId == ${mkHint} limit 1`,
+                error: debugErrorInfo(e),
+              });
               // ignore track-by-public fallback
             }
           }
 
+          log("ref.resolve.miss", {
+            incomingId: ref?.bookingId || ref?.id || ref?.trackId || ref?.publicId || null,
+            ref,
+            queryResultCount: 0,
+            rawFetchedData: null,
+          });
           return null;
         };
 
@@ -998,6 +1236,11 @@ export default function Success() {
             status: merged?.status || "pending",
           });
           pushedIds.add(rowKey);
+          log("view.mapped", {
+            incomingId: bookingIdResolved || publicIdResolved,
+            rawFetchedData: rawDoc,
+            finalMappedState: results[results.length - 1],
+          });
         };
 
         if (!bookingRefs.length && recoveredWhenNoRefs.length) {
@@ -1027,6 +1270,12 @@ export default function Success() {
               where("bookingGroupId", "==", groupId)
             );
             const groupSnap = await getDocs(groupQ);
+            log("booking.groupQuery.result", {
+              incomingId: groupId,
+              queryPath: `salons/${SALON_ID}/bookings where bookingGroupId == ${groupId}`,
+              queryResultCount: groupSnap.size,
+              rawFetchedData: groupSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) })),
+            });
             for (const gd of groupSnap.docs) {
               const gData: any = gd.data() || {};
               await pushBookingView(
@@ -1034,24 +1283,25 @@ export default function Success() {
                 { id: gd.id, bookingId: gd.id, publicId: gData.publicId }
               );
             }
-          } catch {
+          } catch (e) {
+            log("booking.groupQuery.error", {
+              incomingId: groupId,
+              queryPath: `salons/${SALON_ID}/bookings where bookingGroupId == ${groupId}`,
+              error: debugErrorInfo(e),
+            });
             // ignore group expansion failures, keep primary booking
           }
         }
 
         if (!results.length) {
-          const recovered = await recoverRecentBookings();
-          if (!recovered.length) {
-            setError("لم يتم العثور على الحجز");
-            return;
-          }
-          for (const row of recovered) {
-            await pushBookingView(row, {
-              id: row?.id,
-              bookingId: row?.id,
-              publicId: row?.publicId,
-            });
-          }
+          log("loader.noResults", {
+            bookingRefs,
+            queryResultCount: 0,
+            rawFetchedData: [],
+            finalMappedState: [],
+          });
+          setError("لم يتم العثور على الحجز");
+          return;
         }
 
         results.sort((a, b) => {
@@ -1061,8 +1311,13 @@ export default function Success() {
         });
 
         setViews(results);
+        log("loader.done", {
+          queryResultCount: results.length,
+          finalMappedState: results,
+        });
       } catch (e: any) {
         console.error(e);
+        logSuccessDebug(debugEnabled, "loader.error", debugErrorInfo(e));
         setError(e?.message || "صار خطأ أثناء تحميل بيانات الحجز");
       } finally {
         if (mounted) setLoading(false);
@@ -1073,7 +1328,7 @@ export default function Success() {
     return () => {
       mounted = false;
     };
-  }, [bookingRefs]);
+  }, [bookingRefs, debugEnabled, explicitBookingRefs, storedBookingRefs]);
 
   const copyOne = async (publicIdRaw: string) => {
     const publicId = String(publicIdRaw || "").trim();

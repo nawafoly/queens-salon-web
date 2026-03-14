@@ -57,6 +57,7 @@ import {
   MANI_PEDI_SECTION_KEYWORDS,
   HOME_SERVICE_SECTION_KEYWORDS,
 } from "../helpers/bookingSharedConstants";
+import { buildSuccessNavigationPayload } from "../helpers/successNavigation";
 
 import {
   isStaffAvailableForDate,
@@ -6589,7 +6590,10 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       localStorage.setItem("booking_success_mode", "created");
       localStorage.removeItem("bookingDraft");
 
-      navigate("/success");
+      {
+        const successNav = buildSuccessNavigationPayload(createdBookings, "created");
+        navigate(successNav.to, { state: successNav.state });
+      }
     } catch (e: any) {
       console.error(e);
 

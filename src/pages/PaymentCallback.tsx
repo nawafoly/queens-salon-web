@@ -1,36 +1,50 @@
-
-
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { buildSuccessNavigationPayload } from "../helpers/successNavigation";
 
 const ALL_BOOKINGS_KEY = "allBookings";
+const BOOKING_KEY = "currentBooking";
 
 function updateLocalBookingPaid(bookingId: string, paid: boolean) {
+  let matched: any = null;
+
   try {
     const raw = localStorage.getItem(ALL_BOOKINGS_KEY);
     const arr = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(arr)) return;
-
-    const next = arr.map((b: any) => {
-      const id = String(b.id || b.bookingId || "");
-      if (id !== bookingId) return b;
-      return { ...b, paymentStatus: paid ? "paid" : "pending" };
-    });
-
-    localStorage.setItem(ALL_BOOKINGS_KEY, JSON.stringify(next));
+    if (Array.isArray(arr)) {
+      const next = arr.map((booking: any) => {
+        const id = String(booking?.id || booking?.bookingId || "");
+        if (id !== bookingId) return booking;
+        matched = { ...booking, paymentStatus: paid ? "paid" : "pending" };
+        return matched;
+      });
+      localStorage.setItem(ALL_BOOKINGS_KEY, JSON.stringify(next));
+    }
   } catch {}
+
+  try {
+    const rawCurrent = localStorage.getItem(BOOKING_KEY);
+    const current = rawCurrent ? JSON.parse(rawCurrent) : null;
+    const currentId = String(current?.id || current?.bookingId || "");
+    if (current && currentId === bookingId) {
+      matched = { ...current, paymentStatus: paid ? "paid" : "pending" };
+      localStorage.setItem(BOOKING_KEY, JSON.stringify(matched));
+    }
+  } catch {}
+
+  return matched || { id: bookingId, bookingId, trackId: bookingId };
 }
 
 export default function PaymentCallback() {
   const navigate = useNavigate();
   const [sp] = useSearchParams();
-  const [msg, setMsg] = useState("جاري التحقق من الدفع...");
+  const [msg, setMsg] = useState("Verifying payment...");
 
   useEffect(() => {
     const bookingId = sp.get("bookingId") || "";
-    const paymentId = sp.get("id") || sp.get("payment_id") || ""; // بعض التدفقات ترجع id
+    const paymentId = sp.get("id") || sp.get("payment_id") || "";
     if (!bookingId) {
-      setMsg("لا يوجد رقم حجز.");
+      setMsg("Missing booking reference.");
       return;
     }
 
@@ -44,14 +58,20 @@ export default function PaymentCallback() {
 
         const data = await res.json();
         const paid = data?.paid === true;
+        const successRef = updateLocalBookingPaid(bookingId, paid);
+        const successNav = buildSuccessNavigationPayload(successRef, "created");
 
-        updateLocalBookingPaid(bookingId, paid);
-
-        setMsg(paid ? "تم الدفع بنجاح ✅" : "الدفع لم يكتمل بعد (بانتظار الدفع).");
-        setTimeout(() => navigate("/success"), 800);
+        setMsg(
+          paid ? "Payment verified successfully." : "Payment is still pending."
+        );
+        setTimeout(() => navigate(successNav.to, { state: successNav.state }), 800);
       } catch {
-        setMsg("تعذر التحقق الآن، تم حفظ الحجز وبإمكانك المحاولة لاحقًا.");
-        setTimeout(() => navigate("/success"), 1200);
+        const successNav = buildSuccessNavigationPayload(
+          { id: bookingId, bookingId, trackId: bookingId },
+          "created"
+        );
+        setMsg("Could not verify payment right now. Your booking was saved.");
+        setTimeout(() => navigate(successNav.to, { state: successNav.state }), 1200);
       }
     })();
   }, [navigate, sp]);
@@ -59,10 +79,9 @@ export default function PaymentCallback() {
   return (
     <div style={{ minHeight: "60vh", display: "grid", placeItems: "center", padding: 24 }}>
       <div style={{ textAlign: "center", lineHeight: 1.8 }}>
-        <h2>تأكيد الدفع</h2>
+        <h2>Payment verification</h2>
         <p style={{ color: "#666" }}>{msg}</p>
       </div>
     </div>
   );
 }
-
