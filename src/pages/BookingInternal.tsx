@@ -130,7 +130,7 @@ import {
   isStaffAvailableForDate,
   filterStaffSlotsByWorkingHours,
   isStaffWorkingAtTime,
-  isStaffEmploymentEndedForDate,
+  isStaffOperationallyActiveForDate,
 } from "../helpers/staffAvailability";
 import {
   pickEffectivePrice as resolveEffectiveSeasonPrice,
@@ -2085,6 +2085,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           paymentMethod: nextPaymentMethod,
           paidAmount: payment.paidAmount,
           remainingAmount: payment.remainingAmount,
+          display: {
+            clientName: String((b as any)?.clientName || (b as any)?.customerName || "").trim(),
+            bookingPublicId: String((b as any)?.publicId || "").trim(),
+            bookingShortId: String(id || "").slice(0, 6),
+            bookingId: id,
+          },
         },
       });
 
@@ -2245,6 +2251,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           refundReason: reason,
           refundAmount: amount,
           refundIncomeId: `refund_${id}`,
+          display: {
+            clientName: String((b as any)?.clientName || (b as any)?.customerName || "").trim(),
+            bookingPublicId: String((b as any)?.publicId || "").trim(),
+            bookingShortId: String(id || "").slice(0, 6),
+            bookingId: id,
+          },
         },
       });
 
@@ -5464,6 +5476,16 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         return;
       }
 
+      if (e?.code === "EMPLOYEE_UNAVAILABLE") {
+        openModal({
+          title: "الموظفة غير متاحة",
+          message: "تم تعطيل هذه الموظفة أو لم تعد متاحة للتعيين. اختاري موظفة أخرى أو حدّثي بيانات الحجز.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
       openModal({
         title: "تعذر حفظ الحجز",
         message:
@@ -5625,7 +5647,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       const visibleStaff = staffList.filter(
         (st: any) =>
           (st as any)?.showOnBooking !== false &&
-          !isStaffEmploymentEndedForDate(st as any, dateISO)
+          isStaffOperationallyActiveForDate(st as any, dateISO)
       );
       const selectedStaff = visibleStaff.find(
         (st: any) => String((st as any)?.id || "").trim() === employeeId
@@ -6864,7 +6886,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       const visibleStaff = staffList.filter(
                         (st: any) =>
                           (st as any)?.showOnBooking !== false &&
-                          !isStaffEmploymentEndedForDate(st as any, dateISO)
+                          isStaffOperationallyActiveForDate(st as any, dateISO)
                       );
                       const staffWithAvailability = visibleStaff.map((st) => {
                         const dayAvailable = isStaffAvailableForDate(st as any, dateISO, {

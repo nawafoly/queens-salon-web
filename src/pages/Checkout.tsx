@@ -509,6 +509,16 @@ export default function Checkout() {
         return;
       }
 
+      if (e?.code === "EMPLOYEE_UNAVAILABLE") {
+        openModal({
+          title: "الموظفة غير متاحة",
+          message: "الموظفة المختارة لم تعد متاحة للحجز. سنعيدك إلى صفحة الحجز لاختيار موظفة أخرى.",
+          variant: "danger",
+          afterClose: () => navigate("/booking"),
+        });
+        return;
+      }
+
       const code = String(e?.code || "");
       const msg = String(e?.message || "");
 

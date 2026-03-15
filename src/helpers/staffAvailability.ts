@@ -1,4 +1,4 @@
-type StaffAvailabilityLike = {
+export type StaffAvailabilityLike = {
   active?: boolean;
   showOnBooking?: boolean;
   employmentEndDate?: string;
@@ -59,7 +59,7 @@ function isISODate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-function todayISO() {
+export function todayISO() {
   const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -67,12 +67,12 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function normalizeISODate(value: string | undefined | null) {
+export function normalizeISODate(value: string | undefined | null) {
   const s = String(value || "").trim();
   return isISODate(s) ? s : "";
 }
 
-function resolveEmploymentEndDate(staff: StaffAvailabilityLike) {
+export function resolveEmploymentEndDate(staff: StaffAvailabilityLike) {
   const direct = normalizeISODate((staff as any)?.employmentEndDate);
   if (direct) return direct;
   const legacy1 = normalizeISODate((staff as any)?.lastWorkingDate);
@@ -90,6 +90,15 @@ export function isStaffEmploymentEndedForDate(
   const endDate = resolveEmploymentEndDate(staff);
   if (!endDate) return false;
   return target > endDate;
+}
+
+export function isStaffOperationallyActiveForDate(
+  staff: StaffAvailabilityLike,
+  dateISO?: string
+) {
+  if (staff?.active === false) return false;
+  if (isStaffEmploymentEndedForDate(staff, dateISO)) return false;
+  return true;
 }
 
 function weekdayFromISO(dateISO: string) {

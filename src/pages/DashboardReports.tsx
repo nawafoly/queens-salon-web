@@ -434,6 +434,7 @@ function normalizeStaffPayrollRows(rows: any[]): StaffPayrollSource[] {
         id,
         name: String(x?.name || "").trim() || id,
         active: x?.active !== false,
+        employmentEndDate: String(x?.employmentEndDate || "").trim() || undefined,
         useCustomWorkingHours: !!x?.useCustomWorkingHours,
         customWorkingHours: x?.customWorkingHours || {},
         customWorkingHourOverrides: Array.isArray(x?.customWorkingHourOverrides)

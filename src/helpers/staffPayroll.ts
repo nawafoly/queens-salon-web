@@ -156,6 +156,13 @@ function normalizeIsoDate(v: any): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
 }
 
+function todayIso(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`;
+}
+
 function normalizeTimeHHMM(v: any): string {
   const s = String(v || "").trim();
   const m = s.match(/^(\d{1,2}):(\d{2})$/);
@@ -839,11 +846,14 @@ export function buildPayrollExpenseRowsForMonths(args: {
 
   const dailyBookingMap = buildStaffDailyBookingStatsMap(args.staffList, args.bookings, months);
   const out: PayrollExpenseRow[] = [];
+  const today = todayIso();
 
   args.staffList.forEach((staff) => {
     const sid = String(staff.id || "").trim();
     const sname = String(staff.name || "").trim() || sid || "موظفة";
     if (!sid) return;
+    const employmentEndDate = normalizeIsoDate(staff.employmentEndDate);
+    const inactiveNow = staff.active === false;
     const cfg = normalizePayrollConfig(staff);
     const selectedBase =
       cfg.hoursBasis === "season" ? cfg.seasonBaseHoursPerDay : cfg.baseHoursPerDay;
@@ -857,6 +867,10 @@ export function buildPayrollExpenseRowsForMonths(args: {
       const cycleTo = cycleRange?.to || `${monthKey}-${String(PAYROLL_CLOSE_DAY).padStart(2, "0")}`;
       const salaryDate = cycleTo;
       const salaryCreatedAt = Date.parse(`${salaryDate}T12:00:00`) || Date.now();
+      const outOfEmploymentCycle = !!employmentEndDate && !!cycleFrom && employmentEndDate < cycleFrom;
+      const inactiveCurrentOrFutureCycle = inactiveNow && !!cycleTo && cycleTo >= today;
+
+      if (outOfEmploymentCycle || inactiveCurrentOrFutureCycle) return;
 
       if (cfg.monthlySalary > 0) {
         out.push({
@@ -882,6 +896,9 @@ export function buildPayrollExpenseRowsForMonths(args: {
       days.forEach((dateIso) => {
         const cycleKey = payrollCycleKeyFromDate(dateIso, PAYROLL_CLOSE_DAY) || monthKey;
         const cycleForDay = payrollCycleRangeForMonthKey(cycleKey, PAYROLL_CLOSE_DAY);
+        const cycleEndForDay = String(cycleForDay?.to || cycleTo || "").trim();
+        if (employmentEndDate && dateIso > employmentEndDate) return;
+        if (inactiveNow && cycleEndForDay && cycleEndForDay >= today) return;
         const dayBooking = dailyBookingMap.get(`${sid}|${dateIso}`) || {
           invoiceCount: 0,
           invoiceRevenue: 0,

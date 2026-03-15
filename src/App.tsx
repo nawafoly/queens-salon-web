@@ -2,6 +2,7 @@
 import React, { useEffect, useLayoutEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import { doc, onSnapshot } from "firebase/firestore";
 
 import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
@@ -33,8 +34,9 @@ import SuccessInternal from "./pages/SuccessInternal";
 
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
-import { auth } from "./services/firebase";
+import { auth, db } from "./services/firebase";
 import { createOrLoadUserProfile } from "./services/userProfile";
+import { resolveDashboardLandingPath } from "./helpers/routePaths";
 
 // Pending Dashboard
 import DashboardPending from "./pages/DashboardPending";
@@ -102,6 +104,45 @@ function getNameFromStorage(): string {
     if (n) return n;
   } catch {}
   return String(localStorage.getItem("userName") || "").trim();
+}
+
+function writeLiveAuthCache(args: {
+  uid: string;
+  email: string;
+  name: string;
+  role: UiRole;
+  active?: boolean;
+}) {
+  try {
+    const current = JSON.parse(localStorage.getItem("user_profile_v1") || "null") || {};
+    const merged = {
+      ...current,
+      uid: args.uid,
+      email: args.email || current?.email || "",
+      name: args.name || current?.name || "",
+      role: args.role,
+      ...(typeof args.active === "boolean" ? { active: args.active } : {}),
+    };
+
+    localStorage.setItem("user_profile_v1", JSON.stringify(merged));
+    if (merged.name) localStorage.setItem("userName", String(merged.name));
+    else localStorage.removeItem("userName");
+    if (merged.email) localStorage.setItem("userEmail", String(merged.email));
+    else localStorage.removeItem("userEmail");
+    localStorage.setItem("userRole", String(args.role));
+    localStorage.setItem(
+      "auth_user",
+      JSON.stringify({
+        uid: args.uid,
+        email: merged.email || "",
+        role: args.role,
+        displayName: merged.name || "",
+      })
+    );
+    window.dispatchEvent(new Event("authChanged"));
+  } catch {
+    // noop
+  }
 }
 
 /* ================================
@@ -241,8 +282,15 @@ const App: React.FC = () => {
 
   useEffect(() => {
     let seq = 0;
+    let unsubUserDoc: (() => void) | null = null;
     const unsub = onAuthStateChanged(auth, async (user) => {
       const currentSeq = ++seq;
+      try {
+        unsubUserDoc?.();
+      } catch {
+        // noop
+      }
+      unsubUserDoc = null;
       setAuthUser(user);
 
       if (!user) {
@@ -260,8 +308,46 @@ const App: React.FC = () => {
         if (isMalikatAuth && (nextRole === "client" || nextRole === "guest")) {
           nextRole = "pending";
         }
+        const nextName = profile.name || user.displayName || "";
         setUserRole(nextRole);
-        setUserName(profile.name || user.displayName || "");
+        setUserName(nextName);
+        writeLiveAuthCache({
+          uid: user.uid,
+          email: String(profile.email || user.email || "").trim(),
+          name: nextName,
+          role: nextRole,
+          active: profile.active,
+        });
+
+        unsubUserDoc = onSnapshot(
+          doc(db, "salons", "main", "users", user.uid),
+          (snap) => {
+            if (currentSeq !== seq || !snap.exists()) return;
+            const data = snap.data() as any;
+            const active = data?.active !== false;
+            let liveRole = normalizeRole(data?.role || nextRole);
+            if (isMalikatAuth && (liveRole === "client" || liveRole === "guest")) {
+              liveRole = "pending";
+            }
+            if (!active) liveRole = "pending";
+
+            const liveName =
+              String(data?.displayName || data?.name || nextName || user.displayName || "").trim();
+
+            setUserRole(liveRole);
+            setUserName(liveName);
+            writeLiveAuthCache({
+              uid: user.uid,
+              email: String(data?.email || profile.email || user.email || "").trim(),
+              name: liveName,
+              role: liveRole,
+              active,
+            });
+          },
+          () => {
+            // noop
+          }
+        );
       } catch {
         if (currentSeq !== seq) return;
         // For admin-domain users, fail-safe to pending instead of client/login loops.
@@ -278,7 +364,14 @@ const App: React.FC = () => {
       }
     });
 
-    return () => unsub();
+    return () => {
+      try {
+        unsubUserDoc?.();
+      } catch {
+        // noop
+      }
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
@@ -299,16 +392,28 @@ const App: React.FC = () => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+    const isDashboardRoot =
+      location.pathname === "/dashboard" || location.pathname === "/dashboard/";
 
     if (isMalikatAuth) {
-      if (isDashboardRole(role)) return <>{children}</>;
+      if (isDashboardRole(role)) {
+        if (role === "staff" && isDashboardRoot) {
+          return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+        }
+        return <>{children}</>;
+      }
       return <Navigate to="/dashboard-pending" replace />;
     }
 
     if (isPendingRole(role))
       return <Navigate to="/dashboard-pending" replace />;
 
-    if (isDashboardRole(role)) return <>{children}</>;
+    if (isDashboardRole(role)) {
+      if (role === "staff" && isDashboardRoot) {
+        return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+      }
+      return <>{children}</>;
+    }
     if (isClientRole(role)) return <Navigate to="/client" replace />;
     return <Navigate to="/login" replace />;
   };
@@ -319,14 +424,16 @@ const App: React.FC = () => {
     const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
 
     if (isMalikatAuth) {
-      if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+      if (isDashboardRole(role))
+        return <Navigate to={resolveDashboardLandingPath(role)} replace />;
       return <Navigate to="/dashboard-pending" replace />;
     }
 
     if (isClientRole(role)) return <>{children}</>;
     if (isPendingRole(role))
       return <Navigate to="/dashboard-pending" replace />;
-    if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+    if (isDashboardRole(role))
+      return <Navigate to={resolveDashboardLandingPath(role)} replace />;
     return <Navigate to="/login" replace />;
   };
 
@@ -336,14 +443,16 @@ const App: React.FC = () => {
     const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
 
     if (isMalikatAuth) {
-      if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+      if (isDashboardRole(role))
+        return <Navigate to={resolveDashboardLandingPath(role)} replace />;
       return <Navigate to="/dashboard-pending" replace />;
     }
 
     if (isClientRole(role)) return <>{children}</>;
     if (isPendingRole(role))
       return <Navigate to="/dashboard-pending" replace />;
-    if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+    if (isDashboardRole(role))
+      return <Navigate to={resolveDashboardLandingPath(role)} replace />;
     return <Navigate to="/login" replace />;
   };
 
@@ -353,12 +462,14 @@ const App: React.FC = () => {
     const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
 
     if (isMalikatAuth) {
-      if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+      if (isDashboardRole(role))
+        return <Navigate to={resolveDashboardLandingPath(role)} replace />;
       return <>{children}</>;
     }
 
     if (isPendingRole(role)) return <>{children}</>;
-    if (isDashboardRole(role)) return <Navigate to="/dashboard" replace />;
+    if (isDashboardRole(role))
+      return <Navigate to={resolveDashboardLandingPath(role)} replace />;
     if (isClientRole(role)) return <Navigate to="/client" replace />;
     return <Navigate to="/login" replace />;
   };

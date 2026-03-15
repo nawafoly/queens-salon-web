@@ -212,7 +212,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
 
   const [tab, setTab] = useState<"new" | "seen" | "all">("new");
   const [q, setQ] = useState("");
-  const [dateQuick, setDateQuick] = useState<DateQuick>("week");
+  const [dateQuick, setDateQuick] = useState<DateQuick>("all");
   const [statusQuick, setStatusQuick] = useState<StatusQuick>("all");
 
   const [busyId, setBusyId] = useState<string>(""); // ✅ disable button while writing
@@ -427,10 +427,10 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
     };
   }, [myUid, myStaffDocId, myStaffName]);
 
-  const filtered = useMemo(() => {
+  const baseFiltered = useMemo(() => {
     const text = normalizeArabic(q);
 
-    const list = allBookingsRaw.filter((b) => {
+    return allBookingsRaw.filter((b) => {
       const st = normalizeStatus(b.status);
 
       const iso = String(b.date || "").trim();
@@ -445,10 +445,15 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
         if (!hay.includes(text)) return false;
       }
 
+      return true;
+    });
+  }, [allBookingsRaw, q, dateQuick, statusQuick]);
+
+  const filtered = useMemo(() => {
+    const list = baseFiltered.filter((b) => {
       const isAck = !!b.staffAck;
       if (tab === "new" && isAck) return false;
       if (tab === "seen" && !isAck) return false;
-
       return true;
     });
 
@@ -465,7 +470,7 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
     });
 
     return list;
-  }, [allBookingsRaw, q, dateQuick, statusQuick, tab]);
+  }, [baseFiltered, tab]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, BookingWithId[]>();
@@ -477,9 +482,9 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [filtered]);
 
-  const countNew = useMemo(() => {
-    return allBookingsRaw.filter((b) => !b.staffAck).length;
-  }, [allBookingsRaw]);
+  const countNew = useMemo(() => baseFiltered.filter((b) => !b.staffAck).length, [baseFiltered]);
+  const countSeen = useMemo(() => baseFiltered.filter((b) => b.staffAck).length, [baseFiltered]);
+  const countAll = useMemo(() => baseFiltered.length, [baseFiltered]);
 
   const statusCounts = useMemo(() => {
     const out: Record<BookingStatus, number> = {
@@ -488,11 +493,11 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
       completed: 0,
       cancelled: 0,
     };
-    allBookingsRaw.forEach((b) => {
+    baseFiltered.forEach((b) => {
       out[normalizeStatus(b.status)] += 1;
     });
     return out;
-  }, [allBookingsRaw]);
+  }, [baseFiltered]);
 
   // ✅ Confirm Receipt: update booking + write log event (atomic batch)
   const confirmReceipt = async (bookingId: string) => {
@@ -713,14 +718,14 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
               className={`btn-tab ${tab === "seen" ? "is-active" : ""}`}
               onClick={() => setTab("seen")}
             >
-              تم الاستلام
+              تم الاستلام ({countSeen})
             </button>
             <button
               type="button"
               className={`btn-tab ${tab === "all" ? "is-active" : ""}`}
               onClick={() => setTab("all")}
             >
-              الكل ({allBookingsRaw.length})
+              الكل ({countAll})
             </button>
 
             <button

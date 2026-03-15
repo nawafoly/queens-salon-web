@@ -2322,12 +2322,28 @@
   font-family: "Tajawal", sans-serif;
 }
 
-.bk-edit-modal {
+.qs-modal-panel.bk-edit-modal {
+  width: 92vw;
+  max-width: 520px;
   direction: rtl;
   font-family: "Tajawal", sans-serif;
   max-height: min(92vh, 880px);
   display: flex;
   flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .qs-modal-panel.bk-edit-modal {
+    width: 90vw;
+    max-width: 640px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .qs-modal-panel.bk-edit-modal {
+    width: 88vw;
+    max-width: 820px;
+  }
 }
 
 .bk-refund-modal .bk-cancel-head {

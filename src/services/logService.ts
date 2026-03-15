@@ -1,8 +1,9 @@
 import { auth, db } from "./firebase";
 import {
-  addDoc,
   collection,
+  doc,
   serverTimestamp,
+  setDoc,
   Timestamp,
   type FieldValue,
 } from "firebase/firestore";
@@ -61,6 +62,21 @@ export type AuditAction =
   | "role_changed"
   | string;
 
+export type AuditLogSeverity = "info" | "warning" | "critical";
+
+export type AuditLogDisplay = {
+  clientName?: string;
+  bookingPublicId?: string;
+  bookingShortId?: string;
+  bookingId?: string;
+};
+
+export type AuditLogChange = {
+  field: string;
+  before?: string;
+  after?: string;
+};
+
 export type AuditLogInput = {
   salonId?: string;
   action: AuditAction;
@@ -92,12 +108,23 @@ export type AuditLogRecord = {
   entityType: string;
   entityId: string;
   description: string;
+  summary?: string;
   userName: string;
   userUid: string;
   userRole: UiRole;
   userEmail: string;
   source: LogSource;
   createdAt: FieldValue | Timestamp;
+  severity?: AuditLogSeverity;
+  display?: AuditLogDisplay;
+  changedFields?: string[];
+  changesPreview?: AuditLogChange[];
+  hasSnapshot?: boolean;
+  snapshotId?: string;
+  restore?: {
+    eligible?: boolean;
+    kind?: string;
+  };
   before?: unknown;
   after?: unknown;
   meta?: Record<string, unknown>;
@@ -136,6 +163,150 @@ function safeJson<T = unknown>(v: T): T | null {
   } catch {
     return null;
   }
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function normalizeValueForLog(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "نعم" : "لا";
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : "—";
+  if (typeof v === "string") {
+    const trimmed = v.trim();
+    return trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed;
+  }
+  if (Array.isArray(v)) {
+    if (!v.length) return "[]";
+    return `قائمة (${v.length})`;
+  }
+  try {
+    const json = JSON.stringify(v);
+    if (!json) return "—";
+    return json.length > 120 ? `${json.slice(0, 117)}...` : json;
+  } catch {
+    return "بيانات";
+  }
+}
+
+function buildChangesPreview(args: {
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  patch?: Record<string, unknown> | null;
+}): AuditLogChange[] {
+  const out: AuditLogChange[] = [];
+  const before = args.before && isPlainObject(args.before) ? args.before : null;
+  const after = args.after && isPlainObject(args.after) ? args.after : null;
+  const patch = args.patch && isPlainObject(args.patch) ? args.patch : null;
+
+  if (before && after) {
+    const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+    keys.forEach((key) => {
+      if (key === "updatedAt" || key === "createdAt") return;
+      const bv = before[key];
+      const av = after[key];
+      if (Object.is(bv, av)) return;
+      out.push({
+        field: key,
+        before: normalizeValueForLog(bv),
+        after: normalizeValueForLog(av),
+      });
+    });
+  } else if (patch) {
+    Object.keys(patch).forEach((key) => {
+      if (key === "updatedAt" || key === "createdAt") return;
+      out.push({
+        field: key,
+        before: "—",
+        after: normalizeValueForLog(patch[key]),
+      });
+    });
+  } else if (after) {
+    Object.keys(after).forEach((key) => {
+      if (key === "updatedAt" || key === "createdAt") return;
+      out.push({
+        field: key,
+        before: "—",
+        after: normalizeValueForLog(after[key]),
+      });
+    });
+  }
+
+  return out.slice(0, 16);
+}
+
+function resolveSeverity(actionRaw: string, meta?: Record<string, unknown>): AuditLogSeverity {
+  const override = String(meta?.severity || "").trim().toLowerCase();
+  if (override === "critical" || override === "warning" || override === "info") {
+    return override as AuditLogSeverity;
+  }
+
+  const action = String(actionRaw || "").trim().toLowerCase();
+  if (
+    action.includes("cancel") ||
+    action.includes("deleted") ||
+    action.includes("restore") ||
+    action.includes("role_changed") ||
+    action.includes("status_changed") ||
+    action.includes("reassigned")
+  ) {
+    return "critical";
+  }
+  if (action.includes("updated") || action.includes("changed") || action.includes("settings")) {
+    return "warning";
+  }
+  return "info";
+}
+
+function resolveDisplay(args: {
+  input: AuditLogInput;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+}): AuditLogDisplay | undefined {
+  const metaDisplay = args.input.meta?.display;
+  if (metaDisplay && typeof metaDisplay === "object") {
+    const d = metaDisplay as Record<string, unknown>;
+    return {
+      clientName: String(d.clientName || "").trim() || undefined,
+      bookingPublicId: String(d.bookingPublicId || "").trim() || undefined,
+      bookingShortId: String(d.bookingShortId || "").trim() || undefined,
+      bookingId: String(d.bookingId || "").trim() || undefined,
+    };
+  }
+
+  const candidate = (args.after && isPlainObject(args.after) ? args.after : null) ||
+    (args.before && isPlainObject(args.before) ? args.before : null);
+  if (!candidate) return undefined;
+
+  const clientName =
+    String(
+      (candidate as any)?.clientName ||
+        (candidate as any)?.customerName ||
+        (candidate as any)?.name ||
+        ""
+    ).trim() || undefined;
+  const bookingPublicId =
+    String((candidate as any)?.publicId || (candidate as any)?.bookingPublicId || "").trim() || undefined;
+  const bookingId =
+    String((candidate as any)?.bookingId || args.input.entityId || "").trim() || undefined;
+  const bookingShortId = bookingId ? bookingId.slice(0, 6) : undefined;
+
+  if (!clientName && !bookingPublicId && !bookingId) return undefined;
+  return {
+    clientName,
+    bookingPublicId,
+    bookingShortId,
+    bookingId,
+  };
+}
+
+function resolveRestoreMeta(actionRaw: string, hasSnapshot: boolean) {
+  const action = String(actionRaw || "").trim().toLowerCase();
+  if (!hasSnapshot) return { eligible: false };
+  if (action === "income_deleted") return { eligible: true, kind: "income" };
+  if (action === "expense_deleted") return { eligible: true, kind: "expense" };
+  return { eligible: false };
 }
 
 function logsCol(salonId: string) {
@@ -202,26 +373,75 @@ export async function writeAuditLog(input: AuditLogInput) {
       ""
   ).trim();
 
+  const beforeProvided = input.before !== undefined && input.before !== null;
+  const before = safeJson(input.before);
+  const after = safeJson(input.after);
+  const beforeRecord = isPlainObject(before) ? before : null;
+  const afterRecord = isPlainObject(after) ? after : null;
+  let shouldSnapshotAfter = false;
+  if (!beforeProvided && after && typeof after === "object") {
+    try {
+      const size = JSON.stringify(after).length;
+      shouldSnapshotAfter = size > 2000;
+    } catch {
+      shouldSnapshotAfter = false;
+    }
+  }
+  const patchMeta = (input.meta?.patch && isPlainObject(input.meta.patch) ? input.meta.patch : null) as
+    | Record<string, unknown>
+    | null;
+  const changesPreview = buildChangesPreview({ before: beforeRecord, after: afterRecord, patch: patchMeta });
+  const display = resolveDisplay({ input, before: beforeRecord, after: afterRecord });
+  const summary =
+    String((input.meta?.summary as string | undefined) || input.description || input.action || "")
+      .trim() || String(input.action || "").trim();
+  const severity = resolveSeverity(String(input.action || ""), input.meta);
+  const hasSnapshot = Boolean(beforeProvided || shouldSnapshotAfter);
+  const restoreMeta = resolveRestoreMeta(String(input.action || ""), hasSnapshot);
+
+  const logRef = doc(logsCol(salonId));
+  const logId = logRef.id;
+  const snapshotId = hasSnapshot ? logId : undefined;
+
   const payload: Omit<AuditLogRecord, "logId"> = {
     action: String(input.action || "").trim(),
     entityType: String(input.entityType || "").trim(),
     entityId: String(input.entityId || "").trim(),
     description: String(input.description || "").trim(),
+    summary,
     userName,
     userUid,
     userRole: userRole || "guest",
     userEmail,
     source: input.source || "dashboard",
     createdAt: input.createdAt || serverTimestamp(),
-    before: safeJson(input.before),
-    after: safeJson(input.after),
+    severity,
+    display,
+    changedFields: changesPreview.map((c) => c.field),
+    changesPreview,
+    hasSnapshot,
+    snapshotId,
+    restore: restoreMeta,
+    before: hasSnapshot ? null : before,
+    after: hasSnapshot ? null : after,
     meta: (safeJson(input.meta) as Record<string, unknown> | null) || {},
     sensitive: detectSensitive(String(input.action || ""), String(input.description || ""), input.meta),
   };
 
   try {
-    const ref = await addDoc(logsCol(salonId), payload as Record<string, unknown>);
-    return ref.id;
+    await setDoc(logRef, { ...payload, logId } as Record<string, unknown>);
+    if (hasSnapshot) {
+      const snapshotRef = doc(db, "salons", salonId, "log_snapshots", logId);
+      await setDoc(snapshotRef, {
+        logId,
+        entityType: payload.entityType,
+        entityId: payload.entityId,
+        before,
+        after,
+        createdAt: serverTimestamp(),
+      });
+    }
+    return logId;
   } catch (e) {
     console.warn("writeAuditLog failed (ignored):", e, payload);
     return null; // ✅ لا تكسر الفلو

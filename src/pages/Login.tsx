@@ -34,6 +34,7 @@ import {
   type UserProfile,
   type UiRole,
 } from "../services/userProfile";
+import { resolveDashboardLandingPath } from "../helpers/routePaths";
 
 // بيانات التسجيل
 interface RegisterFormData {
@@ -327,7 +328,7 @@ const Login: React.FC = () => {
         return;
       }
       if (canAccessDashboard(role)) {
-        navigate("/dashboard", { replace: true });
+        navigate(resolveDashboardLandingPath(role), { replace: true });
         return;
       }
       if (role === "client") navigate(clientLandingPath, { replace: true });
@@ -538,7 +539,7 @@ const Login: React.FC = () => {
           if (role === "pending") {
             navigate("/dashboard-pending", { replace: true });
           } else {
-            navigate("/dashboard", { replace: true });
+            navigate(resolveDashboardLandingPath(role), { replace: true });
           }
           return;
 
@@ -577,7 +578,7 @@ const Login: React.FC = () => {
 
         // توجيه حسب الدور
         if (canAccessDashboard(profile.role)) {
-          navigate("/dashboard", { replace: true });
+          navigate(resolveDashboardLandingPath(profile.role), { replace: true });
         } else {
           navigate(clientLandingPath, { replace: true });
         }
@@ -819,7 +820,7 @@ const Login: React.FC = () => {
               navigate(
                 role === "pending"
                   ? "/dashboard-pending"
-                  : "/dashboard",
+                  : resolveDashboardLandingPath(role),
                 { replace: true }
               );
               return;

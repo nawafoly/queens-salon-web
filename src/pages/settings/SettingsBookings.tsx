@@ -1046,7 +1046,7 @@ export default function SettingsBookings() {
                   }
                 />
               </label>
-              <p className="field-hint" style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+              <p className="field-hint" style={{ fontSize: 12, marginTop: 4 }}>
                 عند التفعيل، سيتم إجبار العميلات على الحجز مباشرة بعد آخر موعد محجوز في اليوم لمنع هدر الوقت.
               </p>
             </div>

@@ -98,13 +98,13 @@ function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
 
 function defaultBusinessHoursMap(): BusinessHoursMap {
   return {
-    sat: { enabled: true, start: "10:00", end: "22:00" },
-    sun: { enabled: true, start: "10:00", end: "22:00" },
-    mon: { enabled: true, start: "10:00", end: "22:00" },
-    tue: { enabled: true, start: "10:00", end: "22:00" },
-    wed: { enabled: true, start: "10:00", end: "22:00" },
-    thu: { enabled: true, start: "10:00", end: "22:00" },
-    fri: { enabled: false, start: "10:00", end: "22:00" },
+    sat: { enabled: true, start: "12:00", end: "22:00" },
+    sun: { enabled: true, start: "12:00", end: "22:00" },
+    mon: { enabled: true, start: "12:00", end: "22:00" },
+    tue: { enabled: true, start: "12:00", end: "22:00" },
+    wed: { enabled: true, start: "12:00", end: "22:00" },
+    thu: { enabled: true, start: "12:00", end: "22:00" },
+    fri: { enabled: false, start: "12:00", end: "22:00" },
   };
 }
 
@@ -330,49 +330,25 @@ const Contact: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // ✅ ساعات العمل اليدوية من settings/public
-  const manualWorkingHours = useMemo(() => {
-    const raw = publicSettings?.hoursText?.trim();
-    if (!raw) {
-      return [
-        { day: "السبت - الأربعاء", hours: "10:00 صباحاً - 10:00 مساءً" },
-        { day: "الخميس", hours: "10:00 صباحاً - 11:00 مساءً" },
-        { day: "الجمعة", hours: "2:00 مساءً - 10:00 مساءً" },
-      ];
-    }
-
-    return raw
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => parseWorkingHourLine(line));
-  }, [publicSettings?.hoursText]);
-
-  // ✅ ساعات العمل التلقائية من جدول الحجز (تتفعل عندما يكون الموسم/الجدول المجدول فعال)
-  const seasonAutoWorkingHours = useMemo(() => {
+  // ✅ ساعات العمل من settings/app/booking (Single Source of Truth)
+  const bookingWorkingHours = useMemo(() => {
     const app = (appSettings || {}) as Record<string, unknown>;
-    const booking = ((app.booking || {}) as Record<string, unknown>) || {};
-    const businessHours = readBusinessHours((booking.businessHours || {}) as Record<string, unknown>);
+    const booking = (app.booking || {}) as Record<string, unknown>;
+    const rawBusinessHours = booking.businessHours as Record<string, unknown> | undefined;
     const bookingHourOverrides = readBookingHourOverrides(booking.bookingHourOverrides);
 
+    const hasBusinessHours =
+      !!rawBusinessHours &&
+      typeof rawBusinessHours === "object" &&
+      WEEKDAY_KEYS.some((dayKey) =>
+        Object.prototype.hasOwnProperty.call(rawBusinessHours, dayKey)
+      );
+    const hasOverrides = bookingHourOverrides.length > 0;
+
+    if (!hasBusinessHours && !hasOverrides) return [];
+
+    const businessHours = readBusinessHours(rawBusinessHours || {});
     const today = todayISO();
-    const seasonFill = ((booking.seasonFill || {}) as Record<string, unknown>) || {};
-    const seasonFillActive =
-      Boolean(seasonFill.enabled) &&
-      isDateWithinRange(today, String(seasonFill.from || ""), String(seasonFill.to || ""));
-
-    const seasonPricing = ((app.catalogSeasonPricing || {}) as Record<string, unknown>) || {};
-    const seasonPricingFrom = String(seasonPricing.startDate || seasonPricing.from || "").trim();
-    const seasonPricingTo = String(seasonPricing.endDate || seasonPricing.to || "").trim();
-    const seasonPricingActive =
-      Boolean(seasonPricing.enabled) && isDateWithinRange(today, seasonPricingFrom, seasonPricingTo);
-
-    const overrideActiveToday = bookingHourOverrides.some((ov) =>
-      isDateWithinRange(today, String(ov?.fromDate || ""), String(ov?.toDate || ""))
-    );
-
-    const seasonActiveNow = seasonFillActive || seasonPricingActive || overrideActiveToday;
-    if (!seasonActiveNow) return [];
 
     const rows = WEEKDAY_KEYS.map((dayKey) => {
       const dateISO = getNextDateISOForWeekday(dayKey, today);
@@ -390,8 +366,19 @@ const Contact: React.FC = () => {
     return compressWorkingHoursRows(rows);
   }, [appSettings]);
 
-  const isSeasonHoursAuto = seasonAutoWorkingHours.length > 0;
-  const workingHours = isSeasonHoursAuto ? seasonAutoWorkingHours : manualWorkingHours;
+  // ✅ fallback مؤقت من settings/public (hoursText) إذا بيانات الحجز غير متوفرة
+  const fallbackWorkingHours = useMemo(() => {
+    const raw = publicSettings?.hoursText?.trim();
+    if (!raw) return [] as Array<{ day: string; hours: string }>;
+    return raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => parseWorkingHourLine(line));
+  }, [publicSettings?.hoursText]);
+
+  const workingHours =
+    bookingWorkingHours.length > 0 ? bookingWorkingHours : fallbackWorkingHours;
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -455,8 +442,6 @@ const Contact: React.FC = () => {
   const locationText = publicSettings?.locationText || "لم يتم إعداد العنوان بعد";
   const phone = publicSettings?.phone || "لم يتم إعداد رقم الهاتف بعد";
   const email = publicSettings?.email || "لم يتم إعداد البريد بعد";
-  const hoursText = publicSettings?.hoursText || "";
-
   const mapEmbedUrl = normalizeMapEmbedUrl(publicSettings?.mapEmbedUrl);
   const hasMap = !!mapEmbedUrl && mapEmbedUrl.includes("google.com/maps/embed");
 
@@ -667,19 +652,6 @@ const Contact: React.FC = () => {
                       </li>
                     ))}
                   </ul>
-
-                  {isSeasonHoursAuto ? (
-                    <div style={{ marginTop: 10, opacity: 0.75, fontSize: 13 }}>
-                      (تم تطبيق ساعات الموسم تلقائيًا حسب الجدول المفعّل)
-                    </div>
-                  ) : null}
-
-                  {/* للتأكد بس: لو hoursText فاضي */}
-                  {!hoursText?.trim() && !isSeasonHoursAuto ? (
-                    <div style={{ marginTop: 10, opacity: 0.65, fontSize: 13 }}>
-                      (ملاحظة: ساعات العمل من لوحة التحكم غير مضافة بعد)
-                    </div>
-                  ) : null}
                 </div>
               </div>
             </div>

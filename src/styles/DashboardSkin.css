@@ -127,7 +127,7 @@
 .dashboard-skin .text-muted,
 .dashboard-skin small,
 .dashboard-skin .small {
-  color: var(--muted-soft) !important;
+  color: #5b6470 !important;
 }
 
 .dashboard-skin * {

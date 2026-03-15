@@ -80,6 +80,7 @@ import {
 import { AppSettingsService } from "../services/AppSettingsService";
 
 import { resolveServiceName } from "../services/serviceResolver";
+import { isStaffOperationallyActiveForDate } from "../helpers/staffAvailability";
 import { normalizeTimeToHHMM, timeToMinutes } from "../helpers/timeContract";
 import {
   formatTime12,
@@ -111,6 +112,13 @@ type BookingHourOverride = {
   end?: string;
   includeWeekdays?: WeekdayKey[];
   blockedWeekdays?: WeekdayKey[];
+};
+type StaffOperationalRow = {
+  id: string;
+  name?: string;
+  linkedUid?: string;
+  active?: boolean;
+  employmentEndDate?: string;
 };
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
@@ -156,6 +164,66 @@ function isBookingOnDate(booking: Pick<Booking, "date" | "createdAt">, targetDat
   const target = normalizeISODateLoose(targetDateISO);
   if (!target) return false;
   return resolveBookingDateISO(booking.date, booking.createdAt) === target;
+}
+
+function normalizeStaffNameKey(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function sortScheduleBookings(rows: Booking[]): Booking[] {
+  return [...rows].sort((a, b) => {
+    const aMin = parseTimeToMinutes(a.time);
+    const bMin = parseTimeToMinutes(b.time);
+    if (aMin === null && bMin === null) return 0;
+    if (aMin === null) return 1;
+    if (bMin === null) return -1;
+    return aMin - bMin;
+  });
+}
+
+function filterOperationalScheduleBookings(
+  rows: Booking[],
+  targetDateISO: string,
+  staffRows: StaffOperationalRow[]
+): Booking[] {
+  const targetDate = normalizeISODateLoose(targetDateISO);
+  const base = (rows || []).filter((b) => isBookingOnDate(b, targetDateISO) && b.status !== "cancelled");
+  if (!targetDate) return sortScheduleBookings(base);
+
+  const today = formatLocalDateISO(new Date());
+  if (targetDate < today || !staffRows.length) {
+    return sortScheduleBookings(base);
+  }
+
+  const byId = new Map<string, StaffOperationalRow>();
+  const byUid = new Map<string, StaffOperationalRow>();
+  const byName = new Map<string, StaffOperationalRow>();
+
+  staffRows.forEach((staff) => {
+    const id = String(staff.id || "").trim();
+    if (id) byId.set(id, staff);
+
+    const linkedUid = String(staff.linkedUid || "").trim();
+    if (linkedUid) byUid.set(linkedUid, staff);
+
+    const nameKey = normalizeStaffNameKey(staff.name);
+    if (nameKey) byName.set(nameKey, staff);
+  });
+
+  return sortScheduleBookings(
+    base.filter((booking) => {
+      const matchedStaff =
+        byId.get(String((booking as any).employeeId || "").trim()) ||
+        byUid.get(String((booking as any).employeeUid || "").trim()) ||
+        byName.get(normalizeStaffNameKey(booking.employeeName));
+
+      if (!matchedStaff) return true;
+      return isStaffOperationallyActiveForDate(matchedStaff as any, targetDate);
+    })
+  );
 }
 
 function weekdayKeyFromISODate(dateStr: string): WeekdayKey | null {
@@ -662,6 +730,8 @@ async function mapFirestoreToUiBooking(b: BookingDocWithId): Promise<Booking> {
       (b as any)?.serviceCategoryName ||
       "",
     employeeName: b.employeeName || "",
+    employeeId: String((b as any)?.employeeId || "").trim() || null,
+    employeeUid: String((b as any)?.employeeUid || "").trim() || null,
     date: normalizedDate,
     time: normalizedTime,
     status: (b.status || "pending") as BookingStatus,
@@ -1161,6 +1231,7 @@ const Dashboard: React.FC = () => {
 
   const [todayScheduleBookings, setTodayScheduleBookings] = useState<Booking[]>([]);
   const [allScheduleBookings, setAllScheduleBookings] = useState<Booking[]>([]);
+  const [staffOperationalRows, setStaffOperationalRows] = useState<StaffOperationalRow[]>([]);
   const [scheduleDate, setScheduleDate] = useState<string>(() => formatLocalDateISO(new Date()));
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [selectedBookingActivity, setSelectedBookingActivity] = useState<BookingActivityItem[]>([]);
@@ -1213,6 +1284,8 @@ const Dashboard: React.FC = () => {
         totalOperations: 0,
       }));
       setTodayScheduleBookings([]);
+      setAllScheduleBookings([]);
+      setStaffOperationalRows([]);
       setExpensesTotalFS(0);
       setIncomeTotalFS(0);
       setFinanceToday({ income: 0, expenses: 0, net: 0 });
@@ -1249,6 +1322,20 @@ const Dashboard: React.FC = () => {
         return acc;
       }, {} as Record<string, string>);
 
+      step = "staff_public:getDocs";
+      const staffSnap = await getDocs(collection(db, "salons", "main", "staff_public"));
+      const staffRows = staffSnap.docs.map((snap) => {
+        const data = snap.data() as any;
+        return {
+          id: String(snap.id || "").trim(),
+          name: String(data?.name || "").trim() || undefined,
+          linkedUid: String(data?.linkedUid || data?.uid || "").trim() || undefined,
+          active: data?.active !== false,
+          employmentEndDate: String(data?.employmentEndDate || "").trim() || undefined,
+        } as StaffOperationalRow;
+      });
+      setStaffOperationalRows(staffRows);
+
       step = "bookings:mapFirestoreToUiBooking";
       const uiBookings = await Promise.all(docs.map(mapFirestoreToUiBooking));
       setAllScheduleBookings(uiBookings);
@@ -1268,15 +1355,9 @@ const Dashboard: React.FC = () => {
       );
 
 
-      let employeesCount = 0;
-      try {
-        step = "stats:DashboardService.getStats";
-        const s = await DashboardService.getStats();
-        employeesCount = Number(s?.employeesCount || 0);
-      } catch (err) {
-        console.warn("REFRESH -> getStats failed:", err);
-        employeesCount = 0;
-      }
+      const employeesCount = staffRows.filter((staff) =>
+        isStaffOperationallyActiveForDate(staff as any, todayStr)
+      ).length;
 
       if (canReadExpensesNow) {
         // ✅ income
@@ -1372,16 +1453,7 @@ const Dashboard: React.FC = () => {
       });
 
       setTodayScheduleBookings(
-        uiBookings
-          .filter((b) => isBookingOnDate(b, scheduleDate) && b.status !== "cancelled")
-          .sort((a, b) => {
-            const aMin = parseTimeToMinutes(a.time);
-            const bMin = parseTimeToMinutes(b.time);
-            if (aMin === null && bMin === null) return 0;
-            if (aMin === null) return 1;
-            if (bMin === null) return -1;
-            return aMin - bMin;
-          })
+        filterOperationalScheduleBookings(uiBookings, scheduleDate, staffRows)
       );
     } catch (e) {
       console.error("refreshDashboard error:", e);
@@ -1398,6 +1470,8 @@ const Dashboard: React.FC = () => {
         totalOperations: 0,
       }));
       setTodayScheduleBookings([]);
+      setAllScheduleBookings([]);
+      setStaffOperationalRows([]);
       setExpensesTotalFS(0);
       setIncomeTotalFS(0); // ✅ FIX (كان ناقص)
       setFinanceToday({ income: 0, expenses: 0, net: 0 });
@@ -1896,18 +1970,9 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     setTodayScheduleBookings(
-      (allScheduleBookings || [])
-        .filter((b) => isBookingOnDate(b, scheduleDate) && b.status !== "cancelled")
-        .sort((a, b) => {
-          const aMin = parseTimeToMinutes(a.time);
-          const bMin = parseTimeToMinutes(b.time);
-          if (aMin === null && bMin === null) return 0;
-          if (aMin === null) return 1;
-          if (bMin === null) return -1;
-          return aMin - bMin;
-        })
+      filterOperationalScheduleBookings(allScheduleBookings || [], scheduleDate, staffOperationalRows)
     );
-  }, [allScheduleBookings, scheduleDate]);
+  }, [allScheduleBookings, scheduleDate, staffOperationalRows]);
 
   useEffect(() => {
     const close = () => setIsSidebarOpen(false);

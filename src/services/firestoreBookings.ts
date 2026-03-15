@@ -20,6 +20,7 @@ import {
 
 // ✅ generate same time slots list used by Booking page
 import { generateSalonTimeSlots, filterSlotsByServiceEnd } from "../helpers/timeSlots";
+import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 
 // ✅ read slotStep/buffer from settings/app (source of truth)
 import { AppSettingsService } from "./AppSettingsService";
@@ -414,6 +415,41 @@ function bookingTimeOutOfHoursError() {
   const e: any = new Error("BOOKING_TIME_OUT_OF_HOURS");
   e.code = "BOOKING_TIME_OUT_OF_HOURS";
   return e;
+}
+
+function employeeUnavailableError(reason = "EMPLOYEE_UNAVAILABLE") {
+  const e: any = new Error(reason);
+  e.code = "EMPLOYEE_UNAVAILABLE";
+  e.reason = reason;
+  return e;
+}
+
+async function assertEmployeeCanAcceptBooking(args: {
+  employeeId: string;
+  dateISO: string;
+  channel?: BookingChannel;
+}) {
+  const employeeId = String(args.employeeId || "").trim();
+  const dateISO = normalizeISODate(args.dateISO) || localISODate();
+  if (!employeeId) throw employeeRequiredError();
+
+  const staffRef = doc(db, "salons", SALON_ID, "staff_public", employeeId);
+  const staffSnap = await getDoc(staffRef);
+  if (!staffSnap.exists()) {
+    throw employeeUnavailableError("EMPLOYEE_NOT_FOUND");
+  }
+
+  const staff = staffSnap.data() as any;
+  const requireShowOnBooking = String(args.channel || "").trim().toLowerCase() === "client";
+  const available = isStaffAvailableForDate(staff, dateISO, {
+    requireShowOnBooking,
+  });
+
+  if (!available) {
+    throw employeeUnavailableError(
+      requireShowOnBooking ? "EMPLOYEE_NOT_PUBLICLY_BOOKABLE" : "EMPLOYEE_NOT_OPERATIONAL"
+    );
+  }
 }
 
 function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
@@ -970,6 +1006,25 @@ function readStoredActorSnapshot(): {
   }
 }
 
+function resolveBookingLogDisplay(booking: Partial<BookingDoc> | null | undefined, bookingId: string) {
+  const clientName = String(
+    (booking as any)?.clientName ||
+      (booking as any)?.customerName ||
+      (booking as any)?.name ||
+      ""
+  )
+    .trim() || undefined;
+  const bookingPublicId = String((booking as any)?.publicId || "").trim() || undefined;
+  const bookingShortId = bookingId ? bookingId.slice(0, 6) : undefined;
+  if (!clientName && !bookingPublicId && !bookingId) return undefined;
+  return {
+    clientName,
+    bookingPublicId,
+    bookingShortId,
+    bookingId,
+  };
+}
+
 async function writeBookingLog(args: {
   bookingId: string;
   type: BookingLogType;
@@ -987,6 +1042,7 @@ async function writeBookingLog(args: {
   });
   const eventAtMs = Date.now();
   const source = args.source || resolveBookingLogSource(args.booking?.channel);
+  const display = resolveBookingLogDisplay(args.booking, args.bookingId);
 
   const payload = stripUndefined({
     type: args.type,
@@ -1037,6 +1093,8 @@ async function writeBookingLog(args: {
       meta: {
         bookingLogType: args.type,
         eventAtMs,
+        display,
+        patch: args.patch || null,
       },
     });
   } catch {
@@ -1241,6 +1299,12 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
   if (!employeeIdTrimmed) {
     throw employeeRequiredError();
   }
+
+  await assertEmployeeCanAcceptBooking({
+    employeeId: employeeIdTrimmed,
+    dateISO: String(data.date || "").trim(),
+    channel: data.channel,
+  });
 
   const employeeKeyForLock = employeeIdTrimmed;
 
@@ -1739,6 +1803,11 @@ export async function createBookingGroup(data: BookingGroupInput): Promise<{ par
     const it = items[idx];
     const employeeIdTrimmed = String(it.employeeId ?? "").trim();
     if (!employeeIdTrimmed) throw employeeRequiredError();
+    await assertEmployeeCanAcceptBooking({
+      employeeId: employeeIdTrimmed,
+      dateISO: String(it.date || "").trim(),
+      channel: it.channel ?? parent.channel,
+    });
     const employeeUidTrimmed = String(it.employeeUid ?? "").trim();
     const employeeNameTrimmed = String(it.employeeName || "").trim();
     const employeeKeyForLock = employeeIdTrimmed;
@@ -2860,6 +2929,32 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const anyPatch = patch as any;
   const actorSnapshot = resolveActorSnapshot({ booking: patch });
+
+  const hasOperationalAssignmentPatch =
+    patch.date !== undefined ||
+    patch.time !== undefined ||
+    patch.employeeId !== undefined ||
+    patch.employeeUid !== undefined ||
+    patch.employeeKey !== undefined ||
+    patch.employeeName !== undefined;
+
+  if (hasOperationalAssignmentPatch) {
+    const currentSnap = await getDoc(bookingRef);
+    if (currentSnap.exists()) {
+      const current = normalizeBooking(currentSnap.data());
+      const nextEmployeeId = String(
+        patch.employeeId !== undefined ? patch.employeeId ?? "" : current.employeeId ?? ""
+      ).trim();
+      const nextDate = normalizeISODate(patch.date !== undefined ? patch.date : current.date);
+      if (nextEmployeeId && nextDate && nextDate >= localISODate()) {
+        await assertEmployeeCanAcceptBooking({
+          employeeId: nextEmployeeId,
+          dateISO: nextDate,
+          channel: "dashboard",
+        });
+      }
+    }
+  }
 
   // ✅ تحديث booking
   await updateDoc(

@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../services/firebase";
+import { resolveDashboardLandingPath } from "../helpers/routePaths";
 
 const SALON_ID = "main";
 const USERS_COL = ["salons", SALON_ID, "users"] as const;
@@ -86,7 +87,7 @@ export default function DashboardPending() {
             window.dispatchEvent(new Event("authChanged"));
 
             // ✅ تحويل تلقائي
-            navigate("/dashboard", { replace: true });
+            navigate(resolveDashboardLandingPath(role), { replace: true });
             return;
           }
 
@@ -189,14 +190,6 @@ export default function DashboardPending() {
         <p style={styles.text}>{statusText}</p>
 
         <div style={styles.actions}>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            style={styles.btnSecondary}
-          >
-            تحديث الحالة
-          </button>
-
           <button
             type="button"
             onClick={() => navigate("/")}

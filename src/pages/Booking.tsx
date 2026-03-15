@@ -62,7 +62,7 @@ import { buildSuccessNavigationPayload } from "../helpers/successNavigation";
 import {
   isStaffAvailableForDate,
   filterStaffSlotsByWorkingHours,
-  isStaffEmploymentEndedForDate,
+  isStaffOperationallyActiveForDate,
   resolveStaffWorkingWindowsForDate,
   type ResolvedStaffWorkingWindowRange,
 } from "../helpers/staffAvailability";
@@ -3929,10 +3929,10 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     if (currentStep !== 2) return;
     let cancelled = false;
 
-    const isInactiveForBooking = (staff: StaffPublicWithId) => {
+    const isInactiveForBooking = (staff: StaffPublicWithId, dateISO: string) => {
       const statusRaw = String((staff as any)?.status || "").trim().toLowerCase();
       return (
-        (staff as any)?.active === false ||
+        !isStaffOperationallyActiveForDate(staff as any, dateISO) ||
         (staff as any)?.showOnBooking === false ||
         statusRaw === "inactive" ||
         statusRaw === "disabled" ||
@@ -3969,14 +3969,14 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         const serviceStaff = (staffByService[serviceKey] || []) as StaffPublicWithId[];
         if (!serviceStaff.length) continue;
 
-        const bookingVisibleStaff = serviceStaff.filter(
-          (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
+        const bookingVisibleStaff = serviceStaff.filter((st) =>
+          isStaffOperationallyActiveForDate(st as any, dateISO)
         );
 
         const candidateStaff = bookingVisibleStaff.filter((st) => {
           const leave = getStaffLeaveMetaForDate(st, dateISO);
           if (leave.isOnLeave) return false;
-          if (isInactiveForBooking(st)) return false;
+          if (isInactiveForBooking(st, dateISO)) return false;
           const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
             dateISO,
             slots: baseSlotsForDate,
@@ -4149,8 +4149,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         const serviceStaff = (staffByService[serviceKey] || []) as StaffPublicWithId[];
         if (!serviceStaff.length) continue;
 
-        const bookingVisibleStaff = serviceStaff.filter(
-          (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
+        const bookingVisibleStaff = serviceStaff.filter((st) =>
+          isStaffOperationallyActiveForDate(st as any, dateISO)
         );
         if (!bookingVisibleStaff.length) continue;
 
@@ -4167,7 +4167,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
               const leave = getStaffLeaveMetaForDate(st as any, dateISO);
               const statusRaw = String((st as any)?.status || "").trim().toLowerCase();
               const isInactive =
-                (st as any)?.active === false ||
+                !isStaffOperationallyActiveForDate(st as any, dateISO) ||
                 (st as any)?.showOnBooking === false ||
                 statusRaw === "inactive" ||
                 statusRaw === "disabled" ||
@@ -6626,6 +6626,16 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         return;
       }
 
+      if (e?.code === "EMPLOYEE_UNAVAILABLE") {
+        openModal({
+          title: "الموظفة غير متاحة",
+          message: "تم تعطيل هذه الموظفة أو لم تعد متاحة للحجز. اختاري موظفة أخرى أو أعيدي فتح الحجز.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
+
       openModal({
         title: "تعذر حفظ الحجز",
         message:
@@ -7648,8 +7658,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                             String((it as any)?.serviceName || "").trim()
                           ) || String(it.serviceId || "").trim();
                         const serviceStaff = staffByService[serviceKeyForStaff] || [];
-                        const bookingVisibleStaff = serviceStaff.filter(
-                          (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
+                        const bookingVisibleStaff = serviceStaff.filter((st) =>
+                          isStaffOperationallyActiveForDate(st as any, dateISO)
                         );
                         const staffWithLeaveMeta = bookingVisibleStaff.map((st) => {
                           const leave = getStaffLeaveMetaForDate(st, dateISO);
@@ -7661,7 +7671,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                           });
                           const statusRaw = String((st as any)?.status || "").trim().toLowerCase();
                           const isInactive =
-                            (st as any)?.active === false ||
+                            !isStaffOperationallyActiveForDate(st as any, dateISO) ||
                             (st as any)?.showOnBooking === false ||
                             statusRaw === "inactive" ||
                             statusRaw === "disabled" ||

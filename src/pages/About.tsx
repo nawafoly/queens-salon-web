@@ -17,6 +17,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/About.css";
+import { isStaffOperationallyActiveForDate } from "../helpers/staffAvailability";
 
 // ✅ Firestore
 import { collection, getDocs } from "firebase/firestore";
@@ -33,6 +34,7 @@ type TeamMember = {
   bio?: string;
   avatarUrl?: string;
   cvUrl?: string;
+  employmentEndDate?: string;
 
   // ✅ flags
   active?: boolean;
@@ -199,10 +201,11 @@ const About = () => {
             description: desc,
             image: placeholders[idx % placeholders.length], // fallback
             cvUrl,
+            employmentEndDate: String(x?.employmentEndDate || "").trim() || undefined,
           };
         })
         // ✅ فقط اللي active + showOnAbout + عنده اسم
-        .filter((m) => m.name && m.active && m.showOnAbout !== false);
+        .filter((m) => m.name && m.showOnAbout !== false && isStaffOperationallyActiveForDate(m as any));
 
       // ✅ ترتيب محلي بالاسم
       rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));

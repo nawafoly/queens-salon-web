@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import logoNavbar from "../assets/images/ssunnamed.png";
 import "../styles/navbar.css";
 import UserIcon from "./icons/UserIcon";
+import { resolveDashboardLandingPath } from "../helpers/routePaths";
 
 import { signOut, type User as FirebaseUser } from "firebase/auth";
 import { auth } from "../services/firebase";
@@ -213,6 +214,7 @@ const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName 
   const isReception = userRole === "reception";
 
   const isDashboardUser = isLoggedIn && (isOwner || isAdmin || isReception || isStaff);
+  const dashboardPath = resolveDashboardLandingPath(userRole);
 
   const dropdownItems = useMemo(() => {
     if (!isLoggedIn) {
@@ -263,7 +265,7 @@ const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName 
     if (isDashboardUser) {
       return (
         <>
-          <Link to="/dashboard" onClick={() => setIsDropdownOpen(false)}>
+          <Link to={dashboardPath} onClick={() => setIsDropdownOpen(false)}>
             لوحة التحكم
           </Link>
     

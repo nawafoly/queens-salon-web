@@ -509,6 +509,8 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const authorizationInputId = "booking_action_authorization_code_input";
+  const authorizationHintId = "booking_action_authorization_code_hint";
 
   useEffect(() => {
     if (!open) return;
@@ -525,7 +527,7 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
   const handleConfirm = useCallback(async () => {
     if (!action) return;
     if (String(pin).trim() !== BOOKING_ACTION_PIN) {
-      setError("الرقم السري غير صحيح.");
+      setError("رمز التفويض غير صحيح.");
       return;
     }
 
@@ -549,14 +551,14 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
     <Modal
       open={open}
       onClose={handleClose}
-      ariaLabel="التحقق بالرقم السري"
+      ariaLabel="التحقق برمز التفويض الإداري"
       panelClassName="bk-cancel-modal bk-action-pin-modal"
       size="sm"
     >
-      <div className="bk-cancel-head">تأكيد الإجراء</div>
+      <div className="bk-cancel-head">تأكيد الإجراء برمز التفويض</div>
       <div className="bk-cancel-body">
         <div className="bk-action-pin-summary">
-          <div className="bk-action-pin-summary-label">الإجراء المطلوب</div>
+          <div className="bk-action-pin-summary-label">الإجراء الذي يحتاج تفويضًا</div>
           <div className="bk-action-pin-summary-value">
             {sensitiveActionDescription(action) || "إجراء حساس"}
           </div>
@@ -564,12 +566,15 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
             <div className="bk-action-pin-warning">تنبيه: الحذف النهائي لا يمكن التراجع عنه.</div>
           ) : null}
         </div>
-        <div className="bk-action-pin-form">
-          <label className="bk-action-pin-label" htmlFor="booking_action_pin_input">
-            الرقم السري
+        <div
+          className="bk-action-pin-form"
+          data-form-type="other"
+        >
+          <label className="bk-action-pin-label" htmlFor={authorizationInputId}>
+            رمز التفويض الإداري
           </label>
           <input
-            id="booking_action_pin_input"
+            id={authorizationInputId}
             type="password"
             className="bk-input bk-action-pin-input"
             value={pin}
@@ -579,14 +584,27 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
               e.preventDefault();
               void handleConfirm();
             }}
-            placeholder="أدخلي الرقم السري"
-            autoComplete="new-password"
-            name="booking_action_pin"
+            placeholder="أدخلي رمز التفويض لإكمال هذا الإجراء"
+            autoComplete="off"
+            name="booking_action_authorization_code"
             inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={BOOKING_ACTION_PIN.length}
+            aria-describedby={authorizationHintId}
+            aria-label="رمز التفويض الإداري المطلوب قبل تعديل أو حذف الحجز"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="done"
             disabled={busy}
+            data-form-type="other"
+            data-lpignore="true"
+            data-1p-ignore="true"
             autoFocus
           />
-          <div className="bk-action-pin-hint">هذا التحقق مخصص لحماية التعديلات الحساسة.</div>
+          <div className="bk-action-pin-hint" id={authorizationHintId}>
+            هذا تحقق داخلي قبل التعديل أو الحذف، وليس تسجيل دخول للحساب.
+          </div>
         </div>
         {error ? <div className="bk-action-pin-error">{error}</div> : null}
       </div>
@@ -1362,8 +1380,12 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
       });
 
       shouldClose = true;
-    } catch {
-      setError("تعذر حفظ تعديل الحجز.");
+    } catch (e: any) {
+      if (e?.code === "EMPLOYEE_UNAVAILABLE") {
+        setError("الموظفة المعينة على هذا الحجز لم تعد نشطة تشغيليًا لهذا الموعد. اختاري موظفة أخرى أو أعيدي جدولة الحجز.");
+      } else {
+        setError("تعذر حفظ تعديل الحجز.");
+      }
     } finally {
       setSaving(false);
     }
@@ -1970,41 +1992,49 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setSelectedBookingActivityError("");
 
       try {
-        const [eventsResult, auditResult] = await Promise.allSettled([
-          getDocs(collection(db, "salons", "main", "booking_logs", selectedBooking.id, "events")),
-          getDocs(
-            fsQuery(collection(db, "salons", "main", "logs"), where("entityId", "==", selectedBooking.id))
-          ),
-        ]);
-
-        if (cancelled) return;
-
         const activityItems: BookingActivityItem[] = [];
         const partialErrors: string[] = [];
 
-        if (eventsResult.status === "fulfilled") {
+        const auditResult = await getDocs(
+          fsQuery(
+            collection(db, "salons", "main", "logs"),
+            where("entityId", "==", selectedBooking.id),
+            where("entityType", "==", "booking")
+          )
+        ).catch((error) => ({ error }));
+
+        if (cancelled) return;
+
+        const auditDocs = Array.isArray((auditResult as any)?.docs) ? (auditResult as any).docs : [];
+        if (auditDocs.length) {
           activityItems.push(
-            ...eventsResult.value.docs.map((d) =>
-              mapBookingActivityItem(
-                normalizeBookingActivityEventRaw(d.id, d.data() as Record<string, unknown>),
-                selectedBooking,
-                userNamesByUid
-              )
-            )
+            ...auditDocs
+              .map((d: any) => normalizeBookingActivityAuditRaw(d.id, d.data() as Record<string, unknown>))
+              .filter((entry: any): entry is Record<string, unknown> => !!entry)
+              .map((entry: any) => mapBookingActivityItem(entry, selectedBooking, userNamesByUid))
           );
-        } else {
-          partialErrors.push("تعذر تحميل بعض أحداث الحجز من السجل المباشر.");
+        } else if ((auditResult as any)?.error) {
+          partialErrors.push("تعذر تحميل سجل العمليات العامة لهذا الحجز.");
         }
 
-        if (auditResult.status === "fulfilled") {
-          activityItems.push(
-            ...auditResult.value.docs
-              .map((d) => normalizeBookingActivityAuditRaw(d.id, d.data() as Record<string, unknown>))
-              .filter((entry): entry is Record<string, unknown> => !!entry)
-              .map((entry) => mapBookingActivityItem(entry, selectedBooking, userNamesByUid))
-          );
-        } else {
-          partialErrors.push("تعذر تحميل جزء من سجل العمليات العامة لهذا الحجز.");
+        if (!auditDocs.length) {
+          const eventsResult = await getDocs(
+            collection(db, "salons", "main", "booking_logs", selectedBooking.id, "events")
+          ).catch((error) => ({ error }));
+
+          if (Array.isArray((eventsResult as any)?.docs)) {
+            activityItems.push(
+              ...(eventsResult as any).docs.map((d: any) =>
+                mapBookingActivityItem(
+                  normalizeBookingActivityEventRaw(d.id, d.data() as Record<string, unknown>),
+                  selectedBooking,
+                  userNamesByUid
+                )
+              )
+            );
+          } else if ((eventsResult as any)?.error) {
+            partialErrors.push("تعذر تحميل سجل الحجز المباشر لهذا الحجز.");
+          }
         }
 
         const lifecycleItems = buildBookingLifecycleActivityItems(selectedBooking, userNamesByUid);
@@ -2829,8 +2859,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       touchLastUpdate(editTarget.id, localAuditPatch.atMs);
 
       setEditTarget(null);
-    } catch {
-      setEditError("تعذر حفظ تعديل الحجز.");
+    } catch (e: any) {
+      if (e?.code === "EMPLOYEE_UNAVAILABLE") {
+        setEditError("الموظفة المعينة على هذا الحجز لم تعد نشطة تشغيليًا لهذا الموعد. اختاري موظفة أخرى أو أعيدي جدولة الحجز.");
+      } else {
+        setEditError("تعذر حفظ تعديل الحجز.");
+      }
     } finally {
       setEditSaving(false);
     }

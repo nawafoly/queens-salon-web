@@ -11,6 +11,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
+import { isStaffOperationallyActiveForDate } from "./staffAvailability";
 
 
 export type BookingStatus = "confirmed" | "pending" | "cancelled" | "completed";
@@ -25,6 +26,8 @@ export type Booking = {
   serviceSectionName?: string;
   serviceCategoryName?: string;
   employeeName?: string;
+  employeeId?: string | null;
+  employeeUid?: string | null;
   date: string; // YYYY-MM-DD
   time: string; // "10:00 ص" or "17:30"
   status: BookingStatus;
@@ -127,6 +130,8 @@ function mapBookingDoc(id: string, b: any): Booking {
       b.serviceCategoryName ??
       undefined,
     employeeName,
+    employeeId: String(b.employeeId ?? "").trim() || null,
+    employeeUid: String(b.employeeUid ?? "").trim() || null,
     date,
     time,
     status,
@@ -165,7 +170,10 @@ export const DashboardService = {
   },
 
   async getStats(): Promise<DashboardStats> {
-    const bookings = await this.getBookings();
+    const [bookings, staffSnap] = await Promise.all([
+      this.getBookings(),
+      getDocs(collection(db, "salons", SALON_ID, "staff_public")),
+    ]);
     const today = todayISO();
 
     const todayBookings = bookings.filter((b) => b.date === today).length;
@@ -179,14 +187,12 @@ export const DashboardService = {
       if (key.trim()) clientKeySet.add(key);
     });
 
-    const empSet = new Set<string>();
-    bookings.forEach((b) => {
-      const e = (b.employeeName || "").trim();
-      if (e) empSet.add(e);
-    });
+    const employeesCount = staffSnap.docs.filter((snap) =>
+      isStaffOperationallyActiveForDate({ ...(snap.data() as any), id: snap.id } as any, today)
+    ).length;
 
     return {
-      employeesCount: empSet.size || 0,
+      employeesCount,
       clientsCount: clientKeySet.size,
       totalRevenue,
       todayBookings,

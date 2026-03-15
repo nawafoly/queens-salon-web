@@ -1,6 +1,7 @@
 // src/services/firestoreStaffPublic.ts
 import { db } from "./firebase";
 import { collection, getDocs } from "firebase/firestore";
+import { isStaffOperationallyActiveForDate } from "../helpers/staffAvailability";
 
 export type StaffPublicDoc = {
   name: string;
@@ -109,14 +110,6 @@ function normalizeIsoDates(v: any): string[] {
   return rows
     .map((x) => String(x || "").trim())
     .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
-}
-
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 function resolveEmploymentEndDate(raw: any): string {
@@ -264,13 +257,7 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
       } as StaffPublicWithId;
     });
 
-    const today = todayISO();
-    const activeOnly = all.filter((x) => {
-      if (!x.active) return false;
-      const endDate = String((x as any)?.employmentEndDate || "").trim();
-      if (endDate && today > endDate) return false;
-      return true;
-    });
+    const activeOnly = all.filter((x) => isStaffOperationallyActiveForDate(x));
     console.log("[staff_public] listActiveStaffAll active =", activeOnly.length);
     return activeOnly;
   } catch (e: any) {
@@ -314,11 +301,8 @@ export async function listActiveStaffBySpecialty(args: {
       } as StaffPublicWithId;
     });
 
-    const today = todayISO();
     const filtered = all.filter((staff) => {
-      if (!staff.active) return false;
-      const endDate = String((staff as any)?.employmentEndDate || "").trim();
-      if (endDate && today > endDate) return false;
+      if (!isStaffOperationallyActiveForDate(staff)) return false;
       const specs = normalizeArray(staff.specialties);
       return specs.some((sp) => norm(sp) === wanted);
     });

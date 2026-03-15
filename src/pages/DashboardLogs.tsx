@@ -1,15 +1,23 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  startAfter,
+} from "firebase/firestore";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faClockRotateLeft,
+  faChevronDown,
+  faChevronUp,
   faFilter,
   faMagnifyingGlass,
   faRotateRight,
   faTriangleExclamation,
-  faChevronDown,
-  faChevronUp,
 } from "@fortawesome/free-solid-svg-icons";
 
 import ConfirmModal from "../components/ConfirmModal";
@@ -29,15 +37,18 @@ type AuthUser = {
   displayName?: string;
 };
 
-function getAuthUser(): AuthUser | null {
-  try {
-    const raw = localStorage.getItem("auth_user");
-    if (!raw) return null;
-    return JSON.parse(raw) as AuthUser;
-  } catch {
-    return null;
-  }
-}
+type LogDisplay = {
+  clientName?: string;
+  bookingPublicId?: string;
+  bookingShortId?: string;
+  bookingId?: string;
+};
+
+type LogChange = {
+  field: string;
+  before?: string;
+  after?: string;
+};
 
 type LogRow = {
   id: string;
@@ -46,6 +57,7 @@ type LogRow = {
   entityType?: string;
   entityId?: string;
   description?: string;
+  summary?: string;
   userName?: string;
   userUid?: string;
   userRole?: string;
@@ -56,17 +68,45 @@ type LogRow = {
   after?: any;
   meta?: any;
   sensitive?: boolean;
-
+  severity?: "info" | "warning" | "critical";
+  display?: LogDisplay;
+  changedFields?: string[];
+  changesPreview?: LogChange[];
+  hasSnapshot?: boolean;
+  snapshotId?: string;
+  restore?: {
+    eligible?: boolean;
+    kind?: string;
+  };
   atMs: number;
 };
 
-type UserLookupEntry = {
-  name: string;
-  email: string;
-  role: string;
+type LogSnapshot = {
+  before?: any;
+  after?: any;
 };
 
-type UserLookupMap = Record<string, UserLookupEntry>;
+type LogDetails = {
+  loading: boolean;
+  error?: string;
+  changes?: LogChange[];
+  snapshot?: LogSnapshot | null;
+  fullOpen?: boolean;
+  hasSnapshot?: boolean;
+};
+
+const SALON_ID = "main";
+const PAGE_SIZE = 40;
+
+function getAuthUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem("auth_user");
+    if (!raw) return null;
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    return null;
+  }
+}
 
 const ACTION_LABELS: Record<string, string> = {
   user_login: "تسجيل دخول",
@@ -78,9 +118,9 @@ const ACTION_LABELS: Record<string, string> = {
   booking_completed: "إكمال الحجز",
   booking_cancelled: "إلغاء الحجز",
   booking_reassigned: "إعادة تعيين موظفة",
-  user_created: "إنشاء مستخدم",
+  user_created: "إضافة مستخدم",
   user_updated: "تعديل مستخدم",
-  client_updated: "تعديل بروفايل عميلة",
+  client_updated: "تعديل عميلة",
   income_created: "إضافة دخل",
   income_updated: "تعديل دخل",
   income_deleted: "حذف دخل",
@@ -186,22 +226,6 @@ function roleLabel(roleRaw: string | undefined): string {
   return map[role] || (role || "-");
 }
 
-function actionTone(actionRaw: string | undefined): "danger" | "success" | "warning" | "info" | "neutral" {
-  const action = String(actionRaw || "").trim().toLowerCase();
-  if (!action) return "neutral";
-  if (action.includes("deleted") || action.includes("cancelled") || action.includes("role_changed")) {
-    return "danger";
-  }
-  if (action.includes("created") || action.includes("confirmed") || action.includes("completed") || action.includes("login")) {
-    return "success";
-  }
-  if (action.includes("updated") || action.includes("changed") || action.includes("reassigned") || action.includes("settings")) {
-    return "warning";
-  }
-  if (action.includes("logout")) return "info";
-  return "neutral";
-}
-
 function relativeTime(ms: number): string {
   if (!ms) return "-";
   const diff = Date.now() - ms;
@@ -214,27 +238,17 @@ function relativeTime(ms: number): string {
   return `قبل ${days} يوم`;
 }
 
-function summarizeRow(r: LogRow): string {
-  const action = asLabel(ACTION_LABELS, r.action, "عملية");
-  const entity = asLabel(ENTITY_LABELS, r.entityType, "عنصر");
-  const who = getDisplayUser(r);
-  const source = asLabel(SOURCE_LABELS, r.source, "");
-  if (who && who !== "-") {
-    if (source && source !== "-") return `${who} ${action} من ${source}`;
-    return `${who} ${action}`;
-  }
-  if (source && source !== "-") return `${action} على ${entity} من ${source}`;
-  return `${action} على ${entity}`;
-}
-
-function valueText(v: any): string {
-  if (v === undefined || v === null) return "—";
-  if (typeof v === "boolean") return v ? "نعم" : "لا";
-  return String(v);
-}
-
 function isObj(v: any): v is Record<string, any> {
   return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function normalizeValue(v: any): string {
+  if (v === undefined || v === null) return "—";
+  if (typeof v === "boolean") return v ? "نعم" : "لا";
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : "—";
+  const raw = String(v);
+  if (raw.length > 120) return `${raw.slice(0, 117)}...`;
+  return raw;
 }
 
 function keyLabel(key: string): string {
@@ -280,116 +294,122 @@ function keyLabel(key: string): string {
     openTime: "وقت بداية الدوام",
     closeTime: "وقت نهاية الدوام",
     currency: "العملة",
+    employeeName: "الموظفة",
+    clientName: "العميلة",
   };
   return map[key] || key;
 }
 
-function isPrimitiveValue(v: any): boolean {
-  return v === null || (typeof v !== "object" && typeof v !== "function");
+function actionSeverityFallback(actionRaw: string | undefined): "info" | "warning" | "critical" {
+  const action = String(actionRaw || "").trim().toLowerCase();
+  if (!action) return "info";
+  if (
+    action.includes("cancel") ||
+    action.includes("deleted") ||
+    action.includes("restore") ||
+    action.includes("role_changed") ||
+    action.includes("status_changed") ||
+    action.includes("reassigned")
+  ) {
+    return "critical";
+  }
+  if (action.includes("updated") || action.includes("changed") || action.includes("settings")) {
+    return "warning";
+  }
+  return "info";
 }
 
-function shallowChangedKeys(before: Record<string, any>, after: Record<string, any>): string[] {
-  const ignored = new Set(["updatedAt", "createdAt", "sections"]);
+function severityLabel(severity: "info" | "warning" | "critical") {
+  if (severity === "critical") return "طارئة";
+  if (severity === "warning") return "تحتاج مراجعة";
+  return "نجحت";
+}
+
+function resolveSummary(r: LogRow): string {
+  const direct = String(r.summary || "").trim();
+  if (direct) return direct;
+  const desc = String(r.description || "").trim();
+  if (desc) return desc;
+  const action = asLabel(ACTION_LABELS, r.action, "عملية");
+  const entity = asLabel(ENTITY_LABELS, r.entityType, "عنصر");
+  return `${action} على ${entity}`;
+}
+
+function resolveDisplay(r: LogRow): LogDisplay | null {
+  const raw = r.display || (isObj(r.meta?.display) ? (r.meta.display as LogDisplay) : null);
+  if (raw) return raw;
+  const clientName = String((r.after as any)?.clientName || (r.before as any)?.clientName || "").trim();
+  const bookingPublicId = String((r.after as any)?.publicId || (r.before as any)?.publicId || "").trim();
+  const bookingId = String(r.entityId || "").trim();
+  if (!clientName && !bookingPublicId && !bookingId) return null;
+  return {
+    clientName: clientName || undefined,
+    bookingPublicId: bookingPublicId || undefined,
+    bookingShortId: bookingId ? bookingId.slice(0, 6) : undefined,
+    bookingId: bookingId || undefined,
+  };
+}
+
+function buildChangesFromBeforeAfter(before: Record<string, any>, after: Record<string, any>): LogChange[] {
   const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
-  const changed: string[] = [];
-
-  keys.forEach((k) => {
-    if (ignored.has(k)) return;
-    const bv = before[k];
-    const av = after[k];
+  const changes: LogChange[] = [];
+  keys.forEach((key) => {
+    if (key === "updatedAt" || key === "createdAt") return;
+    const bv = before[key];
+    const av = after[key];
     if (Object.is(bv, av)) return;
-    if (isPrimitiveValue(bv) && isPrimitiveValue(av) && bv === av) return;
-    changed.push(k);
+    changes.push({
+      field: key,
+      before: normalizeValue(bv),
+      after: normalizeValue(av),
+    });
   });
-
-  return changed;
+  return changes.slice(0, 16);
 }
 
-function extractImportantChanges(r: LogRow): string[] {
-  const out: string[] = [];
-  const actionKey = String(r.action || "").toLowerCase().trim();
-  const entityKey = String(r.entityType || "").toLowerCase().trim();
+function buildChangesFromPatch(patch: Record<string, any>): LogChange[] {
+  return Object.keys(patch)
+    .filter((key) => key !== "updatedAt" && key !== "createdAt")
+    .map((key) => ({
+      field: key,
+      before: "—",
+      after: normalizeValue(patch[key]),
+    }))
+    .slice(0, 16);
+}
 
-  if (actionKey === "settings_updated" || entityKey === "settings") {
-    out.push("تم تعديل الإعدادات");
+function resolveInlineChanges(r: LogRow): LogChange[] {
+  if (Array.isArray(r.changesPreview) && r.changesPreview.length) {
+    return r.changesPreview.map((c) => ({
+      field: String((c as any)?.field || ""),
+      before: normalizeValue((c as any)?.before),
+      after: normalizeValue((c as any)?.after),
+    }));
   }
-
-  const meta = (r.meta && typeof r.meta === "object" ? r.meta : {}) as Record<string, any>;
-  const patch =
-    (meta.patch && typeof meta.patch === "object" ? meta.patch : null) ||
-    (r.after && typeof r.after === "object" ? (r.after as Record<string, any>) : null);
-  if (patch) {
-    const keys: Array<[string, string]> = [
-      ["status", "الحالة"],
-      ["amount", "المبلغ"],
-      ["method", "طريقة السداد"],
-      ["date", "التاريخ"],
-      ["time", "الوقت"],
-      ["employeeName", "الموظفة"],
-      ["clientName", "العميلة"],
-      ["userRole", "الصلاحية"],
-      ["email", "البريد"],
-    ];
-    keys.forEach(([k, label]) => {
-      if (patch[k] !== undefined) out.push(`${label}: ${valueText(patch[k])}`);
-    });
+  if (isObj(r.before) && isObj(r.after)) {
+    return buildChangesFromBeforeAfter(r.before, r.after);
   }
-  if (!out.length) {
-    if (isObj(r.before) && isObj(r.after)) {
-      const changed = shallowChangedKeys(r.before as Record<string, any>, r.after as Record<string, any>);
-      if (changed.length) {
-        out.push(`تم تعديل: ${changed.slice(0, 8).map((k) => keyLabel(k)).join(" | ")}`);
-      }
-    }
+  if (isObj(r.after)) {
+    return buildChangesFromPatch(r.after);
   }
-  if (!out.length && r.description) out.push(String(r.description));
-  return out.slice(0, 12);
+  if (isObj(r.meta?.patch)) {
+    return buildChangesFromPatch(r.meta.patch);
+  }
+  return [];
 }
 
 function getRestoreKind(r: LogRow): "income" | "expense" | null {
+  if (r.restore?.eligible && r.restore?.kind === "income") return "income";
+  if (r.restore?.eligible && r.restore?.kind === "expense") return "expense";
   const actionKey = String(r.action || "").trim().toLowerCase();
   if (actionKey === "income_deleted") return "income";
   if (actionKey === "expense_deleted") return "expense";
   return null;
 }
 
-function toIsoDate(ms: number): string {
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function normalizeIsoDate(rawDate: unknown, fallbackMs: number): string {
-  const direct = String(rawDate ?? "").trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
-
-  const withPrefix = direct.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
-  if (withPrefix?.[1]) return withPrefix[1];
-
-  if (direct) {
-    const parsed = Date.parse(direct);
-    if (Number.isFinite(parsed)) return toIsoDate(parsed);
-  }
-
-  return fallbackMs > 0 ? toIsoDate(fallbackMs) : "";
-}
-
-function asNumber(v: unknown): number {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function asOptionalString(v: unknown): string | undefined {
-  const s = String(v ?? "").trim();
-  return s || undefined;
-}
-
 function normalizePaymentMethod(raw: unknown): PaymentMethod {
   const s = String(raw ?? "").trim().toLowerCase();
   if (!s) return "cash";
-
   if (s === "cash" || s.includes("كاش") || s.includes("نقد")) return "cash";
   if (
     s === "card" ||
@@ -406,517 +426,367 @@ function normalizePaymentMethod(raw: unknown): PaymentMethod {
   return "other";
 }
 
-function canRestoreDeletedLog(r: LogRow): boolean {
-  const kind = getRestoreKind(r);
-  if (!kind) return false;
-  if (!isObj(r.before)) return false;
-  const id = String(r.entityId || (r.before as Record<string, unknown>)?.id || "").trim();
-  return Boolean(id);
+function normalizeIsoDate(rawDate: unknown, fallbackMs: number): string {
+  const direct = String(rawDate ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
+  const withPrefix = direct.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (withPrefix?.[1]) return withPrefix[1];
+  if (direct) {
+    const parsed = Date.parse(direct);
+    if (Number.isFinite(parsed)) return new Date(parsed).toISOString().slice(0, 10);
+  }
+  return fallbackMs > 0 ? new Date(fallbackMs).toISOString().slice(0, 10) : "";
 }
 
-function buildIncomeFromDeletedLog(r: LogRow): IncomeItem | null {
-  if (!isObj(r.before)) return null;
-  const before = r.before as Record<string, unknown>;
-  const id = String(r.entityId || before.id || "").trim();
+function buildIncomeFromBefore(before: Record<string, unknown>, row: LogRow): IncomeItem | null {
+  const id = String(row.entityId || (before as any).id || "").trim();
   if (!id) return null;
-
-  const createdAtMs = safeMs(before.createdAt) || safeMs(before.updatedAt) || r.atMs || Date.now();
-  const date = normalizeIsoDate(before.date, createdAtMs);
-  const source = String(before.source ?? "dashboard").trim() || "dashboard";
-
+  const createdAtMs = safeMs((before as any).createdAt) || safeMs((before as any).updatedAt) || row.atMs || Date.now();
+  const date = normalizeIsoDate((before as any).date, createdAtMs);
+  const source = String((before as any).source ?? "dashboard").trim() || "dashboard";
   return {
     id,
     date,
-    amount: asNumber(before.amount),
-    method: normalizePaymentMethod(before.method ?? before.paymentMethod),
+    amount: Number((before as any).amount ?? 0) || 0,
+    method: normalizePaymentMethod((before as any).method ?? (before as any).paymentMethod),
     source,
-    note: asOptionalString(before.note),
-    bookingId: asOptionalString(before.bookingId),
+    note: String((before as any).note ?? "").trim() || undefined,
+    bookingId: String((before as any).bookingId ?? "").trim() || undefined,
     createdAt: createdAtMs || Date.now(),
   };
 }
 
-function buildExpenseFromDeletedLog(r: LogRow): Expense | null {
-  if (!isObj(r.before)) return null;
-  const before = r.before as Record<string, unknown>;
-  const id = String(r.entityId || before.id || "").trim();
-  const title = String(before.title ?? "").trim();
+function buildExpenseFromBefore(before: Record<string, unknown>, row: LogRow): Expense | null {
+  const id = String(row.entityId || (before as any).id || "").trim();
+  const title = String((before as any).title ?? "").trim();
   if (!id || !title) return null;
-
-  const createdAtMs = safeMs(before.createdAt) || safeMs(before.updatedAt) || r.atMs || Date.now();
-  const date = normalizeIsoDate(before.date, createdAtMs);
-
+  const createdAtMs = safeMs((before as any).createdAt) || safeMs((before as any).updatedAt) || row.atMs || Date.now();
+  const date = normalizeIsoDate((before as any).date, createdAtMs);
+  const category = String((before as any).category ?? "أخرى").trim() || "أخرى";
+  const paymentMethodRaw = (before as any).paymentMethod ?? (before as any).method ?? "كاش";
+  const paymentMethod = (String(paymentMethodRaw || "").trim() || "كاش") as unknown as PaymentMethod;
   return {
     id,
     title,
-    category: String(before.category ?? "أخرى").trim() || "أخرى",
-    amount: asNumber(before.amount),
+    category,
+    amount: Number((before as any).amount ?? 0) || 0,
     date,
-    paymentMethod: normalizePaymentMethod(before.paymentMethod ?? before.method),
-    note: asOptionalString(before.note),
+    paymentMethod,
+    note: String((before as any).note ?? "").trim() || undefined,
     createdAt: createdAtMs || Date.now(),
-    bookingId: asOptionalString(before.bookingId),
-    addedBy: asOptionalString(before.addedBy),
-    createdBy: asOptionalString(before.createdBy),
-    createdByName: asOptionalString(before.createdByName),
-    createdByUid: asOptionalString(before.createdByUid),
-    createdByEmail: asOptionalString(before.createdByEmail),
-    sourceKind: asOptionalString(before.sourceKind),
-    sourceRefId: asOptionalString(before.sourceRefId),
-    sourceType: asOptionalString(before.sourceType),
-    staffId: asOptionalString(before.staffId),
-    staffName: asOptionalString(before.staffName),
-    monthKey: asOptionalString(before.monthKey),
-    payrollKind:
-      before.payrollKind === "salary" || before.payrollKind === "overtime"
-        ? before.payrollKind
-        : undefined,
   };
 }
 
-const SENSITIVE_ACTIONS = new Set<string>([
-  "role_changed",
-  "settings_updated",
-  "loyalty_settings_updated",
-  "income_created",
-  "income_updated",
-  "income_deleted",
-  "income_restored",
-  "expense_created",
-  "expense_updated",
-  "expense_deleted",
-  "expense_restored",
-  "booking_confirmed",
-  "booking_completed",
-  "booking_cancelled",
-  "booking_reassigned",
-  "booking_status_changed",
-  "offer_created",
-  "offer_updated",
-  "offer_deleted",
-  "user_created",
-  "user_updated",
-]);
-
-function detectSensitiveLocal(row: LogRow) {
-  if (row.sensitive === true) return true;
-  const actionKey = String(row.action || "").toLowerCase().trim();
-  if (SENSITIVE_ACTIONS.has(actionKey)) return true;
-
-  const text = `${row.action || ""} ${row.description || ""} ${JSON.stringify(row.meta || {})}`.toLowerCase();
-  return (
-    text.includes("delete") ||
-    text.includes("حذف") ||
-    text.includes("price") ||
-    text.includes("سعر") ||
-    text.includes("amount") ||
-    text.includes("مالي") ||
-    text.includes("role") ||
-    text.includes("صلاح")
-  );
-}
-
-type PrettyJsonCache = {
-  before: string;
-  after: string;
-  meta: string;
-};
-
-function safePrettyJson(value: any): string {
-  try {
-    return JSON.stringify(value ?? null, null, 2);
-  } catch (e: any) {
-    const msg = String(e?.message || e || "").trim();
-    return msg ? `<<JSON stringify failed: ${msg}>>` : "<<JSON stringify failed>>";
-  }
-}
-
-type LogRowItemProps = {
+type LogCardProps = {
   row: LogRow;
   expanded: boolean;
-  isRestoringAny: boolean;
-  isRestoringThis: boolean;
-  onToggleExpand: (id: string) => void;
-  onOpenRestoreConfirm: (row: LogRow) => void;
+  details?: LogDetails;
+  canRestore: boolean;
+  onToggleExpand: (row: LogRow) => void;
+  onToggleSnapshot: (row: LogRow) => void;
+  onRestore: (row: LogRow) => void;
 };
 
-const LogRowItem = memo(function LogRowItem({
+const LogCard = memo(function LogCard({
   row,
   expanded,
-  isRestoringAny,
-  isRestoringThis,
+  details,
+  canRestore,
   onToggleExpand,
-  onOpenRestoreConfirm,
-}: LogRowItemProps) {
-  const [rawOpen, setRawOpen] = useState(false);
-  const [prettyJson, setPrettyJson] = useState<PrettyJsonCache | null>(null);
+  onToggleSnapshot,
+  onRestore,
+}: LogCardProps) {
+  const display = resolveDisplay(row);
+  const severity = row.severity || actionSeverityFallback(row.action);
+  const summary = resolveSummary(row);
+  const actionLabel = asLabel(ACTION_LABELS, row.action, "عملية");
+  const sourceLabel = asLabel(SOURCE_LABELS, row.source, "-");
+  const entityLabel = asLabel(ENTITY_LABELS, row.entityType, "-");
+  const actor = getDisplayUser(row);
+  const actorRole = roleLabel(row.userRole);
+  const showActorRole = actorRole && actorRole !== "-";
+  const timeLabel = fmtDateTime(row.atMs);
+  const relative = relativeTime(row.atMs);
 
-  useEffect(() => {
-    if (!expanded && rawOpen) setRawOpen(false);
-  }, [expanded, rawOpen]);
-
-  useEffect(() => {
-    if (!rawOpen || prettyJson) return;
-    setPrettyJson({
-      before: safePrettyJson(row.before),
-      after: safePrettyJson(row.after),
-      meta: safePrettyJson(row.meta),
-    });
-  }, [rawOpen, prettyJson, row.before, row.after, row.meta]);
-
-  const sensitive = useMemo(() => detectSensitiveLocal(row), [row]);
-  const timeText = useMemo(() => fmtDateTime(row.atMs), [row.atMs]);
-  const restoreKind = useMemo(() => getRestoreKind(row), [row.action]);
-  const canRestore = useMemo(() => canRestoreDeletedLog(row), [row]);
-  const changeLines = useMemo(() => (expanded ? extractImportantChanges(row) : []), [expanded, row]);
+  const bookingIdLabel =
+    display?.bookingPublicId ||
+    display?.bookingShortId ||
+    String(row.entityId || "").slice(0, 6) ||
+    "-";
+  const clientNameLabel = display?.clientName || "-";
 
   return (
-    <div className={`logs-row ${sensitive ? "logs-row--sensitive" : ""}`}>
-      <div className="logs-time" data-label="الوقت">{timeText}</div>
-      <div className="logs-type" data-label="العملية">
-        <span className={`logs-pill logs-pill--${actionTone(row.action)}`}>
-          {sensitive ? <FontAwesomeIcon className="logs-sensitive-icon" icon={faTriangleExclamation} /> : null}
-          {asLabel(ACTION_LABELS, row.action)}
-        </span>
+    <div className={`log-card log-card--${severity}`}>
+      <div className="log-card-head">
+        <div className="log-action">
+          <span className="log-action-label">{actionLabel}</span>
+          {severity === "critical" ? (
+            <span className="log-alert-icon">
+              <FontAwesomeIcon icon={faTriangleExclamation} />
+            </span>
+          ) : null}
+        </div>
+        <div className={`log-severity log-severity--${severity}`}>{severityLabel(severity)}</div>
       </div>
-      <div className="logs-entity" data-label="العنصر">
-        <span className="logs-chip">{asLabel(ENTITY_LABELS, row.entityType)}</span>
-      </div>
-      <div className="logs-user" data-label="المستخدم">
-        <div className="logs-user-name">{getDisplayUser(row)}</div>
-        <div className="logs-user-meta">
-          {[roleLabel(row.userRole), row.userEmail, row.userUid ? `#${String(row.userUid).slice(0, 8)}` : ""]
-            .filter(Boolean)
-            .join(" | ")}
+
+      <div className="log-card-body">
+        <div className="log-main">
+          <div className="log-client">{clientNameLabel}</div>
+          <div className="log-id-chip">
+            {entityLabel} • {bookingIdLabel}
+          </div>
+        </div>
+
+        <div className="log-meta-grid">
+          <div className="log-meta-item">
+            <span>المنفذ</span>
+            <strong>
+              {actor} {showActorRole ? `(${actorRole})` : ""}
+            </strong>
+          </div>
+          <div className="log-meta-item">
+            <span>المصدر</span>
+            <strong>{sourceLabel}</strong>
+          </div>
+          <div className="log-meta-item">
+            <span>الوقت</span>
+            <strong>
+              {timeLabel} <span className="log-relative">• {relative}</span>
+            </strong>
+          </div>
+          <div className="log-meta-item">
+            <span>الملخص</span>
+            <strong className="log-summary">{summary}</strong>
+          </div>
         </div>
       </div>
-      <div className="logs-source" data-label="المصدر">
-        <span className="logs-chip logs-chip--source">{asLabel(SOURCE_LABELS, row.source)}</span>
-      </div>
-      <div className="logs-note" data-label="الملخص">
-        <div className="logs-note-main">{summarizeRow(row)}</div>
-        {row.entityId ? <div className="logs-note-sub">ID: {row.entityId}</div> : null}
-      </div>
-      <div data-label="تفاصيل">
-        <button
-          className="logs-expand-btn"
-          type="button"
-          onClick={() => onToggleExpand(row.id)}
-          aria-expanded={expanded}
-        >
-          {expanded ? <FontAwesomeIcon icon={faChevronUp} /> : <FontAwesomeIcon icon={faChevronDown} />}
-          {expanded ? "إخفاء" : "عرض"}
+
+      <div className="log-card-actions">
+        <button className="log-action-btn" type="button" onClick={() => onToggleExpand(row)}>
+          {expanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}
+          <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} />
         </button>
+        {canRestore ? (
+          <button className="log-restore-btn" type="button" onClick={() => onRestore(row)}>
+            <FontAwesomeIcon icon={faRotateRight} />
+            استرجاع هذه الحالة
+          </button>
+        ) : null}
       </div>
 
       {expanded ? (
-        <div className="logs-details" role="region" aria-label="تفاصيل السجل">
-          <div className="logs-detail-top">
-            <span className="logs-mini-chip">الوقت: {timeText}</span>
-            {row.logId ? <span className="logs-mini-chip">Log: {row.logId}</span> : null}
-            {row.entityId ? <span className="logs-mini-chip">Entity: {row.entityId}</span> : null}
-          </div>
-          {restoreKind ? (
-            <div className="logs-detail-actions">
-              <button
-                className="logs-restore-btn"
-                type="button"
-                disabled={!canRestore || isRestoringAny}
-                onClick={() => onOpenRestoreConfirm(row)}
-                title={
-                  canRestore
-                    ? restoreKind === "income"
-                      ? "استرجاع سجل الدخل المحذوف"
-                      : "استرجاع سجل المصروف المحذوف"
-                    : "لا يمكن الاسترجاع لأن بيانات قبل الحذف غير متوفرة"
-                }
-              >
-                {isRestoringThis ? "جاري..." : "استرجاع"}
+        <div className="log-details">
+          {details?.loading ? <div className="log-details-loading">جاري تحميل التفاصيل...</div> : null}
+          {details?.error ? <div className="log-details-error">{details.error}</div> : null}
+          {details?.changes && details.changes.length ? (
+            <div className="log-diff">
+              <div className="log-diff-head">
+                <span>الحقل</span>
+                <span>قبل</span>
+                <span>بعد</span>
+              </div>
+              {details.changes.map((change, index) => (
+                <div key={`${row.id}-change-${index}`} className="log-diff-row">
+                  <div className="log-diff-field">{keyLabel(change.field)}</div>
+                  <div className="log-diff-before">{change.before ?? "—"}</div>
+                  <div className="log-diff-after">{change.after ?? "—"}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="log-details-empty">لا توجد تغييرات مسجلة لعرضها.</div>
+          )}
+
+          {details?.hasSnapshot ? (
+            <div className="log-details-actions">
+              <button className="log-secondary-btn" type="button" onClick={() => onToggleSnapshot(row)}>
+                {details?.fullOpen ? "إخفاء snapshot الكامل" : "عرض snapshot الكامل"}
               </button>
             </div>
           ) : null}
-          <div className="logs-detail-summary">
-            {changeLines.map((line, idx) => (
-              <div key={`${row.id}-line-${idx}`} className="logs-detail-line">
-                {line}
+
+          {details?.fullOpen && details?.snapshot ? (
+            <div className="log-snapshot-grid">
+              <div>
+                <h4>قبل</h4>
+                <pre>{JSON.stringify(details.snapshot.before ?? {}, null, 2)}</pre>
               </div>
-            ))}
-          </div>
-          <details
-            className="logs-raw-wrap"
-            open={rawOpen}
-            onToggle={(e) => setRawOpen((e.currentTarget as HTMLDetailsElement).open)}
-          >
-            <summary>عرض JSON كامل (View full JSON)</summary>
-            {rawOpen ? (
-              prettyJson ? (
-                <>
-                  <div className="logs-detail-grid">
-                    <div>
-                      <h4>before</h4>
-                      <pre>{prettyJson.before}</pre>
-                    </div>
-                    <div>
-                      <h4>after</h4>
-                      <pre>{prettyJson.after}</pre>
-                    </div>
-                  </div>
-                  <div className="logs-meta-json">
-                    <h4>meta</h4>
-                    <pre>{prettyJson.meta}</pre>
-                  </div>
-                </>
-              ) : (
-                <div className="logs-meta">تحميل JSON...</div>
-              )
-            ) : null}
-          </details>
+              <div>
+                <h4>بعد</h4>
+                <pre>{JSON.stringify(details.snapshot.after ?? {}, null, 2)}</pre>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
   );
 });
 
-const SALON_ID = "main";
-
 export default function DashboardLogs() {
   const authUser = useMemo(() => getAuthUser(), []);
   const canManage = authUser?.role === "owner" || authUser?.role === "admin";
 
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [rows, setRows] = useState<LogRow[]>([]);
   const [errMsg, setErrMsg] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const toggleExpanded = useCallback((id: string) => {
-    setExpandedId((prev) => (prev === id ? null : id));
-  }, []);
+  const [detailsById, setDetailsById] = useState<Record<string, LogDetails>>({});
+  const [lastDoc, setLastDoc] = useState<any | null>(null);
+  const lastDocRef = useRef<any | null>(null);
+  const [hasMore, setHasMore] = useState(true);
 
   const [qText, setQText] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [entityFilter, setEntityFilter] = useState("all");
-  const [userFilter, setUserFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [onlySensitive, setOnlySensitive] = useState(false);
   const [showLoginEvents, setShowLoginEvents] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [maxRows, setMaxRows] = useState<number>(300);
+
   const [restoringLogId, setRestoringLogId] = useState("");
   const [restoreMsg, setRestoreMsg] = useState("");
   const [restoreErr, setRestoreErr] = useState("");
   const [restoreTarget, setRestoreTarget] = useState<LogRow | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    setErrMsg("");
+  const parseRow = useCallback((d: any) => {
+    const x: any = d.data();
+    const atMs = safeMs(x?.createdAt) || safeMs(x?.at) || safeMs(x?.eventAtMs) || safeMs(x?.meta?.eventAtMs);
+    const changesPreview = Array.isArray(x?.changesPreview) ? x.changesPreview : [];
+    const displayRaw = x?.display || x?.meta?.display;
+    const display =
+      displayRaw && typeof displayRaw === "object"
+        ? {
+            clientName: String(displayRaw?.clientName || "").trim() || undefined,
+            bookingPublicId: String(displayRaw?.bookingPublicId || "").trim() || undefined,
+            bookingShortId: String(displayRaw?.bookingShortId || "").trim() || undefined,
+            bookingId: String(displayRaw?.bookingId || "").trim() || undefined,
+          }
+        : undefined;
 
-    try {
-      const colRef = collection(db, "salons", SALON_ID, "logs");
-      const q = query(colRef, orderBy("createdAt", "desc"), limit(Math.max(50, Math.min(1000, maxRows))));
-      const [snap, usersSnap] = await Promise.all([
-        getDocs(q),
-        getDocs(collection(db, "salons", SALON_ID, "users")),
-      ]);
+    return {
+      id: d.id,
+      logId: String(x?.logId || d.id),
+      action: String(x?.action || x?.type || ""),
+      entityType: String(x?.entityType || x?.entity || ""),
+      entityId: String(x?.entityId || ""),
+      description: String(x?.description || x?.note || ""),
+      summary: String(x?.summary || ""),
+      userName: String(x?.userName || ""),
+      userUid: String(x?.userUid || x?.byUid || ""),
+      userRole: String(x?.userRole || x?.byRole || ""),
+      userEmail: String(x?.userEmail || x?.byEmail || ""),
+      source: String(x?.source || ""),
+      createdAt: x?.createdAt || x?.at,
+      before: x?.before,
+      after: x?.after,
+      meta: x?.meta,
+      sensitive: Boolean(x?.sensitive),
+      severity: (x?.severity as any) || undefined,
+      display,
+      changedFields: Array.isArray(x?.changedFields) ? x.changedFields : [],
+      changesPreview: changesPreview.map((c: any) => ({
+        field: String(c?.field || ""),
+        before: String(c?.before ?? ""),
+        after: String(c?.after ?? ""),
+      })),
+      hasSnapshot: Boolean(x?.hasSnapshot || x?.snapshotId),
+      snapshotId: x?.snapshotId ? String(x.snapshotId) : x?.hasSnapshot ? String(x?.logId || d.id) : undefined,
+      restore: x?.restore && typeof x?.restore === "object" ? x.restore : undefined,
+      atMs,
+    } as LogRow;
+  }, []);
 
-      const userLookup: UserLookupMap = {};
-      usersSnap.docs.forEach((d) => {
-        const x: any = d.data() || {};
-        const uid = String(d.id || x?.uid || "").trim();
-        if (!uid) return;
-        const name = String(x?.displayName || x?.name || "").trim();
-        const email = String(x?.email || "").trim();
-        const role = String(x?.role || "").trim();
-        userLookup[uid] = {
-          name: name || (email ? email.split("@")[0] : ""),
-          email,
-          role,
-        };
-      });
-      const list: LogRow[] = snap.docs.map((d) => {
-        const x: any = d.data();
-        const userUid = String(x?.userUid || x?.byUid || "").trim();
-        const lookup = userUid ? userLookup[userUid] : undefined;
-        const atMs =
-          safeMs(x?.createdAt) ||
-          safeMs(x?.at) ||
-          safeMs(x?.eventAtMs) ||
-          safeMs(x?.meta?.eventAtMs);
-        return {
-          id: d.id,
-          logId: String(x?.logId || d.id),
-          action: String(x?.action || x?.type || ""),
-          entityType: String(x?.entityType || x?.entity || ""),
-          entityId: String(x?.entityId || ""),
-          description: String(x?.description || x?.note || ""),
-          userName: String(x?.userName || lookup?.name || ""),
-          userUid,
-          userRole: String(x?.userRole || x?.byRole || lookup?.role || ""),
-          userEmail: String(x?.userEmail || x?.byEmail || lookup?.email || ""),
-          source: String(x?.source || ""),
-          createdAt: x?.createdAt || x?.at,
-          before: x?.before,
-          after: x?.after,
-          meta: x?.meta,
-          sensitive: Boolean(x?.sensitive),
-          atMs,
-        };
-      });
+  const loadPage = useCallback(
+    async (mode: "initial" | "more") => {
+      if (!canManage) return;
+      if (mode === "initial") {
+        setLoading(true);
+        setErrMsg("");
+      } else {
+        setLoadingMore(true);
+      }
 
-      list.sort((a, b) => (b.atMs || 0) - (a.atMs || 0));
-      setRows(list);
-    } catch (e: any) {
-      console.warn("DashboardLogs load error:", e);
-      const msg = String(e?.message || e);
-      setErrMsg(
-        msg.includes("Missing or insufficient permissions")
-          ? "⚠️ الصلاحيات تمنع قراءة السجل. لازم Rules تسمح فقط للأونر/الأدمن بقراءة salons/main/logs."
-          : "❌ تعذر تحميل سجل العمليات:\n" + msg
-      );
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+      try {
+        const colRef = collection(db, "salons", SALON_ID, "logs");
+        const constraints: any[] = [orderBy("createdAt", "desc"), limit(PAGE_SIZE)];
+        const cursor = mode === "more" ? lastDocRef.current : null;
+        if (cursor) constraints.splice(1, 0, startAfter(cursor));
+        const q = query(colRef, ...constraints);
+        const snap = await getDocs(q);
+
+        const list = snap.docs.map(parseRow);
+        const nextLast = snap.docs[snap.docs.length - 1] ?? null;
+
+        setLastDoc(nextLast);
+        lastDocRef.current = nextLast;
+        setHasMore(snap.size === PAGE_SIZE);
+        setRows((prev) => (mode === "initial" ? list : [...prev, ...list]));
+      } catch (e: any) {
+        console.warn("DashboardLogs load error:", e);
+        const msg = String(e?.message || e);
+        setErrMsg(
+          msg.includes("Missing or insufficient permissions")
+            ? "⚠️ الصلاحيات تمنع قراءة السجل. لازم Rules تسمح فقط للأونر/الأدمن بقراءة salons/main/logs."
+            : "تعذر تحميل سجل العمليات:\n" + msg
+        );
+        if (mode === "initial") setRows([]);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [canManage, parseRow]
+  );
 
   useEffect(() => {
     if (!canManage) return;
-    load();
-  }, [canManage, maxRows]);
-
-  const openRestoreConfirm = useCallback((r: LogRow) => {
-    const kind = getRestoreKind(r);
-    if (!kind) return;
-
-    const payload =
-      kind === "income" ? buildIncomeFromDeletedLog(r) : buildExpenseFromDeletedLog(r);
-
-    if (!payload) {
-      setRestoreMsg("");
-      setRestoreErr("لا يمكن الاسترجاع لأن بيانات السجل غير مكتملة.");
-      return;
-    }
-
-    setRestoreTarget(r);
-  }, []);
-
-  const handleRestore = async () => {
-    const r = restoreTarget;
-    if (!r) return;
-    const kind = getRestoreKind(r);
-    if (!kind) return;
-
-    const payload =
-      kind === "income" ? buildIncomeFromDeletedLog(r) : buildExpenseFromDeletedLog(r);
-    if (!payload) {
-      setRestoreMsg("");
-      setRestoreErr("لا يمكن الاسترجاع لأن بيانات السجل غير مكتملة.");
-      setRestoreTarget(null);
-      return;
-    }
-
-    setRestoreMsg("");
-    setRestoreErr("");
-    setRestoringLogId(r.id);
-
-    try {
-      if (kind === "income") {
-        await upsertIncomeFS(payload as IncomeItem, SALON_ID);
-      } else {
-        await upsertExpenseFS(payload as Expense, SALON_ID);
-      }
-
-      await writeAuditLog({
-        salonId: SALON_ID,
-        action: kind === "income" ? "income_restored" : "expense_restored",
-        entityType: kind,
-        entityId: payload.id,
-        description:
-          kind === "income"
-            ? "تم استرجاع سجل دخل من شاشة السجل"
-            : "تم استرجاع سجل مصروف من شاشة السجل",
-        source: "dashboard",
-        before: r.before ?? null,
-        after: payload,
-        meta: {
-          restoredFromLogId: r.logId || r.id,
-          restoredFromAction: r.action || "",
-        },
-      });
-
-      setRestoreErr("");
-      setRestoreMsg(
-        kind === "income"
-          ? "تم استرجاع الدخل بنجاح."
-          : "تم استرجاع المصروف بنجاح."
-      );
-      setRestoreTarget(null);
-      await load();
-    } catch (e: any) {
-      const msg = String(e?.message || e || "").trim();
-      setRestoreMsg("");
-      setRestoreErr(msg ? `تعذر تنفيذ الاسترجاع: ${msg}` : "تعذر تنفيذ الاسترجاع.");
-    } finally {
-      setRestoringLogId("");
-    }
-  };
+    setRows([]);
+    setDetailsById({});
+    setExpandedId(null);
+    setLastDoc(null);
+    lastDocRef.current = null;
+    setHasMore(true);
+    void loadPage("initial");
+  }, [canManage, loadPage]);
 
   const actionOptions = useMemo(() => {
-    const s = new Set<string>();
-    rows.forEach((r) => {
-      const t = String(r.action || "").trim();
-      if (t) s.add(t);
-    });
-    return Array.from(s).sort((a, b) => a.localeCompare(b));
+    const unique = new Set(rows.map((r) => String(r.action || "").trim()).filter(Boolean));
+    return Array.from(unique);
   }, [rows]);
 
   const entityOptions = useMemo(() => {
-    const s = new Set<string>();
-    rows.forEach((r) => {
-      const t = String(r.entityType || "").trim();
-      if (t) s.add(t);
-    });
-    return Array.from(s).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
-
-  const userOptions = useMemo(() => {
-    const s = new Set<string>();
-    rows.forEach((r) => {
-      const u = getDisplayUser(r);
-      if (u) s.add(u);
-    });
-    return Array.from(s).sort((a, b) => a.localeCompare(b));
+    const unique = new Set(rows.map((r) => String(r.entityType || "").trim()).filter(Boolean));
+    return Array.from(unique);
   }, [rows]);
 
   const filtered = useMemo(() => {
     const t = qText.trim().toLowerCase();
-
     return rows.filter((r) => {
       if (actionFilter !== "all" && String(r.action || "") !== actionFilter) return false;
       if (entityFilter !== "all" && String(r.entityType || "") !== entityFilter) return false;
       if (sourceFilter !== "all" && String(r.source || "") !== sourceFilter) return false;
-
-      const userToken = getDisplayUser(r);
-      if (userFilter !== "all" && userToken !== userFilter) return false;
-
+      if (onlySensitive && !r.sensitive) return false;
       const actionKey = String(r.action || "").trim().toLowerCase();
-      if (!showLoginEvents && (actionKey === "user_login" || actionKey === "user_logout")) {
-        return false;
+      if (!showLoginEvents && (actionKey === "user_login" || actionKey === "user_logout")) return false;
+
+      if (fromDate) {
+        const fk = dayKey(r.atMs);
+        if (fk && fk < fromDate) return false;
+      }
+      if (toDate) {
+        const tk = dayKey(r.atMs);
+        if (tk && tk > toDate) return false;
       }
 
-      const isSensitive = detectSensitiveLocal(r);
-      if (onlySensitive && !isSensitive) return false;
-
-      const dk = dayKey(r.atMs);
-      if (fromDate && dk && dk < fromDate) return false;
-      if (toDate && dk && dk > toDate) return false;
-
       if (!t) return true;
-
       const hay = String(
-        `${r.logId || ""} ${r.action || ""} ${r.entityType || ""} ${r.entityId || ""} ${getDisplayUser(r)} ${r.userEmail || ""} ${r.userUid || ""} ${r.userRole || ""} ${r.description || ""} ${r.source || ""}`
+        `${r.logId || ""} ${r.action || ""} ${r.entityType || ""} ${r.entityId || ""} ${getDisplayUser(
+          r
+        )} ${r.userEmail || ""} ${r.userUid || ""} ${r.userRole || ""} ${resolveSummary(r)} ${r.source || ""}`
       ).toLowerCase();
-
       return hay.includes(t);
     });
   }, [
@@ -924,74 +794,241 @@ export default function DashboardLogs() {
     qText,
     actionFilter,
     entityFilter,
-    userFilter,
     sourceFilter,
-    fromDate,
-    toDate,
     onlySensitive,
     showLoginEvents,
+    fromDate,
+    toDate,
   ]);
 
-  const analytics = useMemo(() => {
-    const today = dayKey(Date.now());
-    let sensitiveCount = 0;
-    let todayCount = 0;
-    let financialCount = 0;
-    let bookingCount = 0;
-    const actionCounter = new Map<string, number>();
+  const latestMs = useMemo(() => {
+    if (!rows.length) return 0;
+    return rows.reduce((max, r) => Math.max(max, r.atMs || 0), 0);
+  }, [rows]);
 
-    filtered.forEach((r) => {
-      const actionKey = String(r.action || "").trim().toLowerCase();
-      const entityKey = String(r.entityType || "").trim().toLowerCase();
+  const ensureDetails = useCallback(
+    async (row: LogRow, forceSnapshot = false) => {
+      const existing = detailsById[row.id];
+      if (existing?.loading) return;
+      if (existing?.changes && existing.changes.length && !forceSnapshot) return;
 
-      if (detectSensitiveLocal(r)) sensitiveCount += 1;
-      if (dayKey(r.atMs) === today) todayCount += 1;
-      if (actionKey) actionCounter.set(actionKey, (actionCounter.get(actionKey) || 0) + 1);
+      const inlineChanges = resolveInlineChanges(row);
+      const hasSnapshot = Boolean(row.hasSnapshot || row.snapshotId);
 
-      if (
-        entityKey === "income" ||
-        entityKey === "expense" ||
-        actionKey.startsWith("income_") ||
-        actionKey.startsWith("expense_")
-      ) {
-        financialCount += 1;
+      if (inlineChanges.length && !forceSnapshot) {
+        setDetailsById((prev) => ({
+          ...prev,
+          [row.id]: {
+            loading: false,
+            error: "",
+            changes: inlineChanges,
+            snapshot: prev[row.id]?.snapshot ?? null,
+            fullOpen: prev[row.id]?.fullOpen ?? false,
+            hasSnapshot,
+          },
+        }));
+        return;
       }
 
-      if (entityKey === "booking" || actionKey.startsWith("booking_")) {
-        bookingCount += 1;
+      if (!hasSnapshot) {
+        setDetailsById((prev) => ({
+          ...prev,
+          [row.id]: {
+            loading: false,
+            error: "",
+            changes: inlineChanges,
+            snapshot: null,
+            fullOpen: false,
+            hasSnapshot,
+          },
+        }));
+        return;
       }
-    });
 
-    let topAction = "";
-    let topCount = 0;
-    actionCounter.forEach((count, key) => {
-      if (count > topCount) {
-        topCount = count;
-        topAction = key;
+      setDetailsById((prev) => ({
+        ...prev,
+        [row.id]: {
+          loading: true,
+          error: "",
+          changes: inlineChanges,
+          snapshot: prev[row.id]?.snapshot ?? null,
+          fullOpen: prev[row.id]?.fullOpen ?? false,
+          hasSnapshot,
+        },
+      }));
+
+      try {
+        const snapshotId = row.snapshotId || row.logId || row.id;
+        const snapRef = doc(db, "salons", SALON_ID, "log_snapshots", snapshotId);
+        const snap = await getDoc(snapRef);
+        if (!snap.exists()) {
+          setDetailsById((prev) => ({
+            ...prev,
+            [row.id]: {
+              loading: false,
+              error: "لا توجد بيانات snapshot لهذا السجل.",
+              changes: inlineChanges,
+              snapshot: null,
+              fullOpen: prev[row.id]?.fullOpen ?? false,
+              hasSnapshot,
+            },
+          }));
+          return;
+        }
+        const data = snap.data() as any;
+        const before = data?.before;
+        const after = data?.after;
+        const changes =
+          isObj(before) && isObj(after) ? buildChangesFromBeforeAfter(before, after) : inlineChanges;
+        setDetailsById((prev) => ({
+          ...prev,
+          [row.id]: {
+            loading: false,
+            error: "",
+            changes,
+            snapshot: { before, after },
+            fullOpen: prev[row.id]?.fullOpen ?? false,
+            hasSnapshot,
+          },
+        }));
+      } catch (error: any) {
+        setDetailsById((prev) => ({
+          ...prev,
+          [row.id]: {
+            loading: false,
+            error: "تعذر تحميل تفاصيل السجل.",
+            changes: inlineChanges,
+            snapshot: null,
+            fullOpen: prev[row.id]?.fullOpen ?? false,
+            hasSnapshot,
+          },
+        }));
       }
-    });
+    },
+    [detailsById]
+  );
 
-    return {
-      filteredCount: filtered.length,
-      totalCount: rows.length,
-      sensitiveCount,
-      todayCount,
-      financialCount,
-      bookingCount,
-      topActionLabel: topAction ? asLabel(ACTION_LABELS, topAction) : "-",
-      topActionCount: topCount,
-      latestMs: filtered[0]?.atMs || rows[0]?.atMs || 0,
-    };
-  }, [filtered, rows]);
+  const toggleExpand = useCallback(
+    (row: LogRow) => {
+      setExpandedId((prev) => (prev === row.id ? null : row.id));
+      if (expandedId !== row.id) {
+        void ensureDetails(row);
+      }
+    },
+    [ensureDetails, expandedId]
+  );
 
-  const restoreTargetKind = restoreTarget ? getRestoreKind(restoreTarget) : null;
-  const restoreTargetId = restoreTarget
-    ? String(
-        restoreTarget.entityId ||
-          (isObj(restoreTarget.before) ? (restoreTarget.before as Record<string, unknown>).id : "") ||
-          ""
-      ).trim()
-    : "";
+  const toggleSnapshot = useCallback(
+    (row: LogRow) => {
+      setDetailsById((prev) => ({
+        ...prev,
+        [row.id]: {
+          ...prev[row.id],
+          fullOpen: !prev[row.id]?.fullOpen,
+        },
+      }));
+      void ensureDetails(row, true);
+    },
+    [ensureDetails]
+  );
+
+  const canRestoreRow = useCallback(
+    (row: LogRow) => {
+      if (!canManage) return false;
+      const kind = getRestoreKind(row);
+      if (!kind) return false;
+      if (isObj(row.before)) return true;
+      if (detailsById[row.id]?.snapshot?.before) return true;
+      if (row.hasSnapshot) return true;
+      return false;
+    },
+    [canManage, detailsById]
+  );
+
+  const openRestoreConfirm = useCallback(
+    (row: LogRow) => {
+      if (!canRestoreRow(row)) return;
+      setRestoreTarget(row);
+    },
+    [canRestoreRow]
+  );
+
+  const handleRestore = async () => {
+    const row = restoreTarget;
+    if (!row) return;
+    const kind = getRestoreKind(row);
+    if (!kind) return;
+
+    setRestoreMsg("");
+    setRestoreErr("");
+    setRestoringLogId(row.id);
+
+    try {
+      let beforeData = row.before;
+      if (!beforeData && row.hasSnapshot) {
+        const snapshotId = row.snapshotId || row.logId || row.id;
+        const snapRef = doc(db, "salons", SALON_ID, "log_snapshots", snapshotId);
+        const snap = await getDoc(snapRef);
+        if (snap.exists()) {
+          const data = snap.data() as any;
+          beforeData = data?.before;
+          setDetailsById((prev) => ({
+            ...prev,
+            [row.id]: {
+              loading: false,
+              error: "",
+              changes: prev[row.id]?.changes ?? [],
+              snapshot: { before: data?.before, after: data?.after },
+              fullOpen: prev[row.id]?.fullOpen ?? false,
+              hasSnapshot: true,
+            },
+          }));
+        }
+      }
+
+      if (!isObj(beforeData)) {
+        setRestoreErr("لا يمكن الاسترجاع لأن بيانات snapshot غير مكتملة.");
+        setRestoringLogId("");
+        return;
+      }
+
+      if (kind === "income") {
+        const payload = buildIncomeFromBefore(beforeData, row);
+        if (!payload) throw new Error("RESTORE_INVALID");
+        await upsertIncomeFS(payload as IncomeItem, SALON_ID);
+      } else {
+        const payload = buildExpenseFromBefore(beforeData, row);
+        if (!payload) throw new Error("RESTORE_INVALID");
+        await upsertExpenseFS(payload as Expense, SALON_ID);
+      }
+
+      await writeAuditLog({
+        salonId: SALON_ID,
+        action: kind === "income" ? "income_restored" : "expense_restored",
+        entityType: kind,
+        entityId: row.entityId,
+        description: kind === "income" ? "تم استرجاع دخل" : "تم استرجاع مصروف",
+        before: beforeData,
+        after: beforeData,
+        meta: {
+          restoredFromLogId: row.logId || row.id,
+          restoredFromAction: row.action || "",
+        },
+      });
+
+      setRestoreMsg("تم الاسترجاع وتسجيل العملية بنجاح.");
+      setRestoreTarget(null);
+      setRows([]);
+      setLastDoc(null);
+      setHasMore(true);
+      await loadPage("initial");
+    } catch (e: any) {
+      const msg = String(e?.message || "");
+      setRestoreErr(msg ? `تعذر تنفيذ الاسترجاع: ${msg}` : "تعذر تنفيذ الاسترجاع.");
+    } finally {
+      setRestoringLogId("");
+    }
+  };
 
   if (!authUser) {
     return (
@@ -999,7 +1036,6 @@ export default function DashboardLogs() {
         <div className="container">
           <div className="dash-card">
             <h3>غير مصرح</h3>
-            <p>سجّل دخول ثم جرّب.</p>
           </div>
         </div>
       </div>
@@ -1012,7 +1048,7 @@ export default function DashboardLogs() {
         <div className="container">
           <div className="dash-card">
             <h3>صلاحيات غير كافية</h3>
-            <p>سجل العمليات للأونر/الأدمن فقط.</p>
+            <p>هذه الصفحة متاحة للأونر أو الأدمن فقط.</p>
           </div>
         </div>
       </div>
@@ -1024,15 +1060,8 @@ export default function DashboardLogs() {
       <div className="container">
         <div className="dash-topbar dash-topbar--sticky">
           <div className="dash-topbar-title">
-            <h2>
-              <FontAwesomeIcon icon={faClockRotateLeft} /> سجل العمليات التشغيلي
-            </h2>
-          </div>
-
-          <div className="dash-topbar-actions">
-            <button className="exp-btn" onClick={load} disabled={loading} type="button">
-              <FontAwesomeIcon icon={faRotateRight} /> تحديث
-            </button>
+            <h1>سجل العمليات</h1>
+            <p>عرض احترافي للعمليات مع تفاصيل منظمة وأداء منخفض القراءة.</p>
           </div>
         </div>
 
@@ -1041,44 +1070,14 @@ export default function DashboardLogs() {
         {restoreMsg ? <div className="logs-restore-status logs-restore-status--ok">{restoreMsg}</div> : null}
 
         <div className="dash-card logs-card">
-          <div className="logs-insights">
-            <div className="logs-insight-head">
-              <div>
-                <h3>مركز مراقبة العمليات</h3>
-                <p>عرض حي للعمليات مع تصنيف لوني حسب نوع الحدث وحساسيته.</p>
-              </div>
-              <div className="logs-insight-updated">
-                آخر عملية: <b>{fmtDateTime(analytics.latestMs)}</b>
-                {analytics.latestMs ? <span> ({relativeTime(analytics.latestMs)})</span> : null}
-              </div>
+          <div className="logs-head">
+            <div>
+              <h3>مركز مراجعة العمليات</h3>
+              <p>تفاصيل قابلة للتوسع، مع تحميل ذكي لتقليل القراءة.</p>
             </div>
-
-            <div className="logs-kpis">
-              <div className="logs-kpi logs-kpi--primary">
-                <div className="k">المعروض الآن</div>
-                <div className="v">{analytics.filteredCount}</div>
-              </div>
-              <div className="logs-kpi logs-kpi--danger">
-                <div className="k">عمليات حساسة</div>
-                <div className="v">{analytics.sensitiveCount}</div>
-              </div>
-              <div className="logs-kpi logs-kpi--success">
-                <div className="k">عمليات اليوم</div>
-                <div className="v">{analytics.todayCount}</div>
-              </div>
-              <div className="logs-kpi logs-kpi--warning">
-                <div className="k">الأكثر تكرارًا</div>
-                <div className="v">{analytics.topActionCount || 0}</div>
-                <div className="s">{analytics.topActionLabel}</div>
-              </div>
-              <div className="logs-kpi logs-kpi--neutral">
-                <div className="k">سجل الحجوزات</div>
-                <div className="v">{analytics.bookingCount}</div>
-              </div>
-              <div className="logs-kpi logs-kpi--neutral">
-                <div className="k">السجل المالي</div>
-                <div className="v">{analytics.financialCount}</div>
-              </div>
+            <div className="logs-head-meta">
+              آخر تحديث: <b>{fmtDateTime(latestMs)}</b>
+              {latestMs ? <span> ({relativeTime(latestMs)})</span> : null}
             </div>
           </div>
 
@@ -1089,7 +1088,7 @@ export default function DashboardLogs() {
                 className="dash-input"
                 value={qText}
                 onChange={(e) => setQText(e.target.value)}
-                placeholder="بحث بالنص داخل الوصف / المستخدم / نوع العملية ..."
+                placeholder="بحث داخل السجل..."
               />
             </div>
 
@@ -1110,15 +1109,6 @@ export default function DashboardLogs() {
               {entityOptions.map((x) => (
                 <option key={x} value={x}>
                   {asLabel(ENTITY_LABELS, x)}
-                </option>
-              ))}
-            </select>
-
-            <select className="dash-select" value={userFilter} onChange={(e) => setUserFilter(e.target.value)}>
-              <option value="all">كل المستخدمين</option>
-              {userOptions.map((x) => (
-                <option key={x} value={x}>
-                  {x}
                 </option>
               ))}
             </select>
@@ -1154,14 +1144,6 @@ export default function DashboardLogs() {
               </label>
             </div>
 
-            <select className="dash-select" value={String(maxRows)} onChange={(e) => setMaxRows(Number(e.target.value))}>
-              <option value="100">100</option>
-              <option value="300">300</option>
-              <option value="500">500</option>
-              <option value="800">800</option>
-              <option value="1000">1000</option>
-            </select>
-
             <div className="logs-meta">
               المعروض: <b>{filtered.length}</b> • الإجمالي: <b>{rows.length}</b>
               {loading ? <span className="logs-loading"> • تحميل...</span> : null}
@@ -1169,57 +1151,55 @@ export default function DashboardLogs() {
           </div>
 
           {filtered.length === 0 && !loading ? (
-            <div className="logs-empty">ما فيه عمليات مسجلة ضمن الفلاتر الحالية.</div>
+            <div className="logs-empty">لا توجد عمليات مسجلة ضمن الفلاتر الحالية.</div>
           ) : (
-            <div className="logs-table">
-              <div className="logs-head">
-                <div>الوقت</div>
-                <div>العملية</div>
-                <div>العنصر</div>
-                <div>المستخدم</div>
-                <div>المصدر</div>
-                <div>الملخص</div>
-                <div>تفاصيل</div>
-              </div>
-
+            <div className="logs-list">
               {filtered.map((r) => (
-                <LogRowItem
+                <LogCard
                   key={r.id}
                   row={r}
                   expanded={expandedId === r.id}
-                  isRestoringAny={Boolean(restoringLogId)}
-                  isRestoringThis={restoringLogId === r.id}
-                  onToggleExpand={toggleExpanded}
-                  onOpenRestoreConfirm={openRestoreConfirm}
+                  details={detailsById[r.id]}
+                  canRestore={canRestoreRow(r) && restoringLogId !== r.id}
+                  onToggleExpand={toggleExpand}
+                  onToggleSnapshot={toggleSnapshot}
+                  onRestore={openRestoreConfirm}
                 />
               ))}
             </div>
           )}
 
-          <ConfirmModal
-            open={Boolean(restoreTarget)}
-            title={restoreTargetKind === "expense" ? "تأكيد استرجاع المصروف" : "تأكيد استرجاع الدخل"}
-            message={
-              restoreTarget
-                ? restoreTargetKind === "expense"
-                  ? `سيتم استرجاع سجل المصروف رقم ${restoreTargetId}.`
-                  : `سيتم استرجاع سجل الدخل رقم ${restoreTargetId}.`
-                : ""
-            }
-            variant="info"
-            confirmText={restoringLogId ? "جاري الاسترجاع..." : "تأكيد الاسترجاع"}
-            cancelText="إلغاء"
-            showCancel
-            onCancel={() => {
-              if (restoringLogId) return;
-              setRestoreTarget(null);
-            }}
-            onConfirm={() => {
-              if (restoringLogId) return;
-              void handleRestore();
-            }}
-          />
+          {hasMore ? (
+            <div className="logs-load-more">
+              <button
+                className="log-secondary-btn"
+                type="button"
+                onClick={() => loadPage("more")}
+                disabled={loadingMore}
+              >
+                {loadingMore ? "جاري التحميل..." : "تحميل المزيد"}
+              </button>
+            </div>
+          ) : null}
         </div>
+
+        <ConfirmModal
+          open={Boolean(restoreTarget)}
+          title="تأكيد الاسترجاع"
+          message="سيتم استرجاع الحالة السابقة لهذا السجل. هل أنت متأكد؟"
+          variant="info"
+          confirmText={restoringLogId ? "جاري الاسترجاع..." : "تأكيد الاسترجاع"}
+          cancelText="إلغاء"
+          showCancel
+          onCancel={() => {
+            if (restoringLogId) return;
+            setRestoreTarget(null);
+          }}
+          onConfirm={() => {
+            if (restoringLogId) return;
+            void handleRestore();
+          }}
+        />
       </div>
     </div>
   );

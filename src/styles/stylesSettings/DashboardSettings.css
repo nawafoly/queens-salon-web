@@ -33,7 +33,7 @@
 
 .dashboard-skin .settings-hint {
   margin: 6px 0 0;
-  color: var(--muted);
+  color: #475569;
   font-weight: 700;
   line-height: 1.6;
 }
@@ -233,16 +233,23 @@
 .dashboard-skin .settings-note {
   margin-top: 10px;
   font-weight: 800;
-  color: rgba(58, 47, 68, 0.78);
+  color: #334155;
   font-size: 13px;
   line-height: 1.8;
 }
 
 .dashboard-skin .settings-footnote {
   margin-top: 12px;
-  color: rgba(58, 47, 68, 0.68);
+  color: #475569;
   font-size: 13px;
   line-height: 1.8;
+}
+
+.dashboard-skin .field-hint {
+  color: #475569 !important;
+  opacity: 1 !important;
+  font-weight: 700;
+  line-height: 1.7;
 }
 
 /* =========================
