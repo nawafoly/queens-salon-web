@@ -208,6 +208,131 @@ function resolveCloseGateAt(
 }
 
 /* =========================================================
+   ✅ Helpers: Legacy Booking Repair (slots + availability)
+========================================================= */
+
+type SlotSettingsLite = {
+  enabled: boolean;
+  openTime: string;
+  closeTime: string;
+  slotStepMin: number;
+  bufferMin: number;
+};
+
+type BasicSlot = { value24: string; minutes: number };
+
+function safeKey(s: string) {
+  return String(s || "")
+    .trim()
+    .replaceAll("/", "-")
+    .replace(/\s+/g, "_");
+}
+
+function buildSlotIdForRepair(salonId: string, date: string, time: string, employeeKey: string) {
+  return `${safeKey(salonId)}__${safeKey(date)}__${safeKey(time)}__${safeKey(employeeKey)}`;
+}
+
+function toMinutesHHMM(hhmm: string) {
+  const parsed = parseHHMM(hhmm);
+  if (!parsed) return 0;
+  return parsed.totalMin;
+}
+
+function generateSalonTimeSlotsLite(
+  openTime?: string,
+  closeTime?: string,
+  stepMinutes?: number
+): BasicSlot[] {
+  const open = safeTimeHHMM(openTime, "09:00");
+  const close = safeTimeHHMM(closeTime, "22:00");
+  const step = Math.max(1, Number(stepMinutes || 5));
+
+  const startMin = toMinutesHHMM(open);
+  const endMin = toMinutesHHMM(close);
+
+  if (startMin === endMin) {
+    return [{ value24: open, minutes: startMin }];
+  }
+
+  const slots: BasicSlot[] = [];
+  const isOvernight = startMin > endMin;
+  const endCursor = isOvernight ? endMin + 1440 : endMin;
+
+  for (let t = startMin; t < endCursor; t += step) {
+    const normalized = ((Math.floor(t) % 1440) + 1440) % 1440;
+    const hh = String(Math.floor(normalized / 60)).padStart(2, "0");
+    const mm = String(normalized % 60).padStart(2, "0");
+    slots.push({ value24: `${hh}:${mm}`, minutes: normalized });
+  }
+
+  return slots;
+}
+
+function resolveSlotSettingsLite(settingsRaw: any, dateISO: string): SlotSettingsLite {
+  const booking = (settingsRaw as any)?.booking || {};
+  const dayHours = resolveBookingDayHours(settingsRaw, dateISO);
+
+  const rawStep = Number(booking?.slotStepMin ?? 0);
+  const slotStepMin = [5, 10, 15, 30].includes(rawStep) ? rawStep : 10;
+
+  const rawBuffer = Number(booking?.bufferMin ?? 0);
+  const bufferMin = Number.isFinite(rawBuffer) ? Math.max(0, Math.trunc(rawBuffer)) : 0;
+
+  return {
+    enabled: dayHours.enabled,
+    openTime: dayHours.openTime,
+    closeTime: dayHours.closeTime,
+    slotStepMin,
+    bufferMin,
+  };
+}
+
+function getTimesToLockLite(args: {
+  startTime: string;
+  durationMin: number;
+  slotStepMin: number;
+  bufferMin: number;
+  openTime: string;
+  closeTime: string;
+}) {
+  const allSlots = generateSalonTimeSlotsLite(args.openTime, args.closeTime, args.slotStepMin);
+  const s = String(args.startTime || "").trim();
+  const startSlot = allSlots.find((slot) => slot.value24 === s);
+  if (!startSlot) return [s || args.startTime];
+
+  const startMin = Number(startSlot.minutes);
+  const totalMin =
+    Math.max(0, Number(args.durationMin || 0)) + Math.max(0, Number(args.bufferMin || 0));
+  if (totalMin <= 0) return [s || args.startTime];
+
+  const endMinRaw = startMin + totalMin;
+  const endMin =
+    args.slotStepMin > 0 ? Math.ceil(endMinRaw / args.slotStepMin) * args.slotStepMin : endMinRaw;
+
+  const locked: string[] = [];
+  for (const t of allSlots) {
+    const m = Number(t.minutes);
+    if (!Number.isFinite(m)) continue;
+    if (m >= startMin && m < endMin) locked.push(t.value24);
+  }
+
+  return locked.length ? locked : [s || args.startTime];
+}
+
+function resolveBookingDurationMinLegacy(b: any) {
+  const d1 = Number(b?.durationMin ?? 0);
+  if (Number.isFinite(d1) && d1 > 0) return Math.trunc(d1);
+
+  const d2 = Number(b?.serviceSnapshot?.durationAtBooking ?? 0);
+  if (Number.isFinite(d2) && d2 > 0) return Math.trunc(d2);
+
+  const d3 = Number(b?.packageSnapshot?.totalDurationMinAtBooking ?? 0);
+  if (Number.isFinite(d3) && d3 > 0) return Math.trunc(d3);
+
+  return 60;
+}
+
+/* =========================================================
    ✅ AUTO JOB: كل 5 دقائق
    - pending انتهى وقتها → cancelled + فك الأقفال
    - confirmed انتهى وقتها → completed
@@ -1197,6 +1322,522 @@ export const adminBackfillAvailabilityDaysFromBookingSlots = onCall(
     };
 
     logger.info("[adminBackfillAvailabilityDaysFromBookingSlots] done", result);
+    return result;
+  }
+);
+
+/* =========================================================
+   ✅ Callable: adminRepairLegacyBookings
+   - One-time repair for old bookings + booking_slots + availability_days
+========================================================= */
+
+export const adminRepairLegacyBookings = onCall(
+  { region: "us-central1", timeoutSeconds: 3600, memory: "1GiB", maxInstances: 1 },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth) throw new HttpsError("unauthenticated", "لازم تسجل دخول.");
+
+    const callerUid = auth.uid;
+    const callerUser = await admin.auth().getUser(callerUid);
+    const callerEmail = String(callerUser.email || "").toLowerCase().trim();
+    const callerRole = await getCallerRole(callerUid);
+    const isBootstrap = isBootstrapEmail(callerEmail);
+
+    if (!isBootstrap && !["owner", "admin"].includes(callerRole)) {
+      throw new HttpsError("permission-denied", "غير مصرح. فقط Owner/Admin.");
+    }
+
+    const data: any = request.data || {};
+    const salonId = String(data?.salonId || SALON_ID).trim() || SALON_ID;
+    const dryRun = !!data?.dryRun;
+    const onlyStartTimeMismatch = data?.onlyStartTimeMismatch === false ? false : true;
+    const rebuildAvailabilityDays = data?.rebuildAvailabilityDays === false ? false : true;
+    const allowFullScan = !!data?.allowFullScan;
+    const limit = Math.max(1, Number(data?.limit ?? 500));
+    const verbose = !!data?.verbose;
+
+    const bookingIds = Array.isArray(data?.bookingIds)
+      ? data.bookingIds.map((x: any) => String(x || "").trim()).filter(Boolean)
+      : [];
+
+    const employeeIds = Array.isArray(data?.employeeIds)
+      ? data.employeeIds.map((x: any) => String(x || "").trim()).filter(Boolean)
+      : [];
+
+    const dateFromISO = String(data?.dateFrom || data?.fromDateISO || "").trim();
+    const dateToISO = String(data?.dateTo || data?.toDateISO || "").trim();
+
+    let updatedFromMsRaw = Number(data?.updatedFromMs ?? NaN);
+    let updatedToMsRaw = Number(data?.updatedToMs ?? NaN);
+    const updatedOnDateISO = String(data?.updatedOnDateISO || "").trim();
+
+    if (
+      (!Number.isFinite(updatedFromMsRaw) || !Number.isFinite(updatedToMsRaw)) &&
+      updatedOnDateISO
+    ) {
+      if (!parseISODateYMD(updatedOnDateISO)) {
+        throw new HttpsError("invalid-argument", "updatedOnDateISO غير صحيح (YYYY-MM-DD).");
+      }
+      const start = toDateAtRiyadh(updatedOnDateISO, "00:00");
+      if (start) {
+        const end = addDays(start, 1);
+        updatedFromMsRaw = start.getTime();
+        updatedToMsRaw = end.getTime() - 1;
+      }
+    }
+
+    const hasUpdatedRange = Number.isFinite(updatedFromMsRaw) && Number.isFinite(updatedToMsRaw);
+
+    if ((dateFromISO && !dateToISO) || (!dateFromISO && dateToISO)) {
+      throw new HttpsError("invalid-argument", "لازم dateFrom + dateTo معًا (YYYY-MM-DD).");
+    }
+
+    if ((dateFromISO || dateToISO) && (!parseISODateYMD(dateFromISO) || !parseISODateYMD(dateToISO))) {
+      throw new HttpsError("invalid-argument", "dateFrom/dateTo غير صحيحة (YYYY-MM-DD).");
+    }
+
+    if ((Number.isFinite(updatedFromMsRaw) && !Number.isFinite(updatedToMsRaw)) ||
+        (!Number.isFinite(updatedFromMsRaw) && Number.isFinite(updatedToMsRaw))) {
+      throw new HttpsError("invalid-argument", "updatedFromMs و updatedToMs لازم يكونوا معًا.");
+    }
+
+    const hasHardFilter =
+      bookingIds.length > 0 ||
+      (dateFromISO && dateToISO) ||
+      hasUpdatedRange ||
+      employeeIds.length > 0;
+
+    if (!hasHardFilter && !allowFullScan) {
+      throw new HttpsError(
+        "invalid-argument",
+        "لازم تحدد نطاق آمن: bookingIds أو date range أو updatedAt range أو employeeIds. أو allowFullScan=true."
+      );
+    }
+
+    const bookingsCol = db.collection("salons").doc(salonId).collection("bookings");
+    const slotsCol = db.collection("salons").doc(salonId).collection("booking_slots");
+
+    let settingsRaw: any = {};
+    try {
+      const settingsSnap = await db
+        .collection("salons")
+        .doc(salonId)
+        .collection("settings")
+        .doc("app")
+        .get();
+      settingsRaw = settingsSnap.exists ? settingsSnap.data() || {} : {};
+    } catch (e) {
+      logger.warn("[adminRepairLegacyBookings] failed to read settings/app, fallback defaults", e as any);
+      settingsRaw = {};
+    }
+
+    const startedAtMs = Date.now();
+    logger.info("[adminRepairLegacyBookings] start", {
+      salonId,
+      dryRun,
+      onlyStartTimeMismatch,
+      rebuildAvailabilityDays,
+      allowFullScan,
+      limit,
+      bookingIdsCount: bookingIds.length,
+      employeeIdsCount: employeeIds.length,
+      dateFromISO,
+      dateToISO,
+      updatedOnDateISO: updatedOnDateISO || undefined,
+      updatedFromMs: hasUpdatedRange ? updatedFromMsRaw : undefined,
+      updatedToMs: hasUpdatedRange ? updatedToMsRaw : undefined,
+      callerUid,
+      callerRole,
+    });
+
+    let candidates: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+
+    if (bookingIds.length > 0) {
+      const refs = bookingIds.map((id) => bookingsCol.doc(id));
+      const snaps = await db.getAll(...refs);
+      candidates = snaps.filter((s) => s.exists) as FirebaseFirestore.QueryDocumentSnapshot[];
+    } else {
+      if (hasUpdatedRange && (dateFromISO || dateToISO)) {
+        throw new HttpsError(
+          "invalid-argument",
+          "اختر نطاق واحد فقط: date range أو updatedAt range."
+        );
+      }
+
+      if (hasUpdatedRange) {
+        const from = admin.firestore.Timestamp.fromMillis(updatedFromMsRaw);
+        const to = admin.firestore.Timestamp.fromMillis(updatedToMsRaw);
+        const snap = await bookingsCol.where("updatedAt", ">=", from).where("updatedAt", "<=", to).limit(limit).get();
+        candidates = snap.docs;
+      } else if (dateFromISO && dateToISO) {
+        const snap = await bookingsCol.where("date", ">=", dateFromISO).where("date", "<=", dateToISO).limit(limit).get();
+        candidates = snap.docs;
+      } else if (employeeIds.length > 0) {
+        if (employeeIds.length <= 10) {
+          const snap = await bookingsCol.where("employeeId", "in", employeeIds.slice(0, 10)).limit(limit).get();
+          candidates = snap.docs;
+        } else {
+          throw new HttpsError(
+            "invalid-argument",
+            "employeeIds أكبر من 10 بدون نطاق تاريخ. أضف date range أو قلّل العدد."
+          );
+        }
+      } else if (allowFullScan) {
+        const snap = await bookingsCol.limit(limit).get();
+        candidates = snap.docs;
+      }
+    }
+
+    let scanned = 0;
+    let processed = 0;
+    let matched = 0;
+
+    let timePatched = 0;
+    let slotIdPatched = 0;
+    let slotDocsScanned = 0;
+    let slotsDeleted = 0;
+    let slotsCreated = 0;
+    let slotsUpdated = 0;
+    let slotsKept = 0;
+    let skippedByMismatch = 0;
+    let skippedNoTime = 0;
+    let skippedNoEmployee = 0;
+    let skippedNoDate = 0;
+    let skippedNoSlots = 0;
+
+    const availabilityPairs = new Map<string, { dateISO: string; employeeId: string; employeeKey: string }>();
+    const sampleBookingIds: string[] = [];
+
+    let batch = db.batch();
+    let ops = 0;
+
+    const commitIfNeeded = async () => {
+      if (dryRun) return;
+      if (ops <= 0) return;
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    };
+
+    for (const docSnap of candidates) {
+      if (processed >= limit) break;
+      scanned++;
+
+      const bookingId = String(docSnap.id || "").trim();
+      const b: any = docSnap.data() || {};
+
+      const bookingDate = String(b?.date || "").trim();
+      const employeeId = String(b?.employeeId ?? "").trim();
+      const status = String(b?.status || "").trim().toLowerCase();
+
+      if (employeeIds.length > 0 && employeeId && !employeeIds.includes(employeeId)) continue;
+      if (employeeIds.length > 0 && !employeeId) continue;
+
+      if (dateFromISO && dateToISO && bookingDate) {
+        if (bookingDate < dateFromISO || bookingDate > dateToISO) continue;
+      }
+
+      if (hasUpdatedRange) {
+        const updatedAt: any = b?.updatedAt;
+        const updatedAtMs =
+          typeof updatedAt?.toMillis === "function"
+            ? updatedAt.toMillis()
+            : Number(updatedAt?.seconds ?? NaN) * 1000;
+        if (!Number.isFinite(updatedAtMs)) continue;
+        if (updatedAtMs < updatedFromMsRaw || updatedAtMs > updatedToMsRaw) continue;
+      }
+
+      const timeRaw = String(b?.time ?? "").trim();
+      const startRaw = String(b?.startTime ?? "").trim();
+      const timeNorm = safeTimeHHMM(timeRaw, "");
+      const startNorm = safeTimeHHMM(startRaw, "");
+      const canonicalTime = timeNorm || startNorm;
+
+      const needsTimeFix =
+        !!canonicalTime &&
+        (!timeRaw || !startRaw || timeRaw !== startRaw || timeNorm !== timeRaw || startNorm !== startRaw);
+
+      if (onlyStartTimeMismatch && !needsTimeFix) {
+        skippedByMismatch++;
+        continue;
+      }
+
+      processed++;
+      matched++;
+      if (sampleBookingIds.length < 20 && bookingId) sampleBookingIds.push(bookingId);
+
+      if (verbose) {
+        logger.info("[adminRepairLegacyBookings] booking", {
+          bookingId,
+          bookingDate,
+          employeeId,
+          status,
+          timeRaw,
+          startRaw,
+          canonicalTime,
+        });
+      }
+
+      const bookingPatch: any = {};
+      let patchedTimeFields = false;
+
+      if (needsTimeFix && canonicalTime) {
+        if (timeRaw !== canonicalTime) {
+          bookingPatch.time = canonicalTime;
+          patchedTimeFields = true;
+        }
+        if (startRaw !== canonicalTime) {
+          bookingPatch.startTime = canonicalTime;
+          patchedTimeFields = true;
+        }
+      }
+
+      if (canonicalTime && bookingDate && employeeId) {
+        const nextSlotId = buildSlotIdForRepair(salonId, bookingDate, canonicalTime, employeeId);
+        if (nextSlotId && String(b?.slotId || "").trim() !== nextSlotId) {
+          bookingPatch.slotId = nextSlotId;
+        }
+      }
+
+      const hasBookingPatch = Object.keys(bookingPatch).length > 0;
+      if (hasBookingPatch) {
+        bookingPatch.updatedAt = FieldValue.serverTimestamp();
+        if (!dryRun) {
+          batch.update(bookingsCol.doc(bookingId), bookingPatch);
+          ops++;
+        }
+        if (patchedTimeFields) timePatched++;
+        if (bookingPatch.slotId) slotIdPatched++;
+      }
+
+      // ----- booking_slots repair -----
+      const shouldHaveSlots = status !== "cancelled";
+      const hasDate = !!bookingDate && !!parseISODateYMD(bookingDate);
+      const hasTime = !!canonicalTime && !!parseHHMM(canonicalTime);
+      const hasEmployee = !!employeeId;
+
+      const canComputeSlots = shouldHaveSlots && hasDate && hasTime && hasEmployee;
+
+      if (!hasDate) skippedNoDate++;
+      if (!hasEmployee) skippedNoEmployee++;
+      if (!hasTime) skippedNoTime++;
+
+      const slotsSnap = await slotsCol.where("bookingId", "==", bookingId).get();
+      slotDocsScanned += slotsSnap.size;
+
+      const existingIds = new Set<string>();
+      const existingById = new Map<string, any>();
+      slotsSnap.docs.forEach((d) => {
+        existingIds.add(d.id);
+        existingById.set(d.id, d);
+      });
+
+      if (!shouldHaveSlots) {
+        // cancelled: delete any existing locks
+        for (const d of slotsSnap.docs) {
+          if (!dryRun) {
+            batch.delete(d.ref);
+            ops++;
+          }
+          slotsDeleted++;
+        }
+
+        if (hasDate && hasEmployee) {
+          const key = `${bookingDate}__${employeeId}`;
+          const employeeKeyHint =
+            String(b?.employeeKey || "").trim() ||
+            String(b?.employeeUid || "").trim() ||
+            employeeId;
+          availabilityPairs.set(key, { dateISO: bookingDate, employeeId, employeeKey: employeeKeyHint });
+        }
+
+        await commitIfNeeded();
+        continue;
+      }
+
+      if (!canComputeSlots) {
+        skippedNoSlots++;
+        await commitIfNeeded();
+        continue;
+      }
+
+      const slotSettings = resolveSlotSettingsLite(settingsRaw, bookingDate);
+      const slotStepMin = [5, 10, 15, 30].includes(Number(b?.slotStepMinAtBooking))
+        ? Number(b?.slotStepMinAtBooking)
+        : slotSettings.slotStepMin;
+      const bufferMin = Number.isFinite(Number(b?.bufferMinAtBooking))
+        ? Math.max(0, Math.trunc(Number(b?.bufferMinAtBooking)))
+        : slotSettings.bufferMin;
+      const durationMin = resolveBookingDurationMinLegacy(b);
+
+      const timesToLockRaw = getTimesToLockLite({
+        startTime: canonicalTime,
+        durationMin,
+        slotStepMin,
+        bufferMin,
+        openTime: slotSettings.openTime,
+        closeTime: slotSettings.closeTime,
+      });
+
+      const timesToLock = Array.from(
+        new Set(timesToLockRaw.map((t) => String(t || "").trim()).filter(Boolean))
+      );
+
+      const employeeKey =
+        String(b?.employeeKey || "").trim() ||
+        String(b?.employeeUid || "").trim() ||
+        employeeId ||
+        safeKey(String(b?.employeeName || "unknown_employee"));
+
+      const correctSlotById = new Map<string, string>();
+      timesToLock.forEach((t) => {
+        const slotId = buildSlotIdForRepair(salonId, bookingDate, t, employeeId);
+        correctSlotById.set(slotId, t);
+      });
+
+      // delete stale slots
+      for (const [id, docAny] of existingById.entries()) {
+        if (!correctSlotById.has(id)) {
+          if (!dryRun) {
+            batch.delete((docAny as any).ref);
+            ops++;
+          }
+          slotsDeleted++;
+        }
+      }
+
+      // update existing correct slots if needed
+      for (const [id, expectedTime] of correctSlotById.entries()) {
+        if (!existingIds.has(id)) continue;
+        const docAny: any = existingById.get(id);
+        const sd: any = docAny?.data?.() || {};
+
+        const needsUpdate =
+          String(sd?.time || "").trim() !== expectedTime ||
+          String(sd?.startTime || "").trim() !== canonicalTime ||
+          String(sd?.date || "").trim() !== bookingDate ||
+          String(sd?.employeeId ?? "").trim() !== employeeId ||
+          String(sd?.employeeKey ?? "").trim() !== employeeKey;
+
+        if (needsUpdate) {
+          if (!dryRun) {
+            batch.set(
+              docAny.ref,
+              {
+                bookingId,
+                employeeId: b?.employeeId ?? null,
+                employeeUid: b?.employeeUid ?? null,
+                employeeName: String(b?.employeeName || ""),
+                employeeKey,
+                date: bookingDate,
+                time: expectedTime,
+                startTime: canonicalTime,
+                durationMin,
+                userId: b?.userId ?? null,
+                clientPhone: String(b?.clientPhone || ""),
+                updatedAt: FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+            ops++;
+          }
+          slotsUpdated++;
+        } else {
+          slotsKept++;
+        }
+      }
+
+      // create missing correct slots
+      for (const [id, expectedTime] of correctSlotById.entries()) {
+        if (existingIds.has(id)) continue;
+        if (!dryRun) {
+          batch.set(
+            slotsCol.doc(id),
+            {
+              bookingId,
+              employeeId: b?.employeeId ?? null,
+              employeeUid: b?.employeeUid ?? null,
+              employeeName: String(b?.employeeName || ""),
+              employeeKey,
+              date: bookingDate,
+              time: expectedTime,
+              startTime: canonicalTime,
+              durationMin,
+              userId: b?.userId ?? null,
+              clientPhone: String(b?.clientPhone || ""),
+              createdAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+          ops++;
+        }
+        slotsCreated++;
+      }
+
+      if (hasDate && hasEmployee) {
+        const key = `${bookingDate}__${employeeId}`;
+        availabilityPairs.set(key, { dateISO: bookingDate, employeeId, employeeKey });
+      }
+
+      await commitIfNeeded();
+    }
+
+    await commitIfNeeded();
+
+    let availabilityRebuilt = 0;
+    if (rebuildAvailabilityDays) {
+      if (dryRun) {
+        availabilityRebuilt = availabilityPairs.size;
+      } else {
+        for (const entry of availabilityPairs.values()) {
+          await rebuildAvailabilityDayEmployeeFromBookingSlots({
+            salonId,
+            dateISO: entry.dateISO,
+            employeeId: entry.employeeId,
+            employeeKeyHint: entry.employeeKey,
+          });
+          availabilityRebuilt++;
+        }
+      }
+    }
+
+    const finishedAtMs = Date.now();
+    const result = {
+      ok: true,
+      salonId,
+      dryRun,
+      onlyStartTimeMismatch,
+      rebuildAvailabilityDays,
+      allowFullScan,
+      limit,
+      dateFromISO: dateFromISO || undefined,
+      dateToISO: dateToISO || undefined,
+      updatedOnDateISO: updatedOnDateISO || undefined,
+      updatedFromMs: hasUpdatedRange ? updatedFromMsRaw : undefined,
+      updatedToMs: hasUpdatedRange ? updatedToMsRaw : undefined,
+      scanned,
+      processed,
+      matched,
+      timePatched,
+      slotIdPatched,
+      slotDocsScanned,
+      slotsDeleted,
+      slotsCreated,
+      slotsUpdated,
+      slotsKept,
+      skippedByMismatch,
+      skippedNoTime,
+      skippedNoEmployee,
+      skippedNoDate,
+      skippedNoSlots,
+      availabilityRebuilt,
+      sampleBookingIds,
+      durationMs: finishedAtMs - startedAtMs,
+      startedAt: new Date(startedAtMs).toISOString(),
+      finishedAt: new Date(finishedAtMs).toISOString(),
+    };
+
+    logger.info("[adminRepairLegacyBookings] done", result);
     return result;
   }
 );

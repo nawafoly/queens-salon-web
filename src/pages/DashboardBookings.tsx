@@ -37,6 +37,7 @@ import {
   type BookingPaymentType,
   type BookingStatus,
 } from "../services/firestoreBookings";
+import { listActiveStaffAll, type StaffPublicWithId } from "../services/firestoreStaffPublic";
 import { removeIncomeFS, upsertIncomeFS } from "../services/firestoreIncome";
 import type { PaymentMethod } from "../types/finance";
 
@@ -47,6 +48,7 @@ import { resolveServiceName } from "../services/serviceResolver";
 
 // ✅ NEW: AppSettings from Firestore (source of truth)
 import { AppSettingsService, type AppSettings } from "../services/AppSettingsService";
+import { SALON_ID } from "../helpers/bookingSharedConstants";
 
 import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 import {
@@ -247,11 +249,18 @@ type EditServiceOption = {
   price: number;
   durationMin: number;
 };
+type EditEmployeeOption = {
+  id: string;
+  name: string;
+  linkedUid?: string;
+  active?: boolean;
+};
 
 type EditBookingDraft = {
   customerName: string;
   phone: string;
   note: string;
+  employeeId: string;
   date: string;
   time: string;
   sectionId: string;
@@ -273,6 +282,7 @@ function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
     customerName: String(b.customerName || "").trim(),
     phone: String(b.phone || "").trim(),
     note: String((b as any)?.note || "").trim(),
+    employeeId: String((b as any)?.employeeId || "").trim(),
     date: String(b.date || "").trim(),
     time: normalizeEditBookingTimeInput(String(b.time || "").trim()) || String(b.time || "").trim(),
     sectionId: primaryService.sectionId,
@@ -370,6 +380,7 @@ type Booking = {
   employeeName?: string;
   employeeId?: string | null;
   employeeUid?: string | null;
+  employeeKey?: string | null;
   date: string;
   time: string;
   status: BookingStatus;
@@ -761,22 +772,54 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
 });
 
 type EditBookingScheduleSectionProps = {
+  employeeId: string;
+  staffOptions: EditEmployeeOption[];
+  staffLoading: boolean;
   date: string;
   time: string;
   disabled: boolean;
+  onEmployeeChange: (value: string) => void;
   onDateChange: (value: string) => void;
   onTimeChange: (value: string) => void;
 };
 
 const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
+  employeeId,
+  staffOptions,
+  staffLoading,
   date,
   time,
   disabled,
+  onEmployeeChange,
   onDateChange,
   onTimeChange,
 }: EditBookingScheduleSectionProps) {
   return (
     <div className="bk-edit-grid">
+      <label>
+        <div style={{ fontSize: 13, marginBottom: 4 }}>الموظفة</div>
+        <select
+          className="bk-select"
+          value={employeeId}
+          onChange={(e) => onEmployeeChange(e.target.value)}
+          disabled={disabled || staffLoading}
+        >
+          <option value="">
+            {staffLoading
+              ? "جاري تحميل الموظفات..."
+              : staffOptions.length
+                ? "اختاري الموظفة"
+                : "لا توجد موظفات متاحة"}
+          </option>
+          {staffOptions.map((staff) => (
+            <option key={`edit_employee_${staff.id}`} value={staff.id}>
+              {staff.name}
+              {staff.active === false ? " (غير نشطة)" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <label>
         <div style={{ fontSize: 13, marginBottom: 4 }}>التاريخ</div>
         <input
@@ -946,6 +989,9 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
   const [sections, setSections] = useState<EditSectionOption[]>([]);
   const [categories, setCategories] = useState<EditCategoryOption[]>([]);
   const [services, setServices] = useState<EditServiceOption[]>([]);
+  const [staffOptions, setStaffOptions] = useState<EditEmployeeOption[]>([]);
+  const [staffLoading, setStaffLoading] = useState(false);
+  const staffCacheRef = useRef<EditEmployeeOption[] | null>(null);
   const [draft, setDraft] = useState<EditBookingDraft>(() =>
     target
       ? buildEditBookingDraftFromBooking(target)
@@ -953,6 +999,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
           customerName: "",
           phone: "",
           note: "",
+          employeeId: "",
           date: "",
           time: "",
           sectionId: "",
@@ -1143,6 +1190,76 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     };
   }, [draft.sectionId, draft.serviceId, open, target?.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const mergeCurrentEmployee = (rows: EditEmployeeOption[]) => {
+      const currentId = String(target?.employeeId || "").trim();
+      if (!currentId) return rows;
+      if (rows.some((row) => row.id === currentId)) return rows;
+
+      const currentName = String(target?.employeeName || "").trim() || currentId;
+      const currentUid = String(target?.employeeUid || "").trim() || undefined;
+      return [
+        ...rows,
+        {
+          id: currentId,
+          name: currentName,
+          linkedUid: currentUid,
+          active: false,
+        },
+      ];
+    };
+
+    const loadEditStaffOptions = async () => {
+      if (!open || !target) return;
+
+      const cached = staffCacheRef.current;
+      if (Array.isArray(cached)) {
+        if (!cancelled) setStaffOptions(mergeCurrentEmployee(cached));
+        return;
+      }
+
+      setStaffLoading(true);
+      try {
+        const rows = await listActiveStaffAll(SALON_ID);
+        const nextOptions = (rows || [])
+          .map((row: StaffPublicWithId) => ({
+            id: String(row.id || "").trim(),
+            name: String(row.name || "").trim(),
+            linkedUid: String(row.linkedUid || "").trim() || undefined,
+            active: row.active !== false,
+          }))
+          .filter((row) => row.id && row.name)
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        staffCacheRef.current = nextOptions;
+        if (!cancelled) setStaffOptions(mergeCurrentEmployee(nextOptions));
+      } catch {
+        if (!cancelled) setStaffOptions(mergeCurrentEmployee([]));
+      } finally {
+        if (!cancelled) setStaffLoading(false);
+      }
+    };
+
+    void loadEditStaffOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, target?.employeeId, target?.employeeName, target?.employeeUid, target?.id]);
+
+  useEffect(() => {
+    if (!open || !target) return;
+    if (draft.employeeId) return;
+    const targetKey = normalizeArabicName(String(target.employeeName || "").trim());
+    if (!targetKey) return;
+    const match = staffOptions.find(
+      (row) => normalizeArabicName(String(row.name || "").trim()) === targetKey
+    );
+    if (!match) return;
+    setDraft((prev) => (prev.employeeId ? prev : { ...prev, employeeId: match.id }));
+  }, [draft.employeeId, open, staffOptions, target?.employeeName, target?.id]);
+
   const filteredServices = useMemo(() => {
     const selectedCategoryId = String(draft.categoryId || "").trim();
     if (!selectedCategoryId) return services;
@@ -1181,6 +1298,9 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     },
     [filteredServices]
   );
+  const onEmployeeChange = useCallback((value: string) => {
+    setDraft((prev) => (prev.employeeId === value ? prev : { ...prev, employeeId: value }));
+  }, []);
   const onDateChange = useCallback((value: string) => {
     setDraft((prev) => (prev.date === value ? prev : { ...prev, date: value }));
   }, []);
@@ -1224,6 +1344,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     const customerName = String(draft.customerName || "").trim();
     const phone = String(draft.phone || "").trim();
     const note = String(draft.note || "").trim();
+    const employeeId = String(draft.employeeId || "").trim();
     const date = String(draft.date || "").trim();
     const time = normalizeEditBookingTimeInput(String(draft.time || "").trim());
     const sectionId = String(draft.sectionId || "").trim();
@@ -1237,6 +1358,16 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     const paymentMethod = (["cash", "card", "transfer", "other"] as const).includes(draft.paymentMethod as any)
       ? (draft.paymentMethod as PaymentMethod)
       : "transfer";
+
+    const selectedEmployee = staffOptions.find(
+      (row) => String(row.id || "").trim() === employeeId
+    ) || null;
+    const fallbackEmployeeUid =
+      String(target.employeeId || "").trim() === employeeId
+        ? String(target.employeeUid || "").trim()
+        : "";
+    const employeeUid = String(selectedEmployee?.linkedUid || fallbackEmployeeUid || "").trim();
+    const employeeName = String(selectedEmployee?.name || target.employeeName || "").trim();
 
     const selectedService = services.find((service) => String(service.id || "").trim() === serviceId) || null;
     const selectedSection = sections.find((section) => String(section.id || "").trim() === sectionId) || null;
@@ -1252,6 +1383,14 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     }
     if (!sectionId) {
       setError("القسم مطلوب.");
+      return;
+    }
+    if (!employeeId) {
+      setError("الموظفة مطلوبة.");
+      return;
+    }
+    if (!employeeName) {
+      setError("تعذر تحديد الموظفة المختارة.");
       return;
     }
     if (!serviceId || !selectedService) {
@@ -1314,6 +1453,18 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
       },
     ];
 
+    const targetEmployeeId = String(target.employeeId || "").trim();
+    const targetEmployeeName = String(target.employeeName || "").trim();
+    const shouldUpdateEmployee = employeeId !== targetEmployeeId;
+    const employeePatch = shouldUpdateEmployee
+      ? {
+          employeeId,
+          employeeUid: employeeUid || null,
+          employeeName: employeeName || targetEmployeeName || "",
+          employeeKey: employeeUid || employeeId || undefined,
+        }
+      : {};
+
     const isFullyPaidAfterEdit = price > 0 && remainingAmount <= 0;
     let statusAfterEdit: BookingStatus | null = null;
     if (isFullyPaidAfterEdit && (target.status === "pending" || target.status === "confirmed")) {
@@ -1329,6 +1480,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
 
     try {
       const patch = {
+        ...employeePatch,
         clientName: customerName,
         clientPhone: phone || null,
         note,
@@ -1358,6 +1510,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
 
       const resolvedStatus = statusAfterEdit || target.status;
       onSaved(target.id, {
+        ...employeePatch,
         customerName,
         phone: phone || "",
         note,
@@ -1381,7 +1534,13 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
 
       shouldClose = true;
     } catch (e: any) {
-      if (e?.code === "EMPLOYEE_UNAVAILABLE") {
+      if (e?.code === "SLOT_TAKEN" || String(e?.message || "") === "SLOT_TAKEN") {
+        setError("الموعد يتعارض مع حجز آخر لنفس الموظفة. اختاري وقتًا أو موظفة أخرى.");
+      } else if (e?.code === "BOOKING_DAY_CLOSED") {
+        setError("اليوم المختار غير متاح للحجز. اختاري تاريخًا آخر.");
+      } else if (e?.code === "BOOKING_TIME_OUT_OF_HOURS") {
+        setError("الوقت المختار خارج ساعات الدوام أو لا يكفي لمدة الخدمة والبافر.");
+      } else if (e?.code === "EMPLOYEE_UNAVAILABLE") {
         setError("الموظفة المعينة على هذا الحجز لم تعد نشطة تشغيليًا لهذا الموعد. اختاري موظفة أخرى أو أعيدي جدولة الحجز.");
       } else {
         setError("تعذر حفظ تعديل الحجز.");
@@ -1391,7 +1550,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     }
 
     if (shouldClose) onClose();
-  }, [categories, draft, onClose, onSaved, sections, services, target]);
+  }, [categories, draft, onClose, onSaved, sections, services, staffOptions, target]);
 
   return (
     <Modal
@@ -1432,9 +1591,13 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
           />
 
           <EditBookingScheduleSection
+            employeeId={draft.employeeId}
+            staffOptions={staffOptions}
+            staffLoading={staffLoading}
             date={draft.date}
             time={draft.time}
             disabled={saving}
+            onEmployeeChange={onEmployeeChange}
             onDateChange={onDateChange}
             onTimeChange={onTimeChange}
           />

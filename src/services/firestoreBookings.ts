@@ -122,6 +122,7 @@ export type BookingDoc = {
 
   date: string;
   time: string;
+  startTime?: string;
 
   // ✅ stored start-slotId (for debugging & tracking)
   slotId?: string;
@@ -320,6 +321,7 @@ function normalizeBooking(raw: any): BookingDoc {
 
     date: String(raw?.date ?? ""),
     time: String(raw?.time ?? ""),
+    startTime: raw?.startTime ? String(raw.startTime) : undefined,
 
     slotId: raw?.slotId ? String(raw.slotId) : undefined,
 
@@ -967,6 +969,87 @@ function getTimesToLock(
   }
 
   return locked.length ? locked : [s || startTime];
+}
+
+async function buildSlotPlanForUpdate(args: {
+  dateISO: string;
+  time: string;
+  employeeId: string;
+  durationMin: number;
+  slotStepMinAtBooking?: number;
+  bufferMinAtBooking?: number;
+}) {
+  const dateISO = normalizeISODate(args.dateISO);
+  const employeeId = String(args.employeeId || "").trim();
+  if (!employeeId) throw employeeRequiredError();
+  if (!dateISO) throw bookingTimeOutOfHoursError();
+
+  const requestedStartTime = String(args.time || "").trim();
+  const durationMin = Math.max(0, Number(args.durationMin || 0)) || 60;
+
+  const daySlotSettings = await getSlotSettingsFresh(dateISO);
+  if (!daySlotSettings.enabled) throw bookingDayClosedError();
+
+  const requestedStep =
+    [5, 10, 15, 30].includes(Number(args.slotStepMinAtBooking))
+      ? Number(args.slotStepMinAtBooking)
+      : daySlotSettings.slotStepMin;
+
+  const allSlotsForDay = generateSalonTimeSlots(
+    daySlotSettings.openTime,
+    daySlotSettings.closeTime,
+    requestedStep
+  );
+  const hasRequestedStart = allSlotsForDay.some(
+    (slot) => String(slot.value24 || "").trim() === requestedStartTime
+  );
+  if (!hasRequestedStart) throw bookingTimeOutOfHoursError();
+
+  const requestedBufferMin = Math.max(
+    0,
+    Number.isFinite(Number(args.bufferMinAtBooking))
+      ? Number(args.bufferMinAtBooking)
+      : daySlotSettings.bufferMin
+  );
+  const allowedStartsByDuration = filterSlotsByServiceEnd(
+    allSlotsForDay,
+    daySlotSettings.closeTime,
+    durationMin,
+    requestedBufferMin,
+    ALLOW_OVERTIME_MIN
+  );
+  const isAllowedByDuration = allowedStartsByDuration.some(
+    (slot) => String(slot.value24 || "").trim() === requestedStartTime
+  );
+  if (!isAllowedByDuration) throw bookingTimeOutOfHoursError();
+
+  const timesToLock = getTimesToLock(
+    requestedStartTime,
+    durationMin,
+    {
+      slotStepMin: args.slotStepMinAtBooking,
+      bufferMin: args.bufferMinAtBooking,
+    },
+    dateISO,
+    daySlotSettings
+  );
+
+  const slotRefs = timesToLock.map((t) =>
+    doc(db, ...SLOTS_COL, buildSlotId(dateISO, t, employeeId))
+  );
+
+  const startSlotId = buildSlotId(dateISO, requestedStartTime, employeeId);
+
+  return {
+    dateISO,
+    requestedStartTime,
+    durationMin,
+    timesToLock,
+    slotRefs,
+    startSlotId,
+    slotStepMin: requestedStep,
+    bufferMin: requestedBufferMin,
+  };
 }
 
 /* =========================
@@ -2925,58 +3008,378 @@ if (status === "confirmed" || status === "completed") {
   }
 }
 
+type AvailabilityPatchEntry = {
+  ref: any;
+  dateISO: string;
+  employeeId: string;
+  employeeKey: string;
+  patch: Record<string, any>;
+  addTimes: Set<string>;
+};
+
+function getAvailabilityPatchEntry(
+  map: Map<string, AvailabilityPatchEntry>,
+  args: { ref: any; dateISO: string; employeeId: string; employeeKey: string }
+) {
+  const key = args.ref.path;
+  const existing = map.get(key);
+  if (existing) {
+    if (!existing.employeeKey) existing.employeeKey = args.employeeKey;
+    return existing;
+  }
+  const entry: AvailabilityPatchEntry = {
+    ref: args.ref,
+    dateISO: args.dateISO,
+    employeeId: args.employeeId,
+    employeeKey: args.employeeKey,
+    patch: {},
+    addTimes: new Set<string>(),
+  };
+  map.set(key, entry);
+  return entry;
+}
+
+async function applyAvailabilityPatchMap(map: Map<string, AvailabilityPatchEntry>) {
+  if (map.size === 0) return;
+  await Promise.all(
+    Array.from(map.values()).map(async (entry) => {
+      const patch = stripUndefined({
+        date: entry.dateISO,
+        employeeId: entry.employeeId,
+        employeeKey: entry.employeeKey,
+        updatedAt: serverTimestamp(),
+        ...entry.patch,
+      }) as any;
+      try {
+        await updateDoc(entry.ref, patch);
+      } catch (e: any) {
+        if (String(e?.code || "").trim() === "not-found" && entry.addTimes.size > 0) {
+          const bookedSlots: Record<string, true> = {};
+          entry.addTimes.forEach((t) => {
+            const k = String(t || "").trim();
+            if (k) bookedSlots[k] = true;
+          });
+          await setDoc(entry.ref, {
+            date: entry.dateISO,
+            employeeId: entry.employeeId,
+            employeeKey: entry.employeeKey,
+            bookedSlots,
+            complete: false,
+            updatedAt: serverTimestamp(),
+          } as any);
+        }
+      }
+    })
+  );
+}
+
 export async function updateBookingDetails(bookingId: string, patch: Partial<BookingDoc>) {
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
-  const anyPatch = patch as any;
-  const actorSnapshot = resolveActorSnapshot({ booking: patch });
-
+  let effectivePatch: Partial<BookingDoc> = { ...patch };
   const hasOperationalAssignmentPatch =
     patch.date !== undefined ||
     patch.time !== undefined ||
+    (patch as any).startTime !== undefined ||
+    patch.employeeId !== undefined ||
+    patch.employeeUid !== undefined ||
+    patch.employeeKey !== undefined ||
+    patch.employeeName !== undefined;
+  const hasSlotSensitivePatch =
+    hasOperationalAssignmentPatch ||
+    patch.durationMin !== undefined ||
+    patch.slotStepMinAtBooking !== undefined ||
+    patch.bufferMinAtBooking !== undefined;
+  const needsCurrentBooking =
+    hasOperationalAssignmentPatch ||
+    hasSlotSensitivePatch ||
     patch.employeeId !== undefined ||
     patch.employeeUid !== undefined ||
     patch.employeeKey !== undefined ||
     patch.employeeName !== undefined;
 
-  if (hasOperationalAssignmentPatch) {
+  let current: BookingDoc | null = null;
+  if (needsCurrentBooking) {
     const currentSnap = await getDoc(bookingRef);
     if (currentSnap.exists()) {
-      const current = normalizeBooking(currentSnap.data());
-      const nextEmployeeId = String(
-        patch.employeeId !== undefined ? patch.employeeId ?? "" : current.employeeId ?? ""
-      ).trim();
-      const nextDate = normalizeISODate(patch.date !== undefined ? patch.date : current.date);
-      if (nextEmployeeId && nextDate && nextDate >= localISODate()) {
-        await assertEmployeeCanAcceptBooking({
-          employeeId: nextEmployeeId,
-          dateISO: nextDate,
-          channel: "dashboard",
-        });
-      }
+      current = normalizeBooking(currentSnap.data());
     }
   }
 
-  // ✅ تحديث booking
-  await updateDoc(
-    bookingRef,
-    stripUndefined({
-      ...patch,
+  const currentEmployeeId = String(current?.employeeId ?? "").trim();
+  const currentEmployeeUid = String(current?.employeeUid ?? "").trim();
+  const currentEmployeeName = String(current?.employeeName ?? "").trim();
+  const currentEmployeeKey = String(current?.employeeKey ?? "").trim();
+  const currentDate = normalizeISODate(current?.date);
+  const currentTime = String(current?.time ?? (current as any)?.startTime ?? "").trim();
+  const currentDurationMin = Math.max(0, Number(current?.durationMin || 0)) || 60;
+  const currentSlotStepMin = Number((current as any)?.slotStepMinAtBooking ?? 0) || 0;
+  const currentBufferMin = Number((current as any)?.bufferMinAtBooking ?? 0) || 0;
+
+  const nextEmployeeId = String(
+    patch.employeeId !== undefined ? patch.employeeId ?? "" : currentEmployeeId
+  ).trim();
+  const nextEmployeeUid = String(
+    patch.employeeUid !== undefined ? patch.employeeUid ?? "" : currentEmployeeUid
+  ).trim();
+  const nextEmployeeName = String(
+    patch.employeeName !== undefined ? patch.employeeName ?? "" : currentEmployeeName
+  ).trim();
+  const nextDate = normalizeISODate(patch.date !== undefined ? patch.date : current?.date);
+  const nextTimeRaw =
+    patch.time !== undefined
+      ? patch.time
+      : (patch as any).startTime !== undefined
+        ? (patch as any).startTime
+        : current?.time ?? (current as any)?.startTime ?? "";
+  const nextTime = String(nextTimeRaw ?? "").trim();
+  const nextDurationMin = Math.max(
+    0,
+    Number(patch.durationMin !== undefined ? patch.durationMin : current?.durationMin ?? 0)
+  ) || 60;
+  const nextSlotStepMin =
+    patch.slotStepMinAtBooking !== undefined
+      ? Number(patch.slotStepMinAtBooking)
+      : (current as any)?.slotStepMinAtBooking;
+  const nextBufferMin =
+    patch.bufferMinAtBooking !== undefined
+      ? Number(patch.bufferMinAtBooking)
+      : (current as any)?.bufferMinAtBooking;
+
+  const hasSlotChange = current
+    ? currentEmployeeId !== nextEmployeeId ||
+      currentDate !== nextDate ||
+      currentTime !== nextTime ||
+      Number(currentDurationMin || 0) !== Number(nextDurationMin || 0) ||
+      Number(currentSlotStepMin || 0) !== Number(nextSlotStepMin || 0) ||
+      Number(currentBufferMin || 0) !== Number(nextBufferMin || 0)
+    : hasSlotSensitivePatch;
+
+  if (hasSlotChange && nextEmployeeId && nextDate && nextDate >= localISODate()) {
+    await assertEmployeeCanAcceptBooking({
+      employeeId: nextEmployeeId,
+      dateISO: nextDate,
+      channel: "dashboard",
+    });
+  }
+
+  const shouldResolveEmployeePatch =
+    patch.employeeId !== undefined ||
+    patch.employeeUid !== undefined ||
+    patch.employeeKey !== undefined ||
+    patch.employeeName !== undefined;
+
+  const resolvedEmployeeId = nextEmployeeId;
+  const resolvedEmployeeUid = nextEmployeeUid;
+  const resolvedEmployeeName = nextEmployeeName || currentEmployeeName;
+  const resolvedEmployeeKey =
+    resolvedEmployeeUid || resolvedEmployeeId || safeKey(resolvedEmployeeName || "unknown_employee");
+
+  if (shouldResolveEmployeePatch) {
+    effectivePatch = {
+      ...effectivePatch,
+      employeeId: resolvedEmployeeId || null,
+      employeeUid: resolvedEmployeeUid || null,
+      employeeName: resolvedEmployeeName,
+      employeeKey: resolvedEmployeeKey || undefined,
+    };
+  }
+
+  const shouldSyncTime =
+    hasSlotChange || patch.time !== undefined || (patch as any).startTime !== undefined;
+  if (shouldSyncTime && nextTime) {
+    effectivePatch = {
+      ...effectivePatch,
+      time: nextTime,
+      startTime: nextTime,
+    };
+  }
+
+  const anyPatch = effectivePatch as any;
+  let actorSnapshot = resolveActorSnapshot({ booking: { ...(current || {}), ...effectivePatch } });
+
+  let availabilityPatchMap: Map<string, AvailabilityPatchEntry> | null = null;
+
+  if (hasSlotChange) {
+    if (!current) throw new Error("BOOKING_NOT_FOUND");
+
+    const slotPlan = await buildSlotPlanForUpdate({
+      dateISO: nextDate,
+      time: nextTime,
+      employeeId: resolvedEmployeeId,
+      durationMin: nextDurationMin,
+      slotStepMinAtBooking: nextSlotStepMin,
+      bufferMinAtBooking: nextBufferMin,
+    });
+
+    effectivePatch = {
+      ...effectivePatch,
+      slotId: slotPlan.startSlotId,
+      slotStepMinAtBooking: slotPlan.slotStepMin,
+      bufferMinAtBooking: slotPlan.bufferMin,
+      time: slotPlan.requestedStartTime,
+      startTime: slotPlan.requestedStartTime,
+    };
+
+    actorSnapshot = resolveActorSnapshot({ booking: { ...current, ...effectivePatch } });
+
+    const oldSlotsSnap = await getDocs(
+      query(collection(db, ...SLOTS_COL), where("bookingId", "==", bookingId))
+    );
+    const oldSlotDocs = oldSlotsSnap.docs;
+
+    const newSlotIds = new Set(slotPlan.slotRefs.map((r) => r.id));
+    const oldSlotRefsToDelete = oldSlotDocs.map((d) => d.ref).filter((r) => !newSlotIds.has(r.id));
+
+    const bookingUpdatePayload = stripUndefined({
+      ...effectivePatch,
       updatedByUid: actorSnapshot.uid || null,
       updatedByEmail: actorSnapshot.email || null,
       updatedByName: actorSnapshot.displayName || null,
       updatedAt: serverTimestamp(),
-    }) as any
-  );
+    }) as any;
+
+    await runTransaction(db, async (tx) => {
+      const slotSnaps = await Promise.all(slotPlan.slotRefs.map((r) => tx.get(r)));
+      for (const snap of slotSnaps) {
+        if (!snap.exists()) continue;
+        const sd: any = snap.data() || {};
+        const bId = String(sd.bookingId || "").trim();
+        if (!bId) throw slotTakenError();
+        if (bId !== bookingId) throw slotTakenError();
+      }
+
+      oldSlotRefsToDelete.forEach((ref) => tx.delete(ref));
+
+      for (let i = 0; i < slotPlan.slotRefs.length; i++) {
+        const slotRef = slotPlan.slotRefs[i];
+        const t = slotPlan.timesToLock[i];
+        tx.set(slotRef, {
+          bookingId,
+          employeeId: resolvedEmployeeId || null,
+          employeeUid: resolvedEmployeeUid || null,
+          employeeName: resolvedEmployeeName,
+          employeeKey: resolvedEmployeeKey || resolvedEmployeeId || null,
+          date: slotPlan.dateISO,
+          time: t,
+          startTime: slotPlan.requestedStartTime,
+          durationMin: slotPlan.durationMin,
+          userId: current?.userId ?? null,
+          clientPhone: current?.clientPhone ?? "",
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      tx.update(bookingRef, bookingUpdatePayload);
+    });
+
+    const availabilityPatch = new Map<string, AvailabilityPatchEntry>();
+    availabilityPatchMap = availabilityPatch;
+
+    if (oldSlotDocs.length > 0) {
+      oldSlotDocs.forEach((d: any) => {
+        if (d?.ref?.path) {
+          FirestoreReadStats.bump(d.ref.path, "firestoreBookings.updateBookingDetails", "getDocs");
+        }
+        const sd: any = d.data() || {};
+        const dateISO = String(sd.date || "").trim();
+        const time = String(sd.time || "").trim();
+        const employeeId = String(sd.employeeId ?? "").trim();
+        const employeeKey = String(sd.employeeKey ?? "").trim() || employeeId;
+        if (!dateISO || !time || !employeeId) return;
+        const aRef = doc(db, "salons", SALON_ID, "availability_days", dateISO, "employees", employeeId);
+        const entry = getAvailabilityPatchEntry(availabilityPatch, {
+          ref: aRef,
+          dateISO,
+          employeeId,
+          employeeKey,
+        });
+        entry.patch[`bookedSlots.${time}`] = deleteField();
+      });
+    } else if (currentDate && currentEmployeeId) {
+      const fallbackTimes = getTimesToLock(
+        currentTime,
+        currentDurationMin,
+        {
+          slotStepMin: currentSlotStepMin,
+          bufferMin: currentBufferMin,
+        },
+        currentDate
+      );
+      if (fallbackTimes.length > 0) {
+        const oldEmployeeKey =
+          currentEmployeeKey ||
+          currentEmployeeUid ||
+          currentEmployeeId ||
+          safeKey(currentEmployeeName || "unknown_employee");
+        const aRef = doc(
+          db,
+          "salons",
+          SALON_ID,
+          "availability_days",
+          currentDate,
+          "employees",
+          currentEmployeeId
+        );
+        const entry = getAvailabilityPatchEntry(availabilityPatch, {
+          ref: aRef,
+          dateISO: currentDate,
+          employeeId: currentEmployeeId,
+          employeeKey: oldEmployeeKey,
+        });
+        fallbackTimes.forEach((t) => {
+          const k = String(t || "").trim();
+          if (k) entry.patch[`bookedSlots.${k}`] = deleteField();
+        });
+      }
+    }
+
+    if (slotPlan.dateISO && resolvedEmployeeId) {
+      const newEmployeeKey = resolvedEmployeeKey || resolvedEmployeeId;
+      const aRef = doc(
+        db,
+        "salons",
+        SALON_ID,
+        "availability_days",
+        slotPlan.dateISO,
+        "employees",
+        resolvedEmployeeId
+      );
+      const entry = getAvailabilityPatchEntry(availabilityPatch, {
+        ref: aRef,
+        dateISO: slotPlan.dateISO,
+        employeeId: resolvedEmployeeId,
+        employeeKey: newEmployeeKey,
+      });
+      slotPlan.timesToLock.forEach((t) => {
+        const k = String(t || "").trim();
+        if (!k) return;
+        entry.patch[`bookedSlots.${k}`] = true;
+        entry.addTimes.add(k);
+      });
+    }
+  } else {
+    // ✅ تحديث booking (بدون تغيير على الأقفال)
+    await updateDoc(
+      bookingRef,
+      stripUndefined({
+        ...effectivePatch,
+        updatedByUid: actorSnapshot.uid || null,
+        updatedByEmail: actorSnapshot.email || null,
+        updatedByName: actorSnapshot.displayName || null,
+        updatedAt: serverTimestamp(),
+      }) as any
+    );
+  }
 
   // ✅ Auto-confirm pending bookings when fully paid.
   // Keep internal flow unchanged (channel=internal does not auto-promote).
   if (
-    patch.status === undefined &&
-    (patch.paymentType !== undefined ||
-      patch.paidAmount !== undefined ||
-      patch.remainingAmount !== undefined ||
-      patch.finalPrice !== undefined ||
-      patch.total !== undefined)
+    effectivePatch.status === undefined &&
+    (effectivePatch.paymentType !== undefined ||
+      effectivePatch.paidAmount !== undefined ||
+      effectivePatch.remainingAmount !== undefined ||
+      effectivePatch.finalPrice !== undefined ||
+      effectivePatch.total !== undefined)
   ) {
     try {
       const freshSnap = await getDoc(bookingRef);
@@ -2998,9 +3401,9 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
     type: "details_updated",
     note: "تم تعديل بيانات الحجز",
     actor: actorSnapshot,
-    booking: patch,
+    booking: effectivePatch,
     patch: {
-      ...patch,
+      ...effectivePatch,
       updatedByUid: actorSnapshot.uid || null,
       updatedByEmail: actorSnapshot.email || null,
       updatedByName: actorSnapshot.displayName || null,
@@ -3012,31 +3415,31 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
     await setDoc(
       doc(db, ...TRACKS_COL, bookingId),
       stripUndefined({
-        publicId: patch.publicId,
+        publicId: effectivePatch.publicId,
 
-        serviceName: patch.serviceName,
-        serviceId: patch.serviceId,
-        serviceSnapshot: patch.serviceSnapshot,
-        packageId: patch.packageId,
-        packageSnapshot: patch.packageSnapshot,
+        serviceName: effectivePatch.serviceName,
+        serviceId: effectivePatch.serviceId,
+        serviceSnapshot: effectivePatch.serviceSnapshot,
+        packageId: effectivePatch.packageId,
+        packageSnapshot: effectivePatch.packageSnapshot,
 
-        employeeId: patch.employeeId,
-        employeeUid: patch.employeeUid,
-        employeeName: patch.employeeName,
-        employeeKey: patch.employeeKey,
+        employeeId: effectivePatch.employeeId,
+        employeeUid: effectivePatch.employeeUid,
+        employeeName: effectivePatch.employeeName,
+        employeeKey: effectivePatch.employeeKey,
 
-        date: patch.date,
-        time: patch.time,
-        durationMin: patch.durationMin,
-        paymentMethod: patch.paymentMethod,
-        paymentType: patch.paymentType,
-        paidAmount: patch.paidAmount,
-        remainingAmount: patch.remainingAmount,
-        total: patch.total,
-        finalPrice: patch.finalPrice,
-        clientName: patch.clientName,
-        clientPhone: patch.clientPhone,
-        note: patch.note,
+        date: effectivePatch.date,
+        time: effectivePatch.time,
+        durationMin: effectivePatch.durationMin,
+        paymentMethod: effectivePatch.paymentMethod,
+        paymentType: effectivePatch.paymentType,
+        paidAmount: effectivePatch.paidAmount,
+        remainingAmount: effectivePatch.remainingAmount,
+        total: effectivePatch.total,
+        finalPrice: effectivePatch.finalPrice,
+        clientName: effectivePatch.clientName,
+        clientPhone: effectivePatch.clientPhone,
+        note: effectivePatch.note,
 
         // legacy mirrors (بعض الشاشات القديمة تقرأ هذه المفاتيح)
         customerName: anyPatch.customerName,
@@ -3044,8 +3447,8 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
         customerPhone: anyPatch.customerPhone,
         name: anyPatch.name,
 
-        status: patch.status,
-        slotId: patch.slotId,
+        status: effectivePatch.status,
+        slotId: effectivePatch.slotId,
         updatedByUid: actorSnapshot.uid || null,
         updatedByEmail: actorSnapshot.email || null,
         updatedByName: actorSnapshot.displayName || null,
@@ -3058,22 +3461,30 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
     // ignore
   }
 
+  if (availabilityPatchMap) {
+    try {
+      await applyAvailabilityPatchMap(availabilityPatchMap);
+    } catch (e) {
+      console.warn("[updateBookingDetails] availability_days sync failed (ignored):", e);
+    }
+  }
+
   // ✅ best-effort income sync (يعكس التعديل في الإيرادات/التقارير)
   const hasIncomePatch =
-    patch.finalPrice !== undefined ||
-    patch.total !== undefined ||
-    patch.date !== undefined ||
-    patch.paymentMethod !== undefined ||
-    patch.paymentType !== undefined ||
-    patch.paidAmount !== undefined ||
-    patch.remainingAmount !== undefined ||
-    patch.status !== undefined ||
-    patch.clientName !== undefined ||
-    patch.clientPhone !== undefined ||
-    patch.serviceName !== undefined ||
-    patch.serviceSnapshot !== undefined ||
-    patch.employeeName !== undefined ||
-    patch.note !== undefined;
+    effectivePatch.finalPrice !== undefined ||
+    effectivePatch.total !== undefined ||
+    effectivePatch.date !== undefined ||
+    effectivePatch.paymentMethod !== undefined ||
+    effectivePatch.paymentType !== undefined ||
+    effectivePatch.paidAmount !== undefined ||
+    effectivePatch.remainingAmount !== undefined ||
+    effectivePatch.status !== undefined ||
+    effectivePatch.clientName !== undefined ||
+    effectivePatch.clientPhone !== undefined ||
+    effectivePatch.serviceName !== undefined ||
+    effectivePatch.serviceSnapshot !== undefined ||
+    effectivePatch.employeeName !== undefined ||
+    effectivePatch.note !== undefined;
 
   if (hasIncomePatch) {
     try {
@@ -3109,14 +3520,14 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
       }
 
       const method = normalizePaymentMethod(
-        (freshBooking as any)?.paymentMethod ?? patch.paymentMethod
+        (freshBooking as any)?.paymentMethod ?? effectivePatch.paymentMethod
       ) || "transfer";
       const bookingDateISO = normalizeISODate(freshBooking?.date);
       const serviceName = String(
         freshBooking?.serviceSnapshot?.serviceNameAtBooking ??
           freshBooking?.serviceName ??
-          patch.serviceSnapshot?.serviceNameAtBooking ??
-          patch.serviceName ??
+          effectivePatch.serviceSnapshot?.serviceNameAtBooking ??
+          effectivePatch.serviceName ??
           ""
       ).trim();
       const payload = stripUndefined({
@@ -3153,31 +3564,6 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
     }
   }
 
-  // ✅ إذا تغيّر وقت/تاريخ/موظفة أو مدة الخدمة: أعِد مزامنة الأقفال
-  const hasSlotPatch =
-    patch.date !== undefined ||
-    patch.time !== undefined ||
-    patch.durationMin !== undefined ||
-    patch.employeeId !== undefined ||
-    patch.employeeUid !== undefined ||
-    patch.employeeKey !== undefined ||
-    patch.employeeName !== undefined ||
-    patch.slotId !== undefined;
-
-  if (hasSlotPatch) {
-    try {
-      const freshSnap = await getDoc(bookingRef);
-      if (freshSnap.exists()) {
-        const fresh = normalizeBooking(freshSnap.data());
-        await unlockSlotsByBookingId(bookingId);
-        if (fresh.status === "confirmed" || fresh.status === "completed") {
-          await lockSlotsFromBooking(bookingId);
-        }
-      }
-    } catch (e) {
-      console.warn("[updateBookingDetails] slot resync failed (ignored):", e);
-    }
-  }
 }
 
 /* =========================
