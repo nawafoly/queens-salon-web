@@ -482,8 +482,11 @@ function mergeBookingRefs(refs: LocalBookingRef[]) {
     const bookingId = String(row?.bookingId || "").trim();
     const trackId = String(row?.trackId || "").trim();
     const publicId = String(row?.publicId || "").trim();
-    const key = `${id}|${bookingId}|${trackId}|${publicId}`.toLowerCase();
-    if (!id && !bookingId && !trackId && !publicId) continue;
+    const bookingPublicId = String(row?.bookingPublicId || "").trim();
+    const groupId = String(row?.groupId || "").trim();
+    const parentId = String(row?.parentId || "").trim();
+    const key = `${id}|${bookingId}|${trackId}|${publicId}|${bookingPublicId}|${groupId}|${parentId}`.toLowerCase();
+    if (!id && !bookingId && !trackId && !publicId && !bookingPublicId && !groupId && !parentId) continue;
     if (seen.has(key)) continue;
 
     seen.add(key);
