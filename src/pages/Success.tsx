@@ -186,12 +186,18 @@ function asMkKey(raw: any) {
 function collectSnapshotKeys(row: LocalBookingSnapshot): string[] {
   const keys = new Set<string>();
 
-  [row?.id, row?.bookingId, row?.trackId].forEach((v) => {
+  [row?.id, row?.bookingId, row?.trackId, row?.groupId, row?.parentId].forEach((v) => {
     const k = asIdKey(v);
     if (k) keys.add(k);
   });
 
-  [row?.publicId, row?.id, row?.bookingId, row?.trackId].forEach((v) => {
+  [
+    row?.publicId,
+    row?.bookingPublicId,
+    row?.id,
+    row?.bookingId,
+    row?.trackId,
+  ].forEach((v) => {
     const k = asMkKey(v);
     if (k) keys.add(k);
   });
@@ -476,23 +482,8 @@ function mergeBookingRefs(refs: LocalBookingRef[]) {
     const bookingId = String(row?.bookingId || "").trim();
     const trackId = String(row?.trackId || "").trim();
     const publicId = String(row?.publicId || "").trim();
-    const bookingPublicId = String(row?.bookingPublicId || "").trim();
-    const groupId = String(row?.groupId || "").trim();
-    const parentId = String(row?.parentId || "").trim();
-
-    const key = [
-      id,
-      bookingId,
-      trackId,
-      publicId,
-      bookingPublicId,
-      groupId,
-      parentId,
-    ]
-      .join("|")
-      .toLowerCase();
-
-    if (!id && !bookingId && !trackId && !publicId && !bookingPublicId && !groupId && !parentId) continue;
+    const key = `${id}|${bookingId}|${trackId}|${publicId}`.toLowerCase();
+    if (!id && !bookingId && !trackId && !publicId) continue;
     if (seen.has(key)) continue;
 
     seen.add(key);
@@ -722,11 +713,18 @@ function resolveLocalSnapshotForRef(
 ): LocalBookingSnapshot | null {
   if (!ref) return null;
   const keys = new Set<string>();
-  [ref?.id, ref?.bookingId, ref?.trackId].forEach((v) => {
+  [ref?.id, ref?.bookingId, ref?.trackId, ref?.groupId, ref?.parentId].forEach((v) => {
     const k = asIdKey(v);
     if (k) keys.add(k);
   });
-  [ref?.publicId, ref?.id, ref?.bookingId, ref?.trackId].forEach((v) => {
+
+  [
+    ref?.publicId,
+    ref?.bookingPublicId,
+    ref?.id,
+    ref?.bookingId,
+    ref?.trackId,
+  ].forEach((v) => {
     const k = asMkKey(v);
     if (k) keys.add(k);
   });
@@ -1325,7 +1323,37 @@ export default function Success() {
         for (const ref of bookingRefs) {
           const localHint = resolveLocalSnapshotForRef(ref, localSnapshotIndex);
           const docData: any = await resolveBookingDocFromRef(ref);
-          if (!docData && !localHint) continue;
+          if (!docData && !localHint) {
+            const fallbackGroupId = String(ref?.groupId || ref?.parentId || "").trim();
+
+            if (fallbackGroupId) {
+              try {
+                const groupQ = query(
+                  collection(db, "salons", SALON_ID, "bookings"),
+                  where("bookingGroupId", "==", fallbackGroupId)
+                );
+
+                const groupSnap = await getDocs(groupQ);
+
+                for (const gd of groupSnap.docs) {
+                  const gData: any = gd.data() || {};
+                  await pushBookingView(
+                    { ...gData, id: gd.id },
+                    {
+                      id: gd.id,
+                      bookingId: gd.id,
+                      publicId: gData.publicId,
+                      bookingPublicId: gData.publicId,
+                      groupId: fallbackGroupId,
+                      parentId: fallbackGroupId,
+                    }
+                  );
+                }
+              } catch { }
+            }
+
+            continue;
+          }
           await pushBookingView(docData ? { ...docData, id: docData.id } : {}, ref, localHint);
           if (!docData) continue;
 
