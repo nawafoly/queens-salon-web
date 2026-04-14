@@ -34,6 +34,9 @@ import { getBookingById, getTrackById, getTrackByPublicId } from "../services/fi
 type UiBookingView = {
   id: string; // داخلي فقط
   publicId?: string; // MK-xxxx للعرض
+  bookingPublicId?: string;
+  groupId?: string;
+  parentId?: string;
 
   clientName: string;
   clientPhone: string;
@@ -64,6 +67,9 @@ type LocalBookingRef = {
   bookingId?: string;
   trackId?: string;
   publicId?: string;
+  bookingPublicId?: string;
+  groupId?: string;
+  parentId?: string;
 };
 
 type LocalBookingSnapshot = {
@@ -464,17 +470,43 @@ async function resolveServiceName(serviceId: string): Promise<string> {
 function mergeBookingRefs(refs: LocalBookingRef[]) {
   const out: LocalBookingRef[] = [];
   const seen = new Set<string>();
+
   for (const row of refs) {
     const id = String(row?.id || "").trim();
     const bookingId = String(row?.bookingId || "").trim();
     const trackId = String(row?.trackId || "").trim();
     const publicId = String(row?.publicId || "").trim();
-    const key = `${id}|${bookingId}|${trackId}|${publicId}`.toLowerCase();
-    if (!id && !bookingId && !trackId && !publicId) continue;
+    const bookingPublicId = String(row?.bookingPublicId || "").trim();
+    const groupId = String(row?.groupId || "").trim();
+    const parentId = String(row?.parentId || "").trim();
+
+    const key = [
+      id,
+      bookingId,
+      trackId,
+      publicId,
+      bookingPublicId,
+      groupId,
+      parentId,
+    ]
+      .join("|")
+      .toLowerCase();
+
+    if (!id && !bookingId && !trackId && !publicId && !bookingPublicId && !groupId && !parentId) continue;
     if (seen.has(key)) continue;
+
     seen.add(key);
-    out.push({ id, bookingId, trackId, publicId });
+    out.push({
+      id: id || undefined,
+      bookingId: bookingId || undefined,
+      trackId: trackId || undefined,
+      publicId: publicId || undefined,
+      bookingPublicId: bookingPublicId || undefined,
+      groupId: groupId || undefined,
+      parentId: parentId || undefined,
+    });
   }
+
   return out;
 }
 
@@ -496,6 +528,9 @@ function readQueryBookingRefs(search: string): LocalBookingRef[] {
         bookingId: String(partial?.bookingId || "").trim() || undefined,
         trackId: String(partial?.trackId || "").trim() || undefined,
         publicId: String(partial?.publicId || "").trim() || undefined,
+        bookingPublicId: String(partial?.bookingPublicId || "").trim() || undefined,
+        groupId: String(partial?.groupId || "").trim() || undefined,
+        parentId: String(partial?.parentId || "").trim() || undefined,
       });
     };
 
@@ -504,7 +539,15 @@ function readQueryBookingRefs(search: string): LocalBookingRef[] {
       bookingId: params.get("bookingId") || params.get("booking_id") || undefined,
       trackId: params.get("trackId") || params.get("track_id") || undefined,
       publicId: params.get("publicId") || params.get("public_id") || params.get("mk") || undefined,
+      bookingPublicId: params.get("bookingPublicId") || undefined,
+      groupId: params.get("groupId") || undefined,
+      parentId: params.get("parentId") || undefined,
     });
+
+    const multiGroupIds = [
+      ...splitRefValues(params.get("groupIds") || ""),
+    ];
+    multiGroupIds.forEach((gid) => addRef({ groupId: gid, parentId: gid }));
 
     const multiPublic = [
       ...splitRefValues(params.get("publicIds") || ""),
@@ -530,12 +573,16 @@ function readStateBookingRefs(state: unknown): LocalBookingRef[] {
   try {
     const raw = (state || {}) as Record<string, any>;
     const refs: LocalBookingRef[] = [];
+
     const addRef = (partial: LocalBookingRef) => {
       refs.push({
         id: String(partial?.id || "").trim() || undefined,
         bookingId: String(partial?.bookingId || "").trim() || undefined,
         trackId: String(partial?.trackId || "").trim() || undefined,
         publicId: String(partial?.publicId || "").trim() || undefined,
+        bookingPublicId: String(partial?.bookingPublicId || "").trim() || undefined,
+        groupId: String(partial?.groupId || "").trim() || undefined,
+        parentId: String(partial?.parentId || "").trim() || undefined,
       });
     };
 
@@ -544,6 +591,9 @@ function readStateBookingRefs(state: unknown): LocalBookingRef[] {
       bookingId: raw?.bookingId || raw?.booking_id,
       trackId: raw?.trackId || raw?.track_id,
       publicId: raw?.publicId || raw?.public_id || raw?.mk,
+      bookingPublicId: raw?.bookingPublicId,
+      groupId: raw?.groupId,
+      parentId: raw?.parentId,
     });
 
     const rows = Array.isArray(raw?.bookings)
@@ -551,12 +601,16 @@ function readStateBookingRefs(state: unknown): LocalBookingRef[] {
       : Array.isArray(raw?.allBookings)
         ? raw.allBookings
         : [];
+
     rows.forEach((row: any) =>
       addRef({
         id: row?.id,
         bookingId: row?.bookingId,
         trackId: row?.trackId,
         publicId: row?.publicId || row?.mk,
+        bookingPublicId: row?.bookingPublicId,
+        groupId: row?.groupId,
+        parentId: row?.parentId,
       })
     );
 
@@ -582,6 +636,9 @@ function readLocalBookingRefs(): LocalBookingRef[] {
           bookingId: x?.bookingId,
           trackId: x?.trackId,
           publicId: x?.publicId,
+          bookingPublicId: x?.bookingPublicId,
+          groupId: x?.groupId,
+          parentId: x?.parentId,
         }))
       );
     }
@@ -598,6 +655,9 @@ function readLocalBookingRefs(): LocalBookingRef[] {
       bookingId: parsed?.bookingId,
       trackId: parsed?.trackId,
       publicId: parsed?.publicId,
+      bookingPublicId: parsed?.bookingPublicId,
+      groupId: parsed?.groupId,
+      parentId: parsed?.parentId,
     };
     refs.push(one);
   } catch {
@@ -605,7 +665,16 @@ function readLocalBookingRefs(): LocalBookingRef[] {
   }
 
   return mergeBookingRefs(refs).filter((x) =>
-    !!String(x?.id || x?.bookingId || x?.trackId || x?.publicId || "").trim()
+    !!String(
+      x?.id ||
+      x?.bookingId ||
+      x?.trackId ||
+      x?.publicId ||
+      x?.bookingPublicId ||
+      x?.groupId ||
+      x?.parentId ||
+      ""
+    ).trim()
   );
 }
 
@@ -879,8 +948,8 @@ export default function Success() {
             rawFetchedData: [],
             finalMappedState: [],
           });
-            setError("رقم الحجز غير موجود");
-            return;
+          setError("رقم الحجز غير موجود");
+          return;
         }
 
         const results: UiBookingView[] = [];
@@ -1125,12 +1194,12 @@ export default function Success() {
           const merged = mergeWithLocalFallback(rawDoc || {}, localHint || null);
           const bookingIdResolved = String(
             merged?.id ||
-              merged?.bookingId ||
-              merged?.trackId ||
-              refHint?.id ||
-              refHint?.bookingId ||
-              refHint?.trackId ||
-              ""
+            merged?.bookingId ||
+            merged?.trackId ||
+            refHint?.id ||
+            refHint?.bookingId ||
+            refHint?.trackId ||
+            ""
           ).trim();
           const publicIdResolved = normalizeMk(
             String(merged?.publicId || refHint?.publicId || "").trim()
@@ -1152,25 +1221,25 @@ export default function Success() {
             (await resolveServiceName(serviceId));
           const sectionLabelRaw = String(
             merged?.serviceSnapshot?.sectionTitleAtBooking ||
-              merged?.serviceSnapshot?.sectionIdAtBooking ||
-              ""
+            merged?.serviceSnapshot?.sectionIdAtBooking ||
+            ""
           ).trim();
           const categoryLabelRaw = String(
             merged?.serviceSnapshot?.categoryNameAtBooking ||
-              merged?.serviceSnapshot?.categoryIdAtBooking ||
-              ""
+            merged?.serviceSnapshot?.categoryIdAtBooking ||
+            ""
           ).trim();
           const packageNameRaw = String(merged?.packageSnapshot?.packageName || "").trim();
           const packageServices = Array.isArray(merged?.packageSnapshot?.services)
             ? merged.packageSnapshot.services
-                .map((x: any) => ({
-                  serviceName: toArabicLabel(String(x?.serviceName || x?.serviceId || "").trim(), "-"),
-                  sectionLabel: toArabicLabel(String(x?.sectionTitle || x?.sectionId || "").trim(), "") || undefined,
-                  categoryLabel: toArabicLabel(String(x?.categoryName || x?.categoryId || "").trim(), "") || undefined,
-                  durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x.durationMin) : undefined,
-                  price: Number.isFinite(Number(x?.price)) ? Number(x.price) : undefined,
-                }))
-                .filter((x: any) => !!x.serviceName)
+              .map((x: any) => ({
+                serviceName: toArabicLabel(String(x?.serviceName || x?.serviceId || "").trim(), "-"),
+                sectionLabel: toArabicLabel(String(x?.sectionTitle || x?.sectionId || "").trim(), "") || undefined,
+                categoryLabel: toArabicLabel(String(x?.categoryName || x?.categoryId || "").trim(), "") || undefined,
+                durationMin: Number.isFinite(Number(x?.durationMin)) ? Number(x.durationMin) : undefined,
+                price: Number.isFinite(Number(x?.price)) ? Number(x.price) : undefined,
+              }))
+              .filter((x: any) => !!x.serviceName)
             : [];
 
           const rawEmployeeName = toArabicLabel(

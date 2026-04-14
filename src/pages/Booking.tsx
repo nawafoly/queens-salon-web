@@ -84,7 +84,8 @@ import {
   query,
   where,
   orderBy,
-  setDoc, // ✅ add
+  setDoc,
+  limit,
 } from "firebase/firestore";
 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -125,6 +126,7 @@ import {
   type ServicePackageDoc,
   type PackageServiceItem,
 } from "../services/firestorePackages";
+import { PackageService, normalizePackageServiceIds } from "../services/PackageService";
 import { pricingSections } from "./Pricing";
 
 // ✅ Create booking (Firestore)
@@ -134,13 +136,13 @@ import * as firestoreBookings from "../services/firestoreBookings";
 import { createOrLoadUserProfile } from "../services/userProfile";
 
 // ✅ Custom modal بدل alert
-	import ConfirmModal from "../components/ConfirmModal";
-	import Modal from "../components/Modal";
-	import type { BookingFormData, CartItem } from "../types/bookingShared";
-	
-	const createBookingGroup = (
-	  firestoreBookings as {
-	    createBookingGroup?: (data: any) => Promise<{
+import ConfirmModal from "../components/ConfirmModal";
+import Modal from "../components/Modal";
+import type { BookingFormData, CartItem } from "../types/bookingShared";
+
+const createBookingGroup = (
+  firestoreBookings as {
+    createBookingGroup?: (data: any) => Promise<{
       parentId: string;
       parentPublicId: string;
       itemIds: string[];
@@ -356,10 +358,19 @@ type FlatService = {
 };
 
 type CategoryOption = { id: string; name: string };
-type PickerScope = "services" | "offers_packages" | "offers";
+type PickerScope = "services" | "offers_packages" | "offers" | "session_packages";
 type FsSectionCatalogCacheRow = {
   categories: CategoryDoc[];
   services: ServiceDoc[];
+};
+
+type SessionPackageOption = {
+  id: string;
+  title: string;
+  price: number;
+  priceText: string;
+  sessionsCount: number;
+  allowedServiceIds: string[];
 };
 
 const MANI_PEDI_TOOLS_FEE_FIXED = 15;
@@ -443,6 +454,85 @@ type UiModalState = {
 
 function makeLocalId() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function isSessionPackageCartItem(item?: Partial<CartItem> | null) {
+  if (!item) return false;
+  return (
+    item.fromSessionPackage === true ||
+    item.consumeOneSession === true ||
+    !!String(item.sessionPackageId || "").trim() ||
+    String(item.packageSnapshot?.kind || "").trim() === "session_package"
+  );
+}
+
+function resolveCartItemPriceText(item?: Partial<CartItem> | null) {
+  if (isSessionPackageCartItem(item)) {
+    const toolsFeeApplied = Math.max(0, Number(item?.toolsFeeApplied || 0));
+    if (toolsFeeApplied > 0) {
+      return `من الباقة + ${toolsFeeApplied.toFixed(0)} ريال أدوات`;
+    }
+    if (Math.max(0, Number(item?.basePrice || 0)) <= 0) {
+      return "من الباقة";
+    }
+  }
+  const raw = String(item?.priceText || "").trim();
+  if (raw) return raw;
+  return `${Math.max(0, Number(item?.basePrice || 0)).toFixed(0)} ريال`;
+}
+
+function dedupePackageServiceItems(items: PackageServiceItem[] = []) {
+  const byId = new Map<string, PackageServiceItem>();
+
+  items.forEach((raw) => {
+    const serviceId = String(raw?.serviceId || "").trim();
+    if (!serviceId) return;
+
+    const prev = byId.get(serviceId);
+    byId.set(serviceId, {
+      serviceId,
+      serviceName:
+        String(raw?.serviceName || "").trim() ||
+        String(prev?.serviceName || "").trim() ||
+        serviceId,
+      sectionId:
+        String(raw?.sectionId || "").trim() ||
+        String(prev?.sectionId || "").trim() ||
+        undefined,
+      categoryId:
+        String(raw?.categoryId || "").trim() ||
+        String(prev?.categoryId || "").trim() ||
+        undefined,
+      price: Math.max(
+        0,
+        Number(
+          raw?.price ??
+            prev?.price ??
+            0
+        )
+      ),
+      durationMin: Math.max(
+        1,
+        Number(
+          raw?.durationMin ??
+            prev?.durationMin ??
+            DEFAULT_SERVICE_DURATION_MIN
+        )
+      ),
+    });
+  });
+
+  return Array.from(byId.values());
+}
+
+function dedupeFlatServices(items: FlatService[] = []) {
+  const byId = new Map<string, FlatService>();
+  items.forEach((item) => {
+    const id = String(item?.id || "").trim();
+    if (!id || byId.has(id)) return;
+    byId.set(id, item);
+  });
+  return Array.from(byId.values());
 }
 
 type BusyState = {
@@ -736,6 +826,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [fsCategories, setFsCategories] = useState<CategoryDoc[]>([]);
   const [fsServices, setFsServices] = useState<ServiceDoc[]>([]);
   const [fsPackages, setFsPackages] = useState<ServicePackageDoc[]>([]);
+  const [sessionPackageOptions, setSessionPackageOptions] = useState<SessionPackageOption[]>([]);
   const [sequenceOffers, setSequenceOffers] = useState<FsOffer[]>([]);
   const fsSectionCatalogCacheRef = useRef<Record<string, FsSectionCatalogCacheRow>>({});
   const fsSectionCatalogInFlightRef = useRef<
@@ -746,6 +837,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [servicePicker, setServicePicker] = useState<string>("");
+  const [sessionPackageServicePicker, setSessionPackageServicePicker] = useState<string>("");
+  const [sessionPackageAllowedServices, setSessionPackageAllowedServices] = useState<FlatService[]>([]);
+  const [sessionPackageServicesLoading, setSessionPackageServicesLoading] = useState(false);
+  const [sessionPackageServicesError, setSessionPackageServicesError] = useState("");
   const [autoAddPackageId, setAutoAddPackageId] = useState<string>("");
   const [offerStartTime, setOfferStartTime] = useState<string>("");
   const [pickerScope, setPickerScope] = useState<PickerScope>("services");
@@ -1039,6 +1134,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     setManualOverride(false);
   };
 
+  const resetSessionPackageSelection = () => {
+    setSessionPackageServicePicker("");
+    setSessionPackageAllowedServices([]);
+    setSessionPackageServicesLoading(false);
+    setSessionPackageServicesError("");
+  };
+
   useEffect(() => {
     if ((appliedCoupons || []).length <= 1) return;
     const first = appliedCoupons[0];
@@ -1284,71 +1386,71 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           return { ok: false as const, a, b };
         }
       }
-  }
-  return { ok: true as const, a: null as any, b: null as any };
-}
-
-function getLocalExactTakenStartTimesForItem(
-  items: CartItem[],
-  currentItemId: string,
-  employeeId: string,
-  date: string
-) {
-  const taken = new Set<string>();
-  const targetEmployeeId = String(employeeId || "").trim();
-  const targetDate = String(date || "").trim();
-  if (!targetEmployeeId || !targetDate) return taken;
-
-  for (const other of items || []) {
-    if (!other || String(other.id || "").trim() === String(currentItemId || "").trim()) continue;
-    if (isSequentialOfferItem(other)) continue;
-
-    const otherEmployeeId = String(other.employeeId || "").trim();
-    const otherDate = String(other.date || "").trim();
-    const otherTime = String(other.time || "").trim();
-
-    if (!otherEmployeeId || !otherDate || !otherTime) continue;
-    if (otherEmployeeId !== targetEmployeeId || otherDate !== targetDate) continue;
-
-    taken.add(otherTime);
+    }
+    return { ok: true as const, a: null as any, b: null as any };
   }
 
-  return taken;
-}
+  function getLocalExactTakenStartTimesForItem(
+    items: CartItem[],
+    currentItemId: string,
+    employeeId: string,
+    date: string
+  ) {
+    const taken = new Set<string>();
+    const targetEmployeeId = String(employeeId || "").trim();
+    const targetDate = String(date || "").trim();
+    if (!targetEmployeeId || !targetDate) return taken;
 
-function findExactCartSlotConflict(
-  items: CartItem[],
-  currentItemId: string,
-  candidate: Partial<CartItem>
-) {
-  const employeeId = String(candidate.employeeId || "").trim();
-  const date = String(candidate.date || "").trim();
-  const time = String(candidate.time || "").trim();
-  if (!employeeId || !date || !time) return null;
+    for (const other of items || []) {
+      if (!other || String(other.id || "").trim() === String(currentItemId || "").trim()) continue;
+      if (isSequentialOfferItem(other)) continue;
 
-  return (
-    (items || []).find((other) => {
-      if (!other) return false;
-      if (String(other.id || "").trim() === String(currentItemId || "").trim()) return false;
-      if (isSequentialOfferItem(other)) return false;
+      const otherEmployeeId = String(other.employeeId || "").trim();
+      const otherDate = String(other.date || "").trim();
+      const otherTime = String(other.time || "").trim();
 
-      return (
-        String(other.employeeId || "").trim() === employeeId &&
-        String(other.date || "").trim() === date &&
-        String(other.time || "").trim() === time
-      );
-    }) || null
-  );
-}
+      if (!otherEmployeeId || !otherDate || !otherTime) continue;
+      if (otherEmployeeId !== targetEmployeeId || otherDate !== targetDate) continue;
 
-function findAnyExactCartSlotConflict(items: CartItem[]) {
-  for (const item of items || []) {
-    if (!item || isSequentialOfferItem(item)) continue;
-    const conflict = findExactCartSlotConflict(items, String(item.id || "").trim(), item);
-    if (conflict) return { item, conflict };
+      taken.add(otherTime);
+    }
+
+    return taken;
   }
-  return null;
-}
+
+  function findExactCartSlotConflict(
+    items: CartItem[],
+    currentItemId: string,
+    candidate: Partial<CartItem>
+  ) {
+    const employeeId = String(candidate.employeeId || "").trim();
+    const date = String(candidate.date || "").trim();
+    const time = String(candidate.time || "").trim();
+    if (!employeeId || !date || !time) return null;
+
+    return (
+      (items || []).find((other) => {
+        if (!other) return false;
+        if (String(other.id || "").trim() === String(currentItemId || "").trim()) return false;
+        if (isSequentialOfferItem(other)) return false;
+
+        return (
+          String(other.employeeId || "").trim() === employeeId &&
+          String(other.date || "").trim() === date &&
+          String(other.time || "").trim() === time
+        );
+      }) || null
+    );
+  }
+
+  function findAnyExactCartSlotConflict(items: CartItem[]) {
+    for (const item of items || []) {
+      if (!item || isSequentialOfferItem(item)) continue;
+      const conflict = findExactCartSlotConflict(items, String(item.id || "").trim(), item);
+      if (conflict) return { item, conflict };
+    }
+    return null;
+  }
 
   // =========================
   // ✅ Use local hair guide image + role (owner/admin)
@@ -1414,6 +1516,34 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       setUploadingGuide(false);
     }
   }
+
+  const loadSessionPackagesFromFirestore = async () => {
+    try {
+      const packages = await PackageService.getActive();
+      const rows: SessionPackageOption[] = packages
+        .map((pkg) => {
+          const allowedServiceIds = normalizePackageServiceIds([
+            ...(Array.isArray(pkg.allowedServiceIds) ? pkg.allowedServiceIds : []),
+            ...(Array.isArray(pkg.serviceIds) ? pkg.serviceIds : []),
+          ]);
+
+          return {
+            id: `spkg:${String(pkg.id || "").trim()}`,
+            title: String(pkg.name || "").trim(),
+            price: Math.max(0, Number(pkg.price || 0)),
+            priceText: `${Math.max(0, Number(pkg.price || 0))} ريال`,
+            sessionsCount: Math.max(1, Number(pkg.sessionsCount || 1)),
+            allowedServiceIds,
+          };
+        })
+        .filter((pkg) => pkg.title && pkg.allowedServiceIds.length > 0);
+
+      setSessionPackageOptions(rows);
+    } catch (e) {
+      console.error("loadSessionPackagesFromFirestore error:", e);
+      setSessionPackageOptions([]);
+    }
+  };
 
   const loadSectionCatalogFromFirestore = async (
     sectionIdRaw: string
@@ -1510,6 +1640,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         const [secs, packs] = await Promise.all([
           listActiveSections(SALON_ID),
           listActivePackages(SALON_ID),
+          loadSessionPackagesFromFirestore(),
         ]);
         if (cancelled) return;
 
@@ -1632,24 +1763,24 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const packageRows: FlatService[] =
       catalogMode === "firestore"
         ? (fsPackages || []).map((pkg) => ({
-            id: `pkg:${String(pkg.id)}`,
-            kind: "package" as const,
-            sectionId: PACKAGE_SECTION_ID,
-            sectionTitle: PACKAGE_SECTION_TITLE,
-            categoryId: PACKAGE_SECTION_ID,
-            category: PACKAGE_SECTION_TITLE,
-            name: String(pkg.name || "").trim(),
-            priceText: `${Number(pkg.finalPrice || 0)} ريال`,
-            basePrice: Number(pkg.finalPrice || 0),
-            durationMin: Number(pkg.totalDurationMin || DEFAULT_SERVICE_DURATION_MIN),
-            packageId: String(pkg.id || "").trim(),
-            packageServiceIds: Array.isArray(pkg.serviceIds)
-              ? pkg.serviceIds.map((x) => String(x || "").trim()).filter(Boolean)
-              : [],
-            packageServices: Array.isArray(pkg.services) ? pkg.services : [],
-            packageBaseTotalPrice: Number(pkg.baseTotalPrice || 0),
-            source: "firestore" as const,
-          }))
+          id: `pkg:${String(pkg.id)}`,
+          kind: "package" as const,
+          sectionId: PACKAGE_SECTION_ID,
+          sectionTitle: PACKAGE_SECTION_TITLE,
+          categoryId: PACKAGE_SECTION_ID,
+          category: PACKAGE_SECTION_TITLE,
+          name: String(pkg.name || "").trim(),
+          priceText: `${Number(pkg.finalPrice || 0)} ريال`,
+          basePrice: Number(pkg.finalPrice || 0),
+          durationMin: Number(pkg.totalDurationMin || DEFAULT_SERVICE_DURATION_MIN),
+          packageId: String(pkg.id || "").trim(),
+          packageServiceIds: Array.isArray(pkg.serviceIds)
+            ? pkg.serviceIds.map((x) => String(x || "").trim()).filter(Boolean)
+            : [],
+          packageServices: Array.isArray(pkg.services) ? pkg.services : [],
+          packageBaseTotalPrice: Number(pkg.baseTotalPrice || 0),
+          source: "firestore" as const,
+        }))
         : [];
 
     if (catalogMode === "firestore" && fsSections.length > 0) {
@@ -1953,6 +2084,14 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const collator = new Intl.Collator("ar", { sensitivity: "base", numeric: true });
     return rows.sort((a, b) => collator.compare(a.title, b.title));
   }, [sequenceOffers]);
+
+  const selectedSessionPackage = useMemo(
+    () =>
+      (sessionPackageOptions || []).find(
+        (pkg) => String(pkg.id || "").trim() === String(servicePicker || "").trim()
+      ) || null,
+    [sessionPackageOptions, servicePicker]
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || "");
@@ -2265,6 +2404,75 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       return null;
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAllowedSessionPackageServices() {
+      if (pickerScope !== "session_packages") {
+        if (!cancelled) resetSessionPackageSelection();
+        return;
+      }
+
+      const picked = selectedSessionPackage;
+      if (!picked) {
+        if (!cancelled) resetSessionPackageSelection();
+        return;
+      }
+
+      const allowedIds = normalizePackageServiceIds(picked.allowedServiceIds);
+      if (!allowedIds.length) {
+        if (!cancelled) {
+          setSessionPackageAllowedServices([]);
+          setSessionPackageServicesError("لا توجد خدمات متاحة داخل هذه الباقة.");
+          setSessionPackageServicesLoading(false);
+          setSessionPackageServicePicker("");
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setSessionPackageServicesLoading(true);
+        setSessionPackageServicesError("");
+        setSessionPackageAllowedServices([]);
+        setSessionPackageServicePicker("");
+      }
+
+      try {
+        const rows = await Promise.all(
+          allowedIds.map(async (serviceId) => {
+            const cached = getServiceById(serviceId);
+            if (cached?.kind === "service") return cached;
+            const fetched = await ensureServiceByIdForOffer(serviceId);
+            return fetched?.kind === "service" ? fetched : null;
+          })
+        );
+
+        if (cancelled) return;
+
+        const allowedServices = dedupeFlatServices(rows.filter(Boolean) as FlatService[]);
+        setSessionPackageAllowedServices(allowedServices);
+        setSessionPackageServicePicker(
+          allowedServices.length === 1 ? String(allowedServices[0].id || "").trim() : ""
+        );
+        if (!allowedServices.length) {
+          setSessionPackageServicesError("تعذر تحميل الخدمات المسموح بها داخل هذه الباقة.");
+        }
+      } catch {
+        if (cancelled) return;
+        setSessionPackageAllowedServices([]);
+        setSessionPackageServicePicker("");
+        setSessionPackageServicesError("تعذر تحميل خدمات الباقة حالياً.");
+      } finally {
+        if (!cancelled) setSessionPackageServicesLoading(false);
+      }
+    }
+
+    void loadAllowedSessionPackageServices();
+    return () => {
+      cancelled = true;
+    };
+  }, [pickerScope, selectedSessionPackage]);
 
   const serviceIdByName = useMemo(() => {
     const map = new Map<string, string>();
@@ -2732,13 +2940,30 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       offerSourceId?: string;
       offerSourceCode?: string;
       offerSourceTitle?: string;
+      sessionPackageSelection?: {
+        packageId: string;
+        packageName: string;
+        packagePrice: number;
+        sessionsCount: number;
+        allowedServiceIds: string[];
+        allowedServicesSnapshot: PackageServiceItem[];
+      };
     }
   ) => {
     let id = String(idRaw || "").trim();
     if (!id) return;
     const bookingDateSafe = String(bookingDate || "").trim() || todayISO();
 
-    if (!id.startsWith("offer:") && !id.startsWith("pkg:")) {
+    if (id.startsWith("spkg:")) {
+      openModal({
+        title: "اختاري الخدمة من الباقة",
+        message: "اختاري الباقة أولاً ثم حددي الخدمة التي تريدين استخدامها في هذه الزيارة.",
+        variant: "danger",
+      });
+      return;
+    }
+
+    if (!options?.sessionPackageSelection && !id.startsWith("offer:") && !id.startsWith("pkg:")) {
       const packagePickerId = `pkg:${id}`;
       const existsAsPackage = packageOptions.some(
         (p) => String(p.id || "").trim() === packagePickerId
@@ -2819,6 +3044,78 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     }
     if (!sv) return;
 
+    if (options?.sessionPackageSelection) {
+      const sessionPackage = options.sessionPackageSelection;
+      const allowedServiceIds = normalizePackageServiceIds(sessionPackage.allowedServiceIds);
+      const allowedServicesSnapshot = dedupePackageServiceItems(
+        Array.isArray(sessionPackage.allowedServicesSnapshot)
+          ? sessionPackage.allowedServicesSnapshot
+          : []
+      );
+      const toolsEligible = isToolsOptionEligibleForService(sv);
+      const toolsSource = toolsEligible ? "client" : undefined;
+      const priced = buildItemPriceWithTools(0, toolsSource, toolsEligible);
+      const packageSnapshot: NonNullable<CartItem["packageSnapshot"]> = {
+        packageId: String(sessionPackage.packageId || "").trim(),
+        packageName: String(sessionPackage.packageName || "").trim() || "باقة جلسات",
+        finalPriceAtBooking: Math.max(0, Number(sessionPackage.packagePrice || 0)),
+        baseTotalPriceAtBooking: Math.max(0, Number(sessionPackage.packagePrice || 0)),
+        totalDurationMinAtBooking: Math.max(
+          1,
+          Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+        ),
+        serviceIds: allowedServiceIds,
+        services: allowedServicesSnapshot,
+        sessionsCount: Math.max(1, Number(sessionPackage.sessionsCount || 1)),
+        kind: "session_package",
+      };
+
+      setFormData((prev) => ({
+        ...prev,
+        items: [
+          ...(prev.items || []),
+          {
+            id: makeLocalId(),
+            serviceId: id,
+            serviceName: sv.name,
+            fromSessionPackage: true,
+            sessionPackageId: String(sessionPackage.packageId || "").trim(),
+            sessionPackageName: String(sessionPackage.packageName || "").trim() || undefined,
+            allowedServiceIds,
+            consumeOneSession: true,
+            packageId: String(sessionPackage.packageId || "").trim() || undefined,
+            packageSnapshot,
+            serviceBasePrice: 0,
+            basePrice: priced.basePrice,
+            priceText:
+              Math.max(0, Number(priced.basePrice || 0)) <= 0 ? "من الباقة" : priced.priceText,
+            durationMin: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+            employeeId: "",
+            employeeUid: "",
+            employeeName: "",
+            date: bookingDateSafe,
+            time: "",
+            locked: false,
+            serviceSectionId: String(sv.sectionId || "").trim(),
+            serviceSectionTitle: String(sv.sectionTitle || "").trim() || undefined,
+            serviceCategoryId: String(sv.categoryId || "").trim() || undefined,
+            serviceCategoryName: String(sv.category || "").trim() || undefined,
+            toolsSource,
+            toolsFeeApplied: priced.toolsFeeApplied,
+          },
+        ],
+      }));
+
+      setServicePicker("");
+      resetSessionPackageSelection();
+      setSelectedCategory("");
+      setSelectedSectionId("");
+      setShowHairGuide(false);
+      setOfferStartTime("");
+      clearAppliedCoupons();
+      return;
+    }
+
     if (sv.kind === "package") {
       const pkgServices = Array.isArray(sv.packageServices) ? sv.packageServices : [];
       const pkgServiceIds = (Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [])
@@ -2877,8 +3174,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         const serviceDoc = row.serviceDoc;
         const serviceName = String(
           (row.meta as any)?.serviceName ||
-            serviceDoc?.name ||
-            row.serviceId
+          serviceDoc?.name ||
+          row.serviceId
         ).trim();
         const durationMin = Math.max(
           1,
@@ -2887,14 +3184,14 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         const sectionId = String((row.meta as any)?.sectionId || serviceDoc?.sectionId || "").trim();
         const sectionTitle = String(
           serviceDoc?.sectionTitle ||
-            sectionLabelById.get(sectionId) ||
-            sectionId
+          sectionLabelById.get(sectionId) ||
+          sectionId
         ).trim();
         const categoryId = String((row.meta as any)?.categoryId || serviceDoc?.categoryId || "").trim();
         const categoryName = String(
           serviceDoc?.category ||
-            categoryLabelById.get(categoryId) ||
-            categoryId
+          categoryLabelById.get(categoryId) ||
+          categoryId
         ).trim();
         const toolsEligible = isManiPediSectionByInfo(sectionId, sectionTitle);
         const toolsSource = toolsEligible ? "client" : undefined;
@@ -2993,14 +3290,16 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             packageSnapshot:
               sv.kind === "package" && sv.packageId
                 ? {
-                    packageId: String(sv.packageId || "").trim(),
-                    packageName: sv.name,
-                    finalPriceAtBooking: Number(sv.basePrice || 0),
-                    baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
-                    totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-                    serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
-                    services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
-                  }
+                  packageId: String(sv.packageId || "").trim(),
+                  packageName: sv.name,
+                  finalPriceAtBooking: Number(sv.basePrice || 0),
+                  baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
+                  totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                  serviceIds: normalizePackageServiceIds(sv.packageServiceIds),
+                  services: dedupePackageServiceItems(
+                    Array.isArray(sv.packageServices) ? sv.packageServices : []
+                  ),
+                }
                 : undefined,
             serviceBasePrice: priced.serviceBasePrice,
             basePrice: priced.basePrice,
@@ -3346,9 +3645,10 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const toolsEligible = isToolsOptionEligibleForItem(it);
     if (!toolsEligible) return;
 
-    const baseFromItem =
-      Number((it as any)?.serviceBasePrice ?? 0) ||
-      Math.max(0, Number(it.basePrice || 0) - Number(it.toolsFeeApplied || 0));
+    const baseFromItem = isSessionPackageCartItem(it)
+      ? 0
+      : Number((it as any)?.serviceBasePrice ?? 0) ||
+        Math.max(0, Number(it.basePrice || 0) - Number(it.toolsFeeApplied || 0));
 
     const priced = buildItemPriceWithTools(baseFromItem, nextSource, true);
     updateItem(it.id, {
@@ -3356,7 +3656,9 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       serviceBasePrice: priced.serviceBasePrice,
       toolsFeeApplied: priced.toolsFeeApplied,
       basePrice: priced.basePrice,
-      priceText: priced.priceText,
+      priceText: isSessionPackageCartItem(it)
+        ? resolveCartItemPriceText({ ...it, ...priced, priceText: priced.priceText })
+        : priced.priceText,
     });
   };
 
@@ -4478,8 +4780,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
     const list = sortTimesBySlotOrder(
       staffScopedSlots
-      .map((s) => s.value24)
-      .filter((t) => greens.has(t)),
+        .map((s) => s.value24)
+        .filter((t) => greens.has(t)),
       baseSlots
     );
 
@@ -4506,9 +4808,9 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     );
     const targetItemId = String(
       opts?.targetItemId ||
-        futureTargetItemId ||
-        itemFromCart?.id ||
-        ""
+      futureTargetItemId ||
+      itemFromCart?.id ||
+      ""
     ).trim();
 
     const durationMin = Number(
@@ -4563,12 +4865,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
         const localTaken = targetItemId
           ? getLocalTakenTimesForItem(
-              formData.items || [],
-              targetItemId,
-              fixedEmployeeKey,
-              dateISO,
-              employeeIdFallback
-            )
+            formData.items || [],
+            targetItemId,
+            fixedEmployeeKey,
+            dateISO,
+            employeeIdFallback
+          )
           : new Set<string>();
         const dayTimes = await getAvailableStartsForDay({
           salonId: SALON_ID,
@@ -4625,8 +4927,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     const sv = getServiceById(serviceId);
     const durationMin = Number(
       sv?.durationMin ||
-        target?.durationMin ||
-        DEFAULT_SERVICE_DURATION_MIN
+      target?.durationMin ||
+      DEFAULT_SERVICE_DURATION_MIN
     );
 
     let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
@@ -4649,12 +4951,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       const chosenId = String((chosenStaff as any)?.id || "").trim();
       const localTaken = targetItemId
         ? getLocalTakenTimesForItem(
-            formData.items || [],
-            targetItemId,
-            chosenKey,
-            chosenDate,
-            chosenId
-          )
+          formData.items || [],
+          targetItemId,
+          chosenKey,
+          chosenDate,
+          chosenId
+        )
         : new Set<string>();
       const starts = await getAvailableStartsForDay({
         salonId: SALON_ID,
@@ -4799,11 +5101,11 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             });
             const staffWorkingSlots = staffWindows.length
               ? filterStaffSlotsByWorkingHours(selectedStaff as any, {
-                  dateISO: date,
-                  slots: slotsForThisService,
-                  fallbackOpenTime: dayOpenTime,
-                  fallbackCloseTime: dayCloseTime,
-                })
+                dateISO: date,
+                slots: slotsForThisService,
+                fallbackOpenTime: dayOpenTime,
+                fallbackCloseTime: dayCloseTime,
+              })
               : [];
             if (!staffWindows.length) {
               slotsForThisService = [];
@@ -4937,14 +5239,17 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         };
 
         if (sv) {
-          const eff = pickEffectivePrice({
-            basePrice: Number(sv.basePrice || 0),
-            seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
-            appSettings,
-            dateISO: v,
-          });
+          const fromSessionPackage = isSessionPackageCartItem(it);
+          const eff = fromSessionPackage
+            ? { price: 0 }
+            : pickEffectivePrice({
+              basePrice: Number(sv.basePrice || 0),
+              seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
+              appSettings,
+              dateISO: v,
+            });
 
-          const serviceBasePrice = Number(eff.price || 0);
+          const serviceBasePrice = fromSessionPackage ? 0 : Number(eff.price || 0);
           const toolsEligible = isToolsOptionEligibleForService(sv);
           const toolsSource = toolsEligible
             ? (String((it as any)?.toolsSource || "").trim() === "salon" ? "salon" : "client")
@@ -4961,7 +5266,9 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             serviceBasePrice: priced.serviceBasePrice,
             toolsFeeApplied: priced.toolsFeeApplied,
             basePrice: priced.basePrice,
-            priceText: priced.priceText,
+            priceText: fromSessionPackage
+              ? resolveCartItemPriceText({ ...it, ...priced, priceText: priced.priceText })
+              : priced.priceText,
           };
         }
 
@@ -5004,14 +5311,17 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
 
         if (!sv) return basePatch;
 
-        const eff = pickEffectivePrice({
-          basePrice: Number(sv.basePrice || 0),
-          seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
-          appSettings,
-          dateISO: nextDate,
-        });
+        const fromSessionPackage = isSessionPackageCartItem(it);
+        const eff = fromSessionPackage
+          ? { price: 0 }
+          : pickEffectivePrice({
+            basePrice: Number(sv.basePrice || 0),
+            seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
+            appSettings,
+            dateISO: nextDate,
+          });
 
-        const serviceBasePrice = Number(eff.price || 0);
+        const serviceBasePrice = fromSessionPackage ? 0 : Number(eff.price || 0);
         const toolsEligible = isToolsOptionEligibleForService(sv);
         const toolsSource = toolsEligible
           ? (String((it as any)?.toolsSource || "").trim() === "salon" ? "salon" : "client")
@@ -5028,7 +5338,9 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           serviceBasePrice: priced.serviceBasePrice,
           toolsFeeApplied: priced.toolsFeeApplied,
           basePrice: priced.basePrice,
-          priceText: priced.priceText,
+          priceText: fromSessionPackage
+            ? resolveCartItemPriceText({ ...it, ...priced, priceText: priced.priceText })
+            : priced.priceText,
         };
       }),
     }));
@@ -5054,6 +5366,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     setSelectedSectionId(sid);
     setSelectedCategory("");
     setServicePicker("");
+    resetSessionPackageSelection();
     setShowHairGuide(false);
   };
 
@@ -5064,6 +5377,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     }
     setSelectedCategory(nextCategory);
     setServicePicker("");
+    resetSessionPackageSelection();
   };
 
   const handleServicePickerChange = (nextRaw: string) => {
@@ -5072,6 +5386,12 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       resetItemsAfterServiceChange();
     }
     setServicePicker(next);
+    if (pickerScope === "session_packages") {
+      setSessionPackageServicePicker("");
+      setSessionPackageAllowedServices([]);
+      setSessionPackageServicesError("");
+      setSessionPackageServicesLoading(false);
+    }
     setOfferStartTime("");
   };
 
@@ -5106,7 +5426,7 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         date: String(it.date || bookingDate || "").trim() || "-",
         timeLabel: formatTime12ForClient(String(it.time || "").trim()),
         durationMin: Math.max(0, Number(it.durationMin || 0)),
-        priceLabel: `${Number(it.basePrice || 0).toFixed(0)} ريال`,
+        priceLabel: resolveCartItemPriceText(it),
         toolsNote: buildItemToolsNote(it),
         locked: !!it.locked,
       })),
@@ -5952,13 +6272,13 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       const userNote = String(formData.note || "").trim();
       const offerNote = finalCoupons.length
         ? finalCoupons
-            .map(
-              (x) =>
-                `Offer: ${x.offerTitle || x.code || "-"} | code=${x.code || "-"} | discount=${Number(
-                  x.discountAmount || 0
-                ).toFixed(0)}`
-            )
-            .join(" || ")
+          .map(
+            (x) =>
+              `Offer: ${x.offerTitle || x.code || "-"} | code=${x.code || "-"} | discount=${Number(
+                x.discountAmount || 0
+              ).toFixed(0)}`
+          )
+          .join(" || ")
         : "";
 
       const noteFinal = [userNote, offerNote].filter(Boolean).join(" | ") || undefined;
@@ -6037,7 +6357,15 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
         const itemFinal = Math.max(0, Number(it.basePrice || 0) - itemDiscount);
         const itemCoupon = couponByItemId.get(String(it.id || "").trim()) || null;
         const toolsNote = buildItemToolsNote(it);
-        const itemNote = [noteFinal, toolsNote].filter(Boolean).join(" | ") || undefined;
+        const sessionPackageNote = isSessionPackageCartItem(it)
+          ? [
+            `fromSessionPackage=1`,
+            `sessionPackageId=${String(it.sessionPackageId || it.packageId || "").trim() || "-"}`,
+            `sessionPackageName=${String(it.sessionPackageName || it.packageSnapshot?.packageName || "").trim() || "-"}`,
+            `consumeOneSession=${it.consumeOneSession === false ? 0 : 1}`,
+          ].join(" | ")
+          : "";
+        const itemNote = [noteFinal, toolsNote, sessionPackageNote].filter(Boolean).join(" | ") || undefined;
 
         if (isSequentialOfferItem(it)) {
           const plan = sequentialPlans.get(String(it.id || "").trim());
@@ -6302,8 +6630,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             const hasSingleEmployeeForRun = employeeIdsInRun.length === 1;
             const runEmployee = hasSingleEmployeeForRun
               ? sortedRun.find(
-                  (x) => String(x.item.employeeId || "").trim() === employeeIdsInRun[0]
-                )?.item
+                (x) => String(x.item.employeeId || "").trim() === employeeIdsInRun[0]
+              )?.item
               : undefined;
 
             const lead = sortedRun[0].item;
@@ -6489,6 +6817,16 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           clientPhone: phone,
           serviceName: it.serviceName,
           serviceId: it.serviceId,
+          fromSessionPackage: it.fromSessionPackage || undefined,
+          sessionPackageId: String(it.sessionPackageId || "").trim() || undefined,
+          sessionPackageName: String(it.sessionPackageName || "").trim() || undefined,
+          allowedServiceIds: normalizePackageServiceIds(
+            Array.isArray(it.allowedServiceIds)
+              ? it.allowedServiceIds
+              : it.packageSnapshot?.serviceIds
+          ),
+          consumeOneSession:
+            it.consumeOneSession === undefined ? undefined : !!it.consumeOneSession,
           packageId: String(it.packageId || "").trim() || undefined,
           packageSnapshot: it.packageSnapshot || undefined,
           serviceSnapshot: {
@@ -6536,6 +6874,15 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
           offerId: itemCoupon?.offerId || null,
           offerTitle: itemCoupon?.offerTitle || null,
           discountAmount: itemDiscount,
+          fromSessionPackage: it.fromSessionPackage || false,
+          sessionPackageId: String(it.sessionPackageId || "").trim() || null,
+          sessionPackageName: String(it.sessionPackageName || "").trim() || null,
+          allowedServiceIds: normalizePackageServiceIds(
+            Array.isArray(it.allowedServiceIds)
+              ? it.allowedServiceIds
+              : it.packageSnapshot?.serviceIds
+          ),
+          consumeOneSession: it.consumeOneSession !== false,
           durationMin,
           toolsSource: String(it.toolsSource || "").trim() || null,
           toolsFeeApplied: Number(it.toolsFeeApplied || 0),
@@ -6558,6 +6905,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
       for (const row of createdBookings) {
         const packageIdRaw = String((row as any)?.packageId || "").trim();
         if (!packageIdRaw) continue;
+        const packageKind = String((row as any)?.packageSnapshot?.kind || "").trim().toLowerCase();
+        if (packageKind === "session_package") continue;
         const lower = packageIdRaw.toLowerCase();
         if (lower.startsWith("offer:")) continue;
         if (lower.startsWith("package:")) {
@@ -6690,12 +7039,15 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             : undefined;
 
           const rawServiceBase = Number((it as any)?.serviceBasePrice);
-          const serviceBasePrice = Number.isFinite(rawServiceBase)
-            ? Math.max(0, rawServiceBase)
-            : Math.max(
-              0,
-              Number((it as any)?.basePrice ?? 0) - Math.max(0, Number((it as any)?.toolsFeeApplied || 0))
-            );
+          const fromSessionPackage = isSessionPackageCartItem(it);
+          const serviceBasePrice = fromSessionPackage
+            ? 0
+            : Number.isFinite(rawServiceBase)
+              ? Math.max(0, rawServiceBase)
+              : Math.max(
+                0,
+                Number((it as any)?.basePrice ?? 0) - Math.max(0, Number((it as any)?.toolsFeeApplied || 0))
+              );
           const priced = buildItemPriceWithTools(serviceBasePrice, toolsSource, toolsEligible);
 
           return {
@@ -6711,18 +7063,29 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
               (it as any)?.packageSnapshot ||
               (sv?.kind === "package" && sv.packageId
                 ? {
-                    packageId: String(sv.packageId || "").trim(),
-                    packageName: sv.name,
-                    finalPriceAtBooking: Number(sv.basePrice || 0),
-                    baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
-                    totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-                    serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
-                    services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
-                  }
+                  packageId: String(sv.packageId || "").trim(),
+                  packageName: sv.name,
+                  finalPriceAtBooking: Number(sv.basePrice || 0),
+                  baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
+                  totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                  serviceIds: normalizePackageServiceIds(sv.packageServiceIds),
+                  services: dedupePackageServiceItems(
+                    Array.isArray(sv.packageServices) ? sv.packageServices : []
+                  ),
+                }
                 : undefined),
             employeeId: String(it?.employeeId || "").trim(),
             employeeUid: String(it?.employeeUid || "").trim(),
             employeeName: String(it?.employeeName || "").trim(),
+            fromSessionPackage: !!(it as any)?.fromSessionPackage,
+            sessionPackageId: String((it as any)?.sessionPackageId || "").trim() || undefined,
+            sessionPackageName: String((it as any)?.sessionPackageName || "").trim() || undefined,
+            allowedServiceIds: normalizePackageServiceIds(
+              Array.isArray((it as any)?.allowedServiceIds)
+                ? (it as any).allowedServiceIds
+                : (it as any)?.packageSnapshot?.serviceIds
+            ),
+            consumeOneSession: !!(it as any)?.consumeOneSession,
             date: String(it?.date || "").trim(),
             time: String(it?.time || "").trim(),
             serviceSectionId: sectionId,
@@ -6733,7 +7096,9 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
             serviceBasePrice: priced.serviceBasePrice,
             toolsFeeApplied: priced.toolsFeeApplied,
             basePrice: priced.basePrice,
-            priceText: priced.priceText,
+            priceText: fromSessionPackage
+              ? resolveCartItemPriceText({ ...(it as any), ...priced, priceText: priced.priceText })
+              : priced.priceText,
           };
         }),
       }));
@@ -6807,8 +7172,8 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
     step1SummaryRows.length === 0
       ? "لم يتم اختيار خدمة"
       : step1SummaryRows
-          .map((row) => `${row.index}- ${row.label}`)
-          .join("\n");
+        .map((row) => `${row.index}- ${row.label}`)
+        .join("\n");
   const staffSummaryText = selectedStaffEmployeeName || "اختيار يدوي";
   const step2TimeSummary =
     selectedTime && selectedDate
@@ -7133,407 +7498,511 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                 </div>
 
                 {currentStep === 2 ? (
-                <div className="booking-step-card-shell mb-4">
-                  <div className="booking-step-card-shell__title">
-                    اختاري اليوم والوقت المناسب
-                  </div>
-                  <div className="row">
-                  <div className="col-12 mb-4">
-                    <div className="booking-date-field">
-                      <div className="booking-date-field__head">
-                        <label htmlFor="bookingDate" className="form-label mb-0">تاريخ الحجز</label>
-                        <div className="booking-calendar-toggle" role="group" aria-label="نوع عرض التاريخ">
-                          <button
-                            type="button"
-                            className={`booking-calendar-toggle__btn ${calendarViewMode === "gregorian" ? "is-active" : ""}`}
-                            onClick={() => {
-                              setCalendarViewMode("gregorian");
-                              setHijriPickerOpen(false);
-                            }}
-                          >
-                            ميلادي
-                          </button>
-                          <button
-                            type="button"
-                            className={`booking-calendar-toggle__btn ${calendarViewMode === "hijri" ? "is-active" : ""}`}
-                            onClick={() => {
-                              setCalendarViewMode("hijri");
-                              const base = normalizeISODate(bookingDate) || todayISO();
-                              setHijriViewMonthISO(findHijriMonthStartISO(base));
-                            }}
-                          >
-                            هجري
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="booking-date-shell-wrap" ref={hijriPickerRef}>
-                        <div
-                          className={`booking-date-shell ${bookingDate ? "is-filled" : "is-empty"}`}
-                          role="button"
-                          tabIndex={0}
-                          onClick={openBookingDatePicker}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              openBookingDatePicker();
-                            }
-                          }}
-                        >
-                          <span className="booking-date-shell__icon" aria-hidden="true">
-                            <FontAwesomeIcon icon={faCalendarAlt} />
-                          </span>
-                          <div className="booking-date-shell__text">
-                            <span className={`booking-date-shell__value ${bookingDate ? "" : "is-placeholder"}`}>
-                              {bookingDate ? bookingDateDisplayValue : "اختر تاريخ الحجز"}
-                            </span>
-                            <span className="booking-date-shell__meta">
-                              {bookingDate ? `عرض ${calendarViewModeLabel}` : `التقويم الحالي: ${calendarViewModeLabel}`}
-                            </span>
+                  <div className="booking-step-card-shell mb-4">
+                    <div className="booking-step-card-shell__title">
+                      اختاري اليوم والوقت المناسب
+                    </div>
+                    <div className="row">
+                      <div className="col-12 mb-4">
+                        <div className="booking-date-field">
+                          <div className="booking-date-field__head">
+                            <label htmlFor="bookingDate" className="form-label mb-0">تاريخ الحجز</label>
+                            <div className="booking-calendar-toggle" role="group" aria-label="نوع عرض التاريخ">
+                              <button
+                                type="button"
+                                className={`booking-calendar-toggle__btn ${calendarViewMode === "gregorian" ? "is-active" : ""}`}
+                                onClick={() => {
+                                  setCalendarViewMode("gregorian");
+                                  setHijriPickerOpen(false);
+                                }}
+                              >
+                                ميلادي
+                              </button>
+                              <button
+                                type="button"
+                                className={`booking-calendar-toggle__btn ${calendarViewMode === "hijri" ? "is-active" : ""}`}
+                                onClick={() => {
+                                  setCalendarViewMode("hijri");
+                                  const base = normalizeISODate(bookingDate) || todayISO();
+                                  setHijriViewMonthISO(findHijriMonthStartISO(base));
+                                }}
+                              >
+                                هجري
+                              </button>
+                            </div>
                           </div>
-                          {calendarViewMode === "gregorian" && (
-                            <input
-                              ref={dateRef}
-                              key={`bookingDatePicker-${calendarViewMode}`}
-                              type="date"
-                              lang="ar-SA-u-ca-gregory"
-                              className="booking-date-shell__native booking-date-input"
-                              id="bookingDate"
-                              value={bookingDate}
-                              onChange={(e) => applyBookingDate(String(e.target.value || "").trim())}
-                              min={todayISO()}
-                              aria-label="اختر تاريخ الحجز"
-                            />
-                          )}
-                        </div>
-                        {calendarViewMode === "hijri" && hijriPickerOpen && (
-                          <div className="booking-hijri-picker">
-                            <div className="booking-hijri-picker__head">
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-dark"
-                                onClick={() => setHijriViewMonthISO((prev) => shiftHijriMonthStartISO(prev, -1))}
-                              >
-                                السابق
-                              </button>
-                              <strong>{hijriMonthTitle || "التقويم الهجري"}</strong>
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-dark"
-                                onClick={() => setHijriViewMonthISO((prev) => shiftHijriMonthStartISO(prev, 1))}
-                              >
-                                التالي
-                              </button>
+
+                          <div className="booking-date-shell-wrap" ref={hijriPickerRef}>
+                            <div
+                              className={`booking-date-shell ${bookingDate ? "is-filled" : "is-empty"}`}
+                              role="button"
+                              tabIndex={0}
+                              onClick={openBookingDatePicker}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  openBookingDatePicker();
+                                }
+                              }}
+                            >
+                              <span className="booking-date-shell__icon" aria-hidden="true">
+                                <FontAwesomeIcon icon={faCalendarAlt} />
+                              </span>
+                              <div className="booking-date-shell__text">
+                                <span className={`booking-date-shell__value ${bookingDate ? "" : "is-placeholder"}`}>
+                                  {bookingDate ? bookingDateDisplayValue : "اختر تاريخ الحجز"}
+                                </span>
+                                <span className="booking-date-shell__meta">
+                                  {bookingDate ? `عرض ${calendarViewModeLabel}` : `التقويم الحالي: ${calendarViewModeLabel}`}
+                                </span>
+                              </div>
+                              {calendarViewMode === "gregorian" && (
+                                <input
+                                  ref={dateRef}
+                                  key={`bookingDatePicker-${calendarViewMode}`}
+                                  type="date"
+                                  lang="ar-SA-u-ca-gregory"
+                                  className="booking-date-shell__native booking-date-input"
+                                  id="bookingDate"
+                                  value={bookingDate}
+                                  onChange={(e) => applyBookingDate(String(e.target.value || "").trim())}
+                                  min={todayISO()}
+                                  aria-label="اختر تاريخ الحجز"
+                                />
+                              )}
                             </div>
-                            <div className="booking-hijri-picker__grid booking-hijri-picker__weekdays">
-                              {["س", "ح", "ن", "ث", "ر", "خ", "ج"].map((w) => (
-                                <span key={w}>{w}</span>
-                              ))}
-                            </div>
-                            <div className="booking-hijri-picker__grid">
-                              {hijriMonthDays.map((cell) => {
-                                const isPast = cell.iso < todayISO();
-                                const isActive = cell.iso === bookingDate;
-                                return (
+                            {calendarViewMode === "hijri" && hijriPickerOpen && (
+                              <div className="booking-hijri-picker">
+                                <div className="booking-hijri-picker__head">
                                   <button
-                                    key={cell.iso}
                                     type="button"
-                                    className={["booking-hijri-day", isActive ? "is-active" : ""].join(" ").trim()}
-                                    disabled={isPast}
-                                    onClick={() => applyBookingDate(cell.iso)}
+                                    className="btn btn-sm btn-outline-dark"
+                                    onClick={() => setHijriViewMonthISO((prev) => shiftHijriMonthStartISO(prev, -1))}
                                   >
-                                    {String(cell.hijriDay)}
+                                    السابق
                                   </button>
-                                );
-                              })}
-                            </div>
+                                  <strong>{hijriMonthTitle || "التقويم الهجري"}</strong>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-dark"
+                                    onClick={() => setHijriViewMonthISO((prev) => shiftHijriMonthStartISO(prev, 1))}
+                                  >
+                                    التالي
+                                  </button>
+                                </div>
+                                <div className="booking-hijri-picker__grid booking-hijri-picker__weekdays">
+                                  {["س", "ح", "ن", "ث", "ر", "خ", "ج"].map((w) => (
+                                    <span key={w}>{w}</span>
+                                  ))}
+                                </div>
+                                <div className="booking-hijri-picker__grid">
+                                  {hijriMonthDays.map((cell) => {
+                                    const isPast = cell.iso < todayISO();
+                                    const isActive = cell.iso === bookingDate;
+                                    return (
+                                      <button
+                                        key={cell.iso}
+                                        type="button"
+                                        className={["booking-hijri-day", isActive ? "is-active" : ""].join(" ").trim()}
+                                        disabled={isPast}
+                                        onClick={() => applyBookingDate(cell.iso)}
+                                      >
+                                        {String(cell.hijriDay)}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {bookingDate && !selectedDayOpen && (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              color: "#b00020",
+                              background: "#fff1f1",
+                              border: "1px solid #f5b5bd",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              fontWeight: 900,
+                              fontSize: 14,
+                            }}
+                          >
+                            يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة. اختاري يومًا آخر للحجز.
                           </div>
                         )}
                       </div>
                     </div>
-                    {bookingDate && !selectedDayOpen && (
-                      <div
-                        style={{
-                          marginTop: 8,
-                          color: "#b00020",
-                          background: "#fff1f1",
-                          border: "1px solid #f5b5bd",
-                          borderRadius: 8,
-                          padding: "8px 10px",
-                          fontWeight: 900,
-                          fontSize: 14,
-                        }}
-                      >
-                        يوم {WEEKDAY_LABEL_AR[selectedDayKey]} إجازة. اختاري يومًا آخر للحجز.
-                      </div>
-                    )}
                   </div>
-                </div>
-                </div>
                 ) : null}
 
 
                 {currentStep === 1 ? (
-                <div className="booking-step-card-shell mb-4">
-                  <div className="booking-step-card-shell__title">اختاري الخدمة اللي تبغينها</div>
-                <div className="mb-0 bk-service-adder" style={{ border: '1px solid #eee', padding: '15px', borderRadius: '12px', background: '#fafafa' }}>
-                  <label className="form-label" style={{ fontWeight: 'bold' }}>أضيفي خدمة جديدة</label>
-                  <div className="bk-picker-scope mb-2">
-                    <button
-                      type="button"
-                      className={`btn ${pickerScope === "services" ? "btn-dark" : "btn-outline-dark"} btn-sm`}
-                      onClick={() => {
-                        setPickerScope("services");
-                        setServicePicker("");
-                        setSelectedSectionId("");
-                        setSelectedCategory("");
-                        setShowHairGuide(false);
-                        setOfferStartTime("");
-                      }}
-                    >
-                      الخدمات
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn ${pickerScope === "offers" ? "btn-dark" : "btn-outline-dark"} btn-sm`}
-                      onClick={() => {
-                        setPickerScope("offers");
-                        setServicePicker("");
-                        setSelectedSectionId("");
-                        setSelectedCategory("");
-                        setShowHairGuide(false);
-                        setOfferStartTime("");
-                      }}
-                    >
-                      العروض
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn ${pickerScope === "offers_packages" ? "btn-dark" : "btn-outline-dark"} btn-sm`}
-                      onClick={() => {
-                        setPickerScope("offers_packages");
-                        setServicePicker("");
-                        setSelectedSectionId("");
-                        setSelectedCategory("");
-                        setShowHairGuide(false);
-                        setOfferStartTime("");
-                      }}
-                    >
-                      البكجات
-                    </button>
-                  </div>
+                  <div className="booking-step-card-shell mb-4">
+                    <div className="booking-step-card-shell__title">اختاري الخدمة اللي تبغينها</div>
+                    <div className="mb-0 bk-service-adder" style={{ border: '1px solid #eee', padding: '15px', borderRadius: '12px', background: '#fafafa' }}>
+                      <label className="form-label" style={{ fontWeight: 'bold' }}>أضيفي خدمة جديدة</label>
+                      <div className="bk-picker-scope mb-2">
+                        <button
+                          type="button"
+                          className={`btn ${pickerScope === "services" ? "btn-dark" : "btn-outline-dark"} btn-sm`}
+                          onClick={() => {
+                            setPickerScope("services");
+                            setServicePicker("");
+                            resetSessionPackageSelection();
+                            setSelectedSectionId("");
+                            setSelectedCategory("");
+                            setShowHairGuide(false);
+                            setOfferStartTime("");
+                          }}
+                        >
+                          الخدمات
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn ${pickerScope === "offers" ? "btn-dark" : "btn-outline-dark"} btn-sm`}
+                          onClick={() => {
+                            setPickerScope("offers");
+                            setServicePicker("");
+                            resetSessionPackageSelection();
+                            setSelectedSectionId("");
+                            setSelectedCategory("");
+                            setShowHairGuide(false);
+                            setOfferStartTime("");
+                          }}
+                        >
+                          العروض
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn ${pickerScope === "session_packages" ? "btn-dark" : "btn-outline-dark"} btn-sm`}
+                          onClick={() => {
+                            setPickerScope("session_packages");
+                            setServicePicker("");
+                            resetSessionPackageSelection();
+                            setSelectedSectionId("");
+                            setSelectedCategory("");
+                            setShowHairGuide(false);
+                            setOfferStartTime("");
+                          }}
+                        >
+                          الباقات
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn ${pickerScope === "offers_packages" ? "btn-dark" : "btn-outline-dark"} btn-sm`}
+                          onClick={() => {
+                            setPickerScope("offers_packages");
+                            setServicePicker("");
+                            resetSessionPackageSelection();
+                            setSelectedSectionId("");
+                            setSelectedCategory("");
+                            setShowHairGuide(false);
+                            setOfferStartTime("");
+                          }}
+                        >
+                          البكجات
+                        </button>
+                      </div>
 
-                  {pickerScope === "services" ? (
-                    <div className="row g-2">
-                      <div className="col-md-4">
-                        <div className="bk-field">
-                          <select
-                            className={`form-select dash-select ${selectedSectionId ? "" : "is-empty"}`}
-                            value={selectedSectionId}
-                            onChange={handleSectionChange}
-                            disabled={catalogLoading && !sectionOptionsSafe.length}
-                          >
-                            <option value="">اختاري القسم</option>
-                            {!sectionOptionsSafe.length && <option value="" disabled>لا توجد أقسام متاحة</option>}
-                            {sectionOptionsSafe.map((sec) => (
-                              <option key={sec.id} value={sec.id}>{sec.title}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="col-md-4">
-                        <div className="bk-field">
-                          <select
-                            className={`form-select dash-select ${selectedCategory ? "" : "is-empty"}`}
-                            value={selectedCategory}
-                            onChange={handleCategoryChange}
-                            disabled={!selectedSectionId || (categoryLoading && !categoryOptionsSafe.length)}
-                          >
-                            <option value="">اختاري التصنيف</option>
-                            {!!selectedSectionId && !categoryOptionsSafe.length && <option value="" disabled>لا توجد تصنيفات</option>}
-                            {categoryOptionsSafe.map((c) => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="col-md-4">
-                        <div className="bk-field">
-                          <select
-                            className={`form-select dash-select ${servicePicker ? "" : "is-empty"}`}
-                            value={servicePicker}
-                            onChange={(e) => handleServicePickerChange(e.target.value)}
-                            disabled={!selectedSectionId}
-                          >
-                            <option value="">اختاري الخدمة</option>
-                            {!!selectedSectionId && !servicesGrouped.length && <option value="" disabled>لا توجد خدمات</option>}
-                            {servicesGrouped.map(([cat, items]) => (
-                              <optgroup key={cat} label={cat}>
-                                {items.map((sv) => (
-                                  <option key={sv.id} value={sv.id}>
-                                    {sv.name} — {servicePickerPriceText(sv)}
-                                  </option>
+                      {pickerScope === "services" ? (
+                        <div className="row g-2">
+                          <div className="col-md-4">
+                            <div className="bk-field">
+                              <select
+                                className={`form-select dash-select ${selectedSectionId ? "" : "is-empty"}`}
+                                value={selectedSectionId}
+                                onChange={handleSectionChange}
+                                disabled={catalogLoading && !sectionOptionsSafe.length}
+                              >
+                                <option value="">اختاري القسم</option>
+                                {!sectionOptionsSafe.length && <option value="" disabled>لا توجد أقسام متاحة</option>}
+                                {sectionOptionsSafe.map((sec) => (
+                                  <option key={sec.id} value={sec.id}>{sec.title}</option>
                                 ))}
-                              </optgroup>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  ) : pickerScope === "offers" ? (
-                    <div className="row g-2">
-                      <div className="col-12">
-                        <div className="bk-field">
-                          <select
-                            className={`form-select dash-select ${servicePicker ? "" : "is-empty"} ${hasOfferServiceInCart ? "is-offer-limit" : ""}`}
-                            value={hasOfferServiceInCart ? "" : servicePicker}
-                            onChange={(e) => {
-                              const next = e.target.value;
-                              handleServicePickerChange(next);
-                            }}
-                            disabled={!sequenceOfferOptions.length || hasOfferServiceInCart}
-                          >
-                            <option value="">
-                              {hasOfferServiceInCart
-                                ? "مسموح بإضافة خدمة عرض واحدة فقط في نفس الحجز."
-                                : "اختاري العرض"}
-                            </option>
-                            {!sequenceOfferOptions.length && <option value="" disabled>لا توجد عروض متاحة</option>}
-                            {sequenceOfferOptions.length > 0 && (
-                              <optgroup label="العروض">
-                                {sequenceOfferOptions.map((offer) => (
-                                  <option key={offer.id} value={offer.id}>
-                                    {offer.title} — {offer.priceText}
-                                  </option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="bk-field">
+                              <select
+                                className={`form-select dash-select ${selectedCategory ? "" : "is-empty"}`}
+                                value={selectedCategory}
+                                onChange={handleCategoryChange}
+                                disabled={!selectedSectionId || (categoryLoading && !categoryOptionsSafe.length)}
+                              >
+                                <option value="">اختاري التصنيف</option>
+                                {!!selectedSectionId && !categoryOptionsSafe.length && <option value="" disabled>لا توجد تصنيفات</option>}
+                                {categoryOptionsSafe.map((c) => (
+                                  <option key={c.id} value={c.id}>{c.name}</option>
                                 ))}
-                              </optgroup>
-                            )}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="row g-2">
-                      <div className="col-12">
-                        <div className="bk-field">
-                          <select
-                            className={`form-select dash-select ${servicePicker ? "" : "is-empty"}`}
-                            value={servicePicker}
-                            onChange={(e) => {
-                              const next = e.target.value;
-                              handleServicePickerChange(next);
-                            }}
-                            disabled={!packageOptions.length}
-                          >
-                            <option value="">اختاري باكيج</option>
-                            {!packageOptions.length && <option value="" disabled>لا توجد باكيجات متاحة</option>}
-                            {packageOptions.length > 0 && (
-                              <optgroup label="الباكيجات">
-                                {packageOptions.map((pkg) => (
-                                  <option key={pkg.id} value={pkg.id}>
-                                    {pkg.title} — {pkg.priceText}
-                                  </option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="col-md-4">
+                            <div className="bk-field">
+                              <select
+                                className={`form-select dash-select ${servicePicker ? "" : "is-empty"}`}
+                                value={servicePicker}
+                                onChange={(e) => handleServicePickerChange(e.target.value)}
+                                disabled={!selectedSectionId}
+                              >
+                                <option value="">اختاري الخدمة</option>
+                                {!!selectedSectionId && !servicesGrouped.length && <option value="" disabled>لا توجد خدمات</option>}
+                                {servicesGrouped.map(([cat, items]) => (
+                                  <optgroup key={cat} label={cat}>
+                                    {items.map((sv) => (
+                                      <option key={sv.id} value={sv.id}>
+                                        {sv.name} — {servicePickerPriceText(sv)}
+                                      </option>
+                                    ))}
+                                  </optgroup>
                                 ))}
-                              </optgroup>
-                            )}
-                          </select>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      ) : pickerScope === "offers" ? (
+                        <div className="row g-2">
+                          <div className="col-12">
+                            <div className="bk-field">
+                              <select
+                                className={`form-select dash-select ${servicePicker ? "" : "is-empty"} ${hasOfferServiceInCart ? "is-offer-limit" : ""}`}
+                                value={hasOfferServiceInCart ? "" : servicePicker}
+                                onChange={(e) => {
+                                  const next = e.target.value;
+                                  handleServicePickerChange(next);
+                                }}
+                                disabled={!sequenceOfferOptions.length || hasOfferServiceInCart}
+                              >
+                                <option value="">
+                                  {hasOfferServiceInCart
+                                    ? "مسموح بإضافة خدمة عرض واحدة فقط في نفس الحجز."
+                                    : "اختاري العرض"}
+                                </option>
+                                {!sequenceOfferOptions.length && <option value="" disabled>لا توجد عروض متاحة</option>}
+                                {sequenceOfferOptions.length > 0 && (
+                                  <optgroup label="العروض">
+                                    {sequenceOfferOptions.map((offer) => (
+                                      <option key={offer.id} value={offer.id}>
+                                        {offer.title} — {offer.priceText}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                     ) : pickerScope === "session_packages" ? (
+                      <div className="row g-2">
+                        <div className="col-md-6">
+                          <div className="bk-field">
+                            <label>اختاري الباقة</label>
+                            <select
+                              className={`form-select dash-select ${servicePicker ? "" : "is-empty"}`}
+                              value={servicePicker}
+                              onChange={(e) => handleServicePickerChange(e.target.value)}
+                              disabled={!sessionPackageOptions.length}
+                            >
+                              <option value="">اختاري الباقة</option>
+                              {!sessionPackageOptions.length && <option value="" disabled>لا توجد باقات متاحة</option>}
+                              {sessionPackageOptions.map((pkg) => (
+                                <option key={pkg.id} value={pkg.id}>
+                                  {pkg.title} — {pkg.priceText} — {pkg.sessionsCount} جلسات
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="col-md-6">
+                          <div className="bk-field">
+                            <label>اختاري الخدمة لهذه الزيارة</label>
+                            <select
+                              className={`form-select dash-select ${sessionPackageServicePicker ? "" : "is-empty"}`}
+                              value={sessionPackageServicePicker}
+                              onChange={(e) => setSessionPackageServicePicker(String(e.target.value || "").trim())}
+                              disabled={!selectedSessionPackage || sessionPackageServicesLoading || !sessionPackageAllowedServices.length}
+                            >
+                              <option value="">
+                                {!selectedSessionPackage
+                                  ? "اختاري الباقة أولاً"
+                                  : sessionPackageServicesLoading
+                                    ? "جاري تحميل الخدمات..."
+                                    : "اختاري الخدمة من الباقة"}
+                              </option>
+                              {sessionPackageAllowedServices.map((sv) => (
+                                <option key={sv.id} value={sv.id}>
+                                  {sv.name}
+                                  {sv.durationMin ? ` — ${Number(sv.durationMin || 0)} د` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            {selectedSessionPackage ? (
+                              <div className="small text-muted mt-2">
+                                هذه الزيارة تستهلك جلسة واحدة من باقة {selectedSessionPackage.title}.
+                              </div>
+                            ) : null}
+                            {sessionPackageServicesError ? (
+                              <div className="small text-danger mt-2">{sessionPackageServicesError}</div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-
-                  <div className="row g-2 mt-2">
-                    <div className="col-12 d-grid">
-                      <button
-                        type="button"
-                        className="btn btn-dark booking-service-add-btn"
-                        disabled={
-                          !servicePicker ||
-                          !selectedDayOpen ||
-                          (pickerScope === "offers" && hasOfferServiceInCart)
-                        }
-                        onClick={() => {
-                          if (pickerScope === "offers") {
-                            void addOfferFromPicker();
-                            return;
-                          }
-                          void addServiceToCart(servicePicker);
-                        }}
-                      >
-                        إضافة
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* ✅ دليل أطوال الشعر */}
-                  {selectedSectionId && isHairSection && (
-                    <div className="mt-3 booking-hair-guide-panel">
-                      <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                        <div className="booking-hair-guide-panel__title-wrap">
-                          <div className="booking-hair-guide-panel__title">دليل أطوال الشعر</div>
+                    ) : (
+                        <div className="row g-2">
+                          <div className="col-12">
+                            <div className="bk-field">
+                              <select
+                                className={`form-select dash-select ${servicePicker ? "" : "is-empty"}`}
+                                value={servicePicker}
+                                onChange={(e) => {
+                                  const next = e.target.value;
+                                  handleServicePickerChange(next);
+                                }}
+                                disabled={!packageOptions.length}
+                              >
+                                <option value="">اختاري باكيج</option>
+                                {!packageOptions.length && <option value="" disabled>لا توجد باكيجات متاحة</option>}
+                                {packageOptions.length > 0 && (
+                                  <optgroup label="الباكيجات">
+                                    {packageOptions.map((pkg) => (
+                                      <option key={pkg.id} value={pkg.id}>
+                                        {pkg.title} — {pkg.priceText}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                              </select>
+                            </div>
+                          </div>
                         </div>
+                      )}
 
-                        <div className="d-flex align-items-center gap-2">
+                      <div className="row g-2 mt-2">
+                        <div className="col-12 d-grid">
                           <button
                             type="button"
-                            className={`btn btn-sm booking-hair-guide-toggle ${showHairGuide ? "btn-outline-dark is-close" : "booking-hair-guide-panel__btn-secondary"}`}
-                            onClick={() => setShowHairGuide(v => !v)}
-                            aria-label={showHairGuide ? "إغلاق الصورة" : "عرض الصورة"}
+                            className="btn btn-dark booking-service-add-btn"
+                            disabled={
+                              (pickerScope === "session_packages"
+                                ? !servicePicker || !sessionPackageServicePicker
+                                : !servicePicker) ||
+                              !selectedDayOpen ||
+                              (pickerScope === "offers" && hasOfferServiceInCart)
+                            }
+                            onClick={() => {
+                              if (pickerScope === "offers") {
+                                void addOfferFromPicker();
+                                return;
+                              }
+                              if (pickerScope === "session_packages" && selectedSessionPackage) {
+                                const allowedServiceIds = normalizePackageServiceIds(
+                                  selectedSessionPackage.allowedServiceIds
+                                );
+                                const allowedServicesSnapshot = dedupePackageServiceItems(
+                                  sessionPackageAllowedServices.map((sv) => ({
+                                    serviceId: String(sv.id || "").trim(),
+                                    serviceName: String(sv.name || "").trim(),
+                                    sectionId: String(sv.sectionId || "").trim() || undefined,
+                                    categoryId: String(sv.categoryId || "").trim() || undefined,
+                                    price: Math.max(0, Number(sv.basePrice || 0)),
+                                    durationMin: Math.max(
+                                      1,
+                                      Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+                                    ),
+                                  }))
+                                );
+                                void addServiceToCart(sessionPackageServicePicker, {
+                                  sessionPackageSelection: {
+                                    packageId: String(selectedSessionPackage.id || "").replace(/^spkg:/, ""),
+                                    packageName: String(selectedSessionPackage.title || "").trim(),
+                                    packagePrice: Math.max(0, Number(selectedSessionPackage.price || 0)),
+                                    sessionsCount: Math.max(1, Number(selectedSessionPackage.sessionsCount || 1)),
+                                    allowedServiceIds,
+                                    allowedServicesSnapshot,
+                                  },
+                                });
+                                return;
+                              }
+                              void addServiceToCart(servicePicker);
+                            }}
                           >
-                            {showHairGuide ? (
-                              <span className="booking-hair-guide-close-icon">✕</span>
-                            ) : "عرض الصورة"}
+                            إضافة
                           </button>
-
-                          {isOwner && (
-                            <>
-                              <input
-                                id="hairGuideUploadInput"
-                                type="file"
-                                accept="image/*"
-                                style={{ display: 'none' }}
-                                onChange={(e) => {
-                                  const f = e.target.files?.[0];
-                                  if (f) uploadHairGuide(f);
-                                  e.currentTarget.value = "";
-                                }}
-                              />
-                              <button
-                                type="button"
-                                className="btn btn-sm booking-hair-guide-panel__btn-primary"
-                                disabled={uploadingGuide}
-                                onClick={() => document.getElementById("hairGuideUploadInput")?.click()}
-                              >
-                                {uploadingGuide ? "جاري الرفع..." : "رفع صورة"}
-                              </button>
-                            </>
-                          )}
                         </div>
                       </div>
 
-                      {showHairGuide && (
-                        <div className="mt-3 text-center booking-hair-guide-panel__image-wrap">
-                          <img
-                            src={hairGuideUrl}
-                            alt="دليل أطوال الشعر"
-                            className="booking-hair-guide-panel__image"
-                          />
+                      {/* ✅ دليل أطوال الشعر */}
+                      {selectedSectionId && isHairSection && (
+                        <div className="mt-3 booking-hair-guide-panel">
+                          <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                            <div className="booking-hair-guide-panel__title-wrap">
+                              <div className="booking-hair-guide-panel__title">دليل أطوال الشعر</div>
+                            </div>
+
+                            <div className="d-flex align-items-center gap-2">
+                              <button
+                                type="button"
+                                className={`btn btn-sm booking-hair-guide-toggle ${showHairGuide ? "btn-outline-dark is-close" : "booking-hair-guide-panel__btn-secondary"}`}
+                                onClick={() => setShowHairGuide(v => !v)}
+                                aria-label={showHairGuide ? "إغلاق الصورة" : "عرض الصورة"}
+                              >
+                                {showHairGuide ? (
+                                  <span className="booking-hair-guide-close-icon">✕</span>
+                                ) : "عرض الصورة"}
+                              </button>
+
+                              {isOwner && (
+                                <>
+                                  <input
+                                    id="hairGuideUploadInput"
+                                    type="file"
+                                    accept="image/*"
+                                    style={{ display: 'none' }}
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0];
+                                      if (f) uploadHairGuide(f);
+                                      e.currentTarget.value = "";
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm booking-hair-guide-panel__btn-primary"
+                                    disabled={uploadingGuide}
+                                    onClick={() => document.getElementById("hairGuideUploadInput")?.click()}
+                                  >
+                                    {uploadingGuide ? "جاري الرفع..." : "رفع صورة"}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {showHairGuide && (
+                            <div className="mt-3 text-center booking-hair-guide-panel__image-wrap">
+                              <img
+                                src={hairGuideUrl}
+                                alt="دليل أطوال الشعر"
+                                className="booking-hair-guide-panel__image"
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-                  <div className="mt-3 d-grid">
-                    <button
-                      type="button"
-                      className="btn btn-dark"
-                      disabled={!isStep1Complete}
-                      onClick={() => setCurrentStep(2)}
-                    >
-                      التالي: الوقت والموظفة
-                    </button>
+                    <div className="mt-3 d-grid">
+                      <button
+                        type="button"
+                        className="btn btn-dark"
+                        disabled={!isStep1Complete}
+                        onClick={() => setCurrentStep(2)}
+                      >
+                        التالي: الوقت والموظفة
+                      </button>
+                    </div>
                   </div>
-                </div>
                 ) : null}
 
 
@@ -7548,15 +8017,15 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                   </div>
                 ) : null}
 
-	                {/* ✅ الخدمات المختارة (السلة) */}
+                {/* ✅ الخدمات المختارة (السلة) */}
                 {currentStep === 2 ? (
-	                <div className="mb-4">
-	                  <div className="booking-cart-head">
-	                    <label className="form-label mb-0" style={{ fontWeight: 'bold' }}>
-	                      السلة (اختيار الموظفة والوقت)
-	                    </label>
-	                    <span className="booking-cart-count">عدد الخدمات: {(formData.items || []).length}</span>
-	                  </div>
+                  <div className="mb-4">
+                    <div className="booking-cart-head">
+                      <label className="form-label mb-0" style={{ fontWeight: 'bold' }}>
+                        السلة (اختيار الموظفة والوقت)
+                      </label>
+                      <span className="booking-cart-count">عدد الخدمات: {(formData.items || []).length}</span>
+                    </div>
                     {!hasSelectedBookingDate ? (
                       <div className="booking-step-date-required-note" role="status" aria-live="polite">
                         <strong>قبل اختيار الموظفة والوقت:</strong>
@@ -7564,40 +8033,64 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                       </div>
                     ) : null}
 
-                  {!!(formData.items || []).length ? (
-                    <div className="mt-2">
-                      {(formData.items || []).map((it, rowIdx) => {
-                        if (it.sequenceOfferId) {
-                          const seqSteps = Array.isArray(it.sequenceStepsSnapshot) ? it.sequenceStepsSnapshot : [];
-                          return (
-                            <div key={it.id} className="mb-3 p-3" style={{ border: "1px solid rgba(13,13,13,0.12)", borderRadius: 12, background: "#fff" }}>
-                              <div className="d-flex justify-content-between align-items-center mb-2">
-                                <h5 className="m-0" style={{ fontWeight: 800, color: "#0D0D0D" }}>
-                                  {it.sequenceOfferTitle || it.serviceName}
-                                  <span className="badge bg-secondary ms-2" style={{ fontSize: "0.7rem" }}>
-                                    عرض تسلسلي
-                                  </span>
-                                </h5>
-                                <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>
-                                  حذف
-                                </button>
+                    {!!(formData.items || []).length ? (
+                      <div className="mt-2">
+                        {(formData.items || []).map((it, rowIdx) => {
+                          if (it.sequenceOfferId) {
+                            const seqSteps = Array.isArray(it.sequenceStepsSnapshot) ? it.sequenceStepsSnapshot : [];
+                            return (
+                              <div key={it.id} className="mb-3 p-3" style={{ border: "1px solid rgba(13,13,13,0.12)", borderRadius: 12, background: "#fff" }}>
+                                <div className="d-flex justify-content-between align-items-center mb-2">
+                                  <h5 className="m-0" style={{ fontWeight: 800, color: "#0D0D0D" }}>
+                                    {it.sequenceOfferTitle || it.serviceName}
+                                    <span className="badge bg-secondary ms-2" style={{ fontSize: "0.7rem" }}>
+                                      عرض تسلسلي
+                                    </span>
+                                  </h5>
+                                  <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>
+                                    حذف
+                                  </button>
+                                </div>
+                                <div className="small mb-2" style={{ color: "#374151", fontWeight: 700 }}>
+                                  البداية: {formatTime12ForClient(String(it.time || ""))} | المدة الإجمالية: {Number(it.durationMin || 0)} د | السعر: {it.priceText}
+                                </div>
+                                <div className="small mb-2" style={{ color: "#4b5563" }}>
+                                  القسم: {String(it.serviceSectionTitle || it.serviceSectionId || "-")} | التصنيف: {String(it.serviceCategoryName || it.serviceCategoryId || "-")}
+                                </div>
+                                <div className="small" style={{ color: "#6b7280" }}>
+                                  {seqSteps
+                                    .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0))
+                                    .map((s) => `${s.serviceNameAtBooking}${s.gapAfterMin ? ` (+${s.gapAfterMin}د)` : ""}`)
+                                    .join(" - ")}
+                                </div>
                               </div>
-                              <div className="small mb-2" style={{ color: "#374151", fontWeight: 700 }}>
-                                البداية: {formatTime12ForClient(String(it.time || ""))} | المدة الإجمالية: {Number(it.durationMin || 0)} د | السعر: {it.priceText}
-                              </div>
-                              <div className="small mb-2" style={{ color: "#4b5563" }}>
-                                القسم: {String(it.serviceSectionTitle || it.serviceSectionId || "-")} | التصنيف: {String(it.serviceCategoryName || it.serviceCategoryId || "-")}
-                              </div>
-                              <div className="small" style={{ color: "#6b7280" }}>
-                                {seqSteps
-                                  .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0))
-                                  .map((s) => `${s.serviceNameAtBooking}${s.gapAfterMin ? ` (+${s.gapAfterMin}د)` : ""}`)
-                                  .join(" - ")}
-                              </div>
-                            </div>
-                          );
-                        }
+                            );
+                          }
 
+                          const itemsList = formData.items || [];
+                          const packageRunId = String(it.packageRunId || "").trim();
+                          const packageRunFirstIdx = packageRunId
+                            ? itemsList.findIndex((x) => String(x.packageRunId || "").trim() === packageRunId)
+                            : -1;
+                          const packageRunCount = packageRunId
+                            ? itemsList.filter((x) => String(x.packageRunId || "").trim() === packageRunId).length
+                            : 0;
+                          const isPackageRunFirstCard = packageRunId ? packageRunFirstIdx === rowIdx : false;
+                          const showPackageRunHeader = !!packageRunId && packageRunCount > 1 && isPackageRunFirstCard;
+                          const busy = busyByItem[it.id] || emptyBusyState();
+                          const canEditThis = canEditByLockedPrev(itemsList, it.id);
+                          const isLocked = !!it.locked;
+                          const dateISO = String(it.date || "").trim();
+                          const daySettingsForItem = getDaySettingsForDate(
+                            dateISO || String(bookingDate || "").trim() || todayISO()
+                          );
+                          const dayOpenTimeForItem = safeTimeHHMM(daySettingsForItem.openTime, openTime);
+                          const dayCloseTimeForItem = safeTimeHHMM(daySettingsForItem.closeTime, closeTime);
+                          const baseSlotsForUi = daySettingsForItem.enabled
+                            ? generateSalonTimeSlots(dayOpenTimeForItem, dayCloseTimeForItem, slotStepMin)
+                            : [];
+
+<<<<<<< HEAD
                         const itemsList = formData.items || [];
                         const packageRunId = String(it.packageRunId || "").trim();
                         const packageRunFirstIdx = packageRunId
@@ -7719,60 +8212,169 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                         if (usePackageQuickMode && isPackageRunFollower) return null;
                         const packageQuickState = packageRunId
                           ? (packageQuickByRun[packageRunId] || {
+=======
+                          const dur = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+                          const rawSectionLabel =
+                            String(it.serviceSectionTitle || "").trim() ||
+                            String(sectionLabelById.get(String(it.serviceSectionId || "").trim()) || "").trim();
+                          const rawCategoryLabel =
+                            String(it.serviceCategoryName || "").trim() ||
+                            String(categoryLabelById.get(String(it.serviceCategoryId || "").trim()) || "").trim();
+                          const sectionLabelRaw = normalizeUiLabel(rawSectionLabel);
+                          const categoryLabelRaw = normalizeUiLabel(rawCategoryLabel);
+                          const sectionLabelClean = cleanSectionLabel(sectionLabelRaw) || "غير محدد";
+                          const categoryLabelClean = cleanCategoryLabel(categoryLabelRaw, sectionLabelRaw) || "غير محدد";
+                          const serviceSectionLabel = sectionLabelClean;
+                          const serviceCategoryLabel = categoryLabelClean;
+                          const toolsEligible = isToolsOptionEligibleForItem(it);
+                          const packageServices = dedupePackageServiceItems(
+                            Array.isArray(it.packageSnapshot?.services) ? it.packageSnapshot?.services : []
+                          );
+                          const packageServiceNames = Array.from(
+                            new Set(
+                              packageServices
+                                .map((s) => String(s.serviceName || s.serviceId || "").trim())
+                                .filter(Boolean)
+                            )
+                          );
+                          const toolsSource = toolsEligible
+                            ? (String(it.toolsSource || "").trim() === "salon" ? "salon" : "client")
+                            : undefined;
+                          const toolsFeeApplied = toolsEligible && toolsSource === "salon"
+                            ? Math.max(0, Number(it.toolsFeeApplied || maniPediToolsFee || 0))
+                            : 0;
+                          const toolsSummary = toolsEligible
+                            ? (
+                              toolsSource === "salon"
+                                ? `الأدوات: من المشغل (+${toolsFeeApplied} ريال)`
+                                : "الأدوات: من العميلة (بدون رسوم)"
+                            )
+                            : "";
+                          const serviceKeyForStaff =
+                            resolveCanonicalServiceId(
+                              String(it.serviceId || "").trim(),
+                              String((it as any)?.serviceName || "").trim()
+                            ) || String(it.serviceId || "").trim();
+                          const serviceStaff = staffByService[serviceKeyForStaff] || [];
+                          const bookingVisibleStaff = serviceStaff.filter(
+                            (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
+                          );
+                          const staffWithLeaveMeta = bookingVisibleStaff.map((st) => {
+                            const leave = getStaffLeaveMetaForDate(st, dateISO);
+                            const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
+                              dateISO,
+                              slots: baseSlotsForUi,
+                              fallbackOpenTime: dayOpenTimeForItem,
+                              fallbackCloseTime: dayCloseTimeForItem,
+                            });
+                            const statusRaw = String((st as any)?.status || "").trim().toLowerCase();
+                            const isInactive =
+                              (st as any)?.active === false ||
+                              (st as any)?.showOnBooking === false ||
+                              statusRaw === "inactive" ||
+                              statusRaw === "disabled" ||
+                              statusRaw === "suspended";
+                            return {
+                              staff: st,
+                              leave,
+                              hasWorkingHours: workingSlots.length > 0,
+                              isInactive,
+                            };
+                          });
+                          const availableStaff = staffWithLeaveMeta
+                            .filter((x) => !x.leave.isOnLeave && x.hasWorkingHours && !x.isInactive)
+                            .map((x) => x.staff);
+                          const leaveBlockedStaff = staffWithLeaveMeta.filter((x) => x.leave.isOnLeave);
+                          const inactiveBlockedStaff = staffWithLeaveMeta.filter((x) => x.isInactive);
+                          const workingHoursBlockedStaff = staffWithLeaveMeta.filter(
+                            (x) => !x.leave.isOnLeave && !x.isInactive && !x.hasWorkingHours
+                          );
+                          const staffLoading = !!staffLoadingByService[serviceKeyForStaff];
+                          const staffError = staffErrorByService[serviceKeyForStaff] || "";
+                          const selectedEmployeeAvailable = availableStaff.some(
+                            (emp) => String(emp?.id || "").trim() === String(it.employeeId || "").trim()
+                          );
+                          const packageRunMeta = packageRunId ? packageRunMetaByRun[packageRunId] : undefined;
+                          const quickEligibility = packageRunId ? packageQuickEligibilityByRun[packageRunId] : undefined;
+                          const quickCommonStaff = quickEligibility?.commonStaff || [];
+                          const quickLoading = !!quickEligibility?.loading;
+                          const isPackageRunLeader =
+                            !!packageRunMeta &&
+                            packageRunMeta.items.length > 1 &&
+                            String(packageRunMeta.leaderItemId || "").trim() === String(it.id || "").trim();
+                          const hasPackageQuickMode =
+                            !!packageRunMeta &&
+                            packageRunMeta.items.length > 1 &&
+                            quickCommonStaff.length > 0;
+                          const usePackageQuickMode = hasPackageQuickMode;
+                          const isPackageRunFollower = !!packageRunMeta && !isPackageRunLeader;
+                          const packageName = String(it.packageSnapshot?.packageName || "").trim();
+                          const packageFinalPrice = Math.max(0, Number(it.packageSnapshot?.finalPriceAtBooking || 0));
+                          const showAsPackageBlock = usePackageQuickMode && isPackageRunLeader && !!packageName;
+                          const cardTitle = showAsPackageBlock ? packageName : it.serviceName;
+                          const cardPriceText = showAsPackageBlock && packageFinalPrice > 0 ? `${packageFinalPrice} ريال` : it.priceText;
+                          const sessionPackageLabel = isSessionPackageCartItem(it)
+                            ? String(it.sessionPackageName || it.packageSnapshot?.packageName || "").trim()
+                            : "";
+                          const ServiceCardIcon = pickBookingCardIcon(String(cardTitle || ""));
+                          if (usePackageQuickMode && isPackageRunFollower) return null;
+                          const packageQuickState = packageRunId
+                            ? (packageQuickByRun[packageRunId] || {
+>>>>>>> ea270c5 (fix: booking package flow + success navigation + pricing + dedupe services)
                               employeeId: "",
                               times: [],
                               loading: false,
                               error: "",
                             })
-                          : {
+                            : {
                               employeeId: "",
                               times: [],
                               loading: false,
                               error: "",
                             };
-                        const staffUnavailableMsg = (!staffLoading && !staffError && bookingVisibleStaff.length && !availableStaff.length)
-                          ? "لا توجد موظفات متاحات لهذا التاريخ."
-                          : "";
-                        const dayFullyBookedMsg =
-                          "هذه الموظفة ممتلئ جدولها اليوم. ابحثي عن أقرب يوم متاح لها.";
-                        const futureSearchBtnLabel = "بحث عن أقرب موعد";
-                        const slotsForThisService = filterSlotsByServiceEnd(
-                          baseSlotsForUi,
-                          dayCloseTimeForItem,
-                          Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-                          bufferMin,
-                          ALLOW_OVERTIME_MIN
-                        );
-                        const selectedStaffForTime = bookingVisibleStaff.find(
-                          (x) => String(x.id || "").trim() === String(it.employeeId || "").trim()
-                        );
-                        const staffWorkingSlots = selectedStaffForTime
-                          ? filterStaffSlotsByWorkingHours(selectedStaffForTime as any, {
+                          const staffUnavailableMsg = (!staffLoading && !staffError && bookingVisibleStaff.length && !availableStaff.length)
+                            ? "لا توجد موظفات متاحات لهذا التاريخ."
+                            : "";
+                          const dayFullyBookedMsg =
+                            "هذه الموظفة ممتلئ جدولها اليوم. ابحثي عن أقرب يوم متاح لها.";
+                          const futureSearchBtnLabel = "بحث عن أقرب موعد";
+                          const slotsForThisService = filterSlotsByServiceEnd(
+                            baseSlotsForUi,
+                            dayCloseTimeForItem,
+                            Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN),
+                            bufferMin,
+                            ALLOW_OVERTIME_MIN
+                          );
+                          const selectedStaffForTime = bookingVisibleStaff.find(
+                            (x) => String(x.id || "").trim() === String(it.employeeId || "").trim()
+                          );
+                          const staffWorkingSlots = selectedStaffForTime
+                            ? filterStaffSlotsByWorkingHours(selectedStaffForTime as any, {
                               dateISO,
                               slots: baseSlotsForUi,
                               fallbackOpenTime: dayOpenTimeForItem,
                               fallbackCloseTime: dayCloseTimeForItem,
                             })
-                          : [];
-                        const staffWindows = selectedStaffForTime
-                          ? resolveStaffWorkingWindowsForDate(selectedStaffForTime as any, {
+                            : [];
+                          const staffWindows = selectedStaffForTime
+                            ? resolveStaffWorkingWindowsForDate(selectedStaffForTime as any, {
                               dateISO,
                               fallbackOpenTime: dayOpenTimeForItem,
                               fallbackCloseTime: dayCloseTimeForItem,
                             })
-                          : [];
-                        const exactCartTakenStarts = getLocalExactTakenStartTimesForItem(
-                          itemsList,
-                          it.id,
-                          String(it.employeeId || "").trim(),
-                          dateISO
-                        );
-                        const staffWindowSections: Array<{
-                          key: string;
-                          label: string;
-                          slotCards: TimeSlotCard[];
-                        }> = selectedStaffForTime
-                          ? staffWindows.map((window, idx) => {
+                            : [];
+                          const exactCartTakenStarts = getLocalExactTakenStartTimesForItem(
+                            itemsList,
+                            it.id,
+                            String(it.employeeId || "").trim(),
+                            dateISO
+                          );
+                          const staffWindowSections: Array<{
+                            key: string;
+                            label: string;
+                            slotCards: TimeSlotCard[];
+                          }> = selectedStaffForTime
+                              ? staffWindows.map((window, idx) => {
                                 const windowSlots = staffWorkingSlots.filter((slot) =>
                                   isTimeInsideWindowRange(
                                     String(slot?.value24 || "").trim(),
@@ -7832,26 +8434,114 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                   slotCards,
                                 };
                               })
-                          : [];
-                        const availableSlotsForItem = staffWindowSections.flatMap((x) =>
-                          x.slotCards.filter((slot) => slot.state === "available")
-                        );
-                        const staffFullDayLookupForItem = staffFullDayByItem[it.id] || {};
-                        const selectedStaffIdForTime = String((selectedStaffForTime as any)?.id || "").trim();
-                        const selectedStaffMarkedFullDay =
-                          !!(selectedStaffIdForTime && staffFullDayLookupForItem[selectedStaffIdForTime]);
-                        const selectedStaffFullyBookedToday =
-                          !!selectedStaffForTime &&
-                          (selectedStaffMarkedFullDay ||
-                            (!busy.loading &&
-                              staffWindowSections.length > 0 &&
-                              availableSlotsForItem.length === 0));
+                              : [];
+                          const availableSlotsForItem = staffWindowSections.flatMap((x) =>
+                            x.slotCards.filter((slot) => slot.state === "available")
+                          );
+                          const staffFullDayLookupForItem = staffFullDayByItem[it.id] || {};
+                          const selectedStaffIdForTime = String((selectedStaffForTime as any)?.id || "").trim();
+                          const selectedStaffMarkedFullDay =
+                            !!(selectedStaffIdForTime && staffFullDayLookupForItem[selectedStaffIdForTime]);
+                          const selectedStaffFullyBookedToday =
+                            !!selectedStaffForTime &&
+                            (selectedStaffMarkedFullDay ||
+                              (!busy.loading &&
+                                staffWindowSections.length > 0 &&
+                                availableSlotsForItem.length === 0));
 
-	                        // ✅ شكل الكرت وهو مقفول (تم التأكيد)
-	                        if (isLocked) {
-	                          return (
-	                            <Fragment key={it.id}>
-	                              {showPackageRunHeader ? (
+                          // ✅ شكل الكرت وهو مقفول (تم التأكيد)
+                          if (isLocked) {
+                            return (
+                              <Fragment key={it.id}>
+                                {showPackageRunHeader ? (
+                                  <div
+                                    className="mb-2 p-2"
+                                    style={{
+                                      border: "1px solid rgba(13,13,13,0.18)",
+                                      borderRadius: 10,
+                                      background: "#f5f3ff",
+                                    }}
+                                  >
+                                    <div style={{ fontSize: 12, fontWeight: 800, color: "#4338ca" }}>
+                                      باكيج مستقل
+                                    </div>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
+                                      {packageName || "باكيج"} • {packageRunCount} خدمات
+                                    </div>
+                                  </div>
+                                ) : null}
+                                <div className="booking-cart-item-locked mb-3">
+                                  <div className="booking-cart-item-locked__head">
+                                    <div className="booking-cart-item-locked__service-media" aria-hidden="true">
+                                      <ServiceCardIcon className="booking-cart-item-locked__service-icon" />
+                                    </div>
+                                    <div className="booking-cart-item-locked__meta">
+                                      <div className="booking-cart-item-locked__title-row">
+                                        <span className="booking-cart-item-locked__title">{cardTitle}</span>
+                                        <span className="booking-cart-item-locked__index">{rowIdx + 1}</span>
+                                      </div>
+                                      <div className="booking-cart-item-locked__sub">
+                                        {dur} دقيقة - {String(it.date || bookingDate || "-")}
+                                      </div>
+                                      {sessionPackageLabel ? (
+                                        <div className="booking-cart-item-locked__sub">
+                                          من باقة: {sessionPackageLabel}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    <div className="booking-cart-item-locked__price">{cardPriceText}</div>
+                                  </div>
+
+                                  <div className="booking-cart-item-locked__actions">
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-secondary btn-sm"
+                                      onClick={() => {
+                                        const list = formData.items || [];
+                                        const idx = list.findIndex((x) => x.id === it.id);
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          items: (prev.items || []).map((x, i) => {
+                                            if (i === idx) return { ...x, locked: false };
+                                            if (i > idx) {
+                                              return {
+                                                ...x,
+                                                locked: false,
+                                                time: "",
+                                                employeeId: "",
+                                                employeeUid: "",
+                                                employeeName: "",
+                                              };
+                                            }
+                                            return x;
+                                          }),
+                                        }));
+                                      }}
+                                    >
+                                      عرض
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-danger btn-sm"
+                                      onClick={() => removeServiceFromCart(it.id)}
+                                    >
+                                      حذف
+                                    </button>
+                                  </div>
+
+                                  <div className="booking-cart-item-locked__note">
+                                    <span className="booking-cart-item-locked__badge">✅ مؤكد</span>
+                                    <span>تم إغلاق البطاقة يمكنك اضافه خدمه اخرى .</span>
+                                  </div>
+                                </div>
+                              </Fragment>
+                            );
+                          }
+
+                          // ✅ شكل الكرت وهو مفتوح (جاري الاختيار)
+                          return (
+                            <Fragment key={it.id}>
+                              {showPackageRunHeader ? (
                                 <div
                                   className="mb-2 p-2"
                                   style={{
@@ -7867,758 +8557,680 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                                     {packageName || "باكيج"} • {packageRunCount} خدمات
                                   </div>
                                 </div>
-	                              ) : null}
-	                              <div className="booking-cart-item-locked mb-3">
-	                                <div className="booking-cart-item-locked__head">
-                                    <div className="booking-cart-item-locked__service-media" aria-hidden="true">
-                                      <ServiceCardIcon className="booking-cart-item-locked__service-icon" />
+                              ) : null}
+                              <div className="mb-3 p-3" style={{ border: '1px solid rgba(13,13,13,0.12)', borderRadius: 12, background: canEditThis ? '#fff' : 'rgba(245,245,244,0.75)', opacity: canEditThis ? 1 : 0.7 }}>
+                                <div className="d-flex justify-content-between align-items-start mb-3">
+                                  <div>
+                                    <h5 className="m-0" style={{ fontWeight: 800, color: '#0D0D0D' }}>
+                                      {cardTitle}
+                                    </h5>
+                                    <div className="small text-muted" style={{ marginTop: 4, fontWeight: 700 }}>
+                                      {showAsPackageBlock ? `باكيج - ${cardPriceText}` : cardPriceText}
                                     </div>
-	                                  <div className="booking-cart-item-locked__meta">
-	                                    <div className="booking-cart-item-locked__title-row">
-	                                      <span className="booking-cart-item-locked__title">{cardTitle}</span>
-	                                      <span className="booking-cart-item-locked__index">{rowIdx + 1}</span>
-	                                    </div>
-	                                    <div className="booking-cart-item-locked__sub">
-	                                      {dur} دقيقة - {String(it.date || bookingDate || "-")}
-	                                    </div>
-	                                  </div>
-	                                  <div className="booking-cart-item-locked__price">{cardPriceText}</div>
-	                                </div>
-
-	                                <div className="booking-cart-item-locked__actions">
-	                                  <button
-	                                    type="button"
-	                                    className="btn btn-outline-secondary btn-sm"
-	                                    onClick={() => {
-	                                      const list = formData.items || [];
-	                                      const idx = list.findIndex((x) => x.id === it.id);
-	                                      setFormData((prev) => ({
-	                                        ...prev,
-	                                        items: (prev.items || []).map((x, i) => {
-	                                          if (i === idx) return { ...x, locked: false };
-	                                          if (i > idx) {
-	                                            return {
-	                                              ...x,
-	                                              locked: false,
-	                                              time: "",
-	                                              employeeId: "",
-	                                              employeeUid: "",
-	                                              employeeName: "",
-	                                            };
-	                                          }
-	                                          return x;
-	                                        }),
-	                                      }));
-	                                    }}
-	                                  >
-	                                    عرض
-	                                  </button>
-	                                  <button
-	                                    type="button"
-	                                    className="btn btn-outline-danger btn-sm"
-	                                    onClick={() => removeServiceFromCart(it.id)}
-	                                  >
-	                                    حذف
-	                                  </button>
-	                                </div>
-
-	                                <div className="booking-cart-item-locked__note">
-	                                  <span className="booking-cart-item-locked__badge">✅ مؤكد</span>
-	                                  <span>تم إغلاق البطاقة يمكنك اضافه خدمه اخرى .</span>
-	                                </div>
-	                              </div>
-	                            </Fragment>
-	                          );
-	                        }
-
-                        // ✅ شكل الكرت وهو مفتوح (جاري الاختيار)
-                        return (
-                          <Fragment key={it.id}>
-                            {showPackageRunHeader ? (
-                              <div
-                                className="mb-2 p-2"
-                                style={{
-                                  border: "1px solid rgba(13,13,13,0.18)",
-                                  borderRadius: 10,
-                                  background: "#f5f3ff",
-                                }}
-                              >
-                                <div style={{ fontSize: 12, fontWeight: 800, color: "#4338ca" }}>
-                                  باكيج مستقل
-                                </div>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
-                                  {packageName || "باكيج"} • {packageRunCount} خدمات
-                                </div>
-                              </div>
-                            ) : null}
-                            <div className="mb-3 p-3" style={{ border: '1px solid rgba(13,13,13,0.12)', borderRadius: 12, background: canEditThis ? '#fff' : 'rgba(245,245,244,0.75)', opacity: canEditThis ? 1 : 0.7 }}>
-                              <div className="d-flex justify-content-between align-items-start mb-3">
-                                <div>
-                                  <h5 className="m-0" style={{ fontWeight: 800, color: '#0D0D0D' }}>
-                                    {cardTitle}
-                                  </h5>
-                                  <div className="small text-muted" style={{ marginTop: 4, fontWeight: 700 }}>
-                                    {showAsPackageBlock ? `باكيج - ${cardPriceText}` : cardPriceText}
-                                  </div>
-                                </div>
-                                <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>حذف</button>
-                              </div>
-
-                            {!canEditThis ? (
-                              <div className="p-3 text-center" style={{ background: '#fff9db', borderRadius: '8px', border: '1px solid #ffe066' }}>
-                                <p style={{ margin: 0, fontWeight: 'bold', color: '#856404' }}> كمّلي الخدمة اللي قبلها عشان يفتح هذا الكرت</p>
-                              </div>
-                            ) : (
-                              <div className="row g-3">
-                                {isPackageRunLeader && packageRunMeta && staffChoiceMode === "manual" && (quickLoading || hasPackageQuickMode) ? (
-                                  <div className="col-12">
-                                    <div
-                                      style={{
-                                        border: "1px solid rgba(13,13,13,0.12)",
-                                        borderRadius: 10,
-                                        padding: 12,
-                                        background: "#fafaf9",
-                                      }}
-                                    >
-                                      <div className="small fw-bold mb-2">اختيار سريع للبكج</div>
-                                      <div className="small text-muted mb-2">
-                                        إجمالي وقت الخدمات: {Math.max(1, Number(packageRunMeta.totalDurationMin || 0))} دقيقة
+                                    {sessionPackageLabel ? (
+                                      <div className="small text-muted" style={{ marginTop: 4, fontWeight: 700 }}>
+                                        من باقة: {sessionPackageLabel}
                                       </div>
-                                      {quickLoading ? (
-                                        <div className="small text-muted">
-                                          <FontAwesomeIcon icon={faSpinner} spin /> جاري تجهيز الموظفات المشتركات...
-                                        </div>
-                                      ) : quickCommonStaff.length === 0 ? (
-                                        <div className="small text-muted">
-                                          لا توجد موظفة واحدة تغطي كل خدمات هذا البكج. كمّلي الاختيار لكل خدمة على حدة.
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <div>
-                                            <label className="form-label small fw-bold">موظفة البكج</label>
-                                            <div className="bk-staff-card-grid">
-                                              {quickCommonStaff.map((emp: any) => {
-                                                const empId = String(emp?.id || "").trim();
-                                                const selected = empId && empId === String(packageQuickState.employeeId || "").trim();
-                                                return (
-                                                  <button
-                                                    key={empId || String(emp?.name || "").trim()}
-                                                    type="button"
-                                                    className={[
-                                                      "bk-staff-card-btn",
-                                                      selected ? "is-selected" : "",
-                                                    ].join(" ").trim()}
-                                                    onClick={() => {
-                                                      const nextEmpId = selected ? "" : empId;
-                                                      setPackageQuickByRun((prev) => ({
-                                                        ...prev,
-                                                        [packageRunId]: {
-                                                          employeeId: nextEmpId,
-                                                          times: [],
-                                                          loading: false,
-                                                          error: "",
-                                                        },
-                                                      }));
-                                                      if (nextEmpId) {
-                                                        void loadPackageQuickStarts(packageRunId, nextEmpId);
-                                                      }
-                                                    }}
-                                                  >
-                                                    <span className="bk-staff-card-icon" aria-hidden="true">
-                                                      <svg
-                                                        width="22"
-                                                        height="22"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                      >
-                                                        <path
-                                                          d="M12 12.2C15.09 12.2 17.6 9.69 17.6 6.6C17.6 3.51 15.09 1 12 1C8.91 1 6.4 3.51 6.4 6.6C6.4 9.69 8.91 12.2 12 12.2Z"
-                                                          fill="#374957"
-                                                          fillOpacity="0.12"
-                                                        />
-                                                        <path
-                                                          d="M12 12.2C15.09 12.2 17.6 9.69 17.6 6.6C17.6 3.51 15.09 1 12 1C8.91 1 6.4 3.51 6.4 6.6C6.4 9.69 8.91 12.2 12 12.2Z"
-                                                          stroke="#374957"
-                                                          strokeWidth="1.3"
-                                                        />
-                                                        <path
-                                                          d="M3.2 22.6C3.2 18.84 7.14 15.8 12 15.8C16.86 15.8 20.8 18.84 20.8 22.6"
-                                                          stroke="#374957"
-                                                          strokeWidth="1.3"
-                                                          strokeLinecap="round"
-                                                        />
-                                                      </svg>
-                                                    </span>
-                                                    <span className="bk-staff-card-name">{String(emp?.name || "").trim() || "موظفة"}</span>
-                                                    {selected ? <span className="bk-staff-card-state">محددة</span> : null}
-                                                  </button>
-                                                );
-                                              })}
-                                            </div>
-                                          </div>
-                                          {packageQuickState.loading ? (
-                                            <div className="small text-muted mt-2">
-                                              <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات المتاحة لكامل البكج...
-                                            </div>
-                                          ) : null}
-                                          {packageQuickState.error ? (
-                                            <div className="small text-warning mt-2">{packageQuickState.error}</div>
-                                          ) : null}
-                                          {packageQuickState.employeeId && packageQuickState.times.length > 0 ? (
-                                            <div className="mt-2">
-                                              <div className="small fw-bold mb-1">وقت بداية البكج</div>
-                                              <div className="bk-time-grid">
-                                                {packageQuickState.times.map((t) => (
-                                                  <button
-                                                    key={t}
-                                                    type="button"
-                                                    className="bk-time-chip"
-                                                    onClick={() => {
-                                                      void applyPackageQuickSelection(packageRunId, packageQuickState.employeeId, t);
-                                                    }}
-                                                  >
-                                                    {formatTime12ForClient(t)}
-                                                  </button>
-                                                ))}
-                                              </div>
-                                            </div>
-                                          ) : null}
-                                        </>
-                                      )}
-                                    </div>
+                                    ) : null}
                                   </div>
-                                ) : null}
-                                <div className="col-12">
-                                  <div className="small" style={{ color: "#4b5563", fontWeight: 700 }}>
-                                    القسم: {serviceSectionLabel}
-                                  </div>
-                                  <div className="small" style={{ color: "#4b5563", fontWeight: 700, marginTop: 2 }}>
-                                    التصنيف: {serviceCategoryLabel}
-                                  </div>
-                                  {packageServiceNames.length > 0 ? (
-                                    <div style={{ marginTop: 6 }}>
-                                      <div className="small" style={{ color: "#4b5563", fontWeight: 700, marginBottom: 4 }}>
-                                        تفاصيل الباكيج
-                                      </div>
-                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                        {packageServiceNames.map((name, idx) => (
-                                          <span
-                                            key={`${name}-${idx}`}
-                                            style={{
-                                              fontSize: '0.78rem',
-                                              color: '#374151',
-                                              background: '#f3f4f6',
-                                              border: '1px solid #e5e7eb',
-                                              borderRadius: 999,
-                                              padding: '3px 10px',
-                                              lineHeight: 1.5,
-                                            }}
-                                          >
-                                            {name}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  ) : null}
+                                  <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>حذف</button>
                                 </div>
-                                {toolsEligible ? (
-                                  <div className="col-12">
-                                    <label className="form-label small fw-bold">0. الأدوات لهذه الخدمة</label>
-                                    <div className="d-flex flex-wrap gap-2">
-                                      <button
-                                        type="button"
-                                        className={`btn btn-sm ${toolsSource === "client" ? "btn-dark" : "btn-outline-dark"}`}
-                                        onClick={() => setItemToolsSource(it, "client")}
-                                      >
-                                        من العميلة (بدون رسوم)
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={`btn btn-sm ${toolsSource === "salon" ? "btn-dark" : "btn-outline-dark"}`}
-                                        onClick={() => setItemToolsSource(it, "salon")}
-                                      >
-                                        من المشغل {maniPediToolsFee > 0 ? `(+${maniPediToolsFee} ريال)` : "(بدون رسوم إضافية)"}
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : null}
 
-                                {hasSelectedBookingDate && !usePackageQuickMode && staffChoiceMode === "manual" && (
-                                <div className="col-md-6">
-                                  <label className="form-label small fw-bold">1. اختاري الموظفة</label>
-                                  <div className="bk-staff-card-grid">
-                                    {staffWithLeaveMeta.map(({ staff: emp, leave, hasWorkingHours, isInactive }) => {
-                                      const empId = String(emp.id || "").trim();
-                                      const isFullDayStaff =
-                                        !!(empId && staffFullDayLookupForItem[empId]);
-                                      const disabled = leave.isOnLeave || !hasWorkingHours || isInactive;
-                                      const selected =
-                                        selectedEmployeeAvailable &&
-                                        String(it.employeeId || "").trim() === String(emp.id || "").trim();
-                                      const unavailableType = isFullDayStaff
-                                        ? "full"
-                                        : isInactive
-                                        ? "inactive"
-                                        : leave.isOnLeave
-                                          ? "leave"
-                                          : !hasWorkingHours
-                                            ? "offhours"
-                                            : "";
-                                      const badgeText = isFullDayStaff
-                                        ? "ممتلئ اليوم"
-                                        : unavailableType === "leave"
-                                        ? "في إجازة"
-                                        : unavailableType === "offhours"
-                                          ? "خارج الدوام"
-                                          : unavailableType === "inactive"
-                                            ? "غير متاحة"
-                                            : "";
-                                      const badgeType = isFullDayStaff ? "full" : unavailableType;
-                                      const stateText = isFullDayStaff
-                                        ? ""
-                                        : leave.isOnLeave
-                                        ? leave.label
-                                        : isInactive
-                                          ? "الموظفة غير نشطة أو غير متاحة للحجز حالياً"
-                                          : !hasWorkingHours
-                                            ? "غير متاحة في هذا اليوم"
-                                            : "";
-                                      return (
-                                        <button
-                                          key={emp.id}
-                                          type="button"
-                                          className={[
-                                            "bk-staff-card-btn",
-                                            selected ? "is-selected" : "",
-                                            isFullDayStaff ? "is-full-day" : "",
-                                            disabled ? "is-disabled" : "",
-                                            unavailableType ? `is-disabled-${unavailableType}` : "",
-                                          ].join(" ").trim()}
-                                          disabled={disabled}
-                                          title={stateText || undefined}
-                                          onClick={() => {
-                                            const currentContextKey = `${serviceKeyForStaff}|${dateISO}`;
-                                            const currentItemId = String(it.id || "").trim();
-                                            if (currentItemId) {
-                                              manualStaffChoiceContextRef.current[currentItemId] =
-                                                currentContextKey;
-                                            }
-                                            if (selected) {
-                                              updateItem(it.id, {
-                                                employeeId: "",
-                                                employeeUid: "",
-                                                employeeName: "",
-                                                time: "",
-                                              });
-                                              return;
-                                            }
-                                            updateItem(it.id, {
-                                              employeeId: String(emp.id || "").trim(),
-                                              employeeUid: emp?.linkedUid || "",
-                                              employeeName: emp?.name || "",
-                                              time: "",
-                                            });
+                                {!canEditThis ? (
+                                  <div className="p-3 text-center" style={{ background: '#fff9db', borderRadius: '8px', border: '1px solid #ffe066' }}>
+                                    <p style={{ margin: 0, fontWeight: 'bold', color: '#856404' }}> كمّلي الخدمة اللي قبلها عشان يفتح هذا الكرت</p>
+                                  </div>
+                                ) : (
+                                  <div className="row g-3">
+                                    {isPackageRunLeader && packageRunMeta && staffChoiceMode === "manual" && (quickLoading || hasPackageQuickMode) ? (
+                                      <div className="col-12">
+                                        <div
+                                          style={{
+                                            border: "1px solid rgba(13,13,13,0.12)",
+                                            borderRadius: 10,
+                                            padding: 12,
+                                            background: "#fafaf9",
                                           }}
                                         >
-                                          <span className="bk-staff-card-icon" aria-hidden="true">
-                                            <svg
-                                              width="22"
-                                              height="22"
-                                              viewBox="0 0 24 24"
-                                              fill="none"
-                                              xmlns="http://www.w3.org/2000/svg"
-                                            >
-                                              <path
-                                                d="M12 12.2C15.09 12.2 17.6 9.69 17.6 6.6C17.6 3.51 15.09 1 12 1C8.91 1 6.4 3.51 6.4 6.6C6.4 9.69 8.91 12.2 12 12.2Z"
-                                                fill="#374957"
-                                                fillOpacity="0.12"
-                                              />
-                                              <path
-                                                d="M12 12.2C15.09 12.2 17.6 9.69 17.6 6.6C17.6 3.51 15.09 1 12 1C8.91 1 6.4 3.51 6.4 6.6C6.4 9.69 8.91 12.2 12 12.2Z"
-                                                stroke="#374957"
-                                                strokeWidth="1.3"
-                                              />
-                                              <path
-                                                d="M3.2 22.6C3.2 18.84 7.14 15.8 12 15.8C16.86 15.8 20.8 18.84 20.8 22.6"
-                                                stroke="#374957"
-                                                strokeWidth="1.3"
-                                                strokeLinecap="round"
-                                              />
-                                            </svg>
-                                          </span>
-                                          <span className="bk-staff-card-name">{String(emp.name || "").trim() || "موظفة"}</span>
-                                          {badgeText ? (
-                                            <span className={`bk-staff-card-badge is-${badgeType}`}>{badgeText}</span>
-                                          ) : null}
-                                          {stateText ? <span className="bk-staff-card-state">{stateText}</span> : null}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                  {staffLoading && <div className="small text-muted mt-1"><FontAwesomeIcon icon={faSpinner} spin /> جاري التحميل...</div>}
-                                  {staffError && <div className="text-danger small mt-1">{staffError}</div>}
-                                  {staffUnavailableMsg && <div className="text-warning small mt-1">{staffUnavailableMsg}</div>}
-                                  {leaveBlockedStaff.length > 0 && (
-                                    <div className="text-muted small mt-1">
-                                      الموظفات المعلّمات بعبارة "في إجازة" لا يمكن اختيارهن.
-                                    </div>
-                                  )}
-                                  {inactiveBlockedStaff.length > 0 && (
-                                    <div className="text-muted small mt-1">
-                                      الموظفات غير النشطة تظهر كـ "غير متاحة" ولا يمكن اختيارهن.
-                                    </div>
-                                  )}
-                                  {workingHoursBlockedStaff.length > 0 && (
-                                    <div className="text-muted small mt-1">
-                                      بعض الموظفات خارج ساعات العمل في هذا اليوم.
-                                    </div>
-                                  )}
-                                  {!selectedEmployeeAvailable && String(it.employeeId || "").trim() && (
-                                    <div className="text-warning small mt-1">
-                                      الموظفة المختارة غير متاحة في هذا التاريخ (إجازة)، اختاري موظفة أخرى.
-                                    </div>
-                                  )}
-                                </div>
-                                )}
-
-                                {hasSelectedBookingDate && !usePackageQuickMode ? (
-                                  <div className="col-12">
-                                    <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
-                                    {!selectedStaffForTime ? (
-                                      <div className="bk-time-window-empty">اختاري الموظفة أولاً لعرض الفترات المتاحة.</div>
-                                    ) : selectedStaffFullyBookedToday ? (
-                                      <div className="bk-no-slots-panel">
-                                        <div className="bk-no-slots-panel__title">{dayFullyBookedMsg}</div>
-                                        <div className="bk-no-slots-panel__buttons">
-                                          <button
-                                            type="button"
-                                            className="btn btn-outline-dark btn-sm bk-future-search-btn"
-                                            onClick={() => {
-                                              void openFutureSearchFromItem(it);
-                                            }}
-                                            disabled={futureLoading}
-                                          >
-                                            {futureLoading && String(futureTargetItemId || "").trim() === String(it.id || "").trim()
-                                              ? "جاري البحث..."
-                                              : futureSearchBtnLabel}
-                                          </button>
-                                        </div>
-                                        {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureMsg ? (
-                                          <div className="small text-muted mt-2">{futureMsg}</div>
-                                        ) : null}
-                                        {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureResult.length ? (
-                                          <div className="mt-2">
-                                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                                              <div className="small fw-bold">نتائج البحث</div>
-                                              <button
-                                                type="button"
-                                                className="btn btn-sm bk-future-pill"
-                                                onClick={() => {
-                                                  const nearestDate = String(futureResult[0]?.date || "").trim();
-                                                  if (!nearestDate) return;
-                                                  applyDateToSingleItem(it.id, nearestDate);
-                                                  setBookingDate(nearestDate);
-                                                  setFutureMsg("تم تحديث التاريخ لنفس الخدمة. اختاري الوقت المناسب من الشبكية.");
-                                                }}
-                                              >
-                                                اختيار أقرب موعد
-                                              </button>
-                                            </div>
-                                            <div className="table-responsive">
-                                              <table className="table align-middle mb-0 bk-future-table">
-                                                <thead>
-                                                  <tr>
-                                                    <th>التاريخ</th>
-                                                    <th>أوقات متاحة</th>
-                                                  </tr>
-                                                </thead>
-                                                <tbody>
-                                                  {futureResult.map((r) => (
-                                                    <tr key={r.date}>
-                                                      <td>{r.date}</td>
-                                                      <td>
-                                                        <div className="d-flex gap-2 flex-wrap">
-                                                          {(r.times || []).map((t) => (
-                                                            <button
-                                                              key={t}
-                                                              type="button"
-                                                              className="btn btn-sm bk-future-pill"
-                                                              onClick={() => {
-                                                                void applyFutureTimeSelection(r.date, t);
-                                                              }}
-                                                            >
-                                                              {formatTime12ForClient(t)}
-                                                            </button>
-                                                          ))}
-                                                        </div>
-                                                      </td>
-                                                    </tr>
-                                                  ))}
-                                                </tbody>
-                                              </table>
-                                            </div>
+                                          <div className="small fw-bold mb-2">اختيار سريع للبكج</div>
+                                          <div className="small text-muted mb-2">
+                                            إجمالي وقت الخدمات: {Math.max(1, Number(packageRunMeta.totalDurationMin || 0))} دقيقة
                                           </div>
-                                        ) : null}
-                                      </div>
-                                    ) : (
-                                      <div className="bk-time-windows">
-                                        {staffWindowSections.length === 0 ? (
-                                          <div className="bk-time-window-empty">لا توجد فترات عمل لهذه الموظفة في هذا اليوم.</div>
-                                        ) : (
-                                          staffWindowSections.map((section) => (
-                                            <div key={section.key} className="bk-time-window-section">
-                                              <div className="bk-time-window-title">{section.label}</div>
-                                              {section.slotCards.length > 0 ? (
-                                                <div className="bk-time-grid">
-                                                  {section.slotCards.map((slotCard) => {
-                                                    const isAvailable = slotCard.state === "available";
-                                                    const isSequentialSuggested =
-                                                      sequentialBooking &&
-                                                      !!isAvailable &&
-                                                      String(busy.suggestedSlot || "").trim() === String(slotCard.value24 || "").trim();
+                                          {quickLoading ? (
+                                            <div className="small text-muted">
+                                              <FontAwesomeIcon icon={faSpinner} spin /> جاري تجهيز الموظفات المشتركات...
+                                            </div>
+                                          ) : quickCommonStaff.length === 0 ? (
+                                            <div className="small text-muted">
+                                              لا توجد موظفة واحدة تغطي كل خدمات هذا البكج. كمّلي الاختيار لكل خدمة على حدة.
+                                            </div>
+                                          ) : (
+                                            <>
+                                              <div>
+                                                <label className="form-label small fw-bold">موظفة البكج</label>
+                                                <div className="bk-staff-card-grid">
+                                                  {quickCommonStaff.map((emp: any) => {
+                                                    const empId = String(emp?.id || "").trim();
+                                                    const selected = empId && empId === String(packageQuickState.employeeId || "").trim();
                                                     return (
                                                       <button
-                                                        key={`${section.key}_${slotCard.value24}`}
+                                                        key={empId || String(emp?.name || "").trim()}
                                                         type="button"
                                                         className={[
-                                                          "bk-time-chip",
-                                                          slotCard.state === "booked"
-                                                            ? "is-booked"
-                                                            : slotCard.state === "unavailable"
-                                                              ? "is-unavailable"
-                                                              : "is-available",
-                                                          !isAvailable ? "is-disabled" : "",
-                                                          isSequentialSuggested ? "is-sequential-suggested" : "",
-                                                          slotCard.isSelected ? "is-selected" : "",
+                                                          "bk-staff-card-btn",
+                                                          selected ? "is-selected" : "",
                                                         ].join(" ").trim()}
-                                                        disabled={!isAvailable}
                                                         onClick={() => {
-                                                          if (!isAvailable) return;
-                                                          updateItem(it.id, { time: slotCard.value24 });
+                                                          const nextEmpId = selected ? "" : empId;
+                                                          setPackageQuickByRun((prev) => ({
+                                                            ...prev,
+                                                            [packageRunId]: {
+                                                              employeeId: nextEmpId,
+                                                              times: [],
+                                                              loading: false,
+                                                              error: "",
+                                                            },
+                                                          }));
+                                                          if (nextEmpId) {
+                                                            void loadPackageQuickStarts(packageRunId, nextEmpId);
+                                                          }
                                                         }}
-                                                        title={slotCard.reason}
                                                       >
-                                                        <span className="bk-time-chip__time">{slotCard.slot.label12}</span>
-                                                        <span className="bk-time-chip__status">
-                                                          {slotCard.state === "booked"
-                                                            ? "محجوز"
-                                                            : slotCard.state === "unavailable"
-                                                              ? "غير متاح"
-                                                              : "✅ متاح"}
+                                                        <span className="bk-staff-card-icon" aria-hidden="true">
+                                                          <svg
+                                                            width="22"
+                                                            height="22"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            xmlns="http://www.w3.org/2000/svg"
+                                                          >
+                                                            <path
+                                                              d="M12 12.2C15.09 12.2 17.6 9.69 17.6 6.6C17.6 3.51 15.09 1 12 1C8.91 1 6.4 3.51 6.4 6.6C6.4 9.69 8.91 12.2 12 12.2Z"
+                                                              fill="#374957"
+                                                              fillOpacity="0.12"
+                                                            />
+                                                            <path
+                                                              d="M12 12.2C15.09 12.2 17.6 9.69 17.6 6.6C17.6 3.51 15.09 1 12 1C8.91 1 6.4 3.51 6.4 6.6C6.4 9.69 8.91 12.2 12 12.2Z"
+                                                              stroke="#374957"
+                                                              strokeWidth="1.3"
+                                                            />
+                                                            <path
+                                                              d="M3.2 22.6C3.2 18.84 7.14 15.8 12 15.8C16.86 15.8 20.8 18.84 20.8 22.6"
+                                                              stroke="#374957"
+                                                              strokeWidth="1.3"
+                                                              strokeLinecap="round"
+                                                            />
+                                                          </svg>
                                                         </span>
+                                                        <span className="bk-staff-card-name">{String(emp?.name || "").trim() || "موظفة"}</span>
+                                                        {selected ? <span className="bk-staff-card-state">محددة</span> : null}
                                                       </button>
                                                     );
                                                   })}
                                                 </div>
-                                              ) : (
-                                                <div className="bk-time-window-empty">لا يوجد مواعيد متاحة في هذه الفترة.</div>
-                                              )}
-                                            </div>
-                                          ))
+                                              </div>
+                                              {packageQuickState.loading ? (
+                                                <div className="small text-muted mt-2">
+                                                  <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات المتاحة لكامل البكج...
+                                                </div>
+                                              ) : null}
+                                              {packageQuickState.error ? (
+                                                <div className="small text-warning mt-2">{packageQuickState.error}</div>
+                                              ) : null}
+                                              {packageQuickState.employeeId && packageQuickState.times.length > 0 ? (
+                                                <div className="mt-2">
+                                                  <div className="small fw-bold mb-1">وقت بداية البكج</div>
+                                                  <div className="bk-time-grid">
+                                                    {packageQuickState.times.map((t) => (
+                                                      <button
+                                                        key={t}
+                                                        type="button"
+                                                        className="bk-time-chip"
+                                                        onClick={() => {
+                                                          void applyPackageQuickSelection(packageRunId, packageQuickState.employeeId, t);
+                                                        }}
+                                                      >
+                                                        {formatTime12ForClient(t)}
+                                                      </button>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              ) : null}
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    <div className="col-12">
+                                      <div className="small" style={{ color: "#4b5563", fontWeight: 700 }}>
+                                        القسم: {serviceSectionLabel}
+                                      </div>
+                                      <div className="small" style={{ color: "#4b5563", fontWeight: 700, marginTop: 2 }}>
+                                        التصنيف: {serviceCategoryLabel}
+                                      </div>
+                                      {packageServiceNames.length > 0 ? (
+                                        <div style={{ marginTop: 6 }}>
+                                          <div className="small" style={{ color: "#4b5563", fontWeight: 700, marginBottom: 4 }}>
+                                            تفاصيل الباكيج
+                                          </div>
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                            {packageServiceNames.map((name, idx) => (
+                                              <span
+                                                key={`${name}-${idx}`}
+                                                style={{
+                                                  fontSize: '0.78rem',
+                                                  color: '#374151',
+                                                  background: '#f3f4f6',
+                                                  border: '1px solid #e5e7eb',
+                                                  borderRadius: 999,
+                                                  padding: '3px 10px',
+                                                  lineHeight: 1.5,
+                                                }}
+                                              >
+                                                {name}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    {toolsEligible ? (
+                                      <div className="col-12">
+                                        <label className="form-label small fw-bold">0. الأدوات لهذه الخدمة</label>
+                                        <div className="d-flex flex-wrap gap-2">
+                                          <button
+                                            type="button"
+                                            className={`btn btn-sm ${toolsSource === "client" ? "btn-dark" : "btn-outline-dark"}`}
+                                            onClick={() => setItemToolsSource(it, "client")}
+                                          >
+                                            من العميلة (بدون رسوم)
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={`btn btn-sm ${toolsSource === "salon" ? "btn-dark" : "btn-outline-dark"}`}
+                                            onClick={() => setItemToolsSource(it, "salon")}
+                                          >
+                                            من المشغل {maniPediToolsFee > 0 ? `(+${maniPediToolsFee} ريال)` : "(بدون رسوم إضافية)"}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : null}
+
+                                    {hasSelectedBookingDate && !usePackageQuickMode && staffChoiceMode === "manual" && (
+                                      <div className="col-md-6">
+                                        <label className="form-label small fw-bold">1. اختاري الموظفة</label>
+                                        <div className="bk-staff-card-grid">
+                                          {staffWithLeaveMeta.map(({ staff: emp, leave, hasWorkingHours, isInactive }) => {
+                                            const empId = String(emp.id || "").trim();
+                                            const isFullDayStaff =
+                                              !!(empId && staffFullDayLookupForItem[empId]);
+                                            const disabled = leave.isOnLeave || !hasWorkingHours || isInactive;
+                                            const selected =
+                                              selectedEmployeeAvailable &&
+                                              String(it.employeeId || "").trim() === String(emp.id || "").trim();
+                                            const unavailableType = isFullDayStaff
+                                              ? "full"
+                                              : isInactive
+                                                ? "inactive"
+                                                : leave.isOnLeave
+                                                  ? "leave"
+                                                  : !hasWorkingHours
+                                                    ? "offhours"
+                                                    : "";
+                                            const badgeText = isFullDayStaff
+                                              ? "ممتلئ اليوم"
+                                              : unavailableType === "leave"
+                                                ? "في إجازة"
+                                                : unavailableType === "offhours"
+                                                  ? "خارج الدوام"
+                                                  : unavailableType === "inactive"
+                                                    ? "غير متاحة"
+                                                    : "";
+                                            const badgeType = isFullDayStaff ? "full" : unavailableType;
+                                            const stateText = isFullDayStaff
+                                              ? ""
+                                              : leave.isOnLeave
+                                                ? leave.label
+                                                : isInactive
+                                                  ? "الموظفة غير نشطة أو غير متاحة للحجز حالياً"
+                                                  : !hasWorkingHours
+                                                    ? "غير متاحة في هذا اليوم"
+                                                    : "";
+                                            return (
+                                              <button
+                                                key={emp.id}
+                                                type="button"
+                                                className={[
+                                                  "bk-staff-card-btn",
+                                                  selected ? "is-selected" : "",
+                                                  isFullDayStaff ? "is-full-day" : "",
+                                                  disabled ? "is-disabled" : "",
+                                                  unavailableType ? `is-disabled-${unavailableType}` : "",
+                                                ].join(" ").trim()}
+                                                disabled={disabled}
+                                                title={stateText || undefined}
+                                                onClick={() => {
+                                                  const currentContextKey = `${serviceKeyForStaff}|${dateISO}`;
+                                                  const currentItemId = String(it.id || "").trim();
+                                                  if (currentItemId) {
+                                                    manualStaffChoiceContextRef.current[currentItemId] =
+                                                      currentContextKey;
+                                                  }
+                                                  if (selected) {
+                                                    updateItem(it.id, {
+                                                      employeeId: "",
+                                                      employeeUid: "",
+                                                      employeeName: "",
+                                                      time: "",
+                                                    });
+                                                    return;
+                                                  }
+                                                  updateItem(it.id, {
+                                                    employeeId: String(emp.id || "").trim(),
+                                                    employeeUid: emp?.linkedUid || "",
+                                                    employeeName: emp?.name || "",
+                                                    time: "",
+                                                  });
+                                                }}
+                                              >
+                                                <span className="bk-staff-card-icon" aria-hidden="true">
+                                                  <svg
+                                                    width="22"
+                                                    height="22"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                  >
+                                                    <path
+                                                      d="M12 12.2C15.09 12.2 17.6 9.69 17.6 6.6C17.6 3.51 15.09 1 12 1C8.91 1 6.4 3.51 6.4 6.6C6.4 9.69 8.91 12.2 12 12.2Z"
+                                                      fill="#374957"
+                                                      fillOpacity="0.12"
+                                                    />
+                                                    <path
+                                                      d="M12 12.2C15.09 12.2 17.6 9.69 17.6 6.6C17.6 3.51 15.09 1 12 1C8.91 1 6.4 3.51 6.4 6.6C6.4 9.69 8.91 12.2 12 12.2Z"
+                                                      stroke="#374957"
+                                                      strokeWidth="1.3"
+                                                    />
+                                                    <path
+                                                      d="M3.2 22.6C3.2 18.84 7.14 15.8 12 15.8C16.86 15.8 20.8 18.84 20.8 22.6"
+                                                      stroke="#374957"
+                                                      strokeWidth="1.3"
+                                                      strokeLinecap="round"
+                                                    />
+                                                  </svg>
+                                                </span>
+                                                <span className="bk-staff-card-name">{String(emp.name || "").trim() || "موظفة"}</span>
+                                                {badgeText ? (
+                                                  <span className={`bk-staff-card-badge is-${badgeType}`}>{badgeText}</span>
+                                                ) : null}
+                                                {stateText ? <span className="bk-staff-card-state">{stateText}</span> : null}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                        {staffLoading && <div className="small text-muted mt-1"><FontAwesomeIcon icon={faSpinner} spin /> جاري التحميل...</div>}
+                                        {staffError && <div className="text-danger small mt-1">{staffError}</div>}
+                                        {staffUnavailableMsg && <div className="text-warning small mt-1">{staffUnavailableMsg}</div>}
+                                        {leaveBlockedStaff.length > 0 && (
+                                          <div className="text-muted small mt-1">
+                                            الموظفات المعلّمات بعبارة "في إجازة" لا يمكن اختيارهن.
+                                          </div>
+                                        )}
+                                        {inactiveBlockedStaff.length > 0 && (
+                                          <div className="text-muted small mt-1">
+                                            الموظفات غير النشطة تظهر كـ "غير متاحة" ولا يمكن اختيارهن.
+                                          </div>
+                                        )}
+                                        {workingHoursBlockedStaff.length > 0 && (
+                                          <div className="text-muted small mt-1">
+                                            بعض الموظفات خارج ساعات العمل في هذا اليوم.
+                                          </div>
+                                        )}
+                                        {!selectedEmployeeAvailable && String(it.employeeId || "").trim() && (
+                                          <div className="text-warning small mt-1">
+                                            الموظفة المختارة غير متاحة في هذا التاريخ (إجازة)، اختاري موظفة أخرى.
+                                          </div>
                                         )}
                                       </div>
                                     )}
 
-                                    {selectedStaffForTime && availableSlotsForItem.length === 0 && !selectedStaffFullyBookedToday ? (
-                                      <div className="bk-no-slots-panel">
-                                        <div className="bk-no-slots-panel__title">{dayFullyBookedMsg}</div>
-                                        <div className="bk-no-slots-panel__buttons">
-                                          <button
-                                            type="button"
-                                            className="btn btn-outline-dark btn-sm bk-future-search-btn"
-                                            onClick={() => {
-                                              void openFutureSearchFromItem(it);
-                                            }}
-                                            disabled={futureLoading}
-                                          >
-                                            {futureLoading && String(futureTargetItemId || "").trim() === String(it.id || "").trim()
-                                              ? "جاري البحث..."
-                                              : futureSearchBtnLabel}
-                                          </button>
-                                        </div>
-                                        {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureMsg ? (
-                                          <div className="small text-muted mt-2">{futureMsg}</div>
-                                        ) : null}
-                                        {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureResult.length ? (
-                                          <div className="mt-2">
-                                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                                              <div className="small fw-bold">نتائج البحث</div>
+                                    {hasSelectedBookingDate && !usePackageQuickMode ? (
+                                      <div className="col-12">
+                                        <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
+                                        {!selectedStaffForTime ? (
+                                          <div className="bk-time-window-empty">اختاري الموظفة أولاً لعرض الفترات المتاحة.</div>
+                                        ) : selectedStaffFullyBookedToday ? (
+                                          <div className="bk-no-slots-panel">
+                                            <div className="bk-no-slots-panel__title">{dayFullyBookedMsg}</div>
+                                            <div className="bk-no-slots-panel__buttons">
                                               <button
                                                 type="button"
-                                                className="btn btn-sm bk-future-pill"
+                                                className="btn btn-outline-dark btn-sm bk-future-search-btn"
                                                 onClick={() => {
-                                                  const nearestDate = String(futureResult[0]?.date || "").trim();
-                                                  if (!nearestDate) return;
-                                                  applyDateToSingleItem(it.id, nearestDate);
-                                                  setBookingDate(nearestDate);
-                                                  setFutureMsg("تم تحديث التاريخ لنفس الخدمة. اختاري الوقت المناسب من الشبكية.");
+                                                  void openFutureSearchFromItem(it);
                                                 }}
+                                                disabled={futureLoading}
                                               >
-                                                اختيار أقرب موعد
+                                                {futureLoading && String(futureTargetItemId || "").trim() === String(it.id || "").trim()
+                                                  ? "جاري البحث..."
+                                                  : futureSearchBtnLabel}
                                               </button>
                                             </div>
-                                            <div className="table-responsive">
-                                              <table className="table align-middle mb-0 bk-future-table">
-                                                <thead>
-                                                  <tr>
-                                                    <th>التاريخ</th>
-                                                    <th>أوقات متاحة</th>
-                                                  </tr>
-                                                </thead>
-                                                <tbody>
-                                                  {futureResult.map((r) => (
-                                                    <tr key={r.date}>
-                                                      <td>{r.date}</td>
-                                                      <td>
-                                                        <div className="d-flex gap-2 flex-wrap">
-                                                          {(r.times || []).map((t) => (
-                                                            <button
-                                                              key={t}
-                                                              type="button"
-                                                              className="btn btn-sm bk-future-pill"
-                                                              onClick={() => {
-                                                                void applyFutureTimeSelection(r.date, t);
-                                                              }}
-                                                            >
-                                                              {formatTime12ForClient(t)}
-                                                            </button>
-                                                          ))}
-                                                        </div>
-                                                      </td>
-                                                    </tr>
-                                                  ))}
-                                                </tbody>
-                                              </table>
+                                            {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureMsg ? (
+                                              <div className="small text-muted mt-2">{futureMsg}</div>
+                                            ) : null}
+                                            {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureResult.length ? (
+                                              <div className="mt-2">
+                                                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                                                  <div className="small fw-bold">نتائج البحث</div>
+                                                  <button
+                                                    type="button"
+                                                    className="btn btn-sm bk-future-pill"
+                                                    onClick={() => {
+                                                      const nearestDate = String(futureResult[0]?.date || "").trim();
+                                                      if (!nearestDate) return;
+                                                      applyDateToSingleItem(it.id, nearestDate);
+                                                      setBookingDate(nearestDate);
+                                                      setFutureMsg("تم تحديث التاريخ لنفس الخدمة. اختاري الوقت المناسب من الشبكية.");
+                                                    }}
+                                                  >
+                                                    اختيار أقرب موعد
+                                                  </button>
+                                                </div>
+                                                <div className="table-responsive">
+                                                  <table className="table align-middle mb-0 bk-future-table">
+                                                    <thead>
+                                                      <tr>
+                                                        <th>التاريخ</th>
+                                                        <th>أوقات متاحة</th>
+                                                      </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                      {futureResult.map((r) => (
+                                                        <tr key={r.date}>
+                                                          <td>{r.date}</td>
+                                                          <td>
+                                                            <div className="d-flex gap-2 flex-wrap">
+                                                              {(r.times || []).map((t) => (
+                                                                <button
+                                                                  key={t}
+                                                                  type="button"
+                                                                  className="btn btn-sm bk-future-pill"
+                                                                  onClick={() => {
+                                                                    void applyFutureTimeSelection(r.date, t);
+                                                                  }}
+                                                                >
+                                                                  {formatTime12ForClient(t)}
+                                                                </button>
+                                                              ))}
+                                                            </div>
+                                                          </td>
+                                                        </tr>
+                                                      ))}
+                                                    </tbody>
+                                                  </table>
+                                                </div>
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        ) : (
+                                          <div className="bk-time-windows">
+                                            {staffWindowSections.length === 0 ? (
+                                              <div className="bk-time-window-empty">لا توجد فترات عمل لهذه الموظفة في هذا اليوم.</div>
+                                            ) : (
+                                              staffWindowSections.map((section) => (
+                                                <div key={section.key} className="bk-time-window-section">
+                                                  <div className="bk-time-window-title">{section.label}</div>
+                                                  {section.slotCards.length > 0 ? (
+                                                    <div className="bk-time-grid">
+                                                      {section.slotCards.map((slotCard) => {
+                                                        const isAvailable = slotCard.state === "available";
+                                                        const isSequentialSuggested =
+                                                          sequentialBooking &&
+                                                          !!isAvailable &&
+                                                          String(busy.suggestedSlot || "").trim() === String(slotCard.value24 || "").trim();
+                                                        return (
+                                                          <button
+                                                            key={`${section.key}_${slotCard.value24}`}
+                                                            type="button"
+                                                            className={[
+                                                              "bk-time-chip",
+                                                              slotCard.state === "booked"
+                                                                ? "is-booked"
+                                                                : slotCard.state === "unavailable"
+                                                                  ? "is-unavailable"
+                                                                  : "is-available",
+                                                              !isAvailable ? "is-disabled" : "",
+                                                              isSequentialSuggested ? "is-sequential-suggested" : "",
+                                                              slotCard.isSelected ? "is-selected" : "",
+                                                            ].join(" ").trim()}
+                                                            disabled={!isAvailable}
+                                                            onClick={() => {
+                                                              if (!isAvailable) return;
+                                                              updateItem(it.id, { time: slotCard.value24 });
+                                                            }}
+                                                            title={slotCard.reason}
+                                                          >
+                                                            <span className="bk-time-chip__time">{slotCard.slot.label12}</span>
+                                                            <span className="bk-time-chip__status">
+                                                              {slotCard.state === "booked"
+                                                                ? "محجوز"
+                                                                : slotCard.state === "unavailable"
+                                                                  ? "غير متاح"
+                                                                  : "✅ متاح"}
+                                                            </span>
+                                                          </button>
+                                                        );
+                                                      })}
+                                                    </div>
+                                                  ) : (
+                                                    <div className="bk-time-window-empty">لا يوجد مواعيد متاحة في هذه الفترة.</div>
+                                                  )}
+                                                </div>
+                                              ))
+                                            )}
+                                          </div>
+                                        )}
+
+                                        {selectedStaffForTime && availableSlotsForItem.length === 0 && !selectedStaffFullyBookedToday ? (
+                                          <div className="bk-no-slots-panel">
+                                            <div className="bk-no-slots-panel__title">{dayFullyBookedMsg}</div>
+                                            <div className="bk-no-slots-panel__buttons">
+                                              <button
+                                                type="button"
+                                                className="btn btn-outline-dark btn-sm bk-future-search-btn"
+                                                onClick={() => {
+                                                  void openFutureSearchFromItem(it);
+                                                }}
+                                                disabled={futureLoading}
+                                              >
+                                                {futureLoading && String(futureTargetItemId || "").trim() === String(it.id || "").trim()
+                                                  ? "جاري البحث..."
+                                                  : futureSearchBtnLabel}
+                                              </button>
                                             </div>
+                                            {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureMsg ? (
+                                              <div className="small text-muted mt-2">{futureMsg}</div>
+                                            ) : null}
+                                            {String(futureTargetItemId || "").trim() === String(it.id || "").trim() && futureResult.length ? (
+                                              <div className="mt-2">
+                                                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                                                  <div className="small fw-bold">نتائج البحث</div>
+                                                  <button
+                                                    type="button"
+                                                    className="btn btn-sm bk-future-pill"
+                                                    onClick={() => {
+                                                      const nearestDate = String(futureResult[0]?.date || "").trim();
+                                                      if (!nearestDate) return;
+                                                      applyDateToSingleItem(it.id, nearestDate);
+                                                      setBookingDate(nearestDate);
+                                                      setFutureMsg("تم تحديث التاريخ لنفس الخدمة. اختاري الوقت المناسب من الشبكية.");
+                                                    }}
+                                                  >
+                                                    اختيار أقرب موعد
+                                                  </button>
+                                                </div>
+                                                <div className="table-responsive">
+                                                  <table className="table align-middle mb-0 bk-future-table">
+                                                    <thead>
+                                                      <tr>
+                                                        <th>التاريخ</th>
+                                                        <th>أوقات متاحة</th>
+                                                      </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                      {futureResult.map((r) => (
+                                                        <tr key={r.date}>
+                                                          <td>{r.date}</td>
+                                                          <td>
+                                                            <div className="d-flex gap-2 flex-wrap">
+                                                              {(r.times || []).map((t) => (
+                                                                <button
+                                                                  key={t}
+                                                                  type="button"
+                                                                  className="btn btn-sm bk-future-pill"
+                                                                  onClick={() => {
+                                                                    void applyFutureTimeSelection(r.date, t);
+                                                                  }}
+                                                                >
+                                                                  {formatTime12ForClient(t)}
+                                                                </button>
+                                                              ))}
+                                                            </div>
+                                                          </td>
+                                                        </tr>
+                                                      ))}
+                                                    </tbody>
+                                                  </table>
+                                                </div>
+                                              </div>
+                                            ) : null}
                                           </div>
                                         ) : null}
+
+                                        {busy.loading && <div className="small text-muted mt-2"><FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات...</div>}
+                                        {busy.hint && !selectedStaffFullyBookedToday && !String(busy.hint).includes("الوقت المقترح") && (
+                                          <div className="small text-warning mt-2">{busy.hint}</div>
+                                        )}
+
+                                        {it.time && (
+                                          <div className="mt-3 text-center">
+                                            <button
+                                              type="button"
+                                              className="btn btn-success w-100 py-2 fw-bold"
+                                              onClick={() => updateItem(it.id, { locked: true })}
+                                            >
+                                              تأكيد الموظفة والوقت لهذه الخدمة
+                                            </button>
+                                          </div>
+                                        )}
                                       </div>
                                     ) : null}
-
-                                    {busy.loading && <div className="small text-muted mt-2"><FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الأوقات...</div>}
-                                    {busy.hint && !selectedStaffFullyBookedToday && !String(busy.hint).includes("الوقت المقترح") && (
-                                      <div className="small text-warning mt-2">{busy.hint}</div>
-                                    )}
-
-                                    {it.time && (
-                                      <div className="mt-3 text-center">
-                                        <button
-                                          type="button"
-                                          className="btn btn-success w-100 py-2 fw-bold"
-                                          onClick={() => updateItem(it.id, { locked: true })}
-                                        >
-                                          تأكيد الموظفة والوقت لهذه الخدمة
-                                        </button>
-                                      </div>
-                                    )}
                                   </div>
-                                ) : null}
+                                )}
                               </div>
-                            )}
-                            </div>
-                          </Fragment>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="p-4 text-center" style={{ border: '2px dashed #ddd', borderRadius: '12px', background: '#fdfdfd' }}>
-                      <p className="text-muted m-0">اختاري خدمة من القائمة أعلاه للبدء ᑅ ᐧ ᑀ </p>
-                    </div>
-	                  )}
-	                </div>
+                            </Fragment>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center" style={{ border: '2px dashed #ddd', borderRadius: '12px', background: '#fdfdfd' }}>
+                        <p className="text-muted m-0">اختاري خدمة من القائمة أعلاه للبدء ᑅ ᐧ ᑀ </p>
+                      </div>
+                    )}
+                  </div>
                 ) : null}
 
-	                {currentStep === 4 ? (
-	                  <div className="booking-pre-save-summary mb-3">
-	                    <div className="booking-pre-save-summary__head">
-	                      <div className="booking-pre-save-summary__title">ملخص الحجز قبل الدفع</div>
-	                      <div className="booking-pre-save-summary__count">
-	                        مؤكد: <span dir="ltr">{lockedPreviewCount} / {totalPreviewCount}</span>
-	                      </div>
-	                    </div>
-	                    <div className="booking-pre-save-summary__meta">
-	                      <div className="booking-pre-save-summary__meta-item">
-                          <span className="booking-pre-save-summary__meta-label">العميلة</span>
-                          <strong className="booking-pre-save-summary__meta-value">{String(formData.name || "").trim() || "-"}</strong>
-                        </div>
-	                      <div className="booking-pre-save-summary__meta-item">
-                          <span className="booking-pre-save-summary__meta-label">الجوال</span>
-                          <strong className="booking-pre-save-summary__meta-value">{phone10Digits(String(formData.phone || "").trim()) || "-"}</strong>
-                        </div>
-	                      <div className="booking-pre-save-summary__meta-item">
-                          <span className="booking-pre-save-summary__meta-label">وقت إنشاء الحجز</span>
-                          <strong className="booking-pre-save-summary__meta-value">{previewCreatedAtLabel}</strong>
-                        </div>
-	                    </div>
+                {currentStep === 4 ? (
+                  <div className="booking-pre-save-summary mb-3">
+                    <div className="booking-pre-save-summary__head">
+                      <div className="booking-pre-save-summary__title">ملخص الحجز قبل الدفع</div>
+                      <div className="booking-pre-save-summary__count">
+                        مؤكد: <span dir="ltr">{lockedPreviewCount} / {totalPreviewCount}</span>
+                      </div>
+                    </div>
+                    <div className="booking-pre-save-summary__meta">
+                      <div className="booking-pre-save-summary__meta-item">
+                        <span className="booking-pre-save-summary__meta-label">العميلة</span>
+                        <strong className="booking-pre-save-summary__meta-value">{String(formData.name || "").trim() || "-"}</strong>
+                      </div>
+                      <div className="booking-pre-save-summary__meta-item">
+                        <span className="booking-pre-save-summary__meta-label">الجوال</span>
+                        <strong className="booking-pre-save-summary__meta-value">{phone10Digits(String(formData.phone || "").trim()) || "-"}</strong>
+                      </div>
+                      <div className="booking-pre-save-summary__meta-item">
+                        <span className="booking-pre-save-summary__meta-label">وقت إنشاء الحجز</span>
+                        <strong className="booking-pre-save-summary__meta-value">{previewCreatedAtLabel}</strong>
+                      </div>
+                    </div>
 
-	                    {appliedDiscountTotal > 0 ? (
-	                      <div className="booking-pre-save-summary__discount">
-	                        <div className="booking-pre-save-summary__discount-title">
-	                          الخصم المطبق ({appliedCoupons.length})
-	                        </div>
-	                        <div className="booking-pre-save-summary__discount-lines">
-	                          <div className="booking-pre-save-summary__discount-line is-before">
-	                            <span>قبل الخصم</span>
-	                            <strong>{basePrice.toFixed(0)} ريال</strong>
-	                          </div>
-	                          <div className="booking-pre-save-summary__discount-line is-discount">
-	                            <span>قيمة الخصم</span>
-	                            <strong>-{Number(appliedDiscountTotal || 0).toFixed(0)} ريال</strong>
-	                          </div>
-	                          <div className="booking-pre-save-summary__discount-line is-after">
-	                            <span>بعد الخصم</span>
-	                            <strong>{finalPrice.toFixed(0)} ريال</strong>
-	                          </div>
-	                        </div>
-	                      </div>
-	                    ) : null}
+                    {appliedDiscountTotal > 0 ? (
+                      <div className="booking-pre-save-summary__discount">
+                        <div className="booking-pre-save-summary__discount-title">
+                          الخصم المطبق ({appliedCoupons.length})
+                        </div>
+                        <div className="booking-pre-save-summary__discount-lines">
+                          <div className="booking-pre-save-summary__discount-line is-before">
+                            <span>قبل الخصم</span>
+                            <strong>{basePrice.toFixed(0)} ريال</strong>
+                          </div>
+                          <div className="booking-pre-save-summary__discount-line is-discount">
+                            <span>قيمة الخصم</span>
+                            <strong>-{Number(appliedDiscountTotal || 0).toFixed(0)} ريال</strong>
+                          </div>
+                          <div className="booking-pre-save-summary__discount-line is-after">
+                            <span>بعد الخصم</span>
+                            <strong>{finalPrice.toFixed(0)} ريال</strong>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
 
-	                    <div className="booking-pre-save-summary__rows">
-	                      {bookingPreviewItems.map((row) => (
-	                        <div key={`preview-${row.id}`} className="booking-pre-save-summary__row">
-	                          <div className="booking-pre-save-summary__row-head">
-	                            <span className="booking-pre-save-summary__row-index">#{row.index}</span>
-	                            <span className="booking-pre-save-summary__row-service">{row.serviceName}</span>
-	                          </div>
-	                          <div className="booking-pre-save-summary__row-meta">
-	                            <span className="booking-pre-save-summary__fact">
-                                <span className="booking-pre-save-summary__fact-label">الموظفة</span>
-                                <strong className="booking-pre-save-summary__fact-value">{row.staffName}</strong>
+                    <div className="booking-pre-save-summary__rows">
+                      {bookingPreviewItems.map((row) => (
+                        <div key={`preview-${row.id}`} className="booking-pre-save-summary__row">
+                          <div className="booking-pre-save-summary__row-head">
+                            <span className="booking-pre-save-summary__row-index">#{row.index}</span>
+                            <span className="booking-pre-save-summary__row-service">{row.serviceName}</span>
+                          </div>
+                          <div className="booking-pre-save-summary__row-meta">
+                            <span className="booking-pre-save-summary__fact">
+                              <span className="booking-pre-save-summary__fact-label">الموظفة</span>
+                              <strong className="booking-pre-save-summary__fact-value">{row.staffName}</strong>
+                            </span>
+                            <span className="booking-pre-save-summary__fact">
+                              <span className="booking-pre-save-summary__fact-label">التاريخ</span>
+                              <strong className="booking-pre-save-summary__fact-value">{row.date}</strong>
+                            </span>
+                            <span className="booking-pre-save-summary__fact">
+                              <span className="booking-pre-save-summary__fact-label">الوقت</span>
+                              <strong className="booking-pre-save-summary__fact-value">{row.timeLabel}</strong>
+                            </span>
+                            <span className="booking-pre-save-summary__fact">
+                              <span className="booking-pre-save-summary__fact-label">المدة</span>
+                              <strong className="booking-pre-save-summary__fact-value">{row.durationMin} د</strong>
+                            </span>
+                            <span className="booking-pre-save-summary__fact">
+                              <span className="booking-pre-save-summary__fact-label">السعر</span>
+                              <strong className="booking-pre-save-summary__fact-value">{row.priceLabel}</strong>
+                            </span>
+                            {row.toolsNote ? (
+                              <span className="booking-pre-save-summary__fact booking-pre-save-summary__fact--wide">
+                                <span className="booking-pre-save-summary__fact-label">ملاحظة</span>
+                                <strong className="booking-pre-save-summary__fact-value">{row.toolsNote}</strong>
                               </span>
-	                            <span className="booking-pre-save-summary__fact">
-                                <span className="booking-pre-save-summary__fact-label">التاريخ</span>
-                                <strong className="booking-pre-save-summary__fact-value">{row.date}</strong>
-                              </span>
-	                            <span className="booking-pre-save-summary__fact">
-                                <span className="booking-pre-save-summary__fact-label">الوقت</span>
-                                <strong className="booking-pre-save-summary__fact-value">{row.timeLabel}</strong>
-                              </span>
-	                            <span className="booking-pre-save-summary__fact">
-                                <span className="booking-pre-save-summary__fact-label">المدة</span>
-                                <strong className="booking-pre-save-summary__fact-value">{row.durationMin} د</strong>
-                              </span>
-	                            <span className="booking-pre-save-summary__fact">
-                                <span className="booking-pre-save-summary__fact-label">السعر</span>
-                                <strong className="booking-pre-save-summary__fact-value">{row.priceLabel}</strong>
-                              </span>
-	                            {row.toolsNote ? (
-	                              <span className="booking-pre-save-summary__fact booking-pre-save-summary__fact--wide">
-                                  <span className="booking-pre-save-summary__fact-label">ملاحظة</span>
-                                  <strong className="booking-pre-save-summary__fact-value">{row.toolsNote}</strong>
-                                </span>
-	                            ) : null}
-	                          </div>
-	                        </div>
-	                      ))}
-	                    </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
 
-	                    <div className="booking-pre-save-summary__total">
-	                      <span>الإجمالي النهائي</span>
-	                      <strong>{finalPrice.toFixed(0)} ريال</strong>
-	                    </div>
-	                  </div>
-	                ) : null}
+                    <div className="booking-pre-save-summary__total">
+                      <span>الإجمالي النهائي</span>
+                      <strong>{finalPrice.toFixed(0)} ريال</strong>
+                    </div>
+                  </div>
+                ) : null}
 
                 {currentStep === 2 ? (
                   <div className="d-grid mb-4">
@@ -8639,178 +9251,178 @@ function findAnyExactCartSlotConflict(items: CartItem[]) {
                 ) : null}
 
                 {currentStep === 3 ? (
-                <>
-                <div className="booking-step-card-shell mb-4">
-                  <div className="booking-step-card-shell__title">بيانات العميلة</div>
-                  <div
-                    className={`booking-client-prefill-note ${isSignedClient ? "is-signed" : ""}`}
-                    role="status"
-                    aria-live="polite"
-                  >
-                    {isSignedClient
-                      ? "تم سحب الاسم والجوال من حسابك تلقائيًا، ويمكنك تعديلهما قبل التأكيد."
-                      : "أدخلي اسمك ورقم جوالك لإتمام الحجز بدون الحاجة لتسجيل الدخول."}
-                  </div>
+                  <>
+                    <div className="booking-step-card-shell mb-4">
+                      <div className="booking-step-card-shell__title">بيانات العميلة</div>
+                      <div
+                        className={`booking-client-prefill-note ${isSignedClient ? "is-signed" : ""}`}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {isSignedClient
+                          ? "تم سحب الاسم والجوال من حسابك تلقائيًا، ويمكنك تعديلهما قبل التأكيد."
+                          : "أدخلي اسمك ورقم جوالك لإتمام الحجز بدون الحاجة لتسجيل الدخول."}
+                      </div>
 
-                  <div className="row g-3">
-                    <div className="col-md-6">
-                      <label htmlFor="bookingClientName" className="form-label">الاسم</label>
-                      <input
-                        id="bookingClientName"
-                        type="text"
-                        name="name"
-                        className="form-control"
-                        value={formData.name}
-                        onChange={handleChange}
-                        placeholder="اكتبي اسمك الكامل"
-                        autoComplete="name"
-                        required
-                        aria-invalid={!isCustomerNameComplete && String(formData.name || "").trim().length > 0}
-                      />
+                      <div className="row g-3">
+                        <div className="col-md-6">
+                          <label htmlFor="bookingClientName" className="form-label">الاسم</label>
+                          <input
+                            id="bookingClientName"
+                            type="text"
+                            name="name"
+                            className="form-control"
+                            value={formData.name}
+                            onChange={handleChange}
+                            placeholder="اكتبي اسمك الكامل"
+                            autoComplete="name"
+                            required
+                            aria-invalid={!isCustomerNameComplete && String(formData.name || "").trim().length > 0}
+                          />
+                        </div>
+
+                        <div className="col-md-6">
+                          <label htmlFor="bookingClientPhone" className="form-label">رقم الجوال</label>
+                          <input
+                            id="bookingClientPhone"
+                            type="tel"
+                            name="phone"
+                            className="form-control"
+                            dir="ltr"
+                            inputMode="numeric"
+                            value={formData.phone}
+                            onChange={handleChange}
+                            placeholder="05xxxxxxxx"
+                            autoComplete="tel"
+                            maxLength={10}
+                            required
+                            pattern="05[0-9]{8}"
+                            aria-invalid={!isCustomerPhoneComplete && String(formData.phone || "").trim().length > 0}
+                          />
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="col-md-6">
-                      <label htmlFor="bookingClientPhone" className="form-label">رقم الجوال</label>
-                      <input
-                        id="bookingClientPhone"
-                        type="tel"
-                        name="phone"
-                        className="form-control"
-                        dir="ltr"
-                        inputMode="numeric"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        placeholder="05xxxxxxxx"
-                        autoComplete="tel"
-                        maxLength={10}
-                        required
-                        pattern="05[0-9]{8}"
-                        aria-invalid={!isCustomerPhoneComplete && String(formData.phone || "").trim().length > 0}
-                      />
-                    </div>
-                  </div>
-                </div>
+                    <div className="booking-step-card-shell mb-4">
+                      <div className="booking-step-card-shell__title">ملاحظات وكود خصم</div>
+                      <div className="mb-4">
+                        <label htmlFor="note" className="form-label">ملاحظة (اختياري)</label>
+                        <textarea
+                          className="form-control"
+                          id="note"
+                          name="note"
+                          value={formData.note}
+                          onChange={handleChange}
+                          rows={3}
+                          placeholder="أي ملاحظة…"
+                        />
+                      </div>
 
-                <div className="booking-step-card-shell mb-4">
-                  <div className="booking-step-card-shell__title">ملاحظات وكود خصم</div>
-                <div className="mb-4">
-                  <label htmlFor="note" className="form-label">ملاحظة (اختياري)</label>
-                  <textarea
-                    className="form-control"
-                    id="note"
-                    name="note"
-                    value={formData.note}
-                    onChange={handleChange}
-                    rows={3}
-                    placeholder="أي ملاحظة…"
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label className="form-label">كود الخصم (اختياري)</label>
-                  <div className="input-group bk-coupon-actions">
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={couponCode}
-                      onChange={(e) => {
-                        setCouponCode(e.target.value);
-                        if (offerMsg) {
-                          setOfferMsg("");
-                          setOfferMsgKind("");
-                        }
-                      }}
-                      placeholder="اكتبي الكود هنا"
-                      disabled={!formData.items?.length || isLoading}
-                    />
-                    <button
-                      type="button"
-                      className="btn bk-coupon-btn bk-coupon-btn--apply"
-                      onClick={handleApplyCoupon}
-                      disabled={!formData.items?.length || isLoading}
-                    >
-                      تطبيق الكود
-                    </button>
-                  </div>
-                  {offerMsg && (
-                    <div className={`bk-coupon-feedback mt-2 ${offerMsgKind === "success" ? "is-success" : "is-error"}`}>
-                      {offerMsg}
-                    </div>
-                  )}
-                  {appliedCoupons.length > 0 && (
-                    <div className="bk-coupon-applied-list mt-2">
-                      {appliedCoupons.map((entry) => (
-                        <div key={entry.code} className="bk-coupon-applied-item">
-                          <div className="bk-coupon-applied-main">
-                            <span className="bk-coupon-applied-code">{entry.code}</span>
-                            <span className="bk-coupon-applied-title">{entry.offerTitle || "عرض"}</span>
-                            <span className="bk-coupon-applied-meta">
-                              خصم {Number(entry.discountAmount || 0)} ريال
-                            </span>
-                          </div>
+                      <div className="mb-4">
+                        <label className="form-label">كود الخصم (اختياري)</label>
+                        <div className="input-group bk-coupon-actions">
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={couponCode}
+                            onChange={(e) => {
+                              setCouponCode(e.target.value);
+                              if (offerMsg) {
+                                setOfferMsg("");
+                                setOfferMsgKind("");
+                              }
+                            }}
+                            placeholder="اكتبي الكود هنا"
+                            disabled={!formData.items?.length || isLoading}
+                          />
                           <button
                             type="button"
-                            className="btn btn-sm bk-coupon-applied-remove"
-                            onClick={() => handleRemoveCoupon(entry.code)}
-                            disabled={isLoading}
+                            className="btn bk-coupon-btn bk-coupon-btn--apply"
+                            onClick={handleApplyCoupon}
+                            disabled={!formData.items?.length || isLoading}
                           >
-                            حذف
+                            تطبيق الكود
                           </button>
                         </div>
-                      ))}
+                        {offerMsg && (
+                          <div className={`bk-coupon-feedback mt-2 ${offerMsgKind === "success" ? "is-success" : "is-error"}`}>
+                            {offerMsg}
+                          </div>
+                        )}
+                        {appliedCoupons.length > 0 && (
+                          <div className="bk-coupon-applied-list mt-2">
+                            {appliedCoupons.map((entry) => (
+                              <div key={entry.code} className="bk-coupon-applied-item">
+                                <div className="bk-coupon-applied-main">
+                                  <span className="bk-coupon-applied-code">{entry.code}</span>
+                                  <span className="bk-coupon-applied-title">{entry.offerTitle || "عرض"}</span>
+                                  <span className="bk-coupon-applied-meta">
+                                    خصم {Number(entry.discountAmount || 0)} ريال
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm bk-coupon-applied-remove"
+                                  onClick={() => handleRemoveCoupon(entry.code)}
+                                  disabled={isLoading}
+                                >
+                                  حذف
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-                </div>
-                <div className="d-grid mb-4">
-                  <button
-                    type="button"
-                    className="btn btn-dark"
-                    disabled={!isStep3Complete}
-                    onClick={() => setCurrentStep(4)}
-                  >
-                    التالي: التأكيد
-                  </button>
-                  {!isStep3Complete ? (
-                    <div className="small text-warning mt-2 text-center">
-                      لازم تكمّلين الاسم ورقم الجوال الصحيح قبل الانتقال للتأكيد.
+                    <div className="d-grid mb-4">
+                      <button
+                        type="button"
+                        className="btn btn-dark"
+                        disabled={!isStep3Complete}
+                        onClick={() => setCurrentStep(4)}
+                      >
+                        التالي: التأكيد
+                      </button>
+                      {!isStep3Complete ? (
+                        <div className="small text-warning mt-2 text-center">
+                          لازم تكمّلين الاسم ورقم الجوال الصحيح قبل الانتقال للتأكيد.
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-                </>
+                  </>
                 ) : null}
 
                 {currentStep === 4 ? (
-                <>
-                <div className="booking-summary mb-4 qs-black">
-                  <div className="d-flex justify-content-between">
-                    <span>السعر</span>
-                    <strong>{basePrice} ريال</strong>
-                  </div>
-                  {appliedDiscountTotal > 0 && (
-                    <div className="d-flex justify-content-between mt-1">
-                      <span>الخصم (كود واحد)</span>
-                      <strong>-{Number(appliedDiscountTotal || 0)} ريال</strong>
+                  <>
+                    <div className="booking-summary mb-4 qs-black">
+                      <div className="d-flex justify-content-between">
+                        <span>السعر</span>
+                        <strong>{basePrice} ريال</strong>
+                      </div>
+                      {appliedDiscountTotal > 0 && (
+                        <div className="d-flex justify-content-between mt-1">
+                          <span>الخصم (كود واحد)</span>
+                          <strong>-{Number(appliedDiscountTotal || 0)} ريال</strong>
+                        </div>
+                      )}
+                      <div className="d-flex justify-content-between mt-2">
+                        <span>الإجمالي</span>
+                        <strong>{finalPrice} ريال</strong>
+                      </div>
                     </div>
-                  )}
-                  <div className="d-flex justify-content-between mt-2">
-                    <span>الإجمالي</span>
-                    <strong>{finalPrice} ريال</strong>
-                  </div>
-                </div>
 
-                <button
-                  type="submit"
-                  className="btn btn-primary w-100 booking-submit-btn"
-                  disabled={isLoading || !allPreviewLocked}
-                >
-                  {isLoading ? (
-                    <><FontAwesomeIcon icon={faSpinner} spin /> جاري تأكيد الحجز…</>
-                  ) : (
-                    "تأكيد الحجز النهائي"
-                  )}
-                </button>
-                </>
+                    <button
+                      type="submit"
+                      className="btn btn-primary w-100 booking-submit-btn"
+                      disabled={isLoading || !allPreviewLocked}
+                    >
+                      {isLoading ? (
+                        <><FontAwesomeIcon icon={faSpinner} spin /> جاري تأكيد الحجز…</>
+                      ) : (
+                        "تأكيد الحجز النهائي"
+                      )}
+                    </button>
+                  </>
                 ) : null}
               </form>
             </div>

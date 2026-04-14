@@ -66,6 +66,8 @@ export type PackageSnapshot = {
   totalDurationMinAtBooking: number;
   serviceIds: string[];
   services: PackageServiceSnapshot[];
+  sessionsCount?: number;
+  kind?: "service_package" | "session_package";
 };
 
 export type BookingDoc = {
@@ -96,6 +98,11 @@ export type BookingDoc = {
   serviceSnapshot?: ServiceSnapshot;
   packageId?: string;
   packageSnapshot?: PackageSnapshot;
+  fromSessionPackage?: boolean;
+  sessionPackageId?: string;
+  sessionPackageName?: string;
+  allowedServiceIds?: string[];
+  consumeOneSession?: boolean;
 
   /**
    * ✅ NEW: رقم حجز بشري MK-xxxxx (سيرفر)
@@ -222,6 +229,51 @@ function stripUndefined<T>(value: T): T {
   return value;
 }
 
+function normalizeStringArray(values: any): string[] {
+  if (!Array.isArray(values)) return [];
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  values.forEach((value) => {
+    const next = String(value || "").trim();
+    if (!next || seen.has(next)) return;
+    seen.add(next);
+    out.push(next);
+  });
+  return out;
+}
+
+function normalizePackageServices(values: any): PackageServiceSnapshot[] {
+  if (!Array.isArray(values)) return [];
+
+  const byId = new Map<string, PackageServiceSnapshot>();
+  values.forEach((row) => {
+    const serviceId = String(row?.serviceId || "").trim();
+    if (!serviceId) return;
+
+    const prev = byId.get(serviceId);
+    byId.set(serviceId, {
+      serviceId,
+      serviceName:
+        String(row?.serviceName || "").trim() ||
+        String(prev?.serviceName || "").trim() ||
+        serviceId,
+      sectionId:
+        String(row?.sectionId || "").trim() ||
+        String(prev?.sectionId || "").trim() ||
+        undefined,
+      categoryId:
+        String(row?.categoryId || "").trim() ||
+        String(prev?.categoryId || "").trim() ||
+        undefined,
+      price: Math.max(0, Number(row?.price ?? prev?.price ?? 0)),
+      durationMin: Math.max(0, Number(row?.durationMin ?? prev?.durationMin ?? 0)),
+    });
+  });
+
+  return Array.from(byId.values());
+}
+
 function normalizeBooking(raw: any): BookingDoc {
   const paymentState = resolveBookingPaymentState(raw);
   return {
@@ -295,21 +347,31 @@ function normalizeBooking(raw: any): BookingDoc {
           finalPriceAtBooking: Number(raw.packageSnapshot.finalPriceAtBooking ?? 0),
           baseTotalPriceAtBooking: Number(raw.packageSnapshot.baseTotalPriceAtBooking ?? 0),
           totalDurationMinAtBooking: Number(raw.packageSnapshot.totalDurationMinAtBooking ?? 0),
-          serviceIds: Array.isArray(raw.packageSnapshot.serviceIds)
-            ? raw.packageSnapshot.serviceIds.map((x: any) => String(x || "").trim()).filter(Boolean)
-            : [],
-          services: Array.isArray(raw.packageSnapshot.services)
-            ? raw.packageSnapshot.services.map((x: any) => ({
-                serviceId: String(x?.serviceId || "").trim(),
-                serviceName: String(x?.serviceName || "").trim(),
-                sectionId: String(x?.sectionId || "").trim() || undefined,
-                categoryId: String(x?.categoryId || "").trim() || undefined,
-                price: Number(x?.price || 0),
-                durationMin: Number(x?.durationMin || 0),
-              }))
-            : [],
+          serviceIds: normalizeStringArray(raw.packageSnapshot.serviceIds),
+          services: normalizePackageServices(raw.packageSnapshot.services),
+          sessionsCount:
+            raw?.packageSnapshot?.sessionsCount === undefined ||
+            raw?.packageSnapshot?.sessionsCount === null
+              ? undefined
+              : Math.max(1, Number(raw.packageSnapshot.sessionsCount || 0)),
+          kind:
+            raw.packageSnapshot.kind === "session_package"
+              ? "session_package"
+              : raw.packageSnapshot.kind === "service_package"
+                ? "service_package"
+                : undefined,
         }
       : undefined,
+    fromSessionPackage:
+      raw?.fromSessionPackage === undefined ? undefined : !!raw.fromSessionPackage,
+    sessionPackageId: raw?.sessionPackageId ? String(raw.sessionPackageId) : undefined,
+    sessionPackageName: raw?.sessionPackageName ? String(raw.sessionPackageName) : undefined,
+    allowedServiceIds:
+      normalizeStringArray(raw?.allowedServiceIds).length > 0
+        ? normalizeStringArray(raw?.allowedServiceIds)
+        : normalizeStringArray(raw?.packageSnapshot?.serviceIds),
+    consumeOneSession:
+      raw?.consumeOneSession === undefined ? undefined : !!raw.consumeOneSession,
 
     durationMin: Number(raw?.durationMin ?? 0) || undefined,
 
@@ -1768,6 +1830,18 @@ export async function createBooking(data: BookingDoc): Promise<{ id: string; pub
         serviceSnapshot,
         packageId: data.packageId ? String(data.packageId).trim() : undefined,
         packageSnapshot: data.packageSnapshot ?? undefined,
+        fromSessionPackage:
+          data.fromSessionPackage === undefined ? undefined : !!data.fromSessionPackage,
+        sessionPackageId: data.sessionPackageId ? String(data.sessionPackageId).trim() : undefined,
+        sessionPackageName: data.sessionPackageName
+          ? String(data.sessionPackageName).trim()
+          : undefined,
+        allowedServiceIds:
+          data.allowedServiceIds === undefined
+            ? undefined
+            : normalizeStringArray(data.allowedServiceIds),
+        consumeOneSession:
+          data.consumeOneSession === undefined ? undefined : !!data.consumeOneSession,
 
         employeeId: data.employeeId ?? null,
         employeeUid: data.employeeUid ?? null,
@@ -3417,11 +3491,11 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
       stripUndefined({
         publicId: effectivePatch.publicId,
 
-        serviceName: effectivePatch.serviceName,
-        serviceId: effectivePatch.serviceId,
-        serviceSnapshot: effectivePatch.serviceSnapshot,
-        packageId: effectivePatch.packageId,
-        packageSnapshot: effectivePatch.packageSnapshot,
+        serviceName: patch.serviceName,
+        serviceId: patch.serviceId,
+        serviceSnapshot: patch.serviceSnapshot,
+        packageId: patch.packageId,
+        packageSnapshot: patch.packageSnapshot,
 
         employeeId: effectivePatch.employeeId,
         employeeUid: effectivePatch.employeeUid,

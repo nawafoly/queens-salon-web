@@ -8,6 +8,11 @@ export type CartItem = {
   offerSourceId?: string;
   offerSourceCode?: string;
   offerSourceTitle?: string;
+  fromSessionPackage?: boolean;
+  sessionPackageId?: string;
+  sessionPackageName?: string;
+  allowedServiceIds?: string[];
+  consumeOneSession?: boolean;
   packageId?: string;
   packageSnapshot?: {
     packageId: string;
@@ -17,6 +22,8 @@ export type CartItem = {
     totalDurationMinAtBooking: number;
     serviceIds: string[];
     services: PackageServiceItem[];
+    sessionsCount?: number;
+    kind?: "service_package" | "session_package";
   };
   serviceSectionId: string; // ✅ القسم الحقيقي للخدمة وقت الإضافة
   serviceSectionTitle?: string; // ✅ اسم القسم وقت الإضافة (للقواعد المرنة)
