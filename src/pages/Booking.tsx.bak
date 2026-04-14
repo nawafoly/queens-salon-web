@@ -8090,6 +8090,129 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             ? generateSalonTimeSlots(dayOpenTimeForItem, dayCloseTimeForItem, slotStepMin)
                             : [];
 
+<<<<<<< HEAD
+                        const itemsList = formData.items || [];
+                        const packageRunId = String(it.packageRunId || "").trim();
+                        const packageRunFirstIdx = packageRunId
+                          ? itemsList.findIndex((x) => String(x.packageRunId || "").trim() === packageRunId)
+                          : -1;
+                        const packageRunCount = packageRunId
+                          ? itemsList.filter((x) => String(x.packageRunId || "").trim() === packageRunId).length
+                          : 0;
+                        const isPackageRunFirstCard = packageRunId ? packageRunFirstIdx === rowIdx : false;
+                        const showPackageRunHeader = !!packageRunId && packageRunCount > 1 && isPackageRunFirstCard;
+                        const busy = busyByItem[it.id] || emptyBusyState();
+                        const canEditThis = canEditByLockedPrev(itemsList, it.id);
+                        const isLocked = !!it.locked;
+                        const dateISO = String(it.date || "").trim();
+                        const daySettingsForItem = getDaySettingsForDate(
+                          dateISO || String(bookingDate || "").trim() || todayISO()
+                        );
+                        const dayOpenTimeForItem = safeTimeHHMM(daySettingsForItem.openTime, openTime);
+                        const dayCloseTimeForItem = safeTimeHHMM(daySettingsForItem.closeTime, closeTime);
+                        const baseSlotsForUi = daySettingsForItem.enabled
+                          ? generateSalonTimeSlots(dayOpenTimeForItem, dayCloseTimeForItem, slotStepMin)
+                          : [];
+
+                        const dur = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+                        const rawSectionLabel =
+                          String(it.serviceSectionTitle || "").trim() ||
+                          String(sectionLabelById.get(String(it.serviceSectionId || "").trim()) || "").trim();
+                        const rawCategoryLabel =
+                          String(it.serviceCategoryName || "").trim() ||
+                          String(categoryLabelById.get(String(it.serviceCategoryId || "").trim()) || "").trim();
+                        const sectionLabelRaw = normalizeUiLabel(rawSectionLabel);
+                        const categoryLabelRaw = normalizeUiLabel(rawCategoryLabel);
+                        const sectionLabelClean = cleanSectionLabel(sectionLabelRaw) || "غير محدد";
+                        const categoryLabelClean = cleanCategoryLabel(categoryLabelRaw, sectionLabelRaw) || "غير محدد";
+                        const serviceSectionLabel = sectionLabelClean;
+                        const serviceCategoryLabel = categoryLabelClean;
+                        const toolsEligible = isToolsOptionEligibleForItem(it);
+                        const packageServices = Array.isArray(it.packageSnapshot?.services) ? it.packageSnapshot?.services : [];
+                        const packageServiceNames = packageServices
+                          .map((s) => String(s.serviceName || s.serviceId || "").trim())
+                          .filter(Boolean);
+                        const toolsSource = toolsEligible
+                          ? (String(it.toolsSource || "").trim() === "salon" ? "salon" : "client")
+                          : undefined;
+                        const toolsFeeApplied = toolsEligible && toolsSource === "salon"
+                          ? Math.max(0, Number(it.toolsFeeApplied || maniPediToolsFee || 0))
+                          : 0;
+                        const toolsSummary = toolsEligible
+                          ? (
+                            toolsSource === "salon"
+                              ? `الأدوات: من المشغل (+${toolsFeeApplied} ريال)`
+                              : "الأدوات: من العميلة (بدون رسوم)"
+                          )
+                          : "";
+                        const serviceKeyForStaff =
+                          resolveCanonicalServiceId(
+                            String(it.serviceId || "").trim(),
+                            String((it as any)?.serviceName || "").trim()
+                          ) || String(it.serviceId || "").trim();
+                        const serviceStaff = staffByService[serviceKeyForStaff] || [];
+                        const bookingVisibleStaff = serviceStaff.filter((st) =>
+                          isStaffOperationallyActiveForDate(st as any, dateISO)
+                        );
+                        const staffWithLeaveMeta = bookingVisibleStaff.map((st) => {
+                          const leave = getStaffLeaveMetaForDate(st, dateISO);
+                          const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
+                            dateISO,
+                            slots: baseSlotsForUi,
+                            fallbackOpenTime: dayOpenTimeForItem,
+                            fallbackCloseTime: dayCloseTimeForItem,
+                          });
+                          const statusRaw = String((st as any)?.status || "").trim().toLowerCase();
+                          const isInactive =
+                            !isStaffOperationallyActiveForDate(st as any, dateISO) ||
+                            (st as any)?.showOnBooking === false ||
+                            statusRaw === "inactive" ||
+                            statusRaw === "disabled" ||
+                            statusRaw === "suspended";
+                          return {
+                            staff: st,
+                            leave,
+                            hasWorkingHours: workingSlots.length > 0,
+                            isInactive,
+                          };
+                        });
+                        const availableStaff = staffWithLeaveMeta
+                          .filter((x) => !x.leave.isOnLeave && x.hasWorkingHours && !x.isInactive)
+                          .map((x) => x.staff);
+                        const leaveBlockedStaff = staffWithLeaveMeta.filter((x) => x.leave.isOnLeave);
+                        const inactiveBlockedStaff = staffWithLeaveMeta.filter((x) => x.isInactive);
+                        const workingHoursBlockedStaff = staffWithLeaveMeta.filter(
+                          (x) => !x.leave.isOnLeave && !x.isInactive && !x.hasWorkingHours
+                        );
+                        const staffLoading = !!staffLoadingByService[serviceKeyForStaff];
+                        const staffError = staffErrorByService[serviceKeyForStaff] || "";
+                        const selectedEmployeeAvailable = availableStaff.some(
+                          (emp) => String(emp?.id || "").trim() === String(it.employeeId || "").trim()
+                        );
+                        const packageRunMeta = packageRunId ? packageRunMetaByRun[packageRunId] : undefined;
+                        const quickEligibility = packageRunId ? packageQuickEligibilityByRun[packageRunId] : undefined;
+                        const quickCommonStaff = quickEligibility?.commonStaff || [];
+                        const quickLoading = !!quickEligibility?.loading;
+                        const isPackageRunLeader =
+                          !!packageRunMeta &&
+                          packageRunMeta.items.length > 1 &&
+                          String(packageRunMeta.leaderItemId || "").trim() === String(it.id || "").trim();
+                        const hasPackageQuickMode =
+                          !!packageRunMeta &&
+                          packageRunMeta.items.length > 1 &&
+                          quickCommonStaff.length > 0;
+                        const usePackageQuickMode = hasPackageQuickMode;
+                        const isPackageRunFollower = !!packageRunMeta && !isPackageRunLeader;
+                        const packageName = String(it.packageSnapshot?.packageName || "").trim();
+                        const packageFinalPrice = Math.max(0, Number(it.packageSnapshot?.finalPriceAtBooking || 0));
+                        const showAsPackageBlock = usePackageQuickMode && isPackageRunLeader && !!packageName;
+                        const cardTitle = showAsPackageBlock ? packageName : it.serviceName;
+                        const cardPriceText = showAsPackageBlock && packageFinalPrice > 0 ? `${packageFinalPrice} ريال` : it.priceText;
+                        const ServiceCardIcon = pickBookingCardIcon(String(cardTitle || ""));
+                        if (usePackageQuickMode && isPackageRunFollower) return null;
+                        const packageQuickState = packageRunId
+                          ? (packageQuickByRun[packageRunId] || {
+=======
                           const dur = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
                           const rawSectionLabel =
                             String(it.serviceSectionTitle || "").trim() ||
@@ -8134,7 +8257,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             ) || String(it.serviceId || "").trim();
                           const serviceStaff = staffByService[serviceKeyForStaff] || [];
                           const bookingVisibleStaff = serviceStaff.filter(
-                            (st) => isStaffOperationallyActiveForDate(st as any, dateISO)
+                            (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
                           );
                           const staffWithLeaveMeta = bookingVisibleStaff.map((st) => {
                             const leave = getStaffLeaveMetaForDate(st, dateISO);
@@ -8197,6 +8320,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           if (usePackageQuickMode && isPackageRunFollower) return null;
                           const packageQuickState = packageRunId
                             ? (packageQuickByRun[packageRunId] || {
+>>>>>>> ea270c5 (fix: booking package flow + success navigation + pricing + dedupe services)
                               employeeId: "",
                               times: [],
                               loading: false,
