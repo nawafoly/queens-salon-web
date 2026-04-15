@@ -465,9 +465,134 @@ function isSessionPackageCartItem(item?: Partial<CartItem> | null) {
   );
 }
 
+function sumPackageServicePrices(items?: PackageServiceItem[] | null) {
+  return (Array.isArray(items) ? items : []).reduce(
+    (sum, row) => sum + Math.max(0, Number(row?.price || 0)),
+    0
+  );
+}
+
+function resolvePackageDocBaseTotalPrice(pkg?: Partial<ServicePackageDoc> | null) {
+  const baseTotalPrice = Math.max(0, Number(pkg?.baseTotalPrice || 0));
+  if (baseTotalPrice > 0) return baseTotalPrice;
+  return sumPackageServicePrices(pkg?.services);
+}
+
+function resolvePackageDocFinalPrice(pkg?: Partial<ServicePackageDoc> | null) {
+  const finalPrice = Math.max(0, Number(pkg?.finalPrice || 0));
+  if (finalPrice > 0) return finalPrice;
+  return resolvePackageDocBaseTotalPrice(pkg);
+}
+
+function resolveFlatServicePackageBaseTotalPrice(item?: Partial<FlatService> | null) {
+  const baseTotalPrice = Math.max(0, Number(item?.packageBaseTotalPrice || 0));
+  if (baseTotalPrice > 0) return baseTotalPrice;
+  return sumPackageServicePrices(item?.packageServices);
+}
+
+function resolveFlatServicePackageFinalPrice(item?: Partial<FlatService> | null) {
+  const finalPrice = Math.max(0, Number(item?.basePrice || 0));
+  if (finalPrice > 0) return finalPrice;
+  return resolveFlatServicePackageBaseTotalPrice(item);
+}
+
+function isServicePackageCartItem(item?: Partial<CartItem> | null) {
+  if (!item || isSessionPackageCartItem(item)) return false;
+  return (
+    !!String(item.packageRunId || "").trim() ||
+    !!String(item.packageId || "").trim() ||
+    String(item.packageSnapshot?.kind || "").trim() === "service_package"
+  );
+}
+
+function resolveStoredCartItemServiceBasePrice(item?: Partial<CartItem> | null) {
+  if (!item) return 0;
+  const serviceBasePrice = Number(item?.serviceBasePrice);
+  if (Number.isFinite(serviceBasePrice) && serviceBasePrice > 0) {
+    return Math.max(0, serviceBasePrice);
+  }
+  const basePrice = Math.max(0, Number(item?.basePrice || 0));
+  const toolsFeeApplied = Math.max(0, Number(item?.toolsFeeApplied || 0));
+  return Math.max(0, basePrice - toolsFeeApplied);
+}
+
+function resolveCartItemLiveAmount(item?: Partial<CartItem> | null) {
+  if (!item) return 0;
+
+  const basePrice = Math.max(0, Number(item?.basePrice || 0));
+  if (basePrice > 0) return basePrice;
+
+  const serviceBasePrice = Math.max(0, Number(item?.serviceBasePrice || 0));
+  const toolsFeeApplied = Math.max(0, Number(item?.toolsFeeApplied || 0));
+  const derivedTotal = serviceBasePrice + toolsFeeApplied;
+  if (derivedTotal > 0) return derivedTotal;
+
+  const raw = String(item?.priceText || "").trim();
+  if (raw && raw !== "من الباقة") {
+    return Math.max(0, Number(extractMinPrice(raw) || 0));
+  }
+
+  return 0;
+}
+
+function resolveCartItemStandaloneAmount(item?: Partial<CartItem> | null) {
+  const liveAmount = resolveCartItemLiveAmount(item);
+  if (liveAmount > 0) return liveAmount;
+
+  if (isSessionPackageCartItem(item)) {
+    return liveAmount;
+  }
+
+  const packageFinalPrice = Math.max(
+    0,
+    Number(item?.packageSnapshot?.finalPriceAtBooking || 0)
+  );
+  if (packageFinalPrice > 0) return packageFinalPrice;
+
+  const packageBaseTotalPrice = Math.max(
+    0,
+    Number(item?.packageSnapshot?.baseTotalPriceAtBooking || 0)
+  );
+  if (packageBaseTotalPrice > 0) return packageBaseTotalPrice;
+
+  return 0;
+}
+
+function resolveCartItemsTotal(items: Array<Partial<CartItem>> = []) {
+  const processedPackageRuns = new Set<string>();
+
+  return items.reduce((sum, item) => {
+    if (isSessionPackageCartItem(item)) {
+      return sum + resolveCartItemLiveAmount(item);
+    }
+
+    const packageRunId = String(item?.packageRunId || "").trim();
+    if (!packageRunId) {
+      return sum + resolveCartItemStandaloneAmount(item);
+    }
+
+    if (processedPackageRuns.has(packageRunId)) return sum;
+    processedPackageRuns.add(packageRunId);
+
+    const runItems = items.filter(
+      (row) => String(row?.packageRunId || "").trim() === packageRunId
+    );
+    const runLiveTotal = runItems.reduce(
+      (runSum, row) => runSum + resolveCartItemLiveAmount(row),
+      0
+    );
+
+    if (runLiveTotal > 0) return sum + runLiveTotal;
+
+    return sum + resolveCartItemStandaloneAmount(item);
+  }, 0);
+}
+
 function resolveCartItemPriceText(item?: Partial<CartItem> | null) {
   const raw = String(item?.priceText || "").trim();
+  const rawIsZeroSar = /^0(?:\.0+)?\s*ريال$/i.test(raw.replace(/\s+/g, " "));
   const basePrice = Math.max(0, Number(item?.basePrice || 0));
+  const storedServiceBasePrice = resolveStoredCartItemServiceBasePrice(item);
   const packageFinalPrice = Math.max(
     0,
     Number(item?.packageSnapshot?.finalPriceAtBooking || 0)
@@ -477,8 +602,9 @@ function resolveCartItemPriceText(item?: Partial<CartItem> | null) {
     Number(item?.packageSnapshot?.baseTotalPriceAtBooking || 0)
   );
 
-  if (raw && raw !== "من الباقة") return raw;
+  if (raw && raw !== "من الباقة" && !rawIsZeroSar) return raw;
   if (basePrice > 0) return `${basePrice.toFixed(0)} ريال`;
+  if (storedServiceBasePrice > 0) return `${storedServiceBasePrice.toFixed(0)} ريال`;
   if (packageFinalPrice > 0) return `${packageFinalPrice.toFixed(0)} ريال`;
   if (packageBaseTotalPrice > 0) return `${packageBaseTotalPrice.toFixed(0)} ريال`;
 
@@ -1721,8 +1847,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const packageRows: FlatService[] =
     catalogMode === "firestore"
       ? (fsPackages || []).map((pkg) => {
-        const finalPriceNum = Math.max(0, Number(pkg.finalPrice || 0));
-        const baseTotalPriceNum = Math.max(0, Number(pkg.baseTotalPrice || 0));
+        const finalPriceNum = resolvePackageDocFinalPrice(pkg);
+        const baseTotalPriceNum = resolvePackageDocBaseTotalPrice(pkg);
         const packagePrice = finalPriceNum > 0 ? finalPriceNum : baseTotalPriceNum;
   
         return {
@@ -3120,7 +3246,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       });
 
       const baseTotal = baseByService.reduce((sum, x) => sum + Number(x.base || 0), 0);
-      const packageFinal = Math.max(0, Number(sv.basePrice || 0));
+      const packageFinal = resolveFlatServicePackageFinalPrice(sv);
+      const packageBaseTotal = resolveFlatServicePackageBaseTotalPrice(sv);
       const targetTotal = packageFinal > 0 ? packageFinal : baseTotal;
 
       const splitCount = Math.max(1, baseByService.length);
@@ -3139,10 +3266,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         packageId: String(sv.packageId || "").trim(),
         packageName: sv.name,
         finalPriceAtBooking: targetTotal,
-        baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || baseTotal || targetTotal),
+        baseTotalPriceAtBooking: packageBaseTotal > 0 ? packageBaseTotal : Number(baseTotal || targetTotal),
         totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
         serviceIds: serviceIds,
         services: pkgServices,
+        kind: "service_package" as const,
       };
 
       const nextItems: CartItem[] = distributed.map((row) => {
@@ -3267,11 +3395,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 ? {
                   packageId: String(sv.packageId || "").trim(),
                   packageName: sv.name,
-                  finalPriceAtBooking: Number(sv.basePrice || 0),
-                  baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
+                  finalPriceAtBooking: resolveFlatServicePackageFinalPrice(sv),
+                  baseTotalPriceAtBooking: resolveFlatServicePackageBaseTotalPrice(sv),
                   totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
                   serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
                   services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
+                  kind: "service_package" as const,
                 }
                 : undefined,
             serviceBasePrice: priced.serviceBasePrice,
@@ -5229,16 +5358,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
         if (sv) {
           const fromSessionPackage = isSessionPackageCartItem(it);
-          const eff = fromSessionPackage
-            ? { price: 0 }
-            : pickEffectivePrice({
-              basePrice: Number(sv.basePrice || 0),
-              seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
-              appSettings,
-              dateISO: v,
-            });
-
-          const serviceBasePrice = fromSessionPackage ? 0 : Number(eff.price || 0);
+          const fromServicePackage = isServicePackageCartItem(it);
+          const serviceBasePrice = fromSessionPackage
+            ? 0
+            : fromServicePackage
+              ? resolveStoredCartItemServiceBasePrice(it)
+              : Number(
+                pickEffectivePrice({
+                  basePrice: Number(sv.basePrice || 0),
+                  seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
+                  appSettings,
+                  dateISO: v,
+                }).price || 0
+              );
           const toolsEligible = isToolsOptionEligibleForService(sv);
           const toolsSource = toolsEligible
             ? (String((it as any)?.toolsSource || "").trim() === "salon" ? "salon" : "client")
@@ -5301,16 +5433,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         if (!sv) return basePatch;
 
         const fromSessionPackage = isSessionPackageCartItem(it);
-        const eff = fromSessionPackage
-          ? { price: 0 }
-          : pickEffectivePrice({
-            basePrice: Number(sv.basePrice || 0),
-            seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
-            appSettings,
-            dateISO: nextDate,
-          });
-
-        const serviceBasePrice = fromSessionPackage ? 0 : Number(eff.price || 0);
+        const fromServicePackage = isServicePackageCartItem(it);
+        const serviceBasePrice = fromSessionPackage
+          ? 0
+          : fromServicePackage
+            ? resolveStoredCartItemServiceBasePrice(it)
+            : Number(
+              pickEffectivePrice({
+                basePrice: Number(sv.basePrice || 0),
+                seasonPrice: Number((sv as any).seasonPrice || 0) || undefined,
+                appSettings,
+                dateISO: nextDate,
+              }).price || 0
+            );
         const toolsEligible = isToolsOptionEligibleForService(sv);
         const toolsSource = toolsEligible
           ? (String((it as any)?.toolsSource || "").trim() === "salon" ? "salon" : "client")
@@ -5385,7 +5520,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   };
 
   const basePrice = useMemo(() => {
-    return (formData.items || []).reduce((sum, it) => sum + Number(it.basePrice || 0), 0);
+    return resolveCartItemsTotal(formData.items || []);
   }, [formData.items]);
 
   const appliedDiscountTotal = useMemo(() => {
@@ -5414,7 +5549,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         staffName: String((it as any).displayStaffName || it.employeeName || "").trim() || "-",
         date: String((it as any).displayDateLabel || it.date || bookingDate || "").trim() || "-",
         timeLabel: formatTime12ForClient(String((it as any).displayTimeLabel || it.time || "").trim()),
-        priceLabel: String((it as any).displayPriceText || resolveCartItemPriceText(it)).trim(),
+        priceLabel: resolveCartItemPriceText(it),
         durationMin: Math.max(0, Number(it.durationMin || 0)),
         toolsNote: buildItemToolsNote(it),
         locked: !!it.locked,
@@ -5513,14 +5648,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       } else if (applicableAll.length === 1) {
         applicable = [applicableAll[0]];
       } else {
-        const choices: CouponTargetChoice[] = applicableAll.map((it) => ({
-          itemId: String(it.id || "").trim(),
-          serviceId: String(it.serviceId || "").trim(),
-          serviceName: String(it.serviceName || "").trim() || "خدمة",
-          date: String(it.date || bookingDate || "").trim(),
-          time: String(it.time || "").trim(),
-          price: Math.max(0, Number(it.basePrice || 0)),
-        }));
+          const choices: CouponTargetChoice[] = applicableAll.map((it) => ({
+            itemId: String(it.id || "").trim(),
+            serviceId: String(it.serviceId || "").trim(),
+            serviceName: String(it.serviceName || "").trim() || "خدمة",
+            date: String(it.date || bookingDate || "").trim(),
+            time: String(it.time || "").trim(),
+            price: resolveCartItemLiveAmount(it),
+          }));
         const firstChoice = choices.find((row) => row.itemId) || null;
         if (firstChoice) {
           setCouponTargetPicker({
@@ -5568,7 +5703,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         return "invalid_date" as const;
       }
 
-      const applicableTotal = applicable.reduce((s, it) => s + Number(it.basePrice || 0), 0);
+      const applicableTotal = applicable.reduce((s, it) => s + resolveCartItemLiveAmount(it), 0);
       const { discountAmount } = calcDiscount(applicableTotal, offer);
       const safeDiscount = Math.max(0, Number(discountAmount || 0));
       if (!safeDiscount) {
@@ -5662,12 +5797,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // Helper: توزيع الخصم على العناصر
   // =========================
   function allocateDiscount(items: CartItem[], discountTotal: number) {
-    const total = items.reduce((s, it) => s + Number(it.basePrice || 0), 0);
+    const total = items.reduce((s, it) => s + resolveCartItemLiveAmount(it), 0);
     if (!total || !discountTotal) {
       return items.map(() => 0);
     }
 
-    const raw = items.map((it) => (Number(it.basePrice || 0) / total) * discountTotal);
+    const raw = items.map((it) => (resolveCartItemLiveAmount(it) / total) * discountTotal);
     const rounded = raw.map((x) => Math.floor(x));
     let used = rounded.reduce((s, x) => s + x, 0);
     let remaining = Math.max(0, Math.round(discountTotal - used));
@@ -6111,7 +6246,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               serviceName: String(it.serviceName || "").trim() || "خدمة",
               date: String(it.date || bookingDate || "").trim(),
               time: String(it.time || "").trim(),
-              price: Math.max(0, Number(it.basePrice || 0)),
+              price: resolveCartItemLiveAmount(it),
             }));
             const firstChoice = choices.find((row) => row.itemId) || null;
             if (firstChoice) {
@@ -6166,7 +6301,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           return;
         }
 
-        const applicableTotal = applicable.reduce((s, it) => s + Number(it.basePrice || 0), 0);
+        const applicableTotal = applicable.reduce((s, it) => s + resolveCartItemLiveAmount(it), 0);
         const { discountAmount } = calcDiscount(applicableTotal, offer);
         const safeDiscount = Math.max(0, Number(discountAmount || 0));
         if (!safeDiscount) {
@@ -6229,7 +6364,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           if (!isHomeServiceSectionByInfo(sectionId, sectionTitle)) return sum;
           hasHomeServiceItem = true;
           const itemDiscount = Number(perItemDiscounts[idx] || 0);
-          const itemFinal = Math.max(0, Number(it.basePrice || 0) - itemDiscount);
+          const itemFinal = Math.max(0, resolveCartItemStandaloneAmount(it) - itemDiscount);
           return sum + itemFinal;
         }, 0) * 100
       ) / 100;
@@ -6343,7 +6478,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       for (let idx = 0; idx < items.length; idx++) {
         const it = items[idx];
         const itemDiscount = Number(perItemDiscounts[idx] || 0);
-        const itemFinal = Math.max(0, Number(it.basePrice || 0) - itemDiscount);
+        const itemFinal = Math.max(0, resolveCartItemStandaloneAmount(it) - itemDiscount);
         const itemCoupon = couponByItemId.get(String(it.id || "").trim()) || null;
         const toolsNote = buildItemToolsNote(it);
         const sessionPackageNote = isSessionPackageCartItem(it)
@@ -6580,18 +6715,24 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               it.packageSnapshot?.packageName || it.serviceName || "باكيج"
             ).trim();
             const packageIdRaw = String(it.packageId || it.packageSnapshot?.packageId || "").trim();
-            const runBaseTotal = sortedRun.reduce(
-              (sum, row) => sum + Math.max(0, Number(row.item.basePrice || 0)),
+            const runBaseLiveTotal = sortedRun.reduce(
+              (sum, row) => sum + resolveCartItemLiveAmount(row.item),
               0
             );
             const runDiscountTotal = sortedRun.reduce(
               (sum, row) => sum + Math.max(0, Number(perItemDiscounts[row.idx] || 0)),
               0
             );
-            const runFinalTotal = sortedRun.reduce((sum, row) => {
+            const runFinalLiveTotal = sortedRun.reduce((sum, row) => {
               const d = Number(perItemDiscounts[row.idx] || 0);
-              return sum + Math.max(0, Number(row.item.basePrice || 0) - d);
+              return sum + Math.max(0, resolveCartItemLiveAmount(row.item) - d);
             }, 0);
+            const runBaseTotal =
+              runBaseLiveTotal > 0 ? runBaseLiveTotal : resolveCartItemStandaloneAmount(it);
+            const runFinalTotal =
+              runBaseLiveTotal > 0
+                ? runFinalLiveTotal
+                : Math.max(0, resolveCartItemStandaloneAmount(it) - runDiscountTotal);
             const runCouponMap = new Map<string, AppliedCouponEntry>();
             sortedRun.forEach(({ item }) => {
               const rowCoupon = couponByItemId.get(String(item.id || "").trim());
@@ -6639,13 +6780,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 sectionId: String(x.item.serviceSectionId || "").trim() || undefined,
                 price: Math.max(
                   0,
-                  Number(x.item.basePrice || 0) - Number(perItemDiscounts[x.idx] || 0)
+                  resolveCartItemLiveAmount(x.item) - Number(perItemDiscounts[x.idx] || 0)
                 ),
                 durationMin: Math.max(
                   1,
                   Number(x.item.durationMin || DEFAULT_SERVICE_DURATION_MIN)
                 ),
               })),
+              kind: "service_package" as const,
             };
 
             const groupRes = await createBookingGroup({
@@ -6697,7 +6839,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               items: sortedRun.map(({ item, idx: sourceIdx }, itemOrder) => {
                 const currentFinal = Math.max(
                   0,
-                  Number(item.basePrice || 0) - Number(perItemDiscounts[sourceIdx] || 0)
+                  resolveCartItemLiveAmount(item) - Number(perItemDiscounts[sourceIdx] || 0)
                 );
                 const currentItemToolsNote = buildItemToolsNote(item);
                 const currentItemNote =
@@ -7018,12 +7160,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             ? (String((it as any)?.toolsSource || "").trim() === "salon" ? "salon" : "client")
             : undefined;
 
-          const rawServiceBase = Number((it as any)?.serviceBasePrice);
           const fromSessionPackage = isSessionPackageCartItem(it);
+          const fromServicePackage = isServicePackageCartItem(it);
           const serviceBasePrice = fromSessionPackage
             ? 0
-            : Number.isFinite(rawServiceBase)
-              ? Math.max(0, rawServiceBase)
+            : fromServicePackage
+              ? resolveStoredCartItemServiceBasePrice(it)
               : Math.max(
                 0,
                 Number((it as any)?.basePrice ?? 0) - Math.max(0, Number((it as any)?.toolsFeeApplied || 0))
@@ -7045,11 +7187,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 ? {
                   packageId: String(sv.packageId || "").trim(),
                   packageName: sv.name,
-                  finalPriceAtBooking: Number(sv.basePrice || 0),
-                  baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
+                  finalPriceAtBooking: resolveFlatServicePackageFinalPrice(sv),
+                  baseTotalPriceAtBooking: resolveFlatServicePackageBaseTotalPrice(sv),
                   totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
                   serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
                   services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
+                  kind: "service_package" as const,
                 }
                 : undefined),
             employeeId: String(it?.employeeId || "").trim(),
@@ -8153,7 +8296,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           const packageFinalPrice = Math.max(0, Number(it.packageSnapshot?.finalPriceAtBooking || 0));
                           const showAsPackageBlock = usePackageQuickMode && isPackageRunLeader && !!packageName;
                           const cardTitle = showAsPackageBlock ? packageName : it.serviceName;
-                          const cardPriceText = showAsPackageBlock && packageFinalPrice > 0 ? `${packageFinalPrice} ريال` : it.priceText;
+                          const cardPriceText = showAsPackageBlock && packageFinalPrice > 0
+                            ? `${packageFinalPrice} ريال`
+                            : resolveCartItemPriceText(it);
                           const ServiceCardIcon = pickBookingCardIcon(String(cardTitle || ""));
                           if (usePackageQuickMode && isPackageRunFollower) return null;
                           const packageQuickState = packageRunId

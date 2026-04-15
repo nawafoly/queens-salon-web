@@ -36,8 +36,10 @@ export function normalizeSuccessBookingRef(input: any): SuccessBookingRef {
   const trackId = trimmed(input?.trackId) || bookingId || id;
   const publicId = trimmed(input?.publicId) || trimmed(input?.bookingPublicId);
   const bookingPublicId = trimmed(input?.bookingPublicId) || publicId;
-  const parentId = trimmed(input?.parentId) || trimmed(input?.groupId);
-  const groupId = trimmed(input?.groupId) || trimmed(input?.parentId);
+  const parentId =
+    trimmed(input?.parentId) || trimmed(input?.groupId) || trimmed(input?.bookingGroupId);
+  const groupId =
+    trimmed(input?.groupId) || trimmed(input?.parentId) || trimmed(input?.bookingGroupId);
 
   return {
     ...(id ? { id } : {}),
@@ -106,6 +108,7 @@ export function buildSuccessNavigationPayload(
   refsInput: SuccessBookingRef[] | any[] | any,
   mode: SuccessMode = "created"
 ) {
+  const rows = Array.isArray(refsInput) ? refsInput : [refsInput];
   const refs = collectSuccessBookingRefs(refsInput);
   const first = refs[0];
 
@@ -123,8 +126,10 @@ export function buildSuccessNavigationPayload(
       bookingPublicId: first?.bookingPublicId || first?.publicId,
       parentId: first?.parentId || first?.groupId,
       groupId: first?.groupId || first?.parentId,
-      bookings: refs,
-      allBookings: refs,
+      bookingRefs: refs,
+      allBookingRefs: refs,
+      bookings: rows,
+      allBookings: rows,
     },
   };
 }

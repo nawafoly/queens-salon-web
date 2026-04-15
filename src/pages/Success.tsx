@@ -21,6 +21,7 @@ import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 
 import "../styles/Success.css";
 import LoadingBrand from "../components/LoadingBrand";
+import { readBookingTotalAmount } from "../helpers/bookingPaymentUtils";
 
 // Firestore
 import { collection, doc, getDoc, getDocs, limit, query, where } from "firebase/firestore";
@@ -102,6 +103,10 @@ type SuccessLocationState = {
   action?: string;
   updated?: boolean;
   isUpdate?: boolean;
+  bookings?: LocalBookingSnapshot[];
+  allBookings?: LocalBookingSnapshot[];
+  bookingRefs?: LocalBookingRef[];
+  allBookingRefs?: LocalBookingRef[];
 };
 
 const BOOKING_KEY = "currentBooking";
@@ -590,6 +595,24 @@ function readStateBookingRefs(state: unknown): LocalBookingRef[] {
       parentId: raw?.parentId,
     });
 
+    const refRows = Array.isArray(raw?.bookingRefs)
+      ? raw.bookingRefs
+      : Array.isArray(raw?.allBookingRefs)
+        ? raw.allBookingRefs
+        : [];
+
+    refRows.forEach((row: any) =>
+      addRef({
+        id: row?.id,
+        bookingId: row?.bookingId,
+        trackId: row?.trackId,
+        publicId: row?.publicId || row?.mk,
+        bookingPublicId: row?.bookingPublicId,
+        groupId: row?.groupId || row?.bookingGroupId,
+        parentId: row?.parentId || row?.bookingGroupId,
+      })
+    );
+
     const rows = Array.isArray(raw?.bookings)
       ? raw.bookings
       : Array.isArray(raw?.allBookings)
@@ -603,12 +626,27 @@ function readStateBookingRefs(state: unknown): LocalBookingRef[] {
         trackId: row?.trackId,
         publicId: row?.publicId || row?.mk,
         bookingPublicId: row?.bookingPublicId,
-        groupId: row?.groupId,
-        parentId: row?.parentId,
+        groupId: row?.groupId || row?.bookingGroupId,
+        parentId: row?.parentId || row?.bookingGroupId,
       })
     );
 
     return mergeBookingRefs(refs);
+  } catch {
+    return [];
+  }
+}
+
+function readStateBookingSnapshots(state: unknown): LocalBookingSnapshot[] {
+  try {
+    const raw = (state || {}) as Record<string, any>;
+    const rows = Array.isArray(raw?.bookings)
+      ? raw.bookings
+      : Array.isArray(raw?.allBookings)
+        ? raw.allBookings
+        : [];
+
+    return rows.filter((row) => row && typeof row === "object") as LocalBookingSnapshot[];
   } catch {
     return [];
   }
@@ -786,6 +824,10 @@ export default function Success() {
 
   const queryBookingRefs = useMemo(() => readQueryBookingRefs(location.search), [location.search]);
   const stateBookingRefs = useMemo(() => readStateBookingRefs(location.state), [location.state]);
+  const stateBookingSnapshots = useMemo(
+    () => readStateBookingSnapshots(location.state),
+    [location.state]
+  );
   const storedBookingRefs = useMemo(
     () => readLocalBookingRefs(),
     [location.key, location.search, location.state]
@@ -804,6 +846,7 @@ export default function Success() {
       successMode,
       queryBookingRefs,
       stateBookingRefs,
+      stateBookingSnapshotCount: stateBookingSnapshots.length,
       storedBookingRefs,
       selectedBookingRefs: bookingRefs,
       usingExplicitRefs: explicitBookingRefs.length > 0,
@@ -817,6 +860,7 @@ export default function Success() {
     location.state,
     queryBookingRefs,
     stateBookingRefs,
+    stateBookingSnapshots.length,
     storedBookingRefs,
     successMode,
   ]);
@@ -829,7 +873,10 @@ export default function Success() {
         setLoading(true);
         setError("");
         setViews([]);
-        const localSnapshots = readLocalBookingSnapshots();
+        const localSnapshots = [
+          ...stateBookingSnapshots,
+          ...readLocalBookingSnapshots(),
+        ];
         const localSnapshotIndex = buildLocalBookingSnapshotIndex(localSnapshots);
         const log = (event: string, payload?: unknown) => logSuccessDebug(debugEnabled, event, payload);
 
@@ -1302,7 +1349,7 @@ export default function Success() {
             date: merged?.date || "-",
             time: merged?.time || "-",
 
-            total: safeNum(merged?.finalPrice ?? merged?.total),
+            total: readBookingTotalAmount(merged),
             status: merged?.status || "pending",
           });
           pushedIds.add(rowKey);
@@ -1428,7 +1475,7 @@ export default function Success() {
     return () => {
       mounted = false;
     };
-  }, [bookingRefs, debugEnabled, explicitBookingRefs, storedBookingRefs]);
+  }, [bookingRefs, debugEnabled, explicitBookingRefs, stateBookingSnapshots, storedBookingRefs]);
 
   const copyOne = async (publicIdRaw: string) => {
     const publicId = String(publicIdRaw || "").trim();
