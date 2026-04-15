@@ -1,5 +1,5 @@
 // src/pages/Success.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -794,6 +794,10 @@ function resolveSuccessModeFromLocation(state: unknown): SuccessMode | null {
   return null;
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export default function Success() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -810,6 +814,9 @@ export default function Success() {
 
   const [toastMsg, setToastMsg] = useState<string>("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
+
+  const activeRunRef = useRef(0);
+  const resolvedOnceRef = useRef(false);
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToastMsg(msg);
@@ -867,12 +874,14 @@ export default function Success() {
 
   useEffect(() => {
     let mounted = true;
+    const runId = ++activeRunRef.current;
 
     async function run() {
       try {
+        if (resolvedOnceRef.current) return;
+
         setLoading(true);
         setError("");
-        setViews([]);
         const localSnapshots = [
           ...stateBookingSnapshots,
           ...readLocalBookingSnapshots(),
@@ -987,24 +996,13 @@ export default function Success() {
           return recovered;
         };
 
-        const recoveredWhenNoRefs = !bookingRefs.length ? await recoverRecentBookings() : [];
-        if (!bookingRefs.length && !recoveredWhenNoRefs.length) {
-          log("loader.guard.noRefs", {
-            incomingId: null,
-            queryPath: null,
-            queryResultCount: 0,
-            rawFetchedData: [],
-            finalMappedState: [],
-          });
-          setError("رقم الحجز غير موجود");
-          return;
-        }
-
-        const results: UiBookingView[] = [];
-        const pushedIds = new Set<string>();
-        const loadedGroupIds = new Set<string>();
         const bookingLookupCache = new Map<string, any | null>();
         const publicLookupCache = new Map<string, any | null>();
+
+        let results: UiBookingView[] = [];
+        let recoveredWhenNoRefs: any[] = [];
+        let pushedIds = new Set<string>();
+        let loadedGroupIds = new Set<string>();
 
         const findBookingByIdSafe = async (idRaw: string) => {
           const bookingId = String(idRaw || "").trim();
@@ -1075,7 +1073,6 @@ export default function Success() {
               queryPath: `salons/${SALON_ID}/bookings where publicId == ${mk} limit 1`,
               error: debugErrorInfo(e),
             });
-            // ignore lookup failures
           }
           publicLookupCache.set(mk, null);
           return null;
@@ -1133,7 +1130,6 @@ export default function Success() {
                 queryPath: `salons/${SALON_ID}/booking_tracks/${candidate}`,
                 error: debugErrorInfo(e),
               });
-              // ignore track-id fallback
             }
 
             const mkFromCandidate = normalizeMkLookup(candidate);
@@ -1176,7 +1172,6 @@ export default function Success() {
                   queryPath: `salons/${SALON_ID}/booking_tracks where publicId == ${mkFromCandidate} limit 1`,
                   error: debugErrorInfo(e),
                 });
-                // ignore track-by-public fallback
               }
             }
           }
@@ -1221,7 +1216,6 @@ export default function Success() {
                 queryPath: `salons/${SALON_ID}/booking_tracks where publicId == ${mkHint} limit 1`,
                 error: debugErrorInfo(e),
               });
-              // ignore track-by-public fallback
             }
           }
 
@@ -1326,7 +1320,7 @@ export default function Success() {
             }
           }
 
-          if (!mounted) return;
+          if (!mounted || runId !== activeRunRef.current) return;
 
           results.push({
             id: bookingIdResolved || publicIdResolved,
@@ -1360,85 +1354,132 @@ export default function Success() {
           });
         };
 
-        if (!bookingRefs.length && recoveredWhenNoRefs.length) {
-          for (const row of recoveredWhenNoRefs) {
-            await pushBookingView(row, {
-              id: row?.id,
-              bookingId: row?.id,
-              publicId: row?.publicId,
+        for (let attempt = 1; attempt <= 6; attempt++) {
+          results = [];
+          pushedIds = new Set<string>();
+          loadedGroupIds = new Set<string>();
+
+          recoveredWhenNoRefs = !bookingRefs.length ? await recoverRecentBookings() : [];
+
+          if (!bookingRefs.length && !recoveredWhenNoRefs.length) {
+            log("loader.guard.noRefs.retry", {
+              attempt,
+              incomingId: null,
+              queryPath: null,
+              queryResultCount: 0,
+              rawFetchedData: [],
+              finalMappedState: [],
             });
+
+            if (attempt < 6) {
+              await delay(500);
+              continue;
+            }
+
+            setError("رقم الحجز غير موجود");
+            return;
           }
-        }
 
-        for (const ref of bookingRefs) {
-          const localHint = resolveLocalSnapshotForRef(ref, localSnapshotIndex);
-          const docData: any = await resolveBookingDocFromRef(ref);
-          if (!docData && !localHint) {
-            const fallbackGroupId = String(ref?.groupId || ref?.parentId || "").trim();
+          if (!bookingRefs.length && recoveredWhenNoRefs.length) {
+            for (const row of recoveredWhenNoRefs) {
+              await pushBookingView(row, {
+                id: row?.id,
+                bookingId: row?.id,
+                publicId: row?.publicId,
+              });
+            }
+          }
 
-            if (fallbackGroupId) {
-              try {
-                const groupQ = query(
-                  collection(db, "salons", SALON_ID, "bookings"),
-                  where("bookingGroupId", "==", fallbackGroupId)
-                );
+          for (const ref of bookingRefs) {
+            const localHint = resolveLocalSnapshotForRef(ref, localSnapshotIndex);
+            const docData: any = await resolveBookingDocFromRef(ref);
 
-                const groupSnap = await getDocs(groupQ);
+            if (!docData && !localHint) {
+              const fallbackGroupId = String(ref?.groupId || ref?.parentId || "").trim();
 
-                for (const gd of groupSnap.docs) {
-                  const gData: any = gd.data() || {};
-                  await pushBookingView(
-                    { ...gData, id: gd.id },
-                    {
-                      id: gd.id,
-                      bookingId: gd.id,
-                      publicId: gData.publicId,
-                      bookingPublicId: gData.publicId,
-                      groupId: fallbackGroupId,
-                      parentId: fallbackGroupId,
-                    }
+              if (fallbackGroupId) {
+                try {
+                  const groupQ = query(
+                    collection(db, "salons", SALON_ID, "bookings"),
+                    where("bookingGroupId", "==", fallbackGroupId)
                   );
-                }
-              } catch { }
+
+                  const groupSnap = await getDocs(groupQ);
+
+                  for (const gd of groupSnap.docs) {
+                    const gData: any = gd.data() || {};
+                    await pushBookingView(
+                      { ...gData, id: gd.id },
+                      {
+                        id: gd.id,
+                        bookingId: gd.id,
+                        publicId: gData.publicId,
+                        bookingPublicId: gData.publicId,
+                        groupId: fallbackGroupId,
+                        parentId: fallbackGroupId,
+                      }
+                    );
+                  }
+                } catch { }
+              }
+
+              continue;
             }
 
-            continue;
-          }
-          await pushBookingView(docData ? { ...docData, id: docData.id } : {}, ref, localHint);
-          if (!docData) continue;
+            await pushBookingView(docData ? { ...docData, id: docData.id } : {}, ref, localHint);
+            if (!docData) continue;
 
-          const groupId = String(docData.bookingGroupId || docData.id).trim();
-          if (!groupId || loadedGroupIds.has(groupId)) continue;
-          loadedGroupIds.add(groupId);
+            const groupId = String(docData.bookingGroupId || docData.id).trim();
+            if (!groupId || loadedGroupIds.has(groupId)) continue;
+            loadedGroupIds.add(groupId);
 
-          try {
-            const groupQ = query(
-              collection(db, "salons", SALON_ID, "bookings"),
-              where("bookingGroupId", "==", groupId)
-            );
-            const groupSnap = await getDocs(groupQ);
-            log("booking.groupQuery.result", {
-              incomingId: groupId,
-              queryPath: `salons/${SALON_ID}/bookings where bookingGroupId == ${groupId}`,
-              queryResultCount: groupSnap.size,
-              rawFetchedData: groupSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) })),
-            });
-            for (const gd of groupSnap.docs) {
-              const gData: any = gd.data() || {};
-              await pushBookingView(
-                { ...gData, id: gd.id },
-                { id: gd.id, bookingId: gd.id, publicId: gData.publicId }
+            try {
+              const groupQ = query(
+                collection(db, "salons", SALON_ID, "bookings"),
+                where("bookingGroupId", "==", groupId)
               );
+              const groupSnap = await getDocs(groupQ);
+              log("booking.groupQuery.result", {
+                incomingId: groupId,
+                queryPath: `salons/${SALON_ID}/bookings where bookingGroupId == ${groupId}`,
+                queryResultCount: groupSnap.size,
+                rawFetchedData: groupSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) })),
+              });
+              for (const gd of groupSnap.docs) {
+                const gData: any = gd.data() || {};
+                await pushBookingView(
+                  { ...gData, id: gd.id },
+                  { id: gd.id, bookingId: gd.id, publicId: gData.publicId }
+                );
+              }
+            } catch (e) {
+              log("booking.groupQuery.error", {
+                incomingId: groupId,
+                queryPath: `salons/${SALON_ID}/bookings where bookingGroupId == ${groupId}`,
+                error: debugErrorInfo(e),
+              });
             }
-          } catch (e) {
-            log("booking.groupQuery.error", {
-              incomingId: groupId,
-              queryPath: `salons/${SALON_ID}/bookings where bookingGroupId == ${groupId}`,
-              error: debugErrorInfo(e),
-            });
-            // ignore group expansion failures, keep primary booking
+          }
+
+          if (results.length) {
+            break;
+          }
+
+          log("loader.retry.empty", {
+            attempt,
+            bookingRefs,
+            queryResultCount: 0,
+            rawFetchedData: [],
+            finalMappedState: [],
+          });
+
+          if (attempt < 6) {
+            await delay(500);
+            if (!mounted || runId !== activeRunRef.current || resolvedOnceRef.current) return;
           }
         }
+
+        if (!mounted || runId !== activeRunRef.current || resolvedOnceRef.current) return;
 
         if (!results.length) {
           log("loader.noResults", {
@@ -1457,6 +1498,9 @@ export default function Success() {
           return String(a.publicId || "").localeCompare(String(b.publicId || ""));
         });
 
+        if (!mounted || runId !== activeRunRef.current) return;
+
+        resolvedOnceRef.current = true;
         setViews(results);
         log("loader.done", {
           queryResultCount: results.length,
@@ -1465,9 +1509,11 @@ export default function Success() {
       } catch (e: any) {
         console.error(e);
         logSuccessDebug(debugEnabled, "loader.error", debugErrorInfo(e));
-        setError(e?.message || "صار خطأ أثناء تحميل بيانات الحجز");
+        if (mounted && runId === activeRunRef.current && !resolvedOnceRef.current) {
+          setError(e?.message || "صار خطأ أثناء تحميل بيانات الحجز");
+        }
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted && runId === activeRunRef.current) setLoading(false);
       }
     }
 
