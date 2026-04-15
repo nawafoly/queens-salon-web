@@ -62,7 +62,7 @@ import { buildSuccessNavigationPayload } from "../helpers/successNavigation";
 import {
   isStaffAvailableForDate,
   filterStaffSlotsByWorkingHours,
-  isStaffOperationallyActiveForDate,
+  isStaffEmploymentEndedForDate,
   resolveStaffWorkingWindowsForDate,
   type ResolvedStaffWorkingWindowRange,
 } from "../helpers/staffAvailability";
@@ -126,7 +126,6 @@ import {
   type ServicePackageDoc,
   type PackageServiceItem,
 } from "../services/firestorePackages";
-import { PackageService, normalizePackageServiceIds } from "../services/PackageService";
 import { pricingSections } from "./Pricing";
 
 // ✅ Create booking (Firestore)
@@ -467,74 +466,28 @@ function isSessionPackageCartItem(item?: Partial<CartItem> | null) {
 }
 
 function resolveCartItemPriceText(item?: Partial<CartItem> | null) {
-  if (isSessionPackageCartItem(item)) {
-    const toolsFeeApplied = Math.max(0, Number(item?.toolsFeeApplied || 0));
-    if (toolsFeeApplied > 0) {
-      return `من الباقة + ${toolsFeeApplied.toFixed(0)} ريال أدوات`;
-    }
-    if (Math.max(0, Number(item?.basePrice || 0)) <= 0) {
-      return "من الباقة";
-    }
-  }
   const raw = String(item?.priceText || "").trim();
-  if (raw) return raw;
-  return `${Math.max(0, Number(item?.basePrice || 0)).toFixed(0)} ريال`;
+  const basePrice = Math.max(0, Number(item?.basePrice || 0));
+  const packageFinalPrice = Math.max(
+    0,
+    Number(item?.packageSnapshot?.finalPriceAtBooking || 0)
+  );
+  const packageBaseTotalPrice = Math.max(
+    0,
+    Number(item?.packageSnapshot?.baseTotalPriceAtBooking || 0)
+  );
+
+  if (raw && raw !== "من الباقة") return raw;
+  if (basePrice > 0) return `${basePrice.toFixed(0)} ريال`;
+  if (packageFinalPrice > 0) return `${packageFinalPrice.toFixed(0)} ريال`;
+  if (packageBaseTotalPrice > 0) return `${packageBaseTotalPrice.toFixed(0)} ريال`;
+
+  if (isSessionPackageCartItem(item)) {
+    return "من الباقة";
+  }
+
+  return "0 ريال";
 }
-
-function dedupePackageServiceItems(items: PackageServiceItem[] = []) {
-  const byId = new Map<string, PackageServiceItem>();
-
-  items.forEach((raw) => {
-    const serviceId = String(raw?.serviceId || "").trim();
-    if (!serviceId) return;
-
-    const prev = byId.get(serviceId);
-    byId.set(serviceId, {
-      serviceId,
-      serviceName:
-        String(raw?.serviceName || "").trim() ||
-        String(prev?.serviceName || "").trim() ||
-        serviceId,
-      sectionId:
-        String(raw?.sectionId || "").trim() ||
-        String(prev?.sectionId || "").trim() ||
-        undefined,
-      categoryId:
-        String(raw?.categoryId || "").trim() ||
-        String(prev?.categoryId || "").trim() ||
-        undefined,
-      price: Math.max(
-        0,
-        Number(
-          raw?.price ??
-            prev?.price ??
-            0
-        )
-      ),
-      durationMin: Math.max(
-        1,
-        Number(
-          raw?.durationMin ??
-            prev?.durationMin ??
-            DEFAULT_SERVICE_DURATION_MIN
-        )
-      ),
-    });
-  });
-
-  return Array.from(byId.values());
-}
-
-function dedupeFlatServices(items: FlatService[] = []) {
-  const byId = new Map<string, FlatService>();
-  items.forEach((item) => {
-    const id = String(item?.id || "").trim();
-    if (!id || byId.has(id)) return;
-    byId.set(id, item);
-  });
-  return Array.from(byId.values());
-}
-
 type BusyState = {
   busyTimes: Set<string>;
   disabledStartTimes: Set<string>;
@@ -1519,24 +1472,29 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   const loadSessionPackagesFromFirestore = async () => {
     try {
-      const packages = await PackageService.getActive();
-      const rows: SessionPackageOption[] = packages
-        .map((pkg) => {
-          const allowedServiceIds = normalizePackageServiceIds([
-            ...(Array.isArray(pkg.allowedServiceIds) ? pkg.allowedServiceIds : []),
-            ...(Array.isArray(pkg.serviceIds) ? pkg.serviceIds : []),
-          ]);
+      const snap = await getDocs(
+        query(
+          collection(db, "salons", SALON_ID, "packages_catalog"),
+          orderBy("name", "asc"),
+          limit(100)
+        )
+      );
 
-          return {
-            id: `spkg:${String(pkg.id || "").trim()}`,
-            title: String(pkg.name || "").trim(),
-            price: Math.max(0, Number(pkg.price || 0)),
-            priceText: `${Math.max(0, Number(pkg.price || 0))} ريال`,
-            sessionsCount: Math.max(1, Number(pkg.sessionsCount || 1)),
-            allowedServiceIds,
-          };
-        })
-        .filter((pkg) => pkg.title && pkg.allowedServiceIds.length > 0);
+      const rows: SessionPackageOption[] = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        .map((x: any) => ({
+          id: `spkg:${String(x.id || "").trim()}`,
+          title: String(x.name || "").trim(),
+          price: Math.max(0, Number(x.price || 0)),
+          priceText: `${Math.max(0, Number(x.price || 0))} ريال`,
+          sessionsCount: Math.max(1, Number(x.sessionsCount || 1)),
+          allowedServiceIds: Array.isArray(x.allowedServiceIds)
+            ? x.allowedServiceIds.map((v: any) => String(v || "").trim()).filter(Boolean)
+            : Array.isArray(x.serviceIds)
+              ? x.serviceIds.map((v: any) => String(v || "").trim()).filter(Boolean)
+              : [],
+        }))
+        .filter((x) => x.title && x.allowedServiceIds.length > 0);
 
       setSessionPackageOptions(rows);
     } catch (e) {
@@ -1761,8 +1719,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   const servicesFlat: FlatService[] = useMemo(() => {
     const packageRows: FlatService[] =
-      catalogMode === "firestore"
-        ? (fsPackages || []).map((pkg) => ({
+    catalogMode === "firestore"
+      ? (fsPackages || []).map((pkg) => {
+        const finalPriceNum = Math.max(0, Number(pkg.finalPrice || 0));
+        const baseTotalPriceNum = Math.max(0, Number(pkg.baseTotalPrice || 0));
+        const packagePrice = finalPriceNum > 0 ? finalPriceNum : baseTotalPriceNum;
+  
+        return {
           id: `pkg:${String(pkg.id)}`,
           kind: "package" as const,
           sectionId: PACKAGE_SECTION_ID,
@@ -1770,18 +1733,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           categoryId: PACKAGE_SECTION_ID,
           category: PACKAGE_SECTION_TITLE,
           name: String(pkg.name || "").trim(),
-          priceText: `${Number(pkg.finalPrice || 0)} ريال`,
-          basePrice: Number(pkg.finalPrice || 0),
+          priceText: packagePrice > 0 ? `${packagePrice} ريال` : "من الباقة",
+          basePrice: packagePrice,
           durationMin: Number(pkg.totalDurationMin || DEFAULT_SERVICE_DURATION_MIN),
           packageId: String(pkg.id || "").trim(),
           packageServiceIds: Array.isArray(pkg.serviceIds)
             ? pkg.serviceIds.map((x) => String(x || "").trim()).filter(Boolean)
             : [],
           packageServices: Array.isArray(pkg.services) ? pkg.services : [],
-          packageBaseTotalPrice: Number(pkg.baseTotalPrice || 0),
+          packageBaseTotalPrice: baseTotalPriceNum,
           source: "firestore" as const,
-        }))
-        : [];
+        };
+      })
+      : [];
 
     if (catalogMode === "firestore" && fsSections.length > 0) {
       const secMap = new Map<string, string>();
@@ -2420,7 +2384,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         return;
       }
 
-      const allowedIds = normalizePackageServiceIds(picked.allowedServiceIds);
+      const allowedIds = (Array.isArray(picked.allowedServiceIds) ? picked.allowedServiceIds : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
       if (!allowedIds.length) {
         if (!cancelled) {
           setSessionPackageAllowedServices([]);
@@ -2450,7 +2416,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
         if (cancelled) return;
 
-        const allowedServices = dedupeFlatServices(rows.filter(Boolean) as FlatService[]);
+        const allowedServices = rows.filter(Boolean) as FlatService[];
         setSessionPackageAllowedServices(allowedServices);
         setSessionPackageServicePicker(
           allowedServices.length === 1 ? String(allowedServices[0].id || "").trim() : ""
@@ -2549,6 +2515,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       ).sort();
       return keys.length ? `pkg:${keys.join("|")}` : `pkg:${sid}`;
     }
+
     return `srv:${sid}`;
   };
 
@@ -3046,12 +3013,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
     if (options?.sessionPackageSelection) {
       const sessionPackage = options.sessionPackageSelection;
-      const allowedServiceIds = normalizePackageServiceIds(sessionPackage.allowedServiceIds);
-      const allowedServicesSnapshot = dedupePackageServiceItems(
-        Array.isArray(sessionPackage.allowedServicesSnapshot)
-          ? sessionPackage.allowedServicesSnapshot
-          : []
-      );
       const toolsEligible = isToolsOptionEligibleForService(sv);
       const toolsSource = toolsEligible ? "client" : undefined;
       const priced = buildItemPriceWithTools(0, toolsSource, toolsEligible);
@@ -3064,8 +3025,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           1,
           Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN)
         ),
-        serviceIds: allowedServiceIds,
-        services: allowedServicesSnapshot,
+        serviceIds: Array.isArray(sessionPackage.allowedServiceIds)
+          ? sessionPackage.allowedServiceIds
+          : [],
+        services: Array.isArray(sessionPackage.allowedServicesSnapshot)
+          ? sessionPackage.allowedServicesSnapshot
+          : [],
         sessionsCount: Math.max(1, Number(sessionPackage.sessionsCount || 1)),
         kind: "session_package",
       };
@@ -3078,17 +3043,27 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             id: makeLocalId(),
             serviceId: id,
             serviceName: sv.name,
+
             fromSessionPackage: true,
             sessionPackageId: String(sessionPackage.packageId || "").trim(),
             sessionPackageName: String(sessionPackage.packageName || "").trim() || undefined,
-            allowedServiceIds,
             consumeOneSession: true,
+
             packageId: String(sessionPackage.packageId || "").trim() || undefined,
             packageSnapshot,
+
             serviceBasePrice: 0,
             basePrice: priced.basePrice,
             priceText:
               Math.max(0, Number(priced.basePrice || 0)) <= 0 ? "من الباقة" : priced.priceText,
+
+            displayPriceText: "من الباقة",
+            displayPriceKind: "included_in_package",
+            displayPackageLabel: String(sessionPackage.packageName || "").trim() || "باقة جلسات",
+            displayStaffName: "",
+            displayDateLabel: bookingDateSafe,
+            displayTimeLabel: "",
+
             durationMin: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
             employeeId: "",
             employeeUid: "",
@@ -3295,10 +3270,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                   finalPriceAtBooking: Number(sv.basePrice || 0),
                   baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
                   totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-                  serviceIds: normalizePackageServiceIds(sv.packageServiceIds),
-                  services: dedupePackageServiceItems(
-                    Array.isArray(sv.packageServices) ? sv.packageServices : []
-                  ),
+                  serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
+                  services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
                 }
                 : undefined,
             serviceBasePrice: priced.serviceBasePrice,
@@ -3609,8 +3582,24 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       if (idx < 0) return prev;
 
       const nextItems = list.map((it, i) => {
-        if (i === idx) return { ...it, ...patch };
+        if (i === idx) {
+          const merged = { ...it, ...patch };
 
+          return {
+            ...merged,
+            displayStaffName: String(merged.employeeName || "").trim(),
+            displayDateLabel: String(merged.date || "").trim(),
+            displayTimeLabel: String(merged.time || "").trim(),
+            displayPriceText: resolveCartItemPriceText(merged),
+            displayPriceKind: isSessionPackageCartItem(merged) ? "included_in_package" : "regular",
+            displayPackageLabel:
+              String(
+                merged.sessionPackageName ||
+                merged.packageSnapshot?.packageName ||
+                ""
+              ).trim(),
+          };
+        }
         // لو غيّرنا (موظفة/تاريخ/وقت) في كرت، نصفر اللي بعده عشان التوفر يتغير
         const affectsChain =
           patch.employeeId !== undefined ||
@@ -3648,7 +3637,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const baseFromItem = isSessionPackageCartItem(it)
       ? 0
       : Number((it as any)?.serviceBasePrice ?? 0) ||
-        Math.max(0, Number(it.basePrice || 0) - Number(it.toolsFeeApplied || 0));
+      Math.max(0, Number(it.basePrice || 0) - Number(it.toolsFeeApplied || 0));
 
     const priced = buildItemPriceWithTools(baseFromItem, nextSource, true);
     updateItem(it.id, {
@@ -4231,10 +4220,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (currentStep !== 2) return;
     let cancelled = false;
 
-    const isInactiveForBooking = (staff: StaffPublicWithId, dateISO: string) => {
+    const isInactiveForBooking = (staff: StaffPublicWithId) => {
       const statusRaw = String((staff as any)?.status || "").trim().toLowerCase();
       return (
-        !isStaffOperationallyActiveForDate(staff as any, dateISO) ||
+        (staff as any)?.active === false ||
         (staff as any)?.showOnBooking === false ||
         statusRaw === "inactive" ||
         statusRaw === "disabled" ||
@@ -4271,14 +4260,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const serviceStaff = (staffByService[serviceKey] || []) as StaffPublicWithId[];
         if (!serviceStaff.length) continue;
 
-        const bookingVisibleStaff = serviceStaff.filter((st) =>
-          isStaffOperationallyActiveForDate(st as any, dateISO)
+        const bookingVisibleStaff = serviceStaff.filter(
+          (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
         );
 
         const candidateStaff = bookingVisibleStaff.filter((st) => {
           const leave = getStaffLeaveMetaForDate(st, dateISO);
           if (leave.isOnLeave) return false;
-          if (isInactiveForBooking(st, dateISO)) return false;
+          if (isInactiveForBooking(st)) return false;
           const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
             dateISO,
             slots: baseSlotsForDate,
@@ -4451,8 +4440,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const serviceStaff = (staffByService[serviceKey] || []) as StaffPublicWithId[];
         if (!serviceStaff.length) continue;
 
-        const bookingVisibleStaff = serviceStaff.filter((st) =>
-          isStaffOperationallyActiveForDate(st as any, dateISO)
+        const bookingVisibleStaff = serviceStaff.filter(
+          (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
         );
         if (!bookingVisibleStaff.length) continue;
 
@@ -4469,7 +4458,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               const leave = getStaffLeaveMetaForDate(st as any, dateISO);
               const statusRaw = String((st as any)?.status || "").trim().toLowerCase();
               const isInactive =
-                !isStaffOperationallyActiveForDate(st as any, dateISO) ||
+                (st as any)?.active === false ||
                 (st as any)?.showOnBooking === false ||
                 statusRaw === "inactive" ||
                 statusRaw === "disabled" ||
@@ -5422,11 +5411,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         id: String(it.id || `row-${idx}`),
         index: idx + 1,
         serviceName: String(it.serviceName || "").trim() || "-",
-        staffName: String(it.employeeName || "").trim() || "-",
-        date: String(it.date || bookingDate || "").trim() || "-",
-        timeLabel: formatTime12ForClient(String(it.time || "").trim()),
+        staffName: String((it as any).displayStaffName || it.employeeName || "").trim() || "-",
+        date: String((it as any).displayDateLabel || it.date || bookingDate || "").trim() || "-",
+        timeLabel: formatTime12ForClient(String((it as any).displayTimeLabel || it.time || "").trim()),
+        priceLabel: String((it as any).displayPriceText || resolveCartItemPriceText(it)).trim(),
         durationMin: Math.max(0, Number(it.durationMin || 0)),
-        priceLabel: resolveCartItemPriceText(it),
         toolsNote: buildItemToolsNote(it),
         locked: !!it.locked,
       })),
@@ -6820,11 +6809,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           fromSessionPackage: it.fromSessionPackage || undefined,
           sessionPackageId: String(it.sessionPackageId || "").trim() || undefined,
           sessionPackageName: String(it.sessionPackageName || "").trim() || undefined,
-          allowedServiceIds: normalizePackageServiceIds(
-            Array.isArray(it.allowedServiceIds)
-              ? it.allowedServiceIds
-              : it.packageSnapshot?.serviceIds
-          ),
           consumeOneSession:
             it.consumeOneSession === undefined ? undefined : !!it.consumeOneSession,
           packageId: String(it.packageId || "").trim() || undefined,
@@ -6877,11 +6861,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           fromSessionPackage: it.fromSessionPackage || false,
           sessionPackageId: String(it.sessionPackageId || "").trim() || null,
           sessionPackageName: String(it.sessionPackageName || "").trim() || null,
-          allowedServiceIds: normalizePackageServiceIds(
-            Array.isArray(it.allowedServiceIds)
-              ? it.allowedServiceIds
-              : it.packageSnapshot?.serviceIds
-          ),
           consumeOneSession: it.consumeOneSession !== false,
           durationMin,
           toolsSource: String(it.toolsSource || "").trim() || null,
@@ -6934,13 +6913,24 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         }),
       ]);
 
-      localStorage.setItem("allBookings", JSON.stringify(createdBookings));
-      localStorage.setItem("currentBooking", JSON.stringify(createdBookings[0] || null));
+      const normalizedCreatedBookings = (createdBookings || []).map((row: any) => ({
+        ...row,
+        bookingId: String(row?.bookingId || row?.id || "").trim(),
+        id: String(row?.id || row?.bookingId || "").trim(),
+        trackId: String(row?.trackId || row?.bookingId || row?.id || "").trim(),
+        publicId: String(row?.publicId || row?.bookingPublicId || "").trim(),
+        bookingPublicId: String(row?.bookingPublicId || row?.publicId || "").trim(),
+        parentId: String(row?.parentId || row?.groupId || "").trim(),
+        groupId: String(row?.groupId || row?.parentId || "").trim(),
+      }));
+
+      localStorage.setItem("allBookings", JSON.stringify(normalizedCreatedBookings));
+      localStorage.setItem("currentBooking", JSON.stringify(normalizedCreatedBookings[0] || null));
       localStorage.setItem("booking_success_mode", "created");
       localStorage.removeItem("bookingDraft");
-
+      
       {
-        const successNav = buildSuccessNavigationPayload(createdBookings, "created");
+        const successNav = buildSuccessNavigationPayload(normalizedCreatedBookings, "created");
         navigate(successNav.to, { state: successNav.state });
       }
     } catch (e: any) {
@@ -6969,16 +6959,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         openModal({
           title: "وقت خارج الدوام",
           message: "الوقت المختار خارج ساعات العمل لليوم المحدد. اختاري وقتًا آخر.",
-          variant: "danger",
-          confirmText: "حسنًا",
-        });
-        return;
-      }
-
-      if (e?.code === "EMPLOYEE_UNAVAILABLE") {
-        openModal({
-          title: "الموظفة غير متاحة",
-          message: "تم تعطيل هذه الموظفة أو لم تعد متاحة للحجز. اختاري موظفة أخرى أو أعيدي فتح الحجز.",
           variant: "danger",
           confirmText: "حسنًا",
         });
@@ -7068,10 +7048,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                   finalPriceAtBooking: Number(sv.basePrice || 0),
                   baseTotalPriceAtBooking: Number(sv.packageBaseTotalPrice || sv.basePrice || 0),
                   totalDurationMinAtBooking: Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-                  serviceIds: normalizePackageServiceIds(sv.packageServiceIds),
-                  services: dedupePackageServiceItems(
-                    Array.isArray(sv.packageServices) ? sv.packageServices : []
-                  ),
+                  serviceIds: Array.isArray(sv.packageServiceIds) ? sv.packageServiceIds : [],
+                  services: Array.isArray(sv.packageServices) ? sv.packageServices : [],
                 }
                 : undefined),
             employeeId: String(it?.employeeId || "").trim(),
@@ -7080,11 +7058,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             fromSessionPackage: !!(it as any)?.fromSessionPackage,
             sessionPackageId: String((it as any)?.sessionPackageId || "").trim() || undefined,
             sessionPackageName: String((it as any)?.sessionPackageName || "").trim() || undefined,
-            allowedServiceIds: normalizePackageServiceIds(
-              Array.isArray((it as any)?.allowedServiceIds)
-                ? (it as any).allowedServiceIds
-                : (it as any)?.packageSnapshot?.serviceIds
-            ),
             consumeOneSession: !!(it as any)?.consumeOneSession,
             date: String(it?.date || "").trim(),
             time: String(it?.time || "").trim(),
@@ -7795,62 +7768,62 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             </div>
                           </div>
                         </div>
-                     ) : pickerScope === "session_packages" ? (
-                      <div className="row g-2">
-                        <div className="col-md-6">
-                          <div className="bk-field">
-                            <label>اختاري الباقة</label>
-                            <select
-                              className={`form-select dash-select ${servicePicker ? "" : "is-empty"}`}
-                              value={servicePicker}
-                              onChange={(e) => handleServicePickerChange(e.target.value)}
-                              disabled={!sessionPackageOptions.length}
-                            >
-                              <option value="">اختاري الباقة</option>
-                              {!sessionPackageOptions.length && <option value="" disabled>لا توجد باقات متاحة</option>}
-                              {sessionPackageOptions.map((pkg) => (
-                                <option key={pkg.id} value={pkg.id}>
-                                  {pkg.title} — {pkg.priceText} — {pkg.sessionsCount} جلسات
+                      ) : pickerScope === "session_packages" ? (
+                        <div className="row g-2">
+                          <div className="col-md-6">
+                            <div className="bk-field">
+                              <label>اختاري الباقة</label>
+                              <select
+                                className={`form-select dash-select ${servicePicker ? "" : "is-empty"}`}
+                                value={servicePicker}
+                                onChange={(e) => handleServicePickerChange(e.target.value)}
+                                disabled={!sessionPackageOptions.length}
+                              >
+                                <option value="">اختاري الباقة</option>
+                                {!sessionPackageOptions.length && <option value="" disabled>لا توجد باقات متاحة</option>}
+                                {sessionPackageOptions.map((pkg) => (
+                                  <option key={pkg.id} value={pkg.id}>
+                                    {pkg.title} — {pkg.priceText} — {pkg.sessionsCount} جلسات
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="col-md-6">
+                            <div className="bk-field">
+                              <label>اختاري الخدمة لهذه الزيارة</label>
+                              <select
+                                className={`form-select dash-select ${sessionPackageServicePicker ? "" : "is-empty"}`}
+                                value={sessionPackageServicePicker}
+                                onChange={(e) => setSessionPackageServicePicker(String(e.target.value || "").trim())}
+                                disabled={!selectedSessionPackage || sessionPackageServicesLoading || !sessionPackageAllowedServices.length}
+                              >
+                                <option value="">
+                                  {!selectedSessionPackage
+                                    ? "اختاري الباقة أولاً"
+                                    : sessionPackageServicesLoading
+                                      ? "جاري تحميل الخدمات..."
+                                      : "اختاري الخدمة من الباقة"}
                                 </option>
-                              ))}
-                            </select>
+                                {sessionPackageAllowedServices.map((sv) => (
+                                  <option key={sv.id} value={sv.id}>
+                                    {sv.name}
+                                    {sv.durationMin ? ` — ${Number(sv.durationMin || 0)} د` : ""}
+                                  </option>
+                                ))}
+                              </select>
+                              {selectedSessionPackage ? (
+                                <div className="small text-muted mt-2">
+                                  هذه الزيارة تستهلك جلسة واحدة من باقة {selectedSessionPackage.title}.
+                                </div>
+                              ) : null}
+                              {sessionPackageServicesError ? (
+                                <div className="small text-danger mt-2">{sessionPackageServicesError}</div>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                        <div className="col-md-6">
-                          <div className="bk-field">
-                            <label>اختاري الخدمة لهذه الزيارة</label>
-                            <select
-                              className={`form-select dash-select ${sessionPackageServicePicker ? "" : "is-empty"}`}
-                              value={sessionPackageServicePicker}
-                              onChange={(e) => setSessionPackageServicePicker(String(e.target.value || "").trim())}
-                              disabled={!selectedSessionPackage || sessionPackageServicesLoading || !sessionPackageAllowedServices.length}
-                            >
-                              <option value="">
-                                {!selectedSessionPackage
-                                  ? "اختاري الباقة أولاً"
-                                  : sessionPackageServicesLoading
-                                    ? "جاري تحميل الخدمات..."
-                                    : "اختاري الخدمة من الباقة"}
-                              </option>
-                              {sessionPackageAllowedServices.map((sv) => (
-                                <option key={sv.id} value={sv.id}>
-                                  {sv.name}
-                                  {sv.durationMin ? ` — ${Number(sv.durationMin || 0)} د` : ""}
-                                </option>
-                              ))}
-                            </select>
-                            {selectedSessionPackage ? (
-                              <div className="small text-muted mt-2">
-                                هذه الزيارة تستهلك جلسة واحدة من باقة {selectedSessionPackage.title}.
-                              </div>
-                            ) : null}
-                            {sessionPackageServicesError ? (
-                              <div className="small text-danger mt-2">{sessionPackageServicesError}</div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
+                      ) : (
                         <div className="row g-2">
                           <div className="col-12">
                             <div className="bk-field">
@@ -7898,29 +7871,26 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                 return;
                               }
                               if (pickerScope === "session_packages" && selectedSessionPackage) {
-                                const allowedServiceIds = normalizePackageServiceIds(
-                                  selectedSessionPackage.allowedServiceIds
-                                );
-                                const allowedServicesSnapshot = dedupePackageServiceItems(
-                                  sessionPackageAllowedServices.map((sv) => ({
-                                    serviceId: String(sv.id || "").trim(),
-                                    serviceName: String(sv.name || "").trim(),
-                                    sectionId: String(sv.sectionId || "").trim() || undefined,
-                                    categoryId: String(sv.categoryId || "").trim() || undefined,
-                                    price: Math.max(0, Number(sv.basePrice || 0)),
-                                    durationMin: Math.max(
-                                      1,
-                                      Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN)
-                                    ),
-                                  }))
-                                );
+                                const allowedServicesSnapshot: PackageServiceItem[] = sessionPackageAllowedServices.map((sv) => ({
+                                  serviceId: String(sv.id || "").trim(),
+                                  serviceName: String(sv.name || "").trim(),
+                                  sectionId: String(sv.sectionId || "").trim() || undefined,
+                                  categoryId: String(sv.categoryId || "").trim() || undefined,
+                                  price: Math.max(0, Number(sv.basePrice || 0)),
+                                  durationMin: Math.max(
+                                    1,
+                                    Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN)
+                                  ),
+                                }));
                                 void addServiceToCart(sessionPackageServicePicker, {
                                   sessionPackageSelection: {
                                     packageId: String(selectedSessionPackage.id || "").replace(/^spkg:/, ""),
                                     packageName: String(selectedSessionPackage.title || "").trim(),
                                     packagePrice: Math.max(0, Number(selectedSessionPackage.price || 0)),
                                     sessionsCount: Math.max(1, Number(selectedSessionPackage.sessionsCount || 1)),
-                                    allowedServiceIds,
+                                    allowedServiceIds: Array.isArray(selectedSessionPackage.allowedServiceIds)
+                                      ? selectedSessionPackage.allowedServiceIds
+                                      : [],
                                     allowedServicesSnapshot,
                                   },
                                 });
@@ -8104,16 +8074,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           const serviceSectionLabel = sectionLabelClean;
                           const serviceCategoryLabel = categoryLabelClean;
                           const toolsEligible = isToolsOptionEligibleForItem(it);
-                          const packageServices = dedupePackageServiceItems(
-                            Array.isArray(it.packageSnapshot?.services) ? it.packageSnapshot?.services : []
-                          );
-                          const packageServiceNames = Array.from(
-                            new Set(
-                              packageServices
-                                .map((s) => String(s.serviceName || s.serviceId || "").trim())
-                                .filter(Boolean)
-                            )
-                          );
+                          const packageServices = Array.isArray(it.packageSnapshot?.services) ? it.packageSnapshot?.services : [];
+                          const packageServiceNames = packageServices
+                            .map((s) => String(s.serviceName || s.serviceId || "").trim())
+                            .filter(Boolean);
                           const toolsSource = toolsEligible
                             ? (String(it.toolsSource || "").trim() === "salon" ? "salon" : "client")
                             : undefined;
@@ -8134,7 +8098,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             ) || String(it.serviceId || "").trim();
                           const serviceStaff = staffByService[serviceKeyForStaff] || [];
                           const bookingVisibleStaff = serviceStaff.filter(
-                            (st) => isStaffOperationallyActiveForDate(st as any, dateISO)
+                            (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
                           );
                           const staffWithLeaveMeta = bookingVisibleStaff.map((st) => {
                             const leave = getStaffLeaveMetaForDate(st, dateISO);
@@ -8190,9 +8154,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           const showAsPackageBlock = usePackageQuickMode && isPackageRunLeader && !!packageName;
                           const cardTitle = showAsPackageBlock ? packageName : it.serviceName;
                           const cardPriceText = showAsPackageBlock && packageFinalPrice > 0 ? `${packageFinalPrice} ريال` : it.priceText;
-                          const sessionPackageLabel = isSessionPackageCartItem(it)
-                            ? String(it.sessionPackageName || it.packageSnapshot?.packageName || "").trim()
-                            : "";
                           const ServiceCardIcon = pickBookingCardIcon(String(cardTitle || ""));
                           if (usePackageQuickMode && isPackageRunFollower) return null;
                           const packageQuickState = packageRunId
@@ -8359,11 +8320,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                       <div className="booking-cart-item-locked__sub">
                                         {dur} دقيقة - {String(it.date || bookingDate || "-")}
                                       </div>
-                                      {sessionPackageLabel ? (
-                                        <div className="booking-cart-item-locked__sub">
-                                          من باقة: {sessionPackageLabel}
-                                        </div>
-                                      ) : null}
                                     </div>
                                     <div className="booking-cart-item-locked__price">{cardPriceText}</div>
                                   </div>
@@ -8443,11 +8399,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                     <div className="small text-muted" style={{ marginTop: 4, fontWeight: 700 }}>
                                       {showAsPackageBlock ? `باكيج - ${cardPriceText}` : cardPriceText}
                                     </div>
-                                    {sessionPackageLabel ? (
-                                      <div className="small text-muted" style={{ marginTop: 4, fontWeight: 700 }}>
-                                        من باقة: {sessionPackageLabel}
-                                      </div>
-                                    ) : null}
                                   </div>
                                   <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>حذف</button>
                                 </div>
