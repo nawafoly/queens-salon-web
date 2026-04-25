@@ -73,6 +73,7 @@ service cloud.firestore {
 
     function isOwner() { return myRole() == "owner"; }
     function isAdmin() { return myRole() == "admin"; }
+    function isHr() { return myRole() == "hr"; }
     function isReception() { return myRole() == "reception"; }
     function isStaff() { return myRole() == "staff"; }
     function isAccountant() { return myRole() == "accountant"; } // (تحذير Unused عادي لو ما تستخدمه)
@@ -83,6 +84,17 @@ service cloud.firestore {
 
     function canEditBookings() {
       return isAdminPower() || isReception();
+    }
+
+    function isHrLeaveBalanceUpdateForSalon(salonId) {
+      return signedIn()
+        && roleForSalon(salonId) == "hr"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "leaveBalanceDays",
+          "leaveEntries",
+          "leaveEntitlementDate",
+          "updatedAt"
+        ]);
     }
 
     function isOwnStaffBookingDoc(d) {
@@ -296,6 +308,8 @@ service cloud.firestore {
       allow write: if signedIn() && (
         isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
       );
+
+      allow update: if isHrLeaveBalanceUpdateForSalon(salonId);
 
       allow create: if signedIn()
         && request.auth.uid == uid

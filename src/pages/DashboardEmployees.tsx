@@ -21,8 +21,15 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { db } from "../services/firebase";
+import {
+  applyStaffLeaveEntryWithBalanceAdjustment,
+  canManageLeaveBalanceRole,
+  deleteStaffLeaveEntryWithBalanceAdjustment,
+  normalizeLeaveEntryType,
+} from "../services/firestoreLeaveBalance";
 import { writeAuditLog } from "../services/logService";
 import { AppSettingsService } from "../services/AppSettingsService";
+import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
 import "../styles/DashboardEmployees.css";
 import BasicInfoSection from "./dashboardEmployees/BasicInfoSection";
 import BookingSettingsSection from "./dashboardEmployees/BookingSettingsSection";
@@ -136,10 +143,16 @@ import {
 } from "./dashboardEmployees/shared";
 export default function DashboardEmployees() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthUser());
+  const canAccessEmployeesDashboard =
+    authUser?.role === "owner" ||
+    authUser?.role === "admin" ||
+    authUser?.role === "reception" ||
+    authUser?.role === "hr";
   const canManage =
     authUser?.role === "owner" ||
     authUser?.role === "admin" ||
     authUser?.role === "reception";
+  const canManageLeaveBalance = canManageLeaveBalanceRole(authUser?.role);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -265,6 +278,23 @@ export default function DashboardEmployees() {
     setErrorMsg("ليست لديك صلاحية لإدارة الموظفات.");
     return false;
   }, [canManage]);
+  const ensureCanManageLeaveBalance = useCallback(() => {
+    if (canManageLeaveBalance) return true;
+    setErrorMsg("ليست لديك صلاحية لإدارة رصيد الإجازات.");
+    return false;
+  }, [canManageLeaveBalance]);
+  const resolveStaffWeeklyOffDays = useCallback((staffLike: any): WeekdayKey[] => {
+    const sources = [
+      staffLike?.exceptionalLeaveWeekdays,
+      staffLike?.weeklyOffDays,
+      staffLike?.weeklyOffDay,
+      staffLike?.fixedWeeklyDayOff,
+      staffLike?.weeklyHoliday,
+      staffLike?.dayOff,
+    ];
+    const values = sources.flatMap((value) => (Array.isArray(value) ? value : value == null || value === "" ? [] : [value]));
+    return normalizeExceptionalLeaveWeekdays(values);
+  }, []);
 
   const resetForm = () => {
     setEditId(null);
@@ -342,9 +372,7 @@ export default function DashboardEmployees() {
     setModalLeaveUntil(initialLeaveUntil);
     setModalLeaveNote(String((x as any).leaveNote || ""));
     setEmploymentEndDate(normalizeLeaveUntil((x as any).employmentEndDate));
-    setModalExceptionalLeaveWeekdays(
-      normalizeExceptionalLeaveWeekdays((x as any).exceptionalLeaveWeekdays)
-    );
+    setModalExceptionalLeaveWeekdays(resolveStaffWeeklyOffDays(x));
     setModalLeaveWeekdayDraft("");
     setModalUseCustomWorkingHours(!!(x as any).useCustomWorkingHours);
     setModalCustomWorkingHours(normalizeWorkingHours((x as any).customWorkingHours));
@@ -449,6 +477,9 @@ export default function DashboardEmployees() {
 
         snap.docs.forEach((d) => {
           const data = d.data() as any;
+          if (isRemovedFromStaffRecord(data)) {
+            return;
+          }
           if (isAdministrativeStaffRecord(d.id, data, linkedUserRoleByUid)) {
             return;
           }
@@ -464,7 +495,7 @@ export default function DashboardEmployees() {
             leaveUntil: normalizeLeaveUntil(data?.leaveUntil),
             leaveNote: String(data?.leaveNote || ""),
             exceptionalLeaveDates: normalizeExceptionalLeaveDates(data?.exceptionalLeaveDates),
-            exceptionalLeaveWeekdays: normalizeExceptionalLeaveWeekdays(data?.exceptionalLeaveWeekdays),
+            exceptionalLeaveWeekdays: resolveStaffWeeklyOffDays(data),
             useCustomWorkingHours: !!data?.useCustomWorkingHours,
             customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
             customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
@@ -512,7 +543,7 @@ export default function DashboardEmployees() {
         setLoading(false);
       }
     },
-    []
+    [resolveStaffWeeklyOffDays]
   );
 
   // ✅ Original logic for fixing bookings
@@ -1147,9 +1178,7 @@ export default function DashboardEmployees() {
         const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
         const employmentEndDate = normalizeLeaveUntil((staff as any).employmentEndDate);
         const exceptionalDates = normalizeExceptionalLeaveDates((staff as any).exceptionalLeaveDates);
-        const exceptionalWeekdays = normalizeExceptionalLeaveWeekdays(
-          (staff as any).exceptionalLeaveWeekdays
-        );
+        const exceptionalWeekdays = resolveStaffWeeklyOffDays(staff);
         const overrides = normalizeWorkingHourOverrides((staff as any).customWorkingHourOverrides);
         const overrideGroups = buildWorkingHourOverrideGroups(overrides);
         const customWorkingHours = normalizeWorkingHours((staff as any).customWorkingHours);
@@ -1475,15 +1504,20 @@ export default function DashboardEmployees() {
         }
 
         const leaveDaysLabel = exceptionalWeekdays.length
-          ? exceptionalWeekdays.map((d) => weekdayLabel(d)).join(" / ")
+          ? exceptionalWeekdays.map((d) => weekdayLabel(d)).join("، ")
           : "-";
         const leaveDaysDetails = exceptionalWeekdays.length
           ? leaveByWeekday
             ? "اليوم يقع ضمن الإجازة الأسبوعية الثابتة."
             : "اليوم ليس ضمن الإجازة الأسبوعية الثابتة."
           : "لا توجد أيام إجازة أسبوعية ثابتة.";
+        const weeklyOffTodayLabel = exceptionalWeekdays.length
+          ? `إجازة الموظفة الثابتة: ${exceptionalWeekdays.map((d) => weekdayLabel(d)).join("، ")}`
+          : "";
         const finalWindowLabel = hardBlockedToday
-          ? "لا يوجد ساعات عمل اليوم"
+          ? leaveByWeekday
+            ? "اليوم إجازة أسبوعية ثابتة"
+            : "لا يوجد ساعات عمل اليوم"
           : intersection
             ? formatWindow(intersection.start, intersection.end)
             : "مغلق اليوم";
@@ -1740,6 +1774,8 @@ export default function DashboardEmployees() {
           staffOverrideDetails,
           leaveDaysLabel,
           leaveDaysDetails,
+          weeklyOffToday: leaveByWeekday,
+          weeklyOffTodayLabel,
           statusNowLabel: actualNow,
           statusTone,
           operationalState,
@@ -1756,7 +1792,7 @@ export default function DashboardEmployees() {
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "ar"));
-  }, [list, nowTick, appSettings]);
+  }, [appSettings, list, nowTick, resolveStaffWeeklyOffDays]);
 
   const editingStaff = useMemo(
     () => (editId ? list.find((x) => x.id === editId) || null : null),
@@ -2349,7 +2385,7 @@ export default function DashboardEmployees() {
   };
 
   const applyLeaveChange = async (mode: "add" | "deduct") => {
-    if (authUser?.role !== "owner" || !editingStaff) return;
+    if (!authUser || !editingStaff || !ensureCanManageLeaveBalance()) return;
     const days = parsePositiveInt(leaveAdjustDays, 0);
     if (days <= 0) {
       setErrorMsg("اكتب عدد أيام صحيح.");
@@ -2361,43 +2397,31 @@ export default function DashboardEmployees() {
       return;
     }
 
-    const currentBalance = parsePositiveInt(String((editingStaff as any).leaveBalanceDays || 0), 0);
-    const nextBalance = mode === "add" ? currentBalance + days : currentBalance - days;
-    if (mode === "deduct" && nextBalance < 0) {
-      setErrorMsg("لا يمكن خصم أكثر من الرصيد المتبقي.");
-      return;
-    }
-
-    const currentEntries: LeaveEntry[] = Array.isArray((editingStaff as any).leaveEntries)
-      ? ((editingStaff as any).leaveEntries as LeaveEntry[])
-      : [];
-
-    const entry: LeaveEntry = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      type: mode,
-      days,
-      date: opDate,
-      note: leaveAdjustNote.trim(),
-      createdAtIso: new Date().toISOString(),
-      byUid: String(authUser.uid || ""),
-      byName: String(authUser.displayName || authUser.email || ""),
-    };
-
-    const nextEntries = [entry, ...currentEntries].slice(0, 200);
-
     setSaving(true);
     setErrorMsg("");
     try {
-      await updateDoc(staffPublicDoc(editingStaff.id), {
-        leaveBalanceDays: nextBalance,
-        leaveEntries: nextEntries,
-        updatedAt: serverTimestamp(),
-      } as any);
+      const result = await applyStaffLeaveEntryWithBalanceAdjustment({
+        staffId: editingStaff.id,
+        actionType: mode,
+        days,
+        opDate,
+        note: leaveAdjustNote.trim(),
+        actor: {
+          uid: authUser.uid,
+          role: authUser.role,
+          displayName: authUser.displayName,
+          email: authUser.email,
+        },
+      });
 
       setList((prev) =>
         prev.map((r) =>
           r.id === editingStaff.id
-            ? ({ ...r, leaveBalanceDays: nextBalance, leaveEntries: nextEntries } as StaffPublicUi)
+            ? ({
+                ...r,
+                leaveBalanceDays: result.leaveBalanceDays,
+                leaveEntries: result.leaveEntries,
+              } as StaffPublicUi)
             : r
         )
       );
@@ -2411,9 +2435,17 @@ export default function DashboardEmployees() {
         entityId: editingStaff.id,
         source: "dashboard",
         description: mode === "add" ? "إضافة رصيد إجازة للموظفة" : "خصم رصيد إجازة من الموظفة",
-        before: { leaveBalanceDays: currentBalance },
-        after: { leaveBalanceDays: nextBalance },
-        meta: { leaveAction: mode, days, opDate, staffName: editingStaff.name },
+        before: { leaveBalanceDays: result.previousBalance },
+        after: { leaveBalanceDays: result.leaveBalanceDays },
+        meta: {
+          leaveAction: mode,
+          days,
+          changeAmount: result.createdEntry.changeAmount,
+          balanceBefore: result.createdEntry.balanceBefore,
+          balanceAfter: result.createdEntry.balanceAfter,
+          opDate,
+          staffName: editingStaff.name,
+        },
       });
     } catch (e) {
       setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ حركة الإجازة."));
@@ -2422,8 +2454,72 @@ export default function DashboardEmployees() {
     }
   };
 
+  const deleteLeaveEntry = async (entry: LeaveEntry) => {
+    if (!authUser || !editingStaff || !ensureCanManageLeaveBalance()) return;
+    if (!String(entry?.id || "").trim()) {
+      setErrorMsg("تعذر تحديد سجل الإجازة المطلوب.");
+      return;
+    }
+
+    const ok = confirm("هل أنت متأكد من حذف هذا السجل؟ سيتم تعديل رصيد الإجازات تلقائيًا.");
+    if (!ok) return;
+
+    setSaving(true);
+    setErrorMsg("");
+    try {
+      const result = await deleteStaffLeaveEntryWithBalanceAdjustment({
+        staffId: editingStaff.id,
+        entryId: entry.id,
+        actor: {
+          uid: authUser.uid,
+          role: authUser.role,
+          displayName: authUser.displayName,
+          email: authUser.email,
+        },
+      });
+
+      setList((prev) =>
+        prev.map((row) =>
+          row.id === editingStaff.id
+            ? ({
+                ...row,
+                leaveBalanceDays: result.leaveBalanceDays,
+                leaveEntries: result.leaveEntries,
+              } as StaffPublicUi)
+            : row
+        )
+      );
+
+      void writeAuditLog({
+        action: "employee_updated",
+        entityType: "employee",
+        entityId: editingStaff.id,
+        source: "dashboard",
+        description: "حذف حركة من سجل الإجازات للموظفة",
+        before: { leaveBalanceDays: result.previousBalance },
+        after: { leaveBalanceDays: result.leaveBalanceDays },
+        meta: {
+          leaveAction: normalizeLeaveEntryType(result.deletedEntry.type) || String(result.deletedEntry.type || ""),
+          deletedLeaveEntryId: result.deletedEntry.id,
+          days: result.deletedEntry.days,
+          changeAmount: result.deletedEntry.changeAmount,
+          reversedChangeAmount: result.reversedChangeAmount,
+          balanceBefore: result.deletedEntry.balanceBefore,
+          balanceAfter: result.deletedEntry.balanceAfter,
+          opDate: result.deletedEntry.date,
+          staffName: editingStaff.name,
+          softDeleted: true,
+        },
+      });
+    } catch (e) {
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حذف حركة الإجازة."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveEntitlementDate = async () => {
-    if (authUser?.role !== "owner" || !editingStaff) return;
+    if (!editingStaff || !ensureCanManageLeaveBalance()) return;
     const d = String(leaveEntitlementDate || "").trim();
     if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
       setErrorMsg("تاريخ الاستحقاق غير صحيح.");
@@ -2459,7 +2555,7 @@ export default function DashboardEmployees() {
     );
   }
 
-  if (!canManage) {
+  if (!canAccessEmployeesDashboard) {
     return (
       <div className="emp-page-wrapper">
         <div className="container">
@@ -2710,6 +2806,9 @@ export default function DashboardEmployees() {
                   onApplyLeaveChange: (leaveMode) => {
                     void applyLeaveChange(leaveMode);
                   },
+                  onDeleteLeaveEntry: (entry) => {
+                    void deleteLeaveEntry(entry);
+                  },
                 }}
               />
               <BasicInfoSection
@@ -2718,6 +2817,11 @@ export default function DashboardEmployees() {
                 active={active}
                 showOnAbout={showOnAbout}
                 showOnBooking={showOnBooking}
+                weeklyOffLabel={
+                  modalExceptionalLeaveWeekdays.length
+                    ? modalExceptionalLeaveWeekdays.map((day) => WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day).join("، ")
+                    : "لا توجد إجازة أسبوعية ثابتة."
+                }
                 onNameChange={setName}
                 onActiveChange={setActive}
                 onShowOnAboutChange={setShowOnAbout}

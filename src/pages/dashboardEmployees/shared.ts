@@ -8,7 +8,7 @@ import {
   type StaffPayrollMethod,
 } from "../../helpers/staffPayroll";
 
-export type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
+export type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "client" | "guest";
 
 export type AuthUser = {
   uid: string;
@@ -19,13 +19,24 @@ export type AuthUser = {
 
 export type LeaveEntry = {
   id: string;
-  type: "add" | "deduct";
+  type?: string;
+  actionType?: "add" | "deduct" | string;
   days: number;
+  changeAmount?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
   date: string;
   note?: string;
-  createdAtIso: string;
+  createdAt?: string;
+  createdAtIso?: string;
+  createdBy?: string;
+  createdByUid?: string;
   byUid?: string;
   byName?: string;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  deletedByName?: string;
 };
 
 export type StaffWorkingDay = {
@@ -287,7 +298,7 @@ export function servicesCol() {
 }
 
 export function usersCol() {
-  return collection(db, "users");
+  return collection(db, "salons", SALON_ID, "users");
 }
 
 export function normalizeRoleText(v: any) {
@@ -627,9 +638,33 @@ export function normalizeExceptionalLeaveDates(v: any) {
 }
 
 export function normalizeWeekdayKey(v: any): WeekdayKey | "" {
-  const s = String(v || "")
+  const raw = String(v || "")
     .trim()
-    .toLowerCase() as WeekdayKey;
+    .toLowerCase();
+  const mapped: Record<string, WeekdayKey> = {
+    sat: "sat",
+    saturday: "sat",
+    "6": "sat",
+    sun: "sun",
+    sunday: "sun",
+    "0": "sun",
+    mon: "mon",
+    monday: "mon",
+    "1": "mon",
+    tue: "tue",
+    tuesday: "tue",
+    "2": "tue",
+    wed: "wed",
+    wednesday: "wed",
+    "3": "wed",
+    thu: "thu",
+    thursday: "thu",
+    "4": "thu",
+    fri: "fri",
+    friday: "fri",
+    "5": "fri",
+  };
+  const s = (mapped[raw] || raw) as WeekdayKey;
   return (WEEKDAY_OPTIONS.some((d) => d.key === s) ? s : "") as WeekdayKey | "";
 }
 

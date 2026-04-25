@@ -4,6 +4,7 @@ type BasicInfoSectionProps = {
   active: boolean;
   showOnAbout: boolean;
   showOnBooking: boolean;
+  weeklyOffLabel: string;
   onNameChange: (value: string) => void;
   onActiveChange: (value: boolean) => void;
   onShowOnAboutChange: (value: boolean) => void;
@@ -16,6 +17,7 @@ export default function BasicInfoSection({
   active,
   showOnAbout,
   showOnBooking,
+  weeklyOffLabel,
   onNameChange,
   onActiveChange,
   onShowOnAboutChange,
@@ -72,6 +74,10 @@ export default function BasicInfoSection({
             <option value="1">نعم (تظهر)</option>
             <option value="0">لا (مخفية)</option>
           </select>
+        </div>
+        <div className="dash-field">
+          <label className="emp-label">الإجازة الأسبوعية الثابتة</label>
+          <div className="emp-field-note">{String(weeklyOffLabel || "لا توجد إجازة أسبوعية ثابتة.")}</div>
         </div>
       </div>
     </div>

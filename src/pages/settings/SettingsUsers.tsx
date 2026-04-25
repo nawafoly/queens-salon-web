@@ -23,6 +23,13 @@ import {
 
 import { auth, db } from "../../services/firebase";
 import { writeAuditLog } from "../../services/logService";
+import {
+  findStaffMatchesForUser,
+  listStaffLinkRows,
+  repairLegacyStaffUserLinks,
+  softDeleteLinkedStaffByUser,
+  type AccountUserLinkRow,
+} from "../../services/staffAccountLinkService";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/SettingsCatalog.css"; // ✅ NEW CSS
@@ -88,9 +95,13 @@ const EMPLOYEES_COLLECTION = ["salons", SALON_ID, "employees"] as const;
 type UserRow = {
   uid: string;
   email: string;
+  phone?: string;
   displayName: string;
   role: UiRole;
   active: boolean;
+  linkedEmployeeDocId?: string;
+  employeeId?: string;
+  deletedAt?: any;
   createdAt?: any;
 };
 
@@ -154,6 +165,10 @@ export default function SettingsUsers() {
     return String(v || "").trim().toLowerCase();
   }
 
+  function cleanText(v: unknown) {
+    return String(v || "").trim();
+  }
+
   function isMalikatEmail(email: string) {
     return cleanEmail(email).endsWith("@malikat.com");
   }
@@ -163,31 +178,145 @@ export default function SettingsUsers() {
     if (ms > 0) setTimeout(() => setCreateMsg(""), ms);
   };
 
-  const loadUsers = async () => {
+  function toAccountUserLinkRow(row: Partial<UserRow> & { uid: string }): AccountUserLinkRow {
+    return {
+      uid: cleanText(row.uid),
+      email: cleanEmail(row.email || ""),
+      phone: cleanText(row.phone || ""),
+      displayName: cleanText(row.displayName || ""),
+      role: cleanText(row.role || ""),
+      active: row.active !== false,
+      linkedEmployeeDocId: cleanText(row.linkedEmployeeDocId || ""),
+      employeeId: cleanText(row.employeeId || ""),
+      deletedAt: row.deletedAt,
+    };
+  }
+
+  const syncLinkedStaffFromUser = async (args: {
+    user: Partial<UserRow> & { uid: string };
+    role: UiRole;
+    active: boolean;
+    displayName: string;
+    createIfMissing?: boolean;
+  }) => {
+    const userRow = toAccountUserLinkRow(args.user);
+    const staffRows = await listStaffLinkRows();
+    const matches = findStaffMatchesForUser(userRow, staffRows);
+    const existing = matches[0] as any;
+    const fallbackDocId =
+      cleanText(userRow.linkedEmployeeDocId) || cleanText(userRow.employeeId) || cleanText(userRow.uid);
+    const staffId = cleanText(existing?.id || (args.createIfMissing ? fallbackDocId : ""));
+    if (!staffId) return null;
+
+    const email = cleanEmail(userRow.email || "");
+    const displayName = cleanText(args.displayName) || cleanText(existing?.name) || "موظفة";
+    const nextRole = toFirestoreRole(args.role);
+    const isStaffRole = args.role === "staff";
+
+    await setDoc(
+      doc(db, ...STAFF_PUBLIC_COLLECTION, staffId),
+      {
+        uid: userRow.uid,
+        linkedUid: userRow.uid,
+        linkedUserId: userRow.uid,
+        ...(email ? { userEmail: email } : {}),
+        ...(!cleanText(existing?.email) && email ? { email } : {}),
+        name: displayName,
+        role: nextRole,
+        active: isStaffRole ? args.active : false,
+        showOnAbout: isStaffRole ? existing?.showOnAbout !== false : false,
+        showOnBooking: isStaffRole ? existing?.showOnBooking === true : false,
+        removedFromStaff: false,
+        employmentStatus: isStaffRole ? (args.active ? "active" : "inactive") : "inactive",
+        deletedAt: null,
+        deletedBy: null,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await setDoc(
+      doc(db, ...EMPLOYEES_COLLECTION, staffId),
+      {
+        uid: userRow.uid,
+        linkedUid: userRow.uid,
+        linkedUserId: userRow.uid,
+        ...(email ? { userEmail: email, email } : {}),
+        name: displayName,
+        role: nextRole,
+        isActive: isStaffRole ? args.active : false,
+        active: isStaffRole ? args.active : false,
+        showOnAbout: isStaffRole ? existing?.showOnAbout !== false : false,
+        removedFromStaff: false,
+        employmentStatus: isStaffRole ? (args.active ? "active" : "inactive") : "inactive",
+        deletedAt: null,
+        deletedBy: null,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await setDoc(
+      doc(db, ...USERS_COLLECTION, userRow.uid),
+      {
+        linkedEmployeeDocId: staffId,
+        employeeId: staffId,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return staffId;
+  };
+
+  const loadUsers = async (options?: { runRepair?: boolean }) => {
     if (!canManageUsers) return;
 
     setUsersLoading(true);
     try {
+      let repairResult:
+        | {
+            linkedPairs: number;
+            patchedUsers: number;
+            patchedStaff: number;
+          }
+        | null = null;
+
+      if (options?.runRepair) {
+        repairResult = await repairLegacyStaffUserLinks();
+      }
+
       const qy = query(
         collection(db, ...USERS_COLLECTION),
         orderBy("createdAt", "desc")
       );
-      const snap = await getDocs(qy);
+      const [snap, staffRows] = await Promise.all([getDocs(qy), listStaffLinkRows()]);
 
       const listAll: UserRow[] = snap.docs.map((d) => {
         const x = d.data() as any;
-        return {
+        const baseRow: UserRow = {
           uid: d.id,
           email: String(x?.email || ""),
+          phone: String(x?.phone || ""),
           displayName: String(x?.displayName || x?.name || ""),
           role: mapFirestoreRoleToUi(x?.role),
           active: x?.active !== false,
+          linkedEmployeeDocId: String(x?.linkedEmployeeDocId || ""),
+          employeeId: String(x?.employeeId || ""),
+          deletedAt: x?.deletedAt,
           createdAt: x?.createdAt,
+        };
+        const linkedStaff = findStaffMatchesForUser(toAccountUserLinkRow(baseRow), staffRows)[0] as any;
+        return {
+          ...baseRow,
+          linkedEmployeeDocId: cleanText(baseRow.linkedEmployeeDocId) || cleanText(linkedStaff?.id),
+          employeeId: cleanText(baseRow.employeeId) || cleanText(linkedStaff?.id),
         };
       });
 
       // ✅ عرض حسابات malikat.com فقط
       const listFiltered = listAll
+        .filter((u) => !u.deletedAt)
         .filter((u) => isMalikatEmail(u.email))
         .map((u) => {
           // أي حساب malikat.com لو كان client/guest نخليه pending (عرض + إدارة)
@@ -197,6 +326,12 @@ export default function SettingsUsers() {
         });
 
       setUsers(listFiltered);
+      if (repairResult) {
+        toastMsg(
+          `✅ تم فحص الربط: ${repairResult.linkedPairs} ربط، ${repairResult.patchedStaff} موظفة، ${repairResult.patchedUsers} حساب`,
+          3200
+        );
+      }
     } catch (e) {
       console.error("loadUsers error:", e);
       setUsers([]);
@@ -258,44 +393,21 @@ export default function SettingsUsers() {
 
       // ✅ لو Staff: جهّز staff_public + employees
       if (role === "staff") {
-        await setDoc(
-          doc(db, ...STAFF_PUBLIC_COLLECTION, uid),
-          {
+        await syncLinkedStaffFromUser({
+          user: {
             uid,
-            linkedUid: uid,
             email,
-            name: displayName,
-            role: "staff",
+            displayName,
+            role,
             active: true,
-            showOnAbout: true,
-            showOnBooking: false,
-            specialties: [],
-            bio: "",
-            avatarUrl: "",
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+            linkedEmployeeDocId: uid,
+            employeeId: uid,
           },
-          { merge: true }
-        );
-
-        await setDoc(
-          doc(db, ...EMPLOYEES_COLLECTION, uid),
-          {
-            uid,
-            linkedUid: uid,
-            email,
-            name: displayName,
-            role: "staff",
-            isActive: true,
-            showOnAbout: true,
-            specialties: [],
-            bio: "",
-            avatarUrl: "",
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
+          role,
+          active: true,
+          displayName,
+          createIfMissing: true,
+        });
       }
 
       await signOut(secondary).catch(() => {});
@@ -362,69 +474,23 @@ export default function SettingsUsers() {
         { merge: true }
       );
 
-      const staffPublicRef = doc(db, ...STAFF_PUBLIC_COLLECTION, uid);
-      const employeeRef = doc(db, ...EMPLOYEES_COLLECTION, uid);
 
       const name = row?.displayName || "موظفة";
-      const email = row?.email || "";
-
-      if (newRole === "staff") {
-        await setDoc(
-          staffPublicRef,
-          {
-            uid,
-            linkedUid: uid,
-            email,
-            name,
-            role: "staff",
-            active: nextActive,
-            showOnAbout: true,
-            showOnBooking: false,
-            specialties: [],
-            bio: "",
-            avatarUrl: "",
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        await setDoc(
-          employeeRef,
-          {
-            uid,
-            linkedUid: uid,
-            email,
-            name,
-            role: "staff",
-            isActive: nextActive,
-            showOnAbout: true,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      } else {
-        await setDoc(
-          staffPublicRef,
-          {
-            role: toFirestoreRole(newRole),
-            active: nextActive,
-            showOnAbout: false,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        await setDoc(
-          employeeRef,
-          {
-            role: toFirestoreRole(newRole),
-            isActive: nextActive,
-            showOnAbout: false,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
+      await syncLinkedStaffFromUser({
+        user: {
+          uid,
+          email: row?.email || "",
+          displayName: name,
+          role: newRole,
+          active: nextActive,
+          linkedEmployeeDocId: row?.linkedEmployeeDocId || row?.employeeId || "",
+          employeeId: row?.employeeId || row?.linkedEmployeeDocId || "",
+        },
+        role: newRole,
+        active: nextActive,
+        displayName: name,
+        createIfMissing: newRole === "staff",
+      });
 
       setUsers((prev) =>
         prev.map((u) => (u.uid === uid ? { ...u, role: newRole, active: nextActive } : u))
@@ -478,16 +544,21 @@ export default function SettingsUsers() {
 
       // ✅ لو هو Staff خله يتزامن مع staff_public/employees
       if (row?.role === "staff") {
-        await setDoc(
-          doc(db, ...STAFF_PUBLIC_COLLECTION, uid),
-          { active, updatedAt: serverTimestamp() },
-          { merge: true }
-        );
-        await setDoc(
-          doc(db, ...EMPLOYEES_COLLECTION, uid),
-          { isActive: active, updatedAt: serverTimestamp() },
-          { merge: true }
-        );
+        await syncLinkedStaffFromUser({
+          user: {
+            uid,
+            email: row?.email || "",
+            displayName: row?.displayName || "",
+            role: row?.role || "staff",
+            active,
+            linkedEmployeeDocId: row?.linkedEmployeeDocId || row?.employeeId || "",
+            employeeId: row?.employeeId || row?.linkedEmployeeDocId || "",
+          },
+          role: row?.role || "staff",
+          active,
+          displayName: row?.displayName || "",
+          createIfMissing: false,
+        });
       }
 
       setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, active } : u)));
@@ -538,16 +609,21 @@ export default function SettingsUsers() {
       const roleNow = row?.role;
 
       if (roleNow === "staff") {
-        await setDoc(
-          doc(db, ...STAFF_PUBLIC_COLLECTION, uid),
-          { name, updatedAt: serverTimestamp() },
-          { merge: true }
-        );
-        await setDoc(
-          doc(db, ...EMPLOYEES_COLLECTION, uid),
-          { name, updatedAt: serverTimestamp() },
-          { merge: true }
-        );
+        await syncLinkedStaffFromUser({
+          user: {
+            uid,
+            email: row?.email || "",
+            displayName: name,
+            role: roleNow,
+            active: row?.active !== false,
+            linkedEmployeeDocId: row?.linkedEmployeeDocId || row?.employeeId || "",
+            employeeId: row?.employeeId || row?.linkedEmployeeDocId || "",
+          },
+          role: roleNow,
+          active: row?.active !== false,
+          displayName: name,
+          createIfMissing: false,
+        });
       }
 
       setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, displayName: name } : u)));
@@ -607,6 +683,85 @@ export default function SettingsUsers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManageUsers]);
 
+  const deleteUserAccount = async (uid: string) => {
+    if (!canManageUsers) return;
+
+    const row = users.find((x) => x.uid === uid);
+    if (!row) return;
+
+    if ((auth as any)?.currentUser?.uid === uid) {
+      toastMsg("❌ لا يمكن حذف حسابك من هنا", 2400);
+      return;
+    }
+
+    const ok = confirm(
+      `سيتم تعطيل الحساب وإخفاء الموظفة المرتبطة من الإدارة والحجز.\n\nالحساب: ${row.email || uid}\n\nمتابعة؟`
+    );
+    if (!ok) return;
+
+    try {
+      setUsersLoading(true);
+      const actorUid = String((auth as any)?.currentUser?.uid || "").trim();
+
+      await setDoc(
+        doc(db, ...USERS_COLLECTION, uid),
+        {
+          active: false,
+          role: "pending",
+          deletedAt: serverTimestamp(),
+          deletedBy: actorUid || "",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await setDoc(
+        doc(db, "users", uid),
+        {
+          active: false,
+          deletedAt: serverTimestamp(),
+          deletedBy: actorUid || "",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+
+      const deleteResult = await softDeleteLinkedStaffByUser({
+        user: toAccountUserLinkRow(row),
+        actorUid,
+      });
+
+      setUsers((prev) => prev.filter((u) => u.uid !== uid));
+
+      void writeAuditLog({
+        salonId: SALON_ID,
+        action: "user_deleted",
+        entityType: "user",
+        entityId: uid,
+        description: "تم حذف الحساب تعطيلًا وربط حذف الموظفة soft delete",
+        source: "dashboard",
+        before: {
+          role: row.role,
+          active: row.active,
+          linkedEmployeeDocId: row.linkedEmployeeDocId || row.employeeId || null,
+        },
+        after: {
+          role: "pending",
+          active: false,
+          deletedAt: true,
+          linkedStaffCount: deleteResult.matchedStaffIds.length,
+        },
+      });
+
+      toastMsg("✅ تم حذف الحساب وتعطيل الموظفة المرتبطة", 2400);
+    } catch (e) {
+      console.error("deleteUserAccount error:", e);
+      toastMsg("❌ تعذر حذف الحساب أو تعطيل الموظفة المرتبطة", 2800);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
   /* =========================
      Render
   ========================= */
@@ -651,7 +806,7 @@ export default function SettingsUsers() {
               type="button"
               className={`exp-btn ${usersLoading ? "is-disabled" : ""}`}
               disabled={usersLoading}
-              onClick={loadUsers}
+              onClick={() => void loadUsers({ runRepair: true })}
             >
               تحديث القائمة
             </button>
@@ -800,6 +955,16 @@ export default function SettingsUsers() {
                       />
                       نشط
                     </label>
+
+                    <button
+                      type="button"
+                      className={`exp-btn danger ${isSelf ? "is-disabled" : ""}`}
+                      disabled={isSelf || usersLoading}
+                      onClick={() => deleteUserAccount(u.uid)}
+                      title={isSelf ? "لا يمكن حذف حسابك من هنا" : "حذف الحساب وتعطيل الموظفة المرتبطة"}
+                    >
+                      حذف
+                    </button>
                   </div>
                 );
               })

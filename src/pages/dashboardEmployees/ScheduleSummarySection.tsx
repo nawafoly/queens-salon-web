@@ -47,6 +47,9 @@ export default function ScheduleSummarySection({
 
       <div className={`emp-schedule-result ${summary.operationalState === "closed" ? "is-closed" : ""}`}>
         <div className="emp-schedule-result-window">{finalWindowLabel}</div>
+        {summary?.weeklyOffToday && summary?.weeklyOffTodayLabel ? (
+          <div className="emp-schedule-result-reason">{String(summary.weeklyOffTodayLabel)}</div>
+        ) : null}
       </div>
 
       {upcomingReturn ? (

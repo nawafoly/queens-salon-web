@@ -2056,6 +2056,36 @@ h1, h2, h3, h4, h5, h6 {
   flex-wrap: wrap;
 }
 
+.emp-modal .staff-leave-head-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.emp-modal .staff-leave-balance-card {
+  min-width: 120px;
+  padding: 10px 14px;
+  border: 1px solid rgba(127, 29, 29, 0.12);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 248, 248, 0.98), rgba(255, 255, 255, 0.98));
+  display: grid;
+  align-content: center;
+  gap: 2px;
+}
+
+.emp-modal .staff-leave-balance-card span {
+  font-size: 12px;
+  color: #7f1d1d;
+  font-weight: 700;
+}
+
+.emp-modal .staff-leave-balance-card b {
+  font-size: 18px;
+  color: #111827;
+  font-weight: 900;
+}
+
 .emp-modal .staff-leave-head .dash-input[type="date"] {
   min-width: 170px;
 }
@@ -2068,11 +2098,24 @@ h1, h2, h3, h4, h5, h6 {
   background: #fafafa;
 }
 
+.emp-modal .leave-log-head,
 .emp-modal .leave-log-row {
   display: grid;
-  grid-template-columns: 84px 80px 120px 1fr;
+  grid-template-columns: 110px 92px 92px 92px 120px minmax(0, 1fr) 74px;
   gap: 8px;
   align-items: center;
+}
+
+.emp-modal .leave-log-head {
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #475569;
+  background: #f8fafc;
+  border-bottom: 1px solid rgba(13, 13, 13, 0.06);
+}
+
+.emp-modal .leave-log-row {
   padding: 9px 12px;
   border-bottom: 1px solid rgba(13, 13, 13, 0.06);
   font-size: 13px;
@@ -2103,7 +2146,8 @@ h1, h2, h3, h4, h5, h6 {
   border-color: rgba(185, 28, 28, 0.2);
 }
 
-.emp-modal .leave-log-days,
+.emp-modal .leave-log-change,
+.emp-modal .leave-log-balance,
 .emp-modal .leave-log-date {
   font-weight: 700;
   color: #0f172a;
@@ -2113,6 +2157,30 @@ h1, h2, h3, h4, h5, h6 {
   color: #334155;
 }
 
+.emp-modal .leave-log-delete {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(185, 28, 28, 0.18);
+  border-radius: 10px;
+  background: rgba(254, 242, 242, 0.92);
+  color: #b91c1c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.emp-modal .leave-log-delete:hover:not(:disabled) {
+  background: rgba(254, 226, 226, 0.98);
+  border-color: rgba(185, 28, 28, 0.3);
+  color: #991b1b;
+}
+
+.emp-modal .leave-log-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .emp-modal .leave-log-empty {
   padding: 12px;
   color: #64748b;
@@ -2120,6 +2188,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 @media (max-width: 760px) {
+  .emp-modal .leave-log-head {
+    display: none;
+  }
+
   .emp-modal .leave-log-row {
     grid-template-columns: 1fr;
   }

@@ -9,6 +9,17 @@ import {
   type LeaveEntry,
   type WeekdayKey,
 } from "./shared";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faTrash } from "@fortawesome/free-solid-svg-icons";
+import {
+  canManageLeaveBalanceRole,
+  getLeaveEntryActionType,
+  getLeaveEntryBalanceAfter,
+  getLeaveEntryBalanceBefore,
+  getLeaveEntryChangeAmount,
+  getLeaveEntryCreatedAt,
+  isDeletedLeaveEntry,
+} from "../../services/firestoreLeaveBalance";
 import type { StaffOvertimeHoursBasis, StaffPayrollMethod } from "../../helpers/staffPayroll";
 
 type PayrollSummary = {
@@ -90,6 +101,7 @@ type EmployeeStatsSectionProps = {
     onLeaveAdjustNoteChange: (value: string) => void;
     onSaveEntitlementDate: () => void;
     onApplyLeaveChange: (mode: "add" | "deduct") => void;
+    onDeleteLeaveEntry: (entry: LeaveEntry) => void;
   };
 };
 
@@ -108,10 +120,32 @@ export default function EmployeeStatsSection({
 }: EmployeeStatsSectionProps) {
   if (!isVisible) return null;
 
+  const canManageLeaveBalance = canManageLeaveBalanceRole(authRole);
+
   const sortedLeaveEntries = leaveEntries
+    .filter((entry) => !isDeletedLeaveEntry(entry))
     .slice()
-    .sort((a, b) => String(b.createdAtIso || "").localeCompare(String(a.createdAtIso || "")))
+    .sort((a, b) =>
+      String(getLeaveEntryCreatedAt(b) || b.date || "").localeCompare(String(getLeaveEntryCreatedAt(a) || a.date || ""))
+    )
     .slice(0, 12);
+
+  const formatLeaveChange = (entry: LeaveEntry) => {
+    const changeAmount = getLeaveEntryChangeAmount(entry);
+    if (!changeAmount) return "غير متوفر";
+    return `${changeAmount > 0 ? "+" : ""}${changeAmount} يوم`;
+  };
+
+  const formatLeaveBalance = (value: number | null) => {
+    if (value == null) return "غير متوفر";
+    return `${value}`;
+  };
+
+  const leaveActionLabel = (entry: LeaveEntry) =>
+    getLeaveEntryActionType(entry) === "deduct" ? "إجازة / خصم" : "إضافة";
+
+  const currentLeaveBalance = parsePositiveInt(String(leaveBalanceDays || 0), 0);
+  const currentLeaveBalanceLabel = loading ? "جاري التحميل..." : `${currentLeaveBalance} يوم`;
 
   return (
     <div className="emp-modal-section">
@@ -412,20 +446,30 @@ export default function EmployeeStatsSection({
 
           <div className="staff-leave-head">
             <span>تاريخ الاستحقاق القادم</span>
-            <div>
+            <div className="staff-leave-head-actions">
+              <div className="staff-leave-balance-card" aria-live="polite">
+                <span>الرصيد الحالي</span>
+                <b>{currentLeaveBalanceLabel}</b>
+              </div>
               <input
                 className="dash-input"
                 type="date"
                 value={leave.leaveEntitlementDate}
+                disabled={busy || !canManageLeaveBalance}
                 onChange={(e) => leave.onLeaveEntitlementDateChange(e.target.value)}
               />
-              <button className="exp-btn" type="button" onClick={leave.onSaveEntitlementDate} disabled={busy}>
+              <button
+                className="exp-btn"
+                type="button"
+                onClick={leave.onSaveEntitlementDate}
+                disabled={busy || !canManageLeaveBalance}
+              >
                 حفظ الاستحقاق
               </button>
             </div>
           </div>
 
-          {authRole === "owner" ? (
+          {canManageLeaveBalance ? (
             <div className="staff-leave-controls">
               <input
                 className="dash-input staff-leave-input"
@@ -459,14 +503,36 @@ export default function EmployeeStatsSection({
 
           <div className="leave-log-list">
             <div className="leave-log-title">سجل الإجازات</div>
+            <div className="leave-log-head">
+              <span>النوع</span>
+              <span>التغيير</span>
+              <span>الرصيد قبل</span>
+              <span>الرصيد بعد</span>
+              <span>التاريخ</span>
+              <span>الملاحظة</span>
+              <span>حذف/تراجع</span>
+            </div>
             {sortedLeaveEntries.map((entry) => (
               <div className="leave-log-row" key={entry.id}>
-                <span className={`leave-log-type ${entry.type === "deduct" ? "deduct" : "add"}`}>
-                  {entry.type === "deduct" ? "إجازة" : "إضافة"}
+                <span className={`leave-log-type ${getLeaveEntryActionType(entry) === "deduct" ? "deduct" : "add"}`}>
+                  {leaveActionLabel(entry)}
                 </span>
-                <span className="leave-log-days">{entry.days} يوم</span>
+                <span className="leave-log-change">{formatLeaveChange(entry)}</span>
+                <span className="leave-log-balance">{formatLeaveBalance(getLeaveEntryBalanceBefore(entry))}</span>
+                <span className="leave-log-balance">{formatLeaveBalance(getLeaveEntryBalanceAfter(entry))}</span>
                 <span className="leave-log-date">{fmtIsoDate(entry.date)}</span>
                 <span className="leave-log-note">{String(entry.note || "-")}</span>
+                {canManageLeaveBalance ? (
+                  <button
+                    type="button"
+                    className="leave-log-delete"
+                    disabled={busy}
+                    title="حذف السجل"
+                    onClick={() => leave.onDeleteLeaveEntry(entry)}
+                  >
+                    <FontAwesomeIcon icon={faTrash} />
+                  </button>
+                ) : null}
               </div>
             ))}
             {sortedLeaveEntries.length === 0 ? <div className="leave-log-empty">لا يوجد سجل إجازات حتى الآن.</div> : null}

@@ -2,6 +2,7 @@
 import { db } from "./firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { isStaffOperationallyActiveForDate } from "../helpers/staffAvailability";
+import { isRemovedFromStaffRecord } from "./staffAccountLinkService";
 
 export type StaffPublicDoc = {
   name: string;
@@ -255,7 +256,7 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
         customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
         customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
       } as StaffPublicWithId;
-    });
+    }).filter((staff) => !isRemovedFromStaffRecord(staff));
 
     const activeOnly = all.filter((x) => isStaffOperationallyActiveForDate(x));
     console.log("[staff_public] listActiveStaffAll active =", activeOnly.length);
@@ -299,7 +300,7 @@ export async function listActiveStaffBySpecialty(args: {
         customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
         customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
       } as StaffPublicWithId;
-    });
+    }).filter((staff) => !isRemovedFromStaffRecord(staff));
 
     const filtered = all.filter((staff) => {
       if (!isStaffOperationallyActiveForDate(staff)) return false;
