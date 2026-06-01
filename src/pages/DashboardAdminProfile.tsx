@@ -7,7 +7,7 @@ import { auth, db } from "../services/firebase";
 import "../styles/DashboardModals.css";
 import "../styles/stylesSettings/DashboardSettings.css";
 
-type UiRole = "owner" | "admin" | "reception" | "staff" | "pending" | "client" | "guest";
+type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "pending" | "client" | "guest";
 
 type AdminProfileDoc = {
   displayName: string;
@@ -24,6 +24,7 @@ function normalizeRole(raw: unknown): UiRole {
   const role = String(raw || "").toLowerCase().trim();
   if (role === "owner") return "owner";
   if (role === "admin") return "admin";
+  if (role === "hr") return "hr";
   if (role === "reception") return "reception";
   if (role === "staff") return "staff";
   if (role === "pending") return "pending";

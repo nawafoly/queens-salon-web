@@ -3,7 +3,7 @@
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { app } from "./firebase"; // ⬅️ نجيب app فقط
 
-export type StaffCreateRole = "staff" | "reception" | "admin";
+export type StaffCreateRole = "staff" | "hr" | "reception" | "admin";
 
 export type AdminCreateStaffInput = {
   email: string;
@@ -11,6 +11,13 @@ export type AdminCreateStaffInput = {
   displayName: string;
   phone?: string;
   role: StaffCreateRole;
+  employeeId?: string;
+  department?: string;
+  title?: string;
+  avatarUrl?: string;
+  employeeProfileEnabled?: boolean;
+  showOnAbout?: boolean;
+  showOnBooking?: boolean;
 
   // staff only
   specialties?: string[];
@@ -20,6 +27,7 @@ export type AdminCreateStaffInput = {
 type AdminCreateStaffResponse = {
   ok: boolean;
   uid: string;
+  employeeId: string;
   email: string;
   role: string;
   displayName: string;

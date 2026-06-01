@@ -41,6 +41,7 @@ import "../../styles/stylesSettings/DashboardSettings.css";
 type UiRole =
   | "owner"
   | "admin"
+  | "hr"
   | "reception"
   | "staff"
   | "pending"
@@ -51,6 +52,7 @@ function mapFirestoreRoleToUi(roleRaw: string): UiRole {
   const role = String(roleRaw || "").toLowerCase().trim();
   if (role === "owner") return "owner";
   if (role === "admin") return "admin";
+  if (role === "hr") return "hr";
   if (role === "reception") return "reception";
   if (role === "staff") return "staff";
   if (role === "pending") return "pending";
@@ -62,6 +64,7 @@ function toFirestoreRole(role: UiRole) {
   const r = String(role || "guest").toLowerCase().trim();
   if (r === "owner") return "owner";
   if (r === "admin") return "admin";
+  if (r === "hr") return "hr";
   if (r === "reception") return "reception";
   if (r === "staff") return "staff";
   if (r === "pending") return "pending";
@@ -173,6 +176,10 @@ export default function SettingsUsers() {
     return cleanEmail(email).endsWith("@malikat.com");
   }
 
+  function isEmployeeRole(role: UiRole) {
+    return ["owner", "admin", "hr", "reception", "staff"].includes(role);
+  }
+
   const toastMsg = (msg: string, ms = 2200) => {
     setCreateMsg(msg);
     if (ms > 0) setTimeout(() => setCreateMsg(""), ms);
@@ -211,7 +218,8 @@ export default function SettingsUsers() {
     const email = cleanEmail(userRow.email || "");
     const displayName = cleanText(args.displayName) || cleanText(existing?.name) || "موظفة";
     const nextRole = toFirestoreRole(args.role);
-    const isStaffRole = args.role === "staff";
+    const isEmployeeRole = ["owner", "admin", "hr", "reception", "staff"].includes(args.role);
+    const isPublicStaffRole = args.role === "staff";
 
     await setDoc(
       doc(db, ...STAFF_PUBLIC_COLLECTION, staffId),
@@ -223,11 +231,11 @@ export default function SettingsUsers() {
         ...(!cleanText(existing?.email) && email ? { email } : {}),
         name: displayName,
         role: nextRole,
-        active: isStaffRole ? args.active : false,
-        showOnAbout: isStaffRole ? existing?.showOnAbout !== false : false,
-        showOnBooking: isStaffRole ? existing?.showOnBooking === true : false,
+        active: isEmployeeRole ? args.active : false,
+        showOnAbout: isPublicStaffRole ? existing?.showOnAbout !== false : false,
+        showOnBooking: isPublicStaffRole ? existing?.showOnBooking === true : false,
         removedFromStaff: false,
-        employmentStatus: isStaffRole ? (args.active ? "active" : "inactive") : "inactive",
+        employmentStatus: isEmployeeRole ? (args.active ? "active" : "inactive") : "inactive",
         deletedAt: null,
         deletedBy: null,
         updatedAt: serverTimestamp(),
@@ -244,17 +252,34 @@ export default function SettingsUsers() {
         ...(email ? { userEmail: email, email } : {}),
         name: displayName,
         role: nextRole,
-        isActive: isStaffRole ? args.active : false,
-        active: isStaffRole ? args.active : false,
-        showOnAbout: isStaffRole ? existing?.showOnAbout !== false : false,
+        isActive: isEmployeeRole ? args.active : false,
+        active: isEmployeeRole ? args.active : false,
+        showOnAbout: isPublicStaffRole ? existing?.showOnAbout !== false : false,
         removedFromStaff: false,
-        employmentStatus: isStaffRole ? (args.active ? "active" : "inactive") : "inactive",
+        employmentStatus: isEmployeeRole ? (args.active ? "active" : "inactive") : "inactive",
         deletedAt: null,
         deletedBy: null,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     );
+
+    if (isEmployeeRole) {
+      await setDoc(
+        doc(db, "salons", SALON_ID, "admin_users", userRow.uid),
+        {
+          uid: userRow.uid,
+          email,
+          displayName,
+          phone: cleanText(userRow.phone || ""),
+          role: nextRole,
+          active: args.active,
+          employeeId: staffId,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
 
     await setDoc(
       doc(db, ...USERS_COLLECTION, userRow.uid),
@@ -392,7 +417,7 @@ export default function SettingsUsers() {
       );
 
       // ✅ لو Staff: جهّز staff_public + employees
-      if (role === "staff") {
+      if (isEmployeeRole(role)) {
         await syncLinkedStaffFromUser({
           user: {
             uid,
@@ -489,7 +514,7 @@ export default function SettingsUsers() {
         role: newRole,
         active: nextActive,
         displayName: name,
-        createIfMissing: newRole === "staff",
+        createIfMissing: isEmployeeRole(newRole),
       });
 
       setUsers((prev) =>
@@ -543,7 +568,7 @@ export default function SettingsUsers() {
       );
 
       // ✅ لو هو Staff خله يتزامن مع staff_public/employees
-      if (row?.role === "staff") {
+      if (row?.role && isEmployeeRole(row.role as UiRole)) {
         await syncLinkedStaffFromUser({
           user: {
             uid,
@@ -608,7 +633,7 @@ export default function SettingsUsers() {
 
       const roleNow = row?.role;
 
-      if (roleNow === "staff") {
+      if (roleNow && isEmployeeRole(roleNow as UiRole)) {
         await syncLinkedStaffFromUser({
           user: {
             uid,
@@ -867,6 +892,7 @@ export default function SettingsUsers() {
               >
                 {isOwner && <option value="owner">Owner</option>}
                 <option value="admin">Admin</option>
+                <option value="hr">HR</option>
                 <option value="reception">Reception</option>
                 <option value="staff">Staff</option>
               </select>
@@ -939,6 +965,7 @@ export default function SettingsUsers() {
                     >
                       {isOwner && <option value="owner">Owner</option>}
                       <option value="admin">Admin</option>
+                      <option value="hr">HR</option>
                       <option value="reception">Reception</option>
                       <option value="staff">Staff</option>
                       <option value="pending">Pending</option>

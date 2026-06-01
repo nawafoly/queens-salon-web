@@ -488,8 +488,8 @@ export const autoCloseBookings = onSchedule(
  * ✅ Custom Claims (Roles)
  * ===========================
  */
-type UiRole = "owner" | "admin" | "reception" | "staff" | "client";
-const ALLOWED_ROLES: UiRole[] = ["owner", "admin", "reception", "staff", "client"];
+type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "client";
+const ALLOWED_ROLES: UiRole[] = ["owner", "admin", "hr", "reception", "staff", "client"];
 
 function normalizeRole(x: any): UiRole | "guest" {
   const r = String(x || "").toLowerCase().trim();
@@ -540,6 +540,9 @@ export const setUserRole = onCall({ region: "us-central1" }, async (request) => 
 
   const role = roleRaw as UiRole;
   const callerRole = await getCallerRole(callerUid);
+  const targetUser = await admin.auth().getUser(uid);
+  const targetDisplayName = String(targetUser.displayName || "").trim() || uid;
+  const targetEmail = String(targetUser.email || "").toLowerCase().trim();
 
   // ✅ السماح بالـ bootstrap owner يثبت نفسه owner مرة واحدة
   const isBootstrapOwner =
@@ -572,6 +575,78 @@ export const setUserRole = onCall({ region: "us-central1" }, async (request) => 
       },
       { merge: true }
     );
+
+  const isEmployeeRole = ["owner", "admin", "hr", "reception", "staff"].includes(role);
+  if (isEmployeeRole) {
+    await db
+      .collection("salons")
+      .doc(SALON_ID)
+      .collection("employees")
+      .doc(uid)
+      .set(
+        {
+          uid,
+          linkedUid: uid,
+          linkedUserId: uid,
+          employeeId: uid,
+          linkedEmployeeDocId: uid,
+          email: targetEmail || targetUser.email || "",
+          userEmail: targetEmail || targetUser.email || "",
+          name: targetDisplayName,
+          displayName: targetDisplayName,
+          phone: String(targetUser.phoneNumber || ""),
+          role,
+          active: true,
+          isActive: true,
+          employeeProfileEnabled: true,
+          showOnAbout: role === "staff",
+          showOnBooking: role === "staff",
+          removedFromStaff: false,
+          employmentStatus: "active",
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    await db
+      .collection("salons")
+      .doc(SALON_ID)
+      .collection("admin_users")
+      .doc(uid)
+      .set(
+        {
+          uid,
+          email: targetEmail || targetUser.email || "",
+          displayName: targetDisplayName,
+          phone: String(targetUser.phoneNumber || ""),
+          role,
+          active: true,
+          employeeId: uid,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    await db
+      .collection("salons")
+      .doc(SALON_ID)
+      .collection("staff_public")
+      .doc(uid)
+      .set(
+        {
+          name: targetDisplayName,
+          email: targetEmail || targetUser.email || "",
+          phone: String(targetUser.phoneNumber || ""),
+          role,
+          isActive: true,
+          active: true,
+          showOnAbout: role === "staff",
+          showOnBooking: role === "staff",
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+  }
 
   return { ok: true, uid, role };
 });
@@ -753,7 +828,7 @@ export const onSalonBookingUpdateTrack = onDocumentUpdated(
    ✅ Callable: adminCreateStaffUser
 ========================================================= */
 
-type StaffCreateRole = "staff" | "reception" | "admin";
+type StaffCreateRole = "staff" | "hr" | "reception" | "admin";
 
 export const adminCreateStaffUser = onCall({ region: "us-central1" }, async (request) => {
   const auth = request.auth;
@@ -776,8 +851,17 @@ export const adminCreateStaffUser = onCall({ region: "us-central1" }, async (req
   const displayName = String(data.displayName || "").trim();
   const phone = String(data.phone || "").trim();
   const roleRaw = String(data.role || "staff").trim().toLowerCase();
+  const employeeId = String(data.employeeId || "").trim() || "";
+  const department = String(data.department || "").trim();
+  const title = String(data.title || "").trim();
+  const avatarUrl = String(data.avatarUrl || "").trim();
+  const employeeProfileEnabled =
+    data.employeeProfileEnabled !== undefined ? !!data.employeeProfileEnabled : true;
+  const showOnAbout = data.showOnAbout !== undefined ? !!data.showOnAbout : roleRaw === "staff";
+  const showOnBooking =
+    data.showOnBooking !== undefined ? !!data.showOnBooking : roleRaw === "staff";
 
-  const allowedCreateRoles: StaffCreateRole[] = ["staff", "reception", "admin"];
+  const allowedCreateRoles: StaffCreateRole[] = ["staff", "hr", "reception", "admin"];
   const role: StaffCreateRole = allowedCreateRoles.includes(roleRaw as any)
     ? (roleRaw as StaffCreateRole)
     : "staff";
@@ -805,10 +889,11 @@ export const adminCreateStaffUser = onCall({ region: "us-central1" }, async (req
   }
 
   const uid = created.uid;
+  const resolvedEmployeeId = employeeId || uid;
 
   // 2) set custom claims
   const claimRole: UiRole =
-    role === "admin" ? "admin" : role === "reception" ? "reception" : "staff";
+    role === "admin" ? "admin" : role === "hr" ? "hr" : role === "reception" ? "reception" : "staff";
 
   await admin.auth().setCustomUserClaims(uid, { role: claimRole });
 
@@ -840,6 +925,67 @@ export const adminCreateStaffUser = onCall({ region: "us-central1" }, async (req
     : [];
 
   const bio = String(data.bio || "").trim();
+  const isEmployeeRole = ["staff", "hr", "reception", "admin"].includes(role);
+
+  if (isEmployeeRole) {
+    await db
+      .collection("salons")
+      .doc(SALON_ID)
+      .collection("employees")
+      .doc(uid)
+      .set(
+      {
+        uid,
+        linkedUid: uid,
+        linkedUserId: uid,
+        employeeId: resolvedEmployeeId,
+        linkedEmployeeDocId: resolvedEmployeeId,
+        email,
+        userEmail: email,
+        name: displayName,
+        displayName,
+        phone: phone || "",
+        role: claimRole,
+        active: true,
+        isActive: true,
+        employeeProfileEnabled,
+        showOnAbout,
+        showOnBooking,
+        removedFromStaff: false,
+        employmentStatus: "active",
+        department,
+        title,
+        avatarUrl,
+        specialties,
+        bio,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: callerUid,
+        },
+        { merge: true }
+      );
+
+    await db
+      .collection("salons")
+      .doc(SALON_ID)
+      .collection("admin_users")
+      .doc(uid)
+      .set(
+        {
+          uid,
+          email,
+          displayName,
+          phone: phone || "",
+          role: claimRole,
+          active: true,
+          employeeId: resolvedEmployeeId,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          createdBy: callerUid,
+        },
+        { merge: true }
+      );
+  }
 
   if (role === "staff") {
     await db
@@ -849,15 +995,21 @@ export const adminCreateStaffUser = onCall({ region: "us-central1" }, async (req
       .doc(uid)
       .set(
         {
+          employeeId: resolvedEmployeeId,
           name: displayName,
           email,
           phone: phone || "",
           role: "staff",
           isActive: true,
           active: true,
+          department,
+          title,
+          avatarUrl,
           specialties,
           bio,
-          showOnAbout: true,
+          showOnAbout,
+          showOnBooking,
+          employeeProfileEnabled,
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
           createdBy: callerUid,
@@ -872,20 +1024,26 @@ export const adminCreateStaffUser = onCall({ region: "us-central1" }, async (req
       .doc(uid)
       .set(
         {
+          employeeId: resolvedEmployeeId,
           name: displayName,
           email,
           phone: phone || "",
           role, // reception/admin
           isActive: true,
           active: true,
+          department,
+          title,
+          avatarUrl,
           showOnAbout: false,
+          showOnBooking: false,
+          employeeProfileEnabled,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
   }
 
-  return { ok: true, uid, email, role: claimRole, displayName };
+  return { ok: true, uid, employeeId: resolvedEmployeeId, email, role: claimRole, displayName };
 });
 
 /* =========================================================

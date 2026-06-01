@@ -9,8 +9,8 @@ import { resolveDashboardLandingPath } from "../helpers/routePaths";
 import { signOut, type User as FirebaseUser } from "firebase/auth";
 import { auth } from "../services/firebase";
 
-type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "pending" | "guest";
-const KNOWN_ROLES: UiRole[] = ["owner", "admin", "reception", "staff", "client", "pending", "guest"];
+type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "client" | "pending" | "guest";
+const KNOWN_ROLES: UiRole[] = ["owner", "admin", "hr", "reception", "staff", "client", "pending", "guest"];
 
 function normalizeRole(role: any): UiRole {
   const r = String(role || "").toLowerCase().trim();
@@ -210,10 +210,11 @@ const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName 
   const isClient = userRole === "client";
   const isStaff = userRole === "staff";
   const isAdmin = userRole === "admin";
+  const isHr = userRole === "hr";
   const isOwner = userRole === "owner";
   const isReception = userRole === "reception";
 
-  const isDashboardUser = isLoggedIn && (isOwner || isAdmin || isReception || isStaff);
+  const isDashboardUser = isLoggedIn && (isOwner || isAdmin || isHr || isReception || isStaff);
   const dashboardPath = resolveDashboardLandingPath(userRole);
 
   const dropdownItems = useMemo(() => {
@@ -265,20 +266,29 @@ const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName 
     if (isDashboardUser) {
       return (
         <>
-          <Link to={dashboardPath} onClick={() => setIsDropdownOpen(false)}>
-            لوحة التحكم
+          <Link to="/employee/overview" onClick={() => setIsDropdownOpen(false)}>
+            بوابة الموظف
           </Link>
-    
+
+          <Link to={dashboardPath} onClick={() => setIsDropdownOpen(false)}>
+            {isHr ? "لوحة HR" : "لوحة التحكم"}
+          </Link>
+
+          {(isOwner || isAdmin) && (
+            <Link to="/admin" onClick={() => setIsDropdownOpen(false)}>
+              لوحة HR
+            </Link>
+          )}
+
           <button onClick={handleLogout} className="dropdown-logout-btn">
             تسجيل الخروج
           </button>
         </>
       );
     }
-    
 
     return null;
-  }, [isLoggedIn, isClient, isDashboardUser]);
+  }, [isLoggedIn, isClient, isDashboardUser, dashboardPath, isHr, isOwner, isAdmin, handleLogout]);
 
   const hasDropdownContent = !!dropdownItems;
 

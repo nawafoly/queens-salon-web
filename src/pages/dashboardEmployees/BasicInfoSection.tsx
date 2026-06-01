@@ -27,7 +27,14 @@ export default function BasicInfoSection({
 
   return (
     <div className="emp-modal-section">
-      <b className="emp-modal-section-title">المعلومات الأساسية</b>
+      <header className="emp-section-header">
+        <div className="emp-section-header__main">
+          <h3 className="emp-modal-section-title">المعلومات الأساسية</h3>
+          <p className="emp-section-lead">
+            الاسم والحالة وإعدادات الظهور في النظام وصفحة الحجز.
+          </p>
+        </div>
+      </header>
 
       <div className="emp-modal-fields two-cols">
         <div className="dash-field">
@@ -75,9 +82,10 @@ export default function BasicInfoSection({
             <option value="0">لا (مخفية)</option>
           </select>
         </div>
+
         <div className="dash-field">
           <label className="emp-label">الإجازة الأسبوعية الثابتة</label>
-          <div className="emp-field-note">{String(weeklyOffLabel || "لا توجد إجازة أسبوعية ثابتة.")}</div>
+          <div className="emp-field-note is-boxed">{String(weeklyOffLabel || "لا توجد إجازة أسبوعية ثابتة.")}</div>
         </div>
       </div>
     </div>

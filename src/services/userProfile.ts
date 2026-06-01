@@ -18,6 +18,7 @@ import { writeAuditLog } from "./logService";
 export type UiRole =
   | "owner"
   | "admin"
+  | "hr"
   | "reception"
   | "staff"
   | "client"
@@ -69,12 +70,14 @@ function normalizeRole(roleRaw: unknown): UiRole {
   const r = String(roleRaw || "").toLowerCase().trim();
 
   if (r === "administrator") return "admin";
+  if (r === "hr" || r === "human resources" || r === "humanresources") return "hr";
   if (r === "receptionist" || r === "frontdesk" || r === "desk")
     return "reception";
 
   if (
     r === "owner" ||
     r === "admin" ||
+    r === "hr" ||
     r === "reception" ||
     r === "staff" ||
     r === "client" ||
@@ -88,6 +91,7 @@ function normalizeRole(roleRaw: unknown): UiRole {
 }
 
 function buildDefaultName(role: UiRole) {
+  if (role === "hr") return "Human Resources";
   if (role === "owner" || role === "admin") return "مدير الصالون";
   if (role === "reception" || role === "staff") return "موظفة";
   if (role === "client") return "عميلة";
@@ -532,7 +536,7 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
 }
 
 export function canAccessDashboard(role: UiRole): boolean {
-  return role === "owner" || role === "admin" || role === "reception" || role === "staff";
+  return role === "owner" || role === "admin" || role === "hr" || role === "reception" || role === "staff";
 }
 
 // ✅ DEV ONLY: quick whoami

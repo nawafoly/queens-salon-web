@@ -34,89 +34,140 @@ export default function BookingSettingsSection({
 }: BookingSettingsSectionProps) {
   if (!isVisible) return null;
 
+  const firstWeekday = WEEKDAY_OPTIONS[0]?.key;
+
   return (
     <div className="emp-modal-section">
-      <b className="emp-modal-section-title">إعدادات الحجز لهذه الموظفة</b>
-      <div className="emp-modal-fields emp-booking-settings">
-        <div className="emp-booking-subtitle">حالة التوظيف</div>
-        <div className="dash-field booking-card booking-full">
-          <label className="emp-label">آخر يوم دوام (في الصالون) – استقالة أو موظفة موسمية</label>
-          <input
-            className="dash-input"
-            type="date"
-            value={employmentEndDate}
-            disabled={busy}
-            onChange={(e) => onEmploymentEndDateChange(e.target.value)}
-          />
-          <div className="emp-field-note danger">بعد هذا التاريخ لن تظهر الموظفة نهائيًا في صفحة الحجز.</div>
+      <header className="emp-section-header">
+        <div className="emp-section-header__main">
+          <h3 className="emp-modal-section-title">إعدادات الحجز</h3>
+          <p className="emp-section-lead">
+            حدّدي جدول العمل وتاريخ انتهاء التوظيف. ساعات العمل الخاصة تُفعَّل فقط عند اختلافها عن بقية الفريق.
+          </p>
         </div>
+      </header>
 
-        <div className="emp-booking-subtitle">ساعات الدوام الخاصة</div>
-        <div className="dash-field booking-card booking-full">
-          <label className="emp-label emp-check-label">
-            <input
-              type="checkbox"
-              checked={modalUseCustomWorkingHours}
-              disabled={busy}
-              onChange={(e) => onModalUseCustomWorkingHoursChange(e.target.checked)}
-            />
-            ساعات عمل خاصة لهذه الموظفة
-          </label>
-        </div>
-
-        {modalUseCustomWorkingHours ? (
-          <div className="dash-field booking-card booking-full emp-working-hours-block">
-            <label className="emp-label">الساعات الأسبوعية</label>
-            <div className="emp-field-note">عدلي يوم واحد ثم اضغطي "نسخ لكل الأيام" لتطبيق نفس الإعداد على كل الأسبوع.</div>
-            <div className="emp-working-week-grid">
-              {WEEKDAY_OPTIONS.map((day) => {
-                const row = modalCustomWorkingHours[day.key] || {
-                  enabled: true,
-                  start: "10:00",
-                  end: "22:00",
-                };
-
-                return (
-                  <div key={`work_${day.key}`} className="emp-working-day-row">
-                    <div className="emp-working-day-name">{day.label}</div>
-                    <label className="emp-mini-check">
-                      <input
-                        type="checkbox"
-                        checked={row.enabled !== false}
-                        disabled={busy}
-                        onChange={(e) => onUpdateModalWorkingDay(day.key, { enabled: e.target.checked })}
-                      />
-                      <span>دوام</span>
-                    </label>
-                    <input
-                      className="dash-input"
-                      type="time"
-                      value={normalizeTimeHHMM(row.start) || "10:00"}
-                      disabled={loading || row.enabled === false}
-                      onChange={(e) => onUpdateModalWorkingDay(day.key, { start: e.target.value })}
-                    />
-                    <input
-                      className="dash-input"
-                      type="time"
-                      value={normalizeTimeHHMM(row.end) || "22:00"}
-                      disabled={loading || row.enabled === false}
-                      onChange={(e) => onUpdateModalWorkingDay(day.key, { end: e.target.value })}
-                    />
-                    <button
-                      type="button"
-                      className="exp-btn ghost sm emp-working-copy-btn"
-                      disabled={busy}
-                      onClick={() => onCopyModalWorkingDayToAll(day.key)}
-                      title={`نسخ ساعات ${day.label} لكل الأيام`}
-                    >
-                      نسخ لكل الأيام
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+      <div className="emp-form-grid">
+        <section className="emp-panel">
+          <div className="emp-panel-head">
+            <h4 className="emp-panel-title">حالة التوظيف</h4>
           </div>
-        ) : null}
+          <div className="dash-field">
+            <label className="emp-label">آخر يوم دوام (استقالة أو موسمية)</label>
+            <input
+              className="dash-input"
+              type="date"
+              value={employmentEndDate}
+              disabled={busy}
+              onChange={(e) => onEmploymentEndDateChange(e.target.value)}
+            />
+            <div className="emp-field-note danger">بعد هذا التاريخ لن تظهر الموظفة في صفحة الحجز.</div>
+          </div>
+        </section>
+
+        <section className="emp-panel">
+          <div className="emp-panel-head">
+            <h4 className="emp-panel-title">ساعات الدوام</h4>
+          </div>
+          <div className="emp-toggle-row">
+            <label className="emp-label emp-check-label">
+              <input
+                type="checkbox"
+                checked={modalUseCustomWorkingHours}
+                disabled={busy}
+                onChange={(e) => onModalUseCustomWorkingHoursChange(e.target.checked)}
+              />
+              تفعيل ساعات عمل خاصة لهذه الموظفة
+            </label>
+          </div>
+
+          {modalUseCustomWorkingHours ? (
+            <div className="emp-working-table-wrap">
+              <div className="emp-working-table-toolbar">
+                <span>عدّلي يومًا واحدًا ثم انسخي الإعداد على بقية الأسبوع.</span>
+                {firstWeekday ? (
+                  <button
+                    type="button"
+                    className="exp-btn ghost sm"
+                    disabled={busy}
+                    onClick={() => onCopyModalWorkingDayToAll(firstWeekday)}
+                  >
+                    نسخ {WEEKDAY_OPTIONS[0]?.label} لكل الأيام
+                  </button>
+                ) : null}
+              </div>
+              <table className="emp-working-table">
+                <thead>
+                  <tr>
+                    <th scope="col">اليوم</th>
+                    <th scope="col">دوام</th>
+                    <th scope="col">من</th>
+                    <th scope="col">إلى</th>
+                    <th scope="col">نسخ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {WEEKDAY_OPTIONS.map((day) => {
+                    const row = modalCustomWorkingHours[day.key] || {
+                      enabled: true,
+                      start: "10:00",
+                      end: "22:00",
+                    };
+                    const isOff = row.enabled === false;
+
+                    return (
+                      <tr key={`work_${day.key}`} className={isOff ? "is-off" : undefined}>
+                        <td className="day-cell" data-label="اليوم">
+                          {day.label}
+                        </td>
+                        <td data-label="دوام">
+                          <label className="emp-mini-check">
+                            <input
+                              type="checkbox"
+                              checked={row.enabled !== false}
+                              disabled={busy}
+                              onChange={(e) => onUpdateModalWorkingDay(day.key, { enabled: e.target.checked })}
+                            />
+                            <span>دوام</span>
+                          </label>
+                        </td>
+                        <td data-label="من">
+                          <input
+                            className="dash-input"
+                            type="time"
+                            value={normalizeTimeHHMM(row.start) || "10:00"}
+                            disabled={loading || isOff}
+                            onChange={(e) => onUpdateModalWorkingDay(day.key, { start: e.target.value })}
+                          />
+                        </td>
+                        <td data-label="إلى">
+                          <input
+                            className="dash-input"
+                            type="time"
+                            value={normalizeTimeHHMM(row.end) || "22:00"}
+                            disabled={loading || isOff}
+                            onChange={(e) => onUpdateModalWorkingDay(day.key, { end: e.target.value })}
+                          />
+                        </td>
+                        <td data-label="نسخ">
+                          <button
+                            type="button"
+                            className="exp-btn ghost sm emp-working-copy-btn"
+                            disabled={busy}
+                            onClick={() => onCopyModalWorkingDayToAll(day.key)}
+                            title={`نسخ ساعات ${day.label} لكل الأيام`}
+                          >
+                            نسخ
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </section>
 
         {modalUseCustomWorkingHours ? (
           <WorkHourOverridesEditor

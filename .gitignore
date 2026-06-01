@@ -29,3 +29,6 @@ dist-ssr
 1.txt
 
 .vercel
+
+.vercel
+.env*.local

@@ -1,13 +1,10 @@
-
-
-// src/helpers/permissions.ts
-
 export type UserRole =
   | "owner"
   | "admin"
+  | "hr"
   | "reception"
   | "staff"
-  | "pending" // ✅ حساب بانتظار التفعيل
+  | "pending"
   | "guest";
 
 export type Permission =
@@ -21,10 +18,6 @@ export type Permission =
   | "SETTINGS_MANAGE"
   | "USERS_MANAGE";
 
-/**
- * صلاحيات كل دور
- * ⚠️ pending و guest بدون أي صلاحيات
- */
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   owner: [
     "BOOKINGS_VIEW",
@@ -37,7 +30,6 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "SETTINGS_MANAGE",
     "USERS_MANAGE",
   ],
-
   admin: [
     "BOOKINGS_VIEW",
     "BOOKINGS_UPDATE_STATUS",
@@ -47,60 +39,28 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "OFFERS_MANAGE",
     "REPORTS_VIEW",
   ],
-
-  reception: [
-    "BOOKINGS_VIEW",
-    "BOOKINGS_UPDATE_STATUS",
-    "BOOKINGS_ADD_NOTES",
-  ],
-
+  hr: ["BOOKINGS_VIEW", "EMPLOYEES_MANAGE", "REPORTS_VIEW", "USERS_MANAGE"],
+  reception: ["BOOKINGS_VIEW", "BOOKINGS_UPDATE_STATUS", "BOOKINGS_ADD_NOTES"],
   staff: ["BOOKINGS_VIEW"],
-
-  pending: [], // ✅ لا صلاحيات حتى يتم التفعيل
-
+  pending: [],
   guest: [],
 };
 
-/**
- * تحويل نص الدور إلى قيمة آمنة
- */
 export function getUserRole(rawRole?: string): UserRole {
   const raw = String(rawRole || "").toLowerCase().trim();
 
-  // pending (بانتظار التفعيل)
-  if (
-    raw === "pending" ||
-    raw === "معلق" ||
-    raw === "بانتظار" ||
-    raw === "بانتظار التفعيل"
-  ) {
-    return "pending";
-  }
-
-  // owner
-  if (raw === "owner" || raw === "اونر" || raw === "مالك") return "owner";
-
-  // admin
-  if (raw === "admin" || raw === "ادمن" || raw === "مدير") return "admin";
-
-  // reception
-  if (
-    raw === "reception" ||
-    raw === "رسبشن" ||
-    raw === "استقبال"
-  ) {
+  if (raw === "pending") return "pending";
+  if (raw === "owner" || raw === "owner-role" || raw === "malik") return "owner";
+  if (raw === "admin" || raw === "administrator" || raw === "manager") return "admin";
+  if (raw === "hr" || raw === "human resources" || raw === "humanresources") return "hr";
+  if (raw === "reception" || raw === "receptionist" || raw === "frontdesk" || raw === "desk") {
     return "reception";
   }
-
-  // staff
-  if (raw === "staff" || raw === "ستاف" || raw === "موظفة") return "staff";
+  if (raw === "staff") return "staff";
 
   return "guest";
 }
 
-/**
- * التحقق من صلاحية معيّنة
- */
 export function can(permission: Permission, role?: UserRole): boolean {
   const r = role ?? "guest";
   return ROLE_PERMISSIONS[r]?.includes(permission) ?? false;

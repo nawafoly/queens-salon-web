@@ -1605,7 +1605,8 @@ const Dashboard: React.FC = () => {
         step = "profile:mapRoleToDashboardRole";
         const dashRole = mapProfileRoleToDashboardRole(profile.role);
         if (!dashRole) {
-          navigate(isMalikatAuth ? "/dashboard-pending" : "/profile");
+          const normalizedRole = String(profile.role || "").toLowerCase().trim();
+          navigate(normalizedRole === "hr" ? "/admin" : isMalikatAuth ? "/dashboard-pending" : "/profile");
           return;
         }
 
@@ -2568,19 +2569,6 @@ const Dashboard: React.FC = () => {
                 {hasAdminPower && (
                   <li>
                     <NavLink
-                      to="/dashboard/employees"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faUserTie} />
-                      الموظفات
-                    </NavLink>
-                  </li>
-                )}
-
-                {hasAdminPower && (
-                  <li>
-                    <NavLink
                       to="/dashboard/offers"
                       className="nav-link"
                       onClick={() => setIsSidebarOpen(false)}
@@ -2700,6 +2688,38 @@ const Dashboard: React.FC = () => {
                 <FontAwesomeIcon icon={faHouse} />
                 الصفحة الرئيسية
               </button>
+
+              {(isStaff || hasAdminPower || isReception) && (
+                <button
+                  className="exp-btn hr"
+                  type="button"
+                  onClick={() => {
+                    setIsSidebarOpen(false);
+                    navigate("/employee/overview");
+                  }}
+                  title="بوابة الموظف"
+                  aria-label="بوابة الموظف"
+                >
+                  <FontAwesomeIcon icon={faUserTie} />
+                  بوابة الموظف
+                </button>
+              )}
+
+              {hasAdminPower && (
+                <button
+                  className="exp-btn hr"
+                  type="button"
+                  onClick={() => {
+                    setIsSidebarOpen(false);
+                    navigate("/admin");
+                  }}
+                  title="لوحة HR"
+                  aria-label="لوحة HR"
+                >
+                  <FontAwesomeIcon icon={faUserShield} />
+                  لوحة HR
+                </button>
+              )}
 
               <button className="exp-btn logout" onClick={handleLogout} type="button">
                 <FontAwesomeIcon icon={faSignOutAlt} />

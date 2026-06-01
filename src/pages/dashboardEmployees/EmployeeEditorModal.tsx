@@ -2,12 +2,11 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 
 import Modal from "../../components/Modal";
-import type { EmployeeModalTab, EmployeeMode, StaffPublicUi } from "./shared";
+import type { EmployeeModalTab, StaffPublicUi } from "./shared";
 
 type EmployeeEditorModalProps = {
   isOpen: boolean;
-  selectedEmployeeId: string | null;
-  mode: EmployeeMode;
+  canManage: boolean;
   busy: boolean;
   saving: boolean;
   editId: string | null;
@@ -23,8 +22,7 @@ type EmployeeEditorModalProps = {
 
 export default function EmployeeEditorModal({
   isOpen,
-  selectedEmployeeId,
-  mode,
+  canManage,
   busy,
   saving,
   editId,
@@ -49,16 +47,16 @@ export default function EmployeeEditorModal({
       inline
       closeOnOverlayClick={false}
     >
-      {!selectedEmployeeId ? (
+      {!editId ? (
         <div className="modal-head">
-          <h3>{editId ? `تعديل موظفة - ${editingStaff?.name || name || "-"}` : "إضافة موظفة"}</h3>
+          <h3>إضافة موظفة</h3>
           <button className="exp-btn ghost sm" type="button" onClick={onClose}>
             <FontAwesomeIcon icon={faXmark} />
           </button>
         </div>
       ) : null}
 
-      {!selectedEmployeeId ? (
+      {!editId ? (
         <div className="emp-modal-tabs">
           {modalTabs.map((tab) => (
             <button
@@ -73,16 +71,16 @@ export default function EmployeeEditorModal({
         </div>
       ) : null}
 
-      <fieldset className="emp-inline-fieldset" disabled={!!selectedEmployeeId && mode !== "edit"}>
+      <fieldset className="emp-inline-fieldset" disabled={!canManage}>
         <div className="modal-body emp-modal-grid">{children}</div>
 
-        {mode === "edit" || !selectedEmployeeId ? (
+        {!editId && canManage ? (
           <div className="modal-foot">
             <button className="exp-btn" onClick={onClose} type="button">
               إلغاء
             </button>
             <button className="exp-btn primary" onClick={onSave} disabled={busy} type="button">
-              {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+              {saving ? "جارٍ الحفظ..." : "إنشاء الموظفة"}
             </button>
           </div>
         ) : null}

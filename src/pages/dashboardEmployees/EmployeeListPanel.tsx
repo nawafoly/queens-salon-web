@@ -20,6 +20,7 @@ type EmployeeListPanelProps = {
   statsLoading: boolean;
   bookingStats: Record<string, StaffBookingStats>;
   selectedEmployeeId: string | null;
+  canManage: boolean;
   onQTextChange: (value: string) => void;
   onOnlyActiveChange: (value: "all" | "active" | "inactive") => void;
   onSpecialtyFilterChange: (value: string) => void;
@@ -38,6 +39,7 @@ export default function EmployeeListPanel({
   statsLoading,
   bookingStats,
   selectedEmployeeId,
+  canManage,
   onQTextChange,
   onOnlyActiveChange,
   onSpecialtyFilterChange,
@@ -87,9 +89,13 @@ export default function EmployeeListPanel({
             </select>
           </div>
           <div className="dash-actions">
-            <button className="exp-btn primary" type="button" onClick={onCreateEmployee}>
-              إضافة موظفة
-            </button>
+            {canManage ? (
+              <button className="exp-btn primary" type="button" onClick={onCreateEmployee}>
+                إضافة موظفة
+              </button>
+            ) : (
+              <span className="emp-meta-chip">عرض فقط</span>
+            )}
           </div>
         </div>
       </div>

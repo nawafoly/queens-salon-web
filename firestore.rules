@@ -97,6 +97,14 @@ service cloud.firestore {
         ]);
     }
 
+    function isHrManagementForSalon(salonId) {
+      return isBootstrapAdmin() || roleForSalon(salonId) in ["owner", "admin", "hr"];
+    }
+
+    function isEmployeeManagementForSalon(salonId) {
+      return isBootstrapAdmin() || roleForSalon(salonId) in ["owner", "admin", "hr", "reception", "staff"];
+    }
+
     function isOwnStaffBookingDoc(d) {
       return (
         (
@@ -312,7 +320,6 @@ service cloud.firestore {
       allow update: if isHrLeaveBalanceUpdateForSalon(salonId);
 
       allow create: if signedIn()
-        && request.auth.uid == uid
         && request.auth.token.email is string
         && request.auth.token.email.lower().matches(".*@malikat\\.com$")
         && request.resource.data.keys().hasOnly([
@@ -334,13 +341,254 @@ service cloud.firestore {
         && request.resource.data.active == false;
 
       allow update: if signedIn()
-        && request.auth.uid == uid
         && request.auth.token.email is string
         && request.auth.token.email.lower().matches(".*@malikat\\.com$")
+        && resource.data.linkedUid == request.auth.uid
         && (
           (!("role" in request.resource.data) || request.resource.data.role == resource.data.role)
           && (!("active" in request.resource.data) || request.resource.data.active == resource.data.active)
         );
+    }
+
+    /* =========================
+       HR collections
+    ========================= */
+    match /salons/{salonId}/employees/{employeeId} {
+      allow read: if signedIn() && (
+        isEmployeeManagementForSalon(salonId)
+        || (resource.data.uid is string && resource.data.uid == request.auth.uid)
+        || (resource.data.linkedUid is string && resource.data.linkedUid == request.auth.uid)
+        || (resource.data.employeeId is string && resource.data.employeeId == request.auth.uid)
+      );
+
+      allow create: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (
+          roleForSalon(salonId) in ["owner", "admin", "hr", "reception", "staff"]
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.linkedUid == request.auth.uid
+          && request.resource.data.employeeId == employeeId
+          && request.resource.data.role == roleForSalon(salonId)
+        )
+      );
+
+      allow update: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (
+          request.resource.data.uid == request.auth.uid
+          && request.resource.data.linkedUid == request.auth.uid
+          && request.resource.data.employeeId == employeeId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.active == resource.data.active
+          && request.resource.data.isActive == resource.data.isActive
+          && request.resource.data.removedFromStaff == resource.data.removedFromStaff
+          && request.resource.data.employmentStatus == resource.data.employmentStatus
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "name",
+            "displayName",
+            "phone",
+            "department",
+            "title",
+            "avatarUrl",
+            "bio",
+            "specialties",
+            "employeeProfileEnabled",
+            "showOnAbout",
+            "showOnBooking",
+            "email",
+            "userEmail",
+            "updatedAt"
+          ])
+        )
+      );
+
+      allow delete: if signedIn() && isHrManagementForSalon(salonId);
+    }
+
+    match /salons/{salonId}/admin_users/{uid} {
+      allow read: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (resource.data.uid is string && resource.data.uid == request.auth.uid)
+        || (resource.data.employeeId is string && resource.data.employeeId == request.auth.uid)
+      );
+
+      allow create: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (
+          roleForSalon(salonId) in ["owner", "admin", "hr", "reception", "staff"]
+          && request.resource.data.uid == request.auth.uid
+        )
+      );
+
+      allow update: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (
+          request.resource.data.uid == request.auth.uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.active == resource.data.active
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "displayName",
+            "name",
+            "phone",
+            "email",
+            "employeeId",
+            "updatedAt"
+          ])
+        )
+      );
+
+      allow delete: if signedIn() && isHrManagementForSalon(salonId);
+    }
+
+    match /salons/{salonId}/employee_messages/{messageId} {
+      allow read: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (resource.data.senderUid is string && resource.data.senderUid == request.auth.uid)
+        || (resource.data.recipientUid is string && resource.data.recipientUid == request.auth.uid)
+      );
+
+      allow create: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (
+          request.resource.data.senderUid is string
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.recipientUid is string
+          && request.resource.data.conversationId is string
+          && request.resource.data.body is string
+        )
+      );
+
+      allow update: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (resource.data.senderUid is string && resource.data.senderUid == request.auth.uid)
+        || (resource.data.recipientUid is string && resource.data.recipientUid == request.auth.uid)
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "readBy",
+        "updatedAt"
+      ]);
+
+      allow delete: if signedIn() && isHrManagementForSalon(salonId);
+    }
+
+    match /salons/{salonId}/employee_files/{fileId} {
+      allow read: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (resource.data.employeeUid is string && resource.data.employeeUid == request.auth.uid)
+        || (resource.data.createdByUid is string && resource.data.createdByUid == request.auth.uid)
+      );
+
+      allow create: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (
+          request.resource.data.employeeUid is string
+          && request.resource.data.employeeUid == request.auth.uid
+        )
+      );
+
+      allow update: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (resource.data.employeeUid is string && resource.data.employeeUid == request.auth.uid)
+        || (resource.data.createdByUid is string && resource.data.createdByUid == request.auth.uid)
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "status",
+        "notes",
+        "readBy",
+        "updatedAt"
+      ]);
+
+      allow delete: if signedIn() && isHrManagementForSalon(salonId);
+    }
+
+    match /salons/{salonId}/employee_leave_requests/{requestId} {
+      allow read: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (resource.data.employeeUid is string && resource.data.employeeUid == request.auth.uid)
+        || (resource.data.createdByUid is string && resource.data.createdByUid == request.auth.uid)
+      );
+
+      allow create: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (
+          request.resource.data.employeeUid is string
+          && request.resource.data.employeeUid == request.auth.uid
+        )
+      );
+
+      allow update, delete: if signedIn() && isHrManagementForSalon(salonId);
+    }
+
+    match /salons/{salonId}/employee_absences/{absenceId} {
+      allow read: if signedIn() && (
+        isEmployeeManagementForSalon(salonId)
+        || (resource.data.employeeUid is string && resource.data.employeeUid == request.auth.uid)
+      );
+
+      allow write: if signedIn() && isHrManagementForSalon(salonId);
+    }
+
+    match /salons/{salonId}/employee_payroll_records/{recordId} {
+      allow read: if signedIn() && (
+        isEmployeeManagementForSalon(salonId)
+        || (resource.data.employeeUid is string && resource.data.employeeUid == request.auth.uid)
+      );
+
+      allow write: if signedIn() && isHrManagementForSalon(salonId);
+    }
+
+    match /salons/{salonId}/notifications/{notificationId} {
+      allow read: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (resource.data.targetUid is string && resource.data.targetUid == request.auth.uid)
+        || (
+          resource.data.targetEmployeeId is string
+          && resource.data.targetEmployeeId == request.auth.uid
+        )
+      );
+
+      allow create: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (
+          (request.resource.data.targetUid is string && request.resource.data.targetUid == request.auth.uid)
+          || (
+            request.resource.data.targetEmployeeId is string
+            && request.resource.data.targetEmployeeId == request.auth.uid
+          )
+        )
+      );
+
+      allow update: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (resource.data.targetUid is string && resource.data.targetUid == request.auth.uid)
+        || (
+          resource.data.targetEmployeeId is string
+          && resource.data.targetEmployeeId == request.auth.uid
+        )
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "isRead",
+        "readAt",
+        "readBy",
+        "updatedAt"
+      ]);
+
+      allow delete: if signedIn() && isHrManagementForSalon(salonId);
+    }
+
+    match /salons/{salonId}/weekly_reports/{reportId} {
+      allow read: if signedIn() && (
+        isHrManagementForSalon(salonId)
+        || (resource.data.recipientUid is string && resource.data.recipientUid == request.auth.uid)
+        || (
+          resource.data.recipientEmail is string
+          && request.auth.token.email is string
+          && resource.data.recipientEmail.lower() == request.auth.token.email.lower()
+        )
+      );
+
+      allow write: if signedIn() && isHrManagementForSalon(salonId);
+    }
+
+    match /salons/{salonId}/job_applications/{applicationId} {
+      allow read, create, update, delete: if signedIn() && isHrManagementForSalon(salonId);
     }
 
     /* =========================
@@ -720,6 +968,16 @@ service cloud.firestore {
         && colName != "income"
         && colName != "expenses"
         && colName != "logs"
+        && colName != "employees"
+        && colName != "admin_users"
+        && colName != "employee_messages"
+        && colName != "employee_files"
+        && colName != "employee_leave_requests"
+        && colName != "employee_absences"
+        && colName != "employee_payroll_records"
+        && colName != "notifications"
+        && colName != "weekly_reports"
+        && colName != "job_applications"
         && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"])
       );
     }

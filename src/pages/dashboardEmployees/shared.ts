@@ -71,6 +71,10 @@ export type WorkingHourOverrideApplyMethod = "replace" | "merge";
 export type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 
 export type StaffPublicDoc = {
+  uid?: string;
+  linkedUid?: string;
+  linkedUserId?: string;
+  employeeId?: string;
   name: string;
   active: boolean;
   employmentEndDate?: string;

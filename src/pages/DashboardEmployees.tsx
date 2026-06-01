@@ -29,6 +29,7 @@ import {
 } from "../services/firestoreLeaveBalance";
 import { writeAuditLog } from "../services/logService";
 import { AppSettingsService } from "../services/AppSettingsService";
+import { createEmployeeNotification } from "../services/employeeHub";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
 import "../styles/DashboardEmployees.css";
 import BasicInfoSection from "./dashboardEmployees/BasicInfoSection";
@@ -141,6 +142,19 @@ import {
   type WorkingHourOverrideMode,
   type WorkingHourOverrideQuickMode,
 } from "./dashboardEmployees/shared";
+
+function cleanText(value: unknown) {
+  return String(value || "").trim();
+}
+
+function resolveStaffNotificationTarget(staff?: StaffPublicUi | null) {
+  const targetUid = cleanText((staff as any)?.linkedUid || (staff as any)?.uid || (staff as any)?.linkedUserId || "");
+  return {
+    targetUid,
+    targetEmployeeId: targetUid || cleanText(staff?.id || ""),
+  };
+}
+
 export default function DashboardEmployees() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthUser());
   const canAccessEmployeesDashboard =
@@ -357,7 +371,7 @@ export default function DashboardEmployees() {
     setSelectedEmployeeId(x.id);
     setActiveTab("basic");
     setActiveStatsSubTab("payroll");
-    setMode("view");
+    setMode("edit");
     setEditId(x.id);
     setModalTab("basic");
     setName(x.name ?? "");
@@ -486,6 +500,10 @@ export default function DashboardEmployees() {
           const payrollCfg = normalizePayrollConfig(data);
           const row: StaffPublicUi = {
             id: d.id,
+            uid: String(data?.uid || "").trim(),
+            linkedUid: String(data?.linkedUid || "").trim(),
+            linkedUserId: String(data?.linkedUserId || "").trim(),
+            employeeId: String(data?.employeeId || "").trim(),
             name: data?.name ?? "",
             active: data?.active !== false,
             showOnAbout: data?.showOnAbout !== false,
@@ -746,7 +764,7 @@ export default function DashboardEmployees() {
     setSelectedEmployeeId(null);
     setEditId(null);
     setIsOpen(false);
-    setMode("view");
+    setMode("edit");
   }, [list, selectedEmployeeId]);
 
   useEffect(() => {
@@ -841,6 +859,15 @@ export default function DashboardEmployees() {
       }
     }
 
+    const previousEditSnapshot = editId
+      ? {
+          active: !!editingStaff?.active,
+          onLeave: !!(editingStaff as any)?.onLeave,
+          leaveUntil: normalizeLeaveUntil((editingStaff as any)?.leaveUntil),
+          leaveNote: String((editingStaff as any)?.leaveNote || "").trim(),
+          employmentEndDate: normalizeLeaveUntil((editingStaff as any)?.employmentEndDate),
+        }
+      : null;
 
     setSaving(true);
     setErrorMsg("");
@@ -906,10 +933,35 @@ export default function DashboardEmployees() {
       } else {
         await updateDoc(staffPublicDoc(editId), payload as any);
       }
-      if (!selectedEmployeeId) {
+
+      if (previousEditSnapshot && editingStaff) {
+        const leaveChanged =
+          previousEditSnapshot.onLeave !== effectiveModalOnLeave ||
+          previousEditSnapshot.leaveUntil !== normalizedModalLeaveUntil ||
+          previousEditSnapshot.leaveNote !== String(modalLeaveNote || "").trim();
+        const employmentChanged =
+          previousEditSnapshot.active !== !!active ||
+          previousEditSnapshot.employmentEndDate !== normalizedEmploymentEndDate;
+
+        if (leaveChanged || employmentChanged) {
+          const target = resolveStaffNotificationTarget(editingStaff);
+          await createEmployeeNotification({
+            targetUid: target.targetUid || undefined,
+            targetEmployeeId: target.targetEmployeeId || undefined,
+            type: leaveChanged ? "leave" : "system",
+            title: leaveChanged ? "تم تحديث حالة الإجازة" : "تم تحديث حالة الموظفة",
+            body: leaveChanged
+              ? `${effectiveModalOnLeave ? "في إجازة" : "متاحة للعمل"}${normalizedModalLeaveUntil ? ` حتى ${normalizedModalLeaveUntil}` : ""}${String(modalLeaveNote || "").trim() ? ` - ${String(modalLeaveNote || "").trim()}` : ""}`
+              : `${!!active ? "نشطة" : "غير نشطة"}${normalizedEmploymentEndDate ? ` - ينتهي التوظيف في ${normalizedEmploymentEndDate}` : ""}`,
+            route: leaveChanged ? "/employee/leave" : "/employee/profile",
+          }).catch(() => {});
+        }
+      }
+
+      if (!editId) {
         closeModal();
       } else {
-        setMode("view");
+        setMode("edit");
       }
       await load();
     } catch (e) {
@@ -930,7 +982,7 @@ export default function DashboardEmployees() {
         setSelectedEmployeeId(null);
         setEditId(null);
         setIsOpen(false);
-        setMode("view");
+        setMode("edit");
       }
       await load();
     } catch (e) {
@@ -978,6 +1030,14 @@ export default function DashboardEmployees() {
     : selectedEmployee?.active
       ? "on"
       : "off";
+  const isEmployeeOnLeave = (employee: { onLeave?: boolean; leaveUntil?: string }) => {
+    const leaveUntil = normalizeLeaveUntil(employee?.leaveUntil);
+    return !!employee?.onLeave && (!leaveUntil || leaveUntil >= todayIso());
+  };
+  const totalEmployeeCount = list.length;
+  const availableEmployeeCount = list.filter((employee) => employee.active && !isEmployeeOnLeave(employee)).length;
+  const leaveEmployeeCount = list.filter((employee) => isEmployeeOnLeave(employee)).length;
+  const inactiveEmployeeCount = list.filter((employee) => !employee.active).length;
   const showPayrollSubTab = !selectedEmployeeId || activeStatsSubTab === "payroll";
   const showStatsSubTab = !selectedEmployeeId || activeStatsSubTab === "stats";
 
@@ -1868,6 +1928,14 @@ export default function DashboardEmployees() {
         { key: "services", label: "الخدمات" },
         { key: "profile", label: "الملف" },
       ];
+  const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string }> = [
+    { key: "basic", label: "الأساسيات", hint: "الاسم، الحالة، والظهور" },
+    { key: "booking", label: "الدوام", hint: "جدول العمل والاستثناءات" },
+    { key: "services", label: "الخدمات", hint: "الخدمات التي تقدمها" },
+    { key: "profile", label: "الملف", hint: "الصورة، النبذة، والسيرة" },
+    { key: "payroll", label: "الراتب", hint: "الأوفر تايم والرواتب" },
+    { key: "stats", label: "الإجازات والسجل", hint: "الرصيد والحركات" },
+  ];
   const modalLeaveExpired = useMemo(() => {
     const leaveUntil = normalizeLeaveUntil(modalLeaveUntil);
     return !!leaveUntil && leaveUntil < todayIso();
@@ -2447,6 +2515,16 @@ export default function DashboardEmployees() {
           staffName: editingStaff.name,
         },
       });
+
+      const target = resolveStaffNotificationTarget(editingStaff);
+      await createEmployeeNotification({
+        targetUid: target.targetUid || undefined,
+        targetEmployeeId: target.targetEmployeeId || undefined,
+        type: "leave",
+        title: mode === "add" ? "تمت إضافة رصيد إجازة" : "تم خصم رصيد إجازة",
+        body: `العملية ${mode === "add" ? "إضافة" : "خصم"} ${days} يوم. الرصيد الحالي: ${result.leaveBalanceDays} يوم.`,
+        route: "/employee/leave",
+      }).catch(() => {});
     } catch (e) {
       setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ حركة الإجازة."));
     } finally {
@@ -2570,6 +2648,8 @@ export default function DashboardEmployees() {
 
   const openCreateEmployee = () => {
     resetForm();
+    setSelectedEmployeeId(null);
+    setMode("edit");
     setIsOpen(true);
   };
   const handleSplitTabChange = (tab: EmployeeSplitTab) => {
@@ -2596,7 +2676,7 @@ export default function DashboardEmployees() {
       setModalTab(currentModalTab);
       setActiveStatsSubTab(currentStatsTab);
     }
-    setMode("view");
+    setMode("edit");
   };
   const modalOverrideEditor = {
     modalHourOverrideMode,
@@ -2661,15 +2741,19 @@ export default function DashboardEmployees() {
       <div className="container">
         <div className="dash-topbar dash-topbar--sticky">
           <div className="dash-topbar-title">
+            <p className="emp-topbar-kicker">Human Resources</p>
             <h2>
               <FontAwesomeIcon icon={faUserTie} /> إدارة الموظفات
             </h2>
             <p className="dash-sub">
-              المصدر: <b>salons/main/staff_public</b>
+              شاشة عملية لإدارة الملفات الوظيفية، الحضور، الرواتب، والخدمات من مكان واحد.
             </p>
           </div>
 
           <div className="dash-topbar-actions">
+            <button className="exp-btn primary" type="button" onClick={openCreateEmployee}>
+              + إضافة موظفة
+            </button>
             {authUser?.role === "owner" && (
               <button
                 className="exp-btn ghost"
@@ -2689,6 +2773,30 @@ export default function DashboardEmployees() {
             </button>
           </div>
         </div>
+
+        <section className="emp-summary-strip" aria-label="إحصاءات سريعة">
+          <div className="emp-topbar-metrics">
+            <div className="emp-topbar-metric">
+              <span>إجمالي الملفات</span>
+              <strong>{totalEmployeeCount}</strong>
+            </div>
+            <div className="emp-topbar-metric">
+              <span>متاحة اليوم</span>
+              <strong>{availableEmployeeCount}</strong>
+            </div>
+            <div className="emp-topbar-metric">
+              <span>في إجازة</span>
+              <strong>{leaveEmployeeCount}</strong>
+            </div>
+            <div className="emp-topbar-metric">
+              <span>غير نشطة</span>
+              <strong>{inactiveEmployeeCount}</strong>
+            </div>
+          </div>
+          <p className="emp-topbar-source">
+            المصدر: <b>salons/main/staff_public</b>
+          </p>
+        </section>
 
         {errorMsg && (
           <div className="alert alert-danger mt-3" style={{ borderRadius: 14 }}>
@@ -2710,11 +2818,12 @@ export default function DashboardEmployees() {
               bookingStats={bookingStats}
               selectedEmployeeId={selectedEmployeeId}
               onQTextChange={setQText}
-              onOnlyActiveChange={setOnlyActive}
-              onSpecialtyFilterChange={setSpecialtyFilter}
-              onCreateEmployee={openCreateEmployee}
-              onOpenEmployee={openEdit}
-            />
+            onOnlyActiveChange={setOnlyActive}
+            onSpecialtyFilterChange={setSpecialtyFilter}
+            canManage={canManage}
+            onCreateEmployee={openCreateEmployee}
+            onOpenEmployee={openEdit}
+          />
           </div>
 
           <EmployeeDetailShell
@@ -2722,19 +2831,18 @@ export default function DashboardEmployees() {
             selectedEmployee={selectedEmployee}
             selectedEmployeeStatusLabel={selectedEmployeeStatusLabel}
             selectedEmployeeStatusClass={selectedEmployeeStatusClass}
-            mode={mode}
             busy={busy}
             activeTab={activeTab}
+            tabs={detailTabs}
+            canManage={canManage}
             onSave={save}
-            onStartEdit={() => setMode("edit")}
             onDelete={() => selectedEmployeeId && remove(selectedEmployeeId)}
             onCancelEdit={handleCancelEdit}
             onTabChange={handleSplitTabChange}
           >
             <EmployeeEditorModal
               isOpen={isOpen}
-              selectedEmployeeId={selectedEmployeeId}
-              mode={mode}
+              canManage={canManage}
               busy={busy}
               saving={saving}
               editId={editId}

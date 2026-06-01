@@ -1192,6 +1192,19 @@
   );
 }
 
+/* زر HR */
+.dashboard-skin .sidebar-footer .exp-btn.hr {
+  background: linear-gradient(135deg, rgba(255, 232, 168, 0.18), rgba(243, 182, 31, 0.28));
+  border-color: rgba(243, 182, 31, 0.26);
+  color: #1a1302;
+  box-shadow: 0 16px 28px rgba(243, 182, 31, 0.14);
+}
+
+.dashboard-skin .sidebar-footer .exp-btn.hr:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, rgba(255, 232, 168, 0.24), rgba(243, 182, 31, 0.34));
+}
+
 /* زر الخروج (خطر واضح) */
 .dashboard-skin .sidebar-footer .exp-btn.logout {
   background: rgba(239, 68, 68, 0.10);

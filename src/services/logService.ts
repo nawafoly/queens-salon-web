@@ -8,7 +8,7 @@ import {
   type FieldValue,
 } from "firebase/firestore";
 
-export type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
+export type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "client" | "guest";
 export type LogSource = "dashboard" | "internal_booking" | "client_app" | "system";
 
 export type AuditEntityType =

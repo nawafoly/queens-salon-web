@@ -27,6 +27,8 @@ import Contact from "./pages/Contact";
 import Login from "./pages/Login";
 import Pricing from "./pages/Pricing";
 import Dashboard from "./pages/Dashboard";
+import AdminHrDashboard from "./pages/AdminHrDashboard";
+import EmployeePortal from "./pages/EmployeePortal";
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import Track from "./pages/Track";
@@ -47,6 +49,7 @@ import DashboardPending from "./pages/DashboardPending";
 type UiRole =
   | "owner"
   | "admin"
+  | "hr"
   | "reception"
   | "staff"
   | "client"
@@ -56,6 +59,7 @@ type UiRole =
 const KNOWN_ROLES: UiRole[] = [
   "owner",
   "admin",
+  "hr",
   "reception",
   "staff",
   "client",
@@ -66,6 +70,7 @@ const KNOWN_ROLES: UiRole[] = [
 function normalizeRole(role: any): UiRole {
   const r = String(role || "").toLowerCase().trim();
   if (r === "administrator") return "admin";
+  if (r === "hr" || r === "human resources" || r === "humanresources") return "hr";
   if (r === "receptionist") return "reception";
   if (r === "frontdesk") return "reception";
   if (r === "desk") return "reception";
@@ -80,6 +85,14 @@ function isDashboardRole(role: UiRole) {
     role === "reception" ||
     role === "staff"
   );
+}
+
+function isAdminPortalRole(role: UiRole) {
+  return role === "owner" || role === "admin" || role === "hr";
+}
+
+function isEmployeePortalRole(role: UiRole) {
+  return role === "owner" || role === "admin" || role === "hr" || role === "reception" || role === "staff";
 }
 
 function isClientRole(role: UiRole) {
@@ -262,7 +275,9 @@ const App: React.FC = () => {
 
   const isInDashboard =
     location.pathname.startsWith("/dashboard") ||
-    location.pathname.startsWith("/dashboard-pending");
+    location.pathname.startsWith("/dashboard-pending") ||
+    location.pathname.startsWith("/admin") ||
+    location.pathname.startsWith("/employee");
   const isProfilePage =
     location.pathname === "/profile" || location.pathname === "/client";
 
@@ -395,6 +410,10 @@ const App: React.FC = () => {
     const isDashboardRoot =
       location.pathname === "/dashboard" || location.pathname === "/dashboard/";
 
+    if (isAdminPortalRole(role) && !isDashboardRole(role)) {
+      return <Navigate to="/admin" replace />;
+    }
+
     if (isMalikatAuth) {
       if (isDashboardRole(role)) {
         if (role === "staff" && isDashboardRoot) {
@@ -418,22 +437,52 @@ const App: React.FC = () => {
     return <Navigate to="/login" replace />;
   };
 
+  const AdminGuard = ({ children }: { children: React.ReactNode }) => {
+    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+    const role = userRole;
+    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+
+    if (isPendingRole(role) || (isMalikatAuth && (role === "client" || role === "guest"))) {
+      return <Navigate to="/dashboard-pending" replace />;
+    }
+
+    if (isAdminPortalRole(role)) return <>{children}</>;
+    if (isDashboardRole(role)) return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+    if (isClientRole(role)) return <Navigate to="/client" replace />;
+    return <Navigate to="/login" replace />;
+  };
+
+  const EmployeeGuard = ({ children }: { children: React.ReactNode }) => {
+    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+    const role = userRole;
+    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+
+    if (isPendingRole(role) || (isMalikatAuth && (role === "client" || role === "guest"))) {
+      return <Navigate to="/dashboard-pending" replace />;
+    }
+
+    if (isEmployeePortalRole(role)) return <>{children}</>;
+    if (isClientRole(role)) return <Navigate to="/client" replace />;
+    return <Navigate to="/login" replace />;
+  };
+
   const ClientGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
 
     if (isMalikatAuth) {
+      if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
       if (isDashboardRole(role))
         return <Navigate to={resolveDashboardLandingPath(role)} replace />;
       return <Navigate to="/dashboard-pending" replace />;
     }
 
+    if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
+    if (isDashboardRole(role)) return <Navigate to={resolveDashboardLandingPath(role)} replace />;
     if (isClientRole(role)) return <>{children}</>;
     if (isPendingRole(role))
       return <Navigate to="/dashboard-pending" replace />;
-    if (isDashboardRole(role))
-      return <Navigate to={resolveDashboardLandingPath(role)} replace />;
     return <Navigate to="/login" replace />;
   };
 
@@ -443,16 +492,17 @@ const App: React.FC = () => {
     const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
 
     if (isMalikatAuth) {
+      if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
       if (isDashboardRole(role))
         return <Navigate to={resolveDashboardLandingPath(role)} replace />;
       return <Navigate to="/dashboard-pending" replace />;
     }
 
+    if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
+    if (isDashboardRole(role)) return <Navigate to={resolveDashboardLandingPath(role)} replace />;
     if (isClientRole(role)) return <>{children}</>;
     if (isPendingRole(role))
       return <Navigate to="/dashboard-pending" replace />;
-    if (isDashboardRole(role))
-      return <Navigate to={resolveDashboardLandingPath(role)} replace />;
     return <Navigate to="/login" replace />;
   };
 
@@ -462,12 +512,14 @@ const App: React.FC = () => {
     const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
 
     if (isMalikatAuth) {
+      if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
       if (isDashboardRole(role))
         return <Navigate to={resolveDashboardLandingPath(role)} replace />;
       return <>{children}</>;
     }
 
     if (isPendingRole(role)) return <>{children}</>;
+    if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
     if (isDashboardRole(role))
       return <Navigate to={resolveDashboardLandingPath(role)} replace />;
     if (isClientRole(role)) return <Navigate to="/client" replace />;
@@ -540,6 +592,24 @@ const App: React.FC = () => {
               <DashboardGuard>
                 <Dashboard />
               </DashboardGuard>
+            }
+          />
+
+          <Route
+            path="/admin/*"
+            element={
+              <AdminGuard>
+                <AdminHrDashboard />
+              </AdminGuard>
+            }
+          />
+
+          <Route
+            path="/employee/*"
+            element={
+              <EmployeeGuard>
+                <EmployeePortal />
+              </EmployeeGuard>
             }
           />
 

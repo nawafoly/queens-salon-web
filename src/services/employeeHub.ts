@@ -1,0 +1,1037 @@
+import {
+  addDoc,
+  arrayUnion,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+  writeBatch,
+} from "firebase/firestore";
+
+import { db } from "./firebase";
+
+export const SALON_ID = "main";
+
+export type EmployeeRole =
+  | "owner"
+  | "admin"
+  | "hr"
+  | "reception"
+  | "staff"
+  | "client"
+  | "pending"
+  | "guest";
+
+export type EmployeeDirectoryEntry = {
+  employeeId: string;
+  employeeKey?: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  role?: EmployeeRole | string;
+  active?: boolean;
+  linkedUid?: string;
+  employeeProfileEnabled?: boolean;
+  department?: string;
+  title?: string;
+  avatarUrl?: string;
+  source?: "api" | "firestore";
+};
+
+export type RecruitmentApplication = {
+  id: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  roleApplied?: string;
+  status?: "new" | "reviewing" | "interview" | "accepted" | "rejected";
+  notes?: string;
+  message?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  reviewedAt?: any;
+  reviewedByUid?: string;
+  source?: string;
+};
+
+export type EmployeeMessage = {
+  id: string;
+  conversationId: string;
+  threadId?: string;
+  senderUid: string;
+  senderName?: string;
+  recipientUid: string;
+  recipientName?: string;
+  body: string;
+  kind?: "hr_to_employee" | "employee_to_employee" | "system";
+  readBy?: string[];
+  createdAt?: any;
+  updatedAt?: any;
+};
+
+export type EmployeeFile = {
+  id: string;
+  employeeUid: string;
+  employeeId?: string;
+  direction?: "inbound" | "outbound";
+  title: string;
+  fileName?: string;
+  mimeType?: string;
+  storageKey?: string;
+  storageUrl?: string;
+  notes?: string;
+  status?: "active" | "replaced" | "read" | "archived";
+  createdByUid?: string;
+  createdByName?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  readBy?: string[];
+};
+
+export type EmployeeLeaveRequest = {
+  id: string;
+  employeeUid: string;
+  employeeId?: string;
+  employeeName?: string;
+  type?: "annual" | "sick" | "emergency" | "unpaid" | "other";
+  fromDate: string;
+  toDate: string;
+  days?: number;
+  note?: string;
+  status?: "pending" | "approved" | "rejected" | "cancelled";
+  reviewerUid?: string;
+  reviewerName?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  reviewedAt?: any;
+};
+
+export type EmployeeAbsence = {
+  id: string;
+  employeeUid: string;
+  employeeId?: string;
+  date: string;
+  type?: "full_day" | "half_day";
+  note?: string;
+  createdAt?: any;
+  updatedAt?: any;
+};
+
+export type EmployeePayrollRecord = {
+  id: string;
+  employeeUid: string;
+  employeeId?: string;
+  monthKey: string;
+  baseSalary?: number;
+  overtime?: number;
+  delay?: number;
+  insurance?: number;
+  deductions?: number;
+  absencePenalties?: number;
+  total?: number;
+  salary?: number;
+  attachedDocumentUrl?: string;
+  attachedDocumentName?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  createdByUid?: string;
+  createdByName?: string;
+};
+
+export type EmployeeNotification = {
+  id: string;
+  targetUid?: string;
+  targetEmployeeId?: string;
+  type?: "leave" | "file" | "message" | "system" | "payroll";
+  title: string;
+  body?: string;
+  route?: string;
+  isRead?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
+  readAt?: any;
+  readBy?: string[];
+};
+
+export type WeeklyReportRecord = {
+  id: string;
+  recipientUid?: string;
+  recipientEmail?: string;
+  title: string;
+  periodFrom?: string;
+  periodTo?: string;
+  wordFileUrl?: string;
+  excelFileUrl?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  createdByUid?: string;
+};
+
+type EmployeeRoleInput = EmployeeRole | string | null | undefined;
+
+function cleanText(value: unknown) {
+  return String(value || "").trim();
+}
+
+function cleanEmail(value: unknown) {
+  return cleanText(value).toLowerCase();
+}
+
+function normalizeRole(role: EmployeeRoleInput): EmployeeRole {
+  const raw = cleanText(role).toLowerCase();
+  if (raw === "owner") return "owner";
+  if (raw === "admin") return "admin";
+  if (raw === "hr") return "hr";
+  if (raw === "reception") return "reception";
+  if (raw === "staff") return "staff";
+  if (raw === "client") return "client";
+  if (raw === "pending") return "pending";
+  return "guest";
+}
+
+function normalizedBool(value: unknown, fallback = false) {
+  if (typeof value === "boolean") return value;
+  return fallback;
+}
+
+function normalizeReadBy(value: unknown) {
+  return Array.from(
+    new Set(
+      (Array.isArray(value) ? value : [])
+        .map((x) => cleanText(x))
+        .filter(Boolean)
+    )
+  );
+}
+
+function toMillis(value: unknown) {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === "object") {
+    const maybe = value as { toMillis?: () => number; seconds?: number; nanoseconds?: number };
+    if (typeof maybe.toMillis === "function") {
+      const ms = maybe.toMillis();
+      return Number.isFinite(ms) ? ms : 0;
+    }
+    if (typeof maybe.seconds === "number") {
+      return maybe.seconds * 1000 + Math.floor((maybe.nanoseconds || 0) / 1_000_000);
+    }
+  }
+  return 0;
+}
+
+function normalizeDirectoryEntry(data: any, id: string, source: "api" | "firestore"): EmployeeDirectoryEntry {
+  return {
+    employeeId: cleanText(data?.employeeId || id),
+    employeeKey: cleanText(data?.employeeKey || data?.linkedUid || data?.uid || id) || undefined,
+    name: cleanText(data?.name || data?.displayName || ""),
+    email: cleanEmail(data?.email || data?.userEmail || ""),
+    phone: cleanText(data?.phone || ""),
+    role: normalizeRole(data?.role),
+    active: data?.active !== false,
+    linkedUid: cleanText(data?.linkedUid || data?.uid || data?.linkedUserId || "") || undefined,
+    employeeProfileEnabled: data?.employeeProfileEnabled !== false,
+    department: cleanText(data?.department || "") || undefined,
+    title: cleanText(data?.title || "") || undefined,
+    avatarUrl: cleanText(data?.avatarUrl || data?.photoURL || data?.photoUrl || "") || undefined,
+    source,
+  };
+}
+
+export const HR_COLLECTIONS = {
+  users: ["salons", SALON_ID, "users"] as const,
+  employees: ["salons", SALON_ID, "employees"] as const,
+  adminUsers: ["salons", SALON_ID, "admin_users"] as const,
+  employeeMessages: ["salons", SALON_ID, "employee_messages"] as const,
+  employeeFiles: ["salons", SALON_ID, "employee_files"] as const,
+  employeeLeaveRequests: ["salons", SALON_ID, "employee_leave_requests"] as const,
+  employeeAbsences: ["salons", SALON_ID, "employee_absences"] as const,
+  employeePayrollRecords: ["salons", SALON_ID, "employee_payroll_records"] as const,
+  notifications: ["salons", SALON_ID, "notifications"] as const,
+  weeklyReports: ["salons", SALON_ID, "weekly_reports"] as const,
+  jobApplications: ["salons", SALON_ID, "job_applications"] as const,
+} as const;
+
+export function usersCol() {
+  return collection(db, ...HR_COLLECTIONS.users);
+}
+
+export function employeesCol() {
+  return collection(db, ...HR_COLLECTIONS.employees);
+}
+
+export function adminUsersCol() {
+  return collection(db, ...HR_COLLECTIONS.adminUsers);
+}
+
+export function employeeMessagesCol() {
+  return collection(db, ...HR_COLLECTIONS.employeeMessages);
+}
+
+export function employeeFilesCol() {
+  return collection(db, ...HR_COLLECTIONS.employeeFiles);
+}
+
+export function employeeLeaveRequestsCol() {
+  return collection(db, ...HR_COLLECTIONS.employeeLeaveRequests);
+}
+
+export function employeeAbsencesCol() {
+  return collection(db, ...HR_COLLECTIONS.employeeAbsences);
+}
+
+export function employeePayrollRecordsCol() {
+  return collection(db, ...HR_COLLECTIONS.employeePayrollRecords);
+}
+
+export function notificationsCol() {
+  return collection(db, ...HR_COLLECTIONS.notifications);
+}
+
+export function weeklyReportsCol() {
+  return collection(db, ...HR_COLLECTIONS.weeklyReports);
+}
+
+export function jobApplicationsCol() {
+  return collection(db, ...HR_COLLECTIONS.jobApplications);
+}
+
+export function employeeDoc(id: string) {
+  return doc(db, ...HR_COLLECTIONS.employees, cleanText(id));
+}
+
+export function userDoc(id: string) {
+  return doc(db, ...HR_COLLECTIONS.users, cleanText(id));
+}
+
+export function adminUserDoc(id: string) {
+  return doc(db, ...HR_COLLECTIONS.adminUsers, cleanText(id));
+}
+
+export async function listEmployeeDirectory(limitCount = 300): Promise<EmployeeDirectoryEntry[]> {
+  const snap = await getDocs(query(employeesCol(), orderBy("name", "asc"), limit(limitCount)));
+  return snap.docs
+    .map((d) => normalizeDirectoryEntry(d.data(), d.id, "firestore"))
+    .filter((x) => !!x.employeeId);
+}
+
+export async function listRecruitmentApplications(limitCount = 100): Promise<RecruitmentApplication[]> {
+  const snap = await getDocs(query(jobApplicationsCol(), orderBy("createdAt", "desc"), limit(limitCount)));
+  return snap.docs.map((d) => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      fullName: cleanText(data?.fullName || data?.name || ""),
+      email: cleanEmail(data?.email || ""),
+      phone: cleanText(data?.phone || ""),
+      roleApplied: cleanText(data?.roleApplied || data?.role || "") || undefined,
+      status: (cleanText(data?.status || "new").toLowerCase() as RecruitmentApplication["status"]) || "new",
+      notes: cleanText(data?.notes || "") || undefined,
+      message: cleanText(data?.message || "") || undefined,
+      createdAt: data?.createdAt,
+      updatedAt: data?.updatedAt,
+      reviewedAt: data?.reviewedAt,
+      reviewedByUid: cleanText(data?.reviewedByUid || "") || undefined,
+      source: cleanText(data?.source || "") || undefined,
+    };
+  });
+}
+
+export async function createRecruitmentApplication(
+  input: Omit<RecruitmentApplication, "id" | "createdAt" | "updatedAt" | "reviewedAt" | "reviewedByUid">
+) {
+  return addDoc(jobApplicationsCol(), {
+    fullName: cleanText(input.fullName),
+    email: cleanEmail(input.email),
+    phone: cleanText(input.phone || ""),
+    roleApplied: cleanText(input.roleApplied || ""),
+    status: input.status || "new",
+    notes: cleanText(input.notes || ""),
+    message: cleanText(input.message || ""),
+    source: cleanText(input.source || "manual"),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function updateRecruitmentApplication(
+  id: string,
+  patch: Partial<RecruitmentApplication> & { reviewedByUid?: string }
+) {
+  const ref = doc(db, ...HR_COLLECTIONS.jobApplications, cleanText(id));
+  await updateDoc(ref, {
+    ...patch,
+    updatedAt: serverTimestamp(),
+  } as any);
+}
+
+export async function syncEmployeeRecordFromUser(args: {
+  uid: string;
+  email: string;
+  displayName: string;
+  phone?: string;
+  role: EmployeeRoleInput;
+  active?: boolean;
+  employeeId?: string;
+  linkedEmployeeDocId?: string;
+  specialties?: string[];
+  bio?: string;
+  department?: string;
+  title?: string;
+  avatarUrl?: string;
+  showOnAbout?: boolean;
+  showOnBooking?: boolean;
+  employeeProfileEnabled?: boolean;
+}) {
+  const uid = cleanText(args.uid);
+  const employeeId = cleanText(args.employeeId || args.linkedEmployeeDocId || uid);
+  const email = cleanEmail(args.email);
+  const displayName = cleanText(args.displayName);
+  const phone = cleanText(args.phone || "");
+  const role = normalizeRole(args.role);
+  const active = args.active !== false;
+  const isStaffLike = ["owner", "admin", "hr", "reception", "staff"].includes(role);
+  const isPublicStaff = role === "staff";
+
+  const employeeProfileEnabled = args.employeeProfileEnabled ?? isStaffLike;
+  const showOnAbout = args.showOnAbout ?? isPublicStaff;
+  const showOnBooking = args.showOnBooking ?? isPublicStaff;
+  const specialties = Array.isArray(args.specialties)
+    ? args.specialties.map((x) => cleanText(x)).filter(Boolean)
+    : [];
+
+  const employeeDocData = {
+    uid,
+    linkedUid: uid,
+    linkedUserId: uid,
+    employeeId,
+    linkedEmployeeDocId: employeeId,
+    email,
+    userEmail: email,
+    name: displayName,
+    displayName,
+    phone,
+    role,
+    active,
+    isActive: active,
+    employeeProfileEnabled,
+    showOnAbout,
+    showOnBooking,
+    removedFromStaff: false,
+    employmentStatus: active ? "active" : "inactive",
+    department: cleanText(args.department || "") || "",
+    title: cleanText(args.title || "") || "",
+    avatarUrl: cleanText(args.avatarUrl || "") || "",
+    specialties,
+    bio: cleanText(args.bio || "") || "",
+    updatedAt: serverTimestamp(),
+  };
+
+  const userDocData = {
+    uid,
+    email,
+    displayName,
+    name: displayName,
+    phone,
+    role,
+    active,
+    employeeId,
+    linkedEmployeeDocId: employeeId,
+    employeeProfileEnabled,
+    updatedAt: serverTimestamp(),
+  };
+
+  const staffPublicData = {
+    uid,
+    linkedUid: uid,
+    linkedUserId: uid,
+    email,
+    userEmail: email,
+    name: displayName,
+    displayName,
+    phone,
+    role,
+    active,
+    isActive: active,
+    showOnAbout,
+    showOnBooking,
+    employeeProfileEnabled,
+    removedFromStaff: false,
+    employmentStatus: active ? "active" : "inactive",
+    specialties,
+    bio: cleanText(args.bio || "") || "",
+    avatarUrl: cleanText(args.avatarUrl || "") || "",
+    updatedAt: serverTimestamp(),
+  };
+
+  await Promise.all([
+    setDoc(doc(db, ...HR_COLLECTIONS.users, uid), userDocData, { merge: true }),
+    setDoc(doc(db, ...HR_COLLECTIONS.employees, employeeId), employeeDocData, { merge: true }),
+    isStaffLike
+      ? setDoc(
+          doc(db, ...HR_COLLECTIONS.adminUsers, uid),
+          {
+            uid,
+            email,
+            displayName,
+            phone,
+            role,
+            active,
+            employeeId,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        )
+      : Promise.resolve(),
+    setDoc(doc(db, "salons", SALON_ID, "staff_public", employeeId), staffPublicData, {
+      merge: true,
+    }),
+  ]);
+
+  return { uid, employeeId, role, active };
+}
+
+export async function createEmployeeMessage(input: {
+  conversationId: string;
+  threadId?: string;
+  senderUid: string;
+  senderName?: string;
+  recipientUid: string;
+  recipientName?: string;
+  body: string;
+  kind?: EmployeeMessage["kind"];
+}) {
+  return addDoc(employeeMessagesCol(), {
+    conversationId: cleanText(input.conversationId),
+    threadId: cleanText(input.threadId || input.conversationId),
+    senderUid: cleanText(input.senderUid),
+    senderName: cleanText(input.senderName || ""),
+    recipientUid: cleanText(input.recipientUid),
+    recipientName: cleanText(input.recipientName || ""),
+    body: cleanText(input.body),
+    kind: input.kind || "hr_to_employee",
+    readBy: [cleanText(input.senderUid)],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function markEmployeeThreadRead(args: { conversationId: string; readerUid: string }) {
+  const conversationId = cleanText(args.conversationId);
+  const readerUid = cleanText(args.readerUid);
+  if (!conversationId || !readerUid) return;
+
+  const snap = await getDocs(query(employeeMessagesCol(), where("conversationId", "==", conversationId)));
+  if (!snap.size) return;
+
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => {
+    const data = d.data() as any;
+    const readBy = normalizeReadBy(data?.readBy);
+    if (readBy.includes(readerUid)) return;
+    batch.update(d.ref, {
+      readBy: Array.from(new Set([...readBy, readerUid])),
+      updatedAt: serverTimestamp(),
+    });
+  });
+  await batch.commit();
+}
+
+export async function listEmployeeFiles(limitCount = 120): Promise<EmployeeFile[]> {
+  const snap = await getDocs(query(employeeFilesCol(), orderBy("createdAt", "desc"), limit(limitCount)));
+  return snap.docs.map((d) => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      employeeUid: cleanText(data?.employeeUid || ""),
+      employeeId: cleanText(data?.employeeId || "") || undefined,
+      direction: cleanText(data?.direction || "outbound") as EmployeeFile["direction"],
+      title: cleanText(data?.title || "Untitled"),
+      fileName: cleanText(data?.fileName || "") || undefined,
+      mimeType: cleanText(data?.mimeType || "") || undefined,
+      storageKey: cleanText(data?.storageKey || "") || undefined,
+      storageUrl: cleanText(data?.storageUrl || "") || undefined,
+      notes: cleanText(data?.notes || "") || undefined,
+      status: cleanText(data?.status || "active") as EmployeeFile["status"],
+      createdByUid: cleanText(data?.createdByUid || "") || undefined,
+      createdByName: cleanText(data?.createdByName || "") || undefined,
+      createdAt: data?.createdAt,
+      updatedAt: data?.updatedAt,
+      readBy: normalizeReadBy(data?.readBy),
+    };
+  });
+}
+
+export async function createEmployeeFileRecord(input: {
+  employeeUid: string;
+  employeeId?: string;
+  direction?: EmployeeFile["direction"];
+  title: string;
+  fileName?: string;
+  mimeType?: string;
+  storageKey?: string;
+  storageUrl?: string;
+  notes?: string;
+  status?: EmployeeFile["status"];
+  createdByUid?: string;
+  createdByName?: string;
+}) {
+  return addDoc(employeeFilesCol(), {
+    employeeUid: cleanText(input.employeeUid),
+    employeeId: cleanText(input.employeeId || "") || undefined,
+    direction: input.direction || "outbound",
+    title: cleanText(input.title),
+    fileName: cleanText(input.fileName || "") || undefined,
+    mimeType: cleanText(input.mimeType || "") || undefined,
+    storageKey: cleanText(input.storageKey || "") || undefined,
+    storageUrl: cleanText(input.storageUrl || "") || undefined,
+    notes: cleanText(input.notes || "") || undefined,
+    status: input.status || "active",
+    createdByUid: cleanText(input.createdByUid || "") || undefined,
+    createdByName: cleanText(input.createdByName || "") || undefined,
+    readBy: [],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function createLeaveRequest(input: {
+  employeeUid: string;
+  employeeId?: string;
+  employeeName?: string;
+  type?: EmployeeLeaveRequest["type"];
+  fromDate: string;
+  toDate: string;
+  note?: string;
+  days?: number;
+  createdByUid?: string;
+  createdByName?: string;
+}) {
+  return addDoc(employeeLeaveRequestsCol(), {
+    employeeUid: cleanText(input.employeeUid),
+    employeeId: cleanText(input.employeeId || "") || undefined,
+    employeeName: cleanText(input.employeeName || "") || undefined,
+    type: input.type || "annual",
+    fromDate: cleanText(input.fromDate),
+    toDate: cleanText(input.toDate),
+    days: Number.isFinite(Number(input.days)) ? Number(input.days) : undefined,
+    note: cleanText(input.note || "") || undefined,
+    status: "pending",
+    createdByUid: cleanText(input.createdByUid || "") || undefined,
+    createdByName: cleanText(input.createdByName || "") || undefined,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function reviewLeaveRequest(args: {
+  requestId: string;
+  status: "approved" | "rejected" | "cancelled";
+  reviewerUid: string;
+  reviewerName?: string;
+}) {
+  const ref = doc(db, ...HR_COLLECTIONS.employeeLeaveRequests, cleanText(args.requestId));
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? (snap.data() as any) : null;
+  await updateDoc(ref, {
+    status: args.status,
+    reviewerUid: cleanText(args.reviewerUid),
+    reviewerName: cleanText(args.reviewerName || "") || undefined,
+    reviewedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  } as any);
+
+  const targetUid = cleanText(data?.employeeUid || "") || undefined;
+  const targetEmployeeId = cleanText(data?.employeeId || "") || undefined;
+  if (targetUid || targetEmployeeId) {
+    await createEmployeeNotification({
+      targetUid,
+      targetEmployeeId,
+      type: "leave",
+      title:
+        args.status === "approved"
+          ? "تمت الموافقة على الإجازة"
+          : args.status === "rejected"
+            ? "تم رفض الإجازة"
+            : "تم تحديث الإجازة",
+      body: `${cleanText(data?.fromDate || "")} → ${cleanText(data?.toDate || "")}`,
+      route: "/employee/leave",
+    }).catch(() => {});
+  }
+}
+
+export async function createPayrollRecord(input: {
+  employeeUid: string;
+  employeeId?: string;
+  monthKey: string;
+  baseSalary?: number;
+  overtime?: number;
+  delay?: number;
+  insurance?: number;
+  deductions?: number;
+  absencePenalties?: number;
+  total?: number;
+  salary?: number;
+  attachedDocumentUrl?: string;
+  attachedDocumentName?: string;
+  createdByUid?: string;
+  createdByName?: string;
+}) {
+  const id = `${cleanText(input.employeeUid)}__${cleanText(input.monthKey)}`;
+  await setDoc(
+    doc(db, ...HR_COLLECTIONS.employeePayrollRecords, id),
+    {
+      employeeUid: cleanText(input.employeeUid),
+      employeeId: cleanText(input.employeeId || "") || undefined,
+      monthKey: cleanText(input.monthKey),
+      baseSalary: Number(input.baseSalary || 0),
+      overtime: Number(input.overtime || 0),
+      delay: Number(input.delay || 0),
+      insurance: Number(input.insurance || 0),
+      deductions: Number(input.deductions || 0),
+      absencePenalties: Number(input.absencePenalties || 0),
+      total: Number(input.total || 0),
+      salary: Number(input.salary || 0),
+      attachedDocumentUrl: cleanText(input.attachedDocumentUrl || "") || undefined,
+      attachedDocumentName: cleanText(input.attachedDocumentName || "") || undefined,
+      createdByUid: cleanText(input.createdByUid || "") || undefined,
+      createdByName: cleanText(input.createdByName || "") || undefined,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  if (cleanText(input.employeeUid)) {
+    await createEmployeeNotification({
+      targetUid: cleanText(input.employeeUid),
+      targetEmployeeId: cleanText(input.employeeId || "") || undefined,
+      type: "payroll",
+      title: `تم تحديث مسير الرواتب ${cleanText(input.monthKey)}`,
+      body: cleanText(
+        input.total != null
+          ? `تم حفظ تفاصيل الرواتب لهذا الشهر بقيمة ${Number(input.total || 0).toLocaleString("ar-SA")}.`
+          : "تمت إضافة أو تحديث مسير الرواتب."
+      ),
+      route: "/employee/payroll",
+    }).catch(() => {});
+  }
+}
+
+export async function listEmployeeNotifications(args: {
+  targetUid?: string;
+  targetEmployeeId?: string;
+  limitCount?: number;
+}) {
+  const targetUid = cleanText(args.targetUid || "");
+  const targetEmployeeId = cleanText(args.targetEmployeeId || "");
+  const limitCount = Math.max(1, Number(args.limitCount || 50));
+
+  const mapDoc = (d: any): EmployeeNotification => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      targetUid: cleanText(data?.targetUid || "") || undefined,
+      targetEmployeeId: cleanText(data?.targetEmployeeId || "") || undefined,
+      type: cleanText(data?.type || "system") as EmployeeNotification["type"],
+      title: cleanText(data?.title || ""),
+      body: cleanText(data?.body || "") || undefined,
+      route: cleanText(data?.route || "") || undefined,
+      isRead: normalizedBool(data?.isRead, false),
+      createdAt: data?.createdAt,
+      updatedAt: data?.updatedAt,
+      readAt: data?.readAt,
+      readBy: normalizeReadBy(data?.readBy),
+    } as EmployeeNotification;
+  };
+
+  if (targetUid || targetEmployeeId) {
+    const [uidSnap, employeeIdSnap] = await Promise.all([
+      targetUid ? getDocs(query(notificationsCol(), where("targetUid", "==", targetUid))) : Promise.resolve(null),
+      targetEmployeeId
+        ? getDocs(query(notificationsCol(), where("targetEmployeeId", "==", targetEmployeeId)))
+        : Promise.resolve(null),
+    ]);
+
+    const deduped = new Map<string, EmployeeNotification>();
+    uidSnap?.docs.forEach((d) => deduped.set(d.id, mapDoc(d)));
+    employeeIdSnap?.docs.forEach((d) => deduped.set(d.id, mapDoc(d)));
+
+    return Array.from(deduped.values())
+      .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt))
+      .slice(0, limitCount);
+  }
+
+  const snap = await getDocs(query(notificationsCol(), orderBy("createdAt", "desc"), limit(limitCount)));
+  return snap.docs.map(mapDoc);
+}
+
+export async function createEmployeeNotification(input: {
+  targetUid?: string;
+  targetEmployeeId?: string;
+  type?: EmployeeNotification["type"];
+  title: string;
+  body?: string;
+  route?: string;
+}) {
+  return addDoc(notificationsCol(), {
+    targetUid: cleanText(input.targetUid || "") || undefined,
+    targetEmployeeId: cleanText(input.targetEmployeeId || "") || undefined,
+    type: input.type || "system",
+    title: cleanText(input.title),
+    body: cleanText(input.body || "") || undefined,
+    route: cleanText(input.route || "") || undefined,
+    isRead: false,
+    readBy: [],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function markEmployeeNotificationRead(args: { notificationId: string; readerUid: string }) {
+  const notificationId = cleanText(args.notificationId);
+  const readerUid = cleanText(args.readerUid);
+  if (!notificationId || !readerUid) return;
+
+  await updateDoc(doc(db, ...HR_COLLECTIONS.notifications, notificationId), {
+    isRead: true,
+    readAt: serverTimestamp(),
+    readBy: arrayUnion(readerUid),
+    updatedAt: serverTimestamp(),
+  } as any);
+}
+
+export async function markEmployeeNotificationsRead(args: { notificationIds: string[]; readerUid: string }) {
+  const readerUid = cleanText(args.readerUid);
+  const ids = Array.from(
+    new Set(
+      (Array.isArray(args.notificationIds) ? args.notificationIds : [])
+        .map((id) => cleanText(id))
+        .filter(Boolean)
+    )
+  );
+  if (!readerUid || !ids.length) return;
+
+  const batch = writeBatch(db);
+  ids.forEach((notificationId) => {
+    batch.update(doc(db, ...HR_COLLECTIONS.notifications, notificationId), {
+      isRead: true,
+      readAt: serverTimestamp(),
+      readBy: arrayUnion(readerUid),
+      updatedAt: serverTimestamp(),
+    } as any);
+  });
+  await batch.commit();
+}
+
+export async function markEmployeeFileRead(args: { fileId: string; readerUid: string }) {
+  const fileId = cleanText(args.fileId);
+  const readerUid = cleanText(args.readerUid);
+  if (!fileId || !readerUid) return;
+
+  await updateDoc(doc(db, ...HR_COLLECTIONS.employeeFiles, fileId), {
+    readBy: arrayUnion(readerUid),
+    updatedAt: serverTimestamp(),
+  } as any);
+}
+
+export async function markEmployeeFilesRead(args: {
+  employeeUid?: string;
+  employeeId?: string;
+  readerUid: string;
+}) {
+  const employeeUid = cleanText(args.employeeUid || "");
+  const employeeId = cleanText(args.employeeId || "");
+  const readerUid = cleanText(args.readerUid);
+  if (!readerUid || (!employeeUid && !employeeId)) return;
+
+  const [uidSnap, employeeIdSnap] = await Promise.all([
+    employeeUid ? getDocs(query(employeeFilesCol(), where("employeeUid", "==", employeeUid))) : Promise.resolve(null),
+    employeeId ? getDocs(query(employeeFilesCol(), where("employeeId", "==", employeeId))) : Promise.resolve(null),
+  ]);
+
+  const docsById = new Map<string, any>();
+  uidSnap?.docs.forEach((d) => docsById.set(d.id, d));
+  employeeIdSnap?.docs.forEach((d) => docsById.set(d.id, d));
+
+  if (!docsById.size) return;
+
+  const batch = writeBatch(db);
+  let touched = 0;
+  docsById.forEach((d) => {
+    const data = d.data() as any;
+    const readBy = normalizeReadBy(data?.readBy);
+    if (readBy.includes(readerUid)) return;
+    batch.update(d.ref, {
+      readBy: arrayUnion(readerUid),
+      updatedAt: serverTimestamp(),
+    } as any);
+    touched += 1;
+  });
+
+  if (touched) {
+    await batch.commit();
+  }
+}
+
+export async function createWeeklyReport(input: {
+  recipientUid?: string;
+  recipientEmail?: string;
+  title: string;
+  periodFrom?: string;
+  periodTo?: string;
+  wordFileUrl?: string;
+  excelFileUrl?: string;
+  createdByUid?: string;
+}) {
+  return addDoc(weeklyReportsCol(), {
+    recipientUid: cleanText(input.recipientUid || "") || undefined,
+    recipientEmail: cleanEmail(input.recipientEmail || "") || undefined,
+    title: cleanText(input.title),
+    periodFrom: cleanText(input.periodFrom || "") || undefined,
+    periodTo: cleanText(input.periodTo || "") || undefined,
+    wordFileUrl: cleanText(input.wordFileUrl || "") || undefined,
+    excelFileUrl: cleanText(input.excelFileUrl || "") || undefined,
+    createdByUid: cleanText(input.createdByUid || "") || undefined,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function listPayrollRecordsByEmployee(employeeUid: string, limitCount = 24) {
+  const snap = await getDocs(query(employeePayrollRecordsCol(), where("employeeUid", "==", cleanText(employeeUid))));
+
+  return snap.docs
+    .map((d) => {
+      const data = d.data() as any;
+      return {
+        id: d.id,
+        employeeUid: cleanText(data?.employeeUid || ""),
+        employeeId: cleanText(data?.employeeId || "") || undefined,
+        monthKey: cleanText(data?.monthKey || ""),
+        baseSalary: Number(data?.baseSalary || 0),
+        overtime: Number(data?.overtime || 0),
+        delay: Number(data?.delay || 0),
+        insurance: Number(data?.insurance || 0),
+        deductions: Number(data?.deductions || 0),
+        absencePenalties: Number(data?.absencePenalties || 0),
+        total: Number(data?.total || 0),
+        salary: Number(data?.salary || 0),
+        attachedDocumentUrl: cleanText(data?.attachedDocumentUrl || "") || undefined,
+        attachedDocumentName: cleanText(data?.attachedDocumentName || "") || undefined,
+        createdAt: data?.createdAt,
+        updatedAt: data?.updatedAt,
+        createdByUid: cleanText(data?.createdByUid || "") || undefined,
+        createdByName: cleanText(data?.createdByName || "") || undefined,
+      } as EmployeePayrollRecord;
+    })
+    .sort((a, b) => cleanText(b.monthKey).localeCompare(cleanText(a.monthKey)) || toMillis(b.createdAt) - toMillis(a.createdAt))
+    .slice(0, limitCount);
+}
+
+export async function listLeaveRequestsByEmployee(employeeUid: string, limitCount = 24) {
+  const snap = await getDocs(query(employeeLeaveRequestsCol(), where("employeeUid", "==", cleanText(employeeUid))));
+
+  return snap.docs
+    .map((d) => {
+      const data = d.data() as any;
+      return {
+        id: d.id,
+        employeeUid: cleanText(data?.employeeUid || ""),
+        employeeId: cleanText(data?.employeeId || "") || undefined,
+        employeeName: cleanText(data?.employeeName || "") || undefined,
+        type: cleanText(data?.type || "annual") as EmployeeLeaveRequest["type"],
+        fromDate: cleanText(data?.fromDate || ""),
+        toDate: cleanText(data?.toDate || ""),
+        days: Number.isFinite(Number(data?.days)) ? Number(data?.days) : undefined,
+        note: cleanText(data?.note || "") || undefined,
+        status: cleanText(data?.status || "pending") as EmployeeLeaveRequest["status"],
+        reviewerUid: cleanText(data?.reviewerUid || "") || undefined,
+        reviewerName: cleanText(data?.reviewerName || "") || undefined,
+        createdByUid: cleanText(data?.createdByUid || "") || undefined,
+        createdByName: cleanText(data?.createdByName || "") || undefined,
+        createdAt: data?.createdAt,
+        updatedAt: data?.updatedAt,
+        reviewedAt: data?.reviewedAt,
+      } as EmployeeLeaveRequest;
+    })
+    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt) || cleanText(b.fromDate).localeCompare(cleanText(a.fromDate)))
+    .slice(0, limitCount);
+}
+
+export async function approveEmployeeLeaveRequest(args: {
+  requestId: string;
+  reviewerUid: string;
+  reviewerName?: string;
+  adjustLeaveBalance?: boolean;
+}) {
+  const requestId = cleanText(args.requestId);
+  const reviewerUid = cleanText(args.reviewerUid);
+  if (!requestId || !reviewerUid) return;
+
+  let leaveNotification: {
+    targetUid?: string;
+    targetEmployeeId?: string;
+    title: string;
+    body?: string;
+    route: string;
+  } | null = null;
+
+  await runTransaction(db, async (tx) => {
+    const reqRef = doc(db, ...HR_COLLECTIONS.employeeLeaveRequests, requestId);
+    const reqSnap = await tx.get(reqRef);
+    if (!reqSnap.exists()) return;
+    const data = reqSnap.data() as any;
+
+    tx.update(reqRef, {
+      status: "approved",
+      reviewerUid,
+      reviewerName: cleanText(args.reviewerName || "") || undefined,
+      reviewedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    leaveNotification = {
+      targetUid: cleanText(data?.employeeUid || "") || undefined,
+      targetEmployeeId: cleanText(data?.employeeId || "") || undefined,
+      title: "تمت الموافقة على طلب الإجازة",
+      body: `${cleanText(data?.fromDate || "")} → ${cleanText(data?.toDate || "")}`,
+      route: "/employee/leave",
+    };
+  });
+
+  const notificationData = leaveNotification as
+    | {
+        targetUid?: string;
+        targetEmployeeId?: string;
+        title: string;
+        body?: string;
+        route: string;
+      }
+    | null;
+  if (notificationData) {
+    await createEmployeeNotification({
+      targetUid: notificationData.targetUid,
+      targetEmployeeId: notificationData.targetEmployeeId,
+      type: "leave",
+      title: notificationData.title,
+      body: notificationData.body,
+      route: notificationData.route,
+    }).catch(() => {});
+  }
+}

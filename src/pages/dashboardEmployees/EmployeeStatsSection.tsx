@@ -149,8 +149,21 @@ export default function EmployeeStatsSection({
 
   return (
     <div className="emp-modal-section">
-      <b className="emp-modal-section-title">الإحصائيات والإجازات</b>
+      <header className="emp-section-header">
+        <div className="emp-section-header__main">
+          <h3 className="emp-modal-section-title">الإحصائيات والإجازات</h3>
+          <p className="emp-section-lead">
+            الراتب، الأوفر تايم، رصيد الإجازات، وسجل الحركات في مكان واحد.
+          </p>
+        </div>
+        {showStatsSubTab ? (
+          <div className="emp-section-header__aside">
+            <span className="emp-badge accent">الرصيد: {currentLeaveBalanceLabel}</span>
+          </div>
+        ) : null}
+      </header>
 
+      <div className="emp-stats-stack">
       {showPayrollSubTab ? (
         <div className="staff-payroll-box">
           <div className="staff-payroll-head">
@@ -299,54 +312,65 @@ export default function EmployeeStatsSection({
                 <b>{fmtMoneySar(payroll.summary?.schedule.overtimeHours || 0)} ساعة</b>
               </div>
             </div>
-            <div className="staff-payroll-note">
-              {payroll.summary?.method === "invoice_percentage"
-                ? `طريقة الحساب: نسبة من الفواتير (${payroll.summary.config.invoicePercent}%).`
-                : `طريقة الحساب: (الراتب ÷ ${payroll.summary?.config.daysPerMonth || 0} يوم ÷ ${
-                    payroll.summary?.config.hoursBasis === "season"
-                      ? payroll.summary?.config.seasonBaseHoursPerDay || 0
-                      : payroll.summary?.config.baseHoursPerDay || 0
-                  } ساعة) ثم تطبيق نسبة ${
-                    payroll.summary?.config.overtimePercent || 0
-                  }% على ساعات الأوفر تايم.`}
-            </div>
-            <div className="staff-payroll-note">
-              {`أساس الحساب المعتمد: ${
-                payroll.summary?.config.hoursBasis === "season" ? "الموسم" : "الأيام العادية"
-              } | الساعات المستخدمة يوميًا: ${
-                payroll.summary?.config.hoursBasis === "season"
-                  ? payroll.summary?.config.seasonBaseHoursPerDay || 0
-                  : payroll.summary?.config.baseHoursPerDay || 0
-              } ساعة.`}
-            </div>
-            <div className="staff-payroll-note">
-              {`الشهر المحتسب: ${payroll.summary?.monthKey || currentMonthKeyLabel} | فواتير الموظفة: ${
-                payroll.summary?.invoiceCount || 0
-              } | إيرادها: ${fmtMoneySar(payroll.summary?.invoiceRevenue || 0)} ر.س`}
+            <div className="staff-payroll-notes">
+              <div className="staff-payroll-note">
+                {payroll.summary?.method === "invoice_percentage"
+                  ? `طريقة الحساب: نسبة من الفواتير (${payroll.summary.config.invoicePercent}%).`
+                  : `طريقة الحساب: (الراتب ÷ ${payroll.summary?.config.daysPerMonth || 0} يوم ÷ ${
+                      payroll.summary?.config.hoursBasis === "season"
+                        ? payroll.summary?.config.seasonBaseHoursPerDay || 0
+                        : payroll.summary?.config.baseHoursPerDay || 0
+                    } ساعة) ثم تطبيق نسبة ${
+                      payroll.summary?.config.overtimePercent || 0
+                    }% على ساعات الأوفر تايم.`}
+              </div>
+              <div className="staff-payroll-note">
+                {`أساس الحساب المعتمد: ${
+                  payroll.summary?.config.hoursBasis === "season" ? "الموسم" : "الأيام العادية"
+                } | الساعات المستخدمة يوميًا: ${
+                  payroll.summary?.config.hoursBasis === "season"
+                    ? payroll.summary?.config.seasonBaseHoursPerDay || 0
+                    : payroll.summary?.config.baseHoursPerDay || 0
+                } ساعة.`}
+              </div>
+              <div className="staff-payroll-note">
+                {`الشهر المحتسب: ${payroll.summary?.monthKey || currentMonthKeyLabel} | فواتير الموظفة: ${
+                  payroll.summary?.invoiceCount || 0
+                } | إيرادها: ${fmtMoneySar(payroll.summary?.invoiceRevenue || 0)} ر.س`}
+              </div>
+              {showPayrollSubTab && payroll.summary ? (
+                <div className="staff-payroll-note">
+                  {`تفصيل الساعات: ${payroll.summary.schedule.periodFrom || "-"} → ${
+                    payroll.summary.schedule.periodTo || "-"
+                  } | الأيام: ${fmtMoneySar(payroll.summary.schedule.workedDays || 0)} | متوسط: ${fmtMoneySar(
+                    payroll.summary.schedule.averageHoursPerWorkedDay || 0
+                  )} س | التوزيع: ${formatDailyHourBucketsLabel(payroll.summary.schedule.dailyHourBuckets as any)}`}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
       ) : null}
 
-      {showPayrollSubTab && payroll.summary ? (
-        <div className="staff-payroll-note">
-          {`تفصيل الساعات المجدولة (ديناميكي): من ${
-            payroll.summary.schedule.periodFrom || "-"
-          } إلى ${
-            payroll.summary.schedule.periodTo || "-"
-          } | الأيام المحتسبة: ${fmtMoneySar(
-            payroll.summary.schedule.workedDays || 0
-          )} | متوسط ساعات اليوم: ${fmtMoneySar(
-            payroll.summary.schedule.averageHoursPerWorkedDay || 0
-          )} ساعة | التوزيع: ${formatDailyHourBucketsLabel(payroll.summary.schedule.dailyHourBuckets as any)}`}
-        </div>
-      ) : null}
-
       {showStatsSubTab ? (
         <div className="staff-leave-box">
+          <div className="emp-kpi-strip">
+            <div className="emp-kpi-card accent">
+              <span>الرصيد الحالي</span>
+              <b>{currentLeaveBalanceLabel}</b>
+            </div>
+            <div className="emp-kpi-card">
+              <span>حالة الإجازة</span>
+              <b>{leave.modalOnLeave ? "مجازة" : "في الدوام"}</b>
+            </div>
+            <div className="emp-kpi-card">
+              <span>أيام الإجازة الثابتة</span>
+              <b>{leave.modalExceptionalLeaveWeekdays.length} يوم</b>
+            </div>
+          </div>
+
           <div className="staff-leave-head">
-            <span>إعدادات الإجازات للموظفة</span>
-            <b>{parsePositiveInt(String(leaveBalanceDays || 0), 0)} يوم</b>
+            <span>إعدادات الإجازات</span>
           </div>
 
           <div className="staff-leave-settings-grid">
@@ -435,7 +459,7 @@ export default function EmployeeStatsSection({
                   ))}
                 </div>
               ) : (
-                <div className="emp-field-note">لا توجد أيام إجازة أسبوعية ثابتة.</div>
+                <div className="emp-field-note is-boxed">لا توجد أيام إجازة أسبوعية ثابتة.</div>
               )}
             </div>
           </div>
@@ -447,10 +471,6 @@ export default function EmployeeStatsSection({
           <div className="staff-leave-head">
             <span>تاريخ الاستحقاق القادم</span>
             <div className="staff-leave-head-actions">
-              <div className="staff-leave-balance-card" aria-live="polite">
-                <span>الرصيد الحالي</span>
-                <b>{currentLeaveBalanceLabel}</b>
-              </div>
               <input
                 className="dash-input"
                 type="date"
@@ -539,6 +559,7 @@ export default function EmployeeStatsSection({
           </div>
         </div>
       ) : null}
+      </div>
     </div>
   );
 }
