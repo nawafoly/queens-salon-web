@@ -39,6 +39,7 @@ import PaymentCallback from "./pages/PaymentCallback";
 import { auth, db } from "./services/firebase";
 import { createOrLoadUserProfile } from "./services/userProfile";
 import { resolveDashboardLandingPath } from "./helpers/routePaths";
+import { readStoredAuthSession } from "./services/localAuthSession";
 
 // Pending Dashboard
 import DashboardPending from "./pages/DashboardPending";
@@ -265,13 +266,29 @@ function ScrollToTop() {
    App Component
 ================================ */
 const App: React.FC = () => {
-  const [authReady, setAuthReady] = useState(false);
+  const [storedSession, setStoredSession] = useState(() => readStoredAuthSession());
+  const [authReady, setAuthReady] = useState(() => !!readStoredAuthSession());
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
-  const [userName, setUserName] = useState("");
-  const [userRole, setUserRole] = useState<UiRole>("guest");
+  const [userName, setUserName] = useState(() => readStoredAuthSession()?.displayName || "");
+  const [userRole, setUserRole] = useState<UiRole>(() => readStoredAuthSession()?.role || "guest");
 
   const location = useLocation();
+  const effectiveSessionUser = storedSession?.temp
+    ? ({
+        uid: storedSession.uid,
+        email: storedSession.email,
+        displayName: storedSession.displayName,
+      } as FirebaseUser)
+    : authUser
+      ? authUser
+      : storedSession
+        ? ({
+            uid: storedSession.uid,
+            email: storedSession.email,
+            displayName: storedSession.displayName,
+          } as FirebaseUser)
+        : null;
 
   const isInDashboard =
     location.pathname.startsWith("/dashboard") ||
@@ -292,6 +309,16 @@ const App: React.FC = () => {
 
   useEffect(() => {
     readWelcomeFromStorage();
+    const currentSession = readStoredAuthSession();
+    setStoredSession(currentSession);
+    if (currentSession?.temp || (!authUser && currentSession)) {
+      setUserName(currentSession.displayName || getNameFromStorage());
+      setUserRole(currentSession.role);
+      if (!authUser) {
+        setAuthReady(true);
+      }
+      return;
+    }
     setUserName(getNameFromStorage());
   }, []);
 
@@ -309,6 +336,14 @@ const App: React.FC = () => {
       setAuthUser(user);
 
       if (!user) {
+        const currentSession = readStoredAuthSession();
+        setStoredSession(currentSession);
+        if (currentSession) {
+          setUserRole(currentSession.role);
+          setUserName(currentSession.displayName || getNameFromStorage());
+          setAuthReady(true);
+          return;
+        }
         setUserRole("guest");
         setUserName("");
         setAuthReady(true);
@@ -392,6 +427,14 @@ const App: React.FC = () => {
   useEffect(() => {
     const onAuthChanged = () => {
       readWelcomeFromStorage();
+      const currentSession = readStoredAuthSession();
+      setStoredSession(currentSession);
+      if (currentSession?.temp || (!authUser && currentSession)) {
+        setUserRole(currentSession.role);
+        setUserName(currentSession.displayName || getNameFromStorage());
+        setAuthReady(true);
+        return;
+      }
       if (!authUser) setUserName(getNameFromStorage());
     };
 
@@ -406,7 +449,7 @@ const App: React.FC = () => {
   const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
-    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+    const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
     const isDashboardRoot =
       location.pathname === "/dashboard" || location.pathname === "/dashboard/";
 
@@ -440,7 +483,7 @@ const App: React.FC = () => {
   const AdminGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
-    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+    const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
 
     if (isPendingRole(role) || (isMalikatAuth && (role === "client" || role === "guest"))) {
       return <Navigate to="/dashboard-pending" replace />;
@@ -455,7 +498,7 @@ const App: React.FC = () => {
   const EmployeeGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
-    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+    const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
 
     if (isPendingRole(role) || (isMalikatAuth && (role === "client" || role === "guest"))) {
       return <Navigate to="/dashboard-pending" replace />;
@@ -469,7 +512,7 @@ const App: React.FC = () => {
   const ClientGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
-    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+    const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
 
     if (isMalikatAuth) {
       if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
@@ -489,7 +532,7 @@ const App: React.FC = () => {
   const ProfileGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
-    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+    const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
 
     if (isMalikatAuth) {
       if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
@@ -509,7 +552,7 @@ const App: React.FC = () => {
   const PendingGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
     const role = userRole;
-    const isMalikatAuth = isMalikatAdminEmail(authUser?.email);
+    const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
 
     if (isMalikatAuth) {
       if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
@@ -529,7 +572,11 @@ const App: React.FC = () => {
   return (
     <div className={`app ${isInDashboard ? "is-dashboard" : "is-public"}`}>
       {!isInDashboard && !isProfilePage && (
-        <Navbar authUser={authUser} currentRole={userRole} currentUserName={userName} />
+        <Navbar
+          authUser={effectiveSessionUser}
+          currentRole={userRole}
+          currentUserName={userName}
+        />
       )}
 
       <main className="main-content">

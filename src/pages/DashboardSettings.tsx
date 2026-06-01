@@ -10,6 +10,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../services/firebase";
 import { AppSettingsService } from "../services/AppSettingsService";
 import type { AppSettings, SectionKey } from "../services/AppSettingsService";
+import { readStoredAuthSession } from "../services/localAuthSession";
 
 import "../styles/DashboardModals.css";
 import "../styles/stylesSettings/DashboardSettings.css";
@@ -88,8 +89,16 @@ const DashboardSettings: React.FC = () => {
       setAuthLoading(true);
 
       try {
+        const localSession = readStoredAuthSession();
+
         if (!user) {
-          setUiRole("guest");
+          if (localSession?.temp && localSession.role) {
+            setUiRole(localSession.role as UiRole);
+          } else if (localSession?.role) {
+            setUiRole(localSession.role as UiRole);
+          } else {
+            setUiRole("guest");
+          }
           return;
         }
 

@@ -65,6 +65,9 @@ export async function loginWithEmail(email: string, password: string): Promise<U
     if (code.includes("auth/network-request-failed")) {
       throw new Error("مشكلة اتصال بالشبكة. تأكد من الإنترنت.");
     }
+    if (code.includes("auth/invalid-api-key")) {
+      throw new Error("مفتاح Firebase غير صالح حاليًا. استخدم زر الدخول المؤقت للدخول إلى الداشبورد.");
+    }
     throw new Error(err?.message || "فشل تسجيل الدخول.");
   }
 }

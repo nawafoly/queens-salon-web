@@ -15,6 +15,7 @@ import {
 import type { Timestamp } from "firebase/firestore";
 
 import { auth, db } from "../services/firebase";
+import { readStoredAuthSession } from "../services/localAuthSession";
 import { updateBookingStatus as updateBookingStatusFS } from "../services/firestoreBookings";
 import { FirestoreReadStats } from "../services/firestoreReadStats";
 import "../styles/DashboardStaff.css";
@@ -220,9 +221,15 @@ export default function DashboardStaff({ allowStatusChange = false }: DashboardS
   // ✅ 1) Auth: uid + email
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
-      const uid = String(u?.uid || "");
-      const email = String(u?.email || "");
-      const displayName = String(u?.displayName || readCachedStaffDisplayName() || "").trim();
+      const localSession = readStoredAuthSession();
+      const uid = String(localSession?.uid || u?.uid || "");
+      const email = String(localSession?.email || u?.email || "");
+      const displayName = String(
+        localSession?.displayName ||
+          u?.displayName ||
+          readCachedStaffDisplayName() ||
+          ""
+      ).trim();
       setMyUid(uid);
       setMyEmail(email);
       setMyName(displayName);

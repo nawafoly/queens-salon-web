@@ -3,6 +3,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 
 import { auth, db } from "../services/firebase";
+import { readStoredAuthSession } from "../services/localAuthSession";
 
 import "../styles/DashboardModals.css";
 import "../styles/stylesSettings/DashboardSettings.css";
@@ -59,15 +60,28 @@ const DashboardAdminProfile: React.FC = () => {
 
       try {
         if (!user) {
-          setUid("");
-          setDocExists(false);
-          setProfile({
-            displayName: "",
-            phone: "",
-            email: "",
-            photoURL: "",
-            role: "guest",
-          });
+          const localSession = readStoredAuthSession();
+          if (localSession?.uid && localSession?.role) {
+            setUid(localSession.uid);
+            setDocExists(true);
+            setProfile({
+              displayName: localSession.displayName || "",
+              phone: localSession.phone || "",
+              email: localSession.email || "",
+              photoURL: "",
+              role: localSession.role as UiRole,
+            });
+          } else {
+            setUid("");
+            setDocExists(false);
+            setProfile({
+              displayName: "",
+              phone: "",
+              email: "",
+              photoURL: "",
+              role: "guest",
+            });
+          }
           return;
         }
 

@@ -52,6 +52,7 @@ import logo1 from "../assets/images/ssunnamed3.png";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { collection, getDocs } from "firebase/firestore";
 import { auth, db } from "../services/firebase";
+import { readStoredAuthSession } from "../services/localAuthSession";
 
 import type { Booking, BookingStatus } from "../helpers/dashboardService";
 import { DashboardService } from "../helpers/dashboardService";
@@ -1275,7 +1276,10 @@ const Dashboard: React.FC = () => {
    * ✅ refresh من Firestore
    * ✅ تعديل مهم: لا نقرأ المصروفات إلا لو AdminPower (Owner/Admin)
    */
-  const refreshDashboard = async (roleForRefresh?: UiRole) => {
+  const refreshDashboard = async (
+    roleForRefresh?: UiRole,
+    options?: { silent?: boolean }
+  ) => {
     if (roleForRefresh === "staff") {
       setStats((prev) => ({
         ...prev,
@@ -1461,7 +1465,9 @@ const Dashboard: React.FC = () => {
       const code = (e as any)?.code || (e as any)?.name || "-";
       const msg = String((e as any)?.message || "");
 
-      alert(`❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`);
+      if (!options?.silent) {
+        alert(`❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`);
+      }
 
       setStats((prev) => ({
         ...prev,
@@ -1549,7 +1555,44 @@ const Dashboard: React.FC = () => {
         setDashError("");
 
         step = "auth:checkUser";
+        const localSession = readStoredAuthSession();
+        if (localSession?.temp && localSession?.uid && localSession?.role) {
+          const fallbackRole = localSession.role as UiRole;
+          const fallbackName =
+            localSession.displayName ||
+            localSession.email ||
+            localStorage.getItem("userName") ||
+            "مستخدم";
+
+          setUserInfo({
+            name: fallbackName,
+            role: fallbackRole,
+            email: localSession.email || "",
+          });
+          markDashboardBootstrapped();
+          await refreshDashboard(fallbackRole, { silent: true });
+          return;
+        }
+
         if (!user) {
+          if (localSession?.uid && localSession?.role) {
+            const fallbackRole = localSession.role as UiRole;
+            const fallbackName =
+              localSession.displayName ||
+              localSession.email ||
+              localStorage.getItem("userName") ||
+              "مستخدم";
+
+            setUserInfo({
+              name: fallbackName,
+              role: fallbackRole,
+              email: localSession.email || "",
+            });
+            markDashboardBootstrapped();
+            await refreshDashboard(fallbackRole, { silent: true });
+            return;
+          }
+
           navigate("/login");
           return;
         }
