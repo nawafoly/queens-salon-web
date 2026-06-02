@@ -251,13 +251,6 @@ const Profile: React.FC = () => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [profileDoc, setProfileDoc] = useState<UserProfile | null>(null);
 
-  const [authChecked, setAuthChecked] = useState(
-    () => !!auth.currentUser || !!cachedProfile || !!currentUser
-  );
-  const [showQrCamera, setShowQrCamera] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const cameraStreamRef = useRef<MediaStream | null>(null);
-
   const cachedProfile = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem("user_profile_v1") || "null");
@@ -273,6 +266,13 @@ const Profile: React.FC = () => {
       return null;
     }
   }, []);
+
+  const [authChecked, setAuthChecked] = useState(
+    () => !!auth.currentUser || !!cachedProfile || !!currentUser
+  );
+  const [showQrCamera, setShowQrCamera] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
 
   const [userData, setUserData] = useState({
     name: cachedProfile?.name || currentUser?.name || localStorage.getItem("userName") || "",

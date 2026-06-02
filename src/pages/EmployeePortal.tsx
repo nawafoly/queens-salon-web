@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChartLine, faHouse, faRightFromBracket } from "@fortawesome/free-solid-svg-icons";
@@ -63,11 +63,14 @@ export default function EmployeePortal() {
   const [notifications, setNotifications] = useState<EmployeeNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const notificationsRequestRef = useRef(0);
   const dashboardPath = resolveDashboardLandingPath(session.role);
   const dashboardLabel = session.role === "hr" ? "لوحة HR" : "لوحة التحكم";
 
   const loadNotifications = useCallback(async () => {
+    const requestId = ++notificationsRequestRef.current;
     if (!session.uid) {
+      if (requestId !== notificationsRequestRef.current) return;
       setNotifications([]);
       setNotificationsLoading(false);
       return;
@@ -80,11 +83,15 @@ export default function EmployeePortal() {
         targetEmployeeId: session.employeeId,
         limitCount: 200,
       });
+      if (requestId !== notificationsRequestRef.current) return;
       setNotifications(rows);
     } catch {
+      if (requestId !== notificationsRequestRef.current) return;
       setNotifications([]);
     } finally {
-      setNotificationsLoading(false);
+      if (requestId === notificationsRequestRef.current) {
+        setNotificationsLoading(false);
+      }
     }
   }, [session.employeeId, session.uid]);
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 
@@ -34,33 +34,57 @@ function normalizeRole(raw: unknown): UiRole {
 }
 
 const DashboardAdminProfile: React.FC = () => {
-  const [authLoading, setAuthLoading] = useState(true);
+  const bootstrapSession = useMemo(() => {
+    try {
+      return readStoredAuthSession();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const [authLoading, setAuthLoading] = useState(() => !bootstrapSession);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const [uid, setUid] = useState("");
-  const [docExists, setDocExists] = useState(false);
+  const [uid, setUid] = useState(() => bootstrapSession?.uid || "");
+  const [docExists, setDocExists] = useState(() => Boolean(bootstrapSession?.uid));
 
-  const [profile, setProfile] = useState<AdminProfileDoc>({
-    displayName: "",
-    phone: "",
-    email: "",
-    photoURL: "",
-    role: "guest",
-  });
+  const [profile, setProfile] = useState<AdminProfileDoc>(() =>
+    bootstrapSession
+      ? {
+          displayName: bootstrapSession.displayName || "",
+          phone: bootstrapSession.phone || "",
+          email: bootstrapSession.email || "",
+          photoURL: "",
+          role: normalizeRole(bootstrapSession.role),
+        }
+      : {
+          displayName: "",
+          phone: "",
+          email: "",
+          photoURL: "",
+          role: "guest",
+        }
+  );
+  const authRequestRef = useRef(0);
 
   const hasAdminPower = useMemo(() => {
     return profile.role === "owner" || profile.role === "admin";
   }, [profile.role]);
 
   useEffect(() => {
+    let alive = true;
+
     const unsub = onAuthStateChanged(auth, async (user) => {
-      setAuthLoading(true);
+      const requestId = ++authRequestRef.current;
       setMsg("");
 
       try {
+        const localSession = readStoredAuthSession();
+
         if (!user) {
-          const localSession = readStoredAuthSession();
+          if (!alive || requestId !== authRequestRef.current) return;
+
           if (localSession?.uid && localSession?.role) {
             setUid(localSession.uid);
             setDocExists(true);
@@ -82,46 +106,67 @@ const DashboardAdminProfile: React.FC = () => {
               role: "guest",
             });
           }
+
           return;
         }
 
+        if (!alive || requestId !== authRequestRef.current) return;
         setUid(user.uid);
+
         const ref = doc(db, ...USERS_COLLECTION, user.uid);
         const snap = await getDoc(ref);
+
+        if (!alive || requestId !== authRequestRef.current) return;
 
         if (!snap.exists()) {
           setDocExists(false);
           setProfile({
-            displayName: user.displayName || "",
-            phone: "",
-            email: user.email || "",
+            displayName: localSession?.displayName || user.displayName || "",
+            phone: localSession?.phone || "",
+            email: localSession?.email || user.email || "",
             photoURL: user.photoURL || "",
-            role: "guest",
+            role: normalizeRole(localSession?.role || "guest"),
           });
           setMsg("لم يتم العثور على ملف المستخدم الإداري في المسار المعتمد.");
           return;
         }
 
         const data = snap.data() as any;
-        const role = normalizeRole(data?.role);
+        const role = normalizeRole(data?.role || localSession?.role);
 
         setDocExists(true);
         setProfile({
-          displayName: String(data?.displayName || data?.name || user.displayName || ""),
-          phone: String(data?.phone || ""),
-          email: String(data?.email || user.email || ""),
-          photoURL: String(data?.photoURL || ""),
+          displayName: String(data?.displayName || data?.name || localSession?.displayName || user.displayName || ""),
+          phone: String(data?.phone || localSession?.phone || ""),
+          email: String(data?.email || localSession?.email || user.email || ""),
+          photoURL: String(data?.photoURL || user.photoURL || ""),
           role,
         });
       } catch (e) {
+        if (!alive || requestId !== authRequestRef.current) return;
+
         console.error("Admin profile load error:", e);
+        const localSession = readStoredAuthSession();
+        setDocExists(Boolean(localSession?.uid || user?.uid));
+        setProfile({
+          displayName: localSession?.displayName || user?.displayName || "",
+          phone: localSession?.phone || "",
+          email: localSession?.email || user?.email || "",
+          photoURL: user?.photoURL || "",
+          role: normalizeRole(localSession?.role || "guest"),
+        });
         setMsg("تعذر تحميل الملف الشخصي.");
       } finally {
-        setAuthLoading(false);
+        if (alive && requestId === authRequestRef.current) {
+          setAuthLoading(false);
+        }
       }
     });
 
-    return () => unsub();
+    return () => {
+      alive = false;
+      unsub();
+    };
   }, []);
 
   const handleSave = async () => {

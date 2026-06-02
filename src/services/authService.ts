@@ -10,6 +10,7 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "./firebase";
+import { clearStoredAuthSession } from "./localAuthSession";
 
 /**
  * هذا الملف مسؤول فقط عن:
@@ -126,5 +127,9 @@ export async function registerClientWithEmail(params: {
 
 /** (اختياري) لو تحتاج تسجيل خروج من Firebase */
 export async function logoutFirebase() {
-  await signOut(auth);
+  try {
+    await signOut(auth);
+  } finally {
+    clearStoredAuthSession();
+  }
 }

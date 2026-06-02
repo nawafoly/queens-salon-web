@@ -54,36 +54,40 @@ function safeString(value: unknown) {
 }
 
 export function readStoredAuthSession(): StoredAuthSession | null {
-  const authUser = parseJson<any>(localStorage.getItem(AUTH_USER_KEY));
-  const profile = parseJson<any>(localStorage.getItem(USER_PROFILE_KEY));
+  try {
+    const authUser = parseJson<any>(localStorage.getItem(AUTH_USER_KEY));
+    const profile = parseJson<any>(localStorage.getItem(USER_PROFILE_KEY));
 
-  const uid = safeString(
-    authUser?.uid || profile?.uid || localStorage.getItem(USER_UID_KEY)
-  );
-  const email = safeString(
-    authUser?.email || profile?.email || localStorage.getItem(USER_EMAIL_KEY)
-  );
-  const role = normalizeRole(
-    authUser?.role || profile?.role || localStorage.getItem(USER_ROLE_KEY)
-  );
-  const displayName = safeString(
-    authUser?.displayName ||
-      profile?.displayName ||
-      profile?.name ||
-      localStorage.getItem(USER_NAME_KEY)
-  );
-  const phone = safeString(profile?.phone || localStorage.getItem(USER_PHONE_KEY));
+    const uid = safeString(
+      authUser?.uid || profile?.uid || localStorage.getItem(USER_UID_KEY)
+    );
+    const email = safeString(
+      authUser?.email || profile?.email || localStorage.getItem(USER_EMAIL_KEY)
+    );
+    const role = normalizeRole(
+      authUser?.role || profile?.role || localStorage.getItem(USER_ROLE_KEY)
+    );
+    const displayName = safeString(
+      authUser?.displayName ||
+        profile?.displayName ||
+        profile?.name ||
+        localStorage.getItem(USER_NAME_KEY)
+    );
+    const phone = safeString(profile?.phone || localStorage.getItem(USER_PHONE_KEY));
 
-  if (!uid && !email && !displayName) return null;
+    if (!uid && !email && !displayName) return null;
 
-  return {
-    uid,
-    email,
-    role,
-    displayName,
-    phone: phone || undefined,
-    temp: Boolean(authUser?.temp || profile?.temp),
-  };
+    return {
+      uid,
+      email,
+      role,
+      displayName,
+      phone: phone || undefined,
+      temp: Boolean(authUser?.temp || profile?.temp),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function writeStoredAuthSession(session: StoredAuthSession) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -570,8 +570,10 @@ export default function AdminHrDashboard() {
   const [applications, setApplications] = useState<RecruitmentApplication[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState("");
+  const loadRequestRef = useRef(0);
 
   const loadData = async () => {
+    const requestId = ++loadRequestRef.current;
     setLoadingData(true);
     setError("");
     try {
@@ -579,12 +581,16 @@ export default function AdminHrDashboard() {
         listEmployeeDirectory(),
         listRecruitmentApplications(),
       ]);
+      if (requestId !== loadRequestRef.current) return;
       setRoster(Array.isArray(rosterRows) ? rosterRows : []);
       setApplications(Array.isArray(applicationRows) ? applicationRows : []);
     } catch (e) {
+      if (requestId !== loadRequestRef.current) return;
       setError(cleanText((e as any)?.message || "تعذر تحميل لوحة الموارد البشرية."));
     } finally {
-      setLoadingData(false);
+      if (requestId === loadRequestRef.current) {
+        setLoadingData(false);
+      }
     }
   };
 

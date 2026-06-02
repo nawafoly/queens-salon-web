@@ -123,6 +123,76 @@ type StaffOperationalRow = {
 };
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
+type DashboardStats = {
+  todayBookings: number;
+  totalRevenue: number;
+  totalOperations: number;
+  employeesCount: number;
+};
+
+type DashboardFinanceTransaction = {
+  id: string;
+  type: "income" | "expense";
+  title: string;
+  amount: number;
+  date: string;
+  createdAt: number;
+};
+
+type DashboardSnapshot = {
+  stats: DashboardStats;
+  allScheduleBookings: Booking[];
+  staffOperationalRows: StaffOperationalRow[];
+  expensesTotalFS: number;
+  incomeTotalFS: number;
+  financeToday: { income: number; expenses: number; net: number };
+  recentFinanceTransactions: DashboardFinanceTransaction[];
+  savedAt: number;
+};
+
+const DASHBOARD_VIEW_CACHE_KEY = "dashboard_view_cache_v1";
+const emptyDashboardStats: DashboardStats = {
+  todayBookings: 0,
+  totalRevenue: 0,
+  totalOperations: 0,
+  employeesCount: 0,
+};
+const emptyFinanceToday = { income: 0, expenses: 0, net: 0 };
+
+let dashboardViewMemoryCache: DashboardSnapshot | null = null;
+
+function readDashboardViewCache(): DashboardSnapshot | null {
+  if (dashboardViewMemoryCache) return dashboardViewMemoryCache;
+  try {
+    const raw = localStorage.getItem(DASHBOARD_VIEW_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DashboardSnapshot;
+    if (!parsed || typeof parsed !== "object") return null;
+    dashboardViewMemoryCache = parsed;
+    return parsed;
+  } catch {
+    return dashboardViewMemoryCache;
+  }
+}
+
+function writeDashboardViewCache(snapshot: DashboardSnapshot) {
+  dashboardViewMemoryCache = snapshot;
+  try {
+    localStorage.setItem(DASHBOARD_VIEW_CACHE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // ignore cache write failures
+  }
+}
+
+function clearDashboardViewCache() {
+  dashboardViewMemoryCache = null;
+  try {
+    localStorage.removeItem(DASHBOARD_VIEW_CACHE_KEY);
+  } catch {
+    // ignore cache clear failures
+  }
+}
+
 function formatLocalDateISO(date: Date): string {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, "0");
@@ -1210,8 +1280,28 @@ function isProgrammerProfile(userInfo: UserInfo | null) {
   return normalizedName.includes("نواف") && normalizedName.includes("العليان");
 }
 
+function isDashboardUiRole(role: unknown): role is UiRole {
+  const r = String(role || "").toLowerCase().trim();
+  return r === "owner" || r === "admin" || r === "reception" || r === "staff";
+}
+
+function getInitialDashboardUserInfo(): UserInfo | null {
+  try {
+    const session = readStoredAuthSession();
+    if (!session || !isDashboardUiRole(session.role)) return null;
+
+    return {
+      name: String(session.displayName || localStorage.getItem("userName") || "").trim() || "مستخدم",
+      role: session.role,
+      email: String(session.email || localStorage.getItem("userEmail") || "").trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 const Dashboard: React.FC = () => {
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(() => getInitialDashboardUserInfo());
   const [dashError, setDashError] = useState<string>("");
   const [hasBootstrappedDashboard, setHasBootstrappedDashboard] = useState<boolean>(() => {
     try {
@@ -1223,35 +1313,27 @@ const Dashboard: React.FC = () => {
 
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
 
-  const [stats, setStats] = useState({
-    todayBookings: 0,
-    totalRevenue: 0,
-    totalOperations: 0,
-    employeesCount: 0,
-  });
+  const initialDashboardSnapshot = readDashboardViewCache();
 
-  const [todayScheduleBookings, setTodayScheduleBookings] = useState<Booking[]>([]);
-  const [allScheduleBookings, setAllScheduleBookings] = useState<Booking[]>([]);
-  const [staffOperationalRows, setStaffOperationalRows] = useState<StaffOperationalRow[]>([]);
+  const [stats, setStats] = useState<DashboardStats>(() => initialDashboardSnapshot?.stats || emptyDashboardStats);
+  const [allScheduleBookings, setAllScheduleBookings] = useState<Booking[]>(
+    () => initialDashboardSnapshot?.allScheduleBookings || []
+  );
+  const [staffOperationalRows, setStaffOperationalRows] = useState<StaffOperationalRow[]>(
+    () => initialDashboardSnapshot?.staffOperationalRows || []
+  );
   const [scheduleDate, setScheduleDate] = useState<string>(() => formatLocalDateISO(new Date()));
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [selectedBookingActivity, setSelectedBookingActivity] = useState<BookingActivityItem[]>([]);
   const [selectedBookingActivityLoading, setSelectedBookingActivityLoading] = useState(false);
   const [selectedBookingActivityError, setSelectedBookingActivityError] = useState("");
 
-  const [expensesTotalFS, setExpensesTotalFS] = useState(0);
-  const [incomeTotalFS, setIncomeTotalFS] = useState(0);
-  const [financeToday, setFinanceToday] = useState({ income: 0, expenses: 0, net: 0 });
-  const [recentFinanceTransactions, setRecentFinanceTransactions] = useState<
-    Array<{
-      id: string;
-      type: "income" | "expense";
-      title: string;
-      amount: number;
-      date: string;
-      createdAt: number;
-    }>
-  >([]);
+  const [expensesTotalFS, setExpensesTotalFS] = useState(() => initialDashboardSnapshot?.expensesTotalFS || 0);
+  const [incomeTotalFS, setIncomeTotalFS] = useState(() => initialDashboardSnapshot?.incomeTotalFS || 0);
+  const [financeToday, setFinanceToday] = useState(() => initialDashboardSnapshot?.financeToday || emptyFinanceToday);
+  const [recentFinanceTransactions, setRecentFinanceTransactions] = useState<DashboardFinanceTransaction[]>(
+    () => initialDashboardSnapshot?.recentFinanceTransactions || []
+  );
 
   const [missingExpenseNotesCount, setMissingExpenseNotesCount] = useState(0);
 
@@ -1260,6 +1342,8 @@ const Dashboard: React.FC = () => {
 
   const location = useLocation();
   const navigate = useNavigate();
+  const refreshRequestIdRef = useRef(0);
+  const hasDashboardDataRef = useRef(Boolean(initialDashboardSnapshot));
 
   const markDashboardBootstrapped = () => {
     setHasBootstrappedDashboard(true);
@@ -1271,6 +1355,10 @@ const Dashboard: React.FC = () => {
   const totalIncome = incomeTotalFS;
   const totalExpenses = expensesTotalFS;
   const netProfit = totalIncome - totalExpenses;
+  const todayScheduleBookings = useMemo(
+    () => filterOperationalScheduleBookings(allScheduleBookings || [], scheduleDate, staffOperationalRows),
+    [allScheduleBookings, scheduleDate, staffOperationalRows]
+  );
 
   /**
    * ✅ refresh من Firestore
@@ -1280,25 +1368,22 @@ const Dashboard: React.FC = () => {
     roleForRefresh?: UiRole,
     options?: { silent?: boolean }
   ) => {
+    const requestId = ++refreshRequestIdRef.current;
+
     if (roleForRefresh === "staff") {
-      setStats((prev) => ({
-        ...prev,
-        todayBookings: 0,
-        totalRevenue: 0,
-        totalOperations: 0,
-      }));
-      setTodayScheduleBookings([]);
+      hasDashboardDataRef.current = false;
+      clearDashboardViewCache();
+      setStats(emptyDashboardStats);
       setAllScheduleBookings([]);
       setStaffOperationalRows([]);
       setExpensesTotalFS(0);
       setIncomeTotalFS(0);
-      setFinanceToday({ income: 0, expenses: 0, net: 0 });
+      setFinanceToday(emptyFinanceToday);
       setRecentFinanceTransactions([]);
       return;
     }
 
     let step = "start";
-
     const canReadExpensesNow = roleForRefresh === "owner" || roleForRefresh === "admin";
 
     try {
@@ -1311,6 +1396,8 @@ const Dashboard: React.FC = () => {
 
       step = "bookings:listAllBookings";
       const docs = await listAllBookingsFS();
+      if (requestId !== refreshRequestIdRef.current) return;
+
       const bookingPaidById = docs.reduce((acc, b: any) => {
         const id = String(b?.id || "").trim();
         if (!id) return acc;
@@ -1318,6 +1405,7 @@ const Dashboard: React.FC = () => {
         acc[id] = hasReliableBookingPayment(b) ? Number(payment.paidAmount || 0) : Number.NaN;
         return acc;
       }, {} as Record<string, number>);
+
       const bookingDateById = docs.reduce((acc, b: any) => {
         const id = String(b?.id || "").trim();
         if (!id) return acc;
@@ -1328,7 +1416,9 @@ const Dashboard: React.FC = () => {
 
       step = "staff_public:getDocs";
       const staffSnap = await getDocs(collection(db, "salons", "main", "staff_public"));
-      const staffRows = staffSnap.docs.map((snap) => {
+      if (requestId !== refreshRequestIdRef.current) return;
+
+      const nextStaffRows = staffSnap.docs.map((snap) => {
         const data = snap.data() as any;
         return {
           id: String(snap.id || "").trim(),
@@ -1338,35 +1428,32 @@ const Dashboard: React.FC = () => {
           employmentEndDate: String(data?.employmentEndDate || "").trim() || undefined,
         } as StaffOperationalRow;
       });
-      setStaffOperationalRows(staffRows);
 
       step = "bookings:mapFirestoreToUiBooking";
       const uiBookings = await Promise.all(docs.map(mapFirestoreToUiBooking));
-      setAllScheduleBookings(uiBookings);
+      if (requestId !== refreshRequestIdRef.current) return;
 
       step = "today:compute";
       const todayStr = formatLocalDateISO(new Date());
-
       const todayListAll = uiBookings.filter((b) => isBookingOnDate(b, todayStr));
-
       const todayList = todayListAll.filter(
         (b) => b.status === "confirmed" || b.status === "completed"
       );
-
-      let todayRevenue = todayList.reduce(
-        (sum, b) => sum + (Number((b as any).total) || 0),
-        0
-      );
-
-
-      const employeesCount = staffRows.filter((staff) =>
+      let todayRevenue = todayList.reduce((sum, b) => sum + (Number((b as any).total) || 0), 0);
+      const employeesCount = nextStaffRows.filter((staff) =>
         isStaffOperationallyActiveForDate(staff as any, todayStr)
       ).length;
 
+      let nextExpensesTotal = 0;
+      let nextIncomeTotal = 0;
+      let nextFinanceToday = emptyFinanceToday;
+      let nextRecentFinanceTransactions: DashboardFinanceTransaction[] = [];
+
       if (canReadExpensesNow) {
-        // ✅ income
         step = "income:listAllIncomeFS";
         const incomes = await listAllIncomeFS("main");
+        if (requestId !== refreshRequestIdRef.current) return;
+
         const effectiveIncomeAmount = (x: any) =>
           resolveIncomeEffectiveAmount(x, bookingPaidById);
         const effectiveIncomeDate = (x: any) => {
@@ -1376,27 +1463,21 @@ const Dashboard: React.FC = () => {
         };
 
         step = "income:sum";
-        const incomeTotal = incomes.reduce(
-          (sum: number, x: any) => sum + effectiveIncomeAmount(x),
-          0
-        );
+        nextIncomeTotal = incomes.reduce((sum: number, x: any) => sum + effectiveIncomeAmount(x), 0);
 
         todayRevenue = incomes
           .filter((x: any) => normalizeISODateLoose(effectiveIncomeDate(x)) === todayStr)
           .reduce((sum: number, x: any) => sum + effectiveIncomeAmount(x), 0);
 
-        setIncomeTotalFS(incomeTotal);
-
-        // ✅ expenses
         step = "expenses:listAllExpensesFS";
         const expenses = await listAllExpensesFS();
+        if (requestId !== refreshRequestIdRef.current) return;
 
         step = "expenses:sum";
-        const expensesTotal = expenses.reduce(
+        nextExpensesTotal = expenses.reduce(
           (sum, e) => sum + (Number((e as any).amount) || 0),
           0
         );
-        setExpensesTotalFS(expensesTotal);
 
         const incomeToday = incomes
           .filter((x: any) => normalizeISODateLoose(effectiveIncomeDate(x)) === todayStr)
@@ -1406,82 +1487,78 @@ const Dashboard: React.FC = () => {
           .filter((x: any) => String((x as any)?.date || "").trim() === todayStr)
           .reduce((sum: number, x: any) => sum + (Number((x as any)?.amount) || 0), 0);
 
-        setFinanceToday({
+        nextFinanceToday = {
           income: incomeToday,
           expenses: expensesToday,
           net: incomeToday - expensesToday,
-        });
+        };
 
         const recentIncomeTx = incomes.map((x: any) => ({
           id: `inc_${String(x?.id || "")}`,
           type: "income" as const,
-          title:
-            String(x?.note || "").trim() ||
-            financeSourceLabelAr(x?.source),
+          title: String(x?.note || "").trim() || financeSourceLabelAr(x?.source),
           amount: effectiveIncomeAmount(x),
           date: effectiveIncomeDate(x),
           createdAt: Number(x?.createdAt || 0) || Date.now(),
         }));
 
         const recentExpenseTx = expenses.map((x: any) => {
-          const rawTitle = String((x as any)?.title || (x as any)?.category || "مصروف").trim() || "مصروف";
+          const rawTitle =
+            String((x as any)?.title || (x as any)?.category || "مصروف").trim() || "مصروف";
           const title = /^booking$/i.test(rawTitle) ? "حجز" : rawTitle;
           return {
-          id: `exp_${String((x as any)?.id || "")}`,
-          type: "expense" as const,
-          title,
-          amount: Number((x as any)?.amount || 0),
-          date: String((x as any)?.date || ""),
-          createdAt: Number((x as any)?.createdAt || 0) || Date.now(),
+            id: `exp_${String((x as any)?.id || "")}`,
+            type: "expense" as const,
+            title,
+            amount: Number((x as any)?.amount || 0),
+            date: String((x as any)?.date || ""),
+            createdAt: Number((x as any)?.createdAt || 0) || Date.now(),
           };
         });
 
-        const mergedRecent = [...recentIncomeTx, ...recentExpenseTx]
+        nextRecentFinanceTransactions = [...recentIncomeTx, ...recentExpenseTx]
           .sort((a, b) => b.createdAt - a.createdAt)
           .slice(0, 7);
-
-        setRecentFinanceTransactions(mergedRecent);
-      } else {
-        setIncomeTotalFS(0);
-        setExpensesTotalFS(0);
-        setFinanceToday({ income: 0, expenses: 0, net: 0 });
-        setRecentFinanceTransactions([]);
       }
 
-      step = "ui:setStats/setTodayScheduleBookings";
-      setStats({
+      if (requestId !== refreshRequestIdRef.current) return;
+
+      const nextStats: DashboardStats = {
         todayBookings: todayList.length,
         totalRevenue: todayRevenue,
         totalOperations: uiBookings.length,
         employeesCount,
-      });
+      };
 
-      setTodayScheduleBookings(
-        filterOperationalScheduleBookings(uiBookings, scheduleDate, staffRows)
-      );
+      step = "ui:commit";
+      setStats(nextStats);
+      setAllScheduleBookings(uiBookings);
+      setStaffOperationalRows(nextStaffRows);
+      setExpensesTotalFS(nextExpensesTotal);
+      setIncomeTotalFS(nextIncomeTotal);
+      setFinanceToday(nextFinanceToday);
+      setRecentFinanceTransactions(nextRecentFinanceTransactions);
+      hasDashboardDataRef.current = true;
+      writeDashboardViewCache({
+        stats: nextStats,
+        allScheduleBookings: uiBookings,
+        staffOperationalRows: nextStaffRows,
+        expensesTotalFS: nextExpensesTotal,
+        incomeTotalFS: nextIncomeTotal,
+        financeToday: nextFinanceToday,
+        recentFinanceTransactions: nextRecentFinanceTransactions,
+        savedAt: Date.now(),
+      });
     } catch (e) {
+      if (requestId !== refreshRequestIdRef.current) return;
       console.error("refreshDashboard error:", e);
 
       const code = (e as any)?.code || (e as any)?.name || "-";
       const msg = String((e as any)?.message || "");
 
-      if (!options?.silent) {
+      if (!options?.silent && !hasDashboardDataRef.current) {
         alert(`❌ Dashboard Refresh Failed\nstep: ${step}\ncode: ${code}\nmsg: ${msg}`);
       }
-
-      setStats((prev) => ({
-        ...prev,
-        todayBookings: 0,
-        totalRevenue: 0,
-        totalOperations: 0,
-      }));
-      setTodayScheduleBookings([]);
-      setAllScheduleBookings([]);
-      setStaffOperationalRows([]);
-      setExpensesTotalFS(0);
-      setIncomeTotalFS(0); // ✅ FIX (كان ناقص)
-      setFinanceToday({ income: 0, expenses: 0, net: 0 });
-      setRecentFinanceTransactions([]);
     }
   };
 
@@ -1884,7 +1961,25 @@ const Dashboard: React.FC = () => {
     try {
       await signOut(auth);
     } finally {
+      refreshRequestIdRef.current += 1;
+      hasDashboardDataRef.current = false;
+      clearDashboardViewCache();
       setUserInfo(null);
+      setHasBootstrappedDashboard(false);
+      setStats(emptyDashboardStats);
+      setAllScheduleBookings([]);
+      setStaffOperationalRows([]);
+      setExpensesTotalFS(0);
+      setIncomeTotalFS(0);
+      setFinanceToday(emptyFinanceToday);
+      setRecentFinanceTransactions([]);
+      setSelectedBooking(null);
+      setSelectedBookingActivity([]);
+      setSelectedBookingActivityError("");
+      setSelectedBookingActivityLoading(false);
+      try {
+        sessionStorage.removeItem(DASHBOARD_BOOTSTRAPPED_KEY);
+      } catch {}
       localStorage.removeItem("authToken");
       localStorage.removeItem("userRole");
       localStorage.removeItem("userName");
@@ -2011,12 +2106,6 @@ const Dashboard: React.FC = () => {
       cancelled = true;
     };
   }, [selectedBooking]);
-
-  useEffect(() => {
-    setTodayScheduleBookings(
-      filterOperationalScheduleBookings(allScheduleBookings || [], scheduleDate, staffOperationalRows)
-    );
-  }, [allScheduleBookings, scheduleDate, staffOperationalRows]);
 
   useEffect(() => {
     const close = () => setIsSidebarOpen(false);

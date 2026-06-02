@@ -201,9 +201,11 @@ type DashboardStaffProps = {
 };
 
 export default function DashboardStaff({ allowStatusChange = false }: DashboardStaffProps) {
-  const [myUid, setMyUid] = useState<string>("");
-  const [myEmail, setMyEmail] = useState<string>("");
-  const [myName, setMyName] = useState<string>("");
+  const [myUid, setMyUid] = useState<string>(() => readStoredAuthSession()?.uid || "");
+  const [myEmail, setMyEmail] = useState<string>(() => readStoredAuthSession()?.email || "");
+  const [myName, setMyName] = useState<string>(() => {
+    return readStoredAuthSession()?.displayName || readCachedStaffDisplayName();
+  });
   const [myStaffDocId, setMyStaffDocId] = useState<string>("");
   const [myStaffName, setMyStaffName] = useState<string>("");
 
