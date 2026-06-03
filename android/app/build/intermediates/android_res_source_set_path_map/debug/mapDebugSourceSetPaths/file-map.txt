@@ -1,0 +1,8 @@
+com.queenssalon.app-pngs-0 C:\Users\nawaf\Downloads\queens-salon-web\android\app\build\generated\res\pngs\debug
+com.queenssalon.app-resValues-1 C:\Users\nawaf\Downloads\queens-salon-web\android\app\build\generated\res\resValues\debug
+com.queenssalon.app-updated_navigation_xml-2 C:\Users\nawaf\Downloads\queens-salon-web\android\app\build\generated\updated_navigation_xml\debug
+com.queenssalon.app-packageDebugResources-3 C:\Users\nawaf\Downloads\queens-salon-web\android\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+com.queenssalon.app-packageDebugResources-4 C:\Users\nawaf\Downloads\queens-salon-web\android\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+com.queenssalon.app-debug-5 C:\Users\nawaf\Downloads\queens-salon-web\android\app\build\intermediates\merged_res\debug\mergeDebugResources
+com.queenssalon.app-debug-6 C:\Users\nawaf\Downloads\queens-salon-web\android\app\src\debug\res
+com.queenssalon.app-main-7 C:\Users\nawaf\Downloads\queens-salon-web\android\app\src\main\res

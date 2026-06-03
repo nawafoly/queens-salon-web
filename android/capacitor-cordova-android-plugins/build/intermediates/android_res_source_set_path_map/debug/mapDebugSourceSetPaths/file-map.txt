@@ -1,0 +1,9 @@
+capacitor.cordova.android.plugins.capacitor-cordova-android-plugins-pngs-0 C:\Users\nawaf\Downloads\queens-salon-web\android\capacitor-cordova-android-plugins\build\generated\res\pngs\debug
+capacitor.cordova.android.plugins.capacitor-cordova-android-plugins-resValues-1 C:\Users\nawaf\Downloads\queens-salon-web\android\capacitor-cordova-android-plugins\build\generated\res\resValues\debug
+capacitor.cordova.android.plugins.capacitor-cordova-android-plugins-updated_navigation_xml-2 C:\Users\nawaf\Downloads\queens-salon-web\android\capacitor-cordova-android-plugins\build\generated\updated_navigation_xml\debug
+capacitor.cordova.android.plugins.capacitor-cordova-android-plugins-mergeDebugResources-3 C:\Users\nawaf\Downloads\queens-salon-web\android\capacitor-cordova-android-plugins\build\intermediates\incremental\debug\mergeDebugResources\merged.dir
+capacitor.cordova.android.plugins.capacitor-cordova-android-plugins-mergeDebugResources-4 C:\Users\nawaf\Downloads\queens-salon-web\android\capacitor-cordova-android-plugins\build\intermediates\incremental\debug\mergeDebugResources\stripped.dir
+capacitor.cordova.android.plugins.capacitor-cordova-android-plugins-debug-5 C:\Users\nawaf\Downloads\queens-salon-web\android\capacitor-cordova-android-plugins\build\intermediates\merged_res\debug\mergeDebugResources
+capacitor.cordova.android.plugins.capacitor-cordova-android-plugins-debug-6 C:\Users\nawaf\Downloads\queens-salon-web\android\capacitor-cordova-android-plugins\build\intermediates\packaged_res\debug\packageDebugResources
+capacitor.cordova.android.plugins.capacitor-cordova-android-plugins-debug-7 C:\Users\nawaf\Downloads\queens-salon-web\android\capacitor-cordova-android-plugins\src\debug\res
+capacitor.cordova.android.plugins.capacitor-cordova-android-plugins-main-8 C:\Users\nawaf\Downloads\queens-salon-web\android\capacitor-cordova-android-plugins\src\main\res
