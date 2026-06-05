@@ -2672,6 +2672,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             <nav className="sidebar-nav">
               <ul>
+                <li className="sidebar-nav-section">التشغيل اليومي</li>
+
                 {(isStaff || hasAdminPower || isReception) && (
                   <li>
                     <NavLink
@@ -2764,6 +2766,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                   )}
 
                 {hasAdminPower && (
+                  <li className="sidebar-nav-section">الإدارة والتحليلات</li>
+                )}
+
+                {hasAdminPower && (
                   <li>
                     <NavLink
                       to="/dashboard/offers"
@@ -2844,6 +2850,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                       الولاء (VIP)
                     </NavLink>
                   </li>
+                )}
+
+                {hasAdminPower && (
+                  <li className="sidebar-nav-section">النظام</li>
                 )}
 
                 {hasAdminPower && (

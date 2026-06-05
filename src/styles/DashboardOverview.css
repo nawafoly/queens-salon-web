@@ -562,3 +562,206 @@
   }
 }
 
+/* =========================================================
+   Overview Experience Refresh v4
+   يظهر التغيير بوضوح في صفحة "نظرة عامة".
+========================================================= */
+.dashboard-skin .overview-page {
+  --ov-card-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.08)) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  display: grid;
+  gap: 18px;
+}
+
+.dashboard-skin .overview-header {
+  min-height: 140px;
+  margin: 0 !important;
+  padding: 28px 34px !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dashboard-skin .overview-header::after {
+  content: "QUEENS SALON";
+  position: absolute;
+  inset-inline-start: 34px;
+  bottom: 24px;
+  color: rgba(64, 1, 13, 0.16);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.28em;
+}
+
+.dashboard-skin .overview-title h1 {
+  font-size: clamp(30px, 4vw, 54px) !important;
+  line-height: 1.05 !important;
+  margin-bottom: 12px !important;
+}
+
+.dashboard-skin .overview-title p {
+  font-size: 15px !important;
+  color: #697586 !important;
+  font-weight: 800;
+}
+
+.dashboard-skin .overview-content {
+  gap: 18px !important;
+}
+
+.dashboard-skin .overview-grid {
+  gap: 16px !important;
+}
+
+.dashboard-skin .ov-stat-card {
+  min-height: 126px !important;
+  border-radius: var(--ov-card-radius) !important;
+  padding: 18px 20px !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(255, 252, 247, 0.86)) !important;
+  border: 1px solid rgba(64, 1, 13, 0.08) !important;
+  box-shadow: 0 22px 46px rgba(13, 13, 13, 0.08) !important;
+}
+
+.dashboard-skin .ov-stat-card:hover {
+  transform: translateY(-4px) !important;
+  border-color: rgba(64, 1, 13, 0.20) !important;
+  box-shadow: 0 28px 56px rgba(13, 13, 13, 0.12) !important;
+}
+
+.dashboard-skin .ov-icon {
+  width: 54px !important;
+  height: 54px !important;
+  border-radius: 18px !important;
+  background:
+    linear-gradient(135deg, rgba(255, 242, 197, 0.96), rgba(243, 182, 31, 0.30)) !important;
+  border-color: rgba(243, 182, 31, 0.34) !important;
+  color: #40010d !important;
+}
+
+.dashboard-skin .ov-info h3 {
+  font-size: clamp(30px, 2.8vw, 44px) !important;
+  color: #0d1324 !important;
+}
+
+.dashboard-skin .ov-info p {
+  font-size: 13px !important;
+  color: #667085 !important;
+}
+
+.dashboard-skin .ov-main-grid {
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.55fr) !important;
+  gap: 18px !important;
+}
+
+.dashboard-skin .ov-card {
+  border-radius: var(--ov-card-radius) !important;
+  border: 1px solid rgba(13, 13, 13, 0.08) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: 0 24px 54px rgba(13, 13, 13, 0.08) !important;
+}
+
+.dashboard-skin .ov-card-head {
+  min-height: 74px;
+  padding: 18px 20px !important;
+  background:
+    linear-gradient(135deg, rgba(251, 247, 239, 0.86), rgba(255, 255, 255, 0.92)) !important;
+}
+
+.dashboard-skin .ov-card-head h3 {
+  font-size: 22px !important;
+  color: #0d1324 !important;
+}
+
+.dashboard-skin .ov-date-filter {
+  border-radius: 18px !important;
+  border: 1px solid rgba(64, 1, 13, 0.12) !important;
+  background: #fff !important;
+  box-shadow: 0 12px 28px rgba(13, 13, 13, 0.06);
+}
+
+.dashboard-skin .ov-table {
+  border-collapse: separate !important;
+  border-spacing: 0 10px !important;
+  padding: 8px 14px 16px;
+}
+
+.dashboard-skin .ov-table th {
+  background: transparent !important;
+  border: 0 !important;
+  color: #667085 !important;
+  font-size: 12px !important;
+}
+
+.dashboard-skin .ov-table td {
+  background: #ffffff !important;
+  border-top: 1px solid rgba(13, 13, 13, 0.07) !important;
+  border-bottom: 1px solid rgba(13, 13, 13, 0.07) !important;
+  padding: 14px !important;
+}
+
+.dashboard-skin .ov-table td:first-child {
+  border-inline-start: 1px solid rgba(13, 13, 13, 0.07) !important;
+  border-radius: 18px 0 0 18px;
+}
+
+.dashboard-skin .ov-table td:last-child {
+  border-inline-end: 1px solid rgba(13, 13, 13, 0.07) !important;
+  border-radius: 0 18px 18px 0;
+}
+
+.dashboard-skin .ov-actions {
+  padding: 18px !important;
+  gap: 16px !important;
+}
+
+.dashboard-skin .ov-action {
+  min-height: 150px;
+  border-radius: 22px !important;
+  padding: 18px !important;
+  border-color: rgba(64, 1, 13, 0.08) !important;
+  background:
+    linear-gradient(145deg, #ffffff, #fffaf2) !important;
+}
+
+.dashboard-skin .ov-action-ico {
+  width: 50px !important;
+  height: 50px !important;
+  border-radius: 17px !important;
+  background: rgba(64, 1, 13, 0.08) !important;
+}
+
+.dashboard-skin .ov-empty {
+  border-radius: 18px !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(251, 247, 239, 0.70)) !important;
+  border: 1px dashed rgba(64, 1, 13, 0.18) !important;
+  color: #667085 !important;
+  padding: 22px !important;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-skin .ov-main-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-skin .overview-header {
+    min-height: 118px;
+    padding: 22px !important;
+  }
+
+  .dashboard-skin .overview-header::after {
+    display: none;
+  }
+
+  .dashboard-skin .ov-stat-card {
+    min-height: 104px !important;
+  }
+}
+

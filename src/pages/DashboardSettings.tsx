@@ -202,6 +202,11 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
     });
   };
 
+  const activeSettingsItem =
+    settingsNavItems.find((item) => item.visible && isSettingsNavActive(item)) ||
+    settingsNavItems.find((item) => item.visible) ||
+    settingsNavItems[0];
+
   useEffect(() => {
     if (typeof initialRole !== "undefined") {
       setUiRole(mapFirestoreRoleToUi(initialRole));
@@ -638,7 +643,14 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
             </button>
           </div>
 
-          <div className="settings-shell__nav">
+          <div className="settings-shell__current">
+            <span>المسار الحالي</span>
+            <strong>{activeSettingsItem?.label || "الإعدادات"}</strong>
+            <small>{activeSettingsItem?.hint || "اختاري قسمًا من القائمة."}</small>
+          </div>
+
+          <nav className="settings-shell__nav" aria-label="أقسام الإعدادات">
+            <span className="settings-shell__nav-label">الأقسام</span>
             {settingsNavItems.map((item) => (
               <button
                 key={item.key}
@@ -646,6 +658,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                 className={`settings-shell__nav-item ${isSettingsNavActive(item) ? "is-active" : ""} ${
                   item.visible ? "" : "is-disabled"
                 }`}
+                aria-current={isSettingsNavActive(item) ? "page" : undefined}
                 onClick={() => item.visible && navigate(item.to)}
                 disabled={!item.visible}
                 title={item.visible ? item.hint : "هذه الصفحة غير متاحة لهذا الدور"}
@@ -657,7 +670,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                 </span>
               </button>
             ))}
-          </div>
+          </nav>
 
           <div className="settings-shell__panel">
             <span className="settings-shell__panel-label">الوصول</span>

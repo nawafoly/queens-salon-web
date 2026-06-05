@@ -150,6 +150,25 @@ export function SettingsSplitLayout({
   );
 }
 
+export function SettingsMasterDetail({
+  list,
+  detail,
+  className,
+  reverse = false,
+}: {
+  list: ReactNode;
+  detail: ReactNode;
+  className?: string;
+  reverse?: boolean;
+}) {
+  return (
+    <div className={joinClasses("settings-master-detail", reverse && "settings-master-detail--reverse", className)}>
+      <div className="settings-master-detail__list">{list}</div>
+      <div className="settings-master-detail__detail">{detail}</div>
+    </div>
+  );
+}
+
 export function SettingsState({
   title,
   hint,

@@ -1221,7 +1221,7 @@ export default function SettingsUsers({
   ========================= */
   if (authLoading) {
     return (
-      <div className="accounts-page" dir="rtl">
+      <div className="accounts-page accounts-page--settings" dir="rtl">
         <div className="accounts-shell accounts-shell--loading">
           <SettingsState
             title="جاري تحميل الحسابات…"
@@ -1235,7 +1235,7 @@ export default function SettingsUsers({
 
   if (!canManageUsers) {
     return (
-      <div className="accounts-page" dir="rtl">
+      <div className="accounts-page accounts-page--settings" dir="rtl">
         <div className="accounts-shell">
           <SettingsState
             title="غير مصرح"
@@ -1255,7 +1255,7 @@ export default function SettingsUsers({
   }
 
   return (
-    <div className="accounts-page" dir="rtl">
+    <div className="accounts-page accounts-page--settings" dir="rtl">
       <div className="accounts-shell">
         <SettingsPageHeader
           eyebrow="الوحدة 03"
@@ -1319,8 +1319,8 @@ export default function SettingsUsers({
 
         {createMsg ? <div className="accounts-banner">{createMsg}</div> : null}
 
-        <div className="accounts-workspace settings-split">
-          <div className="settings-card settings-split__main" style={{ marginTop: 0 }}>
+        <div className="accounts-workspace settings-master-detail settings-master-detail--accounts">
+          <div className="settings-card settings-master-detail__detail accounts-detail-card">
           {selectedUser ? (
             <>
               <div className="accounts-panel__head">
@@ -1439,7 +1439,7 @@ export default function SettingsUsers({
           )}
           </div>
 
-          <div className="settings-card accounts-sidebar-card settings-split__aside">
+          <div className="settings-card accounts-sidebar-card settings-master-detail__list">
           <div className="accounts-toolbar">
             <label className="accounts-search">
               <span>بحث</span>

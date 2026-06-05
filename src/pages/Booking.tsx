@@ -149,6 +149,16 @@ const createBookingGroup = (
   }
 ).createBookingGroup;
 
+function isServicePackageAvailableForBooking(pkg: ServicePackageDoc | any) {
+  if (!pkg || pkg.active === false) return false;
+  const today = todayISO();
+  const start = normalizeISODate(pkg.startDate);
+  const end = normalizeISODate(pkg.endDate);
+  if (start && today < start) return false;
+  if (end && today > end) return false;
+  return true;
+}
+
 /* =========================
    Types
  ========================= */
@@ -2238,9 +2248,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           const snap = await getDoc(doc(db, "salons", SALON_ID, "service_packages", packageDocId));
           if (!snap.exists()) return;
           const raw = snap.data() as any;
+          const fetchedPackage = { id: packageDocId, ...(raw || {}) } as ServicePackageDoc;
+          if (!isServicePackageAvailableForBooking(fetchedPackage)) {
+            setOfferLandingMsg("هذا الباكيج غير متاح حالياً أو انتهت صلاحيته.");
+            return;
+          }
           setFsPackages((prev) => {
             if ((prev || []).some((x) => String((x as any)?.id || "").trim() === packageDocId)) return prev;
-            return [...(prev || []), ({ id: packageDocId, ...(raw || {}) } as any)];
+            return [...(prev || []), fetchedPackage];
           });
           setCatalogMode("firestore");
           if (autoAdd) setAutoAddPackageId(packagePickerId);
@@ -7304,11 +7319,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   ].filter(Boolean).join(" - ") || "أدخلي الاسم والجوال";
   const step4SummaryText = `${finalPrice.toFixed(0)} ريال`;
   const step1HintText = `عدد الخدمات المضافة (${cartItems.length})`;
-  const stepRows: Array<{ id: BookingStep; title: string; hint: string; summary: string }> = [
-    { id: 1, title: "الخدمة", hint: step1HintText, summary: step1SummaryText },
-    { id: 2, title: "الوقت والموظفة", hint: "اختاري اليوم والوقت ثم الموظفة المناسبة", summary: step2SummaryText },
-    { id: 3, title: "بيانات العميلة", hint: "أدخلي الاسم والجوال ثم أضيفي الملاحظة أو كود الخصم إن رغبتِ", summary: step3SummaryText },
-    { id: 4, title: "التأكيد", hint: "راجعي التفاصيل واضغطي تأكيد", summary: step4SummaryText },
+  const stepRows: Array<{ id: BookingStep; title: string; hint: string; summary: string; action: string }> = [
+    { id: 1, title: "الخدمة", hint: step1HintText, summary: step1SummaryText, action: "اختيار وإضافة" },
+    { id: 2, title: "الوقت والموظفة", hint: "اختاري اليوم والوقت ثم الموظفة المناسبة", summary: step2SummaryText, action: "تحديد الموعد" },
+    { id: 3, title: "بيانات العميلة", hint: "أدخلي الاسم والجوال ثم أضيفي الملاحظة أو كود الخصم إن رغبتِ", summary: step3SummaryText, action: "إكمال البيانات" },
+    { id: 4, title: "التأكيد", hint: "راجعي التفاصيل واضغطي تأكيد", summary: step4SummaryText, action: "مراجعة نهائية" },
   ];
   const activeStepRow = stepRows.find((x) => x.id === currentStep) || stepRows[0];
 
@@ -7537,11 +7552,16 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               )}
 
               <form className="booking-form" onSubmit={handleSubmit}>
-                <div className="booking-step-focus mb-4">
+                <div className="booking-step-focus mb-4" aria-label="مسار إتمام الحجز">
                   <div className="booking-step-focus__top">
-                    <span className="booking-step-focus__pill">
-                      الخطوة {currentStep} من {stepRows.length}
-                    </span>
+                    <div className="booking-step-focus__kicker">
+                      <span className="booking-step-focus__pill">
+                        الخطوة {currentStep} من {stepRows.length}
+                      </span>
+                      <span className="booking-step-focus__status">
+                        {activeStepRow.action}
+                      </span>
+                    </div>
                     <div className="booking-step-focus__title-wrap">
                       <div className="booking-step-focus__title">{activeStepRow.title}</div>
                       <div className="booking-step-focus__hint">{activeStepRow.hint}</div>
@@ -7575,6 +7595,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                       const isActive = currentStep === stepRow.id;
                       const isUnlocked = stepRow.id <= maxUnlockedStep;
                       const isDone = stepRow.id < currentStep && isUnlocked;
+                      const stateLabel = isActive ? "الحالية" : isDone ? "مكتملة" : isUnlocked ? "متاحة" : "لاحقًا";
                       return (
                         <button
                           key={`step-dot-${stepRow.id}`}
@@ -7590,6 +7611,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           }}
                         >
                           <span className="booking-step-focus__dot-index">{stepRow.id}</span>
+                          <span className="booking-step-focus__dot-body">
+                            <span className="booking-step-focus__dot-title">{stepRow.title}</span>
+                            <span className="booking-step-focus__dot-hint">{stepRow.action}</span>
+                          </span>
+                          <span className="booking-step-focus__dot-state">{stateLabel}</span>
                         </button>
                       );
                     })}
@@ -7597,6 +7623,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
                   {stepRows.some((row) => row.id < currentStep && row.id <= maxUnlockedStep) ? (
                     <div className="booking-step-focus__quick-edit">
+                      <span className="booking-step-focus__quick-label">رجوع سريع</span>
                       {stepRows
                         .filter((row) => row.id < currentStep && row.id <= maxUnlockedStep)
                         .map((row) => (
@@ -7615,8 +7642,16 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
                 {currentStep === 2 ? (
                   <div className="booking-step-card-shell mb-4">
-                    <div className="booking-step-card-shell__title">
-                      اختاري اليوم والوقت المناسب
+                    <div className="booking-step-card-shell__header">
+                      <div>
+                        <div className="booking-step-card-shell__title">
+                          اختاري اليوم والوقت المناسب
+                        </div>
+                        <p className="booking-step-card-shell__subtitle">
+                          التاريخ يفتح لك المواعيد المتاحة ويخلّي اختيار الموظفة أدق.
+                        </p>
+                      </div>
+                      <span className="booking-step-card-shell__badge">02</span>
                     </div>
                     <div className="row">
                       <div className="col-12 mb-4">
@@ -7756,9 +7791,25 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
                 {currentStep === 1 ? (
                   <div className="booking-step-card-shell mb-4">
-                    <div className="booking-step-card-shell__title">اختاري الخدمة اللي تبغينها</div>
-                    <div className="mb-0 bk-service-adder" style={{ border: '1px solid #eee', padding: '15px', borderRadius: '12px', background: '#fafafa' }}>
-                      <label className="form-label" style={{ fontWeight: 'bold' }}>أضيفي خدمة جديدة</label>
+                    <div className="booking-step-card-shell__header">
+                      <div>
+                        <div className="booking-step-card-shell__title">اختاري الخدمة اللي تبغينها</div>
+                        <p className="booking-step-card-shell__subtitle">
+                          اختاري خدمة أو عرض أو باقة، ثم أضيفيها للسلة قبل الانتقال للوقت.
+                        </p>
+                      </div>
+                      <span className="booking-step-card-shell__badge">01</span>
+                    </div>
+                    <div className="mb-0 bk-service-adder">
+                      <div className="booking-service-adder-head">
+                        <div>
+                          <label className="form-label mb-1">نوع الحجز</label>
+                          <p className="booking-service-adder-hint">استخدمي الأزرار للوصول السريع لنوع الخدمة.</p>
+                        </div>
+                        <span className="booking-service-adder-count">
+                          {cartItems.length} مضافة
+                        </span>
+                      </div>
                       <div className="bk-picker-scope mb-2">
                         <button
                           type="button"
@@ -8120,9 +8171,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
 
                 {currentStep === 2 ? (
-                  <div className={`booking-step-card-shell mb-4 ${hasSelectedBookingDate ? "" : "booking-step-card-shell--disabled"}`}>
-                    <div className="booking-step-card-shell__title">اختيار الموظفة (يدوي)</div>
-                    <div className="small text-muted mt-2">
+                  <div className={`booking-step-helper mb-3 ${hasSelectedBookingDate ? "" : "is-muted"}`}>
+                    <div className="booking-step-helper__title">طريقة اختيار الموظفة</div>
+                    <div className="booking-step-helper__text">
                       {!hasSelectedBookingDate
                         ? "لن يتفعل اختيار الموظفة إلا بعد تحديد تاريخ الحجز."
                         : "اختاري الموظفة يدويًا من السلة بعد تحديد التاريخ والوقت."}
@@ -8132,11 +8183,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
                 {/* ✅ الخدمات المختارة (السلة) */}
                 {currentStep === 2 ? (
-                  <div className="mb-4">
-                    <div className="booking-cart-head">
-                      <label className="form-label mb-0" style={{ fontWeight: 'bold' }}>
-                        السلة (اختيار الموظفة والوقت)
-                      </label>
+                  <div className="booking-step-card-shell booking-step-card-shell--cart mb-4">
+                    <div className="booking-step-card-shell__header booking-cart-head">
+                      <div>
+                        <div className="booking-step-card-shell__title">السلة واختيار الموعد</div>
+                        <p className="booking-step-card-shell__subtitle">
+                          لكل خدمة اختاري الموظفة ثم الوقت، وبعدها أكدي الاختيار.
+                        </p>
+                      </div>
                       <span className="booking-cart-count">عدد الخدمات: {(formData.items || []).length}</span>
                     </div>
                     {!hasSelectedBookingDate ? (
@@ -9114,7 +9168,17 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 ) : null}
 
                 {currentStep === 4 ? (
-                  <div className="booking-pre-save-summary mb-3">
+                  <div className="booking-step-card-shell booking-step-card-shell--review mb-4">
+                    <div className="booking-step-card-shell__header">
+                      <div>
+                        <div className="booking-step-card-shell__title">راجعي تفاصيل الحجز</div>
+                        <p className="booking-step-card-shell__subtitle">
+                          تأكدي من الخدمة، الموظفة، الوقت، والسعر قبل إرسال الحجز النهائي.
+                        </p>
+                      </div>
+                      <span className="booking-step-card-shell__badge">04</span>
+                    </div>
+                  <div className="booking-pre-save-summary mb-0">
                     <div className="booking-pre-save-summary__head">
                       <div className="booking-pre-save-summary__title">ملخص الحجز قبل الدفع</div>
                       <div className="booking-pre-save-summary__count">
@@ -9202,10 +9266,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                       <strong>{finalPrice.toFixed(0)} ريال</strong>
                     </div>
                   </div>
+                  </div>
                 ) : null}
 
                 {currentStep === 2 ? (
-                  <div className="d-grid mb-4">
+                  <div className="booking-step-action-bar mb-4">
                     <button
                       type="button"
                       className="btn btn-dark"
@@ -9225,7 +9290,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 {currentStep === 3 ? (
                   <>
                     <div className="booking-step-card-shell mb-4">
-                      <div className="booking-step-card-shell__title">بيانات العميلة</div>
+                      <div className="booking-step-card-shell__header">
+                        <div>
+                          <div className="booking-step-card-shell__title">بيانات العميلة</div>
+                          <p className="booking-step-card-shell__subtitle">
+                            نحتاج الاسم ورقم الجوال لإرسال تفاصيل الحجز وتأكيد الموعد.
+                          </p>
+                        </div>
+                        <span className="booking-step-card-shell__badge">03</span>
+                      </div>
                       <div
                         className={`booking-client-prefill-note ${isSignedClient ? "is-signed" : ""}`}
                         role="status"
@@ -9276,7 +9349,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                     </div>
 
                     <div className="booking-step-card-shell mb-4">
-                      <div className="booking-step-card-shell__title">ملاحظات وكود خصم</div>
+                      <div className="booking-step-card-shell__header">
+                        <div>
+                          <div className="booking-step-card-shell__title">ملاحظات وكود خصم</div>
+                          <p className="booking-step-card-shell__subtitle">
+                            هذه الخطوة اختيارية، لكنها تساعدنا نجهز الزيارة بشكل أفضل.
+                          </p>
+                        </div>
+                      </div>
                       <div className="mb-4">
                         <label htmlFor="note" className="form-label">ملاحظة (اختياري)</label>
                         <textarea
@@ -9346,7 +9426,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                         )}
                       </div>
                     </div>
-                    <div className="d-grid mb-4">
+                    <div className="booking-step-action-bar mb-4">
                       <button
                         type="button"
                         className="btn btn-dark"
@@ -9365,7 +9445,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 ) : null}
 
                 {currentStep === 4 ? (
-                  <>
+                  <div className="booking-step-card-shell booking-step-card-shell--final-action mb-4">
+                    <div className="booking-step-card-shell__header">
+                      <div>
+                        <div className="booking-step-card-shell__title">التأكيد النهائي</div>
+                        <p className="booking-step-card-shell__subtitle">
+                          عند الضغط على التأكيد سيتم إرسال الحجز بالبيانات الظاهرة أعلاه.
+                        </p>
+                      </div>
+                    </div>
                     <div className="booking-summary mb-4 qs-black">
                       <div className="d-flex justify-content-between">
                         <span>السعر</span>
@@ -9394,7 +9482,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                         "تأكيد الحجز النهائي"
                       )}
                     </button>
-                  </>
+                  </div>
                 ) : null}
               </form>
             </div>

@@ -834,6 +834,29 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     setPackageServiceView("all");
   };
 
+  const openServiceEditorFromPackage = (serviceId: string) => {
+    const id = String(serviceId || "").trim();
+    const service = services.find((item) => item.id === id);
+    if (!id || !service) {
+      showMsg("تعذر فتح الخدمة للتعديل", 2200);
+      return;
+    }
+
+    setActiveCatalogPanel("items");
+    setActiveListMode("services");
+    setSelectedId(id);
+    setSearch("");
+    setStatusFilter("all");
+    setServiceSectionFilter(String(service.sectionId || "all") || "all");
+    setComposerMode(null);
+
+    setTimeout(() => {
+      setActiveTab("pricing");
+      setServiceDraft({ ...service });
+      setMode("edit");
+    }, 0);
+  };
+
   const savePackage = async () => {
     return createPackage();
 
@@ -1736,16 +1759,61 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
   const renderPackageComposer = () => (
     <div className="scatalog-ref__composer scatalog-ref__composer--service-inline">
-      <b>إضافة باقة جلسات</b>
+      <b>{editingPackageId ? "تعديل باقة جلسات" : "إضافة باقة جلسات"}</b>
+      {editingPackageId ? (
+        <div className="settings-note">
+          أنت تعدل محتوى الباقة نفسها. لتعديل خدمة محددة استخدم زر "تعديل الخدمة"
+          الموجود بجانب كل خدمة مختارة.
+        </div>
+      ) : null}
 
-      <div className="settings-field">
-        <label>اسم الباقة</label>
-        <input
-          className="settings-input"
-          placeholder="مثال: استشوار 10 جلسات"
-          value={packageName}
-          onChange={(e) => setPackageName(e.target.value)}
-        />
+      <div className="scatalog-package-details">
+        <div className="settings-field scatalog-package-details__name">
+          <label>اسم الباقة</label>
+          <input
+            className="settings-input"
+            placeholder="مثال: استشوار 10 جلسات"
+            value={packageName}
+            onChange={(e) => setPackageName(e.target.value)}
+          />
+        </div>
+
+        <div className="settings-field">
+          <label>عدد الجلسات</label>
+          <input
+            className="settings-input"
+            type="number"
+            min={1}
+            value={packageSessionsCount}
+            onChange={(e) =>
+              setPackageSessionsCount(Number(e.target.value))
+            }
+          />
+        </div>
+
+        <div className="settings-field">
+          <label>السعر</label>
+          <input
+            className="settings-input"
+            type="number"
+            min={0}
+            value={packagePrice}
+            onChange={(e) => setPackagePrice(Number(e.target.value))}
+          />
+        </div>
+
+        <label className="scatalog-package-active-card">
+          <input
+            className="settings-check"
+            type="checkbox"
+            checked={packageActive}
+            onChange={(e) => setPackageActive(e.target.checked)}
+          />
+          <span>
+            <strong>الباقة مفعلة</strong>
+            <small>تظهر في الحجز عند التفعيل</small>
+          </span>
+        </label>
       </div>
 
       <div className="settings-field">
@@ -1881,13 +1949,22 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                           {money(service.price)} ر.س · {service.durationMin} د
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        className="dash-btn"
-                        onClick={() => togglePackageService(service.id)}
-                      >
-                        إزالة
-                      </button>
+                      <div className="scatalog-selected-service__actions">
+                        <button
+                          type="button"
+                          className="dash-btn"
+                          onClick={() => openServiceEditorFromPackage(service.id)}
+                        >
+                          تعديل الخدمة
+                        </button>
+                        <button
+                          type="button"
+                          className="dash-btn"
+                          onClick={() => togglePackageService(service.id)}
+                        >
+                          إزالة
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1900,42 +1977,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           </div>
         </div>
       </div>
-
-      <div className="scatalog-ref__inline-2">
-        <div className="settings-field">
-          <label>عدد الجلسات</label>
-          <input
-            className="settings-input"
-            type="number"
-            min={1}
-            value={packageSessionsCount}
-            onChange={(e) =>
-              setPackageSessionsCount(Number(e.target.value))
-            }
-          />
-        </div>
-
-        <div className="settings-field">
-          <label>السعر</label>
-          <input
-            className="settings-input"
-            type="number"
-            min={0}
-            value={packagePrice}
-            onChange={(e) => setPackagePrice(Number(e.target.value))}
-          />
-        </div>
-      </div>
-
-      <label className="scatalog-ref__check">
-        <input
-          className="settings-check"
-          type="checkbox"
-          checked={packageActive}
-          onChange={(e) => setPackageActive(e.target.checked)}
-        />
-        <span>الباقة مفعلة</span>
-      </label>
 
       <div className="scatalog-ref__composer-actions">
         <button
@@ -2015,7 +2056,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     type="button"
                     onClick={() => startPackageEdit(pkg)}
                   >
-                    تعديل
+                    تعديل الباقة
                   </button>
                   <button
                     className="dash-btn"
@@ -2277,8 +2318,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         {catalogMsg && <div className="scatalog__msg">{catalogMsg}</div>}
 
         {activeCatalogPanel === "items" && (
-        <div className="scatalog-ref__split settings-split">
-          <aside className="scatalog-ref__left settings-split__main">
+        <div className="scatalog-ref__split settings-master-detail settings-master-detail--catalog">
+          <aside className="scatalog-ref__left settings-master-detail__list">
             <SettingsTabs
               className="scatalog-mode-tabs"
               variant="pills"
@@ -2424,7 +2465,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             <div className="scatalog-ref__list">{renderCatalogList()}</div>
           </aside>
 
-          <section className="scatalog-ref__right settings-split__aside">
+          <section className="scatalog-ref__right settings-master-detail__detail">
             {!hasSelection ? (
               <div className="scatalog-ref__empty">
                 <b>اختر قسم/خدمة لعرض التفاصيل</b>

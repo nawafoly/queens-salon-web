@@ -1524,3 +1524,329 @@
   max-width: 90px;
   padding-inline: 10px;
 }
+
+/* =========================================
+   Settings Design System v3
+   Header -> Stats -> Toolbar -> Master/Detail
+========================================= */
+
+.dashboard-skin .settings-shell {
+  --settings-radius-lg: 30px;
+  --settings-radius-md: 22px;
+  --settings-radius-sm: 16px;
+  --settings-gap: 18px;
+}
+
+.dashboard-skin .settings-shell__layout {
+  grid-template-columns: minmax(0, 1fr) 318px;
+  gap: var(--settings-gap);
+}
+
+.dashboard-skin .settings-shell__sidebar {
+  gap: 12px;
+  border-radius: 32px;
+  padding: 16px;
+}
+
+.dashboard-skin .settings-shell__current {
+  display: grid;
+  gap: 5px;
+  padding: 14px 16px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dashboard-skin .settings-shell__current span,
+.dashboard-skin .settings-shell__nav-label {
+  color: rgba(248, 250, 252, 0.56);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dashboard-skin .settings-shell__current strong {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1.25;
+}
+
+.dashboard-skin .settings-shell__current small {
+  color: rgba(248, 250, 252, 0.68);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.dashboard-skin .settings-shell__nav {
+  gap: 8px;
+}
+
+.dashboard-skin .settings-shell__nav-label {
+  padding: 0 4px 2px;
+}
+
+.dashboard-skin .settings-shell__nav-item {
+  min-height: 66px;
+  border-radius: 20px;
+  padding: 12px;
+}
+
+.dashboard-skin .settings-shell__nav-item.is-active {
+  transform: none;
+}
+
+.dashboard-skin .settings-shell__main,
+.dashboard-skin .settings-shell__content,
+.dashboard-skin .settings-page-frame,
+.dashboard-skin .settings-wrap {
+  min-width: 0;
+}
+
+.dashboard-skin .settings-page-frame,
+.dashboard-skin .settings-shell__content {
+  gap: var(--settings-gap);
+}
+
+.dashboard-skin .settings-shell__content .settings-card,
+.dashboard-skin .settings-toolbar,
+.dashboard-skin .settings-page-actions,
+.dashboard-skin .settings-state,
+.dashboard-skin .settings-shell__metric {
+  border-radius: var(--settings-radius-md);
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  background:
+    radial-gradient(620px 180px at 8% 0%, rgba(243, 182, 31, 0.08), transparent 62%),
+    rgba(255, 255, 255, 0.9);
+}
+
+.dashboard-skin .settings-master-detail {
+  display: grid;
+  grid-template-columns: minmax(330px, 0.86fr) minmax(0, 1.14fr);
+  gap: var(--settings-gap);
+  align-items: start;
+  min-width: 0;
+}
+
+.dashboard-skin .settings-master-detail--reverse,
+.dashboard-skin .settings-master-detail--accounts {
+  grid-template-columns: minmax(0, 1.14fr) minmax(330px, 0.86fr);
+}
+
+.dashboard-skin .settings-master-detail__list,
+.dashboard-skin .settings-master-detail__detail {
+  min-width: 0;
+}
+
+.dashboard-skin .settings-master-detail--accounts .settings-master-detail__detail {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.dashboard-skin .settings-master-detail--accounts .settings-master-detail__list {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.dashboard-skin .settings-field--wide {
+  grid-column: 1 / -1;
+}
+
+.dashboard-skin .settings-field-help {
+  margin-top: 8px;
+  color: var(--hr-muted-strong);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.dashboard-skin .settings-textarea {
+  min-height: 118px;
+  resize: vertical;
+  padding-top: 12px;
+}
+
+.dashboard-skin .settings-contact-messages {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-skin .settings-contact-message {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  background: rgba(255, 255, 255, 0.78);
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-skin .settings-contact-message.is-new {
+  border-color: rgba(109, 17, 39, 0.18);
+  background: rgba(109, 17, 39, 0.045);
+}
+
+.dashboard-skin .settings-contact-message__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-weight: 950;
+  color: var(--hr-text);
+}
+
+.dashboard-skin .settings-contact-message__new {
+  margin-inline-start: 8px;
+  color: #40010d;
+}
+
+.dashboard-skin .settings-contact-message__meta {
+  color: var(--hr-muted-strong);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.dashboard-skin .settings-contact-message__body {
+  white-space: pre-wrap;
+  color: var(--hr-text);
+  line-height: 1.8;
+}
+
+.dashboard-skin .scatalog .settings-wrap,
+.dashboard-skin .accounts-page--settings .accounts-shell {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+}
+
+.dashboard-skin .accounts-page--settings {
+  min-height: auto;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  color: var(--hr-text);
+}
+
+.dashboard-skin .accounts-page--settings::before {
+  display: none;
+}
+
+.dashboard-skin .accounts-page--settings .accounts-shell {
+  gap: var(--settings-gap);
+}
+
+.dashboard-skin .accounts-page--settings .accounts-sidebar-card,
+.dashboard-skin .accounts-page--settings .accounts-detail-card,
+.dashboard-skin .scatalog-ref__left,
+.dashboard-skin .scatalog-ref__right,
+.dashboard-skin .scatalog-ref__right-extra {
+  border-radius: var(--settings-radius-md);
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  background:
+    radial-gradient(560px 160px at 8% 0%, rgba(243, 182, 31, 0.08), transparent 62%),
+    rgba(255, 255, 255, 0.9);
+  box-shadow: var(--hr-shadow-soft);
+}
+
+.dashboard-skin .accounts-page--settings .accounts-list,
+.dashboard-skin .scatalog-ref__list {
+  max-height: min(62vh, 720px);
+  overflow: auto;
+  padding-inline-end: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 42, 0.24) transparent;
+}
+
+.dashboard-skin .accounts-page--settings .accounts-card,
+.dashboard-skin .scatalog-ref__row,
+.dashboard-skin .scatalog-ref__linked-row,
+.dashboard-skin .settings-booking-panel .settings-row {
+  border-radius: 18px;
+  border-color: rgba(15, 23, 42, 0.09);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.dashboard-skin .accounts-page--settings .accounts-card.is-selected,
+.dashboard-skin .scatalog-ref__row.is-selected {
+  border-color: rgba(243, 182, 31, 0.62);
+  background: #fff8e8;
+  box-shadow: 0 0 0 1px rgba(243, 182, 31, 0.16) inset;
+}
+
+.dashboard-skin .accounts-page--settings .accounts-btn,
+.dashboard-skin .settings-page-actions .exp-btn,
+.dashboard-skin .settings-toolbar .exp-btn,
+.dashboard-skin .scatalog .exp-btn,
+.dashboard-skin .scatalog .dash-btn {
+  min-height: 42px;
+  border-radius: 14px;
+  font-weight: 950;
+}
+
+.dashboard-skin .accounts-page--settings .accounts-empty-state,
+.dashboard-skin .accounts-page--settings .accounts-panel--detail-empty,
+.dashboard-skin .scatalog-ref__empty {
+  min-height: 260px;
+  border-radius: 22px;
+  border: 1px dashed rgba(15, 23, 42, 0.16);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(243, 182, 31, 0.12), transparent 36%),
+    rgba(248, 250, 252, 0.72);
+}
+
+.dashboard-skin .scatalog-ref__split.settings-master-detail {
+  grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr);
+}
+
+.dashboard-skin .settings-basic-tabs .settings-tab-card,
+.dashboard-skin .settings-booking-tabs .settings-tab-card,
+.dashboard-skin .scatalog-work-tabs .settings-tab-card {
+  border-radius: 22px;
+  min-height: 92px;
+}
+
+.dashboard-skin .settings-basic-panel,
+.dashboard-skin .settings-booking-panel,
+.dashboard-skin .scatalog-work-panel,
+.dashboard-skin .settings-contact-section {
+  border-radius: var(--settings-radius-md);
+  padding: 20px;
+}
+
+@media (max-width: 1280px) {
+  .dashboard-skin .settings-master-detail,
+  .dashboard-skin .settings-master-detail--reverse,
+  .dashboard-skin .settings-master-detail--accounts,
+  .dashboard-skin .scatalog-ref__split.settings-master-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin .settings-master-detail--accounts .settings-master-detail__detail,
+  .dashboard-skin .settings-master-detail--accounts .settings-master-detail__list {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-skin .settings-shell__current {
+    display: none;
+  }
+
+  .dashboard-skin .settings-shell__sidebar {
+    border-radius: 24px;
+  }
+
+  .dashboard-skin .settings-shell__nav {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin .settings-basic-panel,
+  .dashboard-skin .settings-booking-panel,
+  .dashboard-skin .scatalog-work-panel,
+  .dashboard-skin .settings-contact-section {
+    padding: 16px;
+  }
+}

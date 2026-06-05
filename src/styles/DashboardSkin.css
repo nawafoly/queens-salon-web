@@ -1290,3 +1290,273 @@
   max-width: none;
   font-size: 15px;
 }
+
+/* =========================================================
+   Dashboard Experience Refresh v4
+   هدفه: تغيير ظاهر فعلي لكل الداشبورد، وليس صفحة الإعدادات فقط.
+========================================================= */
+.dashboard-skin.dashboard-page {
+  --dash-deep: #0d1324;
+  --dash-deep-2: #151d31;
+  --dash-wine: #40010d;
+  --dash-gold: #f3b61f;
+  --dash-cream: #fbf7ef;
+  --dash-panel: rgba(255, 255, 255, 0.88);
+  --dash-panel-strong: #ffffff;
+  --dash-panel-border: rgba(13, 13, 13, 0.09);
+  --dash-focus: rgba(64, 1, 13, 0.16);
+
+  background:
+    radial-gradient(720px 360px at 18% 0%, rgba(64, 1, 13, 0.13), transparent 62%),
+    radial-gradient(720px 340px at 86% 8%, rgba(243, 182, 31, 0.16), transparent 58%),
+    linear-gradient(180deg, #fffaf2 0%, #f3eee7 46%, #eee8df 100%) !important;
+  padding: 14px 0 28px;
+}
+
+.dashboard-skin .container-fluid {
+  max-width: 100% !important;
+}
+
+.dashboard-skin .dashboard-main {
+  padding: 14px 18px 28px !important;
+}
+
+.dashboard-skin .dashboard-inner {
+  padding: 14px 0 0 !important;
+}
+
+.dashboard-skin .dash-topbar {
+  min-height: 70px;
+  border-radius: 24px !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(251, 247, 239, 0.82)) !important;
+  border: 1px solid rgba(64, 1, 13, 0.10) !important;
+  box-shadow: 0 18px 46px rgba(13, 13, 13, 0.10) !important;
+}
+
+.dashboard-skin .dash-topbar::after {
+  content: "";
+  position: absolute;
+  inset: auto 18px -1px 18px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(64, 1, 13, 0.30), transparent);
+  pointer-events: none;
+}
+
+.dashboard-skin .dash-topbar-title h2 {
+  font-size: clamp(18px, 1.6vw, 24px) !important;
+  color: var(--dash-deep) !important;
+}
+
+.dashboard-skin .dash-topbar-title span,
+.dashboard-skin .dash-topbar-name,
+.dashboard-skin .dash-topbar-role {
+  color: var(--dash-wine) !important;
+}
+
+.dashboard-skin .dash-topbar-toggle,
+.dashboard-skin .dash-mobile-close {
+  background: #ffffff !important;
+  border-color: rgba(13, 13, 13, 0.12) !important;
+  box-shadow: 0 10px 24px rgba(13, 13, 13, 0.12) !important;
+}
+
+/* Sidebar: شكل واضح وحديث بدل القائمة الرمادية المسطحة */
+.dashboard-skin .dashboard-sidebar,
+.dashboard-skin.is-sidebar-drawer .dashboard-sidebar {
+  width: min(336px, calc(100vw - 24px)) !important;
+  padding: 16px !important;
+  border-radius: 30px !important;
+  background:
+    radial-gradient(300px 180px at 14% 0%, rgba(243, 182, 31, 0.16), transparent 64%),
+    radial-gradient(280px 180px at 88% 18%, rgba(64, 1, 13, 0.34), transparent 65%),
+    linear-gradient(180deg, #0b1222 0%, #111827 48%, #1b1020 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 30px 80px rgba(13, 13, 13, 0.32) !important;
+  color: #ffffff !important;
+}
+
+.dashboard-skin .sidebar-header {
+  min-height: 86px;
+  padding: 12px !important;
+  margin: 0 0 12px !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  border-radius: 24px !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(245, 245, 244, 0.88)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 16px 32px rgba(0, 0, 0, 0.18);
+}
+
+.dashboard-skin .sidebar-logo {
+  width: clamp(124px, 60%, 170px) !important;
+  max-height: 76px !important;
+  filter: drop-shadow(0 10px 18px rgba(13, 13, 13, 0.14)) !important;
+}
+
+.dashboard-skin .user-info {
+  margin: 0 0 16px !important;
+  padding: 14px !important;
+  border-radius: 24px !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 38px rgba(0, 0, 0, 0.18) !important;
+}
+
+.dashboard-skin .user-avatar {
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 18px !important;
+  background: linear-gradient(135deg, rgba(255, 238, 186, 0.24), rgba(243, 182, 31, 0.18)) !important;
+  border-color: rgba(243, 182, 31, 0.30) !important;
+  color: #ffe08a !important;
+}
+
+.dashboard-skin .user-details h5 {
+  color: #ffffff !important;
+  font-size: 15px !important;
+}
+
+.dashboard-skin .user-details p {
+  color: rgba(255, 255, 255, 0.64) !important;
+}
+
+.dashboard-skin .sidebar-nav {
+  padding: 0 !important;
+}
+
+.dashboard-skin .sidebar-nav ul {
+  gap: 6px !important;
+}
+
+.dashboard-skin .sidebar-nav-section {
+  margin: 16px 6px 8px !important;
+  color: rgba(255, 255, 255, 0.46) !important;
+  font-size: 11px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.08em !important;
+}
+
+.dashboard-skin .sidebar-nav .nav-link {
+  min-height: 48px !important;
+  border-radius: 18px !important;
+  padding: 12px 14px !important;
+  color: rgba(255, 255, 255, 0.82) !important;
+  border: 1px solid transparent !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.dashboard-skin .sidebar-nav .nav-link svg,
+.dashboard-skin .sidebar-nav .nav-link .svg-inline--fa {
+  width: 20px !important;
+  min-width: 20px !important;
+  color: rgba(255, 255, 255, 0.55) !important;
+  opacity: 1 !important;
+}
+
+.dashboard-skin .sidebar-nav .nav-link:hover {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.16) !important;
+}
+
+.dashboard-skin .sidebar-nav .nav-link.active {
+  color: #161200 !important;
+  background:
+    linear-gradient(135deg, #fff0bd 0%, #f3b61f 100%) !important;
+  border-color: rgba(255, 224, 138, 0.70) !important;
+  box-shadow: 0 18px 34px rgba(243, 182, 31, 0.22) !important;
+}
+
+.dashboard-skin .sidebar-nav .nav-link.active svg,
+.dashboard-skin .sidebar-nav .nav-link.active .svg-inline--fa {
+  color: #40010d !important;
+}
+
+.dashboard-skin .sidebar-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.10) !important;
+}
+
+.dashboard-skin .sidebar-footer .exp-btn {
+  min-height: 44px !important;
+  border-radius: 16px !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+}
+
+.dashboard-skin .sidebar-footer .exp-btn.home,
+.dashboard-skin .sidebar-footer .exp-btn.hr {
+  color: #161200 !important;
+  background: linear-gradient(135deg, #fff2c5, #f3b61f) !important;
+  border-color: rgba(243, 182, 31, 0.52) !important;
+}
+
+.dashboard-skin .sidebar-footer .exp-btn.logout {
+  color: #fecaca !important;
+  background: rgba(239, 68, 68, 0.13) !important;
+  border-color: rgba(248, 113, 113, 0.24) !important;
+}
+
+/* Shared dashboard surfaces so pages stop feeling unrelated */
+.dashboard-skin .overview-page,
+.dashboard-skin .bk-page-wrapper,
+.dashboard-skin .dashstaff-page {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.dashboard-skin .overview-header,
+.dashboard-skin .bookings-header,
+.dashboard-skin .dashstaff-header {
+  position: relative;
+  overflow: hidden;
+  border-radius: 30px !important;
+  border: 1px solid rgba(64, 1, 13, 0.10) !important;
+  background:
+    radial-gradient(420px 190px at 88% 8%, rgba(243, 182, 31, 0.16), transparent 62%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(251, 247, 239, 0.84)) !important;
+  box-shadow: 0 24px 58px rgba(13, 13, 13, 0.10) !important;
+}
+
+.dashboard-skin .overview-header::before,
+.dashboard-skin .bookings-header::after,
+.dashboard-skin .dashstaff-header::before {
+  content: "";
+  position: absolute;
+  inset: 18px auto 18px 18px;
+  width: 7px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--dash-gold), var(--dash-wine));
+  opacity: 0.9;
+}
+
+.dashboard-skin .overview-header h1,
+.dashboard-skin .bookings-header h1,
+.dashboard-skin .dashstaff-title {
+  color: var(--dash-deep) !important;
+  letter-spacing: -0.03em;
+}
+
+.dashboard-skin .overview-header p,
+.dashboard-skin .bookings-header p,
+.dashboard-skin .dashstaff-sub {
+  color: #647084 !important;
+}
+
+@media (max-width: 767px) {
+  .dashboard-skin.dashboard-page {
+    padding: 10px 0 22px;
+  }
+
+  .dashboard-skin .dashboard-main {
+    padding: 10px 10px 22px !important;
+  }
+
+  .dashboard-skin .overview-header,
+  .dashboard-skin .bookings-header,
+  .dashboard-skin .dashstaff-header {
+    border-radius: 24px !important;
+  }
+}

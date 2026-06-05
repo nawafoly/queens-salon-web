@@ -244,6 +244,20 @@ function isPackageScheduledByToday(p: any) {
   return todayISO() < start;
 }
 
+function isPackageActiveNow(p: any) {
+  if (!p || p.active === false) return false;
+  if (isPackageScheduledByToday(p)) return false;
+  if (isPackageExpiredByToday(p)) return false;
+  return true;
+}
+
+function getPackageStatusLabel(p: any) {
+  if (isPackageExpiredByToday(p)) return "منتهي";
+  if (p?.active === false) return "موقوف";
+  if (isPackageScheduledByToday(p)) return "مجدول";
+  return "نشط";
+}
+
 const DashboardOffers: React.FC = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [packagesCatalog, setPackagesCatalog] = useState<ServicePackageDoc[]>([]);
@@ -428,7 +442,20 @@ const DashboardOffers: React.FC = () => {
         getDocs(collection(db, "salons", SALON_ID, "service_sections")),
         getDocs(collection(db, "salons", SALON_ID, "service_categories")),
       ]);
-      const safePackages = Array.isArray(packagesData) ? packagesData : [];
+      const safePackagesRaw = Array.isArray(packagesData) ? packagesData : [];
+      const expiredStillFlaggedActive = safePackagesRaw.filter(
+        (p: any) => p?.active !== false && isPackageExpiredByToday(p)
+      );
+      const safePackages = safePackagesRaw.map((p: any) =>
+        p?.active !== false && isPackageExpiredByToday(p) ? ({ ...(p as any), active: false } as ServicePackageDoc) : p
+      );
+      if (expiredStillFlaggedActive.length) {
+        void Promise.all(
+          expiredStillFlaggedActive.map((pkg: any) =>
+            upsertPackage({ ...(pkg as any), active: false } as ServicePackageDoc, SALON_ID).catch(() => undefined)
+          )
+        );
+      }
       const packageIds = new Set(
         safePackages
           .map((p: any) => String(p?.id || "").trim())
@@ -530,9 +557,7 @@ const DashboardOffers: React.FC = () => {
   }, [offers]);
   const packageStats = useMemo(() => {
     const total = packagesCatalog.length;
-    const activeNowCount = packagesCatalog.filter(
-      (p: any) => p?.active !== false && !isPackageScheduledByToday(p) && !isPackageExpiredByToday(p)
-    ).length;
+    const activeNowCount = packagesCatalog.filter((p: any) => isPackageActiveNow(p)).length;
     const used = packagesCatalog.filter((p: any) => Number((p as any)?.usageCount || 0) > 0).length;
     return { total, activeNowCount, used };
   }, [packagesCatalog]);
@@ -1044,6 +1069,11 @@ const DashboardOffers: React.FC = () => {
   const togglePackageActive = async (pkg: ServicePackageDoc) => {
     const id = String(pkg.id || "").trim();
     if (!id) return;
+    if (isPackageExpiredByToday(pkg)) {
+      openPackageForEdit(pkg);
+      showNotice("الباكيج منتهي. عدّل تاريخ الانتهاء لتاريخ اليوم أو بعده ثم احفظه لتفعيله من جديد.");
+      return;
+    }
     await upsertPackage(
       {
         ...(pkg as any),
@@ -1129,9 +1159,14 @@ const DashboardOffers: React.FC = () => {
               const isEditingThis = editingPackageId === String(p.id || "").trim();
               const pkgExpired = isPackageExpiredByToday(p);
               const pkgScheduled = isPackageScheduledByToday(p);
-              const pkgStatus = p.active === false ? "موقوف" : pkgScheduled ? "مجدول" : pkgExpired ? "منتهي" : "نشط";
+              const pkgActiveNow = isPackageActiveNow(p);
+              const pkgStatus = getPackageStatusLabel(p);
+              const packageActionLabel = pkgExpired ? "تجديد" : pkgActiveNow || pkgScheduled ? "إيقاف" : "تفعيل";
+              const packageActionIcon = pkgExpired ? faPen : pkgActiveNow || pkgScheduled ? faBan : faCheck;
+              const packageActionClass =
+                pkgExpired ? "dash-pill-outline" : pkgActiveNow || pkgScheduled ? "dash-pill-warning" : "dash-pill-success";
               return (
-                <div key={p.id} className={`pkg-offer-card ${isEditingThis ? "is-editing" : ""}`}>
+                <div key={p.id} className={`pkg-offer-card ${isEditingThis ? "is-editing" : ""} ${pkgExpired ? "is-expired" : ""}`}>
                   <div className="pkg-offer-inner">
                     <div className="pkg-offer-image-wrap">
                       {String(p.imageUrl || "").trim() ? (
@@ -1184,12 +1219,12 @@ const DashboardOffers: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        className={`dash-pill ${p.active ? "dash-pill-warning" : "dash-pill-success"} dash-pill-sm`}
+                        className={`dash-pill ${packageActionClass} dash-pill-sm`}
                         onClick={() => togglePackageActive(p)}
-                        title={p.active ? "إيقاف" : "تفعيل"}
+                        title={packageActionLabel}
                       >
-                        <FontAwesomeIcon icon={p.active ? faBan : faCheck} />
-                        {p.active ? " إيقاف" : " تفعيل"}
+                        <FontAwesomeIcon icon={packageActionIcon} />
+                        {` ${packageActionLabel}`}
                       </button>
                       <button
                         type="button"
