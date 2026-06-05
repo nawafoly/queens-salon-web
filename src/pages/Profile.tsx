@@ -24,8 +24,9 @@ import {
 } from "react-icons/lu";
 import "../styles/Profile.css";
 
-import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { auth, db } from "../services/firebase";
+import { logoutFirebase } from "../services/authService";
 
 
 import { collection, onSnapshot, query, where } from "firebase/firestore";
@@ -784,20 +785,8 @@ const Profile: React.FC = () => {
   // =======================
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await logoutFirebase();
     } catch { }
-
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("userName");
-    localStorage.removeItem("currentUser");
-    localStorage.removeItem("auth_user");
-    localStorage.removeItem("userUid");
-    localStorage.removeItem("showWelcome");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("userPhone");
-    localStorage.removeItem("user_profile_v1");
-    localStorage.removeItem("userAvatar");
 
     window.dispatchEvent(new Event("authChanged"));
     window.location.href = "/login";

@@ -52,6 +52,10 @@ function safeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function hasRecognizedAuthToken(authToken: string) {
+  return authToken === "firebase" || authToken.startsWith("client-token-");
+}
+
 export function readStoredAuthSession(): StoredAuthSession | null {
   try {
     const authUser = parseJson<any>(localStorage.getItem(AUTH_USER_KEY));
@@ -84,6 +88,12 @@ export function readStoredAuthSession(): StoredAuthSession | null {
       clearStoredAuthSession();
       return null;
     }
+    if (!hasRecognizedAuthToken(authToken)) {
+      if (authUser || profile || uid || email || displayName) {
+        clearStoredAuthSession();
+      }
+      return null;
+    }
 
     return {
       uid,
@@ -98,6 +108,8 @@ export function readStoredAuthSession(): StoredAuthSession | null {
 }
 
 export function writeStoredAuthSession(session: StoredAuthSession) {
+  clearStoredAuthSession();
+
   const payload = {
     uid: session.uid,
     email: session.email,

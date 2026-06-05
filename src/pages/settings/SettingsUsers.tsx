@@ -1,6 +1,6 @@
 // ✅ src/pages/settings/SettingsUsers.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 
 import {
   getIdTokenResult,
@@ -32,6 +32,7 @@ import {
   softDeleteLinkedStaffByUser,
   type AccountUserLinkRow,
 } from "../../services/staffAccountLinkService";
+import { SettingsPageHeader, SettingsState, SettingsStats } from "./SettingsFrame";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/SettingsCatalog.css"; // ✅ NEW CSS
@@ -168,10 +169,8 @@ export default function SettingsUsers({
   authReady,
   allowAdminManageUsers: allowAdminManageUsersOverride,
 }: SettingsUsersProps = {}) {
-  const navigate = useNavigate();
   const location = useLocation();
   const isAdminShell = location.pathname.startsWith("/admin");
-  const backPath = isAdminShell ? "/admin/overview" : "/dashboard/settings/advanced";
   const pageTitle = isAdminShell ? "إدارة الحسابات الإدارية" : "إدارة الحسابات";
   const pageHint = isAdminShell
     ? "مراجعة الحسابات الإدارية وصلاحياتها من لوحة الموارد البشرية."
@@ -1224,15 +1223,11 @@ export default function SettingsUsers({
     return (
       <div className="accounts-page" dir="rtl">
         <div className="accounts-shell accounts-shell--loading">
-          <div className="accounts-loading">
-            <div className="accounts-skeleton accounts-skeleton--hero" />
-            <div className="accounts-skeleton-grid">
-              <div className="accounts-skeleton" />
-              <div className="accounts-skeleton" />
-              <div className="accounts-skeleton" />
-              <div className="accounts-skeleton" />
-            </div>
-          </div>
+          <SettingsState
+            title="جاري تحميل الحسابات…"
+            hint="نقرأ الجلسة والصلاحيات ثم نحمّل القائمة المرتبطة بالحساب الحالي."
+            loading
+          />
         </div>
       </div>
     );
@@ -1242,30 +1237,18 @@ export default function SettingsUsers({
     return (
       <div className="accounts-page" dir="rtl">
         <div className="accounts-shell">
-          <header className="accounts-hero accounts-hero--compact">
-            <div className="accounts-hero__copy">
-              <span className="accounts-eyebrow">مراجعة صلاحيات</span>
-              <h1>غير مصرح</h1>
-              <p>
+          <SettingsState
+            title="غير مصرح"
+            hint={
+              <>
                 هذه الصفحة مخصصة للمالك وHR، أو للأدمن إذا كان خيار إدارة الحسابات مفعّلًا من إعدادات
                 النظام.
-              </p>
-            </div>
-
-            <div className="accounts-hero__actions">
-              <button type="button" className="accounts-btn" onClick={() => navigate(backPath)}>
-                رجوع
-              </button>
-            </div>
-          </header>
-
-          <section className="accounts-panel accounts-panel--empty">
-            <strong>لا تملك صلاحية الوصول لهذه الشاشة.</strong>
-            <p>
-              تأكد من دور الحساب داخل <code>salons/main/users/{`{uid}`}</code> أو انتقل من لوحة الموارد
-              البشرية إذا كنت HR.
-            </p>
-          </section>
+                <br />
+                تأكد من دور الحساب داخل <code>salons/main/users/{`{uid}`}</code> أو انتقل من لوحة الموارد
+                البشرية إذا كنت HR.
+              </>
+            }
+          />
         </div>
       </div>
     );
@@ -1274,71 +1257,70 @@ export default function SettingsUsers({
   return (
     <div className="accounts-page" dir="rtl">
       <div className="accounts-shell">
-        <header className="accounts-hero">
-          <div className="accounts-hero__copy">
-            <span className="accounts-eyebrow">الوحدة 03</span>
-            <h1>{pageTitle}</h1>
-            <p>{pageHint}</p>
-
-            <div className="accounts-hero__badges">
-              <span className="accounts-chip accounts-chip--soft">المصدر: salons/main/users</span>
+        <SettingsPageHeader
+          eyebrow="الوحدة 03"
+          title={pageTitle}
+          hint={pageHint}
+          badges={
+            <>
+              <span className="settings-shell__pill settings-shell__pill--outline">المصدر: salons/main/users</span>
               <span className={`accounts-chip accounts-chip--${selectedRoleTone}`}>{getRoleLabel(uiRole)}</span>
-            </div>
-          </div>
+            </>
+          }
+          actions={
+            <>
+              <button
+                type="button"
+                className="accounts-btn accounts-btn--primary"
+                onClick={() => {
+                  setCreateMsg("");
+                  setCreateOpen(true);
+                }}
+              >
+                حساب إداري جديد <span aria-hidden="true">+</span>
+              </button>
+              <button
+                type="button"
+                className="accounts-btn"
+                disabled={usersLoading}
+                onClick={() => void loadUsers({ runRepair: true })}
+              >
+                {usersLoading ? "جارِ التحديث..." : "تحديث القائمة"}
+              </button>
+            </>
+          }
+          compact
+        />
 
-          <div className="accounts-hero__actions">
-            <button
-              type="button"
-              className="accounts-btn accounts-btn--primary"
-              onClick={() => {
-                setCreateMsg("");
-                setCreateOpen(true);
-              }}
-            >
-              حساب إداري جديد <span aria-hidden="true">+</span>
-            </button>
-
-            <button
-              type="button"
-              className="accounts-btn"
-              disabled={usersLoading}
-              onClick={() => void loadUsers({ runRepair: true })}
-            >
-              {usersLoading ? "جارِ التحديث..." : "تحديث القائمة"}
-            </button>
-
-            <button type="button" className="accounts-btn accounts-btn--ghost" onClick={() => navigate(backPath)}>
-              رجوع
-            </button>
-          </div>
-        </header>
-
-        <section className="accounts-stats" aria-label="ملخص الحسابات">
-          <article className="accounts-stat">
-            <span>إجمالي الحسابات</span>
-            <strong>{stats.total}</strong>
-            <small>كل الحسابات الظاهرة من مصدر البيانات.</small>
-          </article>
-          <article className="accounts-stat">
-            <span>نشطة</span>
-            <strong>{stats.active}</strong>
-            <small>الحسابات المفعلة حاليًا.</small>
-          </article>
-          <article className="accounts-stat">
-            <span>قيد المراجعة</span>
-            <strong>{stats.pending}</strong>
-            <small>الحسابات التي ما زالت Pending.</small>
-          </article>
-          <article className="accounts-stat">
-            <span>غير نشطة</span>
-            <strong>{stats.inactive}</strong>
-            <small>الحسابات المعطلة أو المؤرشفة.</small>
-          </article>
-        </section>
+        <SettingsStats
+          items={[
+            {
+              label: "إجمالي الحسابات",
+              value: stats.total,
+              hint: "كل الحسابات الظاهرة من مصدر البيانات.",
+            },
+            {
+              label: "نشطة",
+              value: stats.active,
+              hint: "الحسابات المفعلة حاليًا.",
+            },
+            {
+              label: "قيد المراجعة",
+              value: stats.pending,
+              hint: "الحسابات التي ما زالت Pending.",
+            },
+            {
+              label: "غير نشطة",
+              value: stats.inactive,
+              hint: "الحسابات المعطلة أو المؤرشفة.",
+            },
+          ]}
+        />
 
         {createMsg ? <div className="accounts-banner">{createMsg}</div> : null}
 
-        <div className="settings-card" style={{ marginTop: 0 }}>
+        <div className="accounts-workspace settings-split">
+          <div className="settings-card settings-split__main" style={{ marginTop: 0 }}>
           {selectedUser ? (
             <>
               <div className="accounts-panel__head">
@@ -1455,9 +1437,9 @@ export default function SettingsUsers({
               <p>سيظهر هنا ملخص الحساب وصلاحياته وحالته مع أزرار التعديل والحذف.</p>
             </div>
           )}
-        </div>
+          </div>
 
-        <div className="settings-card accounts-sidebar-card">
+          <div className="settings-card accounts-sidebar-card settings-split__aside">
           <div className="accounts-toolbar">
             <label className="accounts-search">
               <span>بحث</span>
@@ -1802,6 +1784,7 @@ export default function SettingsUsers({
           </div>
         </div>
       ) : null}
+    </div>
     </div>
   );
 }

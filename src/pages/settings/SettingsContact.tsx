@@ -14,6 +14,7 @@ import {
 import { db } from "../../services/firebase";
 
 import { AppSettingsService } from "../../services/AppSettingsService";
+import { SettingsPageActions, SettingsPageHeader, SettingsStats } from "./SettingsFrame";
 
 const SALON_ID = "main";
 
@@ -79,6 +80,51 @@ const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
     () => messages.filter((m) => (m.status || "new") === "new").length,
     [messages]
   );
+
+  const contactStats = useMemo(() => {
+    const filledFields = [
+      publicData.phone,
+      publicData.whatsapp,
+      publicData.email,
+      publicData.city,
+      publicData.address,
+      publicData.hoursText,
+      publicData.mapEmbedUrl,
+    ].filter((v) => safeStr(v)).length;
+
+    return [
+      {
+        label: "الحقول المعبأة",
+        value: String(filledFields),
+        hint: "من بيانات التواصل الأساسية",
+      },
+      {
+        label: "إجمالي الرسائل",
+        value: String(messages.length),
+        hint: "آخر 20 رسالة فقط",
+      },
+      {
+        label: "الرسائل الجديدة",
+        value: String(unreadCount),
+        hint: "تحتاج مراجعة",
+      },
+      {
+        label: "الخريطة",
+        value: publicData.mapEmbedUrl ? "مربوطة" : "غير مربوطة",
+        hint: "رابط Google Maps Embed",
+      },
+    ];
+  }, [
+    messages.length,
+    publicData.address,
+    publicData.city,
+    publicData.email,
+    publicData.hoursText,
+    publicData.mapEmbedUrl,
+    publicData.phone,
+    publicData.whatsapp,
+    unreadCount,
+  ]);
 
   // Load public settings realtime
   useEffect(() => {
@@ -206,32 +252,11 @@ const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
 
   return (
     <div className="settings-card" style={{ marginTop: 14 }}>
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-        }}
-      >
-        <h3 className="settings-title" style={{ marginBottom: 0 }}>
-          بيانات التواصل واللوكيشن
-        </h3>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {savedMsg ? <span className="settings-saved">{savedMsg}</span> : null}
-
-          <button
-            className={`exp-btn ${!hasAdminPower ? "is-disabled" : ""}`}
-            type="button"
-            disabled={!hasAdminPower || saving}
-            onClick={handleSave}
-            title={!hasAdminPower ? "تحتاج صلاحية Owner/Admin" : "حفظ بيانات التواصل"}
-          >
-            {saving ? "جاري الحفظ..." : "حفظ"}
-          </button>
-
+      <SettingsPageHeader
+        eyebrow="الوحدة 05"
+        title="بيانات التواصل واللوكيشن"
+        hint="بيانات التواصل التي تظهر في صفحة الموقع والخرائط ورسائل العميلات."
+        actions={
           <button
             className="exp-btn"
             type="button"
@@ -240,8 +265,11 @@ const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
           >
             الرسائل {unreadCount ? `(${unreadCount} جديد)` : ""}
           </button>
-        </div>
-      </div>
+        }
+        compact
+      />
+
+      <SettingsStats items={contactStats} />
 
       {/* ✅ حقول صغيرة ومضغوطة */}
       <div className="settings-grid" style={{ marginTop: 12 }}>
@@ -433,11 +461,33 @@ const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
         </div>
       ) : null}
 
-      {!hasAdminPower ? (
-        <div className="settings-note" style={{ marginTop: 10 }}>
-          * للتعديل تحتاج صلاحية Owner / Admin. (الاستقبال/الموظفات عرض فقط)
-        </div>
-      ) : null}
+      <SettingsPageActions
+        note={
+          <>
+            {savedMsg ? <span className="settings-saved">{savedMsg}</span> : null}
+            {!hasAdminPower ? (
+              <div className="settings-note" style={{ marginTop: savedMsg ? 8 : 0 }}>
+                * للتعديل تحتاج صلاحية Owner / Admin. (الاستقبال/الموظفات عرض فقط)
+              </div>
+            ) : (
+              <div className="settings-footnote" style={{ marginTop: savedMsg ? 8 : 0 }}>
+                * احفظ بعد تعديل بيانات التواصل حتى تنعكس في صفحة الموقع فورًا.
+              </div>
+            )}
+          </>
+        }
+        actions={
+          <button
+            className={`exp-btn ${!hasAdminPower ? "is-disabled" : ""}`}
+            type="button"
+            disabled={!hasAdminPower || saving}
+            onClick={handleSave}
+            title={!hasAdminPower ? "تحتاج صلاحية Owner/Admin" : "حفظ بيانات التواصل"}
+          >
+            {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+          </button>
+        }
+      />
     </div>
   );
 };

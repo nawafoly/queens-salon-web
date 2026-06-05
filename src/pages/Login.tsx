@@ -41,6 +41,7 @@ import {
 import { resolveDashboardLandingPath } from "../helpers/routePaths";
 import {
   readStoredAuthSession,
+  clearStoredAuthSession,
   writeStoredAuthSession,
 } from "../services/localAuthSession";
 
@@ -382,6 +383,8 @@ const Login: React.FC = () => {
   const storeFirebaseSession = (
     profile: UserProfile | (Omit<UserProfile, "role"> & { role: any })
   ) => {
+    clearStoredAuthSession();
+
     const uiRole = String((profile as any).role || "")
       .toLowerCase()
       .trim() as UiRole;
@@ -444,9 +447,7 @@ const Login: React.FC = () => {
 
   // ✅ تسجيل دخول عميلات قديم (Legacy) من localStorage بالجوال فقط
   const storeClientSessionLegacy = (user: RegisterFormData) => {
-    localStorage.removeItem("userUid");
-    localStorage.removeItem("user_profile_v1");
-    localStorage.removeItem("userEmail");
+    clearStoredAuthSession();
     localStorage.setItem("authToken", "client-token-" + user.phone);
     localStorage.setItem("userRole", "client");
     localStorage.setItem("userName", user.name);

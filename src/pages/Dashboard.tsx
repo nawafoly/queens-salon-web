@@ -49,10 +49,11 @@ import BookingInternal from "../pages/BookingInternal";
 
 import logo1 from "../assets/images/ssunnamed3.png";
 
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 import { collection, getDocs } from "firebase/firestore";
 import { auth, db } from "../services/firebase";
 import { readStoredAuthSession } from "../services/localAuthSession";
+import { logoutFirebase } from "../services/authService";
 
 import type { Booking, BookingStatus } from "../helpers/dashboardService";
 import { DashboardService } from "../helpers/dashboardService";
@@ -1249,6 +1250,13 @@ interface UserInfo {
   email: string;
 }
 
+type DashboardProps = {
+  initialRole?: ProfileRole | string;
+  initialName?: string;
+  initialEmail?: string;
+  authReady?: boolean;
+};
+
 // ✅ IMPORTANT: normalize role هنا (حل تعليق staff بسبب Staff/ staff / spaces)
 function mapProfileRoleToDashboardRole(role: ProfileRole): UiRole | null {
   const r = String(role || "").toLowerCase().trim() as ProfileRole;
@@ -1285,6 +1293,14 @@ function isDashboardUiRole(role: unknown): role is UiRole {
   return r === "owner" || r === "admin" || r === "reception" || r === "staff";
 }
 
+function getDashboardStoredName() {
+  try {
+    return String(localStorage.getItem("userName") || "").trim();
+  } catch {
+    return "";
+  }
+}
+
 function getInitialDashboardUserInfo(): UserInfo | null {
   try {
     const session = readStoredAuthSession();
@@ -1300,10 +1316,34 @@ function getInitialDashboardUserInfo(): UserInfo | null {
   }
 }
 
-const Dashboard: React.FC = () => {
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(() => getInitialDashboardUserInfo());
+const Dashboard: React.FC<DashboardProps> = ({
+  initialRole,
+  initialName,
+  initialEmail,
+  authReady,
+}) => {
+  const hasExternalAuthBootstrap =
+    typeof initialRole !== "undefined" && typeof authReady === "boolean";
+
+  const externalDashboardRole = hasExternalAuthBootstrap
+    ? mapProfileRoleToDashboardRole(initialRole as ProfileRole)
+    : null;
+
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(() => {
+    if (externalDashboardRole) {
+      return {
+        name:
+          String(initialName || getDashboardStoredName() || "مستخدم").trim() || "مستخدم",
+        role: externalDashboardRole,
+        email: String(initialEmail || localStorage.getItem("userEmail") || "").trim(),
+      };
+    }
+
+    return getInitialDashboardUserInfo();
+  });
   const [dashError, setDashError] = useState<string>("");
   const [hasBootstrappedDashboard, setHasBootstrappedDashboard] = useState<boolean>(() => {
+    if (hasExternalAuthBootstrap) return Boolean(externalDashboardRole);
     try {
       return sessionStorage.getItem(DASHBOARD_BOOTSTRAPPED_KEY) === "1";
     } catch {
@@ -1359,6 +1399,29 @@ const Dashboard: React.FC = () => {
     () => filterOperationalScheduleBookings(allScheduleBookings || [], scheduleDate, staffOperationalRows),
     [allScheduleBookings, scheduleDate, staffOperationalRows]
   );
+
+  useEffect(() => {
+    if (!hasExternalAuthBootstrap || !externalDashboardRole) return;
+
+    const nextUserInfo: UserInfo = {
+      name:
+        String(initialName || getDashboardStoredName() || "مستخدم").trim() || "مستخدم",
+      role: externalDashboardRole,
+      email: String(initialEmail || localStorage.getItem("userEmail") || "").trim(),
+    };
+
+    setUserInfo((prev) => {
+      if (
+        prev &&
+        prev.name === nextUserInfo.name &&
+        prev.role === nextUserInfo.role &&
+        prev.email === nextUserInfo.email
+      ) {
+        return prev;
+      }
+      return nextUserInfo;
+    });
+  }, [hasExternalAuthBootstrap, externalDashboardRole, initialName, initialEmail]);
 
   /**
    * ✅ refresh من Firestore
@@ -1626,6 +1689,10 @@ const Dashboard: React.FC = () => {
    * ✅ FIX تعليق الموظف:
    */
   useEffect(() => {
+    if (hasExternalAuthBootstrap) {
+      return;
+    }
+
     const unsub = onAuthStateChanged(auth, async (user) => {
       let step = "auth:start";
       try {
@@ -1939,9 +2006,34 @@ const Dashboard: React.FC = () => {
     settings.booking?.autoCloseGraceMin,
   ]);
 
+  useEffect(() => {
+    if (!hasExternalAuthBootstrap) return;
+    if (!userInfo?.role) return;
+
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        markDashboardBootstrapped();
+        await refreshDashboard(userInfo.role);
+      } catch (e) {
+        if (!cancelled) {
+          console.error("Dashboard external bootstrap refresh failed:", e);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      refreshRequestIdRef.current += 1;
+    };
+  }, [hasExternalAuthBootstrap, userInfo?.role]);
+
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await logoutFirebase();
     } finally {
       refreshRequestIdRef.current += 1;
       hasDashboardDataRef.current = false;
@@ -1962,15 +2054,6 @@ const Dashboard: React.FC = () => {
       try {
         sessionStorage.removeItem(DASHBOARD_BOOTSTRAPPED_KEY);
       } catch {}
-      localStorage.removeItem("authToken");
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userName");
-      localStorage.removeItem("userUid");
-      localStorage.removeItem("userEmail");
-      localStorage.removeItem("userPhone");
-      localStorage.removeItem("auth_user");
-      localStorage.removeItem("user_profile_v1");
-      localStorage.removeItem("showWelcome");
       window.dispatchEvent(new Event("authChanged"));
       navigate("/");
     }
@@ -2993,7 +3076,16 @@ const Dashboard: React.FC = () => {
                 )}
 
                 {hasAdminPower && (
-                  <Route path="settings/*" element={<DashboardSettings />} />
+                  <Route
+                    path="settings/*"
+                    element={
+                      <DashboardSettings
+                        initialRole={userInfo.role}
+                        authReady={Boolean(userInfo)}
+                        settings={settings}
+                      />
+                    }
+                  />
                 )}
 
                 {hasAdminPower && (

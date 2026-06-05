@@ -1,7 +1,6 @@
 // ✅ src/pages/settings/SettingsBookings.tsx
 
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -12,6 +11,14 @@ import {
 import { auth, db } from "../../services/firebase";
 import { AppSettingsService } from "../../services/AppSettingsService";
 import { formatTime12 } from "../../helpers/timeDisplay";
+import {
+  SettingsPageActions,
+  SettingsPageHeader,
+  SettingsSection,
+  SettingsState,
+  SettingsStats,
+  SettingsTabs,
+} from "./SettingsFrame";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/DashboardSettings.css";
@@ -162,8 +169,6 @@ const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
 };
 
 export default function SettingsBookings() {
-  const navigate = useNavigate();
-
   const [uiRole, setUiRole] = useState<UiRole>("guest");
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -294,6 +299,9 @@ export default function SettingsBookings() {
   };
 
   const [savedMsg, setSavedMsg] = useState("");
+  const [activeBookingSection, setActiveBookingSection] = useState<
+    "general" | "hours" | "season" | "exceptions"
+  >("general");
 
   const openDatePickerInput = (el: HTMLInputElement | null) => {
     if (!el || el.disabled || el.readOnly) return;
@@ -637,13 +645,42 @@ export default function SettingsBookings() {
     return "تحتاج صلاحية Owner/Admin.";
   }, [hasAdminPower]);
 
+  const openDaysCount = useMemo(
+    () => WEEKDAY_KEYS.filter((day) => businessHours[day]?.enabled !== false).length,
+    [businessHours]
+  );
+
+  const bookingStats = useMemo(
+    () => [
+      {
+        label: "أيام العمل",
+        value: `${openDaysCount}/7`,
+        hint: "الدوام الأسبوعي المفتوح",
+      },
+      {
+        label: "الاستثناءات",
+        value: String(bookingHourOverrides.length),
+        hint: "الفترات الخاصة بتاريخ محدد",
+      },
+      {
+        label: "خطوة الحجز",
+        value: `${slotStepMin} د`,
+        hint: "دقة فتح المواعيد",
+      },
+      {
+        label: "التتابع",
+        value: bookingSettings?.sequentialBooking ? "مفعّل" : "متوقف",
+        hint: "منع الفراغات بين الحجوزات",
+      },
+    ],
+    [bookingHourOverrides.length, bookingSettings?.sequentialBooking, openDaysCount, slotStepMin]
+  );
+
   if (authLoading) {
     return (
       <div className="dashboard-section settings-page">
         <div className="settings-wrap">
-          <div className="settings-card">
-            <h3 className="settings-title">جاري التحميل…</h3>
-          </div>
+          <SettingsState title="جاري التحميل…" hint="نقرأ إعدادات الحجز الحالية من مصدرها." loading />
         </div>
       </div>
     );
@@ -653,8 +690,10 @@ export default function SettingsBookings() {
     return (
       <div className="dashboard-section settings-page">
         <div className="settings-wrap">
-          <h3>غير مصرح</h3>
-          <p>هذه الصفحة مخصصة للإدارة.</p>
+          <SettingsState
+            title="غير مصرح"
+            hint="هذه الصفحة مخصصة للإدارة فقط، أو للحسابات ذات صلاحية التحكم بالإعدادات."
+          />
         </div>
       </div>
     );
@@ -663,53 +702,87 @@ export default function SettingsBookings() {
   return (
     <div className="dashboard-section settings-page">
       <div className="settings-wrap">
-        <div className="settings-header">
-          <div>
-            <h1>إعدادات الحجوزات</h1>
-            <p className="settings-hint">{hint}</p>
-          </div>
+        <SettingsPageHeader
+          eyebrow="المسار الحالي"
+          title="إعدادات الحجوزات"
+          hint={hint}
+          badges={
+            <>
+              <span className="settings-shell__pill settings-shell__pill--outline">جدولة التشغيل</span>
+              <span className="settings-shell__pill settings-shell__pill--outline">
+                {hasAdminPower ? "تحكم إداري" : "وضع عرض"}
+              </span>
+            </>
+          }
+          compact
+        />
 
-          <div className="settings-save">
-            {savedMsg && <span className="settings-saved">{savedMsg}</span>}
+        <SettingsStats items={bookingStats} />
 
+        <SettingsTabs
+          variant="cards"
+          className="settings-basic-tabs settings-booking-tabs"
+          activeId={activeBookingSection}
+          onChange={(id) => setActiveBookingSection(id as "general" | "hours" | "season" | "exceptions")}
+          items={[
+            {
+              id: "general",
+              index: "01",
+              title: "عام",
+              hint: bookingSettings.maintenanceMode ? "الحجز متوقف مؤقتًا" : "الحجز متاح",
+            },
+            {
+              id: "hours",
+              index: "02",
+              title: "مواعيد الدوام",
+              hint: `${openDaysCount}/7 أيام مفتوحة`,
+            },
+            {
+              id: "season",
+              index: "03",
+              title: "وضع الموسم",
+              hint: bookingSettings?.sequentialBooking ? "التتابع مفعل" : "ضبط الهدر والتتابع",
+            },
+            {
+              id: "exceptions",
+              index: "04",
+              title: "الاستثناءات",
+              hint: `${bookingHourOverrides.length} فترة محفوظة`,
+            },
+          ]}
+        />
+
+        {activeBookingSection === "general" ? (
+          <SettingsSection
+            eyebrow="01"
+            title="إعدادات الحجز العامة"
+            hint="تحكم سريع في إتاحة الحجز ورسالة الصيانة التي تظهر للعميلات."
+            className="settings-basic-panel settings-booking-panel"
+          >
+
+          <div className="settings-toggle-grid settings-toggle-grid--single">
             <button
-              className="dash-btn"
               type="button"
-              onClick={() => navigate("/dashboard/settings/advanced")}
-            >
-              رجوع
-            </button>
-
-            <button
-              className={`exp-btn primary ${!hasAdminPower ? "is-disabled" : ""}`}
-              onClick={saveAll}
+              className={`settings-toggle-card ${bookingSettings.maintenanceMode ? "is-on" : ""}`}
+              aria-pressed={!!bookingSettings.maintenanceMode}
               disabled={!hasAdminPower}
-              type="button"
-              title={!hasAdminPower ? "تحتاج Owner/Admin" : "حفظ"}
-            >
-              حفظ
-            </button>
-          </div>
-        </div>
-
-        <div className="settings-card" style={{ marginTop: 0 }}>
-          <h3 className="settings-title">إعدادات الحجز العامة</h3>
-
-          <div className="settings-list">
-            <label className="settings-row">
-              <span>وضع الصيانة (إيقاف الحجز للزبائن)</span>
-              <input
-                className="settings-check"
-                type="checkbox"
-                checked={!!bookingSettings.maintenanceMode}
-                disabled={!hasAdminPower}
-                onChange={() =>
+              onClick={() =>
                   setBookingSettings({
                     maintenanceMode: !bookingSettings.maintenanceMode,
                   })
-                }
-              />
-            </label>
+              }
+            >
+              <span className="settings-toggle-card__mark" aria-hidden="true">
+                {bookingSettings.maintenanceMode ? "✓" : ""}
+              </span>
+              <span className="settings-toggle-card__copy">
+                <strong>وضع الصيانة</strong>
+                <small>إيقاف الحجز مؤقتًا للعميلات مع إبقاء الإدارة متاحة.</small>
+              </span>
+              <span className="settings-toggle-card__status">
+                {bookingSettings.maintenanceMode ? "متوقف" : "مفتوح"}
+              </span>
+            </button>
           </div>
 
           <div className="settings-field" style={{ marginTop: 10 }}>
@@ -724,10 +797,16 @@ export default function SettingsBookings() {
           </div>
 
           <div className="settings-footnote">* هذه القيم تُحفظ داخل AppSettings.</div>
-        </div>
+          </SettingsSection>
+        ) : null}
 
-        <div className="settings-card">
-          <h3 className="settings-title">مواعيد الدوام في الحجز</h3>
+        {activeBookingSection === "hours" ? (
+          <SettingsSection
+            eyebrow="02"
+            title="مواعيد الدوام في الحجز"
+            hint="اضبط دقة المواعيد، الرسوم، وأيام العمل الأسبوعية من مكان واحد."
+            className="settings-basic-panel settings-booking-panel"
+          >
 
           <div className="settings-list">
             <div
@@ -938,29 +1017,66 @@ export default function SettingsBookings() {
             <br />
             * ربطها بصفحة الحجز: Booking.tsx يقرأ من AppSettingsService.getCached()
           </div>
-        </div>
+          </SettingsSection>
+        ) : null}
 
-        <div className="settings-card">
-          <h3 className="settings-title">وضع الموسم لوقت الحجز (تقليل الهدر)</h3>
+        {activeBookingSection === "season" ? (
+          <SettingsSection
+            eyebrow="03"
+            title="وضع الموسم لوقت الحجز"
+            hint="أدوات تقلل الفراغات وتساعد على ترتيب اليوم وقت الضغط والمواسم."
+            className="settings-basic-panel settings-booking-panel"
+          >
 
-            <div className="settings-list">
-              <label className="settings-row">
-                <span>تفعيل ترتيب اليوم تلقائيًا خلال الموسم</span>
-                <input
-                  className="settings-check"
-                  type="checkbox"
-                  checked={seasonFillEnabled}
-                  disabled={!hasAdminPower}
-                  onChange={() =>
+            <div className="settings-toggle-grid">
+              <button
+                type="button"
+                className={`settings-toggle-card ${seasonFillEnabled ? "is-on" : ""}`}
+                aria-pressed={seasonFillEnabled}
+                disabled={!hasAdminPower}
+                onClick={() =>
                     setBookingSettings({
                       seasonFill: {
                         ...(seasonFill || {}),
                         enabled: !seasonFillEnabled,
                       },
                     })
-                  }
-                />
-              </label>
+                }
+              >
+                <span className="settings-toggle-card__mark" aria-hidden="true">
+                  {seasonFillEnabled ? "✓" : ""}
+                </span>
+                <span className="settings-toggle-card__copy">
+                  <strong>ترتيب اليوم تلقائيًا</strong>
+                  <small>تفعيل ترتيب وقت الحجز خلال فترة الموسم المحددة.</small>
+                </span>
+                <span className="settings-toggle-card__status">
+                  {seasonFillEnabled ? "مفعّل" : "متوقف"}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className={`settings-toggle-card ${bookingSettings?.sequentialBooking ? "is-on" : ""}`}
+                aria-pressed={!!bookingSettings?.sequentialBooking}
+                disabled={!hasAdminPower}
+                onClick={() =>
+                  setBookingSettings({
+                    sequentialBooking: !bookingSettings?.sequentialBooking,
+                  })
+                }
+              >
+                <span className="settings-toggle-card__mark" aria-hidden="true">
+                  {bookingSettings?.sequentialBooking ? "✓" : ""}
+                </span>
+                <span className="settings-toggle-card__copy">
+                  <strong>إجبار الحجز المتتابع</strong>
+                  <small>منع الفراغات بين المواعيد داخل نفس اليوم.</small>
+                </span>
+                <span className="settings-toggle-card__status">
+                  {bookingSettings?.sequentialBooking ? "مفعّل" : "متوقف"}
+                </span>
+              </button>
             </div>
 
             <div className="settings-grid" style={{ marginTop: 10 }}>
@@ -1030,30 +1146,16 @@ export default function SettingsBookings() {
               <br />
               * التنفيذ الفعلي لترتيب اليوم بيكون داخل Booking.tsx + timeSlots.ts
             </div>
+          </SettingsSection>
+        ) : null}
 
-            <div className="settings-list" style={{ marginTop: 20 }}>
-              <label className="settings-row">
-                <span>إجبار الحجز المتتابع (منع الفراغات بين المواعيد)</span>
-                <input
-                  className="settings-check"
-                  type="checkbox"
-                  checked={!!bookingSettings?.sequentialBooking}
-                  disabled={!hasAdminPower}
-                  onChange={(e) =>
-                    setBookingSettings({
-                      sequentialBooking: e.target.checked,
-                    })
-                  }
-                />
-              </label>
-              <p className="field-hint" style={{ fontSize: 12, marginTop: 4 }}>
-                عند التفعيل، سيتم إجبار العميلات على الحجز مباشرة بعد آخر موعد محجوز في اليوم لمنع هدر الوقت.
-              </p>
-            </div>
-          </div>
-
-        <div className="settings-card">
-          <h3 className="settings-title">استثناءات الدوام (فترات بتاريخ محدد)</h3>
+        {activeBookingSection === "exceptions" ? (
+          <SettingsSection
+            eyebrow="04"
+            title="استثناءات الدوام"
+            hint="فترات خاصة بتاريخ محدد لإغلاق يوم أو تغيير ساعات العمل مؤقتًا."
+            className="settings-basic-panel settings-booking-panel"
+          >
           <div className="settings-grid" style={{ marginTop: 10 }}>
             <div className="settings-field">
               <label>من تاريخ</label>
@@ -1278,7 +1380,30 @@ export default function SettingsBookings() {
             <br />
             * خارج فترة الاستثناء لا يتغير الدوام الأسبوعي العادي.
           </div>
-        </div>
+          </SettingsSection>
+        ) : null}
+
+        <SettingsPageActions
+          note={
+            <>
+              {savedMsg ? <span className="settings-saved">{savedMsg}</span> : null}
+              <div className="settings-footnote" style={{ marginTop: savedMsg ? 8 : 0 }}>
+                * احفظ بعد كل تعديل حتى تنعكس القيم في صفحة الحجز.
+              </div>
+            </>
+          }
+          actions={
+            <button
+              className={`exp-btn primary ${!hasAdminPower ? "is-disabled" : ""}`}
+              onClick={saveAll}
+              disabled={!hasAdminPower}
+              type="button"
+              title={!hasAdminPower ? "تحتاج Owner/Admin" : "حفظ"}
+            >
+              حفظ التغييرات
+            </button>
+          }
+        />
         </div>
       </div>
   );
