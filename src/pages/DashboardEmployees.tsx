@@ -113,6 +113,7 @@ import {
   shiftHijriMonthStartIso,
   staffPublicCol,
   staffPublicDoc,
+  toArabicSectionLabel,
   toComparableTimestamp,
   toFirestoreErrorMessage,
   toHijriMonthYearLabel,
@@ -366,6 +367,8 @@ export default function DashboardEmployees() {
     setOvertimeInvoicePercent("0");
 
     setSpecialties([]);
+    setSrvQ("");
+    setSrvSection("all");
     setLeaveAdjustDays("1");
     setLeaveAdjustDate(todayIso());
     setLeaveAdjustNote("");
@@ -432,6 +435,8 @@ export default function DashboardEmployees() {
     setShowOnAbout((x as any).showOnAbout !== false);
 
     setSpecialties(canonicalizeSpecialties(x.specialties, serviceOptions));
+    setSrvQ("");
+    setSrvSection("all");
     setLeaveAdjustDays("1");
     setLeaveAdjustDate(todayIso());
     setLeaveAdjustNote("");
@@ -457,6 +462,8 @@ export default function DashboardEmployees() {
             label: String(x?.name || d.id),
             sectionId: String(x?.sectionId || ""),
             categoryId: String(x?.categoryId || ""),
+            durationMin: safeNonNegativeNumber(x?.durationMin || x?.duration || x?.minutes, 0),
+            price: safeNonNegativeNumber(x?.price || x?.servicePrice || x?.amount, 0),
             active: x?.active !== false,
           };
         })
@@ -801,7 +808,7 @@ export default function DashboardEmployees() {
     for (const s of serviceOptions) {
       const sid = String(s.sectionId || "").trim();
       if (!sid) continue;
-      if (!m.has(sid)) m.set(sid, { id: sid, label: sid });
+      if (!m.has(sid)) m.set(sid, { id: sid, label: toArabicSectionLabel(sid, sid) });
     }
     return Array.from(m.values()).sort((a, b) =>
       a.label.localeCompare(b.label, "ar")
@@ -815,7 +822,15 @@ export default function DashboardEmployees() {
     }
     const q = srvQ.trim().toLowerCase();
     if (q) {
-      rows = rows.filter((s) => String(s.label || "").toLowerCase().includes(q));
+      rows = rows.filter((s) => {
+        const sectionLabel = toArabicSectionLabel(String(s.sectionId || ""), String(s.sectionId || ""));
+        return (
+          String(s.label || "").toLowerCase().includes(q) ||
+          String(s.id || "").toLowerCase().includes(q) ||
+          String(sectionLabel || "").toLowerCase().includes(q) ||
+          String(s.categoryId || "").toLowerCase().includes(q)
+        );
+      });
     }
     rows.sort((a, b) => String(a.label).localeCompare(String(b.label), "ar"));
     return rows;
@@ -2974,11 +2989,13 @@ export default function DashboardEmployees() {
                 srvQ={srvQ}
                 srvSection={srvSection}
                 sectionOptions={sectionOptions}
+                serviceOptions={serviceOptions}
                 filteredServicesForPicks={filteredServicesForPicks}
                 specialties={specialties}
                 onSrvQChange={setSrvQ}
                 onSrvSectionChange={setSrvSection}
                 onToggleSpecialty={toggleSpecialty}
+                onSpecialtiesChange={setSpecialties}
               />
             </EmployeeEditorModal>
           </EmployeeDetailShell>

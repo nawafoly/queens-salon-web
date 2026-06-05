@@ -114,6 +114,8 @@ export type ServiceOption = {
   label: string;
   sectionId?: string;
   categoryId?: string;
+  durationMin?: number;
+  price?: number;
   active?: boolean;
 };
 
