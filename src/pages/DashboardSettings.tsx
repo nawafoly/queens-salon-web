@@ -1,7 +1,7 @@
 
 
 // ✅ src/pages/DashboardSettings.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
 import { onAuthStateChanged } from "firebase/auth";
@@ -71,6 +71,8 @@ const DashboardSettings: React.FC = () => {
     AppSettingsService.getCached()
   );
   const [savedMsg, setSavedMsg] = useState<string>("");
+  const authRequestIdRef = useRef(0);
+  const authResolvedRef = useRef(false);
 
   const allowAdminManageUsers = Boolean(
     (settings as any)?.policies?.allowAdminManageUsers
@@ -86,15 +88,14 @@ const DashboardSettings: React.FC = () => {
   ========================= */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
-      setAuthLoading(true);
+      const requestId = ++authRequestIdRef.current;
+      if (!authResolvedRef.current) setAuthLoading(true);
 
       try {
         const localSession = readStoredAuthSession();
 
         if (!user) {
-          if (localSession?.temp && localSession.role) {
-            setUiRole(localSession.role as UiRole);
-          } else if (localSession?.role) {
+          if (localSession?.role) {
             setUiRole(localSession.role as UiRole);
           } else {
             setUiRole("guest");
@@ -116,7 +117,10 @@ const DashboardSettings: React.FC = () => {
         console.error("Settings role load error:", e);
         setUiRole("guest");
       } finally {
-        setAuthLoading(false);
+        if (authRequestIdRef.current === requestId) {
+          authResolvedRef.current = true;
+          setAuthLoading(false);
+        }
       }
     });
 
@@ -447,7 +451,16 @@ const DashboardSettings: React.FC = () => {
 
       <Route path="advanced/bookings" element={<SettingsBookings />} />
       <Route path="advanced/catalog" element={<SettingsCatalog hasAdminPower={hasAdminPower} />} />
-      <Route path="advanced/users" element={<SettingsUsers />} />
+      <Route
+        path="advanced/users"
+        element={
+          <SettingsUsers
+            initialRole={uiRole}
+            authReady={!authLoading}
+            allowAdminManageUsers={allowAdminManageUsers}
+          />
+        }
+      />
       <Route
   path="advanced/contact"
   element={<SettingsContact hasAdminPower={hasAdminPower} />}

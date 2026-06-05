@@ -1633,24 +1633,6 @@ const Dashboard: React.FC = () => {
 
         step = "auth:checkUser";
         const localSession = readStoredAuthSession();
-        if (localSession?.temp && localSession?.uid && localSession?.role) {
-          const fallbackRole = localSession.role as UiRole;
-          const fallbackName =
-            localSession.displayName ||
-            localSession.email ||
-            localStorage.getItem("userName") ||
-            "مستخدم";
-
-          setUserInfo({
-            name: fallbackName,
-            role: fallbackRole,
-            email: localSession.email || "",
-          });
-          markDashboardBootstrapped();
-          await refreshDashboard(fallbackRole, { silent: true });
-          return;
-        }
-
         if (!user) {
           if (localSession?.uid && localSession?.role) {
             const fallbackRole = localSession.role as UiRole;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import { getIdTokenResult, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
 import { auth, db } from "../../services/firebase";
@@ -106,13 +106,20 @@ export function useEmployeeSession() {
       const displayName = cleanText(user.displayName || "");
 
       const storedSession = readStoredAuthSession();
-      const userDoc = await getDoc(doc(db, "salons", SALON_ID, "users", uid))
-        .then((snap) => (snap.exists() ? (snap.data() as Record<string, any>) : null))
-        .catch((error) => {
-          console.error("[useEmployeeSession] failed to load user doc", error);
+      const [tokenResult, userDoc] = await Promise.all([
+        getIdTokenResult(user).catch((error) => {
+          console.error("[useEmployeeSession] failed to load auth token", error);
           return null;
-        });
-      const role = cleanText(userDoc?.role || storedSession?.role || "guest").toLowerCase() || "guest";
+        }),
+        getDoc(doc(db, "salons", SALON_ID, "users", uid))
+          .then((snap) => (snap.exists() ? (snap.data() as Record<string, any>) : null))
+          .catch((error) => {
+            console.error("[useEmployeeSession] failed to load user doc", error);
+            return null;
+          }),
+      ]);
+      const claimRole = cleanText((tokenResult as any)?.claims?.role || "").toLowerCase();
+      const role = cleanText(userDoc?.role || claimRole || storedSession?.role || "guest").toLowerCase() || "guest";
       const employeeId = cleanText(
         userDoc?.employeeId || userDoc?.linkedEmployeeDocId || storedSession?.uid || uid
       );

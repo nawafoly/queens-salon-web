@@ -274,21 +274,15 @@ const App: React.FC = () => {
   const [userRole, setUserRole] = useState<UiRole>(() => readStoredAuthSession()?.role || "guest");
 
   const location = useLocation();
-  const effectiveSessionUser = storedSession?.temp
-    ? ({
-        uid: storedSession.uid,
-        email: storedSession.email,
-        displayName: storedSession.displayName,
-      } as FirebaseUser)
-    : authUser
-      ? authUser
-      : storedSession
-        ? ({
-            uid: storedSession.uid,
-            email: storedSession.email,
-            displayName: storedSession.displayName,
-          } as FirebaseUser)
-        : null;
+  const effectiveSessionUser = authUser
+    ? authUser
+    : storedSession
+      ? ({
+          uid: storedSession.uid,
+          email: storedSession.email,
+          displayName: storedSession.displayName,
+        } as FirebaseUser)
+      : null;
 
   const isInDashboard =
     location.pathname.startsWith("/dashboard") ||
@@ -311,7 +305,7 @@ const App: React.FC = () => {
     readWelcomeFromStorage();
     const currentSession = readStoredAuthSession();
     setStoredSession(currentSession);
-    if (currentSession?.temp || (!authUser && currentSession)) {
+    if (!authUser && currentSession) {
       setUserName(currentSession.displayName || getNameFromStorage());
       setUserRole(currentSession.role);
       if (!authUser) {
@@ -429,7 +423,7 @@ const App: React.FC = () => {
       readWelcomeFromStorage();
       const currentSession = readStoredAuthSession();
       setStoredSession(currentSession);
-      if (currentSession?.temp || (!authUser && currentSession)) {
+      if (!authUser && currentSession) {
         setUserRole(currentSession.role);
         setUserName(currentSession.displayName || getNameFromStorage());
         setAuthReady(true);

@@ -157,15 +157,15 @@ function resolveStaffNotificationTarget(staff?: StaffPublicUi | null) {
 
 export default function DashboardEmployees() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthUser());
+  const authRole = cleanText(authUser?.role).toLowerCase();
   const canAccessEmployeesDashboard =
-    authUser?.role === "owner" ||
-    authUser?.role === "admin" ||
-    authUser?.role === "reception" ||
-    authUser?.role === "hr";
-  const canManage =
-    authUser?.role === "owner" ||
-    authUser?.role === "admin" ||
-    authUser?.role === "reception";
+    authRole === "owner" ||
+    authRole === "admin" ||
+    authRole === "reception" ||
+    authRole === "hr";
+  const canManage = authRole === "owner" || authRole === "hr";
+  const canDeleteEmployees = authRole === "owner";
+  const canFixBookings = authRole === "owner";
   const canManageLeaveBalance = canManageLeaveBalanceRole(authUser?.role);
 
   const [loading, setLoading] = useState(false);
@@ -292,6 +292,11 @@ export default function DashboardEmployees() {
     setErrorMsg("ليست لديك صلاحية لإدارة الموظفات.");
     return false;
   }, [canManage]);
+  const ensureCanDelete = useCallback(() => {
+    if (canDeleteEmployees) return true;
+    setErrorMsg("ليست لديك صلاحية لحذف الموظفات.");
+    return false;
+  }, [canDeleteEmployees]);
   const ensureCanManageLeaveBalance = useCallback(() => {
     if (canManageLeaveBalance) return true;
     setErrorMsg("ليست لديك صلاحية لإدارة رصيد الإجازات.");
@@ -566,7 +571,10 @@ export default function DashboardEmployees() {
 
   // ✅ Original logic for fixing bookings
   const fixBookingsEmployeeUid = async () => {
-    if (!ensureCanManage()) return;
+    if (!canFixBookings) {
+      setErrorMsg("ليست لديك صلاحية لإصلاح الحجوزات.");
+      return;
+    }
     const ok = confirm(
       "سيتم إصلاح الحجوزات القديمة بإضافة employeeUid/employeeKey. هل تريد المتابعة؟"
     );
@@ -972,7 +980,7 @@ export default function DashboardEmployees() {
   };
 
   const remove = async (id: string) => {
-    if (!ensureCanManage()) return;
+    if (!ensureCanDelete()) return;
     if (!confirm("متأكد حذف الموظفة؟")) return;
     setSaving(true);
     setErrorMsg("");
@@ -2754,7 +2762,7 @@ export default function DashboardEmployees() {
             <button className="exp-btn primary" type="button" onClick={openCreateEmployee}>
               + إضافة موظفة
             </button>
-            {authUser?.role === "owner" && (
+            {canFixBookings && (
               <button
                 className="exp-btn ghost"
                 onClick={fixBookingsEmployeeUid}
@@ -2835,6 +2843,7 @@ export default function DashboardEmployees() {
             activeTab={activeTab}
             tabs={detailTabs}
             canManage={canManage}
+            canDelete={canDeleteEmployees}
             onSave={save}
             onDelete={() => selectedEmployeeId && remove(selectedEmployeeId)}
             onCancelEdit={handleCancelEdit}

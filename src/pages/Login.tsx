@@ -20,7 +20,6 @@ import { auth, db } from "../services/firebase";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
-  signOut,
   updateProfile,
 } from "firebase/auth";
 
@@ -61,10 +60,6 @@ const USERS_COL = ["salons", SALON_ID, "users"] as const;
 const STAFF_PUBLIC_COL = ["salons", SALON_ID, "staff_public"] as const;
 const PUBLIC_DEV_BASE = "https://pub-6ee7ebda32364985aa26e0386b7fbe28.r2.dev";
 const PUBLIC_DEV_BASE_CLEAN = PUBLIC_DEV_BASE.replace(/\/+$/, "");
-const TEMP_LOGIN_ENABLED = import.meta.env.DEV;
-const TEMP_LOGIN_ROLE: UiRole = "owner";
-const TEMP_LOGIN_EMAIL = "temp-owner@local.dev";
-const TEMP_LOGIN_NAME = "دخول مؤقت";
 
 type AdminRole = "owner" | "admin" | "reception" | "staff" | "pending";
 
@@ -321,11 +316,6 @@ const Login: React.FC = () => {
   // ✅ لو الجلسة موجودة بالفعل: وجّه حسب الدور من Auth + Firestore
   useEffect(() => {
     const currentSession = readStoredAuthSession();
-    if (currentSession?.temp) {
-      navigate(resolveDashboardLandingPath(currentSession.role), { replace: true });
-      return;
-    }
-
     let alive = true;
     const redirectByRole = async (u: any) => {
       if (!u || !alive) return;
@@ -477,36 +467,6 @@ const Login: React.FC = () => {
     );
 
     window.dispatchEvent(new Event("authChanged"));
-  };
-
-  const handleTemporaryLogin = async () => {
-    if (!TEMP_LOGIN_ENABLED) return;
-
-    setIsLoading(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    try {
-      try {
-        await signOut(auth);
-      } catch {
-        // ignore Firebase failures in temp mode
-      }
-
-      const sessionName = `${TEMP_LOGIN_NAME} - مدير مؤقت`;
-      writeStoredAuthSession({
-        uid: `temp:${TEMP_LOGIN_ROLE}`,
-        email: TEMP_LOGIN_EMAIL,
-        role: TEMP_LOGIN_ROLE,
-        displayName: sessionName,
-        temp: true,
-      });
-
-      setSuccessMsg("تم فتح الداشبورد بوضع دخول مؤقت ✅");
-      navigate(resolveDashboardLandingPath(TEMP_LOGIN_ROLE), { replace: true });
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   // ✅ تسجيل الدخول
@@ -988,31 +948,10 @@ const Login: React.FC = () => {
                 )}
               </button>
 
-              {TEMP_LOGIN_ENABLED && (
-                <button
-                  type="button"
-                  className="login-btn"
-                  style={{
-                    marginTop: 12,
-                    background: "linear-gradient(135deg, #8c6a3f, #b98d57)",
-                  }}
-                  onClick={handleTemporaryLogin}
-                  disabled={isLoading}
-                >
-                  <FontAwesomeIcon icon={faUser} className="me-2" />
-                  دخول مؤقت للداشبورد
-                </button>
-              )}
-
               <div style={{ marginTop: 10, textAlign: "center" }}>
                 <Link to="/forgot-password">نسيت كلمة المرور؟</Link>
               </div>
 
-              {TEMP_LOGIN_ENABLED && (
-                <p style={{ marginTop: 10, textAlign: "center", fontSize: 13, opacity: 0.75 }}>
-                  هذا زر محلي مؤقت لتصفح الداشبورد إلى أن يتم إصلاح Firebase key.
-                </p>
-              )}
             </form>
           ) : (
             <form className="login-form" onSubmit={handleRegister}>
