@@ -3,11 +3,15 @@ type ProfileSectionProps = {
   avatarUrl: string;
   bio: string;
   cvUrl: string;
+  rating: string;
+  reviewsCount: string;
   staffImageOptions: Array<{ label: string; value: string }>;
   resolveAvatarFromAssets: (raw: string) => string;
   onAvatarUrlChange: (value: string) => void;
   onBioChange: (value: string) => void;
   onCvUrlChange: (value: string) => void;
+  onRatingChange: (value: string) => void;
+  onReviewsCountChange: (value: string) => void;
 };
 
 export default function ProfileSection({
@@ -15,11 +19,15 @@ export default function ProfileSection({
   avatarUrl,
   bio,
   cvUrl,
+  rating,
+  reviewsCount,
   staffImageOptions,
   resolveAvatarFromAssets,
   onAvatarUrlChange,
   onBioChange,
   onCvUrlChange,
+  onRatingChange,
+  onReviewsCountChange,
 }: ProfileSectionProps) {
   if (!isVisible) return null;
 
@@ -58,9 +66,49 @@ export default function ProfileSection({
               ))}
             </select>
           </div>
+          <div className="dash-field emp-profile-photo-field">
+            <label className="emp-label">رابط صورة الموظفة</label>
+            <input
+              className="dash-input"
+              value={avatarUrl}
+              onChange={(e) => onAvatarUrlChange(e.target.value)}
+              placeholder="https://.../staff.jpg"
+              dir="ltr"
+            />
+          </div>
         </aside>
 
         <div className="emp-profile-fields">
+          <div className="emp-profile-rating-grid">
+            <div className="dash-field">
+              <label className="emp-label">تقييم العرض</label>
+              <input
+                className="dash-input"
+                type="number"
+                min="0"
+                max="5"
+                step="0.1"
+                value={rating}
+                onChange={(e) => onRatingChange(e.target.value)}
+                placeholder="4.9"
+                dir="ltr"
+              />
+            </div>
+
+            <div className="dash-field">
+              <label className="emp-label">عدد التقييمات</label>
+              <input
+                className="dash-input"
+                type="number"
+                min="0"
+                step="1"
+                value={reviewsCount}
+                onChange={(e) => onReviewsCountChange(e.target.value)}
+                placeholder="127"
+                dir="ltr"
+              />
+            </div>
+          </div>
           <div className="dash-field">
             <label className="emp-label">نبذة تعريفية</label>
             <textarea

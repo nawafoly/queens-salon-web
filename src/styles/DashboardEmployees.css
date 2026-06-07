@@ -4575,6 +4575,12 @@ h1, h2, h3, h4, h5, h6 {
   gap: 14px;
 }
 
+.emp-modal .emp-profile-rating-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .emp-modal .emp-profile-photo-card .dash-field,
 .emp-modal .emp-profile-photo-field {
   width: 100%;
@@ -4671,6 +4677,10 @@ h1, h2, h3, h4, h5, h6 {
   .emp-modal .emp-form-grid.two-cols,
   .emp-modal .emp-form-grid.three-cols,
   .emp-modal .emp-profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .emp-modal .emp-profile-rating-grid {
     grid-template-columns: 1fr;
   }
 

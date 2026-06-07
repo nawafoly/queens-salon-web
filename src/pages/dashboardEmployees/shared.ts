@@ -100,6 +100,8 @@ export type StaffPublicDoc = {
   bio?: string;
   avatarUrl?: string;
   cvUrl?: string;
+  rating?: number;
+  reviewsCount?: number;
   leaveBalanceDays?: number;
   leaveEntitlementDate?: string;
   leaveEntries?: LeaveEntry[];

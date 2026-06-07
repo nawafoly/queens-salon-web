@@ -202,6 +202,8 @@ export default function DashboardEmployees() {
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [cvUrl, setCvUrl] = useState("");
+  const [rating, setRating] = useState("");
+  const [reviewsCount, setReviewsCount] = useState("");
 
   const [active, setActive] = useState(true);
 
@@ -323,6 +325,8 @@ export default function DashboardEmployees() {
     setBio("");
     setAvatarUrl("");
     setCvUrl("");
+    setRating("");
+    setReviewsCount("");
     setActive(true);
 
     // ✅ جديد
@@ -386,6 +390,8 @@ export default function DashboardEmployees() {
     setBio(x.bio ?? "");
     setAvatarUrl(resolveAvatarFromAssets(pickAvatarUrl(x as any)));
     setCvUrl((x as any).cvUrl ?? "");
+    setRating(String((x as any).rating ?? ""));
+    setReviewsCount(String((x as any).reviewsCount ?? (x as any).reviewCount ?? ""));
     setActive(!!x.active);
     setShowOnBooking((x as any).showOnBooking !== false);
     const initialLeaveUntil = normalizeLeaveUntil((x as any).leaveUntil);
@@ -937,6 +943,8 @@ export default function DashboardEmployees() {
       bio: bio.trim(),
       avatarUrl: avatarUrl.trim(),
       cvUrl: cvUrl.trim(),
+      rating: Math.min(5, safeNonNegativeNumber(rating, 0)),
+      reviewsCount: Math.floor(safeNonNegativeNumber(reviewsCount, 0)),
       updatedAt: serverTimestamp(),
     };
 
@@ -2978,11 +2986,15 @@ export default function DashboardEmployees() {
                 avatarUrl={avatarUrl}
                 bio={bio}
                 cvUrl={cvUrl}
+                rating={rating}
+                reviewsCount={reviewsCount}
                 staffImageOptions={STAFF_IMAGE_OPTIONS}
                 resolveAvatarFromAssets={resolveAvatarFromAssets}
                 onAvatarUrlChange={setAvatarUrl}
                 onBioChange={setBio}
                 onCvUrlChange={setCvUrl}
+                onRatingChange={setRating}
+                onReviewsCountChange={setReviewsCount}
               />
               <ServicesSection
                 isVisible={modalTab === "services"}
