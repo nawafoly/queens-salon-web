@@ -1,8 +1,6 @@
-import { db } from "./firebase";
 import {
-  collection,
   deleteDoc,
-  doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -10,14 +8,25 @@ import {
   setDoc,
   where,
 } from "firebase/firestore";
+import {
+  SALON_ID,
+  staffAttendanceCollection,
+  staffAttendanceDoc,
+} from "./hrCollections";
 
 export type AttendanceViolationType = "absent" | "late" | "leave";
+export type AttendancePunchStatus = "not_started" | "checked_in" | "checked_out";
 
 export type StaffAttendanceDoc = {
   date: string; // YYYY-MM-DD
-  type: AttendanceViolationType;
+  type?: AttendanceViolationType;
   minutes?: number;
   absentFullDay?: boolean;
+  checkInAt?: any;
+  checkOutAt?: any;
+  checkInAtClient?: string;
+  checkOutAtClient?: string;
+  status?: AttendancePunchStatus;
   notes?: string;
   createdAt?: any;
   updatedAt?: any;
@@ -28,8 +37,12 @@ export type StaffAttendanceDoc = {
 };
 
 export type StaffAttendanceWithId = StaffAttendanceDoc & { id: string };
+export type StaffAttendanceToday = StaffAttendanceWithId & {
+  employeeId: string;
+  status: AttendancePunchStatus;
+};
 
-const DEFAULT_SALON_ID = "main";
+const DEFAULT_SALON_ID: string = SALON_ID;
 
 function normalizeIsoDate(v: any): string {
   const s = String(v || "").trim();
@@ -37,17 +50,166 @@ function normalizeIsoDate(v: any): string {
 }
 
 function attendanceCol(employeeId: string, salonId = DEFAULT_SALON_ID) {
-  return collection(db, "salons", salonId, "staff", employeeId, "attendance");
+  return staffAttendanceCollection(employeeId, salonId);
 }
 
 function attendanceDoc(employeeId: string, date: string, salonId = DEFAULT_SALON_ID) {
-  return doc(db, "salons", salonId, "staff", employeeId, "attendance", date);
+  return staffAttendanceDoc(employeeId, date, salonId);
 }
 
 function normalizeType(v: any): AttendanceViolationType {
   const s = String(v || "").trim();
   if (s === "absent" || s === "late" || s === "leave") return s;
   return "late";
+}
+
+function getRiyadhDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function normalizePunchStatus(data: any): AttendancePunchStatus {
+  const raw = String(data?.status || "").trim();
+  if (raw === "checked_out" || data?.checkOutAt || data?.checkOutAtClient) return "checked_out";
+  if (raw === "checked_in" || data?.checkInAt || data?.checkInAtClient) return "checked_in";
+  return "not_started";
+}
+
+function mapAttendanceDoc(employeeId: string, date: string, id: string, data: any): StaffAttendanceToday {
+  return {
+    id,
+    employeeId,
+    date: normalizeIsoDate(data?.date) || date,
+    type: data?.type ? normalizeType(data?.type) : undefined,
+    minutes: Math.max(0, Number(data?.minutes || 0)),
+    absentFullDay: data?.absentFullDay === true,
+    checkInAt: data?.checkInAt,
+    checkOutAt: data?.checkOutAt,
+    checkInAtClient: String(data?.checkInAtClient || "").trim() || undefined,
+    checkOutAtClient: String(data?.checkOutAtClient || "").trim() || undefined,
+    status: normalizePunchStatus(data),
+    notes: String(data?.notes || "").trim(),
+    createdAt: data?.createdAt,
+    updatedAt: data?.updatedAt,
+    createdBy:
+      data?.createdBy && typeof data.createdBy === "object"
+        ? {
+            uid: String(data.createdBy.uid || "").trim() || undefined,
+            name: String(data.createdBy.name || "").trim() || undefined,
+          }
+        : undefined,
+  };
+}
+
+export function getTodayAttendanceDateKey() {
+  return getRiyadhDateKey();
+}
+
+export async function getStaffAttendanceForDate(args: {
+  employeeId: string;
+  date?: string;
+  salonId?: string;
+}): Promise<StaffAttendanceToday> {
+  const employeeId = String(args.employeeId || "").trim();
+  const date = normalizeIsoDate(args.date) || getTodayAttendanceDateKey();
+  const salonId = String(args.salonId || DEFAULT_SALON_ID).trim() || DEFAULT_SALON_ID;
+  if (!employeeId || !date) {
+    return mapAttendanceDoc(employeeId, date, date, {});
+  }
+
+  const snap = await getDoc(attendanceDoc(employeeId, date, salonId));
+  return mapAttendanceDoc(employeeId, date, snap.id || date, snap.exists() ? snap.data() : {});
+}
+
+export async function listStaffAttendanceForDate(args: {
+  employeeIds: string[];
+  date?: string;
+  salonId?: string;
+}): Promise<StaffAttendanceToday[]> {
+  const date = normalizeIsoDate(args.date) || getTodayAttendanceDateKey();
+  const employeeIds = Array.from(
+    new Set((Array.isArray(args.employeeIds) ? args.employeeIds : []).map(id => String(id || "").trim()).filter(Boolean))
+  );
+  if (!employeeIds.length) return [];
+
+  return Promise.all(
+    employeeIds.map(employeeId =>
+      getStaffAttendanceForDate({
+        employeeId,
+        date,
+        salonId: args.salonId,
+      })
+    )
+  );
+}
+
+export async function checkInStaffAttendance(args: {
+  employeeId: string;
+  date?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  salonId?: string;
+}) {
+  const employeeId = String(args.employeeId || "").trim();
+  const date = normalizeIsoDate(args.date) || getTodayAttendanceDateKey();
+  const salonId = String(args.salonId || DEFAULT_SALON_ID).trim() || DEFAULT_SALON_ID;
+  if (!employeeId || !date) throw new Error("attendance: invalid employee/date");
+
+  await setDoc(
+    attendanceDoc(employeeId, date, salonId),
+    {
+      date,
+      employeeId,
+      salonId,
+      status: "checked_in" as AttendancePunchStatus,
+      checkInAt: serverTimestamp(),
+      checkInAtClient: new Date().toISOString(),
+      createdBy: {
+        uid: String(args.createdByUid || "").trim() || undefined,
+        name: String(args.createdByName || "").trim() || undefined,
+      },
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+export async function checkOutStaffAttendance(args: {
+  employeeId: string;
+  date?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  salonId?: string;
+}) {
+  const employeeId = String(args.employeeId || "").trim();
+  const date = normalizeIsoDate(args.date) || getTodayAttendanceDateKey();
+  const salonId = String(args.salonId || DEFAULT_SALON_ID).trim() || DEFAULT_SALON_ID;
+  if (!employeeId || !date) throw new Error("attendance: invalid employee/date");
+
+  await setDoc(
+    attendanceDoc(employeeId, date, salonId),
+    {
+      date,
+      employeeId,
+      salonId,
+      status: "checked_out" as AttendancePunchStatus,
+      checkOutAt: serverTimestamp(),
+      checkOutAtClient: new Date().toISOString(),
+      updatedBy: {
+        uid: String(args.createdByUid || "").trim() || undefined,
+        name: String(args.createdByName || "").trim() || undefined,
+      },
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 }
 
 export async function listStaffAttendanceByDateRange(args: {
@@ -78,6 +240,11 @@ export async function listStaffAttendanceByDateRange(args: {
       type: normalizeType(x?.type),
       minutes: Math.max(0, Number(x?.minutes || 0)),
       absentFullDay: x?.absentFullDay === true,
+      checkInAt: x?.checkInAt,
+      checkOutAt: x?.checkOutAt,
+      checkInAtClient: String(x?.checkInAtClient || "").trim() || undefined,
+      checkOutAtClient: String(x?.checkOutAtClient || "").trim() || undefined,
+      status: normalizePunchStatus(x),
       notes: String(x?.notes || "").trim(),
       createdAt: x?.createdAt,
       updatedAt: x?.updatedAt,

@@ -687,6 +687,33 @@
   color: var(--employee-muted);
 }
 
+.employee-attendance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.employee-attendance-grid > div {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(20, 33, 29, 0.08);
+}
+
+.employee-attendance-grid span {
+  color: var(--employee-muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.employee-attendance-grid strong {
+  color: var(--employee-ink);
+  font-size: 1rem;
+}
+
 .employee-file-item__head {
   display: flex;
   align-items: center;

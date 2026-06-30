@@ -1,6 +1,19 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { markEmployeeNotificationRead, type EmployeeNotification } from "../../services/employeeHub";
+import {
+  checkInStaffAttendance,
+  checkOutStaffAttendance,
+  getStaffAttendanceForDate,
+  getTodayAttendanceDateKey,
+  type StaffAttendanceToday,
+} from "../../services/firestoreAttendance";
+import {
+  computeAttendanceDay,
+  getAttendanceDayStatus,
+  type AttendanceRecord,
+} from "../../helpers/hr/attendanceCalculations";
 import { cleanText, formatShortDate, type HrSession } from "./shared";
 import { formatNotificationTime, notificationTone, notificationTypeLabel, toMillis } from "./portalUtils";
 
@@ -24,6 +37,23 @@ function getProfileSource(session: HrSession) {
   return session.staffDoc || session.employeeDoc || session.userDoc || {};
 }
 
+function formatAttendanceTime(value: unknown) {
+  const raw = cleanText(value);
+  if (!raw) return "—";
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return raw;
+  return new Intl.DateTimeFormat("ar-SA", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(parsed));
+}
+
+function getAttendanceStatusLabel(status: StaffAttendanceToday["status"]) {
+  if (status === "checked_out") return "انصرف";
+  if (status === "checked_in") return "حاضر";
+  return "لم يسجل حضور";
+}
+
 export default function EmployeeOverviewPage({ session, notifications, onRefresh }: Props) {
   const navigate = useNavigate();
   const profile = getProfileSource(session);
@@ -34,6 +64,12 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const leaveUntil = cleanText(profile.leaveUntil || "");
   const onLeave = !!profile.onLeave && (!leaveUntil || leaveUntil >= new Date().toISOString().slice(0, 10));
   const active = profile.active !== false;
+  const [attendance, setAttendance] = useState<StaffAttendanceToday | null>(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceBusy, setAttendanceBusy] = useState(false);
+  const [attendanceMessage, setAttendanceMessage] = useState("");
+  const attendanceEmployeeId = cleanText(session.employeeId || session.uid);
+  const attendanceDate = getTodayAttendanceDateKey();
 
   const unread = notifications.filter((note) => !note.isRead);
   const summary = {
@@ -47,6 +83,52 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const latestNotes = [...notifications]
     .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt))
     .slice(0, 6);
+
+  const attendanceComputation = useMemo(() => {
+    const records: AttendanceRecord[] = [];
+    if (attendance?.checkInAtClient) {
+      records.push({ id: `${attendance.id}-in`, type: "check_in", serverTime: attendance.checkInAtClient });
+    }
+    if (attendance?.checkOutAtClient) {
+      records.push({ id: `${attendance.id}-out`, type: "check_out", serverTime: attendance.checkOutAtClient });
+    }
+    return computeAttendanceDay(attendanceDate, records, {
+      startTime: cleanText(profile.startTime || profile.workStartTime || profile.shiftStartTime || "09:00"),
+      endTime: cleanText(profile.endTime || profile.workEndTime || profile.shiftEndTime || "17:00"),
+      weeklyOffDays: profile.weeklyOffDays || profile.offDays || null,
+    });
+  }, [attendance, attendanceDate, profile.endTime, profile.offDays, profile.shiftEndTime, profile.shiftStartTime, profile.startTime, profile.weeklyOffDays, profile.workEndTime, profile.workStartTime]);
+
+  const attendanceDayStatus = getAttendanceDayStatus({
+    date: attendanceDate,
+    hasAttendance: Boolean(attendance?.checkInAtClient || attendance?.checkOutAtClient),
+    checkOut: attendanceComputation.checkOut,
+    computation: attendanceComputation,
+    todayDateKey: attendanceDate,
+    weeklyOffDays: profile.weeklyOffDays || profile.offDays || null,
+  });
+
+  const loadAttendance = async () => {
+    if (!attendanceEmployeeId) return;
+    setAttendanceLoading(true);
+    setAttendanceMessage("");
+    try {
+      const row = await getStaffAttendanceForDate({
+        employeeId: attendanceEmployeeId,
+        date: attendanceDate,
+      });
+      setAttendance(row);
+    } catch (e) {
+      setAttendanceMessage(cleanText((e as any)?.message || "Failed to load attendance."));
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadAttendance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attendanceEmployeeId, attendanceDate]);
 
   const quickActions = [
     { label: "الرسائل", href: "/employee/messages", note: summary.message, description: "تابع محادثاتك الداخلية" },
@@ -64,6 +146,35 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     }
     if (note.route) {
       navigate(note.route);
+    }
+  };
+
+  const handleAttendancePunch = async (type: "check_in" | "check_out") => {
+    if (!attendanceEmployeeId || attendanceBusy) return;
+    setAttendanceBusy(true);
+    setAttendanceMessage("");
+    try {
+      if (type === "check_in") {
+        await checkInStaffAttendance({
+          employeeId: attendanceEmployeeId,
+          date: attendanceDate,
+          createdByUid: session.uid,
+          createdByName: displayName,
+        });
+      } else {
+        await checkOutStaffAttendance({
+          employeeId: attendanceEmployeeId,
+          date: attendanceDate,
+          createdByUid: session.uid,
+          createdByName: displayName,
+        });
+      }
+      await loadAttendance();
+      setAttendanceMessage(type === "check_in" ? "تم تسجيل الحضور." : "تم تسجيل الانصراف.");
+    } catch (e) {
+      setAttendanceMessage(cleanText((e as any)?.message || "Failed to save attendance."));
+    } finally {
+      setAttendanceBusy(false);
     }
   };
 
@@ -135,6 +246,52 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           <strong>{summary.payroll}</strong>
           <small>مسيرات وأرشيف الرواتب</small>
         </article>
+      </section>
+
+      <section className="employee-card">
+        <div className="employee-card-head">
+          <div>
+            <h3>الحضور اليوم</h3>
+            <small>{attendanceDate}</small>
+          </div>
+          <span className="employee-status-chip">{getAttendanceStatusLabel(attendance?.status || "not_started")}</span>
+        </div>
+
+        <div className="employee-attendance-grid">
+          <div>
+            <span>وقت الحضور</span>
+            <strong>{formatAttendanceTime(attendance?.checkInAtClient)}</strong>
+          </div>
+          <div>
+            <span>وقت الانصراف</span>
+            <strong>{formatAttendanceTime(attendance?.checkOutAtClient)}</strong>
+          </div>
+          <div>
+            <span>الحالة المحسوبة</span>
+            <strong>{attendanceDayStatus}</strong>
+          </div>
+        </div>
+
+        {attendanceMessage ? <div className="employee-alert">{attendanceMessage}</div> : null}
+
+        <div className="employee-actions">
+          <button
+            className="employee-button employee-button--accent"
+            type="button"
+            onClick={() => void handleAttendancePunch("check_in")}
+            disabled={attendanceBusy || attendanceLoading || attendance?.status === "checked_in" || attendance?.status === "checked_out"}
+          >
+            تسجيل حضور
+          </button>
+          <button
+            className="employee-button"
+            type="button"
+            onClick={() => void handleAttendancePunch("check_out")}
+            disabled={attendanceBusy || attendanceLoading || attendance?.status !== "checked_in"}
+          >
+            تسجيل انصراف
+          </button>
+        </div>
       </section>
 
       <section className="employee-actions-grid">

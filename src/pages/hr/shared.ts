@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getIdTokenResult, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { getDoc } from "firebase/firestore";
 
-import { auth, db } from "../../services/firebase";
-import { SALON_ID } from "../../services/employeeHub";
+import { auth } from "../../services/firebase";
+import { SALON_ID, hrDoc } from "../../services/hrCollections";
 import { readStoredAuthSession } from "../../services/localAuthSession";
 
 export type HrSession = {
@@ -111,7 +111,7 @@ export function useEmployeeSession() {
           console.error("[useEmployeeSession] failed to load auth token", error);
           return null;
         }),
-        getDoc(doc(db, "salons", SALON_ID, "users", uid))
+        getDoc(hrDoc("users", uid))
           .then((snap) => (snap.exists() ? (snap.data() as Record<string, any>) : null))
           .catch((error) => {
             console.error("[useEmployeeSession] failed to load user doc", error);
@@ -126,7 +126,7 @@ export function useEmployeeSession() {
 
       const [employeeDoc, staffDoc] = await Promise.all([
         employeeId
-          ? getDoc(doc(db, "salons", SALON_ID, "employees", employeeId))
+          ? getDoc(hrDoc("employees", employeeId))
               .then((snap) => (snap.exists() ? (snap.data() as Record<string, any>) : null))
               .catch((error) => {
                 console.error("[useEmployeeSession] failed to load employee doc", error);
@@ -134,7 +134,7 @@ export function useEmployeeSession() {
               })
           : Promise.resolve(null),
         employeeId
-          ? getDoc(doc(db, "salons", SALON_ID, "staff_public", employeeId))
+          ? getDoc(hrDoc("staffPublic", employeeId))
               .then((snap) => (snap.exists() ? (snap.data() as Record<string, any>) : null))
               .catch((error) => {
                 console.error("[useEmployeeSession] failed to load staff doc", error);

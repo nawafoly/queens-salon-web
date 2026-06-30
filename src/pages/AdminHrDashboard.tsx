@@ -26,17 +26,90 @@ import EmployeeFilesPage from "./hr/EmployeeFiles";
 import DashboardEmployees from "./DashboardEmployees";
 import { listEmployeeDirectory } from "../services/employeeDirectory";
 import {
+  createEmployeeAbsenceRecord,
+  listEmployeeAbsences,
+  listEmployeeAbsencesByEmployee,
+  listEmployeeFiles,
+  listEmployeeLeaveRequests,
   listRecruitmentApplications,
+  type EmployeeAbsence,
+  type EmployeeFile,
+  type EmployeeLeaveRequest,
   type RecruitmentApplication,
 } from "../services/employeeHub";
+import {
+  formatLeaveDateRange,
+  getLeaveStatusMeta,
+  getLeaveTypeLabel,
+} from "../helpers/hr/employeeLeave";
+import {
+  getEmployeeFileStatusLabel,
+  getEmployeeFileTypeLabel,
+} from "../helpers/hr/employeeFiles";
+import {
+  buildEmployeeAbsenceDateInput,
+  formatEmployeeAbsenceDate,
+  getEmployeeAbsenceTypeLabel,
+} from "../helpers/hr/employeeAbsence";
+import {
+  getTodayAttendanceDateKey,
+  listStaffAttendanceByDateRange,
+  listStaffAttendanceForDate,
+  type StaffAttendanceToday,
+} from "../services/firestoreAttendance";
+import {
+  getShiftExpectedHours,
+  getAttendanceDayStatus,
+  summarizeAttendanceForPayroll,
+  type AttendanceRecord,
+} from "../helpers/hr/attendanceCalculations";
+import {
+  buildDateKeysInRange,
+  buildWorkDateKeysInRange,
+} from "../helpers/hr/workSchedule";
+import {
+  buildEmployeePayrollMonthInput,
+  computeEmployeePayroll,
+  parseEmployeePayrollMonth,
+  type EmployeePayrollComputation,
+} from "../helpers/hr/employeePayroll";
 import "../styles/AdminHr.css";
 
 type DirectoryEmployee = Record<string, any> & { id?: string };
 type StatusTone = "success" | "warning" | "neutral" | "muted";
+type PayrollPreviewState = {
+  employeeName: string;
+  payrollMonth: string;
+  fromDate: string;
+  toDate: string;
+  isCurrentMonthPartial: boolean;
+  baseSalary: number;
+  requiredWorkDays: number;
+  excludedWeeklyOffDays: number;
+  manualAbsenceDays: number;
+  attendanceRecordedDays: number;
+  daysWithoutAttendance: number;
+  expectedWorkHours: number;
+  actualWorkedHours: number;
+  missingHours: number;
+  overtimeHours: number;
+  hourlyRate: number;
+  absenceDays: number;
+  absenceDeduction: number;
+  missingHoursDeduction: number;
+  extraDeductions: number;
+  grossSalary: number;
+  finalSalary: number;
+  computation: EmployeePayrollComputation;
+};
 
 type HrOverviewProps = {
   roster: DirectoryEmployee[];
   applications: RecruitmentApplication[];
+  leaveRequests: EmployeeLeaveRequest[];
+  employeeFiles: EmployeeFile[];
+  attendanceToday: StaffAttendanceToday[];
+  absences: EmployeeAbsence[];
   loading: boolean;
   onNavigate: (path: string) => void;
   onRefresh: () => void;
@@ -147,6 +220,69 @@ function getStatusMeta(item: DirectoryEmployee) {
   return { active, trial, onLeave, label, tone };
 }
 
+function getLeaveRequestEmployeeName(item: EmployeeLeaveRequest) {
+  return cleanText(item.employeeName || item.employeeId || item.employeeUid) || "Unassigned employee";
+}
+
+function getLeaveBadgeTone(status: EmployeeLeaveRequest["status"]): StatusTone {
+  const tone = getLeaveStatusMeta(status).tone;
+  if (tone === "success" || tone === "warning" || tone === "muted") return tone;
+  return "neutral";
+}
+
+function getEmployeeFileBadgeTone(status: EmployeeFile["status"]): StatusTone {
+  const normalized = normalizeText(status || "active");
+  if (normalized === "active" || normalized === "read") return "success";
+  if (normalized === "replaced" || normalized === "archived") return "muted";
+  return "neutral";
+}
+
+function getRosterAttendanceId(item: DirectoryEmployee) {
+  return cleanText(item.employeeId || item.id || item.uid || item.linkedUid || item.linkedUserId);
+}
+
+function getRosterEmployeeUid(item: DirectoryEmployee) {
+  return cleanText(item.linkedUid || item.uid || item.employeeKey || item.employeeId || item.id);
+}
+
+function getEmployeeBaseSalary(item: DirectoryEmployee | null) {
+  if (!item) return 0;
+  const payroll = item.payroll || item.payrollConfig || item.salaryConfig || {};
+  const value =
+    item.baseSalary ??
+    item.monthlySalary ??
+    item.salary ??
+    item.basicSalary ??
+    payroll.baseSalary ??
+    payroll.monthlySalary ??
+    payroll.salary;
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function getEmployeeSchedule(item: DirectoryEmployee | null) {
+  const payroll = item?.payroll || item?.payrollConfig || {};
+  return {
+    startTime: cleanText(item?.startTime || item?.workStartTime || item?.shiftStartTime || payroll.startTime || "09:00"),
+    endTime: cleanText(item?.endTime || item?.workEndTime || item?.shiftEndTime || payroll.endTime || "17:00"),
+    weeklyOffDays: item?.weeklyOffDays || item?.offDays || payroll.weeklyOffDays || null,
+  };
+}
+
+function formatMoney(value: unknown) {
+  return new Intl.NumberFormat("ar-SA", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
+
+function formatHours(value: unknown) {
+  return new Intl.NumberFormat("ar-SA", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
+
 function matchesSearch(item: DirectoryEmployee, search: string) {
   const haystack = [
     getEmployeeName(item),
@@ -181,6 +317,10 @@ function HrMetricCard({
 function HrOverview({
   roster,
   applications,
+  leaveRequests,
+  employeeFiles,
+  attendanceToday,
+  absences,
   loading,
   onNavigate,
   onRefresh,
@@ -188,6 +328,22 @@ function HrOverview({
 }: HrOverviewProps) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [absenceForm, setAbsenceForm] = useState({
+    employeeKey: "",
+    date: buildEmployeeAbsenceDateInput(),
+    type: "full_day" as EmployeeAbsence["type"],
+    note: "",
+  });
+  const [absenceSaving, setAbsenceSaving] = useState(false);
+  const [absenceMessage, setAbsenceMessage] = useState("");
+  const [payrollForm, setPayrollForm] = useState({
+    employeeKey: "",
+    payrollMonth: buildEmployeePayrollMonthInput(),
+    baseSalary: "0",
+  });
+  const [payrollPreview, setPayrollPreview] = useState<PayrollPreviewState | null>(null);
+  const [payrollLoading, setPayrollLoading] = useState(false);
+  const [payrollMessage, setPayrollMessage] = useState("");
 
   const rosterSorted = useMemo(() => {
     return [...roster].sort((a, b) => {
@@ -238,6 +394,231 @@ function HrOverview({
       }).length,
     [applications]
   );
+  const recentLeaveRequests = useMemo(() => leaveRequests.slice(0, 6), [leaveRequests]);
+  const pendingLeaveRequests = useMemo(
+    () => leaveRequests.filter((item) => normalizeText(item.status || "pending") === "pending").length,
+    [leaveRequests]
+  );
+  const recentEmployeeFiles = useMemo(() => employeeFiles.slice(0, 5), [employeeFiles]);
+  const attendanceDate = getTodayAttendanceDateKey();
+  const attendanceSummary = useMemo(() => {
+    const byEmployee = new Map(attendanceToday.map(row => [cleanText(row.employeeId), row]));
+    return rosterSorted.reduce(
+      (summary, item) => {
+        const employeeId = getRosterAttendanceId(item);
+        const row = byEmployee.get(employeeId);
+        const status = row?.status || "not_started";
+        const dayStatus = getAttendanceDayStatus({
+          date: attendanceDate,
+          hasAttendance: Boolean(row?.checkInAtClient || row?.checkOutAtClient),
+          todayDateKey: attendanceDate,
+        });
+        if (status === "checked_out") {
+          summary.checkedOut += 1;
+        } else if (status === "checked_in") {
+          summary.checkedIn += 1;
+        } else if (dayStatus === "today_pending") {
+          summary.notStarted += 1;
+        } else {
+          summary.notStarted += 1;
+        }
+        return summary;
+      },
+      { checkedIn: 0, checkedOut: 0, notStarted: 0 }
+    );
+  }, [attendanceDate, attendanceToday, rosterSorted]);
+  const recentAbsences = useMemo(() => absences.slice(0, 6), [absences]);
+
+  useEffect(() => {
+    if (!absenceForm.employeeKey && rosterSorted[0]) {
+      setAbsenceForm((current) => ({
+        ...current,
+        employeeKey: getRosterAttendanceId(rosterSorted[0]),
+      }));
+    }
+  }, [absenceForm.employeeKey, rosterSorted]);
+
+  useEffect(() => {
+    if (!payrollForm.employeeKey && rosterSorted[0]) {
+      const employeeKey = getRosterAttendanceId(rosterSorted[0]);
+      setPayrollForm((current) => ({
+        ...current,
+        employeeKey,
+        baseSalary: String(getEmployeeBaseSalary(rosterSorted[0])),
+      }));
+    }
+  }, [payrollForm.employeeKey, rosterSorted]);
+
+  const handlePayrollEmployeeChange = (employeeKey: string) => {
+    const employee = rosterSorted.find((item) => getRosterAttendanceId(item) === cleanText(employeeKey)) || null;
+    setPayrollForm((current) => ({
+      ...current,
+      employeeKey,
+      baseSalary: String(getEmployeeBaseSalary(employee)),
+    }));
+    setPayrollPreview(null);
+    setPayrollMessage("");
+  };
+
+  const handleCreateAbsence = async () => {
+    if (absenceSaving) return;
+    const selectedEmployee = rosterSorted.find(
+      (item) => getRosterAttendanceId(item) === cleanText(absenceForm.employeeKey)
+    );
+    if (!selectedEmployee) {
+      setAbsenceMessage("Select an employee first.");
+      return;
+    }
+
+    setAbsenceSaving(true);
+    setAbsenceMessage("");
+    try {
+      await createEmployeeAbsenceRecord({
+        employeeUid: getRosterEmployeeUid(selectedEmployee),
+        employeeId: getRosterAttendanceId(selectedEmployee),
+        employeeName: getEmployeeName(selectedEmployee),
+        date: absenceForm.date,
+        type: absenceForm.type || "full_day",
+        note: absenceForm.note,
+        createdByUid: session.uid,
+        createdByName: session.displayName || session.email,
+      });
+      setAbsenceForm((current) => ({ ...current, note: "" }));
+      setAbsenceMessage("Absence record saved.");
+      await Promise.resolve(onRefresh());
+    } catch (e) {
+      setAbsenceMessage(cleanText((e as any)?.message || "Failed to save absence."));
+    } finally {
+      setAbsenceSaving(false);
+    }
+  };
+
+  const handleCalculatePayrollPreview = async () => {
+    if (payrollLoading) return;
+    const selectedEmployee = rosterSorted.find(
+      (item) => getRosterAttendanceId(item) === cleanText(payrollForm.employeeKey)
+    );
+    if (!selectedEmployee) {
+      setPayrollMessage("Select an employee first.");
+      return;
+    }
+
+    const parsedMonth = parseEmployeePayrollMonth(payrollForm.payrollMonth);
+    if (!parsedMonth) {
+      setPayrollMessage("Select a valid payroll month.");
+      return;
+    }
+
+    const today = getTodayAttendanceDateKey();
+    if (parsedMonth.monthStart > today) {
+      setPayrollPreview(null);
+      setPayrollMessage("This month is in the future. Payroll preview is not calculated.");
+      return;
+    }
+
+    const calculationEndDate = parsedMonth.monthEnd > today ? today : parsedMonth.monthEnd;
+    if (calculationEndDate < parsedMonth.monthStart) {
+      setPayrollPreview(null);
+      setPayrollMessage("No payroll days are available for this month yet.");
+      return;
+    }
+
+    setPayrollLoading(true);
+    setPayrollMessage("");
+    try {
+      const employeeId = getRosterAttendanceId(selectedEmployee);
+      const employeeUid = getRosterEmployeeUid(selectedEmployee);
+      const schedule = getEmployeeSchedule(selectedEmployee);
+      const workDateKeys = buildWorkDateKeysInRange({
+        fromDate: parsedMonth.monthStart,
+        toDate: calculationEndDate,
+        weeklyOffDays: schedule.weeklyOffDays,
+      });
+      const calculationDateKeys = buildDateKeysInRange(parsedMonth.monthStart, calculationEndDate);
+
+      const [attendanceRows, absenceRows] = await Promise.all([
+        listStaffAttendanceByDateRange({
+          employeeId,
+          fromDate: parsedMonth.monthStart,
+          toDate: calculationEndDate,
+        }),
+        listEmployeeAbsencesByEmployee({
+          employeeId,
+          employeeUid,
+          fromDate: parsedMonth.monthStart,
+          toDate: calculationEndDate,
+        }),
+      ]);
+
+      const attendanceRecords: AttendanceRecord[] = [];
+      const attendanceDateKeys = new Set<string>();
+      attendanceRows.forEach((row) => {
+        if (row.checkInAtClient) {
+          attendanceRecords.push({
+            id: `${row.id}-in`,
+            type: "check_in",
+            serverTime: row.checkInAtClient,
+          });
+          attendanceDateKeys.add(row.date);
+        }
+        if (row.checkOutAtClient) {
+          attendanceRecords.push({
+            id: `${row.id}-out`,
+            type: "check_out",
+            serverTime: row.checkOutAtClient,
+          });
+          attendanceDateKeys.add(row.date);
+        }
+      });
+
+      const attendanceSummary = summarizeAttendanceForPayroll(attendanceRecords, schedule, {
+        workDateKeys,
+        todayDateKey: today,
+      });
+      const expectedWorkHours = workDateKeys.length * getShiftExpectedHours(schedule);
+      const actualWorkedHours = attendanceSummary.actualHours;
+      const computation = computeEmployeePayroll({
+        baseSalary: Number(payrollForm.baseSalary || 0),
+        expectedWorkDays: workDateKeys.length,
+        expectedWorkHours,
+        attendanceExpectedHours: expectedWorkHours,
+        actualWorkedHours,
+        attendanceOvertimeHours: attendanceSummary.overtimeHours,
+        absences: absenceRows,
+      });
+
+      setPayrollPreview({
+        employeeName: getEmployeeName(selectedEmployee),
+        payrollMonth: parsedMonth.payrollMonth,
+        fromDate: parsedMonth.monthStart,
+        toDate: calculationEndDate,
+        isCurrentMonthPartial: parsedMonth.monthStart <= today && parsedMonth.monthEnd > today,
+        baseSalary: computation.baseSalary,
+        requiredWorkDays: workDateKeys.length,
+        excludedWeeklyOffDays: Math.max(0, calculationDateKeys.length - workDateKeys.length),
+        manualAbsenceDays: computation.absenceDays,
+        attendanceRecordedDays: attendanceDateKeys.size,
+        daysWithoutAttendance: Math.max(0, workDateKeys.length - attendanceDateKeys.size),
+        expectedWorkHours,
+        actualWorkedHours,
+        missingHours: computation.missingHours,
+        overtimeHours: computation.overtimeHours,
+        hourlyRate: computation.hourlyRate,
+        absenceDays: computation.absenceDays,
+        absenceDeduction: computation.absenceDeduction,
+        missingHoursDeduction: computation.delayDeduction,
+        extraDeductions: computation.totalSalaryDeductions + computation.insuranceDeduction,
+        grossSalary: computation.grossSalary,
+        finalSalary: computation.finalSalary,
+        computation,
+      });
+    } catch (e) {
+      setPayrollPreview(null);
+      setPayrollMessage(cleanText((e as any)?.message || "Failed to calculate payroll preview."));
+    } finally {
+      setPayrollLoading(false);
+    }
+  };
 
   const selectedStatus = selected ? getStatusMeta(selected) : null;
   const selectedName = selected ? getEmployeeName(selected) : "اختر موظفًا";
@@ -491,6 +872,379 @@ function HrOverview({
                 </button>
               </div>
             </article>
+
+            <article className="hr-card">
+              <div className="hr-card-head">
+                <div>
+                  <p className="hr-card-kicker">Leave requests</p>
+                  <h3>Latest requests</h3>
+                </div>
+                <span className="hr-badge hr-badge--warning">{pendingLeaveRequests}</span>
+              </div>
+
+              <div className="hr-leave-list">
+                {recentLeaveRequests.map((item) => {
+                  const status = getLeaveStatusMeta(item.status);
+                  return (
+                    <div key={item.id} className="hr-leave-item">
+                      <div className="hr-leave-item__head">
+                        <strong>{getLeaveRequestEmployeeName(item)}</strong>
+                        <span className={`hr-badge hr-badge--${getLeaveBadgeTone(item.status)}`}>
+                          {status.label}
+                        </span>
+                      </div>
+                      <div className="hr-leave-item__meta">
+                        <span>{getLeaveTypeLabel(item.type)}</span>
+                        <span>{formatLeaveDateRange(item.fromDate, item.toDate)}</span>
+                      </div>
+                      {item.note ? <p>{item.note}</p> : null}
+                    </div>
+                  );
+                })}
+
+                {!recentLeaveRequests.length ? (
+                  <div className="hr-empty-state">
+                    <p>No leave requests yet.</p>
+                    <small>Requests sent from the employee portal will appear here.</small>
+                  </div>
+                ) : null}
+              </div>
+            </article>
+
+            <article className="hr-card">
+              <div className="hr-card-head">
+                <div>
+                  <p className="hr-card-kicker">Employee files</p>
+                  <h3>Latest files</h3>
+                </div>
+                <span className="hr-badge hr-badge--neutral">{employeeFiles.length}</span>
+              </div>
+
+              <div className="hr-leave-list">
+                {recentEmployeeFiles.map((item) => (
+                  <div key={item.id} className="hr-leave-item">
+                    <div className="hr-leave-item__head">
+                      <strong>{item.title}</strong>
+                      <span className={`hr-badge hr-badge--${getEmployeeFileBadgeTone(item.status)}`}>
+                        {getEmployeeFileStatusLabel(item.status, item.status !== "replaced")}
+                      </span>
+                    </div>
+                    <div className="hr-leave-item__meta">
+                      <span>{getEmployeeFileTypeLabel(item.fileType)}</span>
+                      <span>{item.fileName || "No file name"}</span>
+                      <span>{item.employeeId || item.employeeUid || "Unassigned employee"}</span>
+                    </div>
+                    {item.notes ? <p>{item.notes}</p> : null}
+                  </div>
+                ))}
+
+                {!recentEmployeeFiles.length ? (
+                  <div className="hr-empty-state">
+                    <p>No employee files yet.</p>
+                    <small>Files uploaded from HR or the employee portal will appear here.</small>
+                  </div>
+                ) : null}
+              </div>
+            </article>
+
+            <article className="hr-card">
+              <div className="hr-card-head">
+                <div>
+                  <p className="hr-card-kicker">Attendance</p>
+                  <h3>Today summary</h3>
+                </div>
+                <span className="hr-badge hr-badge--neutral">{attendanceDate}</span>
+              </div>
+
+              <div className="hr-mini-stats">
+                <div>
+                  <span>حاضرون الآن</span>
+                  <strong>{attendanceSummary.checkedIn}</strong>
+                </div>
+                <div>
+                  <span>سجلوا الانصراف</span>
+                  <strong>{attendanceSummary.checkedOut}</strong>
+                </div>
+                <div>
+                  <span>لم يسجلوا</span>
+                  <strong>{attendanceSummary.notStarted}</strong>
+                </div>
+              </div>
+            </article>
+
+            <article className="hr-card">
+              <div className="hr-card-head">
+                <div>
+                  <p className="hr-card-kicker">Absences</p>
+                  <h3>Manual absence</h3>
+                </div>
+                <span className="hr-badge hr-badge--neutral">{absences.length}</span>
+              </div>
+
+              <div className="hr-form-grid">
+                <label className="hr-field hr-field--wide">
+                  <span>Employee</span>
+                  <select
+                    value={absenceForm.employeeKey}
+                    onChange={(e) => setAbsenceForm((current) => ({ ...current, employeeKey: e.target.value }))}
+                  >
+                    {rosterSorted.map((item) => {
+                      const employeeId = getRosterAttendanceId(item);
+                      return (
+                        <option key={employeeId || getEmployeeName(item)} value={employeeId}>
+                          {getEmployeeName(item)}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+
+                <label className="hr-field">
+                  <span>Date</span>
+                  <input
+                    type="date"
+                    value={absenceForm.date}
+                    onChange={(e) => setAbsenceForm((current) => ({ ...current, date: e.target.value }))}
+                  />
+                </label>
+
+                <label className="hr-field">
+                  <span>Type</span>
+                  <select
+                    value={absenceForm.type}
+                    onChange={(e) => setAbsenceForm((current) => ({ ...current, type: e.target.value as EmployeeAbsence["type"] }))}
+                  >
+                    <option value="full_day">Full day</option>
+                    <option value="half_day">Half day</option>
+                  </select>
+                </label>
+
+                <label className="hr-field hr-field--wide">
+                  <span>Reason</span>
+                  <textarea
+                    rows={3}
+                    value={absenceForm.note}
+                    onChange={(e) => setAbsenceForm((current) => ({ ...current, note: e.target.value }))}
+                    placeholder="Optional reason"
+                  />
+                </label>
+              </div>
+
+              {absenceMessage ? <div className="hr-alert">{absenceMessage}</div> : null}
+
+              <div className="hr-actions">
+                <button
+                  className="hr-button hr-button--primary"
+                  type="button"
+                  onClick={() => void handleCreateAbsence()}
+                  disabled={absenceSaving || loading || !rosterSorted.length}
+                >
+                  Save absence
+                </button>
+              </div>
+
+              <div className="hr-leave-list">
+                {recentAbsences.map((item) => (
+                  <div key={item.id} className="hr-leave-item">
+                    <div className="hr-leave-item__head">
+                      <strong>{item.employeeName || item.employeeId || item.employeeUid || "Unassigned employee"}</strong>
+                      <span className="hr-badge hr-badge--warning">{getEmployeeAbsenceTypeLabel(item.type)}</span>
+                    </div>
+                    <div className="hr-leave-item__meta">
+                      <span>{formatEmployeeAbsenceDate(item.date)}</span>
+                      {item.createdByName || item.createdByUid ? <span>{item.createdByName || item.createdByUid}</span> : null}
+                    </div>
+                    {item.note ? <p>{item.note}</p> : null}
+                  </div>
+                ))}
+
+                {!recentAbsences.length ? (
+                  <div className="hr-empty-state">
+                    <p>No absence records yet.</p>
+                    <small>Manual absence records created by HR will appear here.</small>
+                  </div>
+                ) : null}
+              </div>
+            </article>
+
+            <article className="hr-card">
+              <div className="hr-card-head">
+                <div>
+                  <p className="hr-card-kicker">Payroll Preview</p>
+                  <h3>Preview only</h3>
+                </div>
+                <span className="hr-badge hr-badge--neutral">No save</span>
+              </div>
+
+              <div className="hr-form-grid">
+                <label className="hr-field hr-field--wide">
+                  <span>Employee</span>
+                  <select
+                    value={payrollForm.employeeKey}
+                    onChange={(e) => handlePayrollEmployeeChange(e.target.value)}
+                  >
+                    {rosterSorted.map((item) => {
+                      const employeeId = getRosterAttendanceId(item);
+                      return (
+                        <option key={employeeId || getEmployeeName(item)} value={employeeId}>
+                          {getEmployeeName(item)}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+
+                <label className="hr-field">
+                  <span>Month</span>
+                  <input
+                    type="month"
+                    value={payrollForm.payrollMonth}
+                    onChange={(e) => {
+                      setPayrollForm((current) => ({ ...current, payrollMonth: e.target.value }));
+                      setPayrollPreview(null);
+                      setPayrollMessage("");
+                    }}
+                  />
+                </label>
+
+                <label className="hr-field">
+                  <span>Base salary</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={payrollForm.baseSalary}
+                    onChange={(e) => {
+                      setPayrollForm((current) => ({ ...current, baseSalary: e.target.value }));
+                      setPayrollPreview(null);
+                    }}
+                  />
+                </label>
+              </div>
+
+              {payrollMessage ? <div className="hr-alert">{payrollMessage}</div> : null}
+
+              <div className="hr-actions">
+                <button
+                  className="hr-button hr-button--primary"
+                  type="button"
+                  onClick={() => void handleCalculatePayrollPreview()}
+                  disabled={payrollLoading || !rosterSorted.length}
+                >
+                  {payrollLoading ? "Calculating..." : "Calculate preview"}
+                </button>
+              </div>
+
+              {payrollPreview ? (
+                <div className="hr-audit-stack">
+                  <div className="hr-copy-block">
+                    <p>
+                      Preview for {payrollPreview.employeeName} / {payrollPreview.payrollMonth}. This does not create or update payroll records.
+                      Days without attendance are shown for audit only and are not converted into absence deductions by this preview.
+                    </p>
+                  </div>
+
+                  <div className="hr-mini-stats">
+                    <div>
+                      <span>From date</span>
+                      <strong>{payrollPreview.fromDate}</strong>
+                    </div>
+                    <div>
+                      <span>To date</span>
+                      <strong>{payrollPreview.toDate}</strong>
+                    </div>
+                    <div>
+                      <span>Current month until today</span>
+                      <strong>{payrollPreview.isCurrentMonthPartial ? "Yes" : "No"}</strong>
+                    </div>
+                  </div>
+
+                  <div className="hr-mini-stats">
+                    <div>
+                      <span>Required work days</span>
+                      <strong>{payrollPreview.requiredWorkDays}</strong>
+                    </div>
+                    <div>
+                      <span>Excluded weekly off days</span>
+                      <strong>{payrollPreview.excludedWeeklyOffDays}</strong>
+                    </div>
+                    <div>
+                      <span>Manual absence days</span>
+                      <strong>{formatHours(payrollPreview.manualAbsenceDays)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="hr-mini-stats">
+                    <div>
+                      <span>Attendance days</span>
+                      <strong>{payrollPreview.attendanceRecordedDays}</strong>
+                    </div>
+                    <div>
+                      <span>Days without attendance (audit only)</span>
+                      <strong>{payrollPreview.daysWithoutAttendance}</strong>
+                    </div>
+                    <div>
+                      <span>Actual attendance hours</span>
+                      <strong>{formatHours(payrollPreview.actualWorkedHours)}</strong>
+                    </div>
+                    <div>
+                      <span>Required work hours</span>
+                      <strong>{formatHours(payrollPreview.expectedWorkHours)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="hr-mini-stats">
+                    <div>
+                      <span>Missing hours</span>
+                      <strong>{formatHours(payrollPreview.missingHours)}</strong>
+                    </div>
+                    <div>
+                      <span>Overtime hours</span>
+                      <strong>{formatHours(payrollPreview.overtimeHours)}</strong>
+                    </div>
+                    <div>
+                      <span>Hourly rate</span>
+                      <strong>{formatMoney(payrollPreview.hourlyRate)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="hr-mini-stats">
+                    <div>
+                      <span>Absence deduction</span>
+                      <strong>{formatMoney(payrollPreview.absenceDeduction)}</strong>
+                    </div>
+                    <div>
+                      <span>Missing-hours deduction</span>
+                      <strong>{formatMoney(payrollPreview.missingHoursDeduction)}</strong>
+                    </div>
+                    <div>
+                      <span>Extra deductions</span>
+                      <strong>{formatMoney(payrollPreview.extraDeductions)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="hr-mini-stats">
+                    <div>
+                      <span>Base salary</span>
+                      <strong>{formatMoney(payrollPreview.baseSalary)}</strong>
+                    </div>
+                    <div>
+                      <span>Before deductions</span>
+                      <strong>{formatMoney(payrollPreview.grossSalary)}</strong>
+                    </div>
+                    <div>
+                      <span>After deductions</span>
+                      <strong>{formatMoney(payrollPreview.finalSalary)}</strong>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="hr-empty-state">
+                  <p>No payroll preview calculated yet.</p>
+                  <small>This preview does not create or update payroll records.</small>
+                </div>
+              )}
+            </article>
           </div>
         </div>
 
@@ -574,6 +1328,10 @@ export default function AdminHrDashboard() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [roster, setRoster] = useState<DirectoryEmployee[]>([]);
   const [applications, setApplications] = useState<RecruitmentApplication[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
+  const [employeeFiles, setEmployeeFiles] = useState<EmployeeFile[]>([]);
+  const [attendanceToday, setAttendanceToday] = useState<StaffAttendanceToday[]>([]);
+  const [absences, setAbsences] = useState<EmployeeAbsence[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState("");
   const loadRequestRef = useRef(0);
@@ -583,13 +1341,28 @@ export default function AdminHrDashboard() {
     setLoadingData(true);
     setError("");
     try {
-      const [rosterRows, applicationRows] = await Promise.all([
+      const [rosterRows, applicationRows, leaveRows, fileRows, absenceRows] = await Promise.all([
         listEmployeeDirectory(),
         listRecruitmentApplications(),
+        listEmployeeLeaveRequests(),
+        listEmployeeFiles(40),
+        listEmployeeAbsences(80),
       ]);
+      const employeeIds = Array.from(
+        new Set(
+          (Array.isArray(rosterRows) ? rosterRows : [])
+            .map((item) => getRosterAttendanceId(item as DirectoryEmployee))
+            .filter(Boolean)
+        )
+      );
+      const attendanceRows = await listStaffAttendanceForDate({ employeeIds });
       if (requestId !== loadRequestRef.current) return;
       setRoster(Array.isArray(rosterRows) ? rosterRows : []);
       setApplications(Array.isArray(applicationRows) ? applicationRows : []);
+      setLeaveRequests(Array.isArray(leaveRows) ? leaveRows : []);
+      setEmployeeFiles(Array.isArray(fileRows) ? fileRows : []);
+      setAttendanceToday(Array.isArray(attendanceRows) ? attendanceRows : []);
+      setAbsences(Array.isArray(absenceRows) ? absenceRows : []);
     } catch (e) {
       if (requestId !== loadRequestRef.current) return;
       setError(cleanText((e as any)?.message || "تعذر تحميل لوحة الموارد البشرية."));
@@ -755,6 +1528,10 @@ export default function AdminHrDashboard() {
                 <HrOverview
                   roster={roster}
                   applications={applications}
+                  leaveRequests={leaveRequests}
+                  employeeFiles={employeeFiles}
+                  attendanceToday={attendanceToday}
+                  absences={absences}
                   loading={loadingData}
                   onNavigate={(path) => navigate(path)}
                   onRefresh={() => void loadData()}

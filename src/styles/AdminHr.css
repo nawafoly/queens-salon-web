@@ -839,6 +839,52 @@
   color: var(--hr-text);
 }
 
+.hr-audit-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.hr-leave-list {
+  display: grid;
+  gap: 12px;
+}
+
+.hr-leave-item {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.hr-leave-item__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hr-leave-item__head strong {
+  min-width: 0;
+  color: var(--hr-text);
+}
+
+.hr-leave-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--hr-muted-strong);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.hr-leave-item p {
+  margin: 0;
+  color: var(--hr-muted);
+  line-height: 1.7;
+}
+
 .hr-copy-block {
   padding: 18px;
   border-radius: 18px;

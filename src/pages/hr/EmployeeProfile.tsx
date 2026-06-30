@@ -11,8 +11,14 @@ import {
   type EmployeeLeaveRequest,
   type EmployeePayrollRecord,
 } from "../../services/employeeHub";
+import {
+  calculateLeaveDaysCount,
+  formatLeaveDateRange,
+  getLeaveStatusMeta,
+  getLeaveTypeLabel,
+} from "../../helpers/hr/employeeLeave";
 import { uploadFileToR2 } from "../../services/r2Upload";
-import { cleanText, formatShortDate, type HrSession } from "./shared";
+import { cleanText, type HrSession } from "./shared";
 
 type Props = {
   session: HrSession;
@@ -198,11 +204,7 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
     setSaving(true);
     setMessage("");
     try {
-      const start = new Date(leaveForm.fromDate);
-      const end = new Date(leaveForm.toDate);
-      const days = Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())
-        ? Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1)
-        : 1;
+      const days = calculateLeaveDaysCount(leaveForm.fromDate, leaveForm.toDate) || 1;
 
       await createLeaveRequest({
         employeeUid: session.uid,
@@ -378,15 +380,16 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
               <span>{leaveRequests.length}</span>
             </div>
             <div className="employee-list">
-              {leaveRequests.map((item) => (
-                <div key={item.id} className="employee-list-item">
-                  <strong>{item.type || "annual"}</strong>
-                  <span>
-                    {formatShortDate(item.fromDate)} - {formatShortDate(item.toDate)}
-                  </span>
-                  <small>{item.status || "pending"}</small>
-                </div>
-              ))}
+              {leaveRequests.map((item) => {
+                const statusMeta = getLeaveStatusMeta(item.status);
+                return (
+                  <div key={item.id} className="employee-list-item">
+                    <strong>{getLeaveTypeLabel(item.type)}</strong>
+                    <span>{formatLeaveDateRange(item.fromDate, item.toDate)}</span>
+                    <small>{statusMeta.label}</small>
+                  </div>
+                );
+              })}
               {!leaveRequests.length ? <div className="employee-muted">No leave requests yet.</div> : null}
             </div>
           </div>
@@ -455,15 +458,16 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
               <span>{leaveLoading ? "..." : leaveRequests.length}</span>
             </div>
             <div className="employee-list">
-              {leaveRequests.map((item) => (
-                <div key={item.id} className="employee-list-item">
-                  <strong>{item.type || "annual"}</strong>
-                  <span>
-                    {formatShortDate(item.fromDate)} - {formatShortDate(item.toDate)}
-                  </span>
-                  <small>{item.status || "pending"} {item.note ? `| ${item.note}` : ""}</small>
-                </div>
-              ))}
+              {leaveRequests.map((item) => {
+                const statusMeta = getLeaveStatusMeta(item.status);
+                return (
+                  <div key={item.id} className="employee-list-item">
+                    <strong>{getLeaveTypeLabel(item.type)}</strong>
+                    <span>{formatLeaveDateRange(item.fromDate, item.toDate)}</span>
+                    <small>{statusMeta.label}{item.note ? ` | ${item.note}` : ""}</small>
+                  </div>
+                );
+              })}
               {!leaveRequests.length ? <div className="employee-muted">No leave requests yet.</div> : null}
             </div>
           </div>

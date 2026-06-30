@@ -5,12 +5,17 @@ import {
   createEmployeeNotification,
   listEmployeeDirectory,
   listEmployeeFiles,
+  listEmployeeFilesByEmployee,
   listEmployeeNotifications,
   markEmployeeFilesRead,
   markEmployeeNotificationsRead,
   type EmployeeDirectoryEntry,
   type EmployeeFile,
 } from "../../services/employeeHub";
+import {
+  getEmployeeFileStatusLabel,
+  getEmployeeFileTypeLabel,
+} from "../../helpers/hr/employeeFiles";
 import { uploadFileToR2 } from "../../services/r2Upload";
 import { cleanText, type HrSession } from "./shared";
 
@@ -32,12 +37,21 @@ export default function EmployeeFilesPage({ session, onPortalChange }: Props) {
   const [targetEmployeeUid, setTargetEmployeeUid] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const canChooseRecipient = ["owner", "admin", "hr"].includes(cleanText(session.role).toLowerCase());
 
   const load = async () => {
     if (!session.uid) return;
     setLoading(true);
     try {
-      const [files, dir] = await Promise.all([listEmployeeFiles(), listEmployeeDirectory()]);
+      const [files, dir] = await Promise.all([
+        canChooseRecipient
+          ? listEmployeeFiles()
+          : listEmployeeFilesByEmployee({
+              employeeUid: session.uid,
+              employeeId: session.employeeId,
+            }),
+        canChooseRecipient ? listEmployeeDirectory() : Promise.resolve([]),
+      ]);
       setItems(files);
       setDirectory(dir);
 
@@ -78,8 +92,6 @@ export default function EmployeeFilesPage({ session, onPortalChange }: Props) {
     if (canSeeAll) return items;
     return items.filter((row) => row.employeeUid === session.uid || row.employeeId === session.employeeId);
   }, [items, session.employeeId, session.role, session.uid]);
-
-  const canChooseRecipient = ["owner", "admin", "hr"].includes(cleanText(session.role).toLowerCase());
 
   const handleSubmit = async () => {
     if (!session.uid) return;
@@ -251,9 +263,9 @@ export default function EmployeeFilesPage({ session, onPortalChange }: Props) {
                 ) : null}
               </div>
               <span>
-                {row.direction || "outbound"} | {row.status || "active"} | {row.employeeUid}
+                {row.direction || "outbound"} | {getEmployeeFileStatusLabel(row.status, row.status !== "replaced")} | {row.employeeUid}
               </span>
-              <small>{row.fileName || "No file name"}</small>
+              <small>{getEmployeeFileTypeLabel(row.fileType)} | {row.fileName || "No file name"}</small>
               {row.storageUrl ? (
                 <a href={row.storageUrl} target="_blank" rel="noreferrer">
                   Open file
