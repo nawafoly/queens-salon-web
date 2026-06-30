@@ -2543,3 +2543,246 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* =========================================================
+   Bookings Experience Refresh v4
+   يوضح الصفحة ويقلل الإحساس بأنها قائمة تنبيهات طويلة فقط.
+========================================================= */
+.bk-page-wrapper {
+  display: grid;
+  gap: 18px;
+  padding: 0 0 34px !important;
+}
+
+.bk-page-wrapper .container-fluid {
+  padding: 0 !important;
+  display: grid;
+  gap: 18px;
+}
+
+.bk-page-wrapper .bookings-header {
+  min-height: 150px;
+  margin: 0 !important;
+  padding: 28px 34px !important;
+  display: grid;
+  align-content: center;
+}
+
+.bk-page-wrapper .bookings-header::before {
+  background:
+    radial-gradient(360px 160px at 10% 20%, rgba(64, 1, 13, 0.10), transparent 68%) !important;
+}
+
+.bk-page-wrapper .bookings-header h1 {
+  font-size: clamp(34px, 4vw, 56px) !important;
+  line-height: 1.05 !important;
+  color: #0d1324 !important;
+}
+
+.bk-page-wrapper .bookings-header p {
+  font-size: 15px !important;
+  color: #667085 !important;
+  font-weight: 800;
+}
+
+.bk-page-wrapper .bk-mini {
+  margin: 0 !important;
+  padding: 18px !important;
+  border-radius: 28px !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(251, 247, 239, 0.84)) !important;
+  border: 1px solid rgba(64, 1, 13, 0.08) !important;
+  box-shadow: 0 24px 56px rgba(13, 13, 13, 0.09) !important;
+}
+
+.bk-page-wrapper .bk-new-alert,
+.bk-page-wrapper .bk-stale-alert {
+  border-radius: 24px !important;
+  padding: 16px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.bk-page-wrapper .bk-new-alert-head,
+.bk-page-wrapper .bk-stale-alert-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 14px !important;
+}
+
+.bk-page-wrapper .bk-new-alert-head strong,
+.bk-page-wrapper .bk-stale-alert-head strong {
+  font-size: 15px !important;
+}
+
+.bk-page-wrapper .bk-new-alert-head span,
+.bk-page-wrapper .bk-stale-alert-head span {
+  grid-column: 1 / -1;
+}
+
+.bk-page-wrapper .bk-new-alert-list,
+.bk-page-wrapper .bk-stale-alert-list {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
+  max-height: 250px;
+  overflow: auto;
+  padding-inline-end: 4px;
+  scrollbar-width: thin;
+}
+
+.bk-page-wrapper .bk-new-alert-list::-webkit-scrollbar,
+.bk-page-wrapper .bk-stale-alert-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.bk-page-wrapper .bk-new-alert-list::-webkit-scrollbar-thumb,
+.bk-page-wrapper .bk-stale-alert-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(64, 1, 13, 0.22);
+}
+
+.bk-page-wrapper .bk-new-alert-item,
+.bk-page-wrapper .bk-stale-alert-item {
+  min-height: 72px;
+  border-radius: 18px !important;
+  padding: 12px 14px !important;
+}
+
+.bk-page-wrapper .bk-headline {
+  padding: 14px;
+  border-radius: 22px;
+  background: rgba(13, 19, 36, 0.035);
+  border: 1px solid rgba(13, 13, 13, 0.06);
+}
+
+.bk-page-wrapper .bk-status-tabs {
+  gap: 8px !important;
+}
+
+.bk-page-wrapper .bk-status-tab {
+  min-height: 42px !important;
+  border-radius: 16px !important;
+  padding: 8px 12px !important;
+  background: #ffffff !important;
+}
+
+.bk-page-wrapper .bk-status-tab.is-active {
+  background: linear-gradient(135deg, #fff2c5, rgba(243, 182, 31, 0.40)) !important;
+  border-color: rgba(243, 182, 31, 0.36) !important;
+  color: #40010d !important;
+  box-shadow: 0 14px 26px rgba(243, 182, 31, 0.14);
+}
+
+.bk-page-wrapper .bk-total-remaining {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 16px;
+  padding: 8px 14px;
+  background: #ffffff;
+  border: 1px solid rgba(64, 1, 13, 0.10);
+}
+
+.bk-page-wrapper .bk-filters {
+  grid-template-columns: minmax(260px, 1.3fr) repeat(4, minmax(150px, 0.7fr)) !important;
+  padding: 14px;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 1px solid rgba(13, 13, 13, 0.07);
+  box-shadow: 0 14px 34px rgba(13, 13, 13, 0.05);
+}
+
+.bk-page-wrapper .bk-field label {
+  color: #667085 !important;
+  font-size: 12px !important;
+}
+
+.bk-page-wrapper .bk-input,
+.bk-page-wrapper .bk-select {
+  height: 52px !important;
+  border-radius: 18px !important;
+  border-color: rgba(64, 1, 13, 0.12) !important;
+}
+
+.bk-page-wrapper .bk-actions {
+  justify-content: flex-start !important;
+}
+
+.bk-page-wrapper .bk-actions .exp-btn {
+  min-height: 46px !important;
+  border-radius: 16px !important;
+}
+
+.bk-page-wrapper .bk-bookings-sections {
+  gap: 20px !important;
+}
+
+.bk-page-wrapper .bk-bookings-section {
+  padding: 16px;
+  border-radius: 28px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(251, 247, 239, 0.80));
+  border: 1px solid rgba(13, 13, 13, 0.07);
+  box-shadow: 0 22px 52px rgba(13, 13, 13, 0.08);
+}
+
+.bk-page-wrapper .bk-bookings-section-head {
+  border-radius: 22px !important;
+  padding: 18px 20px !important;
+}
+
+.bk-page-wrapper .bookings-table-card,
+.bk-page-wrapper .bk-table-wrap {
+  border-radius: 24px !important;
+}
+
+.bk-page-wrapper .bookings-table {
+  border-collapse: separate !important;
+  border-spacing: 0 8px !important;
+  padding: 8px;
+}
+
+.bk-page-wrapper .bookings-table th {
+  background: transparent !important;
+  border: 0 !important;
+  color: #667085 !important;
+}
+
+.bk-page-wrapper .bookings-table .bk-row td {
+  background: #ffffff !important;
+  border-top: 1px solid rgba(13, 13, 13, 0.07) !important;
+  border-bottom: 1px solid rgba(13, 13, 13, 0.07) !important;
+}
+
+.bk-page-wrapper .bookings-table .bk-row td:first-child {
+  border-radius: 18px 0 0 18px !important;
+}
+
+.bk-page-wrapper .bookings-table .bk-row td:last-child {
+  border-radius: 0 18px 18px 0 !important;
+}
+
+.bk-page-wrapper .bk-mobile-card {
+  border-radius: 22px !important;
+  box-shadow: 0 16px 34px rgba(13, 13, 13, 0.08) !important;
+}
+
+@media (max-width: 1180px) {
+  .bk-page-wrapper .bk-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .bk-page-wrapper .bookings-header {
+    min-height: 120px;
+    padding: 22px !important;
+  }
+
+  .bk-page-wrapper .bk-filters {
+    grid-template-columns: 1fr !important;
+  }
+
+  .bk-page-wrapper .bk-new-alert-head,
+  .bk-page-wrapper .bk-stale-alert-head {
+    grid-template-columns: 1fr;
+  }
+}

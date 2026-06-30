@@ -127,6 +127,7 @@ export async function registerClientWithEmail(params: {
 
 /** (اختياري) لو تحتاج تسجيل خروج من Firebase */
 export async function logoutFirebase() {
+  clearStoredAuthSession();
   try {
     await signOut(auth);
   } finally {

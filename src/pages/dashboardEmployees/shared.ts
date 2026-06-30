@@ -100,6 +100,8 @@ export type StaffPublicDoc = {
   bio?: string;
   avatarUrl?: string;
   cvUrl?: string;
+  rating?: number;
+  reviewsCount?: number;
   leaveBalanceDays?: number;
   leaveEntitlementDate?: string;
   leaveEntries?: LeaveEntry[];
@@ -114,6 +116,8 @@ export type ServiceOption = {
   label: string;
   sectionId?: string;
   categoryId?: string;
+  durationMin?: number;
+  price?: number;
   active?: boolean;
 };
 

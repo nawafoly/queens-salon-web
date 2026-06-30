@@ -8,6 +8,20 @@ export type StaffPublicDoc = {
   name: string;
   specialties: string[];
   active?: boolean;
+  avatarUrl?: string;
+  avatarURL?: string;
+  photoURL?: string;
+  photoUrl?: string;
+  imageUrl?: string;
+  imageURL?: string;
+  profileImageUrl?: string;
+  profileImage?: string;
+  picture?: string;
+  avatar?: string;
+  rating?: number;
+  reviewsCount?: number;
+  reviewCount?: number;
+  ratingsCount?: number;
   employmentEndDate?: string;
   linkedUid?: string;
   showOnBooking?: boolean;
@@ -244,6 +258,20 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
         name: String(data?.name ?? "").trim(),
         specialties: extractSpecialties(data),
         active: data?.active !== false,
+        avatarUrl: String(data?.avatarUrl ?? "").trim() || undefined,
+        avatarURL: String(data?.avatarURL ?? "").trim() || undefined,
+        photoURL: String(data?.photoURL ?? "").trim() || undefined,
+        photoUrl: String(data?.photoUrl ?? "").trim() || undefined,
+        imageUrl: String(data?.imageUrl ?? "").trim() || undefined,
+        imageURL: String(data?.imageURL ?? "").trim() || undefined,
+        profileImageUrl: String(data?.profileImageUrl ?? "").trim() || undefined,
+        profileImage: String(data?.profileImage ?? "").trim() || undefined,
+        picture: String(data?.picture ?? "").trim() || undefined,
+        avatar: String(data?.avatar ?? "").trim() || undefined,
+        rating: Number.isFinite(Number(data?.rating)) ? Number(data?.rating) : undefined,
+        reviewsCount: Number.isFinite(Number(data?.reviewsCount)) ? Number(data?.reviewsCount) : undefined,
+        reviewCount: Number.isFinite(Number(data?.reviewCount)) ? Number(data?.reviewCount) : undefined,
+        ratingsCount: Number.isFinite(Number(data?.ratingsCount)) ? Number(data?.ratingsCount) : undefined,
         employmentEndDate: resolveEmploymentEndDate(data) || undefined,
         linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
         showOnBooking: data?.showOnBooking !== false,
@@ -288,6 +316,20 @@ export async function listActiveStaffBySpecialty(args: {
         name: String(data?.name ?? "").trim(),
         specialties: extractSpecialties(data),
         active: data?.active !== false,
+        avatarUrl: String(data?.avatarUrl ?? "").trim() || undefined,
+        avatarURL: String(data?.avatarURL ?? "").trim() || undefined,
+        photoURL: String(data?.photoURL ?? "").trim() || undefined,
+        photoUrl: String(data?.photoUrl ?? "").trim() || undefined,
+        imageUrl: String(data?.imageUrl ?? "").trim() || undefined,
+        imageURL: String(data?.imageURL ?? "").trim() || undefined,
+        profileImageUrl: String(data?.profileImageUrl ?? "").trim() || undefined,
+        profileImage: String(data?.profileImage ?? "").trim() || undefined,
+        picture: String(data?.picture ?? "").trim() || undefined,
+        avatar: String(data?.avatar ?? "").trim() || undefined,
+        rating: Number.isFinite(Number(data?.rating)) ? Number(data?.rating) : undefined,
+        reviewsCount: Number.isFinite(Number(data?.reviewsCount)) ? Number(data?.reviewsCount) : undefined,
+        reviewCount: Number.isFinite(Number(data?.reviewCount)) ? Number(data?.reviewCount) : undefined,
+        ratingsCount: Number.isFinite(Number(data?.ratingsCount)) ? Number(data?.ratingsCount) : undefined,
         employmentEndDate: resolveEmploymentEndDate(data) || undefined,
         linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
         showOnBooking: data?.showOnBooking !== false,

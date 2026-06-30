@@ -13,6 +13,7 @@ type EmployeeDetailShellProps = {
   activeTab: EmployeeSplitTab;
   tabs: Array<{ key: EmployeeSplitTab; label: string; hint: string }>;
   canManage: boolean;
+  canDelete: boolean;
   onSave: () => void;
   onDelete: () => void;
   onCancelEdit: () => void;
@@ -29,6 +30,7 @@ export default function EmployeeDetailShell({
   activeTab,
   tabs,
   canManage,
+  canDelete,
   onSave,
   onDelete,
   onCancelEdit,
@@ -92,9 +94,13 @@ export default function EmployeeDetailShell({
                   <button className="exp-btn ghost sm" type="button" onClick={onCancelEdit} disabled={busy}>
                     إلغاء التعديلات
                   </button>
-                  <button className="exp-btn ghost sm text-danger" type="button" onClick={onDelete} disabled={busy}>
-                    <FontAwesomeIcon icon={faTrash} />
-                  </button>
+                  {canDelete ? (
+                    <button className="exp-btn ghost sm text-danger" type="button" onClick={onDelete} disabled={busy}>
+                      <FontAwesomeIcon icon={faTrash} />
+                    </button>
+                  ) : (
+                    <span className="emp-meta-chip">الحذف محجوز للإدارة</span>
+                  )}
                 </>
               ) : (
                 <span className="emp-meta-chip">الصفحة للعرض فقط</span>

@@ -36,8 +36,21 @@ service cloud.firestore {
       return /databases/$(database)/documents/salons/$(salonId)/users/$(request.auth.uid);
     }
 
+    function myAdminUserPathInSalon(salonId) {
+      return /databases/$(database)/documents/salons/$(salonId)/admin_users/$(request.auth.uid);
+    }
+
     function normRole(r) {
       return (r is string) ? r.lower() : "guest";
+    }
+
+    function tokenRole() {
+      return (
+        signedIn()
+        && (request.auth.token.role is string)
+      )
+        ? normRole(request.auth.token.role)
+        : "guest";
     }
 
     // ✅ role آمن (SOURCE OF TRUTH + fallback) - بدون .exists()
@@ -49,12 +62,12 @@ service cloud.firestore {
       )
         ? normRole(get(myUserPath()).data.role)
         : (
-            signedIn()
-            && exists(myRootUserPath())
-            && (get(myRootUserPath()).data.role is string)
+          signedIn()
+          && exists(myRootUserPath())
+          && (get(myRootUserPath()).data.role is string)
           )
             ? normRole(get(myRootUserPath()).data.role)
-            : "guest";
+            : tokenRole();
     }
 
     function myRoleInSalon(salonId) {
@@ -64,7 +77,13 @@ service cloud.firestore {
         && (get(myUserPathInSalon(salonId)).data.role is string)
       )
         ? normRole(get(myUserPathInSalon(salonId)).data.role)
-        : "guest";
+        : (
+            signedIn()
+            && exists(myAdminUserPathInSalon(salonId))
+            && (get(myAdminUserPathInSalon(salonId)).data.role is string)
+          )
+            ? normRole(get(myAdminUserPathInSalon(salonId)).data.role)
+            : tokenRole();
     }
 
     function roleForSalon(salonId) {
@@ -218,7 +237,7 @@ service cloud.firestore {
           exists(myUserPathInSalon(salonId))
           && (get(myUserPathInSalon(salonId)).data.role is string)
           && normRole(get(myUserPathInSalon(salonId)).data.role)
-            in ["owner","admin","reception"]
+            in ["owner","admin","reception","hr"]
         )
       );
 
@@ -227,7 +246,7 @@ service cloud.firestore {
         || isBootstrapAdmin()
         || (
           exists(myUserPathInSalon(salonId))
-          && normRole(get(myUserPathInSalon(salonId)).data.role) in ["owner","admin","reception"]
+          && normRole(get(myUserPathInSalon(salonId)).data.role) in ["owner","admin","reception","hr"]
         )
       );
 
@@ -247,7 +266,7 @@ service cloud.firestore {
         || isBootstrapAdmin()
         || (
           exists(myUserPathInSalon(salonId))
-          && normRole(get(myUserPathInSalon(salonId)).data.role) in ["owner","admin","reception"]
+          && normRole(get(myUserPathInSalon(salonId)).data.role) in ["owner","admin","reception","hr"]
         )
       );
 
@@ -255,7 +274,7 @@ service cloud.firestore {
         isBootstrapAdmin()
         || (
           exists(myUserPathInSalon(salonId))
-          && normRole(get(myUserPathInSalon(salonId)).data.role) in ["owner","admin"]
+          && normRole(get(myUserPathInSalon(salonId)).data.role) in ["owner","admin","hr"]
         )
       );
     }
@@ -315,6 +334,11 @@ service cloud.firestore {
 
       allow write: if signedIn() && (
         isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
+      );
+
+      // HR can edit employee profile data, but delete stays limited to the admin/reception path above.
+      allow create, update: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception","hr"]
       );
 
       allow update: if isHrLeaveBalanceUpdateForSalon(salonId);

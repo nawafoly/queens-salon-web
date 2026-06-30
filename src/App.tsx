@@ -126,16 +126,26 @@ function writeLiveAuthCache(args: {
   name: string;
   role: UiRole;
   active?: boolean;
+  profile?: Record<string, any> | null;
 }) {
   try {
     const current = JSON.parse(localStorage.getItem("user_profile_v1") || "null") || {};
+    const sourceProfile =
+      args.profile && typeof args.profile === "object" ? args.profile : {};
+    const sameUid = String(current?.uid || sourceProfile?.uid || "") === args.uid;
+    const baseProfile = sameUid ? { ...current, ...sourceProfile } : { ...sourceProfile };
     const merged = {
-      ...current,
+      ...baseProfile,
       uid: args.uid,
-      email: args.email || current?.email || "",
-      name: args.name || current?.name || "",
+      email: args.email || baseProfile?.email || "",
+      name: args.name || baseProfile?.name || baseProfile?.displayName || "",
+      displayName: args.name || baseProfile?.displayName || baseProfile?.name || "",
       role: args.role,
-      ...(typeof args.active === "boolean" ? { active: args.active } : {}),
+      ...(typeof args.active === "boolean"
+        ? { active: args.active }
+        : typeof baseProfile?.active === "boolean"
+          ? { active: baseProfile.active }
+          : {}),
     };
 
     localStorage.setItem("user_profile_v1", JSON.stringify(merged));
@@ -274,21 +284,15 @@ const App: React.FC = () => {
   const [userRole, setUserRole] = useState<UiRole>(() => readStoredAuthSession()?.role || "guest");
 
   const location = useLocation();
-  const effectiveSessionUser = storedSession?.temp
-    ? ({
-        uid: storedSession.uid,
-        email: storedSession.email,
-        displayName: storedSession.displayName,
-      } as FirebaseUser)
-    : authUser
-      ? authUser
-      : storedSession
-        ? ({
-            uid: storedSession.uid,
-            email: storedSession.email,
-            displayName: storedSession.displayName,
-          } as FirebaseUser)
-        : null;
+  const effectiveSessionUser = authUser
+    ? authUser
+    : storedSession
+      ? ({
+          uid: storedSession.uid,
+          email: storedSession.email,
+          displayName: storedSession.displayName,
+        } as FirebaseUser)
+      : null;
 
   const isInDashboard =
     location.pathname.startsWith("/dashboard") ||
@@ -311,7 +315,7 @@ const App: React.FC = () => {
     readWelcomeFromStorage();
     const currentSession = readStoredAuthSession();
     setStoredSession(currentSession);
-    if (currentSession?.temp || (!authUser && currentSession)) {
+    if (!authUser && currentSession) {
       setUserName(currentSession.displayName || getNameFromStorage());
       setUserRole(currentSession.role);
       if (!authUser) {
@@ -367,6 +371,7 @@ const App: React.FC = () => {
           name: nextName,
           role: nextRole,
           active: profile.active,
+          profile,
         });
 
         unsubUserDoc = onSnapshot(
@@ -392,6 +397,7 @@ const App: React.FC = () => {
               name: liveName,
               role: liveRole,
               active,
+              profile: data,
             });
           },
           () => {
@@ -429,7 +435,7 @@ const App: React.FC = () => {
       readWelcomeFromStorage();
       const currentSession = readStoredAuthSession();
       setStoredSession(currentSession);
-      if (currentSession?.temp || (!authUser && currentSession)) {
+      if (!authUser && currentSession) {
         setUserRole(currentSession.role);
         setUserName(currentSession.displayName || getNameFromStorage());
         setAuthReady(true);
@@ -637,7 +643,12 @@ const App: React.FC = () => {
             path="/dashboard/*"
             element={
               <DashboardGuard>
-                <Dashboard />
+                <Dashboard
+                  initialRole={userRole}
+                  initialName={userName}
+                  initialEmail={String(effectiveSessionUser?.email || "")}
+                  authReady={authReady}
+                />
               </DashboardGuard>
             }
           />

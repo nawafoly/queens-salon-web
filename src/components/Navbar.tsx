@@ -6,8 +6,8 @@ import "../styles/navbar.css";
 import UserIcon from "./icons/UserIcon";
 import { resolveDashboardLandingPath } from "../helpers/routePaths";
 
-import { signOut, type User as FirebaseUser } from "firebase/auth";
-import { auth } from "../services/firebase";
+import { type User as FirebaseUser } from "firebase/auth";
+import { logoutFirebase } from "../services/authService";
 
 type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "client" | "pending" | "guest";
 const KNOWN_ROLES: UiRole[] = ["owner", "admin", "hr", "reception", "staff", "client", "pending", "guest"];
@@ -173,18 +173,8 @@ const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName 
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await logoutFirebase();
     } catch {}
-
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("userName");
-    localStorage.removeItem("currentUser");
-    localStorage.removeItem("auth_user");
-    localStorage.removeItem("userUid");
-    localStorage.removeItem("showWelcome");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("user_profile_v1");
 
     setUserName(null);
     setUserRole("guest");

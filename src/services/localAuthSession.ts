@@ -6,7 +6,6 @@ export type StoredAuthSession = {
   role: UiRole;
   displayName: string;
   phone?: string;
-  temp?: boolean;
 };
 
 const AUTH_TOKEN_KEY = "authToken";
@@ -53,10 +52,15 @@ function safeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function hasRecognizedAuthToken(authToken: string) {
+  return authToken === "firebase" || authToken.startsWith("client-token-");
+}
+
 export function readStoredAuthSession(): StoredAuthSession | null {
   try {
     const authUser = parseJson<any>(localStorage.getItem(AUTH_USER_KEY));
     const profile = parseJson<any>(localStorage.getItem(USER_PROFILE_KEY));
+    const authToken = safeString(localStorage.getItem(AUTH_TOKEN_KEY));
 
     const uid = safeString(
       authUser?.uid || profile?.uid || localStorage.getItem(USER_UID_KEY)
@@ -74,8 +78,22 @@ export function readStoredAuthSession(): StoredAuthSession | null {
         localStorage.getItem(USER_NAME_KEY)
     );
     const phone = safeString(profile?.phone || localStorage.getItem(USER_PHONE_KEY));
+    const isTempSession =
+      authToken === "local-temp" ||
+      uid.startsWith("temp:") ||
+      Boolean(authUser?.temp || profile?.temp);
 
     if (!uid && !email && !displayName) return null;
+    if (isTempSession) {
+      clearStoredAuthSession();
+      return null;
+    }
+    if (!hasRecognizedAuthToken(authToken)) {
+      if (authUser || profile || uid || email || displayName) {
+        clearStoredAuthSession();
+      }
+      return null;
+    }
 
     return {
       uid,
@@ -83,7 +101,6 @@ export function readStoredAuthSession(): StoredAuthSession | null {
       role,
       displayName,
       phone: phone || undefined,
-      temp: Boolean(authUser?.temp || profile?.temp),
     };
   } catch {
     return null;
@@ -91,19 +108,20 @@ export function readStoredAuthSession(): StoredAuthSession | null {
 }
 
 export function writeStoredAuthSession(session: StoredAuthSession) {
+  clearStoredAuthSession();
+
   const payload = {
     uid: session.uid,
     email: session.email,
     role: session.role,
     displayName: session.displayName,
-    temp: Boolean(session.temp),
   };
 
   localStorage.removeItem("currentUser");
   localStorage.removeItem("userAvatar");
   localStorage.removeItem("userCity");
   localStorage.removeItem("userBirthdate");
-  localStorage.setItem(AUTH_TOKEN_KEY, session.temp ? "local-temp" : "firebase");
+  localStorage.setItem(AUTH_TOKEN_KEY, "firebase");
   localStorage.setItem(USER_UID_KEY, session.uid);
   localStorage.setItem(USER_ROLE_KEY, session.role);
   if (session.displayName) localStorage.setItem(USER_NAME_KEY, session.displayName);
@@ -122,7 +140,6 @@ export function writeStoredAuthSession(session: StoredAuthSession) {
       displayName: session.displayName,
       phone: session.phone || "",
       role: session.role,
-      temp: Boolean(session.temp),
       active: true,
     })
   );

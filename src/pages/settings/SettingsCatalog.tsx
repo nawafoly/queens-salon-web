@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   collection,
   deleteDoc,
@@ -13,6 +12,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../services/firebase";
 import { AppSettingsService } from "../../services/AppSettingsService";
+import { SettingsPageHeader, SettingsSection, SettingsState, SettingsStats, SettingsTabs } from "./SettingsFrame";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/DashboardSettings.css";
@@ -111,6 +111,8 @@ type PackageRow = {
 };
 
 type ListMode = "sections" | "services";
+type CatalogPanel = "items" | "packages" | "season";
+type PackagePickerView = "all" | "selected";
 type DetailsMode = "view" | "edit";
 type DetailsTab = "overview" | "pricing" | "variants" | "audit";
 type FilterStatus = "all" | "active" | "inactive";
@@ -136,7 +138,6 @@ function resetPackageFormState(setters: {
 }
 
 export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
-  const navigate = useNavigate();
   const { hasAdminPower } = props;
 
   const [catalogMsg, setCatalogMsg] = useState("");
@@ -158,12 +159,19 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const [packagePrice, setPackagePrice] = useState<number>(0);
   const [packageActive, setPackageActive] = useState(true);
   const [packageSaving, setPackageSaving] = useState(false);
+  const [packageServiceSearch, setPackageServiceSearch] = useState("");
+  const [packageServiceSectionFilter, setPackageServiceSectionFilter] =
+    useState("all");
+  const [packageServiceView, setPackageServiceView] =
+    useState<PackagePickerView>("all");
   const [editingPackageId, setEditingPackageId] = useState<string | null>(
     null
   );
 
   const [activeListMode, setActiveListMode] =
     useState<ListMode>("sections");
+  const [activeCatalogPanel, setActiveCatalogPanel] =
+    useState<CatalogPanel>("items");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<DetailsMode>("view");
   const [activeTab, setActiveTab] = useState<DetailsTab>("overview");
@@ -227,6 +235,32 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     if (ms > 0) setTimeout(() => setCatalogMsg(""), ms);
   };
 
+  const catalogStats = useMemo(
+    () => [
+      {
+        label: "الأقسام",
+        value: String(sections.length),
+        hint: "الوحدات الرئيسية المعروضة",
+      },
+      {
+        label: "التصنيفات",
+        value: String(categories.length),
+        hint: "العناصر المرتبطة بكل قسم",
+      },
+      {
+        label: "الخدمات",
+        value: String(services.length),
+        hint: "السجلات التشغيلية المتاحة",
+      },
+      {
+        label: "الباقات",
+        value: String(packages.length),
+        hint: "العروض القابلة للبيع",
+      },
+    ],
+    [categories.length, packages.length, sections.length, services.length]
+  );
+
   const sectionById = useMemo(
     () => new Map(sections.map((x) => [x.id, x] as const)),
     [sections]
@@ -242,6 +276,76 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const selectedPackageServiceIds = useMemo(
     () => normalizePackageServiceIds(packageServiceIds),
     [packageServiceIds]
+  );
+  const selectedPackageServices = useMemo(
+    () =>
+      selectedPackageServiceIds
+        .map((id) => serviceById.get(id))
+        .filter((service): service is ServiceRow => Boolean(service)),
+    [selectedPackageServiceIds, serviceById]
+  );
+  const filteredPackageServices = useMemo(() => {
+    const q = String(packageServiceSearch || "").trim().toLowerCase();
+
+    return services
+      .filter((service) =>
+        packageServiceSectionFilter === "all"
+          ? true
+          : String(service.sectionId || "").trim() ===
+            packageServiceSectionFilter
+      )
+      .filter((service) =>
+        packageServiceView === "selected"
+          ? selectedPackageServiceIds.includes(service.id)
+          : true
+      )
+      .filter((service) => {
+        if (!q) return true;
+        const sectionName = String(
+          sectionById.get(String(service.sectionId || "").trim())?.name || ""
+        ).toLowerCase();
+        const categoryName = String(
+          categoryById.get(String(service.categoryId || "").trim())?.name || ""
+        ).toLowerCase();
+
+        return (
+          String(service.name || "").toLowerCase().includes(q) ||
+          String(service.id || "").toLowerCase().includes(q) ||
+          sectionName.includes(q) ||
+          categoryName.includes(q)
+        );
+      })
+      .sort((a, b) => {
+        const aSelected = selectedPackageServiceIds.includes(a.id);
+        const bSelected = selectedPackageServiceIds.includes(b.id);
+        if (aSelected !== bSelected) return aSelected ? -1 : 1;
+
+        const aSection = String(
+          sectionById.get(String(a.sectionId || "").trim())?.name || ""
+        );
+        const bSection = String(
+          sectionById.get(String(b.sectionId || "").trim())?.name || ""
+        );
+        const sectionSort = aSection.localeCompare(bSection, "ar");
+        if (sectionSort) return sectionSort;
+        return String(a.name || "").localeCompare(String(b.name || ""), "ar");
+      });
+  }, [
+    categoryById,
+    packageServiceSearch,
+    packageServiceSectionFilter,
+    packageServiceView,
+    sectionById,
+    selectedPackageServiceIds,
+    services,
+  ]);
+  const packageSelectionTotal = useMemo(
+    () =>
+      selectedPackageServices.reduce(
+        (total, service) => total + Math.max(0, Number(service.price || 0)),
+        0
+      ),
+    [selectedPackageServices]
   );
   const nextSectionOrder = useMemo(
     () =>
@@ -687,6 +791,9 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       setPackageActive,
       setEditingPackageId,
     });
+    setPackageServiceSearch("");
+    setPackageServiceSectionFilter("all");
+    setPackageServiceView("all");
   };
 
   const startPackageEdit = (pkg: PackageRow) => {
@@ -696,6 +803,58 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     setPackageSessionsCount(Math.max(1, Number(pkg.sessionsCount || 1)));
     setPackagePrice(Math.max(0, Number(pkg.price || 0)));
     setPackageActive(pkg.active !== false);
+    setPackageServiceSearch("");
+    setPackageServiceSectionFilter("all");
+    setPackageServiceView("selected");
+  };
+
+  const togglePackageService = (serviceId: string) => {
+    const id = String(serviceId || "").trim();
+    if (!id) return;
+
+    setPackageServiceIds((prev) => {
+      const current = normalizePackageServiceIds(prev);
+      return current.includes(id)
+        ? current.filter((item) => item !== id)
+        : normalizePackageServiceIds([...current, id]);
+    });
+  };
+
+  const selectVisiblePackageServices = () => {
+    setPackageServiceIds((prev) =>
+      normalizePackageServiceIds([
+        ...prev,
+        ...filteredPackageServices.map((service) => service.id),
+      ])
+    );
+  };
+
+  const clearPackageServices = () => {
+    setPackageServiceIds([]);
+    setPackageServiceView("all");
+  };
+
+  const openServiceEditorFromPackage = (serviceId: string) => {
+    const id = String(serviceId || "").trim();
+    const service = services.find((item) => item.id === id);
+    if (!id || !service) {
+      showMsg("تعذر فتح الخدمة للتعديل", 2200);
+      return;
+    }
+
+    setActiveCatalogPanel("items");
+    setActiveListMode("services");
+    setSelectedId(id);
+    setSearch("");
+    setStatusFilter("all");
+    setServiceSectionFilter(String(service.sectionId || "all") || "all");
+    setComposerMode(null);
+
+    setTimeout(() => {
+      setActiveTab("pricing");
+      setServiceDraft({ ...service });
+      setMode("edit");
+    }, 0);
   };
 
   const savePackage = async () => {
@@ -1600,71 +1759,25 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
 
   const renderPackageComposer = () => (
     <div className="scatalog-ref__composer scatalog-ref__composer--service-inline">
-      <b>إضافة باقة جلسات</b>
-
-      <div className="settings-field">
-        <label>اسم الباقة</label>
-        <input
-          className="settings-input"
-          placeholder="مثال: استشوار 10 جلسات"
-          value={packageName}
-          onChange={(e) => setPackageName(e.target.value)}
-        />
-      </div>
-
-      <div className="settings-field">
-        <label>اختر الخدمات</label>
-        <div
-          style={{
-            maxHeight: 180,
-            overflow: "auto",
-            border: "1px solid #d6d6d6",
-            borderRadius: 12,
-            padding: 12,
-            background: "#fff",
-          }}
-        >
-          {services.length ? (
-            services.map((s) => {
-              const checked = selectedPackageServiceIds.includes(s.id);
-
-              return (
-                <label
-                  key={s.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    marginBottom: 8,
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => {
-                      if (checked) {
-                        setPackageServiceIds((prev) =>
-                          prev.filter((id) => id !== s.id)
-                        );
-                      } else {
-                        setPackageServiceIds((prev) =>
-                          normalizePackageServiceIds([...prev, s.id])
-                        );
-                      }
-                    }}
-                  />
-                  <span>{s.name}</span>
-                </label>
-              );
-            })
-          ) : (
-            <div className="settings-note">لا توجد خدمات متاحة حاليًا.</div>
-          )}
+      <b>{editingPackageId ? "تعديل باقة جلسات" : "إضافة باقة جلسات"}</b>
+      {editingPackageId ? (
+        <div className="settings-note">
+          أنت تعدل محتوى الباقة نفسها. لتعديل خدمة محددة استخدم زر "تعديل الخدمة"
+          الموجود بجانب كل خدمة مختارة.
         </div>
-      </div>
+      ) : null}
 
-      <div className="scatalog-ref__inline-2">
+      <div className="scatalog-package-details">
+        <div className="settings-field scatalog-package-details__name">
+          <label>اسم الباقة</label>
+          <input
+            className="settings-input"
+            placeholder="مثال: استشوار 10 جلسات"
+            value={packageName}
+            onChange={(e) => setPackageName(e.target.value)}
+          />
+        </div>
+
         <div className="settings-field">
           <label>عدد الجلسات</label>
           <input
@@ -1688,17 +1801,182 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             onChange={(e) => setPackagePrice(Number(e.target.value))}
           />
         </div>
+
+        <label className="scatalog-package-active-card">
+          <input
+            className="settings-check"
+            type="checkbox"
+            checked={packageActive}
+            onChange={(e) => setPackageActive(e.target.checked)}
+          />
+          <span>
+            <strong>الباقة مفعلة</strong>
+            <small>تظهر في الحجز عند التفعيل</small>
+          </span>
+        </label>
       </div>
 
-      <label className="scatalog-ref__check">
-        <input
-          className="settings-check"
-          type="checkbox"
-          checked={packageActive}
-          onChange={(e) => setPackageActive(e.target.checked)}
-        />
-        <span>الباقة مفعلة</span>
-      </label>
+      <div className="settings-field">
+        <label>اختر الخدمات</label>
+        <div className="scatalog-package-picker">
+          <div className="scatalog-package-picker__toolbar">
+            <input
+              className="settings-input"
+              value={packageServiceSearch}
+              onChange={(e) => setPackageServiceSearch(e.target.value)}
+              placeholder="ابحث باسم الخدمة أو القسم أو التصنيف..."
+            />
+            <select
+              className="settings-input"
+              value={packageServiceSectionFilter}
+              onChange={(e) => setPackageServiceSectionFilter(e.target.value)}
+            >
+              <option value="all">كل الأقسام</option>
+              {sections.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {section.name}
+                </option>
+              ))}
+            </select>
+            <div className="scatalog-package-picker__mode">
+              <button
+                type="button"
+                className={`exp-btn ${
+                  packageServiceView === "all" ? "primary" : "ghost"
+                }`}
+                onClick={() => setPackageServiceView("all")}
+              >
+                كل الخدمات
+              </button>
+              <button
+                type="button"
+                className={`exp-btn ${
+                  packageServiceView === "selected" ? "primary" : "ghost"
+                }`}
+                onClick={() => setPackageServiceView("selected")}
+              >
+                المختارة ({selectedPackageServiceIds.length})
+              </button>
+            </div>
+          </div>
+
+          <div className="scatalog-package-picker__quickbar">
+            <div>
+              <strong>{selectedPackageServiceIds.length}</strong>
+              <span>خدمة مختارة</span>
+              <span>{money(packageSelectionTotal)} ر.س مجموع أسعارها</span>
+            </div>
+            <div>
+              <button
+                type="button"
+                className={`dash-btn ${
+                  !filteredPackageServices.length ? "is-disabled" : ""
+                }`}
+                disabled={!filteredPackageServices.length}
+                onClick={selectVisiblePackageServices}
+              >
+                تحديد الظاهر
+              </button>
+              <button
+                type="button"
+                className={`dash-btn ${
+                  !selectedPackageServiceIds.length ? "is-disabled" : ""
+                }`}
+                disabled={!selectedPackageServiceIds.length}
+                onClick={clearPackageServices}
+              >
+                مسح الاختيار
+              </button>
+            </div>
+          </div>
+
+          <div className="scatalog-package-picker__body">
+            <div className="scatalog-service-picker">
+              {filteredPackageServices.length ? (
+                filteredPackageServices.map((s) => {
+                  const checked = selectedPackageServiceIds.includes(s.id);
+                  const sectionName =
+                    sectionById.get(String(s.sectionId || "").trim())?.name ||
+                    "قسم غير محدد";
+                  const categoryName =
+                    categoryById.get(String(s.categoryId || "").trim())?.name ||
+                    "بدون تصنيف";
+
+                  return (
+                    <label
+                      key={s.id}
+                      className={`scatalog-service-option ${
+                        checked ? "is-selected" : ""
+                      }`}
+                    >
+                      <input
+                        className="settings-check"
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => togglePackageService(s.id)}
+                      />
+                      <span className="scatalog-service-option__copy">
+                        <strong>{s.name}</strong>
+                        <small>{sectionName}</small>
+                      </span>
+                      <span className="scatalog-service-option__meta">
+                        <em>{categoryName}</em>
+                        <em>{s.durationMin} دقيقة</em>
+                        <em>{money(s.price)} ر.س</em>
+                      </span>
+                    </label>
+                  );
+                })
+              ) : (
+                <div className="settings-note">
+                  لا توجد خدمات مطابقة للبحث أو الفلتر الحالي.
+                </div>
+              )}
+            </div>
+
+            <aside className="scatalog-selected-services">
+              <div className="scatalog-selected-services__head">
+                <b>الخدمات المختارة</b>
+                <span>{selectedPackageServices.length} عنصر</span>
+              </div>
+              {selectedPackageServices.length ? (
+                <div className="scatalog-selected-services__list">
+                  {selectedPackageServices.map((service) => (
+                    <div key={service.id} className="scatalog-selected-service">
+                      <div>
+                        <b>{service.name}</b>
+                        <span>
+                          {money(service.price)} ر.س · {service.durationMin} د
+                        </span>
+                      </div>
+                      <div className="scatalog-selected-service__actions">
+                        <button
+                          type="button"
+                          className="dash-btn"
+                          onClick={() => openServiceEditorFromPackage(service.id)}
+                        >
+                          تعديل الخدمة
+                        </button>
+                        <button
+                          type="button"
+                          className="dash-btn"
+                          onClick={() => togglePackageService(service.id)}
+                        >
+                          إزالة
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="settings-note">
+                  اختر خدمة من القائمة وسيظهر ملخصها هنا.
+                </div>
+              )}
+            </aside>
+          </div>
+        </div>
+      </div>
 
       <div className="scatalog-ref__composer-actions">
         <button
@@ -1778,7 +2056,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     type="button"
                     onClick={() => startPackageEdit(pkg)}
                   >
-                    تعديل
+                    تعديل الباقة
                   </button>
                   <button
                     className="dash-btn"
@@ -1868,12 +2146,114 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     else await deleteService(selectedId, { clearSelection: true });
   };
 
+  const listTitle =
+    activeListMode === "sections"
+      ? `الأقسام (${filteredSections.length})`
+      : `الخدمات (${filteredServices.length})`;
+
+  const openCatalogPanel = (panel: CatalogPanel) => {
+    setActiveCatalogPanel(panel);
+    setComposerMode(null);
+  };
+
+  const switchListMode = (nextMode: ListMode) => {
+    if (nextMode === activeListMode) return;
+    setActiveListMode(nextMode);
+    setSelectedId(null);
+    setComposerMode(null);
+    setMode("view");
+    setSearch("");
+    setStatusFilter("all");
+    if (nextMode === "sections") setServiceSectionFilter("all");
+  };
+
+  const renderCatalogList = () => {
+    if (activeListMode === "services") {
+      return filteredServices.length ? (
+        filteredServices.map((service) => {
+          const sectionName =
+            sectionById.get(String(service.sectionId || "").trim())?.name ||
+            "قسم غير محدد";
+          const categoryName =
+            categoryById.get(String(service.categoryId || "").trim())?.name ||
+            "بدون تصنيف";
+
+          return (
+            <button
+              key={service.id}
+              type="button"
+              className={`scatalog-ref__row scatalog-ref__row--service ${
+                selectedId === service.id ? "is-selected" : ""
+              }`}
+              onClick={() => setSelectedId(service.id)}
+            >
+              <div>
+                <b>{service.name}</b>
+                <span>ID: {service.id}</span>
+              </div>
+              <div>
+                <span>{sectionName}</span>
+                <span>{categoryName}</span>
+                <span>{service.durationMin} دقيقة</span>
+                <span>{money(service.price)} ر.س</span>
+                <span
+                  className={`scatalog-ref__pill ${
+                    service.active ? "on" : "off"
+                  }`}
+                >
+                  {service.active ? "نشط" : "معطل"}
+                </span>
+              </div>
+            </button>
+          );
+        })
+      ) : (
+        <div className="settings-note">لا توجد خدمات مطابقة.</div>
+      );
+    }
+
+    return filteredSections.length ? (
+      filteredSections.map((section) => (
+        <button
+          key={section.id}
+          type="button"
+          className={`scatalog-ref__row ${
+            selectedId === section.id ? "is-selected" : ""
+          }`}
+          onClick={() => setSelectedId(section.id)}
+        >
+          <div>
+            <b>{section.name}</b>
+            <span>ID: {section.id}</span>
+          </div>
+          <div>
+            <span>
+              {categories.filter((c) => c.sectionId === section.id).length}{" "}
+              تصنيف
+            </span>
+            <span>
+              {services.filter((x) => x.sectionId === section.id).length} خدمة
+            </span>
+            <span
+              className={`scatalog-ref__pill ${
+                section.active ? "on" : "off"
+              }`}
+            >
+              {section.active ? "نشط" : "معطل"}
+            </span>
+          </div>
+        </button>
+      ))
+    ) : (
+      <div className="settings-note">لا توجد أقسام مطابقة.</div>
+    );
+  };
+
   if (!hasAdminPower) {
     return (
       <div className="dashboard-section settings-page scatalog">
         <div className="settings-wrap">
-          <h3>غير مصرح</h3>
-          <p>هذه الصفحة مخصصة للإدارة (Owner/Admin).</p>
+          <SettingsState title="غير مصرح" hint="هذه الصفحة مخصصة للإدارة (Owner/Admin)." />
         </div>
       </div>
     );
@@ -1882,21 +2262,11 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   return (
     <div className="dashboard-section settings-page scatalog" dir="rtl">
       <div className="settings-wrap">
-        <div className="scatalog__header">
-          <div>
-            <h1 className="qs-black">إدارة الكتالوج</h1>
-            <p className="settings-hint">
-              Split Layout لإدارة الأقسام والخدمات داخل نفس اللوحة.
-            </p>
-          </div>
-          <div className="scatalog__actions">
-            <button
-              className="dash-btn"
-              type="button"
-              onClick={() => navigate("/dashboard/settings/advanced")}
-            >
-              رجوع
-            </button>
+        <SettingsPageHeader
+          eyebrow="المسار الحالي"
+          title="إدارة الكتالوج"
+          hint="واجهة موحدة لإدارة الأقسام والخدمات والباقات من مكان واحد."
+          actions={
             <button
               type="button"
               className={`exp-btn ${
@@ -1911,19 +2281,74 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             >
               تحديث
             </button>
-          </div>
-        </div>
+          }
+          compact
+          className="scatalog__header"
+        />
+
+        <SettingsStats items={catalogStats} />
+
+        <SettingsTabs
+          className="scatalog-work-tabs"
+          variant="cards"
+          activeId={activeCatalogPanel}
+          onChange={(id) => openCatalogPanel(id as CatalogPanel)}
+          items={[
+            {
+              id: "items",
+              title: "الأقسام والخدمات",
+              hint: `${sections.length} قسم / ${services.length} خدمة`,
+              index: "01",
+            },
+            {
+              id: "packages",
+              title: "باقات الجلسات",
+              hint: `${packages.length} باقة جاهزة للبيع`,
+              index: "02",
+            },
+            {
+              id: "season",
+              title: "موسم الأسعار",
+              hint: seasonPricingEnabled ? "مفعّل حاليًا" : "غير مفعّل",
+              index: "03",
+            },
+          ]}
+        />
 
         {catalogMsg && <div className="scatalog__msg">{catalogMsg}</div>}
 
-        <div className="scatalog-ref__split">
-          <aside className="scatalog-ref__left">
+        {activeCatalogPanel === "items" && (
+        <div className="scatalog-ref__split settings-master-detail settings-master-detail--catalog">
+          <aside className="scatalog-ref__left settings-master-detail__list">
+            <SettingsTabs
+              className="scatalog-mode-tabs"
+              variant="pills"
+              activeId={activeListMode}
+              onChange={(id) => switchListMode(id as ListMode)}
+              items={[
+                {
+                  id: "sections",
+                  title: "الأقسام",
+                  hint: `${filteredSections.length}`,
+                },
+                {
+                  id: "services",
+                  title: "الخدمات",
+                  hint: `${filteredServices.length}`,
+                },
+              ]}
+            />
+
             <div className="scatalog-ref__filters">
               <input
                 className="settings-input"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="بحث في الأقسام..."
+                placeholder={
+                  activeListMode === "sections"
+                    ? "بحث في الأقسام..."
+                    : "بحث في الخدمات أو التصنيف..."
+                }
               />
               <select
                 className="settings-input"
@@ -1936,18 +2361,20 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 <option value="active">نشط</option>
                 <option value="inactive">غير نشط</option>
               </select>
-            </div>
-
-            <div className="scatalog-ref__switch scatalog-ref__switch--single">
-              <button
-                type="button"
-                className={`scatalog-ref__switch-btn ${
-                  activeListMode === "sections" ? "active" : ""
-                }`}
-                onClick={() => setActiveListMode("sections")}
-              >
-                الأقسام
-              </button>
+              {activeListMode === "services" ? (
+                <select
+                  className="settings-input"
+                  value={serviceSectionFilter}
+                  onChange={(e) => setServiceSectionFilter(e.target.value)}
+                >
+                  <option value="all">كل الأقسام</option>
+                  {sections.map((section) => (
+                    <option key={section.id} value={section.id}>
+                      {section.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
             </div>
 
             <div className="scatalog-ref__left-actions">
@@ -1955,15 +2382,21 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 type="button"
                 className="exp-btn"
                 onClick={() => {
-                  setNewSection({
-                    name: "",
-                    order: nextSectionOrder,
-                    active: true,
-                  });
-                  setComposerMode("section");
+                  if (activeListMode === "sections") {
+                    setNewSection({
+                      name: "",
+                      order: nextSectionOrder,
+                      active: true,
+                    });
+                    setComposerMode("section");
+                    return;
+                  }
+                  startServiceComposer(undefined, undefined, "pricing");
                 }}
               >
-                + إضافة قسم
+                {activeListMode === "sections"
+                  ? "+ إضافة قسم"
+                  : "+ إضافة خدمة"}
               </button>
             </div>
 
@@ -2024,47 +2457,15 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               </div>
             )}
 
-            <div className="scatalog-ref__list-title">{`الأقسام (${filteredSections.length})`}</div>
-            <div className="scatalog-ref__list">
-              {filteredSections.length ? (
-                filteredSections.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className={`scatalog-ref__row ${
-                      selectedId === s.id ? "is-selected" : ""
-                    }`}
-                    onClick={() => setSelectedId(s.id)}
-                  >
-                    <div>
-                      <b>{s.name}</b>
-                      <span>ID: {s.id}</span>
-                    </div>
-                    <div>
-                      <span>
-                        {categories.filter((c) => c.sectionId === s.id).length}{" "}
-                        تصنيف
-                      </span>
-                      <span>
-                        {services.filter((x) => x.sectionId === s.id).length} خدمة
-                      </span>
-                      <span
-                        className={`scatalog-ref__pill ${
-                          s.active ? "on" : "off"
-                        }`}
-                      >
-                        {s.active ? "نشط" : "معطل"}
-                      </span>
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <div className="settings-note">لا توجد أقسام مطابقة.</div>
-              )}
-            </div>
+            {composerMode === "service" && serviceComposerSpot === "pricing"
+              ? renderServiceComposer()
+              : null}
+
+            <div className="scatalog-ref__list-title">{listTitle}</div>
+            <div className="scatalog-ref__list">{renderCatalogList()}</div>
           </aside>
 
-          <section className="scatalog-ref__right">
+          <section className="scatalog-ref__right settings-master-detail__detail">
             {!hasSelection ? (
               <div className="scatalog-ref__empty">
                 <b>اختر قسم/خدمة لعرض التفاصيل</b>
@@ -2129,32 +2530,26 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                   </div>
                 </div>
 
-                <div className="scatalog-ref__tabs">
-                  {(activeListMode === "sections"
-                    ? [
-                        ["variants", "التصنيفات"],
-                        ["overview", "نظرة عامة"],
-                        ["audit", "السجل"],
-                      ]
-                    : [
-                        ["overview", "نظرة عامة"],
-                        ["pricing", "السعر والمدة"],
-                        ["variants", "Variants"],
-                        ["audit", "السجل"],
-                      ]
-                  ).map(([k, label]) => (
-                    <button
-                      key={k}
-                      type="button"
-                      className={`scatalog-ref__tab ${
-                        activeTab === (k as DetailsTab) ? "active" : ""
-                      }`}
-                      onClick={() => setActiveTab(k as DetailsTab)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <SettingsTabs
+                  className="scatalog-ref__tabs"
+                  variant="pills"
+                  activeId={activeTab}
+                  onChange={(id) => setActiveTab(id as DetailsTab)}
+                  items={
+                    activeListMode === "sections"
+                      ? [
+                          { id: "variants", title: "التصنيفات" },
+                          { id: "overview", title: "نظرة عامة" },
+                          { id: "audit", title: "السجل" },
+                        ]
+                      : [
+                          { id: "overview", title: "نظرة عامة" },
+                          { id: "pricing", title: "السعر والمدة" },
+                          { id: "variants", title: "Variants" },
+                          { id: "audit", title: "السجل" },
+                        ]
+                  }
+                />
 
                 <div className="scatalog-ref__content">
                   {activeListMode === "sections" && selectedSectionLive && (
@@ -2824,12 +3219,26 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               )}
           </section>
         </div>
+        )}
 
-        {renderPackageComposer()}
+        {activeCatalogPanel === "packages" ? (
+          <SettingsSection
+            eyebrow="02"
+            title="باقات الجلسات"
+            hint="إنشاء وتعديل الباقات من نفس النموذج مع قائمة الخدمات المتاحة."
+            className="scatalog-work-panel"
+          >
+            {renderPackageComposer()}
+          </SettingsSection>
+        ) : null}
 
-        <div className="scatalog-ref__season">
-          <div className="scatalog-ref__subhead">
-            <b>موسم الأسعار</b>
+        {activeCatalogPanel === "season" ? (
+          <SettingsSection
+            eyebrow="03"
+            title="موسم الأسعار"
+            hint="حدد فترة الموسم لتفعيل أسعار موسمية للخدمات بدون خلطها مع إدارة الأقسام."
+            className="scatalog-work-panel"
+            actions={
             <button
               type="button"
               className={`exp-btn primary ${
@@ -2840,7 +3249,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             >
               حفظ الموسم
             </button>
-          </div>
+            }
+          >
           <label className="scatalog-ref__check">
             <input
               className="settings-check"
@@ -2872,7 +3282,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
               />
             </div>
           </div>
-        </div>
+          </SettingsSection>
+        ) : null}
       </div>
     </div>
   );

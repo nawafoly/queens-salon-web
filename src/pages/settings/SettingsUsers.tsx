@@ -1,8 +1,9 @@
 // ✅ src/pages/settings/SettingsUsers.tsx
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import {
+  getIdTokenResult,
   onAuthStateChanged,
   createUserWithEmailAndPassword,
   getAuth,
@@ -23,6 +24,7 @@ import {
 
 import { auth, db } from "../../services/firebase";
 import { writeAuditLog } from "../../services/logService";
+import { can, type Permission } from "../../helpers/permissions";
 import {
   findStaffMatchesForUser,
   listStaffLinkRows,
@@ -30,10 +32,12 @@ import {
   softDeleteLinkedStaffByUser,
   type AccountUserLinkRow,
 } from "../../services/staffAccountLinkService";
+import { SettingsPageHeader, SettingsState, SettingsStats } from "./SettingsFrame";
 
 import "../../styles/DashboardModals.css";
 import "../../styles/stylesSettings/SettingsCatalog.css"; // ✅ NEW CSS
 import "../../styles/stylesSettings/DashboardSettings.css";
+import "../../styles/stylesSettings/SettingsUsers.css";
 
 /* =========================
    Roles helpers
@@ -102,23 +106,99 @@ type UserRow = {
   displayName: string;
   role: UiRole;
   active: boolean;
+  notes?: string;
   linkedEmployeeDocId?: string;
   employeeId?: string;
   deletedAt?: any;
   createdAt?: any;
+  updatedAt?: any;
 };
 
-export default function SettingsUsers() {
-  const navigate = useNavigate();
+type EditUserDraft = {
+  uid: string;
+  displayName: string;
+  email: string;
+  phone: string;
+  role: UiRole;
+  active: boolean;
+  notes: string;
+};
 
-  const [uiRole, setUiRole] = useState<UiRole>("guest");
-  const [authLoading, setAuthLoading] = useState(true);
+const PERMISSION_META: Array<{ key: Permission; label: string; hint: string }> = [
+  { key: "BOOKINGS_VIEW", label: "عرض لوحة الحجوزات", hint: "الدخول على قائمة الحجوزات ومتابعة الحالات." },
+  { key: "BOOKINGS_UPDATE_STATUS", label: "تحديث حالة الحجز", hint: "تغيير الحالة وإدارة مرحلة التنفيذ." },
+  { key: "BOOKINGS_ADD_NOTES", label: "إضافة ملاحظات", hint: "تسجيل ملاحظات تشغيلية داخل الحجز." },
+  { key: "EMPLOYEES_MANAGE", label: "إدارة الموظفات", hint: "عرض وتعديل ملفات الموظفات وبياناتهن." },
+  { key: "SERVICES_MANAGE", label: "إدارة الخدمات", hint: "تعديل الأقسام والخدمات والكتالوج." },
+  { key: "OFFERS_MANAGE", label: "إدارة العروض", hint: "إنشاء وتحديث العروض الترويجية." },
+  { key: "REPORTS_VIEW", label: "عرض التقارير", hint: "الوصول إلى ملخصات الأداء والتقارير." },
+  { key: "SETTINGS_MANAGE", label: "إدارة الإعدادات", hint: "ضبط إعدادات المنصة والتشغيل." },
+  { key: "USERS_MANAGE", label: "إدارة الحسابات", hint: "إنشاء الحسابات وتعديل صلاحياتها." },
+];
+
+const ROLE_LABELS: Record<UiRole, string> = {
+  owner: "المالك",
+  admin: "الإدارة",
+  hr: "الموارد البشرية",
+  reception: "الاستقبال",
+  staff: "الموظفات",
+  pending: "قيد المراجعة",
+  client: "عميلة",
+  guest: "ضيف",
+};
+
+const ROLE_TONES: Record<UiRole, string> = {
+  owner: "gold",
+  admin: "amber",
+  hr: "mint",
+  reception: "blue",
+  staff: "slate",
+  pending: "gray",
+  client: "gray",
+  guest: "gray",
+};
+
+type SettingsUsersProps = {
+  initialRole?: UiRole | string;
+  authReady?: boolean;
+  allowAdminManageUsers?: boolean;
+};
+
+export default function SettingsUsers({
+  initialRole,
+  authReady,
+  allowAdminManageUsers: allowAdminManageUsersOverride,
+}: SettingsUsersProps = {}) {
+  const location = useLocation();
+  const isAdminShell = location.pathname.startsWith("/admin");
+  const pageTitle = isAdminShell ? "إدارة الحسابات الإدارية" : "إدارة الحسابات";
+  const pageHint = isAdminShell
+    ? "مراجعة الحسابات الإدارية وصلاحياتها من لوحة الموارد البشرية."
+    : "إنشاء حسابات الموظفات ومراجعة الصلاحيات من تبويب الإعدادات.";
+
+  const [uiRole, setUiRole] = useState<UiRole>(mapFirestoreRoleToUi(initialRole ?? "guest"));
+  const [authLoading, setAuthLoading] = useState(() => (typeof authReady === "boolean" ? !authReady : true));
+  const authRequestIdRef = useRef(0);
+  const authResolvedRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof initialRole === "string") {
+      setUiRole(mapFirestoreRoleToUi(initialRole));
+    }
+  }, [initialRole]);
+
+  useEffect(() => {
+    if (typeof authReady === "boolean") {
+      setAuthLoading(!authReady);
+    }
+  }, [authReady]);
 
   const isOwner = uiRole === "owner";
   const isAdmin = uiRole === "admin";
+  const isHr = uiRole === "hr";
 
   // ✅ نقرأ allowAdminManageUsers من localStorage لكن “يتحدّث” مع settingsChanged
-  const [allowAdminManageUsers, setAllowAdminManageUsers] = useState(false);
+  const [allowAdminManageUsersState, setAllowAdminManageUsersState] = useState(false);
 
   const readAllowAdminManageUsers = () => {
     try {
@@ -132,29 +212,46 @@ export default function SettingsUsers() {
   };
 
   useEffect(() => {
+    if (typeof allowAdminManageUsersOverride === "boolean") {
+      setAllowAdminManageUsersState(allowAdminManageUsersOverride);
+      return;
+    }
+
     // init
-    setAllowAdminManageUsers(readAllowAdminManageUsers());
+    setAllowAdminManageUsersState(readAllowAdminManageUsers());
 
     // live updates (Dashboard يرسل settingsChanged)
     const onSettingsChanged = () => {
-      setAllowAdminManageUsers(readAllowAdminManageUsers());
+      setAllowAdminManageUsersState(readAllowAdminManageUsers());
     };
     window.addEventListener("settingsChanged", onSettingsChanged);
     return () => window.removeEventListener("settingsChanged", onSettingsChanged);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [allowAdminManageUsersOverride]);
+
+  const allowAdminManageUsers =
+    typeof allowAdminManageUsersOverride === "boolean"
+      ? allowAdminManageUsersOverride
+      : allowAdminManageUsersState;
 
   const canManageUsers = useMemo(() => {
-    return isOwner || (isAdmin && allowAdminManageUsers);
-  }, [isOwner, isAdmin, allowAdminManageUsers]);
+    return isOwner || isHr || (isAdmin && allowAdminManageUsers);
+  }, [isOwner, isHr, isAdmin, allowAdminManageUsers]);
 
   const [users, setUsers] = useState<UserRow[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<UiRole | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "pending">("all");
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editDraft, setEditDraft] = useState<EditUserDraft | null>(null);
 
   const [createForm, setCreateForm] = useState({
     displayName: "",
     email: "",
     password: "",
+    phone: "",
+    notes: "",
     role: "staff" as UiRole,
   });
 
@@ -184,6 +281,43 @@ export default function SettingsUsers() {
     setCreateMsg(msg);
     if (ms > 0) setTimeout(() => setCreateMsg(""), ms);
   };
+
+  function getUserState(row: UserRow) {
+    if (row.role === "pending") return "pending" as const;
+    return row.active !== false ? "active" as const : "inactive" as const;
+  }
+
+  function getRoleLabel(role: UiRole) {
+    return ROLE_LABELS[role] || ROLE_LABELS.guest;
+  }
+
+  function getRoleTone(role: UiRole) {
+    return ROLE_TONES[role] || ROLE_TONES.guest;
+  }
+
+  function formatDate(value: any) {
+    if (!value) return "—";
+    try {
+      const date =
+        typeof value?.toDate === "function"
+          ? value.toDate()
+          : value?.seconds
+            ? new Date(value.seconds * 1000)
+            : new Date(value);
+      if (Number.isNaN(date.getTime())) return "—";
+      return new Intl.DateTimeFormat("ar-SA", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(date);
+    } catch {
+      return "—";
+    }
+  }
+
+  function canEditTargetUser(row?: UserRow | null) {
+    if (!row) return false;
+    return row.role !== "owner" || isOwner;
+  }
 
   function toAccountUserLinkRow(row: Partial<UserRow> & { uid: string }): AccountUserLinkRow {
     return {
@@ -326,10 +460,12 @@ export default function SettingsUsers() {
           displayName: String(x?.displayName || x?.name || ""),
           role: mapFirestoreRoleToUi(x?.role),
           active: x?.active !== false,
+          notes: String(x?.notes || x?.memo || ""),
           linkedEmployeeDocId: String(x?.linkedEmployeeDocId || ""),
           employeeId: String(x?.employeeId || ""),
           deletedAt: x?.deletedAt,
           createdAt: x?.createdAt,
+          updatedAt: x?.updatedAt,
         };
         const linkedStaff = findStaffMatchesForUser(toAccountUserLinkRow(baseRow), staffRows)[0] as any;
         return {
@@ -372,6 +508,8 @@ export default function SettingsUsers() {
     const displayName = createForm.displayName.trim();
     const email = createForm.email.trim().toLowerCase();
     const password = createForm.password.trim();
+    const phone = createForm.phone.trim();
+    const notes = createForm.notes.trim();
     const role = createForm.role;
 
     setCreateMsg("");
@@ -407,6 +545,8 @@ export default function SettingsUsers() {
         {
           email,
           displayName,
+          phone,
+          notes,
           role: toFirestoreRole(role),
           active: true,
           createdAt: serverTimestamp(),
@@ -423,6 +563,7 @@ export default function SettingsUsers() {
             uid,
             email,
             displayName,
+            phone,
             role,
             active: true,
             linkedEmployeeDocId: uid,
@@ -458,7 +599,9 @@ export default function SettingsUsers() {
       });
 
       toastMsg("✅ تم إنشاء الحساب بنجاح", 1800);
-      setCreateForm({ displayName: "", email: "", password: "", role: "staff" });
+      setCreateForm({ displayName: "", email: "", password: "", phone: "", notes: "", role: "staff" });
+      setCreateOpen(false);
+      setSelectedUserId(uid);
 
       await loadUsers();
     } catch (e: any) {
@@ -481,11 +624,16 @@ export default function SettingsUsers() {
       return;
     }
 
+    const row = users.find((x) => x.uid === uid);
+    if (!canEditTargetUser(row)) {
+      toastMsg("❌ تعديل حسابات المالك محجوز للمالك نفسه", 2400);
+      return;
+    }
+
     // ✅ pending => active false / غير pending => active true
     const nextActive = newRole !== "pending";
 
     try {
-      const row = users.find((x) => x.uid === uid);
       const oldRole = String(row?.role || "").trim();
       const oldActive = row?.active !== false;
 
@@ -557,8 +705,13 @@ export default function SettingsUsers() {
       return;
     }
 
+    const row = users.find((x) => x.uid === uid);
+    if (!canEditTargetUser(row)) {
+      toastMsg("❌ تعديل حسابات المالك محجوز للمالك نفسه", 2400);
+      return;
+    }
+
     try {
-      const row = users.find((x) => x.uid === uid);
       const oldActive = row?.active !== false;
 
       await setDoc(
@@ -621,8 +774,13 @@ export default function SettingsUsers() {
       return;
     }
 
+    const row = users.find((x) => x.uid === uid);
+    if (!canEditTargetUser(row)) {
+      toastMsg("❌ تعديل حسابات المالك محجوز للمالك نفسه", 2400);
+      return;
+    }
+
     try {
-      const row = users.find((x) => x.uid === uid);
       const oldName = String(row?.displayName || "").trim();
 
       await setDoc(
@@ -672,35 +830,217 @@ export default function SettingsUsers() {
     }
   };
 
+  const saveEditedUser = async () => {
+    if (!canManageUsers || !editDraft) return;
+
+    const row = users.find((x) => x.uid === editDraft.uid);
+    if (!row) return;
+
+    if (!canEditTargetUser(row)) {
+      toastMsg("❌ تعديل حسابات المالك محجوز للمالك نفسه", 2400);
+      return;
+    }
+
+    if ((auth as any)?.currentUser?.uid === editDraft.uid) {
+      toastMsg("❌ لا يمكن تعديل حسابك من هنا", 2400);
+      return;
+    }
+
+    const displayName = editDraft.displayName.trim();
+    const phone = editDraft.phone.trim();
+    const notes = editDraft.notes.trim();
+    const role = editDraft.role;
+    const active = role === "pending" ? false : editDraft.active !== false;
+
+    if (!displayName) {
+      toastMsg("❌ الاسم لا يمكن أن يكون فارغًا", 2000);
+      return;
+    }
+
+    if (role === "owner" && !isOwner) {
+      toastMsg("❌ فقط المالك يقدر يمنح Owner", 2200);
+      return;
+    }
+
+    try {
+      setUsersLoading(true);
+
+      const nextRole = toFirestoreRole(role);
+      const staffId = await syncLinkedStaffFromUser({
+        user: {
+          uid: row.uid,
+          email: row.email || editDraft.email,
+          phone,
+          displayName,
+          role,
+          active,
+          linkedEmployeeDocId: row.linkedEmployeeDocId || row.employeeId || "",
+          employeeId: row.employeeId || row.linkedEmployeeDocId || "",
+        },
+        role,
+        active,
+        displayName,
+        createIfMissing: isEmployeeRole(role),
+      });
+
+      await setDoc(
+        doc(db, ...USERS_COLLECTION, row.uid),
+        {
+          displayName,
+          phone,
+          notes,
+          role: nextRole,
+          active,
+          linkedEmployeeDocId: staffId || row.linkedEmployeeDocId || row.employeeId || "",
+          employeeId: staffId || row.employeeId || row.linkedEmployeeDocId || "",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.uid === row.uid
+            ? {
+                ...u,
+                displayName,
+                phone,
+                notes,
+                role,
+                active,
+                linkedEmployeeDocId: staffId || u.linkedEmployeeDocId,
+                employeeId: staffId || u.employeeId,
+              }
+            : u
+        )
+      );
+
+      void writeAuditLog({
+        salonId: SALON_ID,
+        action: "user_updated",
+        entityType: "user",
+        entityId: row.uid,
+        description: "تم حفظ تعديلات الحساب",
+        source: "dashboard",
+        before: {
+          displayName: row.displayName || null,
+          phone: row.phone || null,
+          role: row.role,
+          active: row.active,
+          notes: row.notes || null,
+        },
+        after: {
+          displayName,
+          phone,
+          role,
+          active,
+          notes: notes || null,
+        },
+        meta: {
+          field: "profile",
+        },
+      });
+
+      toastMsg("✅ تم حفظ التعديلات", 1600);
+      setEditDraft(null);
+    } catch (e) {
+      console.error("saveEditedUser error:", e);
+      toastMsg("❌ تعذر حفظ التعديلات (Rules?)", 2600);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const openEditUser = (row: UserRow) => {
+    setCreateMsg("");
+    setEditDraft({
+      uid: row.uid,
+      displayName: row.displayName || "",
+      email: row.email || "",
+      phone: row.phone || "",
+      role: row.role,
+      active: row.active !== false,
+      notes: row.notes || "",
+    });
+  };
+
   /* =========================
      Auth + Role
   ========================= */
   useEffect(() => {
+    if (typeof initialRole === "string" && typeof authReady === "boolean") {
+      authResolvedRef.current = true;
+      return;
+    }
+
     const unsub = onAuthStateChanged(auth, async (user) => {
-      setAuthLoading(true);
+      const requestId = ++authRequestIdRef.current;
+      if (!authResolvedRef.current) setAuthLoading(true);
       try {
         if (!user) {
           setUiRole("guest");
           return;
         }
 
-        const snap = await getDoc(doc(db, ...USERS_COLLECTION, user.uid));
-        if (!snap.exists()) {
-          setUiRole("guest");
-          return;
-        }
+        const [tokenResult, userSnap, adminSnap] = await Promise.all([
+          getIdTokenResult(user).catch((error) => {
+            console.error("SettingsUsers token load error:", error);
+            return null;
+          }),
+          getDoc(doc(db, ...USERS_COLLECTION, user.uid)).catch((error) => {
+            console.error("SettingsUsers user load error:", error);
+            return null;
+          }),
+          getDoc(doc(db, "salons", SALON_ID, "admin_users", user.uid)).catch((error) => {
+            console.error("SettingsUsers admin load error:", error);
+            return null;
+          }),
+        ]);
 
-        setUiRole(mapFirestoreRoleToUi((snap.data() as any)?.role));
+        const tokenRole = mapFirestoreRoleToUi((tokenResult as any)?.claims?.role || "");
+        const userRole =
+          userSnap && "exists" in userSnap && userSnap.exists()
+            ? mapFirestoreRoleToUi((userSnap.data() as any)?.role)
+            : "guest";
+        const adminRole =
+          adminSnap && "exists" in adminSnap && adminSnap.exists()
+            ? mapFirestoreRoleToUi((adminSnap.data() as any)?.role)
+            : "guest";
+
+        const rolePriority: UiRole[] = [
+          userRole,
+          adminRole,
+          tokenRole,
+          "owner",
+          "admin",
+          "hr",
+          "reception",
+          "staff",
+          "pending",
+        ];
+        const resolvedRole =
+          rolePriority.find((r) => r === "owner") ||
+          rolePriority.find((r) => r === "admin") ||
+          rolePriority.find((r) => r === "hr") ||
+          rolePriority.find((r) => r === "reception") ||
+          rolePriority.find((r) => r === "staff") ||
+          rolePriority.find((r) => r === "pending") ||
+          "guest";
+
+        setUiRole(resolvedRole);
       } catch (e) {
         console.error("SettingsUsers role load error:", e);
         setUiRole("guest");
       } finally {
-        setAuthLoading(false);
+        if (authRequestIdRef.current === requestId) {
+          authResolvedRef.current = true;
+          setAuthLoading(false);
+        }
       }
     });
 
     return () => unsub();
-  }, []);
+  }, [initialRole, authReady]);
 
   useEffect(() => {
     if (!canManageUsers) return;
@@ -713,6 +1053,11 @@ export default function SettingsUsers() {
 
     const row = users.find((x) => x.uid === uid);
     if (!row) return;
+
+    if (!canEditTargetUser(row)) {
+      toastMsg("❌ حذف حسابات المالك محجوز للمالك نفسه", 2400);
+      return;
+    }
 
     if ((auth as any)?.currentUser?.uid === uid) {
       toastMsg("❌ لا يمكن حذف حسابك من هنا", 2400);
@@ -787,16 +1132,102 @@ export default function SettingsUsers() {
     }
   };
 
+  const visibleUsers = useMemo(() => {
+    const search = searchQuery.trim().toLowerCase();
+
+    return [...users]
+      .filter((user) => {
+        if (roleFilter !== "all" && user.role !== roleFilter) return false;
+
+        const userState = getUserState(user);
+        if (statusFilter !== "all" && userState !== statusFilter) return false;
+
+        if (!search) return true;
+
+        const haystack = [
+          user.displayName,
+          user.email,
+          user.phone,
+          user.uid,
+          user.notes,
+          user.role,
+          user.linkedEmployeeDocId,
+          user.employeeId,
+        ]
+          .map((part) => cleanText(part).toLowerCase())
+          .join(" | ");
+
+        return haystack.includes(search);
+      })
+      ;
+  }, [users, roleFilter, searchQuery, statusFilter]);
+
+  const selectedUser = useMemo(() => {
+    if (!selectedUserId) return visibleUsers[0] || null;
+    return visibleUsers.find((user) => user.uid === selectedUserId) || visibleUsers[0] || null;
+  }, [selectedUserId, visibleUsers]);
+
+  const selectedPermissions = useMemo(() => {
+    if (!selectedUser) return [];
+    return PERMISSION_META.filter((item) => can(item.key, selectedUser.role as any));
+  }, [selectedUser]);
+
+  const stats = useMemo(() => {
+    const total = users.length;
+    const active = users.filter((user) => getUserState(user) === "active").length;
+    const inactive = users.filter((user) => getUserState(user) === "inactive").length;
+    const pending = users.filter((user) => getUserState(user) === "pending").length;
+    const editors = users.filter((user) => ["owner", "hr", "admin"].includes(user.role)).length;
+
+    return { total, active, inactive, pending, editors };
+  }, [users]);
+
+  useEffect(() => {
+    if (!visibleUsers.length) {
+      if (selectedUserId) setSelectedUserId("");
+      return;
+    }
+
+    const hasSelection = visibleUsers.some((user) => user.uid === selectedUserId);
+    if (!selectedUserId || !hasSelection) {
+      setSelectedUserId(visibleUsers[0].uid);
+    }
+  }, [selectedUserId, visibleUsers]);
+
+  useEffect(() => {
+    if (!editDraft) return;
+    if (!users.some((user) => user.uid === editDraft.uid)) {
+      setEditDraft(null);
+    }
+  }, [editDraft, users]);
+
+  const selectedState = selectedUser ? getUserState(selectedUser) : "inactive";
+  const selectedStateLabel =
+    selectedState === "active"
+      ? "نشطة"
+      : selectedState === "pending"
+        ? "قيد المراجعة"
+        : "غير نشطة";
+  const selectedRoleLabel = selectedUser ? getRoleLabel(selectedUser.role) : "—";
+  const selectedRoleTone = selectedUser ? getRoleTone(selectedUser.role) : "gray";
+  const selectedPermissionCount = selectedPermissions.length;
+  const createPermissionCount = PERMISSION_META.filter((item) => can(item.key, createForm.role as any)).length;
+  const currentUid = String((auth as any)?.currentUser?.uid || "");
+  const selectedIsSelf = Boolean(selectedUser && selectedUser.uid === currentUid);
+  const selectedCanMutate = Boolean(selectedUser && !selectedIsSelf && canEditTargetUser(selectedUser));
+
   /* =========================
      Render
   ========================= */
   if (authLoading) {
     return (
-      <div className="dashboard-section settings-page">
-        <div className="settings-wrap">
-          <div className="settings-card">
-            <h3 className="settings-title">جاري التحميل…</h3>
-          </div>
+      <div className="accounts-page accounts-page--settings" dir="rtl">
+        <div className="accounts-shell accounts-shell--loading">
+          <SettingsState
+            title="جاري تحميل الحسابات…"
+            hint="نقرأ الجلسة والصلاحيات ثم نحمّل القائمة المرتبطة بالحساب الحالي."
+            loading
+          />
         </div>
       </div>
     );
@@ -804,209 +1235,556 @@ export default function SettingsUsers() {
 
   if (!canManageUsers) {
     return (
-      <div className="dashboard-section settings-page">
-        <div className="settings-wrap">
-          <h3>غير مصرح</h3>
-          <p>هذه الصفحة مخصصة للإدارة. (Owner أو Admin مع تفعيل السماح لإدارة الحسابات)</p>
+      <div className="accounts-page accounts-page--settings" dir="rtl">
+        <div className="accounts-shell">
+          <SettingsState
+            title="غير مصرح"
+            hint={
+              <>
+                هذه الصفحة مخصصة للمالك وHR، أو للأدمن إذا كان خيار إدارة الحسابات مفعّلًا من إعدادات
+                النظام.
+                <br />
+                تأكد من دور الحساب داخل <code>salons/main/users/{`{uid}`}</code> أو انتقل من لوحة الموارد
+                البشرية إذا كنت HR.
+              </>
+            }
+          />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="dashboard-section settings-page">
-      <div className="settings-wrap">
-        <div className="settings-header">
-          <div>
-            <h1>إدارة الحسابات</h1>
-            <p className="settings-hint">إنشاء حسابات الموظفات + تعديل الأدوار (عرض حسابات @malikat.com فقط)</p>
-          </div>
-
-          <div className="settings-save">
-            <button className="dash-btn" type="button" onClick={() => navigate("/dashboard/settings/advanced")}>
-              رجوع
-            </button>
-
-            <button
-              type="button"
-              className={`exp-btn ${usersLoading ? "is-disabled" : ""}`}
-              disabled={usersLoading}
-              onClick={() => void loadUsers({ runRepair: true })}
-            >
-              تحديث القائمة
-            </button>
-          </div>
-        </div>
-
-        {createMsg && (
-          <div className="settings-note" style={{ marginBottom: 10 }}>
-            {createMsg}
-          </div>
-        )}
-
-        <div className="settings-card" style={{ marginTop: 0 }}>
-          <h3 className="settings-title">إنشاء حساب جديد</h3>
-
-          <div className="settings-grid" style={{ marginTop: 10 }}>
-            <div className="settings-field">
-              <label>الاسم</label>
-              <input
-                className="settings-input"
-                value={createForm.displayName}
-                onChange={(e) => setCreateForm((p) => ({ ...p, displayName: e.target.value }))}
-                placeholder="مثال: أمل"
-                disabled={createLoading}
-              />
-            </div>
-
-            <div className="settings-field">
-              <label>الإيميل</label>
-              <input
-                className="settings-input"
-                value={createForm.email}
-                onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))}
-                placeholder="name@malikat.com"
-                disabled={createLoading}
-              />
-            </div>
-
-            <div className="settings-field">
-              <label>كلمة المرور</label>
-              <input
-                className="settings-input"
-                type="password"
-                value={createForm.password}
-                onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
-                placeholder="******"
-                disabled={createLoading}
-              />
-            </div>
-
-            <div className="settings-field">
-              <label>الدور</label>
-              <select
-                className="settings-input"
-                value={createForm.role}
-                onChange={(e) => setCreateForm((p) => ({ ...p, role: e.target.value as UiRole }))}
-                disabled={createLoading}
+    <div className="accounts-page accounts-page--settings" dir="rtl">
+      <div className="accounts-shell">
+        <SettingsPageHeader
+          eyebrow="الوحدة 03"
+          title={pageTitle}
+          hint={pageHint}
+          badges={
+            <>
+              <span className="settings-shell__pill settings-shell__pill--outline">المصدر: salons/main/users</span>
+              <span className={`accounts-chip accounts-chip--${selectedRoleTone}`}>{getRoleLabel(uiRole)}</span>
+            </>
+          }
+          actions={
+            <>
+              <button
+                type="button"
+                className="accounts-btn accounts-btn--primary"
+                onClick={() => {
+                  setCreateMsg("");
+                  setCreateOpen(true);
+                }}
               >
-                {isOwner && <option value="owner">Owner</option>}
-                <option value="admin">Admin</option>
-                <option value="hr">HR</option>
-                <option value="reception">Reception</option>
-                <option value="staff">Staff</option>
-              </select>
+                حساب إداري جديد <span aria-hidden="true">+</span>
+              </button>
+              <button
+                type="button"
+                className="accounts-btn"
+                disabled={usersLoading}
+                onClick={() => void loadUsers({ runRepair: true })}
+              >
+                {usersLoading ? "جارِ التحديث..." : "تحديث القائمة"}
+              </button>
+            </>
+          }
+          compact
+        />
+
+        <SettingsStats
+          items={[
+            {
+              label: "إجمالي الحسابات",
+              value: stats.total,
+              hint: "كل الحسابات الظاهرة من مصدر البيانات.",
+            },
+            {
+              label: "نشطة",
+              value: stats.active,
+              hint: "الحسابات المفعلة حاليًا.",
+            },
+            {
+              label: "قيد المراجعة",
+              value: stats.pending,
+              hint: "الحسابات التي ما زالت Pending.",
+            },
+            {
+              label: "غير نشطة",
+              value: stats.inactive,
+              hint: "الحسابات المعطلة أو المؤرشفة.",
+            },
+          ]}
+        />
+
+        {createMsg ? <div className="accounts-banner">{createMsg}</div> : null}
+
+        <div className="accounts-workspace settings-master-detail settings-master-detail--accounts">
+          <div className="settings-card settings-master-detail__detail accounts-detail-card">
+          {selectedUser ? (
+            <>
+              <div className="accounts-panel__head">
+                <div>
+                  <span className="accounts-kicker">ملف الحساب</span>
+                  <h2>{selectedUser.displayName || "بدون اسم"}</h2>
+                  <p>{selectedUser.email || "لا يوجد بريد مرتبط"}</p>
+                </div>
+
+                <div className="accounts-panel__metric">
+                  <span>EFFECTIVE</span>
+                  <strong>{selectedPermissionCount}</strong>
+                </div>
+              </div>
+
+              <div className="accounts-profile">
+                <div className="accounts-avatar">
+                  {cleanText(selectedUser.displayName || selectedUser.email || selectedUser.uid).slice(0, 1) || "?"}
+                </div>
+
+                <div className="accounts-profile__copy">
+                  <div className="accounts-inline-tags">
+                    <span className={`accounts-chip accounts-chip--${selectedRoleTone}`}>{selectedRoleLabel}</span>
+                    <span className={`accounts-chip accounts-chip--state accounts-chip--${selectedState}`}>
+                      {selectedStateLabel}
+                    </span>
+                    <span className="accounts-chip accounts-chip--soft">ID: {selectedUser.uid}</span>
+                  </div>
+
+                  <div className="accounts-meta-grid">
+                    <div className="accounts-meta-card">
+                      <span>البريد</span>
+                      <strong>{selectedUser.email || "—"}</strong>
+                    </div>
+                    <div className="accounts-meta-card">
+                      <span>الهاتف</span>
+                      <strong>{selectedUser.phone || "—"}</strong>
+                    </div>
+                    <div className="accounts-meta-card">
+                      <span>الربط الموظفي</span>
+                      <strong>{selectedUser.linkedEmployeeDocId || selectedUser.employeeId || "—"}</strong>
+                    </div>
+                    <div className="accounts-meta-card">
+                      <span>آخر تحديث</span>
+                      <strong>{formatDate(selectedUser.updatedAt || selectedUser.createdAt)}</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="accounts-notes">
+                <div className="accounts-notes__head">
+                  <span>الملاحظات</span>
+                </div>
+                <p>{selectedUser.notes || "لا توجد ملاحظات مرتبطة بهذا الحساب."}</p>
+              </div>
+
+              <div className="accounts-permissions">
+                <div className="accounts-permissions__head">
+                  <span>الصلاحيات الفعلية</span>
+                  <small>
+                    {selectedPermissionCount} صلاحية مفعلة من أصل {PERMISSION_META.length}
+                  </small>
+                </div>
+
+                <div className="accounts-permissions__grid">
+                  {selectedPermissions.map((permission) => (
+                    <div key={permission.key} className="accounts-permission">
+                      <strong>{permission.label}</strong>
+                      <small>{permission.hint}</small>
+                    </div>
+                  ))}
+                  {!selectedPermissions.length ? (
+                    <div className="accounts-permissions__empty">
+                      هذه الحساب لا يملك صلاحيات تشغيلية مفعلة.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="accounts-actions">
+                <button
+                  type="button"
+                  className="accounts-btn accounts-btn--primary"
+                  disabled={!selectedCanMutate}
+                  onClick={() => selectedUser && openEditUser(selectedUser)}
+                  title={!selectedCanMutate ? "تعديل حسابات المالك محجوز للمالك نفسه" : "تعديل الحساب"}
+                >
+                  تعديل
+                </button>
+                <button
+                  type="button"
+                  className="accounts-btn"
+                  disabled={!selectedCanMutate}
+                  onClick={() => selectedUser && toggleUserActive(selectedUser.uid, !(selectedUser.active !== false))}
+                  title={!selectedCanMutate ? "تعديل حسابات المالك محجوز للمالك نفسه" : "تفعيل/تعطيل"}
+                >
+                  {selectedUser.active !== false ? "تعطيل" : "تفعيل"}
+                </button>
+                <button
+                  type="button"
+                  className="accounts-btn accounts-btn--danger"
+                  disabled={!selectedCanMutate || usersLoading}
+                  onClick={() => selectedUser && deleteUserAccount(selectedUser.uid)}
+                  title={!selectedCanMutate ? "تعديل حسابات المالك محجوز للمالك نفسه" : "حذف الحساب"}
+                >
+                  حذف
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="accounts-panel--detail-empty">
+              <strong>اختر حسابًا من القائمة</strong>
+              <p>سيظهر هنا ملخص الحساب وصلاحياته وحالته مع أزرار التعديل والحذف.</p>
             </div>
+          )}
           </div>
 
-          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+          <div className="settings-card accounts-sidebar-card settings-master-detail__list">
+          <div className="accounts-toolbar">
+            <label className="accounts-search">
+              <span>بحث</span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ابحث باسم الموظفة أو البريد"
+              />
+            </label>
+
+            <div className="accounts-toolbar__row">
+              <label className="accounts-filter">
+                <span>الدور</span>
+                <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as UiRole | "all")}>
+                  <option value="all">الكل</option>
+                  <option value="owner">Owner</option>
+                  <option value="admin">Admin</option>
+                  <option value="hr">HR</option>
+                  <option value="reception">Reception</option>
+                  <option value="staff">Staff</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </label>
+
+              <label className="accounts-filter">
+                <span>الحالة</span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive" | "pending")}
+                >
+                  <option value="all">الكل</option>
+                  <option value="active">نشطة</option>
+                  <option value="pending">قيد المراجعة</option>
+                  <option value="inactive">غير نشطة</option>
+                </select>
+              </label>
+            </div>
+
             <button
               type="button"
-              className={`exp-btn primary ${createLoading ? "is-disabled" : ""}`}
-              disabled={createLoading}
-              onClick={handleCreateUser}
+              className="accounts-btn accounts-btn--ghost"
+              onClick={() => {
+                setSearchQuery("");
+                setRoleFilter("all");
+                setStatusFilter("all");
+              }}
             >
-              {createLoading ? "جاري الإنشاء..." : "إنشاء الحساب"}
+              إعادة ضبط الفلاتر
             </button>
           </div>
 
-          <div className="settings-footnote">
-            * مسموح فقط إنشاء حسابات بإيميلات <b>@malikat.com</b>
-          </div>
-        </div>
+          <div className="accounts-list">
+            {usersLoading ? <div className="accounts-inline-note">تحميل الحسابات…</div> : null}
 
-        <div className="settings-card">
-          <h3 className="settings-title">الحسابات الحالية</h3>
+            {!usersLoading && !visibleUsers.length ? (
+              <div className="accounts-empty-state">
+                <strong>لا توجد نتائج</strong>
+                <p>جرّب تغيير الفلاتر أو تحديث القائمة من الأعلى.</p>
+              </div>
+            ) : null}
 
-          <div className="settings-list" style={{ marginTop: 12 }}>
-            {usersLoading ? (
-              <div className="settings-note">تحميل الحسابات…</div>
-            ) : users.length === 0 ? (
-              <div className="settings-note">لا توجد حسابات (أو لا تملك صلاحية القراءة).</div>
-            ) : (
-              users.map((u) => {
-                const isSelf = (auth as any)?.currentUser?.uid === u.uid;
+            {visibleUsers.map((row) => {
+              const state = getUserState(row);
+              const effectiveCount = PERMISSION_META.filter((permission) => can(permission.key, row.role as any)).length;
+              const isSelected = row.uid === selectedUserId;
 
-                return (
-                  <div key={u.uid} className="settings-row" style={{ alignItems: "center", gap: 10 }}>
-                    <div style={{ minWidth: 220, display: "grid" }}>
-                      <span style={{ fontWeight: 900 }}>{u.email || "بدون إيميل"}</span>
-                      <span style={{ opacity: 0.75, fontSize: 12 }}>{u.uid}</span>
+              return (
+                <button
+                  type="button"
+                  key={row.uid}
+                  className={`accounts-card ${isSelected ? "is-selected" : ""}`}
+                  onClick={() => setSelectedUserId(row.uid)}
+                >
+                  <div className="accounts-card__metric">
+                    <span>EFFECTIVE</span>
+                    <strong>{effectiveCount}</strong>
+                  </div>
+
+                  <div className="accounts-card__body">
+                    <div className="accounts-card__top">
+                      <div>
+                        <strong>{row.displayName || "بدون اسم"}</strong>
+                        <span>{row.email || "لا يوجد بريد"}</span>
+                      </div>
+
+                      <div className="accounts-card__badgeStack">
+                        <span className={`accounts-chip accounts-chip--${getRoleTone(row.role)}`}>{getRoleLabel(row.role)}</span>
+                        <span className={`accounts-chip accounts-chip--state accounts-chip--${state}`}>
+                          {state === "active" ? "نشطة" : state === "pending" ? "قيد المراجعة" : "غير نشطة"}
+                        </span>
+                      </div>
                     </div>
 
-                    <input
-                      className="settings-input"
-                      style={{ minWidth: 200 }}
-                      value={u.displayName}
-                      disabled={isSelf}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setUsers((prev) => prev.map((x) => (x.uid === u.uid ? { ...x, displayName: v } : x)));
-                      }}
-                      title={isSelf ? "لا يمكن تعديل اسم حسابك من هنا" : "اسم العرض"}
-                    />
+                    <p>{row.notes || "لا توجد ملاحظات مرتبطة بهذا الحساب."}</p>
 
-                    <button
-                      type="button"
-                      className={`exp-btn ${isSelf ? "is-disabled" : ""}`}
-                      disabled={isSelf}
-                      onClick={() => updateUserDisplayName(u.uid, u.displayName)}
-                    >
-                      حفظ الاسم
-                    </button>
-
-                    <select
-                      className="settings-input"
-                      style={{ width: 160 }}
-                      value={u.role}
-                      disabled={isSelf && u.role === "owner"}
-                      onChange={(e) => updateUserRole(u.uid, e.target.value as UiRole)}
-                      title={isSelf ? "لا يمكن تعديل دور حسابك من هنا" : "الدور"}
-                    >
-                      {isOwner && <option value="owner">Owner</option>}
-                      <option value="admin">Admin</option>
-                      <option value="hr">HR</option>
-                      <option value="reception">Reception</option>
-                      <option value="staff">Staff</option>
-                      <option value="pending">Pending</option>
-                    </select>
-
-                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
-                      <input
-                        className="settings-check"
-                        type="checkbox"
-                        checked={u.active !== false}
-                        disabled={isSelf}
-                        onChange={() => toggleUserActive(u.uid, !(u.active !== false))}
-                        title={isSelf ? "لا يمكن تعطيل حسابك من هنا" : "تفعيل/تعطيل"}
-                      />
-                      نشط
-                    </label>
-
-                    <button
-                      type="button"
-                      className={`exp-btn danger ${isSelf ? "is-disabled" : ""}`}
-                      disabled={isSelf || usersLoading}
-                      onClick={() => deleteUserAccount(u.uid)}
-                      title={isSelf ? "لا يمكن حذف حسابك من هنا" : "حذف الحساب وتعطيل الموظفة المرتبطة"}
-                    >
-                      حذف
-                    </button>
+                    <div className="accounts-card__footer">
+                      <span className="accounts-chip accounts-chip--soft">ID: {row.uid}</span>
+                      <span className="accounts-chip accounts-chip--soft">{row.phone || "بدون هاتف"}</span>
+                    </div>
                   </div>
-                );
-              })
-            )}
-          </div>
-
-          <div className="settings-footnote">
-            * يتم الحفظ في: <b>salons/main/users</b>
-            <br />
-            * إذا اخترت Staff يتم إنشاء/تحديث <b>staff_public</b> و <b>employees</b> تلقائيًا.
-            <br />
-            * القائمة هنا تعرض فقط حسابات <b>@malikat.com</b>.
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
+
+      {createOpen ? (
+        <div className="accounts-modal" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="accounts-modal__backdrop"
+            aria-label="إغلاق"
+            onClick={() => setCreateOpen(false)}
+          />
+
+          <div className="accounts-modal__card">
+            <div className="accounts-modal__head">
+              <div>
+                <span className="accounts-eyebrow">حساب جديد</span>
+                <h2>إنشاء حساب إداري جديد</h2>
+                <p>سيتم إنشاء حساب Firebase Auth ثم حفظ البيانات داخل `salons/main/users`.</p>
+              </div>
+
+              <button type="button" className="accounts-modal__close" onClick={() => setCreateOpen(false)}>
+                ×
+              </button>
+            </div>
+
+            <div className="accounts-form-grid">
+              <label className="accounts-field">
+                <span>الاسم</span>
+                <input
+                  value={createForm.displayName}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, displayName: e.target.value }))}
+                  placeholder="مثال: أ. نوف"
+                />
+              </label>
+
+              <label className="accounts-field">
+                <span>البريد</span>
+                <input
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="name@malikat.com"
+                />
+              </label>
+
+              <label className="accounts-field">
+                <span>كلمة المرور</span>
+                <input
+                  type="password"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, password: e.target.value }))}
+                  placeholder="******"
+                />
+              </label>
+
+              <label className="accounts-field">
+                <span>الهاتف</span>
+                <input
+                  value={createForm.phone}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  placeholder="05xxxxxxxx"
+                />
+              </label>
+
+              <label className="accounts-field">
+                <span>الدور</span>
+                <select
+                  value={createForm.role}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, role: e.target.value as UiRole }))}
+                >
+                  {isOwner ? <option value="owner">Owner</option> : null}
+                  <option value="admin">Admin</option>
+                  <option value="hr">HR</option>
+                  <option value="reception">Reception</option>
+                  <option value="staff">Staff</option>
+                </select>
+              </label>
+
+              <label className="accounts-field accounts-field--wide">
+                <span>ملاحظات</span>
+                <textarea
+                  value={createForm.notes}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="ملاحظات تشغيلية أو تعليمات خاصة..."
+                />
+              </label>
+            </div>
+
+            <div className="accounts-permission-preview">
+              <span>الصلاحيات المتوقعة لهذا الدور</span>
+              <div className="accounts-permission-preview__chips">
+                {PERMISSION_META.filter((item) => can(item.key, createForm.role as any)).map((permission) => (
+                  <span key={permission.key} className="accounts-permission-preview__chip">
+                    {permission.label}
+                  </span>
+                ))}
+                {!createPermissionCount ? <span className="accounts-permission-preview__empty">لا توجد صلاحيات</span> : null}
+              </div>
+            </div>
+
+            <div className="accounts-modal__footer">
+              <button
+                type="button"
+                className="accounts-btn"
+                onClick={() => {
+                  setCreateOpen(false);
+                  setCreateForm({ displayName: "", email: "", password: "", phone: "", notes: "", role: "staff" });
+                }}
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                className="accounts-btn accounts-btn--primary"
+                disabled={createLoading}
+                onClick={handleCreateUser}
+              >
+                {createLoading ? "جاري الإنشاء..." : "حفظ الحساب"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editDraft ? (
+        <div className="accounts-modal" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="accounts-modal__backdrop"
+            aria-label="إغلاق"
+            onClick={() => setEditDraft(null)}
+          />
+
+          <div className="accounts-modal__card accounts-modal__card--edit">
+            <div className="accounts-modal__head">
+              <div>
+                <span className="accounts-eyebrow">تعديل حساب</span>
+                <h2>تعديل {editDraft.displayName || editDraft.email || "الحساب"}</h2>
+                <p>يمكن تعديل الاسم، الهاتف، الدور، الحالة، والملاحظات. البريد ظاهر فقط لأنه مرتبط بحساب Firebase Auth.</p>
+              </div>
+
+              <button type="button" className="accounts-modal__close" onClick={() => setEditDraft(null)}>
+                ×
+              </button>
+            </div>
+
+            <div className="accounts-form-grid">
+              <label className="accounts-field">
+                <span>الاسم</span>
+                <input
+                  value={editDraft.displayName}
+                  onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, displayName: e.target.value } : prev))}
+                />
+              </label>
+
+              <label className="accounts-field">
+                <span>البريد</span>
+                <input value={editDraft.email} readOnly />
+              </label>
+
+              <label className="accounts-field">
+                <span>الهاتف</span>
+                <input
+                  value={editDraft.phone}
+                  onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, phone: e.target.value } : prev))}
+                />
+              </label>
+
+              <label className="accounts-field">
+                <span>الدور</span>
+                <select
+                  value={editDraft.role}
+                  onChange={(e) =>
+                    setEditDraft((prev) => (prev ? { ...prev, role: e.target.value as UiRole } : prev))
+                  }
+                  disabled={!canEditTargetUser(selectedUser)}
+                >
+                  {isOwner ? <option value="owner">Owner</option> : null}
+                  <option value="admin">Admin</option>
+                  <option value="hr">HR</option>
+                  <option value="reception">Reception</option>
+                  <option value="staff">Staff</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </label>
+
+              <label className="accounts-field accounts-field--switch">
+                <span>الحالة</span>
+                <div className="accounts-switch">
+                  <input
+                    type="checkbox"
+                    checked={editDraft.active}
+                    onChange={(e) =>
+                      setEditDraft((prev) => (prev ? { ...prev, active: e.target.checked } : prev))
+                    }
+                    disabled={!canEditTargetUser(selectedUser)}
+                  />
+                  <span>{editDraft.active ? "نشط" : "غير نشط"}</span>
+                </div>
+              </label>
+
+              <label className="accounts-field accounts-field--wide">
+                <span>ملاحظات</span>
+                <textarea
+                  value={editDraft.notes}
+                  onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, notes: e.target.value } : prev))}
+                />
+              </label>
+            </div>
+
+            <div className="accounts-permission-preview">
+              <span>الصلاحيات الفعلية حسب الدور الحالي</span>
+              <div className="accounts-permission-preview__chips">
+                {PERMISSION_META.filter((item) => can(item.key, editDraft.role as any)).map((permission) => (
+                  <span key={permission.key} className="accounts-permission-preview__chip">
+                    {permission.label}
+                  </span>
+                ))}
+                {!PERMISSION_META.filter((item) => can(item.key, editDraft.role as any)).length ? (
+                  <span className="accounts-permission-preview__empty">لا توجد صلاحيات</span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="accounts-modal__footer">
+              <button type="button" className="accounts-btn" onClick={() => setEditDraft(null)}>
+                إلغاء
+              </button>
+              <button
+                type="button"
+                className="accounts-btn accounts-btn--primary"
+                disabled={usersLoading}
+                onClick={() => void saveEditedUser()}
+              >
+                {usersLoading ? "جاري الحفظ..." : "حفظ التعديلات"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
     </div>
   );
 }

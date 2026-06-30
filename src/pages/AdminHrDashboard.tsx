@@ -20,6 +20,7 @@ import { resolveDashboardLandingPath } from "../helpers/routePaths";
 import { logoutFirebase } from "../services/authService";
 import RecruitmentApplicationsPage from "./hr/RecruitmentApplications";
 import CreateStaffAccountPage from "./hr/CreateStaffAccount";
+import SettingsUsersPage from "./settings/SettingsUsers";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
 import DashboardEmployees from "./DashboardEmployees";
@@ -439,6 +440,11 @@ function HrOverview({
                   <strong>طلبات التوظيف</strong>
                   <span>مراجعة المرشحين وتحويلهم إلى حسابات داخلية.</span>
                 </button>
+                <button className="hr-action-card" type="button" onClick={() => onNavigate("/admin/users")}>
+                  <FontAwesomeIcon icon={faUserShield} />
+                  <strong>إدارة الحسابات</strong>
+                  <span>إنشاء الحسابات ومراجعة الصلاحيات والتعديل السريع.</span>
+                </button>
                 <button className="hr-action-card" type="button" onClick={() => onNavigate("/admin/messages")}>
                   <FontAwesomeIcon icon={faEnvelope} />
                   <strong>الرسائل</strong>
@@ -703,6 +709,10 @@ export default function AdminHrDashboard() {
             <FontAwesomeIcon icon={faUserShield} />
             <span>إنشاء حساب موظف</span>
           </NavLink>
+          <NavLink to="/admin/users" className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}>
+            <FontAwesomeIcon icon={faUsers} />
+            <span>إدارة الحسابات</span>
+          </NavLink>
         </nav>
 
         <div className="hr-shell-note">
@@ -756,6 +766,16 @@ export default function AdminHrDashboard() {
             <Route path="employees" element={<DashboardEmployees />} />
             <Route path="messages" element={<EmployeeMessagesPage session={session} />} />
             <Route path="files" element={<EmployeeFilesPage session={session} />} />
+            <Route
+              path="users"
+              element={
+                <SettingsUsersPage
+                  initialRole={session.role}
+                  authReady={true}
+                  allowAdminManageUsers={false}
+                />
+              }
+            />
             <Route path="create-staff" element={<CreateStaffAccountPage session={session} />} />
             <Route path="*" element={<Navigate to="overview" replace />} />
           </Routes>

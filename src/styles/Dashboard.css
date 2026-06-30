@@ -742,3 +742,96 @@
   }
 }
 
+/* =========================
+   Dashboard Sidebar Refresh
+========================= */
+.dashboard-sidebar {
+  background:
+    radial-gradient(420px 180px at 20% 0%, rgba(64, 1, 13, 0.08), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(245, 245, 244, 0.94) 100%) !important;
+  border-radius: 30px !important;
+  padding: 16px 12px !important;
+  box-shadow: 0 22px 48px rgba(13, 13, 13, 0.12) !important;
+  border: 1px solid rgba(13, 13, 13, 0.08) !important;
+}
+
+.dashboard-sidebar .sidebar-header {
+  padding: 8px 8px 12px;
+  margin: 0 4px 10px;
+  border-bottom: 1px solid rgba(13, 13, 13, 0.07);
+}
+
+.dashboard-sidebar .user-info {
+  margin: 8px 4px 14px;
+  padding: 12px !important;
+  border-radius: 20px !important;
+  background:
+    radial-gradient(220px 80px at 12% 0%, rgba(64, 1, 13, 0.08), transparent 62%),
+    rgba(255, 255, 255, 0.74) !important;
+  border-color: rgba(64, 1, 13, 0.12) !important;
+  box-shadow: 0 12px 24px rgba(13, 13, 13, 0.06);
+}
+
+.dashboard-sidebar .user-avatar {
+  border-radius: 16px !important;
+  background: rgba(64, 1, 13, 0.08) !important;
+  color: #40010d !important;
+}
+
+.sidebar-nav-section {
+  margin: 14px 8px 7px !important;
+  padding: 0 !important;
+  color: rgba(13, 13, 13, 0.48);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.dashboard-sidebar .sidebar-nav .nav-link {
+  min-height: 46px;
+  border-radius: 16px;
+  padding: 11px 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  gap: 11px;
+}
+
+.dashboard-sidebar .sidebar-nav .nav-link svg {
+  width: 18px;
+  min-width: 18px;
+  color: rgba(13, 13, 13, 0.55);
+}
+
+.dashboard-sidebar .sidebar-nav .nav-link:hover {
+  background: rgba(255, 255, 255, 0.76) !important;
+  border-color: rgba(13, 13, 13, 0.08);
+  box-shadow: 0 10px 22px rgba(13, 13, 13, 0.06);
+}
+
+.dashboard-sidebar .sidebar-nav .nav-link.active,
+.dashboard-sidebar .sidebar-nav .nav-item.active .nav-link {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 235, 226, 0.96) 100%) !important;
+  border-color: rgba(64, 1, 13, 0.18) !important;
+  box-shadow: 0 12px 26px rgba(64, 1, 13, 0.08);
+  color: #40010d !important;
+}
+
+.dashboard-sidebar .sidebar-nav .nav-link.active svg,
+.dashboard-sidebar .sidebar-nav .nav-item.active .nav-link svg {
+  color: #40010d !important;
+}
+
+.dashboard-sidebar .sidebar-footer {
+  margin: 12px 4px 0;
+  padding: 12px 0 0;
+}
+
+@media (min-width: 769px) {
+  .dashboard-sidebar .sidebar-nav {
+    padding-inline: 4px;
+  }
+}
+

@@ -113,6 +113,7 @@ import {
   shiftHijriMonthStartIso,
   staffPublicCol,
   staffPublicDoc,
+  toArabicSectionLabel,
   toComparableTimestamp,
   toFirestoreErrorMessage,
   toHijriMonthYearLabel,
@@ -157,15 +158,15 @@ function resolveStaffNotificationTarget(staff?: StaffPublicUi | null) {
 
 export default function DashboardEmployees() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthUser());
+  const authRole = cleanText(authUser?.role).toLowerCase();
   const canAccessEmployeesDashboard =
-    authUser?.role === "owner" ||
-    authUser?.role === "admin" ||
-    authUser?.role === "reception" ||
-    authUser?.role === "hr";
-  const canManage =
-    authUser?.role === "owner" ||
-    authUser?.role === "admin" ||
-    authUser?.role === "reception";
+    authRole === "owner" ||
+    authRole === "admin" ||
+    authRole === "reception" ||
+    authRole === "hr";
+  const canManage = authRole === "owner" || authRole === "hr";
+  const canDeleteEmployees = authRole === "owner";
+  const canFixBookings = authRole === "owner";
   const canManageLeaveBalance = canManageLeaveBalanceRole(authUser?.role);
 
   const [loading, setLoading] = useState(false);
@@ -201,6 +202,8 @@ export default function DashboardEmployees() {
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [cvUrl, setCvUrl] = useState("");
+  const [rating, setRating] = useState("");
+  const [reviewsCount, setReviewsCount] = useState("");
 
   const [active, setActive] = useState(true);
 
@@ -292,6 +295,11 @@ export default function DashboardEmployees() {
     setErrorMsg("ليست لديك صلاحية لإدارة الموظفات.");
     return false;
   }, [canManage]);
+  const ensureCanDelete = useCallback(() => {
+    if (canDeleteEmployees) return true;
+    setErrorMsg("ليست لديك صلاحية لحذف الموظفات.");
+    return false;
+  }, [canDeleteEmployees]);
   const ensureCanManageLeaveBalance = useCallback(() => {
     if (canManageLeaveBalance) return true;
     setErrorMsg("ليست لديك صلاحية لإدارة رصيد الإجازات.");
@@ -317,6 +325,8 @@ export default function DashboardEmployees() {
     setBio("");
     setAvatarUrl("");
     setCvUrl("");
+    setRating("");
+    setReviewsCount("");
     setActive(true);
 
     // ✅ جديد
@@ -361,6 +371,8 @@ export default function DashboardEmployees() {
     setOvertimeInvoicePercent("0");
 
     setSpecialties([]);
+    setSrvQ("");
+    setSrvSection("all");
     setLeaveAdjustDays("1");
     setLeaveAdjustDate(todayIso());
     setLeaveAdjustNote("");
@@ -378,6 +390,8 @@ export default function DashboardEmployees() {
     setBio(x.bio ?? "");
     setAvatarUrl(resolveAvatarFromAssets(pickAvatarUrl(x as any)));
     setCvUrl((x as any).cvUrl ?? "");
+    setRating(String((x as any).rating ?? ""));
+    setReviewsCount(String((x as any).reviewsCount ?? (x as any).reviewCount ?? ""));
     setActive(!!x.active);
     setShowOnBooking((x as any).showOnBooking !== false);
     const initialLeaveUntil = normalizeLeaveUntil((x as any).leaveUntil);
@@ -427,6 +441,8 @@ export default function DashboardEmployees() {
     setShowOnAbout((x as any).showOnAbout !== false);
 
     setSpecialties(canonicalizeSpecialties(x.specialties, serviceOptions));
+    setSrvQ("");
+    setSrvSection("all");
     setLeaveAdjustDays("1");
     setLeaveAdjustDate(todayIso());
     setLeaveAdjustNote("");
@@ -452,6 +468,8 @@ export default function DashboardEmployees() {
             label: String(x?.name || d.id),
             sectionId: String(x?.sectionId || ""),
             categoryId: String(x?.categoryId || ""),
+            durationMin: safeNonNegativeNumber(x?.durationMin || x?.duration || x?.minutes, 0),
+            price: safeNonNegativeNumber(x?.price || x?.servicePrice || x?.amount, 0),
             active: x?.active !== false,
           };
         })
@@ -566,7 +584,10 @@ export default function DashboardEmployees() {
 
   // ✅ Original logic for fixing bookings
   const fixBookingsEmployeeUid = async () => {
-    if (!ensureCanManage()) return;
+    if (!canFixBookings) {
+      setErrorMsg("ليست لديك صلاحية لإصلاح الحجوزات.");
+      return;
+    }
     const ok = confirm(
       "سيتم إصلاح الحجوزات القديمة بإضافة employeeUid/employeeKey. هل تريد المتابعة؟"
     );
@@ -793,7 +814,7 @@ export default function DashboardEmployees() {
     for (const s of serviceOptions) {
       const sid = String(s.sectionId || "").trim();
       if (!sid) continue;
-      if (!m.has(sid)) m.set(sid, { id: sid, label: sid });
+      if (!m.has(sid)) m.set(sid, { id: sid, label: toArabicSectionLabel(sid, sid) });
     }
     return Array.from(m.values()).sort((a, b) =>
       a.label.localeCompare(b.label, "ar")
@@ -807,7 +828,15 @@ export default function DashboardEmployees() {
     }
     const q = srvQ.trim().toLowerCase();
     if (q) {
-      rows = rows.filter((s) => String(s.label || "").toLowerCase().includes(q));
+      rows = rows.filter((s) => {
+        const sectionLabel = toArabicSectionLabel(String(s.sectionId || ""), String(s.sectionId || ""));
+        return (
+          String(s.label || "").toLowerCase().includes(q) ||
+          String(s.id || "").toLowerCase().includes(q) ||
+          String(sectionLabel || "").toLowerCase().includes(q) ||
+          String(s.categoryId || "").toLowerCase().includes(q)
+        );
+      });
     }
     rows.sort((a, b) => String(a.label).localeCompare(String(b.label), "ar"));
     return rows;
@@ -914,6 +943,8 @@ export default function DashboardEmployees() {
       bio: bio.trim(),
       avatarUrl: avatarUrl.trim(),
       cvUrl: cvUrl.trim(),
+      rating: Math.min(5, safeNonNegativeNumber(rating, 0)),
+      reviewsCount: Math.floor(safeNonNegativeNumber(reviewsCount, 0)),
       updatedAt: serverTimestamp(),
     };
 
@@ -972,7 +1003,7 @@ export default function DashboardEmployees() {
   };
 
   const remove = async (id: string) => {
-    if (!ensureCanManage()) return;
+    if (!ensureCanDelete()) return;
     if (!confirm("متأكد حذف الموظفة؟")) return;
     setSaving(true);
     setErrorMsg("");
@@ -2754,7 +2785,7 @@ export default function DashboardEmployees() {
             <button className="exp-btn primary" type="button" onClick={openCreateEmployee}>
               + إضافة موظفة
             </button>
-            {authUser?.role === "owner" && (
+            {canFixBookings && (
               <button
                 className="exp-btn ghost"
                 onClick={fixBookingsEmployeeUid}
@@ -2835,6 +2866,7 @@ export default function DashboardEmployees() {
             activeTab={activeTab}
             tabs={detailTabs}
             canManage={canManage}
+            canDelete={canDeleteEmployees}
             onSave={save}
             onDelete={() => selectedEmployeeId && remove(selectedEmployeeId)}
             onCancelEdit={handleCancelEdit}
@@ -2954,22 +2986,28 @@ export default function DashboardEmployees() {
                 avatarUrl={avatarUrl}
                 bio={bio}
                 cvUrl={cvUrl}
+                rating={rating}
+                reviewsCount={reviewsCount}
                 staffImageOptions={STAFF_IMAGE_OPTIONS}
                 resolveAvatarFromAssets={resolveAvatarFromAssets}
                 onAvatarUrlChange={setAvatarUrl}
                 onBioChange={setBio}
                 onCvUrlChange={setCvUrl}
+                onRatingChange={setRating}
+                onReviewsCountChange={setReviewsCount}
               />
               <ServicesSection
                 isVisible={modalTab === "services"}
                 srvQ={srvQ}
                 srvSection={srvSection}
                 sectionOptions={sectionOptions}
+                serviceOptions={serviceOptions}
                 filteredServicesForPicks={filteredServicesForPicks}
                 specialties={specialties}
                 onSrvQChange={setSrvQ}
                 onSrvSectionChange={setSrvSection}
                 onToggleSpecialty={toggleSpecialty}
+                onSpecialtiesChange={setSpecialties}
               />
             </EmployeeEditorModal>
           </EmployeeDetailShell>
