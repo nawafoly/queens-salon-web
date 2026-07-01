@@ -1,4 +1,4 @@
-﻿function formatNumberEN(value: number) {
+function formatNumberEN(value: number) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
@@ -16,13 +16,13 @@ export const WORK_SCHEDULE_WEEKDAYS: Array<{
   label: string;
   shortLabel: string;
 }> = [
-  { value: "sunday", label: "ط§ظ„ط£ط­ط¯", shortLabel: "ط£ط­ط¯" },
-  { value: "monday", label: "ط§ظ„ط§ط«ظ†ظٹظ†", shortLabel: "ط§ط«ظ†ظٹظ†" },
-  { value: "tuesday", label: "ط§ظ„ط«ظ„ط§ط«ط§ط،", shortLabel: "ط«ظ„ط§ط«ط§ط،" },
-  { value: "wednesday", label: "ط§ظ„ط£ط±ط¨ط¹ط§ط،", shortLabel: "ط£ط±ط¨ط¹ط§ط،" },
-  { value: "thursday", label: "ط§ظ„ط®ظ…ظٹط³", shortLabel: "ط®ظ…ظٹط³" },
-  { value: "friday", label: "ط§ظ„ط¬ظ…ط¹ط©", shortLabel: "ط¬ظ…ط¹ط©" },
-  { value: "saturday", label: "ط§ظ„ط³ط¨طھ", shortLabel: "ط³ط¨طھ" },
+  { value: "sunday", label: "الأحد", shortLabel: "أحد" },
+  { value: "monday", label: "الاثنين", shortLabel: "اثنين" },
+  { value: "tuesday", label: "الثلاثاء", shortLabel: "ثلاثاء" },
+  { value: "wednesday", label: "الأربعاء", shortLabel: "أربعاء" },
+  { value: "thursday", label: "الخميس", shortLabel: "خميس" },
+  { value: "friday", label: "الجمعة", shortLabel: "جمعة" },
+  { value: "saturday", label: "السبت", shortLabel: "سبت" },
 ];
 
 const WEEKDAY_BY_INDEX: WorkScheduleWeekday[] = [
@@ -39,34 +39,34 @@ const WEEKDAY_ALIASES: Record<string, WorkScheduleWeekday> = {
   "0": "sunday",
   "sun": "sunday",
   "sunday": "sunday",
-  "ط§ظ„ط£ط­ط¯": "sunday",
-  "ط§ظ„ط§ط­ط¯": "sunday",
+  "الأحد": "sunday",
+  "الاحد": "sunday",
   "1": "monday",
   "mon": "monday",
   "monday": "monday",
-  "ط§ظ„ط§ط«ظ†ظٹظ†": "monday",
-  "ط§ظ„ط¥ط«ظ†ظٹظ†": "monday",
+  "الاثنين": "monday",
+  "الإثنين": "monday",
   "2": "tuesday",
   "tue": "tuesday",
   "tuesday": "tuesday",
-  "ط§ظ„ط«ظ„ط§ط«ط§ط،": "tuesday",
+  "الثلاثاء": "tuesday",
   "3": "wednesday",
   "wed": "wednesday",
   "wednesday": "wednesday",
-  "ط§ظ„ط£ط±ط¨ط¹ط§ط،": "wednesday",
-  "ط§ظ„ط§ط±ط¨ط¹ط§ط،": "wednesday",
+  "الأربعاء": "wednesday",
+  "الاربعاء": "wednesday",
   "4": "thursday",
   "thu": "thursday",
   "thursday": "thursday",
-  "ط§ظ„ط®ظ…ظٹط³": "thursday",
+  "الخميس": "thursday",
   "5": "friday",
   "fri": "friday",
   "friday": "friday",
-  "ط§ظ„ط¬ظ…ط¹ط©": "friday",
+  "الجمعة": "friday",
   "6": "saturday",
   "sat": "saturday",
   "saturday": "saturday",
-  "ط§ظ„ط³ط¨طھ": "saturday",
+  "السبت": "saturday",
 };
 
 function parseDateKey(value: string) {
@@ -106,12 +106,12 @@ export function normalizeWeeklyOffDays(value: unknown): WorkScheduleWeekday[] {
 
 export function formatWeeklyOffDaysLabel(value: unknown) {
   const days = normalizeWeeklyOffDays(value);
-  if (!days.length) return "ط؛ظٹط± ظ…ط­ط¯ط¯";
+  if (!days.length) return "غير محدد";
 
   const labels = days.map(
     day => WORK_SCHEDULE_WEEKDAYS.find(option => option.value === day)?.label || day
   );
-  return labels.join("طŒ ");
+  return labels.join("، ");
 }
 
 export function getWeekdayKeyForDateKey(dateKey: string) {
@@ -163,7 +163,7 @@ export function buildWorkDateKeysInRange(input: {
 }
 
 export function formatWorkDaysCountLabel(value: number) {
-  return `${formatNumberEN(Math.max(0, value))} ظٹظˆظ… ط¹ظ…ظ„`;
+  return `${formatNumberEN(Math.max(0, value))} يوم عمل`;
 }
 
 

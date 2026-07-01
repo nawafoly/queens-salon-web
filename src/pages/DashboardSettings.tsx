@@ -2,7 +2,7 @@
 
 // ✅ src/pages/DashboardSettings.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -76,9 +76,6 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   authReady,
   settings: settingsProp,
 }) => {
-  const navigate = useNavigate();
-  const location = useLocation();
-
   const [uiRole, setUiRole] = useState<UiRole>(mapFirestoreRoleToUi(initialRole ?? "guest"));
   const [authLoading, setAuthLoading] = useState(() =>
     typeof authReady === "boolean" ? !authReady : true
@@ -98,7 +95,6 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   const [savedMsg, setSavedMsg] = useState<string>("");
   const [activeBasicSection, setActiveBasicSection] = useState<"identity" | "sections" | "policies">("identity");
 
-  const currentPath = normalizePathname(location.pathname);
   const currentRootPath = normalizePathname(SETTINGS_ROOT_PATH);
 
   const settingsNavItems = useMemo(
@@ -190,22 +186,6 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
       sectionsEnabledCount,
     ]
   );
-
-  const isSettingsNavActive = (item: { key: string; to: string; activePaths?: string[] }) => {
-    const targets = [item.to, ...(item.activePaths || [])];
-    return targets.some((target) => {
-      const normalizedTarget = normalizePathname(target);
-      if (item.key === "home") {
-        return currentPath === normalizedTarget;
-      }
-      return currentPath === normalizedTarget || currentPath.startsWith(`${normalizedTarget}/`);
-    });
-  };
-
-  const activeSettingsItem =
-    settingsNavItems.find((item) => item.visible && isSettingsNavActive(item)) ||
-    settingsNavItems.find((item) => item.visible) ||
-    settingsNavItems[0];
 
   useEffect(() => {
     if (typeof initialRole !== "undefined") {
@@ -624,63 +604,9 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
      Nested routes under /dashboard/settings/*
   ========================= */
   return (
-    <div className="dashboard-section settings-page settings-shell" dir="ltr">
-      <div className="settings-shell__layout">
-        <aside className="settings-shell__sidebar" dir="rtl">
-          <div className="settings-shell__brand">
-            <div>
-              <span className="settings-shell__eyebrow">لوحة التحكم</span>
-              <strong>الإعدادات</strong>
-              <small>إدارة الصالون والصفحات المتقدمة من مكان واحد</small>
-            </div>
-            <button
-              type="button"
-              className="settings-shell__brand-btn"
-              onClick={() => navigate("/dashboard")}
-              title="العودة للوحة التحكم"
-            >
-              ↩
-            </button>
-          </div>
-
-          <div className="settings-shell__current">
-            <span>المسار الحالي</span>
-            <strong>{activeSettingsItem?.label || "الإعدادات"}</strong>
-            <small>{activeSettingsItem?.hint || "اختاري قسمًا من القائمة."}</small>
-          </div>
-
-          <nav className="settings-shell__nav" aria-label="أقسام الإعدادات">
-            <span className="settings-shell__nav-label">الأقسام</span>
-            {settingsNavItems.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                className={`settings-shell__nav-item ${isSettingsNavActive(item) ? "is-active" : ""} ${
-                  item.visible ? "" : "is-disabled"
-                }`}
-                aria-current={isSettingsNavActive(item) ? "page" : undefined}
-                onClick={() => item.visible && navigate(item.to)}
-                disabled={!item.visible}
-                title={item.visible ? item.hint : "هذه الصفحة غير متاحة لهذا الدور"}
-              >
-                <span className="settings-shell__nav-badge">{item.badge}</span>
-                <span className="settings-shell__nav-copy">
-                  <strong>{item.label}</strong>
-                  <small>{item.visible ? item.hint : "محجوبة حسب الدور"}</small>
-                </span>
-              </button>
-            ))}
-          </nav>
-
-          <div className="settings-shell__panel">
-            <span className="settings-shell__panel-label">الوصول</span>
-            <strong>{accessibleNavCount} روابط مباشرة</strong>
-            <small>{hasAdminPower ? "المسارات الإدارية مفتوحة" : "عرض محدود بحسب الصلاحيات"}</small>
-          </div>
-        </aside>
-
-        <main className="settings-shell__main" dir="rtl">
-          <section className="settings-shell__content">
+    <div className="dashboard-section settings-page settings-shell settings-shell--embedded" dir="rtl">
+      <main className="settings-shell__main" dir="rtl">
+        <section className="settings-shell__content">
             <Routes>
               <Route index element={<MainSettings />} />
 
@@ -689,11 +615,15 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               <Route
                 path="users"
                 element={
-                  <SettingsUsers
-                    initialRole={uiRole}
-                    authReady={!authLoading}
-                    allowAdminManageUsers={allowAdminManageUsers}
-                  />
+                  canManageUsers ? (
+                    <SettingsUsers
+                      initialRole={uiRole}
+                      authReady={!authLoading}
+                      allowAdminManageUsers={allowAdminManageUsers}
+                    />
+                  ) : (
+                    <Navigate to={SETTINGS_ROOT_PATH} replace />
+                  )
                 }
               />
               <Route path="contact" element={<SettingsContact hasAdminPower={hasAdminPower} />} />
@@ -717,9 +647,8 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               />
               <Route path="*" element={<Navigate to="." replace />} />
             </Routes>
-          </section>
-        </main>
-      </div>
+        </section>
+      </main>
     </div>
   );
 };

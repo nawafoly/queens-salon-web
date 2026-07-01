@@ -1412,6 +1412,35 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       ? selectedSectionLive?.active !== false
       : selectedServiceLive?.active !== false;
 
+  const closeCatalogDetail = () => {
+    setSelectedId(null);
+    setMode("view");
+    setSectionDraft(null);
+    setServiceDraft(null);
+    setOpenedServiceIdInSection(null);
+    setOpenedServiceDraftInSection(null);
+    setOpenedServiceModeInSection("view");
+  };
+
+  useEffect(() => {
+    if (!hasSelection) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeCatalogDetail();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [hasSelection]);
+
   const openedServiceViewCard = openedServiceLiveInSection ? (
     <div
       key={`service-view-${openedServiceLiveInSection.id}-${serviceViewRenderKey}`}
@@ -2465,7 +2494,20 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             <div className="scatalog-ref__list">{renderCatalogList()}</div>
           </aside>
 
-          <section className="scatalog-ref__right settings-master-detail__detail">
+          {hasSelection ? (
+            <button
+              type="button"
+              className="scatalog-ref__modal-backdrop"
+              aria-label="إغلاق تفاصيل الكتالوج"
+              onClick={closeCatalogDetail}
+            />
+          ) : null}
+
+          <section
+            className={`scatalog-ref__right settings-master-detail__detail ${
+              hasSelection ? "scatalog-ref__right--modal" : "scatalog-ref__right--empty"
+            }`}
+          >
             {!hasSelection ? (
               <div className="scatalog-ref__empty">
                 <b>اختر قسم/خدمة لعرض التفاصيل</b>
@@ -2527,6 +2569,13 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                         </button>
                       </>
                     )}
+                    <button
+                      className="exp-btn ghost scatalog-ref__modal-close"
+                      type="button"
+                      onClick={closeCatalogDetail}
+                    >
+                      إغلاق
+                    </button>
                   </div>
                 </div>
 

@@ -1,4 +1,4 @@
-﻿import { HR_COLLECTIONS } from "../../services/hrCollections";
+import { HR_COLLECTIONS } from "../../services/hrCollections";
 import {
   EMPLOYEE_DEFAULT_FILE_TYPE,
   EMPLOYEE_FILE_CATEGORY,
@@ -62,12 +62,12 @@ export const EMPLOYEE_FILE_TYPE_OPTIONS: Array<{
   value: EmployeeFileType;
   label: string;
 }> = [
-  { value: "general", label: "ط¹ط§ظ…" },
-  { value: "contract", label: "ط¹ظ‚ط¯" },
-  { value: "warning", label: "ط¥ظ†ط°ط§ط±" },
-  { value: "letter", label: "ط®ط·ط§ط¨" },
-  { value: "cv", label: "ط§ظ„ط³ظٹط±ط© ط§ظ„ط°ط§طھظٹط©" },
-  { value: "education_certificate", label: "ط§ظ„ط´ظ‡ط§ط¯ط§طھ" },
+  { value: "general", label: "عام" },
+  { value: "contract", label: "عقد" },
+  { value: "warning", label: "إنذار" },
+  { value: "letter", label: "خطاب" },
+  { value: "cv", label: "السيرة الذاتية" },
+  { value: "education_certificate", label: "الشهادات" },
 ];
 
 export type EmployeeFileDirection = "incoming" | "outgoing";
@@ -131,9 +131,9 @@ function normalizeEmployeeFileStatus(value: unknown, active: boolean) {
 export function getEmployeeFileStatusLabel(value: unknown, active: boolean) {
   const normalized = normalizeEmployeeFileStatus(value, active);
   if (normalized === EMPLOYEE_FILE_STATUS_REPLACED) {
-    return "ظ…ط³طھط¨ط¯ظ„";
+    return "مستبدل";
   }
-  return "ط§ظ„ظ†ط³ط®ط© ط§ظ„ط­ط§ظ„ظٹط©";
+  return "النسخة الحالية";
 }
 
 export function getEmployeeFileTypeLabel(value: unknown) {
@@ -141,12 +141,12 @@ export function getEmployeeFileTypeLabel(value: unknown) {
     .trim()
     .toLowerCase();
 
-  if (normalized === "approval") return "ط§ط¹طھظ…ط§ط¯";
+  if (normalized === "approval") return "اعتماد";
 
   return (
     EMPLOYEE_FILE_TYPE_OPTIONS.find(option => option.value === normalized)?.label ||
     normalized ||
-    "ط¹ط§ظ…"
+    "عام"
   );
 }
 
@@ -237,7 +237,7 @@ export function normalizeEmployeeFileRecord(
       email: raw?.receiverEmail,
     }),
     participantUids,
-    title: pickText(raw?.title) || "ظ…ظ„ظپ ط¯ط§ط®ظ„ظٹ",
+    title: pickText(raw?.title) || "ملف داخلي",
     description: pickText(raw?.description) || null,
     fileType: pickText(raw?.fileType) || EMPLOYEE_DEFAULT_FILE_TYPE,
     fileId: pickText(raw?.fileId) || null,
@@ -273,7 +273,7 @@ export function normalizeEmployeeFileRecord(
     fileTypeLabel: getEmployeeFileTypeLabel(raw?.fileType),
     statusLabel: getEmployeeFileStatusLabel(raw?.status, active),
     statusTone: active ? "success" : "default",
-    readStatusLabel: isRead ? "ظ…ظ‚ط±ظˆط،" : "ط¬ط¯ظٹط¯",
+    readStatusLabel: isRead ? "مقروء" : "جديد",
     readStatusTone: isRead ? "success" : "warning",
     direction,
     isInternalTransfer,

@@ -1537,6 +1537,16 @@
   --settings-gap: 18px;
 }
 
+.dashboard-skin .settings-shell--embedded {
+  min-height: auto;
+  padding: 0;
+  direction: rtl;
+}
+
+.dashboard-skin .settings-shell--embedded .settings-shell__main {
+  grid-area: auto;
+}
+
 .dashboard-skin .settings-shell__layout {
   grid-template-columns: minmax(0, 1fr) 318px;
   gap: var(--settings-gap);
@@ -1849,4 +1859,19 @@
   .dashboard-skin .settings-contact-section {
     padding: 16px;
   }
+}
+
+/* Dashboard catalog uses the same clear, non-cramped layout as the new admin screens. */
+.dashboard-skin .scatalog-ref__split.settings-master-detail {
+  grid-template-columns: 1fr;
+}
+
+.dashboard-skin .scatalog-ref__list {
+  max-height: none;
+  overflow: visible;
+  padding-inline-end: 2px;
+}
+
+.dashboard-skin .scatalog-ref__row {
+  border-radius: 22px;
 }

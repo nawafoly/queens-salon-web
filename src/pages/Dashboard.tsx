@@ -2068,6 +2068,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const allowStaffChangeStatus = settings.policies.allowStaffChangeStatus;
   const allowStaffViewClients = settings.policies.allowStaffViewClients;
+  const allowAdminManageUsers = settings.policies.allowAdminManageUsers;
+  const canManageAdminUsers = isOwner || (isAdmin && allowAdminManageUsers);
 
   const canSeeSection = (key: SectionKey) => settings.sections[key] !== false;
 
@@ -2874,10 +2876,63 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <NavLink
                       to="/dashboard/settings"
                       className="nav-link"
+                      end
                       onClick={() => setIsSidebarOpen(false)}
                     >
                       <FontAwesomeIcon icon={faCog} />
-                      الإعدادات
+                      الإعدادات الأساسية
+                    </NavLink>
+                  </li>
+                )}
+
+                {hasAdminPower && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/settings/bookings"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faCalendarAlt} />
+                      إعدادات الحجوزات
+                    </NavLink>
+                  </li>
+                )}
+
+                {hasAdminPower && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/settings/catalog"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faPercent} />
+                      إدارة الكتالوج
+                    </NavLink>
+                  </li>
+                )}
+
+                {canManageAdminUsers && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/settings/users"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faUserShield} />
+                      إدارة الحسابات
+                    </NavLink>
+                  </li>
+                )}
+
+                {hasAdminPower && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/settings/contact"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faHouse} />
+                      محتوى الموقع
                     </NavLink>
                   </li>
                 )}

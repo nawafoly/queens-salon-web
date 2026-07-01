@@ -1,4 +1,4 @@
-﻿import {
+import {
   formatWeeklyOffDaysLabel,
   normalizeWeeklyOffDays,
   type WorkScheduleWeekday,
@@ -57,7 +57,7 @@ function resolveUserAccountStatus(user: { active?: unknown; isActive?: unknown; 
   const inactiveByStatus = ["inactive", "suspended", "terminated", "disabled"].includes(status);
   return { isActive: explicitActive ?? !inactiveByStatus };
 }
-const EMPTY_VALUE = "ط؛ظٹط± ظ…ط­ط¯ط¯";
+const EMPTY_VALUE = "غير محدد";
 
 export type EmployeeProfileUserDoc = EmployeeProfileDoc & {
   employeeProfile?: EmployeeProfileDoc | null;
@@ -219,13 +219,13 @@ function normalizeEmploymentStatus(input: {
       tone: "success" | "warning" | "muted";
     }
   > = {
-    active: { label: "ط¹ظ„ظ‰ ط±ط£ط³ ط§ظ„ط¹ظ…ظ„", tone: "success" },
-    probation: { label: "ظپطھط±ط© طھط¬ط±ط¨ط©", tone: "warning" },
-    on_leave: { label: "ظپظٹ ط¥ط¬ط§ط²ط©", tone: "warning" },
-    onleave: { label: "ظپظٹ ط¥ط¬ط§ط²ط©", tone: "warning" },
-    inactive: { label: "ط؛ظٹط± ظ†ط´ط·", tone: "muted" },
-    suspended: { label: "ظ…ظˆظ‚ظˆظپ", tone: "muted" },
-    terminated: { label: "ظ…ظ†طھظ‡ظٹ ط§ظ„ط§ط±طھط¨ط§ط· ط§ظ„ظˆط¸ظٹظپظٹ", tone: "muted" },
+    active: { label: "على رأس العمل", tone: "success" },
+    probation: { label: "فترة تجربة", tone: "warning" },
+    on_leave: { label: "في إجازة", tone: "warning" },
+    onleave: { label: "في إجازة", tone: "warning" },
+    inactive: { label: "غير نشط", tone: "muted" },
+    suspended: { label: "موقوف", tone: "muted" },
+    terminated: { label: "منتهي الارتباط الوظيفي", tone: "muted" },
   };
 
   const matched = map[resolved];
@@ -355,7 +355,7 @@ export function normalizeEmployeeProfile(
   );
 
   const leaveBalanceLabel =
-    leaveBalance === null ? EMPTY_VALUE : `${formatNumberEN(leaveBalance)} ظٹظˆظ…`;
+    leaveBalance === null ? EMPTY_VALUE : `${formatNumberEN(leaveBalance)} يوم`;
 
   const employeeCode =
     pickText(
@@ -384,13 +384,13 @@ export function normalizeEmployeeProfile(
     ? employment.allowedZoneIds.filter(Boolean)
     : [];
   const attendanceZoneLabel = allowedZoneIds.length
-    ? `${formatNumberEN(allowedZoneIds.length)} ظ†ط·ط§ظ‚ ظ…ط¹طھظ…ط¯`
+    ? `${formatNumberEN(allowedZoneIds.length)} نطاق معتمد`
     : EMPTY_VALUE;
   const salaryDeductions = Array.isArray(employment.salaryDeductions)
     ? employment.salaryDeductions
         .map((item: Record<string, any>) => ({
           id: pickText(item?.id) || null,
-          title: pickText(item?.title, item?.name) || "ط®طµظ… ط«ط§ط¨طھ",
+          title: pickText(item?.title, item?.name) || "خصم ثابت",
           amount: toNullableNumber(item?.amount) || 0,
         }))
         .filter(item => item.amount > 0)

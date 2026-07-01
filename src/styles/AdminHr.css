@@ -1340,3 +1340,76 @@
     padding-inline: 14px;
   }
 }
+
+/* Clean dashboard layout: keep HR actions visible without a cramped side rail. */
+.hr-overview {
+  gap: 22px;
+}
+
+.hr-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+}
+
+.hr-workspace {
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "side"
+    "main";
+}
+
+.hr-workspace__side,
+.hr-workspace__main {
+  width: 100%;
+}
+
+.hr-card--sticky {
+  position: static;
+  top: auto;
+}
+
+.hr-workspace__side .hr-card {
+  gap: 16px;
+  padding: 22px;
+}
+
+.hr-workspace__side .hr-card-head--stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.hr-workspace__side .hr-card-subtitle {
+  max-width: 860px;
+}
+
+.hr-roster-list {
+  max-height: none;
+  overflow: visible;
+  padding: 2px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.hr-roster-card {
+  min-height: 154px;
+  border-radius: 24px;
+}
+
+.hr-roster-card__meta {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 980px) {
+  .hr-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .hr-roster-list {
+    grid-template-columns: 1fr;
+  }
+
+  .hr-roster-card__meta {
+    grid-template-columns: 1fr;
+  }
+}

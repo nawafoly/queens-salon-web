@@ -1,4 +1,4 @@
-﻿import {
+import {
   EMPLOYEE_CONVERSATION_TYPES,
   EMPLOYEE_MESSAGE_TYPES,
   type EmployeeConversationType,
@@ -45,17 +45,17 @@ export const EMPLOYEE_MESSAGE_TYPE_OPTIONS: Array<{
   value: EmployeeMessageType;
   label: string;
 }> = [
-  { value: "message", label: "ط±ط³ط§ظ„ط©" },
-  { value: "notice", label: "طھظ†ط¨ظٹظ‡" },
-  { value: "system", label: "ط¥ط´ط¹ط§ط± ظ†ط¸ط§ظ…" },
+  { value: "message", label: "رسالة" },
+  { value: "notice", label: "تنبيه" },
+  { value: "system", label: "إشعار نظام" },
 ];
 
 export const EMPLOYEE_CONVERSATION_TYPE_OPTIONS: Array<{
   value: EmployeeConversationType;
   label: string;
 }> = [
-  { value: "hr_to_employee", label: "ط±ط³ط§ط¦ظ„ HR" },
-  { value: "employee_to_employee", label: "ظ…ط­ط§ط¯ط«ط© ط¯ط§ط®ظ„ظٹط©" },
+  { value: "hr_to_employee", label: "رسائل HR" },
+  { value: "employee_to_employee", label: "محادثة داخلية" },
 ];
 
 export type EmployeeMessageRecord = EmployeeMessageDoc & {
@@ -150,7 +150,7 @@ export function getEmployeeMessageTypeLabel(value: unknown) {
   const normalized = normalizeMessageType(value);
   return (
     EMPLOYEE_MESSAGE_TYPE_OPTIONS.find(option => option.value === normalized)?.label ||
-    "ط±ط³ط§ظ„ط©"
+    "رسالة"
   );
 }
 
@@ -161,7 +161,7 @@ export function getEmployeeConversationTypeLabel(
   const normalized = normalizeConversationType(value, raw);
   return (
     EMPLOYEE_CONVERSATION_TYPE_OPTIONS.find(option => option.value === normalized)
-      ?.label || "ط±ط³ط§ط¦ظ„ HR"
+      ?.label || "رسائل HR"
   );
 }
 
@@ -384,7 +384,7 @@ export function groupEmployeeMessageConversations(
         counterpartyName:
           counterparty.name ||
           (latestMessage.conversationType === "employee_to_employee"
-            ? "ظ…ظˆط¸ظپ"
+            ? "موظف"
             : "HR"),
         counterpartyEmail: counterparty.email,
         counterpartyPhoto: resolveEmployeeAvatarUrl(counterparty.photo, {

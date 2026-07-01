@@ -4283,6 +4283,114 @@ h1, h2, h3, h4, h5, h6 {
   gap: 14px;
 }
 
+/* Employee directory modal flow: select from the list, edit in a popup. */
+.emp-page-wrapper .emp-split-shell {
+  grid-template-columns: 1fr;
+}
+
+.emp-page-wrapper .emp-split-col--details.is-empty .emp-split-empty {
+  display: none;
+}
+
+.emp-page-wrapper .emp-split-col--details.is-modal {
+  display: contents;
+}
+
+.emp-page-wrapper .emp-staff-list {
+  max-height: none;
+  overflow: visible;
+  padding-inline-end: 0;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.emp-page-wrapper .emp-staff-row {
+  min-height: 118px;
+}
+
+.emp-page-wrapper .emp-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  border: 0;
+  background:
+    radial-gradient(circle at 50% 12%, rgba(243, 182, 31, 0.16), transparent 34%),
+    rgba(15, 23, 42, 0.54);
+  cursor: zoom-out;
+  backdrop-filter: blur(8px);
+}
+
+.emp-page-wrapper .emp-detail-modal {
+  position: fixed;
+  top: clamp(14px, 3vh, 34px);
+  left: 50%;
+  z-index: 1201;
+  width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100vh - clamp(28px, 6vh, 68px));
+  min-height: 0;
+  overflow: auto;
+  transform: translateX(-50%);
+  animation: emp-detail-modal-in 180ms ease;
+  box-shadow: 0 34px 90px rgba(15, 23, 42, 0.34);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 42, 0.24) transparent;
+}
+
+.emp-page-wrapper .emp-detail-modal > .emp-split-head {
+  position: sticky;
+  top: -22px;
+  z-index: 4;
+  margin: -22px -22px 0;
+  padding: 22px;
+  border-radius: 24px 24px 0 0;
+  background:
+    radial-gradient(560px 160px at 12% 0%, rgba(243, 182, 31, 0.12), transparent 62%),
+    rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.emp-page-wrapper .emp-detail-modal .qs-modal-overlay {
+  position: static;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.emp-page-wrapper .emp-detail-modal .qs-modal-panel.emp-modal {
+  box-shadow: none;
+  border: 0;
+  background: transparent;
+}
+
+@keyframes emp-detail-modal-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+@media (max-width: 840px) {
+  .emp-page-wrapper .emp-staff-list {
+    grid-template-columns: 1fr;
+  }
+
+  .emp-page-wrapper .emp-detail-modal {
+    top: 10px;
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+
+  .emp-page-wrapper .emp-detail-modal > .emp-split-head {
+    top: -18px;
+    margin: -18px -18px 0;
+    padding: 18px;
+  }
+}
+
 .emp-modal .emp-service-picker__toolbar {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) minmax(190px, 240px) auto;

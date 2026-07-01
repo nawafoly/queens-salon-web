@@ -226,10 +226,10 @@ export default function HrEntry() {
         to: "/admin/messages",
       },
       {
-        title: "إعدادات الإدارة",
-        description: "المستخدمون، الصلاحيات وإنشاء حساب موظف.",
+        title: "إنشاء حساب موظف",
+        description: "إضافة حساب داخلي وربطه بملف موظفة من بوابة HR.",
         icon: faGear,
-        to: "/admin/users",
+        to: "/admin/create-staff",
       },
     ],
     []

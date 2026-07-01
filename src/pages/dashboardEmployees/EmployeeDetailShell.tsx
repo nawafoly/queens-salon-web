@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faTrash, faXmark } from "@fortawesome/free-solid-svg-icons";
 
 import { getNameInitials } from "./shared";
 import type { EmployeeSplitTab, StaffPublicUi } from "./shared";
@@ -18,6 +18,8 @@ type EmployeeDetailShellProps = {
   onDelete: () => void;
   onCancelEdit: () => void;
   onTabChange: (tab: EmployeeSplitTab) => void;
+  onClose: () => void;
+  showEditor?: boolean;
   children: React.ReactNode;
 };
 
@@ -35,6 +37,8 @@ export default function EmployeeDetailShell({
   onDelete,
   onCancelEdit,
   onTabChange,
+  onClose,
+  showEditor = false,
   children,
 }: EmployeeDetailShellProps) {
   const selectedEmployeeName = String(selectedEmployee?.name || "-").trim();
@@ -54,14 +58,29 @@ export default function EmployeeDetailShell({
   const selectedEmployeeInitials = getNameInitials(selectedEmployeeName);
 
   return (
-    <div className="emp-split-col emp-split-col--details">
+    <div
+      className={`emp-split-col emp-split-col--details ${
+        selectedEmployeeId ? "is-modal" : "is-empty"
+      }`}
+    >
       {!selectedEmployeeId ? (
+        showEditor ? (
+          <div className="emp-create-inline">{children}</div>
+        ) : (
         <div className="dash-card emp-split-empty">
           <b>لا توجد موظفة محددة</b>
           <p>اختاري موظفة من القائمة لعرض التفاصيل وتحرير البيانات مباشرة.</p>
         </div>
+        )
       ) : (
-        <div className="dash-card emp-split-head-card">
+        <>
+        <button
+          type="button"
+          className="emp-detail-backdrop"
+          aria-label="إغلاق تفاصيل الموظفة"
+          onClick={onClose}
+        />
+        <div className="dash-card emp-split-head-card emp-detail-modal">
           <div className="emp-split-head">
             <div className="emp-split-head__identity">
               <div className="emp-split-avatar" aria-hidden="true">
@@ -105,6 +124,10 @@ export default function EmployeeDetailShell({
               ) : (
                 <span className="emp-meta-chip">الصفحة للعرض فقط</span>
               )}
+              <button className="exp-btn ghost sm" type="button" onClick={onClose} disabled={busy}>
+                <FontAwesomeIcon icon={faXmark} />
+                إغلاق
+              </button>
             </div>
           </div>
 
@@ -130,6 +153,7 @@ export default function EmployeeDetailShell({
             <div className="emp-split-content">{children}</div>
           </div>
         </div>
+        </>
       )}
     </div>
   );

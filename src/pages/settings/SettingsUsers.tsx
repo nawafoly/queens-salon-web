@@ -1,4 +1,4 @@
-// ✅ src/pages/settings/SettingsUsers.tsx
+// src/pages/settings/SettingsUsers.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
@@ -32,10 +32,10 @@ import {
   softDeleteLinkedStaffByUser,
   type AccountUserLinkRow,
 } from "../../services/staffAccountLinkService";
-import { SettingsPageHeader, SettingsState, SettingsStats } from "./SettingsFrame";
+import { SettingsPageHeader, SettingsState } from "./SettingsFrame";
 
 import "../../styles/DashboardModals.css";
-import "../../styles/stylesSettings/SettingsCatalog.css"; // ✅ NEW CSS
+import "../../styles/stylesSettings/SettingsCatalog.css";
 import "../../styles/stylesSettings/DashboardSettings.css";
 import "../../styles/stylesSettings/SettingsUsers.css";
 
@@ -121,6 +121,26 @@ type EditUserDraft = {
   phone: string;
   role: UiRole;
   active: boolean;
+  notes: string;
+};
+
+type InviteRow = {
+  id: string;
+  email: string;
+  role: UiRole;
+  active: boolean;
+  notes?: string;
+  createdAt?: any;
+  used?: boolean;
+  usedAt?: any;
+  usedByUid?: string;
+  createdByUid?: string;
+  createdByEmail?: string;
+};
+
+type InviteDraft = {
+  email: string;
+  role: UiRole;
   notes: string;
 };
 
@@ -257,6 +277,14 @@ export default function SettingsUsers({
 
   const [createLoading, setCreateLoading] = useState(false);
   const [createMsg, setCreateMsg] = useState<string>("");
+  const [invites, setInvites] = useState<InviteRow[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const [inviteDraft, setInviteDraft] = useState<InviteDraft>({
+    email: "",
+    role: "staff",
+    notes: "",
+  });
 
   /* =========================
      Helpers
@@ -296,7 +324,7 @@ export default function SettingsUsers({
   }
 
   function formatDate(value: any) {
-    if (!value) return "—";
+    if (!value) return "-";
     try {
       const date =
         typeof value?.toDate === "function"
@@ -304,13 +332,29 @@ export default function SettingsUsers({
           : value?.seconds
             ? new Date(value.seconds * 1000)
             : new Date(value);
-      if (Number.isNaN(date.getTime())) return "—";
+      if (Number.isNaN(date.getTime())) return "-";
       return new Intl.DateTimeFormat("ar-SA", {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(date);
     } catch {
-      return "—";
+      return "-";
+    }
+  }
+
+  function toMillis(value: any) {
+    if (!value) return 0;
+    try {
+      const date =
+        typeof value?.toDate === "function"
+          ? value.toDate()
+          : value?.seconds
+            ? new Date(value.seconds * 1000)
+            : new Date(value);
+      const time = date.getTime();
+      return Number.isNaN(time) ? 0 : time;
+    } catch {
+      return 0;
     }
   }
 
@@ -502,6 +546,42 @@ export default function SettingsUsers({
     }
   };
 
+  const loadInvites = async () => {
+    if (!canManageUsers) return;
+
+    setInvitesLoading(true);
+    try {
+      const snap = await getDocs(collection(db, "salons", SALON_ID, "user_invites"));
+
+      const list: InviteRow[] = snap.docs
+        .map((d) => {
+          const x = d.data() as any;
+          return {
+            id: d.id,
+            email: String(x?.email || ""),
+            role: mapFirestoreRoleToUi(x?.role),
+            active: x?.active !== false,
+            notes: String(x?.notes || x?.memo || ""),
+            createdAt: x?.createdAt,
+            used: x?.used === true,
+            usedAt: x?.usedAt,
+            usedByUid: String(x?.usedByUid || ""),
+            createdByUid: String(x?.createdByUid || ""),
+            createdByEmail: String(x?.createdByEmail || ""),
+          };
+        })
+        .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+
+      setInvites(list);
+    } catch (e) {
+      console.error("loadInvites error:", e);
+      setInvites([]);
+      toastMsg("تعذر تحميل الدعوات", 2400);
+    } finally {
+      setInvitesLoading(false);
+    }
+  };
+
   const handleCreateUser = async () => {
     if (!canManageUsers) return;
 
@@ -612,6 +692,89 @@ export default function SettingsUsers({
       else toastMsg("❌ تعذر إنشاء الحساب. تأكد من الصلاحيات/Rules");
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  const handleCreateInvite = async () => {
+    if (!canManageUsers) return;
+
+    const email = cleanEmail(inviteDraft.email);
+    const role = inviteDraft.role;
+    const notes = inviteDraft.notes.trim();
+
+    setCreateMsg("");
+
+    if (!email) {
+      toastMsg("❌ أدخل البريد الإلكتروني أولًا");
+      return;
+    }
+
+    if (!isMalikatEmail(email)) {
+      toastMsg("❌ الدعوات هنا مخصصة فقط لبريد @malikat.com");
+      return;
+    }
+
+    if (!role || role === "guest" || role === "client") {
+      toastMsg("❌ اختر دورًا إداريًا مناسبًا للدعوة");
+      return;
+    }
+
+    if (!isOwner && role === "owner") {
+      toastMsg("❌ فقط المالك يستطيع إرسال دعوة Owner");
+      return;
+    }
+
+    const duplicateInvite = invites.find(
+      (invite) => cleanEmail(invite.email) === email && invite.used !== true
+    );
+    if (duplicateInvite) {
+      toastMsg("❌ توجد دعوة نشطة لهذا البريد بالفعل");
+      return;
+    }
+
+    try {
+      setInviteSaving(true);
+
+      const inviteRef = doc(collection(db, "salons", SALON_ID, "user_invites"));
+      await setDoc(
+        inviteRef,
+        {
+          email,
+          role: toFirestoreRole(role),
+          active: true,
+          notes,
+          createdAt: serverTimestamp(),
+          createdByUid: (auth as any)?.currentUser?.uid || "",
+          createdByEmail: (auth as any)?.currentUser?.email || "",
+        },
+        { merge: true }
+      );
+
+      void writeAuditLog({
+        salonId: SALON_ID,
+        action: "invite_created",
+        entityType: "invite",
+        entityId: inviteRef.id,
+        description: "تم إنشاء دعوة وصول إدارية",
+        source: "dashboard",
+        after: {
+          email,
+          role: toFirestoreRole(role),
+          active: true,
+        },
+        meta: {
+          section: "settings_users",
+        },
+      });
+
+      toastMsg("✅ تم حفظ الدعوة بنجاح", 1800);
+      setInviteDraft({ email: "", role: "staff", notes: "" });
+      await loadInvites();
+    } catch (e) {
+      console.error("handleCreateInvite error:", e);
+      toastMsg("❌ تعذر حفظ الدعوة. تأكد من الصلاحيات والقواعد", 2600);
+    } finally {
+      setInviteSaving(false);
     }
   };
 
@@ -1045,6 +1208,7 @@ export default function SettingsUsers({
   useEffect(() => {
     if (!canManageUsers) return;
     loadUsers();
+    loadInvites();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManageUsers]);
 
@@ -1182,6 +1346,30 @@ export default function SettingsUsers({
     return { total, active, inactive, pending, editors };
   }, [users]);
 
+  const inviteStats = useMemo(() => {
+    const total = invites.length;
+    const active = invites.filter((invite) => invite.active !== false && invite.used !== true).length;
+    const used = invites.filter((invite) => invite.used === true).length;
+    const pending = invites.filter((invite) => invite.active === false && invite.used !== true).length;
+
+    return { total, active, used, pending };
+  }, [invites]);
+
+  const averagePermissions = useMemo(() => {
+    if (!users.length) return 0;
+    const totalPermissions = users.reduce(
+      (sum, user) => sum + PERMISSION_META.filter((item) => can(item.key, user.role as any)).length,
+      0
+    );
+    return Math.round((totalPermissions / users.length) * 10) / 10;
+  }, [users]);
+
+  const exceptionCount = useMemo(() => {
+    return users.filter(
+      (user) => user.role === "pending" || user.active === false || Boolean(cleanText(user.notes))
+    ).length;
+  }, [users]);
+
   useEffect(() => {
     if (!visibleUsers.length) {
       if (selectedUserId) setSelectedUserId("");
@@ -1208,13 +1396,58 @@ export default function SettingsUsers({
       : selectedState === "pending"
         ? "قيد المراجعة"
         : "غير نشطة";
-  const selectedRoleLabel = selectedUser ? getRoleLabel(selectedUser.role) : "—";
+  const selectedRoleLabel = selectedUser ? getRoleLabel(selectedUser.role) : "-";
   const selectedRoleTone = selectedUser ? getRoleTone(selectedUser.role) : "gray";
   const selectedPermissionCount = selectedPermissions.length;
   const createPermissionCount = PERMISSION_META.filter((item) => can(item.key, createForm.role as any)).length;
+  const invitePreviewPermissions = PERMISSION_META.filter((item) => can(item.key, inviteDraft.role as any));
   const currentUid = String((auth as any)?.currentUser?.uid || "");
   const selectedIsSelf = Boolean(selectedUser && selectedUser.uid === currentUid);
   const selectedCanMutate = Boolean(selectedUser && !selectedIsSelf && canEditTargetUser(selectedUser));
+  const bannerTone = createMsg.startsWith("❌")
+    ? "danger"
+    : createMsg.startsWith("✅")
+      ? "success"
+      : "info";
+  const heroHighlights = [
+    {
+      label: "الحسابات المباشرة",
+      value: stats.total,
+      hint: "حسابات الإدارة الظاهرة حاليًا.",
+    },
+    {
+      label: "الحسابات النشطة",
+      value: stats.active,
+      hint: "حسابات قيد التشغيل الآن.",
+    },
+    {
+      label: "الدعوات الفعالة",
+      value: inviteStats.active,
+      hint: "دعوات لم تُستخدم بعد.",
+    },
+  ];
+  const overviewMetrics = [
+    {
+      label: "الإجمالي",
+      value: stats.total,
+      hint: "كل الحسابات الإدارية.",
+    },
+    {
+      label: "النشطة",
+      value: stats.active,
+      hint: "الحسابات المفعلة.",
+    },
+    {
+      label: "متوسط الصلاحيات",
+      value: averagePermissions,
+      hint: "مستوى التغطية الفعلية.",
+    },
+    {
+      label: "الاستثناءات",
+      value: exceptionCount,
+      hint: "حسابات تحتاج مراجعة.",
+    },
+  ];
 
   /* =========================
      Render
@@ -1292,154 +1525,241 @@ export default function SettingsUsers({
           compact
         />
 
-        <SettingsStats
-          items={[
-            {
-              label: "إجمالي الحسابات",
-              value: stats.total,
-              hint: "كل الحسابات الظاهرة من مصدر البيانات.",
-            },
-            {
-              label: "نشطة",
-              value: stats.active,
-              hint: "الحسابات المفعلة حاليًا.",
-            },
-            {
-              label: "قيد المراجعة",
-              value: stats.pending,
-              hint: "الحسابات التي ما زالت Pending.",
-            },
-            {
-              label: "غير نشطة",
-              value: stats.inactive,
-              hint: "الحسابات المعطلة أو المؤرشفة.",
-            },
-          ]}
-        />
+        <section className="accounts-hero">
+          <article className="accounts-hero__summary accounts-hero__summary--dark">
+            <span className="accounts-eyebrow">حسابات الإدارة</span>
+            <h1>إدارة الوصول</h1>
+            <p>لوحة طولية منظمة لمتابعة الحسابات الإدارية، الدعوات، وربط الأدوار من واجهة واحدة واضحة وسريعة القراءة.</p>
+            <div className="accounts-hero__summary-list">
+              {heroHighlights.map((item) => (
+                <div key={item.label} className="accounts-hero__summary-item">
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <small>{item.hint}</small>
+                </div>
+              ))}
+            </div>
+          </article>
 
-        {createMsg ? <div className="accounts-banner">{createMsg}</div> : null}
+          <div className="accounts-hero__copy">
+            <span className="accounts-hero__badge">وصول الإدارة</span>
+            <h2>حسابات الإدارة</h2>
+            <p>إدارة الحسابات والدعوات والصلاحيات من تبويب واحد، مع عرض واضح للحالة الحالية والروابط الفعلية بين الحسابات والموظفين.</p>
+            <div className="accounts-hero__chips">
+              <span className="accounts-chip accounts-chip--gold">إجمالي: {stats.total}</span>
+              <span className="accounts-chip accounts-chip--mint">نشطة: {stats.active}</span>
+              <span className="accounts-chip accounts-chip--blue">دعوات: {inviteStats.active}</span>
+              <span className="accounts-chip accounts-chip--slate">استثناءات: {exceptionCount}</span>
+            </div>
+          </div>
+        </section>
 
-        <div className="accounts-workspace settings-master-detail settings-master-detail--accounts">
-          <div className="settings-card settings-master-detail__detail accounts-detail-card">
-          {selectedUser ? (
-            <>
+        <section className="accounts-section accounts-invites">
+          <div className="accounts-section__head">
+            <div>
+              <span className="accounts-section__eyebrow">دعوات الأدوار</span>
+              <h2>دعوات الأدوار</h2>
+              <p>اربط دورًا ببريد إلكتروني ليُطبّق تلقائيًا عند تسجيل الدخول أو إنشاء الحساب.</p>
+            </div>
+            <div className="accounts-section__chips">
+              <span className="accounts-chip accounts-chip--gold">فعالة: {inviteStats.active}</span>
+              <span className="accounts-chip accounts-chip--soft">مستخدمة: {inviteStats.used}</span>
+            </div>
+          </div>
+
+          <div className="accounts-invites__grid">
+            <article className="accounts-panel accounts-panel--invite">
               <div className="accounts-panel__head">
                 <div>
-                  <span className="accounts-kicker">ملف الحساب</span>
-                  <h2>{selectedUser.displayName || "بدون اسم"}</h2>
-                  <p>{selectedUser.email || "لا يوجد بريد مرتبط"}</p>
+                  <span className="accounts-kicker">دعوة جديدة</span>
+                  <h3>حفظ دعوة دور</h3>
+                  <p>تستخدم نفس collection والدخول التلقائي الموجودين أصلًا في التطبيق دون تغيير المنطق.</p>
                 </div>
-
                 <div className="accounts-panel__metric">
-                  <span>EFFECTIVE</span>
-                  <strong>{selectedPermissionCount}</strong>
+                  <span>ROLE</span>
+                  <strong>{inviteDraft.role.toUpperCase()}</strong>
                 </div>
               </div>
 
-              <div className="accounts-profile">
-                <div className="accounts-avatar">
-                  {cleanText(selectedUser.displayName || selectedUser.email || selectedUser.uid).slice(0, 1) || "?"}
-                </div>
+              <div className="accounts-form-grid">
+                <label className="accounts-field">
+                  <span>البريد</span>
+                  <input
+                    value={inviteDraft.email}
+                    onChange={(e) => setInviteDraft((prev) => ({ ...prev, email: e.target.value }))}
+                    placeholder="name@malikat.com"
+                  />
+                </label>
 
-                <div className="accounts-profile__copy">
-                  <div className="accounts-inline-tags">
-                    <span className={`accounts-chip accounts-chip--${selectedRoleTone}`}>{selectedRoleLabel}</span>
-                    <span className={`accounts-chip accounts-chip--state accounts-chip--${selectedState}`}>
-                      {selectedStateLabel}
+                <label className="accounts-field">
+                  <span>الدور</span>
+                  <select
+                    value={inviteDraft.role}
+                    onChange={(e) => setInviteDraft((prev) => ({ ...prev, role: e.target.value as UiRole }))}
+                  >
+                    {isOwner ? <option value="owner">Owner</option> : null}
+                    <option value="admin">Admin</option>
+                    <option value="hr">HR</option>
+                    <option value="reception">Reception</option>
+                    <option value="staff">Staff</option>
+                  </select>
+                </label>
+
+                <label className="accounts-field accounts-field--wide">
+                  <span>ملاحظات اختيارية</span>
+                  <textarea
+                    value={inviteDraft.notes}
+                    onChange={(e) => setInviteDraft((prev) => ({ ...prev, notes: e.target.value }))}
+                    placeholder="ملاحظات داخلية أو تعليمات خاصة..."
+                  />
+                </label>
+              </div>
+
+              <div className="accounts-permission-preview">
+                <span>الصلاحيات المتوقعة لهذا الدور</span>
+                <div className="accounts-permission-preview__chips">
+                  {invitePreviewPermissions.slice(0, 4).map((permission) => (
+                    <span key={permission.key} className="accounts-permission-preview__chip">
+                      {permission.label}
                     </span>
-                    <span className="accounts-chip accounts-chip--soft">ID: {selectedUser.uid}</span>
-                  </div>
-
-                  <div className="accounts-meta-grid">
-                    <div className="accounts-meta-card">
-                      <span>البريد</span>
-                      <strong>{selectedUser.email || "—"}</strong>
-                    </div>
-                    <div className="accounts-meta-card">
-                      <span>الهاتف</span>
-                      <strong>{selectedUser.phone || "—"}</strong>
-                    </div>
-                    <div className="accounts-meta-card">
-                      <span>الربط الموظفي</span>
-                      <strong>{selectedUser.linkedEmployeeDocId || selectedUser.employeeId || "—"}</strong>
-                    </div>
-                    <div className="accounts-meta-card">
-                      <span>آخر تحديث</span>
-                      <strong>{formatDate(selectedUser.updatedAt || selectedUser.createdAt)}</strong>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="accounts-notes">
-                <div className="accounts-notes__head">
-                  <span>الملاحظات</span>
-                </div>
-                <p>{selectedUser.notes || "لا توجد ملاحظات مرتبطة بهذا الحساب."}</p>
-              </div>
-
-              <div className="accounts-permissions">
-                <div className="accounts-permissions__head">
-                  <span>الصلاحيات الفعلية</span>
-                  <small>
-                    {selectedPermissionCount} صلاحية مفعلة من أصل {PERMISSION_META.length}
-                  </small>
-                </div>
-
-                <div className="accounts-permissions__grid">
-                  {selectedPermissions.map((permission) => (
-                    <div key={permission.key} className="accounts-permission">
-                      <strong>{permission.label}</strong>
-                      <small>{permission.hint}</small>
-                    </div>
                   ))}
-                  {!selectedPermissions.length ? (
-                    <div className="accounts-permissions__empty">
-                      هذه الحساب لا يملك صلاحيات تشغيلية مفعلة.
-                    </div>
+                  {invitePreviewPermissions.length > 4 ? (
+                    <span className="accounts-permission-preview__chip accounts-permission-preview__chip--more">
+                      +{invitePreviewPermissions.length - 4}
+                    </span>
+                  ) : null}
+                  {!invitePreviewPermissions.length ? (
+                    <span className="accounts-permission-preview__empty">لا توجد صلاحيات</span>
                   ) : null}
                 </div>
               </div>
 
-              <div className="accounts-actions">
-                <button
-                  type="button"
-                  className="accounts-btn accounts-btn--primary"
-                  disabled={!selectedCanMutate}
-                  onClick={() => selectedUser && openEditUser(selectedUser)}
-                  title={!selectedCanMutate ? "تعديل حسابات المالك محجوز للمالك نفسه" : "تعديل الحساب"}
-                >
-                  تعديل
-                </button>
+              <div className="accounts-modal__footer accounts-modal__footer--inline">
                 <button
                   type="button"
                   className="accounts-btn"
-                  disabled={!selectedCanMutate}
-                  onClick={() => selectedUser && toggleUserActive(selectedUser.uid, !(selectedUser.active !== false))}
-                  title={!selectedCanMutate ? "تعديل حسابات المالك محجوز للمالك نفسه" : "تفعيل/تعطيل"}
+                  disabled={inviteSaving || invitesLoading}
+                  onClick={() => setInviteDraft({ email: "", role: "staff", notes: "" })}
                 >
-                  {selectedUser.active !== false ? "تعطيل" : "تفعيل"}
+                  إعادة ضبط
                 </button>
                 <button
                   type="button"
-                  className="accounts-btn accounts-btn--danger"
-                  disabled={!selectedCanMutate || usersLoading}
-                  onClick={() => selectedUser && deleteUserAccount(selectedUser.uid)}
-                  title={!selectedCanMutate ? "تعديل حسابات المالك محجوز للمالك نفسه" : "حذف الحساب"}
+                  className="accounts-btn accounts-btn--primary"
+                  disabled={inviteSaving}
+                  onClick={handleCreateInvite}
                 >
-                  حذف
+                  {inviteSaving ? "جاري الحفظ..." : "حفظ الدعوة"}
                 </button>
               </div>
-            </>
-          ) : (
-            <div className="accounts-panel--detail-empty">
-              <strong>اختر حسابًا من القائمة</strong>
-              <p>سيظهر هنا ملخص الحساب وصلاحياته وحالته مع أزرار التعديل والحذف.</p>
+            </article>
+
+            <article className="accounts-panel accounts-panel--invite-list">
+              <div className="accounts-panel__head">
+                <div>
+                  <span className="accounts-kicker">الدعوات الحالية</span>
+                  <h3>الدعوات الحالية</h3>
+                  <p>تظهر هنا الدعوات غير المستخدمة أو المستخدمة مع حالة كل دعوة.</p>
+                </div>
+                <div className="accounts-panel__metric">
+                  <span>OPEN</span>
+                  <strong>{inviteStats.active}</strong>
+                </div>
+              </div>
+
+              {invitesLoading ? (
+                <div className="accounts-inline-note">تحميل الدعوات…</div>
+              ) : invites.length ? (
+                <div className="accounts-invite-list">
+                  {invites.map((invite) => {
+                    const inviteTone = invite.used ? "gray" : invite.active !== false ? "mint" : "amber";
+                    const inviteState = invite.used ? "مستخدمة" : invite.active !== false ? "فعالة" : "متوقفة";
+
+                    return (
+                      <article key={invite.id} className="accounts-invite-card">
+                        <div className="accounts-invite-card__head">
+                          <div>
+                            <strong>{invite.email}</strong>
+                            <span>{formatDate(invite.createdAt)}</span>
+                          </div>
+                          <div className="accounts-card__badgeStack">
+                            <span className={`accounts-chip accounts-chip--${getRoleTone(invite.role)}`}>
+                              {getRoleLabel(invite.role)}
+                            </span>
+                            <span className={`accounts-chip accounts-chip--state accounts-chip--${inviteTone}`}>
+                              {inviteState}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p>{invite.notes || "لا توجد ملاحظات مرتبطة بهذه الدعوة."}</p>
+
+                        <div className="accounts-invite-card__footer">
+                          <span className="accounts-chip accounts-chip--soft">ID: {invite.id}</span>
+                          <span className="accounts-chip accounts-chip--soft">
+                            {invite.used ? "تم التطبيق" : "تنتظر التسجيل"}
+                          </span>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="accounts-empty-state">
+                  <strong>لا توجد دعوات محفوظة حتى الآن</strong>
+                  <p>أنشئ دعوة جديدة من البطاقة المجاورة، ثم ستظهر هنا بمجرد حفظها.</p>
+                </div>
+              )}
+            </article>
+          </div>
+        </section>
+
+        <section className="accounts-section accounts-guide">
+          <div className="accounts-section__head">
+            <div>
+              <span className="accounts-section__eyebrow">دليل الحسابات الإدارية</span>
+              <h2>دليل الحسابات الإدارية</h2>
+              <p>مراجعة سريعة للحالة الحالية، متوسط الصلاحيات، والاستثناءات التي تحتاج انتباهًا.</p>
             </div>
-          )}
+            <button
+              type="button"
+              className="accounts-btn accounts-btn--primary"
+              onClick={() => {
+                setCreateMsg("");
+                setCreateOpen(true);
+              }}
+            >
+              حساب إداري جديد <span aria-hidden="true">+</span>
+            </button>
           </div>
 
-          <div className="settings-card accounts-sidebar-card settings-master-detail__list">
+          <div className="accounts-guide__grid">
+            <article className="accounts-guide-card">
+              <span>الإجمالي</span>
+              <strong>{stats.total}</strong>
+              <small>كل الحسابات الإدارية الظاهرة في المصدر الحالي.</small>
+            </article>
+            <article className="accounts-guide-card">
+              <span>النشطة</span>
+              <strong>{stats.active}</strong>
+              <small>الحسابات المفعلة والمسموح لها بالعمل الآن.</small>
+            </article>
+            <article className="accounts-guide-card">
+              <span>متوسط الصلاحيات</span>
+              <strong>{averagePermissions}</strong>
+              <small>مؤشر سريع لمدى اتساع الأدوار الفعلية داخل الحسابات.</small>
+            </article>
+            <article className="accounts-guide-card">
+              <span>الاستثناءات</span>
+              <strong>{exceptionCount}</strong>
+              <small>حسابات عليها ملاحظات أو بانتظار مراجعة إدارية.</small>
+            </article>
+          </div>
+        </section>
+
+        {createMsg ? <div className={`accounts-banner accounts-banner--${bannerTone}`}>{createMsg}</div> : null}
+
+        <section className="accounts-directory">
           <div className="accounts-toolbar">
             <label className="accounts-search">
               <span>بحث</span>
@@ -1505,18 +1825,25 @@ export default function SettingsUsers({
             {visibleUsers.map((row) => {
               const state = getUserState(row);
               const effectiveCount = PERMISSION_META.filter((permission) => can(permission.key, row.role as any)).length;
-              const isSelected = row.uid === selectedUserId;
+              const rowCanMutate = canEditTargetUser(row) && row.uid !== currentUid;
+              const rowBlockedMessage =
+                row.uid === currentUid
+                  ? "لا يمكن تعديل الحساب المستخدم حاليًا من هذه البطاقة."
+                  : "لا تملك صلاحية تعديل هذا الحساب.";
+              const rowPermissions = PERMISSION_META.filter((permission) => can(permission.key, row.role as any));
+              const rowInitial = cleanText(row.displayName || row.email || row.uid).slice(0, 1) || "?";
 
               return (
-                <button
-                  type="button"
+                <article
                   key={row.uid}
-                  className={`accounts-card ${isSelected ? "is-selected" : ""}`}
-                  onClick={() => setSelectedUserId(row.uid)}
+                  className="accounts-card"
                 >
-                  <div className="accounts-card__metric">
-                    <span>EFFECTIVE</span>
-                    <strong>{effectiveCount}</strong>
+                  <div className="accounts-card__aside">
+                    <div className="accounts-card__avatar">{rowInitial}</div>
+                    <div className="accounts-card__metric">
+                      <span>EFFECTIVE</span>
+                      <strong>{effectiveCount}</strong>
+                    </div>
                   </div>
 
                   <div className="accounts-card__body">
@@ -1534,20 +1861,96 @@ export default function SettingsUsers({
                       </div>
                     </div>
 
+                    <div className="accounts-card__miniGrid">
+                      <div className="accounts-card__mini">
+                        <span>الحالة</span>
+                        <strong>{state === "active" ? "مفعلة" : state === "pending" ? "مراجعة" : "معطلة"}</strong>
+                      </div>
+                      <div className="accounts-card__mini">
+                        <span>الدور</span>
+                        <strong>{getRoleLabel(row.role)}</strong>
+                      </div>
+                      <div className="accounts-card__mini">
+                        <span>استثناءات</span>
+                        <strong>{row.notes ? "ملاحظة" : "لا توجد"}</strong>
+                      </div>
+                    </div>
+
                     <p>{row.notes || "لا توجد ملاحظات مرتبطة بهذا الحساب."}</p>
+
+                    <div className="accounts-card__perms">
+                      {rowPermissions.slice(0, 4).map((permission) => (
+                        <span key={permission.key} className="accounts-permission-preview__chip">
+                          {permission.label}
+                        </span>
+                      ))}
+                      {rowPermissions.length > 4 ? (
+                        <span className="accounts-permission-preview__chip accounts-permission-preview__chip--more">
+                          +{rowPermissions.length - 4}
+                        </span>
+                      ) : null}
+                    </div>
 
                     <div className="accounts-card__footer">
                       <span className="accounts-chip accounts-chip--soft">ID: {row.uid}</span>
                       <span className="accounts-chip accounts-chip--soft">{row.phone || "بدون هاتف"}</span>
                     </div>
                   </div>
-                </button>
+
+                  <div className="accounts-card__actions">
+                    <button
+                      type="button"
+                      className="accounts-btn accounts-btn--primary"
+                      aria-disabled={!rowCanMutate}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!rowCanMutate) {
+                          toastMsg(rowBlockedMessage, 2200);
+                          return;
+                        }
+                        setSelectedUserId(row.uid);
+                        openEditUser(row);
+                      }}
+                    >
+                      تعديل
+                    </button>
+                    <button
+                      type="button"
+                      className="accounts-btn"
+                      aria-disabled={!rowCanMutate}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!rowCanMutate) {
+                          toastMsg(rowBlockedMessage, 2200);
+                          return;
+                        }
+                        toggleUserActive(row.uid, !(row.active !== false));
+                      }}
+                    >
+                      {row.active !== false ? "تعطيل" : "تفعيل"}
+                    </button>
+                    <button
+                      type="button"
+                      className="accounts-btn accounts-btn--danger"
+                      disabled={usersLoading}
+                      aria-disabled={!rowCanMutate || usersLoading}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!rowCanMutate) {
+                          toastMsg(rowBlockedMessage, 2200);
+                          return;
+                        }
+                        deleteUserAccount(row.uid);
+                      }}
+                    >
+                      حذف
+                    </button>
+                  </div>
+                </article>
               );
             })}
           </div>
-        </div>
-      </div>
-
+        </section>
       {createOpen ? (
         <div className="accounts-modal" role="dialog" aria-modal="true">
           <button
@@ -1557,12 +1960,12 @@ export default function SettingsUsers({
             onClick={() => setCreateOpen(false)}
           />
 
-          <div className="accounts-modal__card">
+          <div className="accounts-modal__card accounts-modal__card--split">
             <div className="accounts-modal__head">
               <div>
                 <span className="accounts-eyebrow">حساب جديد</span>
                 <h2>إنشاء حساب إداري جديد</h2>
-                <p>سيتم إنشاء حساب Firebase Auth ثم حفظ البيانات داخل `salons/main/users`.</p>
+                <p>أضف حسابًا إداريًا جديدًا وحدد الدور والبيانات الأساسية من شاشة منظمة وواسعة.</p>
               </div>
 
               <button type="button" className="accounts-modal__close" onClick={() => setCreateOpen(false)}>
@@ -1570,77 +1973,110 @@ export default function SettingsUsers({
               </button>
             </div>
 
-            <div className="accounts-form-grid">
-              <label className="accounts-field">
-                <span>الاسم</span>
-                <input
-                  value={createForm.displayName}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, displayName: e.target.value }))}
-                  placeholder="مثال: أ. نوف"
-                />
-              </label>
+            <div className="accounts-modal__body">
+              <aside className="accounts-modal__sidebar">
+                <article className="accounts-modal__sidebar-card accounts-modal__sidebar-card--dark">
+                  <span className="accounts-kicker">ملخص الإنشاء</span>
+                  <h3>حساب إداري جديد</h3>
+                  <p>سيُنشأ حساب Firebase Auth أولًا ثم يُحفظ الملف داخل `salons/main/users`، مع ربط الموظف تلقائيًا إذا كان الدور ضمن الطاقم.</p>
+                  <div className="accounts-modal__summary-list">
+                    <div className="accounts-modal__summary-item">
+                      <span>الدور الحالي</span>
+                      <strong>{createForm.role.toUpperCase()}</strong>
+                    </div>
+                    <div className="accounts-modal__summary-item">
+                      <span>الصلاحيات</span>
+                      <strong>{createPermissionCount}</strong>
+                    </div>
+                    <div className="accounts-modal__summary-item">
+                      <span>المصدر</span>
+                      <strong>salons/main/users</strong>
+                    </div>
+                  </div>
+                </article>
 
-              <label className="accounts-field">
-                <span>البريد</span>
-                <input
-                  value={createForm.email}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, email: e.target.value }))}
-                  placeholder="name@malikat.com"
-                />
-              </label>
+                <article className="accounts-modal__sidebar-card">
+                  <span className="accounts-kicker">ملاحظات</span>
+                  <p>البريد يجب أن ينتهي بـ @malikat.com، والدور Owner يبقى متاحًا فقط للمالك.</p>
+                </article>
+              </aside>
 
-              <label className="accounts-field">
-                <span>كلمة المرور</span>
-                <input
-                  type="password"
-                  value={createForm.password}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, password: e.target.value }))}
-                  placeholder="******"
-                />
-              </label>
+              <div className="accounts-modal__main">
+                <div className="accounts-form-grid">
+                  <label className="accounts-field">
+                    <span>الاسم</span>
+                    <input
+                      value={createForm.displayName}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, displayName: e.target.value }))}
+                      placeholder="مثال: أ. نور"
+                    />
+                  </label>
 
-              <label className="accounts-field">
-                <span>الهاتف</span>
-                <input
-                  value={createForm.phone}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, phone: e.target.value }))}
-                  placeholder="05xxxxxxxx"
-                />
-              </label>
+                  <label className="accounts-field">
+                    <span>البريد</span>
+                    <input
+                      value={createForm.email}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, email: e.target.value }))}
+                      placeholder="name@malikat.com"
+                    />
+                  </label>
 
-              <label className="accounts-field">
-                <span>الدور</span>
-                <select
-                  value={createForm.role}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, role: e.target.value as UiRole }))}
-                >
-                  {isOwner ? <option value="owner">Owner</option> : null}
-                  <option value="admin">Admin</option>
-                  <option value="hr">HR</option>
-                  <option value="reception">Reception</option>
-                  <option value="staff">Staff</option>
-                </select>
-              </label>
+                  <label className="accounts-field">
+                    <span>كلمة المرور</span>
+                    <input
+                      type="password"
+                      value={createForm.password}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, password: e.target.value }))}
+                      placeholder="******"
+                    />
+                  </label>
 
-              <label className="accounts-field accounts-field--wide">
-                <span>ملاحظات</span>
-                <textarea
-                  value={createForm.notes}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  placeholder="ملاحظات تشغيلية أو تعليمات خاصة..."
-                />
-              </label>
-            </div>
+                  <label className="accounts-field">
+                    <span>الهاتف</span>
+                    <input
+                      value={createForm.phone}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, phone: e.target.value }))}
+                      placeholder="05xxxxxxxx"
+                    />
+                  </label>
 
-            <div className="accounts-permission-preview">
-              <span>الصلاحيات المتوقعة لهذا الدور</span>
-              <div className="accounts-permission-preview__chips">
-                {PERMISSION_META.filter((item) => can(item.key, createForm.role as any)).map((permission) => (
-                  <span key={permission.key} className="accounts-permission-preview__chip">
-                    {permission.label}
-                  </span>
-                ))}
-                {!createPermissionCount ? <span className="accounts-permission-preview__empty">لا توجد صلاحيات</span> : null}
+                  <label className="accounts-field">
+                    <span>الدور</span>
+                    <select
+                      value={createForm.role}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, role: e.target.value as UiRole }))}
+                    >
+                      {isOwner ? <option value="owner">Owner</option> : null}
+                      <option value="admin">Admin</option>
+                      <option value="hr">HR</option>
+                      <option value="reception">Reception</option>
+                      <option value="staff">Staff</option>
+                    </select>
+                  </label>
+
+                  <label className="accounts-field accounts-field--wide">
+                    <span>ملاحظات</span>
+                    <textarea
+                      value={createForm.notes}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, notes: e.target.value }))}
+                      placeholder="ملاحظات تشغيلية أو تعليمات خاصة..."
+                    />
+                  </label>
+                </div>
+
+                <div className="accounts-permission-preview">
+                  <span>الصلاحيات المتوقعة لهذا الدور</span>
+                  <div className="accounts-permission-preview__chips">
+                    {PERMISSION_META.filter((item) => can(item.key, createForm.role as any)).map((permission) => (
+                      <span key={permission.key} className="accounts-permission-preview__chip">
+                        {permission.label}
+                      </span>
+                    ))}
+                    {!createPermissionCount ? (
+                      <span className="accounts-permission-preview__empty">لا توجد صلاحيات</span>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1677,12 +2113,12 @@ export default function SettingsUsers({
             onClick={() => setEditDraft(null)}
           />
 
-          <div className="accounts-modal__card accounts-modal__card--edit">
+          <div className="accounts-modal__card accounts-modal__card--split accounts-modal__card--edit">
             <div className="accounts-modal__head">
               <div>
                 <span className="accounts-eyebrow">تعديل حساب</span>
                 <h2>تعديل {editDraft.displayName || editDraft.email || "الحساب"}</h2>
-                <p>يمكن تعديل الاسم، الهاتف، الدور، الحالة، والملاحظات. البريد ظاهر فقط لأنه مرتبط بحساب Firebase Auth.</p>
+                <p>يمكن تعديل الاسم، الهاتف، الدور، الحالة، والملاحظات من شاشة مرتبة وواسعة.</p>
               </div>
 
               <button type="button" className="accounts-modal__close" onClick={() => setEditDraft(null)}>
@@ -1690,81 +2126,127 @@ export default function SettingsUsers({
               </button>
             </div>
 
-            <div className="accounts-form-grid">
-              <label className="accounts-field">
-                <span>الاسم</span>
-                <input
-                  value={editDraft.displayName}
-                  onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, displayName: e.target.value } : prev))}
-                />
-              </label>
+            <div className="accounts-modal__body">
+              <aside className="accounts-modal__sidebar">
+                <article className="accounts-modal__sidebar-card accounts-modal__sidebar-card--dark">
+                  <span className="accounts-kicker">ملخص الحساب</span>
+                  <div className="accounts-profile accounts-profile--modal">
+                    <div className="accounts-avatar">
+                      {cleanText(selectedUser?.displayName || selectedUser?.email || selectedUser?.uid).slice(0, 1) ||
+                        "?"}
+                    </div>
 
-              <label className="accounts-field">
-                <span>البريد</span>
-                <input value={editDraft.email} readOnly />
-              </label>
+                    <div className="accounts-profile__copy">
+                      <div className="accounts-inline-tags">
+                        <span className={`accounts-chip accounts-chip--${selectedRoleTone}`}>{selectedRoleLabel}</span>
+                        <span className={`accounts-chip accounts-chip--state accounts-chip--${selectedState}`}>
+                          {selectedStateLabel}
+                        </span>
+                        <span className="accounts-chip accounts-chip--soft">ID: {editDraft.uid}</span>
+                      </div>
 
-              <label className="accounts-field">
-                <span>الهاتف</span>
-                <input
-                  value={editDraft.phone}
-                  onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, phone: e.target.value } : prev))}
-                />
-              </label>
+                      <div className="accounts-modal__summary-list">
+                        <div className="accounts-modal__summary-item">
+                          <span>البريد</span>
+                          <strong>{editDraft.email || "—"}</strong>
+                        </div>
+                        <div className="accounts-modal__summary-item">
+                          <span>الصلاحيات</span>
+                          <strong>{selectedPermissionCount}</strong>
+                        </div>
+                        <div className="accounts-modal__summary-item">
+                          <span>الحالة</span>
+                          <strong>{editDraft.active ? "نشط" : "غير نشط"}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </article>
 
-              <label className="accounts-field">
-                <span>الدور</span>
-                <select
-                  value={editDraft.role}
-                  onChange={(e) =>
-                    setEditDraft((prev) => (prev ? { ...prev, role: e.target.value as UiRole } : prev))
-                  }
-                  disabled={!canEditTargetUser(selectedUser)}
-                >
-                  {isOwner ? <option value="owner">Owner</option> : null}
-                  <option value="admin">Admin</option>
-                  <option value="hr">HR</option>
-                  <option value="reception">Reception</option>
-                  <option value="staff">Staff</option>
-                  <option value="pending">Pending</option>
-                </select>
-              </label>
+                <article className="accounts-modal__sidebar-card">
+                  <span className="accounts-kicker">ملاحظات التعديل</span>
+                  <p>البريد مرتبط بحساب Firebase Auth لذلك يظهر للقراءة فقط، بينما بقية الحقول قابلة للتعديل.</p>
+                </article>
+              </aside>
 
-              <label className="accounts-field accounts-field--switch">
-                <span>الحالة</span>
-                <div className="accounts-switch">
-                  <input
-                    type="checkbox"
-                    checked={editDraft.active}
-                    onChange={(e) =>
-                      setEditDraft((prev) => (prev ? { ...prev, active: e.target.checked } : prev))
-                    }
-                    disabled={!canEditTargetUser(selectedUser)}
-                  />
-                  <span>{editDraft.active ? "نشط" : "غير نشط"}</span>
+              <div className="accounts-modal__main">
+                <div className="accounts-form-grid">
+                  <label className="accounts-field">
+                    <span>الاسم</span>
+                    <input
+                      value={editDraft.displayName}
+                      onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, displayName: e.target.value } : prev))}
+                    />
+                  </label>
+
+                  <label className="accounts-field">
+                    <span>البريد</span>
+                    <input value={editDraft.email} readOnly />
+                  </label>
+
+                  <label className="accounts-field">
+                    <span>الهاتف</span>
+                    <input
+                      value={editDraft.phone}
+                      onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, phone: e.target.value } : prev))}
+                    />
+                  </label>
+
+                  <label className="accounts-field">
+                    <span>الدور</span>
+                    <select
+                      value={editDraft.role}
+                      onChange={(e) =>
+                        setEditDraft((prev) => (prev ? { ...prev, role: e.target.value as UiRole } : prev))
+                      }
+                      disabled={!canEditTargetUser(selectedUser)}
+                    >
+                      {isOwner ? <option value="owner">Owner</option> : null}
+                      <option value="admin">Admin</option>
+                      <option value="hr">HR</option>
+                      <option value="reception">Reception</option>
+                      <option value="staff">Staff</option>
+                      <option value="pending">Pending</option>
+                    </select>
+                  </label>
+
+                  <label className="accounts-field accounts-field--switch">
+                    <span>الحالة</span>
+                    <div className="accounts-switch">
+                      <input
+                        type="checkbox"
+                        checked={editDraft.active}
+                        onChange={(e) =>
+                          setEditDraft((prev) => (prev ? { ...prev, active: e.target.checked } : prev))
+                        }
+                        disabled={!canEditTargetUser(selectedUser)}
+                      />
+                      <span>{editDraft.active ? "نشط" : "غير نشط"}</span>
+                    </div>
+                  </label>
+
+                  <label className="accounts-field accounts-field--wide">
+                    <span>ملاحظات</span>
+                    <textarea
+                      value={editDraft.notes}
+                      onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, notes: e.target.value } : prev))}
+                    />
+                  </label>
                 </div>
-              </label>
 
-              <label className="accounts-field accounts-field--wide">
-                <span>ملاحظات</span>
-                <textarea
-                  value={editDraft.notes}
-                  onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, notes: e.target.value } : prev))}
-                />
-              </label>
-            </div>
-
-            <div className="accounts-permission-preview">
-              <span>الصلاحيات الفعلية حسب الدور الحالي</span>
-              <div className="accounts-permission-preview__chips">
-                {PERMISSION_META.filter((item) => can(item.key, editDraft.role as any)).map((permission) => (
-                  <span key={permission.key} className="accounts-permission-preview__chip">
-                    {permission.label}
-                  </span>
-                ))}
-                {!PERMISSION_META.filter((item) => can(item.key, editDraft.role as any)).length ? (
-                  <span className="accounts-permission-preview__empty">لا توجد صلاحيات</span>
-                ) : null}
+                <div className="accounts-permission-preview">
+                  <span>الصلاحيات الفعلية حسب الدور الحالي</span>
+                  <div className="accounts-permission-preview__chips">
+                    {PERMISSION_META.filter((item) => can(item.key, editDraft.role as any)).map((permission) => (
+                      <span key={permission.key} className="accounts-permission-preview__chip">
+                        {permission.label}
+                      </span>
+                    ))}
+                    {!PERMISSION_META.filter((item) => can(item.key, editDraft.role as any)).length ? (
+                      <span className="accounts-permission-preview__empty">لا توجد صلاحيات</span>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             </div>
 

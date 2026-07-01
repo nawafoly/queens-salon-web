@@ -455,6 +455,14 @@ export default function DashboardEmployees() {
     resetForm();
   };
 
+  const closeEmployeeDetail = () => {
+    setSelectedEmployeeId(null);
+    setEditId(null);
+    setIsOpen(false);
+    setMode("edit");
+    resetForm();
+  };
+
   const loadServiceOptions = useCallback(async (): Promise<ServiceOption[]> => {
     try {
       const qSrv = query(servicesCol(), orderBy("name", "asc"));
@@ -787,6 +795,23 @@ export default function DashboardEmployees() {
     setIsOpen(false);
     setMode("edit");
   }, [list, selectedEmployeeId]);
+
+  useEffect(() => {
+    if (!selectedEmployeeId) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeEmployeeDetail();
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [selectedEmployeeId]);
 
   useEffect(() => {
     setModalHourOverrideFromDateHijri(formatHijriInputFromIso(modalHourOverrideFromDate));
@@ -2871,6 +2896,8 @@ export default function DashboardEmployees() {
             onDelete={() => selectedEmployeeId && remove(selectedEmployeeId)}
             onCancelEdit={handleCancelEdit}
             onTabChange={handleSplitTabChange}
+            onClose={closeEmployeeDetail}
+            showEditor={isOpen}
           >
             <EmployeeEditorModal
               isOpen={isOpen}

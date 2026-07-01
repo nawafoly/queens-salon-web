@@ -1,4 +1,4 @@
-﻿import { HR_COLLECTIONS } from "../../services/hrCollections";
+import { HR_COLLECTIONS } from "../../services/hrCollections";
 import type { EmployeeAbsenceDoc, EmployeeAbsenceType } from "../../types/hrEmployee";
 
 export const EMPLOYEE_ABSENCES_COLLECTION = HR_COLLECTIONS.employeeAbsences[2];
@@ -32,8 +32,8 @@ export const EMPLOYEE_ABSENCE_TYPE_OPTIONS: Array<{
   value: EmployeeAbsenceType;
   label: string;
 }> = [
-  { value: "full_day", label: "ظٹظˆظ… ظƒط§ظ…ظ„" },
-  { value: "half_day", label: "ظ†طµظپ ظٹظˆظ…" },
+  { value: "full_day", label: "يوم كامل" },
+  { value: "half_day", label: "نصف يوم" },
 ];
 
 export type EmployeeAbsenceRecord = EmployeeAbsenceDoc & {
@@ -103,7 +103,7 @@ export function getEmployeeAbsenceTypeLabel(value: unknown) {
     EMPLOYEE_ABSENCE_TYPE_OPTIONS.find(option => option.value === normalized)
       ?.label ||
     String(value || "").trim() ||
-    "ط؛ظٹط± ظ…ط­ط¯ط¯"
+    "غير محدد"
   );
 }
 
@@ -117,16 +117,16 @@ export function getEmployeeAbsenceDaysValue(value: unknown) {
 
 export function formatEmployeeAbsenceDays(value: unknown) {
   const normalized = Number(value);
-  if (!Number.isFinite(normalized) || normalized <= 0) return "â€”";
+  if (!Number.isFinite(normalized) || normalized <= 0) return "—";
   return `${formatNumberEN(normalized, {
     minimumFractionDigits: normalized % 1 === 0 ? 0 : 1,
     maximumFractionDigits: normalized % 1 === 0 ? 0 : 1,
-  })} ظٹظˆظ…`;
+  })} يوم`;
 }
 
 export function formatEmployeeAbsenceDate(value: unknown) {
   const date = toAbsenceDate(value);
-  if (!date) return "â€”";
+  if (!date) return "—";
   return formatDateEN(date);
 }
 

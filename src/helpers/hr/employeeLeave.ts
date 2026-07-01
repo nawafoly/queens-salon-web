@@ -1,4 +1,4 @@
-﻿import { HR_COLLECTIONS } from "../../services/hrCollections";
+import { HR_COLLECTIONS } from "../../services/hrCollections";
 import type {
   EmployeeLeaveRequestDoc,
   EmployeeLeaveRequestStatus,
@@ -36,11 +36,11 @@ export const EMPLOYEE_LEAVE_TYPE_OPTIONS: Array<{
   value: EmployeeLeaveType;
   label: string;
 }> = [
-  { value: "annual", label: "ط¥ط¬ط§ط²ط© ط³ظ†ظˆظٹط©" },
-  { value: "sick", label: "ط¥ط¬ط§ط²ط© ظ…ط±ط¶ظٹط©" },
-  { value: "emergency", label: "ط¥ط¬ط§ط²ط© ط§ط¶ط·ط±ط§ط±ظٹط©" },
-  { value: "unpaid", label: "ط¥ط¬ط§ط²ط© ط¨ط¯ظˆظ† ط±ط§طھط¨" },
-  { value: "other", label: "ط£ط®ط±ظ‰" },
+  { value: "annual", label: "إجازة سنوية" },
+  { value: "sick", label: "إجازة مرضية" },
+  { value: "emergency", label: "إجازة اضطرارية" },
+  { value: "unpaid", label: "إجازة بدون راتب" },
+  { value: "other", label: "أخرى" },
 ];
 
 export type EmployeeLeaveRequestRecord = EmployeeLeaveRequestDoc & {
@@ -135,7 +135,7 @@ export function getLeaveTypeLabel(value: unknown) {
   return (
     EMPLOYEE_LEAVE_TYPE_OPTIONS.find(option => option.value === normalized)?.label ||
     String(value || "").trim() ||
-    "ط؛ظٹط± ظ…ط­ط¯ط¯"
+    "غير محدد"
   );
 }
 
@@ -143,27 +143,27 @@ export function getLeaveStatusMeta(value: unknown): EmployeeLeaveStatusMeta {
   const normalized = String(value || "").trim().toLowerCase();
 
   if (normalized === "approved") {
-    return { label: "ظ…ط¹طھظ…ط¯", tone: "success" };
+    return { label: "معتمد", tone: "success" };
   }
 
   if (normalized === "rejected") {
-    return { label: "ظ…ط±ظپظˆط¶", tone: "danger" };
+    return { label: "مرفوض", tone: "danger" };
   }
 
   if (normalized === "pending") {
-    return { label: "ط¨ط§ظ†طھط¸ط§ط± ط§ظ„ظ…ط±ط§ط¬ط¹ط©", tone: "warning" };
+    return { label: "بانتظار المراجعة", tone: "warning" };
   }
 
   return {
-    label: String(value || "ط؛ظٹط± ظ…ط­ط¯ط¯").trim() || "ط؛ظٹط± ظ…ط­ط¯ط¯",
+    label: String(value || "غير محدد").trim() || "غير محدد",
     tone: "muted",
   };
 }
 
 export function formatLeaveDaysLabel(daysCount: unknown) {
   const value = Number(daysCount);
-  if (!Number.isFinite(value) || value <= 0) return "â€”";
-  return `${formatNumberEN(value)} ظٹظˆظ…`;
+  if (!Number.isFinite(value) || value <= 0) return "—";
+  return `${formatNumberEN(value)} يوم`;
 }
 
 export function formatLeaveDateRange(
@@ -173,7 +173,7 @@ export function formatLeaveDateRange(
   const start = toLeaveDate(startDate);
   const end = toLeaveDate(endDate);
 
-  if (!start && !end) return "â€”";
+  if (!start && !end) return "—";
   if (start && end) {
     return `${formatDateEN(start)} - ${formatDateEN(end)}`;
   }
