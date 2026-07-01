@@ -28,6 +28,7 @@ import Login from "./pages/Login";
 import Pricing from "./pages/Pricing";
 import Dashboard from "./pages/Dashboard";
 import AdminHrDashboard from "./pages/AdminHrDashboard";
+import HrEntry from "./pages/HrEntry";
 import EmployeePortal from "./pages/EmployeePortal";
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -297,6 +298,7 @@ const App: React.FC = () => {
   const isInDashboard =
     location.pathname.startsWith("/dashboard") ||
     location.pathname.startsWith("/dashboard-pending") ||
+    location.pathname.startsWith("/hr") ||
     location.pathname.startsWith("/admin") ||
     location.pathname.startsWith("/employee");
   const isProfilePage =
@@ -658,6 +660,15 @@ const App: React.FC = () => {
             element={
               <AdminGuard>
                 <AdminHrDashboard />
+              </AdminGuard>
+            }
+          />
+
+          <Route
+            path="/hr"
+            element={
+              <AdminGuard>
+                <HrEntry />
               </AdminGuard>
             }
           />

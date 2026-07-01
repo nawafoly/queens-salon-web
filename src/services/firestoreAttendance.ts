@@ -4,10 +4,12 @@ import {
   getDocs,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   where,
 } from "firebase/firestore";
+import { db } from "./firebase";
 import {
   SALON_ID,
   staffAttendanceCollection,
@@ -79,6 +81,13 @@ function normalizePunchStatus(data: any): AttendancePunchStatus {
   if (raw === "checked_out" || data?.checkOutAt || data?.checkOutAtClient) return "checked_out";
   if (raw === "checked_in" || data?.checkInAt || data?.checkInAtClient) return "checked_in";
   return "not_started";
+}
+
+function attendanceActor(uid?: string, name?: string) {
+  return {
+    uid: String(uid || "").trim() || undefined,
+    name: String(name || "").trim() || undefined,
+  };
 }
 
 function mapAttendanceDoc(employeeId: string, date: string, id: string, data: any): StaffAttendanceToday {
@@ -160,25 +169,29 @@ export async function checkInStaffAttendance(args: {
   const date = normalizeIsoDate(args.date) || getTodayAttendanceDateKey();
   const salonId = String(args.salonId || DEFAULT_SALON_ID).trim() || DEFAULT_SALON_ID;
   if (!employeeId || !date) throw new Error("attendance: invalid employee/date");
+  const ref = attendanceDoc(employeeId, date, salonId);
+  const clientTime = new Date().toISOString();
 
-  await setDoc(
-    attendanceDoc(employeeId, date, salonId),
-    {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const current = snap.exists() ? normalizePunchStatus(snap.data()) : "not_started";
+    if (current === "checked_in" || current === "checked_out") {
+      throw new Error("تم تسجيل الحضور لهذا اليوم بالفعل.");
+    }
+
+    tx.set(ref, {
       date,
       employeeId,
       salonId,
       status: "checked_in" as AttendancePunchStatus,
       checkInAt: serverTimestamp(),
-      checkInAtClient: new Date().toISOString(),
-      createdBy: {
-        uid: String(args.createdByUid || "").trim() || undefined,
-        name: String(args.createdByName || "").trim() || undefined,
-      },
+      checkInAtClient: clientTime,
+      createdBy: attendanceActor(args.createdByUid, args.createdByName),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+      // TODO: add work zone validation later
+    }, { merge: true });
+  });
 }
 
 export async function checkOutStaffAttendance(args: {
@@ -192,24 +205,31 @@ export async function checkOutStaffAttendance(args: {
   const date = normalizeIsoDate(args.date) || getTodayAttendanceDateKey();
   const salonId = String(args.salonId || DEFAULT_SALON_ID).trim() || DEFAULT_SALON_ID;
   if (!employeeId || !date) throw new Error("attendance: invalid employee/date");
+  const ref = attendanceDoc(employeeId, date, salonId);
+  const clientTime = new Date().toISOString();
 
-  await setDoc(
-    attendanceDoc(employeeId, date, salonId),
-    {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const current = snap.exists() ? normalizePunchStatus(snap.data()) : "not_started";
+    if (current === "not_started") {
+      throw new Error("يجب تسجيل الحضور قبل تسجيل الانصراف.");
+    }
+    if (current === "checked_out") {
+      throw new Error("تم تسجيل الانصراف لهذا اليوم بالفعل.");
+    }
+
+    tx.set(ref, {
       date,
       employeeId,
       salonId,
       status: "checked_out" as AttendancePunchStatus,
       checkOutAt: serverTimestamp(),
-      checkOutAtClient: new Date().toISOString(),
-      updatedBy: {
-        uid: String(args.createdByUid || "").trim() || undefined,
-        name: String(args.createdByName || "").trim() || undefined,
-      },
+      checkOutAtClient: clientTime,
+      updatedBy: attendanceActor(args.createdByUid, args.createdByName),
       updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+      // TODO: add work zone validation later
+    }, { merge: true });
+  });
 }
 
 export async function listStaffAttendanceByDateRange(args: {

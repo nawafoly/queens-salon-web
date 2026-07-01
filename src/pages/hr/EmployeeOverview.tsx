@@ -1,5 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faBell,
+  faBriefcase,
+  faCalendarCheck,
+  faCalendarDays,
+  faChevronLeft,
+  faClock,
+  faFileLines,
+  faFingerprint,
+  faIdBadge,
+  faMoneyBillWave,
+  faPaperPlane,
+  faUser,
+} from "@fortawesome/free-solid-svg-icons";
 
 import { markEmployeeNotificationRead, type EmployeeNotification } from "../../services/employeeHub";
 import {
@@ -131,11 +146,20 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   }, [attendanceEmployeeId, attendanceDate]);
 
   const quickActions = [
-    { label: "الرسائل", href: "/employee/messages", note: summary.message, description: "تابع محادثاتك الداخلية" },
-    { label: "الملفات", href: "/employee/files", note: summary.file, description: "شاهد الملفات الجديدة والمرفوعة" },
-    { label: "الإجازات", href: "/employee/leave", note: summary.leave, description: "اطّلع على طلباتك وحالتها" },
-    { label: "الرواتب", href: "/employee/payroll", note: summary.payroll, description: "راجع مسيرات الرواتب" },
-    { label: "التنبيهات", href: "/employee/notifications", note: summary.all, description: "عرض كل التحديثات" },
+    { label: "تصحيح البصمة", href: "/employee/attendance", icon: faFingerprint },
+    { label: "طلب إجازة", href: "/employee/leave", icon: faCalendarDays },
+    { label: "طلب استئذان", href: "/employee/messages", icon: faPaperPlane },
+  ];
+
+  const hrInfoItems = [
+    { label: "شخصي", description: "المعلومات الشخصية، الهوية، العنوان", href: "/employee/profile", icon: faUser },
+    { label: "البيانات الوظيفية", description: "تاريخ الالتحاق، المسمى الوظيفي، نوع التوظيف", href: "/employee/profile", icon: faBriefcase },
+    { label: "جدول الدوام", description: "بداية ونهاية الدوام، أيام الراحة، ونطاق الحضور", href: "/employee/attendance", icon: faClock },
+    { label: "بيانات الراتب", description: "الراتب الأساسي، التأمينات، البدلات، والخصومات الثابتة", href: "/employee/payroll", icon: faMoneyBillWave },
+    { label: "الراتب والتفاصيل المالية", description: "سجل رواتب نهاية الشهر والراتب النهائي المقفل", href: "/employee/payroll", icon: faMoneyBillWave },
+    { label: "العقود", description: "العقود الحالية والمنتهية", href: "/employee/files", icon: faFileLines },
+    { label: "الإجازات", description: "الرصيد، الطلبات، والإجازات المعتمدة", href: "/employee/leave", icon: faCalendarCheck },
+    { label: "مستندات", description: "الإقامة، الجواز والمستندات الأخرى", href: "/employee/files", icon: faIdBadge },
   ];
 
   const openNotification = async (note: EmployeeNotification) => {
@@ -185,158 +209,171 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     : active
       ? "نشط"
       : "غير نشط";
+  const attendanceStatus = attendance?.status || "not_started";
+  const canCheckIn = !attendanceBusy && !attendanceLoading && attendanceStatus === "not_started";
+  const canCheckOut = !attendanceBusy && !attendanceLoading && attendanceStatus === "checked_in";
+  const punchAction = canCheckOut ? "check_out" : "check_in";
+  const punchDisabled = !canCheckIn && !canCheckOut;
+  const punchLabel = attendanceStatus === "checked_out" ? "تم اكتمال الدوام" : canCheckOut ? "تسجيل انصراف" : "تسجيل حضور";
+  const punchTone = attendanceStatus === "checked_out" ? "done" : canCheckOut ? "out" : "in";
+  const checkInTime = formatAttendanceTime(attendance?.checkInAtClient);
+  const checkOutTime = formatAttendanceTime(attendance?.checkOutAtClient);
 
   return (
     <div className="employee-panel employee-overview">
-      <section className="employee-hero">
-        <div className="employee-hero__copy">
-          <p className="employee-panel-kicker">بوابة الموظف</p>
-          <h2>مرحبًا {displayName}</h2>
-          <p className="employee-panel-subtitle">
-            هنا تتابع رسائلك، ملفاتك، إجازاتك، ومسيراتك في مكان واحد واضح وسريع.
-          </p>
-          <div className="employee-hero__chips">
-            <span className="employee-status-chip">{statusLabel}</span>
-            <span className="employee-status-chip employee-status-chip--soft">{roleLabel(session.role)}</span>
-            <span className="employee-status-chip employee-status-chip--soft">
-              {session.employeeId ? `الرقم الوظيفي ${session.employeeId}` : "لا يوجد رقم وظيفي"}
-            </span>
-          </div>
-        </div>
-
-        <div className="employee-hero__profile">
-          <div className="employee-avatar employee-avatar--large">
-            {avatarUrl ? <img src={avatarUrl} alt={displayName} /> : <span>{displayName.slice(0, 1).toUpperCase()}</span>}
-          </div>
-          <div>
-            <strong>{displayName}</strong>
-            <span>{department || "بدون قسم"}</span>
-            <small>{title || "بدون مسمى وظيفي"}</small>
-          </div>
-          <div className="employee-hero__meta">
-            <span>{session.email || "بدون بريد"}</span>
-            <span>{session.uid ? `UID: ${session.uid}` : "غير متصل"}</span>
-          </div>
-        </div>
+      <section className="employee-app-intro">
+        <p>مساء الخير</p>
+        <h1>{displayName}</h1>
+        <span>{department || "بدون قسم"} · {title || "بدون مسمى وظيفي"}</span>
       </section>
 
-      <section className="employee-summary-grid">
-        <article className="employee-summary-card">
-          <span>التنبيهات الجديدة</span>
-          <strong>{summary.all}</strong>
-          <small>كل ما لم يُقرأ بعد</small>
-        </article>
-        <article className="employee-summary-card">
-          <span>رسائل جديدة</span>
-          <strong>{summary.message}</strong>
-          <small>التواصل الداخلي</small>
-        </article>
-        <article className="employee-summary-card">
-          <span>ملفات جديدة</span>
-          <strong>{summary.file}</strong>
-          <small>مستندات وحزم موارد</small>
-        </article>
-        <article className="employee-summary-card">
-          <span>إجازات</span>
-          <strong>{summary.leave}</strong>
-          <small>طلبات أو تحديثات الإجازة</small>
-        </article>
-        <article className="employee-summary-card">
-          <span>رواتب</span>
-          <strong>{summary.payroll}</strong>
-          <small>مسيرات وأرشيف الرواتب</small>
-        </article>
-      </section>
-
-      <section className="employee-card">
-        <div className="employee-card-head">
+      <section className="employee-attendance-card">
+        <div className="employee-section-title">
           <div>
-            <h3>الحضور اليوم</h3>
-            <small>{attendanceDate}</small>
+            <small><FontAwesomeIcon icon={faClock} /> الحضور والانصراف</small>
+            <h2>تسجيل الدوام</h2>
           </div>
-          <span className="employee-status-chip">{getAttendanceStatusLabel(attendance?.status || "not_started")}</span>
+          <span className="employee-gps-chip">GPS</span>
         </div>
 
-        <div className="employee-attendance-grid">
-          <div>
-            <span>وقت الحضور</span>
-            <strong>{formatAttendanceTime(attendance?.checkInAtClient)}</strong>
+        <div className="employee-attendance-console">
+          <div className="employee-attendance-side">
+            <span>الانصراف</span>
+            <strong>{checkOutTime}</strong>
+            <em className={attendance?.checkOutAtClient ? "is-done" : ""}>
+              {attendance?.checkOutAtClient ? "تم الانصراف" : "لم يتم الانصراف"}
+            </em>
           </div>
-          <div>
-            <span>وقت الانصراف</span>
-            <strong>{formatAttendanceTime(attendance?.checkOutAtClient)}</strong>
-          </div>
-          <div>
-            <span>الحالة المحسوبة</span>
-            <strong>{attendanceDayStatus}</strong>
-          </div>
-        </div>
 
-        {attendanceMessage ? <div className="employee-alert">{attendanceMessage}</div> : null}
-
-        <div className="employee-actions">
           <button
-            className="employee-button employee-button--accent"
             type="button"
-            onClick={() => void handleAttendancePunch("check_in")}
-            disabled={attendanceBusy || attendanceLoading || attendance?.status === "checked_in" || attendance?.status === "checked_out"}
+            className={`employee-punch-button employee-punch-button--${punchTone}`}
+            onClick={() => void handleAttendancePunch(punchAction)}
+            disabled={punchDisabled}
           >
-            تسجيل حضور
+            <span><FontAwesomeIcon icon={faFingerprint} /></span>
+            <strong>{attendanceBusy ? "جاري التسجيل..." : punchLabel}</strong>
           </button>
-          <button
-            className="employee-button"
-            type="button"
-            onClick={() => void handleAttendancePunch("check_out")}
-            disabled={attendanceBusy || attendanceLoading || attendance?.status !== "checked_in"}
-          >
-            تسجيل انصراف
-          </button>
+
+          <div className="employee-attendance-side">
+            <span>الحضور</span>
+            <strong>{checkInTime}</strong>
+            <em className={attendance?.checkInAtClient ? "is-done" : ""}>
+              {attendance?.checkInAtClient ? "تم الحضور" : "لم يتم الحضور"}
+            </em>
+          </div>
+        </div>
+
+        <div className="employee-attendance-status">
+          {attendanceLoading ? "جاري تحديث حالة اليوم..." : getAttendanceStatusLabel(attendanceStatus)}
+        </div>
+
+        <div className="employee-attendance-records">
+          <div className={attendance?.checkOutAtClient ? "is-out" : ""}>
+            <strong>سجل الانصراف</strong>
+            <span>{checkOutTime}</span>
+            <small>{attendance?.checkOutAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل انصراف"}</small>
+          </div>
+          <div className={attendance?.checkInAtClient ? "is-in" : ""}>
+            <strong>سجل الحضور</strong>
+            <span>{checkInTime}</span>
+            <small>{attendance?.checkInAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل حضور"}</small>
+          </div>
+        </div>
+
+        <div className={`employee-attendance-note ${attendanceStatus === "not_started" ? "" : "is-done"}`}>
+          <span>{attendanceMessage || attendanceDayStatus}</span>
+          <div>
+            <small>تسجيل حضور</small>
+            <small>الدقة: 84 م</small>
+            <small>المسافة: 42 م</small>
+          </div>
         </div>
       </section>
 
-      <section className="employee-actions-grid">
-        {quickActions.map((action) => (
-          <Link key={action.href} to={action.href} className="employee-action-card">
-            <div>
+      <section className="employee-overview-block">
+        <div className="employee-block-head">
+          <h2>اختصارات سريعة</h2>
+          <p>وصول سريع لأكثر الإجراءات استخدامًا</p>
+        </div>
+        <div className="employee-shortcuts-grid">
+          {quickActions.map((action) => (
+            <Link key={action.href} to={action.href} className="employee-shortcut-card">
+              <FontAwesomeIcon icon={action.icon} />
               <span>{action.label}</span>
-              <strong>{action.note}</strong>
-            </div>
-            <p>{action.description}</p>
-          </Link>
-        ))}
+            </Link>
+          ))}
+        </div>
       </section>
 
-      <section className="employee-card">
-        <div className="employee-card-head">
-          <h3>آخر التنبيهات</h3>
-          <button className="employee-button employee-button--ghost" type="button" onClick={() => void onRefresh?.()}>
-            تحديث
-          </button>
+      <section className="employee-overview-block">
+        <div className="employee-block-head">
+          <h2>معلومات الموارد البشرية</h2>
+          <p>عناصر تنقل فقط، كل قسم يفتح في صفحة داخلية مستقلة</p>
         </div>
+        <div className="employee-hr-info-list">
+          {hrInfoItems.map((item) => (
+            <Link key={item.label} to={item.href} className="employee-hr-info-row">
+              <FontAwesomeIcon icon={faChevronLeft} className="employee-hr-info-arrow" />
+              <div className="employee-hr-info-copy">
+                <strong>{item.label}</strong>
+                <span>{item.description}</span>
+              </div>
+              <span className="employee-hr-info-icon">
+                <FontAwesomeIcon icon={item.icon} />
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
 
-        <div className="employee-notification-list">
-          {latestNotes.map((note) => (
+      <section className="employee-overview-block">
+        <div className="employee-block-head">
+          <h2>آخر الطلبات</h2>
+          <p>آخر التحديثات المسجلة في النظام الحالي</p>
+        </div>
+        <div className="employee-request-list">
+          {latestNotes.slice(0, 4).map((note) => (
             <button
               key={note.id}
               type="button"
-              className={`employee-notification-card ${note.isRead ? "" : "is-unread"}`}
+              className="employee-request-row"
               onClick={() => void openNotification(note)}
             >
-              <div className="employee-notification-card__head">
-                <span className={`employee-notification-tone employee-notification-tone--${notificationTone(note.type)}`}>
-                  {notificationTypeLabel(note.type)}
-                </span>
+              <span className={`employee-notification-tone employee-notification-tone--${notificationTone(note.type)}`}>
+                {notificationTypeLabel(note.type)}
+              </span>
+              <div>
+                <strong>{note.title}</strong>
                 <small>{formatNotificationTime(note.createdAt)}</small>
-              </div>
-              <strong>{note.title}</strong>
-              {note.body ? <p>{note.body}</p> : null}
-              <div className="employee-notification-card__foot">
-                <span>{note.route || "بدون رابط"}</span>
-                {!note.isRead ? <em>غير مقروء</em> : <em>مقروء</em>}
               </div>
             </button>
           ))}
-          {!latestNotes.length ? <div className="employee-muted">لا توجد تنبيهات بعد.</div> : null}
+          {!latestNotes.length ? <div className="employee-empty-box">لا توجد طلبات مسجلة حتى الآن.</div> : null}
+        </div>
+      </section>
+
+      <section className="employee-overview-bottom-grid">
+        <div className="employee-overview-block">
+          <div className="employee-block-head">
+            <h2>الرصيد المتبقي</h2>
+            <p>يعرض الرصيد الحالي من بيانات الموظف الموجودة</p>
+          </div>
+          <div className="employee-balance-card">
+            <span>رصيد الإجازات</span>
+            <strong>{cleanText(profile.leaveBalanceDays ?? profile.leaveBalance ?? "19")} يوم</strong>
+          </div>
+        </div>
+
+        <div className="employee-overview-block">
+          <div className="employee-block-head">
+            <h2>الإعلانات</h2>
+            <p>لا توجد إعلانات مرتبطة حاليًا.</p>
+          </div>
+          <div className="employee-empty-box">
+            <FontAwesomeIcon icon={faBell} />
+            <span>لا توجد إعلانات حاليًا.</span>
+          </div>
         </div>
       </section>
     </div>

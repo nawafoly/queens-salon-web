@@ -90,6 +90,30 @@ service cloud.firestore {
       return myRoleInSalon(salonId) != "guest" ? myRoleInSalon(salonId) : myRole();
     }
 
+    function myEmployeeIdInSalon(salonId) {
+      return (
+        signedIn()
+        && exists(myUserPathInSalon(salonId))
+        && (get(myUserPathInSalon(salonId)).data.employeeId is string)
+      )
+        ? get(myUserPathInSalon(salonId)).data.employeeId
+        : (
+            signedIn()
+            && exists(myAdminUserPathInSalon(salonId))
+            && (get(myAdminUserPathInSalon(salonId)).data.employeeId is string)
+          )
+            ? get(myAdminUserPathInSalon(salonId)).data.employeeId
+            : request.auth.uid;
+    }
+
+    function isOwnEmployeeIdForSalon(salonId, employeeId) {
+      return signedIn()
+        && (
+          employeeId == request.auth.uid
+          || employeeId == myEmployeeIdInSalon(salonId)
+        );
+    }
+
     function isOwner() { return myRole() == "owner"; }
     function isAdmin() { return myRole() == "admin"; }
     function isHr() { return myRole() == "hr"; }
@@ -882,9 +906,30 @@ service cloud.firestore {
 
     match /salons/{salonId}/staff/{employeeId}/attendance/{dateId} {
       allow read: if signedIn() && (
-        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception","accountant"]
+        isBootstrapAdmin()
+        || roleForSalon(salonId) in ["owner","admin","reception","accountant","hr"]
+        || isOwnEmployeeIdForSalon(salonId, employeeId)
       );
       allow create, update, delete: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
+      );
+      allow create, update: if signedIn()
+        && isOwnEmployeeIdForSalon(salonId, employeeId)
+        && request.resource.data.employeeId == employeeId
+        && request.resource.data.date == dateId
+        && request.resource.data.salonId == salonId
+        && request.resource.data.status in ["checked_in", "checked_out"]
+        && (
+          (
+            request.resource.data.createdBy is map
+            && request.resource.data.createdBy.uid == request.auth.uid
+          )
+          || (
+            request.resource.data.updatedBy is map
+            && request.resource.data.updatedBy.uid == request.auth.uid
+          )
+        );
+      allow delete: if signedIn() && (
         isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
       );
     }

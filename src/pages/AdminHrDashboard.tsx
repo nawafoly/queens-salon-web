@@ -154,6 +154,36 @@ function getFirstText(item: DirectoryEmployee, keys: string[], fallback = "") {
   return fallback;
 }
 
+function formatAttendanceTime(value: unknown) {
+  const raw = cleanText(value);
+  if (!raw) return "-";
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return raw;
+  return new Intl.DateTimeFormat("ar-SA", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Riyadh",
+  }).format(new Date(parsed));
+}
+
+function getAttendancePunchLabel(status: StaffAttendanceToday["status"]) {
+  if (status === "checked_out") return "تم تسجيل الانصراف";
+  if (status === "checked_in") return "حاضر";
+  return "لم يسجل حضور";
+}
+
+function getAttendancePunchTone(status: StaffAttendanceToday["status"]): StatusTone {
+  if (status === "checked_out") return "neutral";
+  if (status === "checked_in") return "success";
+  return "muted";
+}
+
+function getAttendanceEventMillis(row: StaffAttendanceToday) {
+  const value = row.checkOutAtClient || row.checkInAtClient || "";
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function getEmployeeName(item: DirectoryEmployee) {
   return getFirstText(item, ["displayName", "name", "fullName", "employeeName", "title"], "موظف غير محدد");
 }
@@ -427,6 +457,22 @@ function HrOverview({
       { checkedIn: 0, checkedOut: 0, notStarted: 0 }
     );
   }, [attendanceDate, attendanceToday, rosterSorted]);
+  const recentAttendanceRows = useMemo(() => {
+    const employeeByAttendanceId = new Map(
+      rosterSorted.map(item => [getRosterAttendanceId(item), item])
+    );
+    return attendanceToday
+      .filter(row => Boolean(row.checkInAtClient || row.checkOutAtClient))
+      .map(row => {
+        const employee = employeeByAttendanceId.get(cleanText(row.employeeId));
+        return {
+          row,
+          employeeName: employee ? getEmployeeName(employee) : cleanText(row.employeeId) || "Employee",
+        };
+      })
+      .sort((left, right) => getAttendanceEventMillis(right.row) - getAttendanceEventMillis(left.row))
+      .slice(0, 8);
+  }, [attendanceToday, rosterSorted]);
   const recentAbsences = useMemo(() => absences.slice(0, 6), [absences]);
 
   useEffect(() => {
@@ -970,6 +1016,41 @@ function HrOverview({
                   <strong>{attendanceSummary.notStarted}</strong>
                 </div>
               </div>
+
+              <div className="hr-leave-list">
+                <div className="hr-card-head">
+                  <div>
+                    <p className="hr-card-kicker">Today log</p>
+                    <h3>آخر سجلات حضور اليوم</h3>
+                  </div>
+                  <button className="hr-button hr-button--ghost" type="button" onClick={() => void onRefresh()} disabled={loading}>
+                    تحديث
+                  </button>
+                </div>
+
+                {recentAttendanceRows.map(({ row, employeeName }) => (
+                  <div key={`${row.employeeId}-${row.date}`} className="hr-leave-item">
+                    <div className="hr-leave-item__head">
+                      <strong>{employeeName}</strong>
+                      <span className={`hr-badge hr-badge--${getAttendancePunchTone(row.status)}`}>
+                        {getAttendancePunchLabel(row.status)}
+                      </span>
+                    </div>
+                    <div className="hr-leave-item__meta">
+                      <span>وقت الحضور: {formatAttendanceTime(row.checkInAtClient)}</span>
+                      <span>وقت الانصراف: {formatAttendanceTime(row.checkOutAtClient)}</span>
+                      <span>{row.date}</span>
+                    </div>
+                  </div>
+                ))}
+
+                {!recentAttendanceRows.length ? (
+                  <div className="hr-empty-state">
+                    <p>لا توجد سجلات حضور لهذا اليوم بعد.</p>
+                    <small>ستظهر سجلات الموظفين هنا بعد تسجيل الحضور أو الانصراف.</small>
+                  </div>
+                ) : null}
+              </div>
             </article>
 
             <article className="hr-card">
@@ -1139,42 +1220,19 @@ function HrOverview({
                 <div className="hr-audit-stack">
                   <div className="hr-copy-block">
                     <p>
-                      Preview for {payrollPreview.employeeName} / {payrollPreview.payrollMonth}. This does not create or update payroll records.
-                      Days without attendance are shown for audit only and are not converted into absence deductions by this preview.
+                      Preview only for {payrollPreview.employeeName} / {payrollPreview.payrollMonth}. Days without attendance are shown for audit only.
                     </p>
                   </div>
 
                   <div className="hr-mini-stats">
                     <div>
-                      <span>From date</span>
-                      <strong>{payrollPreview.fromDate}</strong>
+                      <span>Calculation range</span>
+                      <strong>{payrollPreview.fromDate} - {payrollPreview.toDate}</strong>
                     </div>
                     <div>
-                      <span>To date</span>
-                      <strong>{payrollPreview.toDate}</strong>
-                    </div>
-                    <div>
-                      <span>Current month until today</span>
-                      <strong>{payrollPreview.isCurrentMonthPartial ? "Yes" : "No"}</strong>
-                    </div>
-                  </div>
-
-                  <div className="hr-mini-stats">
-                    <div>
-                      <span>Required work days</span>
+                      <span>Work days</span>
                       <strong>{payrollPreview.requiredWorkDays}</strong>
                     </div>
-                    <div>
-                      <span>Excluded weekly off days</span>
-                      <strong>{payrollPreview.excludedWeeklyOffDays}</strong>
-                    </div>
-                    <div>
-                      <span>Manual absence days</span>
-                      <strong>{formatHours(payrollPreview.manualAbsenceDays)}</strong>
-                    </div>
-                  </div>
-
-                  <div className="hr-mini-stats">
                     <div>
                       <span>Attendance days</span>
                       <strong>{payrollPreview.attendanceRecordedDays}</strong>
@@ -1184,16 +1242,17 @@ function HrOverview({
                       <strong>{payrollPreview.daysWithoutAttendance}</strong>
                     </div>
                     <div>
-                      <span>Actual attendance hours</span>
-                      <strong>{formatHours(payrollPreview.actualWorkedHours)}</strong>
+                      <span>Manual absence days</span>
+                      <strong>{formatHours(payrollPreview.manualAbsenceDays)}</strong>
                     </div>
                     <div>
-                      <span>Required work hours</span>
+                      <span>Required hours</span>
                       <strong>{formatHours(payrollPreview.expectedWorkHours)}</strong>
                     </div>
-                  </div>
-
-                  <div className="hr-mini-stats">
+                    <div>
+                      <span>Actual hours</span>
+                      <strong>{formatHours(payrollPreview.actualWorkedHours)}</strong>
+                    </div>
                     <div>
                       <span>Missing hours</span>
                       <strong>{formatHours(payrollPreview.missingHours)}</strong>
@@ -1203,13 +1262,6 @@ function HrOverview({
                       <strong>{formatHours(payrollPreview.overtimeHours)}</strong>
                     </div>
                     <div>
-                      <span>Hourly rate</span>
-                      <strong>{formatMoney(payrollPreview.hourlyRate)}</strong>
-                    </div>
-                  </div>
-
-                  <div className="hr-mini-stats">
-                    <div>
                       <span>Absence deduction</span>
                       <strong>{formatMoney(payrollPreview.absenceDeduction)}</strong>
                     </div>
@@ -1218,22 +1270,11 @@ function HrOverview({
                       <strong>{formatMoney(payrollPreview.missingHoursDeduction)}</strong>
                     </div>
                     <div>
-                      <span>Extra deductions</span>
-                      <strong>{formatMoney(payrollPreview.extraDeductions)}</strong>
-                    </div>
-                  </div>
-
-                  <div className="hr-mini-stats">
-                    <div>
                       <span>Base salary</span>
                       <strong>{formatMoney(payrollPreview.baseSalary)}</strong>
                     </div>
                     <div>
-                      <span>Before deductions</span>
-                      <strong>{formatMoney(payrollPreview.grossSalary)}</strong>
-                    </div>
-                    <div>
-                      <span>After deductions</span>
+                      <span>Final after deductions</span>
                       <strong>{formatMoney(payrollPreview.finalSalary)}</strong>
                     </div>
                   </div>

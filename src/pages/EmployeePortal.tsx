@@ -1,7 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChartLine, faHouse, faRightFromBracket } from "@fortawesome/free-solid-svg-icons";
+import {
+  faBell,
+  faCalendarDays,
+  faChartLine,
+  faFileLines,
+  faFingerprint,
+  faGlobe,
+  faHouse,
+  faPaperPlane,
+  faPlus,
+  faRightFromBracket,
+  faTableColumns,
+  faTriangleExclamation,
+  faUser,
+  faWallet,
+  faXmark,
+} from "@fortawesome/free-solid-svg-icons";
 
 import {
   listEmployeeNotifications,
@@ -26,35 +42,13 @@ function PortalSkeleton({ title, subtitle }: { title: string; subtitle: string }
   );
 }
 
-function roleLabel(role: string) {
-  const normalized = String(role || "").toLowerCase().trim();
-  if (normalized === "owner") return "المالك";
-  if (normalized === "admin") return "الإدارة";
-  if (normalized === "hr") return "الموارد البشرية";
-  if (normalized === "reception") return "الاستقبال";
-  if (normalized === "staff") return "الموظف";
-  return "الموظف";
+function cleanPortalText(value: unknown) {
+  return String(value || "").trim();
 }
 
-function PortalNavItem({
-  to,
-  label,
-  badge,
-}: {
-  to: string;
-  label: string;
-  badge?: number;
-}) {
-  return (
-    <NavLink
-      to={to}
-      end={to === "/employee/overview"}
-      className={({ isActive }) => `employee-portal-link ${isActive ? "is-active" : ""}`}
-    >
-      <span>{label}</span>
-      {typeof badge === "number" && badge > 0 ? <span className="employee-nav-badge">{badge}</span> : null}
-    </NavLink>
-  );
+function displayInitial(name: string, email: string) {
+  const source = cleanPortalText(name) || cleanPortalText(email) || "M";
+  return source.slice(0, 1).toUpperCase();
 }
 
 export default function EmployeePortal() {
@@ -63,9 +57,12 @@ export default function EmployeePortal() {
   const [notifications, setNotifications] = useState<EmployeeNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [requestSheetOpen, setRequestSheetOpen] = useState(false);
   const notificationsRequestRef = useRef(0);
-  const dashboardPath = resolveDashboardLandingPath(session.role);
-  const dashboardLabel = session.role === "hr" ? "لوحة HR" : "لوحة التحكم";
+  const dashboardPath =
+    session.role === "hr" || session.role === "admin" || session.role === "owner"
+      ? "/hr"
+      : resolveDashboardLandingPath(session.role);
 
   const loadNotifications = useCallback(async () => {
     const requestId = ++notificationsRequestRef.current;
@@ -128,6 +125,26 @@ export default function EmployeePortal() {
     };
   }, [notifications]);
 
+  const displayName = cleanPortalText(session.displayName) || "بوابة الموظف";
+  const portalSubtitle = "الدوام، الإجازات، الملفات والرسائل";
+  const bottomNavItems = [
+    { to: "/employee/overview", label: "الرئيسية", icon: faHouse, end: true },
+    { to: "/employee/attendance", label: "الحضور", icon: faCalendarDays, end: true },
+    { to: "/employee/leave", label: "الطلبات", icon: faPaperPlane },
+    { to: "/employee/profile", label: "الملف الشخصي", icon: faUser },
+    { to: "/employee/notifications", label: "المزيد", icon: faTableColumns, badge: notificationCounts.all },
+  ];
+
+  const requestItems = [
+    { label: "طلب تصحيح", description: "تصحيح بصمة أو وقت حضور", icon: faFingerprint, to: "/employee/attendance" },
+    { label: "طلب استئذان", description: "طلب خروج مؤقت أو تأخير", icon: faTriangleExclamation, to: "/employee/messages" },
+    { label: "طلب أوفرتايم", description: "تسجيل ساعات عمل إضافية", icon: faChartLine, to: "/employee/messages" },
+    { label: "صرف معجل للراتب", description: "طلب مالي يراجع من HR", icon: faWallet, to: "/employee/payroll" },
+    { label: "طلب إجازة", description: "رفع طلب إجازة جديد", icon: faPaperPlane, to: "/employee/leave" },
+    { label: "طلب خروج وعودة", description: "طلب إداري للمتابعة", icon: faRightFromBracket, to: "/employee/messages" },
+    { label: "طلب استقالة", description: "يرسل للإدارة للمراجعة", icon: faFileLines, to: "/employee/messages" },
+  ];
+
   if (session.loading) {
     return (
       <div className="employee-portal" dir="rtl">
@@ -143,58 +160,56 @@ export default function EmployeePortal() {
 
   return (
     <div className="employee-portal" dir="rtl">
-      <div className="employee-portal-layout">
-        <aside className="employee-portal-sidebar">
-          <div className="employee-portal-brand">
-            <span className="employee-portal-brand-mark">EM</span>
-            <div>
-              <strong>{session.displayName || "بوابة الموظف"}</strong>
-              <small>{roleLabel(session.role)}</small>
-            </div>
+      <header className="employee-mobile-topbar" aria-label="بوابة الموظف">
+        <div className="employee-mobile-topbar__identity">
+          <span className="employee-mobile-avatar">{displayInitial(displayName, session.email)}</span>
+          <div>
+            <strong>بوابة الموظف</strong>
+            <small>{portalSubtitle}</small>
           </div>
+        </div>
 
-          <div className="employee-portal-switcher" aria-label="التنقل السريع">
-            <Link to="/" className="employee-portal-switch-link employee-portal-switch-link--soft">
-              <FontAwesomeIcon icon={faHouse} />
-              <span>الموقع الرئيسي</span>
-            </Link>
-            <Link to={dashboardPath} className="employee-portal-switch-link employee-portal-switch-link--accent">
-              <FontAwesomeIcon icon={faChartLine} />
-              <span>{dashboardLabel}</span>
-            </Link>
-            <button
-              type="button"
-              className="employee-portal-switch-link employee-portal-switch-link--danger"
-              onClick={() => void handleLogout()}
-              disabled={loggingOut}
-            >
-              <FontAwesomeIcon icon={faRightFromBracket} />
-              <span>{loggingOut ? "جارِ الخروج..." : "تسجيل الخروج"}</span>
-            </button>
-          </div>
+        <div className="employee-mobile-topbar__actions">
+          <button
+            type="button"
+            className="employee-top-pill employee-top-pill--danger"
+            onClick={() => void handleLogout()}
+            disabled={loggingOut}
+          >
+            <FontAwesomeIcon icon={faRightFromBracket} />
+            <span>{loggingOut ? "..." : "خروج"}</span>
+          </button>
+          <Link to={dashboardPath} className="employee-top-pill employee-top-pill--accent">
+            <FontAwesomeIcon icon={faHouse} />
+            <span>بوابة HR</span>
+          </Link>
+          <button type="button" className="employee-top-pill">
+            <FontAwesomeIcon icon={faGlobe} />
+            <span>English</span>
+          </button>
+          <Link to="/employee/notifications" className="employee-top-icon" aria-label="التنبيهات">
+            <FontAwesomeIcon icon={faBell} />
+            {notificationCounts.all > 0 ? <span>{notificationCounts.all}</span> : null}
+          </Link>
+        </div>
+      </header>
 
-          <nav className="employee-portal-nav" aria-label="تنقل الموظف">
-            <PortalNavItem to="/employee/overview" label="نظرة عامة" badge={notificationCounts.all} />
-            <PortalNavItem to="/employee/notifications" label="التنبيهات" badge={notificationCounts.all} />
-            <PortalNavItem to="/employee/messages" label="الرسائل" badge={notificationCounts.messages} />
-            <PortalNavItem to="/employee/files" label="الملفات" badge={notificationCounts.files} />
-            <PortalNavItem to="/employee/leave" label="الإجازات" badge={notificationCounts.leave} />
-            <PortalNavItem to="/employee/payroll" label="الرواتب" badge={notificationCounts.payroll} />
-            <PortalNavItem to="/employee/profile" label="الملف الشخصي" badge={notificationCounts.profile} />
-          </nav>
-
-          <div className="employee-portal-meta">
-            <span>{session.email || "لا يوجد بريد"}</span>
-            <span>{session.employeeId ? `الرقم الوظيفي: ${session.employeeId}` : "لم يرتبط الملف بعد"}</span>
-            <small>{notificationsLoading ? "جاري تحديث التنبيهات..." : "التنبيهات محدّثة"}</small>
-          </div>
-        </aside>
-
+      <div className="employee-portal-layout employee-portal-layout--app">
         <main className="employee-portal-main">
           <Routes>
             <Route index element={<Navigate to="/employee/overview" replace />} />
             <Route
               path="overview"
+              element={
+                <EmployeeOverviewPage
+                  session={session}
+                  notifications={notifications}
+                  onRefresh={loadNotifications}
+                />
+              }
+            />
+            <Route
+              path="attendance"
               element={
                 <EmployeeOverviewPage
                   session={session}
@@ -237,6 +252,66 @@ export default function EmployeePortal() {
           </Routes>
         </main>
       </div>
+
+      <button
+        type="button"
+        className="employee-floating-request"
+        onClick={() => setRequestSheetOpen(true)}
+      >
+        <FontAwesomeIcon icon={faPlus} />
+        <span>طلب جديد</span>
+      </button>
+
+      <nav className="employee-bottom-nav" aria-label="تنقل بوابة الموظف">
+        {bottomNavItems.map((item) => (
+          <NavLink
+            key={`${item.to}-${item.label}`}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) => `employee-bottom-nav__item ${isActive ? "is-active" : ""}`}
+          >
+            <FontAwesomeIcon icon={item.icon} />
+            <span>{item.label}</span>
+            {item.badge ? <em>{item.badge}</em> : null}
+          </NavLink>
+        ))}
+      </nav>
+
+      {requestSheetOpen ? (
+        <div className="employee-request-sheet" role="dialog" aria-modal="true" aria-label="طلب جديد">
+          <button
+            type="button"
+            className="employee-request-sheet__close"
+            onClick={() => setRequestSheetOpen(false)}
+            aria-label="إغلاق"
+          >
+            <FontAwesomeIcon icon={faXmark} />
+          </button>
+          <div className="employee-request-sheet__head">
+            <span className="employee-request-sheet__icon">
+              <FontAwesomeIcon icon={faPaperPlane} />
+            </span>
+            <div>
+              <h2>طلب جديد</h2>
+              <p>اختر نوع الطلب</p>
+            </div>
+          </div>
+          <div className="employee-request-sheet__grid">
+            {requestItems.map((item) => (
+              <Link
+                key={item.label}
+                to={item.to}
+                className="employee-request-option"
+                onClick={() => setRequestSheetOpen(false)}
+              >
+                <FontAwesomeIcon icon={item.icon} />
+                <strong>{item.label}</strong>
+                <span>{item.description}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

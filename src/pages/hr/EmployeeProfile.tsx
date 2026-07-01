@@ -167,9 +167,9 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
       });
 
       setProfile(next);
-      setMessage("Profile updated.");
+      setMessage("تم تحديث الملف الشخصي.");
     } catch (e) {
-      setMessage(cleanText((e as any)?.message || "Failed to save profile."));
+      setMessage(cleanText((e as any)?.message || "تعذر حفظ الملف الشخصي."));
     } finally {
       setSaving(false);
     }
@@ -189,7 +189,7 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
       });
       await saveProfile({ avatarUrl: uploaded.storageUrl });
     } catch (e) {
-      setMessage(cleanText((e as any)?.message || "Avatar upload failed."));
+      setMessage(cleanText((e as any)?.message || "تعذر رفع الصورة."));
     } finally {
       setSaving(false);
     }
@@ -198,7 +198,7 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
   const submitLeaveRequest = async () => {
     if (!session.uid) return;
     if (!leaveForm.fromDate || !leaveForm.toDate) {
-      setMessage("Select a valid leave range.");
+      setMessage("اختر نطاق إجازة صحيح.");
       return;
     }
     setSaving(true);
@@ -231,9 +231,9 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
       setLeaveForm((p) => ({ ...p, note: "" }));
       await loadHistory();
       await Promise.resolve(onPortalChange?.());
-      setMessage("Leave request submitted.");
+      setMessage("تم إرسال طلب الإجازة.");
     } catch (e) {
-      setMessage(cleanText((e as any)?.message || "Leave request failed."));
+      setMessage(cleanText((e as any)?.message || "تعذر إرسال طلب الإجازة."));
     } finally {
       setSaving(false);
     }
@@ -242,28 +242,28 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
   if (!session.user) {
     return (
       <div className="employee-portal-card">
-        <h2>Employee profile</h2>
-        <p>No authenticated employee session was found.</p>
+        <h2>الملف الشخصي</h2>
+        <p>لم يتم العثور على جلسة موظف مسجلة.</p>
       </div>
     );
   }
 
   return (
-    <div className="employee-panel">
+    <div className="employee-panel" dir="rtl">
       <div className="employee-panel-head">
         <div>
-          <p className="employee-panel-kicker">Employee Portal</p>
+          <p className="employee-panel-kicker">بوابة الموظف</p>
           <h2>{employeeLabel}</h2>
           <p className="employee-panel-subtitle">
-            {session.email || "No email"} | {session.role || "guest"} | {session.employeeId ? `ID ${session.employeeId}` : "No employee record"}
+            {session.email || "لا يوجد بريد"} | {session.role || "ضيف"} | {session.employeeId ? `الرقم الوظيفي ${session.employeeId}` : "لا يوجد ملف موظف"}
           </p>
         </div>
         <div className="employee-panel-actions">
           <button className="employee-button" type="button" onClick={() => void loadHistory()} disabled={saving || leaveLoading}>
-            Refresh data
+            تحديث البيانات
           </button>
           <button className="employee-button employee-button--ghost" type="button" onClick={() => avatarInputRef.current?.click()} disabled={saving}>
-            Upload photo
+            رفع صورة
           </button>
           <input
             ref={avatarInputRef}
@@ -279,13 +279,13 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
 
       <div className="employee-tabs">
         <button className={`employee-tab ${activeTab === "profile" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("profile")}>
-          Profile
+          الملف الشخصي
         </button>
         <button className={`employee-tab ${activeTab === "leave" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("leave")}>
-          Leave
+          الإجازات
         </button>
         <button className={`employee-tab ${activeTab === "payroll" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("payroll")}>
-          Payroll
+          الرواتب
         </button>
       </div>
 
@@ -298,43 +298,43 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
 
             <div className="employee-form-grid">
               <label className="employee-field">
-                <span>Name</span>
+                <span>الاسم</span>
                 <input
                   value={profile.displayName}
                   onChange={(e) => setProfile((p) => ({ ...p, displayName: e.target.value }))}
                 />
               </label>
               <label className="employee-field">
-                <span>Phone</span>
+                <span>الهاتف</span>
                 <input
                   value={profile.phone}
                   onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))}
                 />
               </label>
               <label className="employee-field">
-                <span>Department</span>
+                <span>القسم</span>
                 <input
                   value={profile.department}
                   onChange={(e) => setProfile((p) => ({ ...p, department: e.target.value }))}
                 />
               </label>
               <label className="employee-field">
-                <span>Title</span>
+                <span>المسمى الوظيفي</span>
                 <input
                   value={profile.title}
                   onChange={(e) => setProfile((p) => ({ ...p, title: e.target.value }))}
                 />
               </label>
               <label className="employee-field employee-field--wide">
-                <span>Avatar URL</span>
+                <span>رابط الصورة</span>
                 <input
                   value={profile.avatarUrl}
                   onChange={(e) => setProfile((p) => ({ ...p, avatarUrl: e.target.value }))}
-                  placeholder="Paste a direct image URL or upload a file"
+                  placeholder="ألصق رابط صورة مباشر أو ارفع صورة"
                 />
               </label>
               <label className="employee-field employee-field--wide">
-                <span>Bio</span>
+                <span>نبذة</span>
                 <textarea
                   rows={4}
                   value={profile.bio}
@@ -347,7 +347,7 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
                   checked={profile.employeeProfileEnabled}
                   onChange={(e) => setProfile((p) => ({ ...p, employeeProfileEnabled: e.target.checked }))}
                 />
-                Employee profile enabled
+                تفعيل الملف الشخصي
               </label>
               <label className="employee-check">
                 <input
@@ -355,7 +355,7 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
                   checked={profile.showOnAbout}
                   onChange={(e) => setProfile((p) => ({ ...p, showOnAbout: e.target.checked }))}
                 />
-                Show on About page
+                إظهار في صفحة من نحن
               </label>
               <label className="employee-check">
                 <input
@@ -363,20 +363,20 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
                   checked={profile.showOnBooking}
                   onChange={(e) => setProfile((p) => ({ ...p, showOnBooking: e.target.checked }))}
                 />
-                Show on booking page
+                إظهار في صفحة الحجز
               </label>
             </div>
 
             <div className="employee-actions">
               <button className="employee-button employee-button--accent" type="button" onClick={() => void saveProfile()} disabled={saving}>
-                Save profile
+                حفظ الملف الشخصي
               </button>
             </div>
           </div>
 
           <div className="employee-card">
             <div className="employee-card-head">
-              <h3>Recent leave requests</h3>
+              <h3>طلبات الإجازة الأخيرة</h3>
               <span>{leaveRequests.length}</span>
             </div>
             <div className="employee-list">
@@ -390,7 +390,7 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
                   </div>
                 );
               })}
-              {!leaveRequests.length ? <div className="employee-muted">No leave requests yet.</div> : null}
+              {!leaveRequests.length ? <div className="employee-muted">لا توجد طلبات إجازة حتى الآن</div> : null}
             </div>
           </div>
         </section>
@@ -400,26 +400,13 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
         <section className="employee-card-stack">
           <div className="employee-card">
             <div className="employee-card-head">
-              <h3>Submit leave request</h3>
-              <span>Pending</span>
+              <h3>إرسال طلب إجازة</h3>
+              <span>قيد المراجعة</span>
             </div>
 
             <div className="employee-form-grid">
               <label className="employee-field">
-                <span>Type</span>
-                <select
-                  value={leaveForm.type}
-                  onChange={(e) => setLeaveForm((p) => ({ ...p, type: e.target.value as EmployeeLeaveRequest["type"] }))}
-                >
-                  <option value="annual">Annual</option>
-                  <option value="sick">Sick</option>
-                  <option value="emergency">Emergency</option>
-                  <option value="unpaid">Unpaid</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
-              <label className="employee-field">
-                <span>From date</span>
+                <span>من تاريخ</span>
                 <input
                   type="date"
                   value={leaveForm.fromDate}
@@ -427,34 +414,47 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
                 />
               </label>
               <label className="employee-field">
-                <span>To date</span>
+                <span>إلى تاريخ</span>
                 <input
                   type="date"
                   value={leaveForm.toDate}
                   onChange={(e) => setLeaveForm((p) => ({ ...p, toDate: e.target.value }))}
                 />
               </label>
+              <label className="employee-field">
+                <span>نوع الإجازة</span>
+                <select
+                  value={leaveForm.type}
+                  onChange={(e) => setLeaveForm((p) => ({ ...p, type: e.target.value as EmployeeLeaveRequest["type"] }))}
+                >
+                  <option value="annual">سنوية</option>
+                  <option value="sick">مرضية</option>
+                  <option value="emergency">طارئة</option>
+                  <option value="unpaid">بدون راتب</option>
+                  <option value="other">أخرى</option>
+                </select>
+              </label>
               <label className="employee-field employee-field--wide">
-                <span>Note</span>
+                <span>ملاحظة</span>
                 <textarea
                   rows={4}
                   value={leaveForm.note}
                   onChange={(e) => setLeaveForm((p) => ({ ...p, note: e.target.value }))}
-                  placeholder="Optional note"
+                  placeholder="ملاحظة اختيارية"
                 />
               </label>
             </div>
 
             <div className="employee-actions">
               <button className="employee-button employee-button--accent" type="button" onClick={() => void submitLeaveRequest()} disabled={saving}>
-                Submit request
+                إرسال الطلب
               </button>
             </div>
           </div>
 
           <div className="employee-card">
             <div className="employee-card-head">
-              <h3>History</h3>
+              <h3>السجل</h3>
               <span>{leaveLoading ? "..." : leaveRequests.length}</span>
             </div>
             <div className="employee-list">
@@ -468,7 +468,7 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
                   </div>
                 );
               })}
-              {!leaveRequests.length ? <div className="employee-muted">No leave requests yet.</div> : null}
+              {!leaveRequests.length ? <div className="employee-muted">لا توجد طلبات إجازة حتى الآن</div> : null}
             </div>
           </div>
         </section>
@@ -478,7 +478,7 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
         <section className="employee-card-stack">
           <div className="employee-card">
             <div className="employee-card-head">
-              <h3>Payroll records</h3>
+              <h3>سجلات الرواتب</h3>
               <span>{leaveLoading ? "..." : payrollRecords.length}</span>
             </div>
             <div className="employee-list">
@@ -486,23 +486,23 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
                 <div key={row.id} className="employee-list-item">
                   <strong>{row.monthKey}</strong>
                   <span>
-                    Salary: {Number(row.salary || row.total || 0).toFixed(2)}
+                    الراتب: {Number(row.salary || row.total || 0).toFixed(2)}
                   </span>
                   <small>
-                    Base {Number(row.baseSalary || 0).toFixed(2)} | Overtime {Number(row.overtime || 0).toFixed(2)}
+                    الأساسي {Number(row.baseSalary || 0).toFixed(2)} | الإضافي {Number(row.overtime || 0).toFixed(2)}
                   </small>
                 </div>
               ))}
-              {!payrollRecords.length ? <div className="employee-muted">No payroll snapshots yet.</div> : null}
+              {!payrollRecords.length ? <div className="employee-muted">لا توجد سجلات رواتب حتى الآن.</div> : null}
             </div>
           </div>
 
           <div className="employee-card">
             <div className="employee-card-head">
-              <h3>Notes</h3>
+              <h3>ملاحظات</h3>
             </div>
             <div className="employee-copy">
-              Payroll snapshots are stored monthly in `employee_payroll_records` using the `employeeId__YYYY-MM` pattern.
+              يتم تخزين سجلات الرواتب شهريًا في `employee_payroll_records` باستخدام صيغة `employeeId__YYYY-MM`.
             </div>
           </div>
         </section>
