@@ -72,6 +72,13 @@ export type CatalogSeasonPricing = {
   endDate?: string;   // "YYYY-MM-DD"
 };
 
+export type AttendanceSettings = {
+  enabled: boolean;
+  requireBiometric: boolean;
+  requireWorkZone: boolean;
+  maxLocationAccuracyMeters: number;
+};
+
 
 export type AppSettings = {
   salonName: string;
@@ -109,7 +116,7 @@ export type AppSettings = {
 
   // ✅ NEW
   catalogSeasonPricing?: CatalogSeasonPricing;
-
+  attendance?: AttendanceSettings;
 
   updatedAt?: string;
 };
@@ -192,6 +199,13 @@ const defaultSettings: AppSettings = {
     to: "",
     startDate: "",
     endDate: "",
+  },
+
+  attendance: {
+    enabled: true,
+    requireBiometric: true,
+    requireWorkZone: true,
+    maxLocationAccuracyMeters: 120,
   },
 
   updatedAt: new Date().toISOString(),
@@ -441,6 +455,25 @@ function sanitize(input: any): AppSettings {
       ),
     },
 
+    attendance: {
+      enabled: safeBool((s as any)?.attendance?.enabled, defaultSettings.attendance!.enabled),
+      requireBiometric: safeBool(
+        (s as any)?.attendance?.requireBiometric,
+        defaultSettings.attendance!.requireBiometric
+      ),
+      requireWorkZone: safeBool(
+        (s as any)?.attendance?.requireWorkZone,
+        defaultSettings.attendance!.requireWorkZone
+      ),
+      maxLocationAccuracyMeters: Math.max(
+        10,
+        safeNumber(
+          (s as any)?.attendance?.maxLocationAccuracyMeters,
+          defaultSettings.attendance!.maxLocationAccuracyMeters
+        )
+      ),
+    },
+
     updatedAt:
       typeof s.updatedAt === "string" ? s.updatedAt : defaultSettings.updatedAt,
   };
@@ -563,6 +596,7 @@ export const AppSettingsService = {
 
     await setDoc(ref, payload, { merge: true });
     cacheWrite(payload);
+    return payload;
 
     // ✅ NEW: audit log
     await writeAuditLog({

@@ -111,6 +111,14 @@ service cloud.firestore {
         && (
           employeeId == request.auth.uid
           || employeeId == myEmployeeIdInSalon(salonId)
+          || (
+            exists(/databases/$(database)/documents/salons/$(salonId)/staff_public/$(employeeId))
+            && get(/databases/$(database)/documents/salons/$(salonId)/staff_public/$(employeeId)).data.linkedUid == request.auth.uid
+          )
+          || (
+            exists(/databases/$(database)/documents/salons/$(salonId)/employees/$(employeeId))
+            && get(/databases/$(database)/documents/salons/$(salonId)/employees/$(employeeId)).data.linkedUid == request.auth.uid
+          )
         );
     }
 
@@ -339,6 +347,12 @@ service cloud.firestore {
     match /salons/{salonId}/settings/{id} {
       allow read: if true;
       allow write: if signedIn() && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin"]);
+    }
+
+    match /salons/{salonId}/work_zones/{id} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn()
+        && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin"]);
     }
 
     /* =========================

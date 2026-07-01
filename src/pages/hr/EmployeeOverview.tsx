@@ -18,12 +18,22 @@ import {
 
 import { markEmployeeNotificationRead, type EmployeeNotification } from "../../services/employeeHub";
 import {
+  buildAttendanceVerification,
   checkInStaffAttendance,
   checkOutStaffAttendance,
   getStaffAttendanceForDate,
   getTodayAttendanceDateKey,
   type StaffAttendanceToday,
 } from "../../services/firestoreAttendance";
+import { AppSettingsService } from "../../services/AppSettingsService";
+import {
+  findMatchingWorkZone,
+  getBrowserPosition,
+  listActiveWorkZones,
+  type AttendanceLocation,
+  type WorkZoneMatch,
+} from "../../services/attendanceSettingsService";
+import { requestAttendanceBiometric } from "../../helpers/attendanceBiometric";
 import {
   computeAttendanceDay,
   getAttendanceDayStatus,
@@ -83,6 +93,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceBusy, setAttendanceBusy] = useState(false);
   const [attendanceMessage, setAttendanceMessage] = useState("");
+  const [attendanceSettings, setAttendanceSettings] = useState(() => AppSettingsService.getCached().attendance);
+  const [lastLocation, setLastLocation] = useState<AttendanceLocation | null>(null);
+  const [lastWorkZone, setLastWorkZone] = useState<WorkZoneMatch | null>(null);
   const attendanceEmployeeId = cleanText(session.employeeId || session.uid);
   const attendanceDate = getTodayAttendanceDateKey();
 
@@ -145,6 +158,16 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attendanceEmployeeId, attendanceDate]);
 
+  useEffect(() => {
+    AppSettingsService.fetchRemote()
+      .then((remote) => setAttendanceSettings(remote.attendance))
+      .catch(() => {});
+
+    return AppSettingsService.subscribe((remote) => {
+      setAttendanceSettings(remote.attendance);
+    });
+  }, []);
+
   const quickActions = [
     { label: "تصحيح البصمة", href: "/employee/attendance", icon: faFingerprint },
     { label: "طلب إجازة", href: "/employee/leave", icon: faCalendarDays },
@@ -178,12 +201,61 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     setAttendanceBusy(true);
     setAttendanceMessage("");
     try {
+      const effectiveAttendanceSettings = attendanceSettings || AppSettingsService.getDefaults().attendance!;
+      if (effectiveAttendanceSettings.enabled === false) {
+        throw new Error("تسجيل الحضور متوقف من إعدادات الإدارة.");
+      }
+
+      let location: AttendanceLocation | undefined;
+      let workZoneMatch: WorkZoneMatch | null = null;
+
+      if (effectiveAttendanceSettings.requireWorkZone) {
+        setAttendanceMessage("جاري التحقق من الموقع...");
+        location = await getBrowserPosition();
+        setLastLocation(location);
+
+        if (
+          location.accuracy &&
+          location.accuracy > effectiveAttendanceSettings.maxLocationAccuracyMeters
+        ) {
+          throw new Error(`دقة الموقع الحالية ${location.accuracy} م، المطلوب ${effectiveAttendanceSettings.maxLocationAccuracyMeters} م أو أقل.`);
+        }
+
+        const zones = await listActiveWorkZones();
+        if (!zones.length) {
+          throw new Error("لا توجد مناطق عمل مفعلة. راجع إعدادات الحضور والبصمة.");
+        }
+
+        workZoneMatch = findMatchingWorkZone(location, zones);
+        setLastWorkZone(workZoneMatch);
+        if (!workZoneMatch) {
+          throw new Error("أنت خارج نطاق مناطق العمل المسموحة لتسجيل الحضور.");
+        }
+      }
+
+      let biometric: Awaited<ReturnType<typeof requestAttendanceBiometric>> | undefined;
+      if (effectiveAttendanceSettings.requireBiometric) {
+        setAttendanceMessage("افتح التحقق بالبصمة من جهازك...");
+        biometric = await requestAttendanceBiometric({
+          employeeId: attendanceEmployeeId,
+          displayName,
+          action: type,
+        });
+      }
+
+      const verification = buildAttendanceVerification({
+        biometric,
+        location,
+        workZoneMatch,
+      });
+
       if (type === "check_in") {
         await checkInStaffAttendance({
           employeeId: attendanceEmployeeId,
           date: attendanceDate,
           createdByUid: session.uid,
           createdByName: displayName,
+          verification,
         });
       } else {
         await checkOutStaffAttendance({
@@ -191,6 +263,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           date: attendanceDate,
           createdByUid: session.uid,
           createdByName: displayName,
+          verification,
         });
       }
       await loadAttendance();
@@ -218,6 +291,19 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const punchTone = attendanceStatus === "checked_out" ? "done" : canCheckOut ? "out" : "in";
   const checkInTime = formatAttendanceTime(attendance?.checkInAtClient);
   const checkOutTime = formatAttendanceTime(attendance?.checkOutAtClient);
+  const latestVerification =
+    attendance?.checkOutVerification ||
+    attendance?.checkInVerification ||
+    null;
+  const visibleLocation = latestVerification?.location || lastLocation;
+  const visibleZoneName = latestVerification?.workZoneName || lastWorkZone?.zone.name || "";
+  const visibleDistance =
+    latestVerification?.distanceMeters ??
+    lastWorkZone?.distanceMeters ??
+    null;
+  const visibleAccuracy =
+    visibleLocation?.accuracy ??
+    null;
 
   return (
     <div className="employee-panel employee-overview">
@@ -282,7 +368,11 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         </div>
 
         <div className={`employee-attendance-note ${attendanceStatus === "not_started" ? "" : "is-done"}`}>
-          <span>{attendanceMessage || attendanceDayStatus}</span>
+          <span>
+            {attendanceMessage || attendanceDayStatus}
+            {visibleAccuracy !== null ? ` · الدقة: ${visibleAccuracy} م` : ""}
+            {visibleDistance !== null ? ` · المسافة: ${visibleDistance} م` : visibleZoneName ? ` · النطاق: ${visibleZoneName}` : ""}
+          </span>
           <div>
             <small>تسجيل حضور</small>
             <small>الدقة: 84 م</small>

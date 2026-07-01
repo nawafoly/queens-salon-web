@@ -30,12 +30,19 @@ function normalizeEntry(raw: any, id: string, source: "api" | "firestore"): Empl
   };
 }
 
+let apiDirectoryUnavailable = false;
+
 async function fetchDirectoryFromApi(): Promise<EmployeeDirectoryEntry[] | null> {
+  if (import.meta.env.DEV || apiDirectoryUnavailable) return null;
+
   try {
     const res = await fetch("/api/employee-directory", {
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (res.status === 404) apiDirectoryUnavailable = true;
+      return null;
+    }
     const payload = await res.json().catch(() => null);
     const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.items) ? payload.items : [];
     if (!Array.isArray(rows)) return null;

@@ -16,8 +16,11 @@ const EMPLOYEES_COLLECTION = ["salons", SALON_ID, "employees"] as const;
 export type AccountUserLinkRow = {
   uid: string;
   email?: string;
+  userEmail?: string;
   phone?: string;
   displayName?: string;
+  name?: string;
+  fullName?: string;
   role?: string;
   active?: boolean;
   linkedEmployeeDocId?: string;
@@ -35,6 +38,8 @@ export type StaffAccountLinkRow = {
   userEmail?: string;
   phone?: string;
   name?: string;
+  displayName?: string;
+  fullName?: string;
   role?: string;
   active?: boolean;
   deletedAt?: unknown;
@@ -43,7 +48,13 @@ export type StaffAccountLinkRow = {
   [key: string]: unknown;
 };
 
-type MatchReason = "employee_doc_id" | "employee_id" | "uid" | "email" | "phone" | "name";
+type MatchReason =
+  | "employee_doc_id"
+  | "employee_id"
+  | "uid"
+  | "email"
+  | "phone"
+  | "name";
 
 function cleanText(value: unknown): string {
   return String(value || "").trim();
@@ -64,7 +75,8 @@ function normalizeArabicName(value: unknown): string {
     .replace(/ى/g, "ي")
     .replace(/ة/g, "ه")
     .replace(/[^\u0600-\u06FFa-z0-9]+/g, " ")
-    .replace(/\s+/g, " ");
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function hasValue(value: unknown): boolean {
@@ -109,20 +121,48 @@ function getUserUidCandidates(staff: StaffAccountLinkRow): string[] {
   );
 }
 
+function getUserEmailCandidates(user: AccountUserLinkRow): string[] {
+  return Array.from(
+    new Set([user.email, user.userEmail].map((value) => cleanEmail(value)).filter(Boolean))
+  );
+}
+
 function getStaffEmailCandidates(staff: StaffAccountLinkRow): string[] {
   return Array.from(
     new Set([staff.email, staff.userEmail].map((value) => cleanEmail(value)).filter(Boolean))
   );
 }
 
+function getUserNameCandidates(user: AccountUserLinkRow): string[] {
+  return Array.from(
+    new Set(
+      [user.displayName, user.name, user.fullName]
+        .map((value) => normalizeArabicName(value))
+        .filter(Boolean)
+    )
+  );
+}
+
+function getStaffNameCandidates(staff: StaffAccountLinkRow): string[] {
+  return Array.from(
+    new Set(
+      [staff.name, staff.displayName, staff.fullName]
+        .map((value) => normalizeArabicName(value))
+        .filter(Boolean)
+    )
+  );
+}
+
 export function isRemovedFromStaffRecord(data: unknown): boolean {
   const row = (data || {}) as Record<string, unknown>;
   const employmentStatus = cleanText(row.employmentStatus).toLowerCase();
+
   return Boolean(row.deletedAt) || row.removedFromStaff === true || employmentStatus === "deleted";
 }
 
 export async function listStaffLinkRows(): Promise<StaffAccountLinkRow[]> {
   const snap = await getDocs(collection(db, ...STAFF_PUBLIC_COLLECTION));
+
   return snap.docs.map((staffDoc) => ({
     id: staffDoc.id,
     ...(staffDoc.data() as Record<string, unknown>),
@@ -131,6 +171,7 @@ export async function listStaffLinkRows(): Promise<StaffAccountLinkRow[]> {
 
 export async function listUserLinkRows(): Promise<AccountUserLinkRow[]> {
   const snap = await getDocs(collection(db, ...USERS_COLLECTION));
+
   return snap.docs.map((userDoc) => ({
     uid: userDoc.id,
     ...(userDoc.data() as Record<string, unknown>),
@@ -151,6 +192,7 @@ export function findStaffMatchesForUser(
         pushUnique(matches, seen, staff);
       }
     });
+
     if (matches.length) return matches;
   }
 
@@ -158,21 +200,53 @@ export function findStaffMatchesForUser(
   if (userUids.length) {
     staffRows.forEach((staff) => {
       const staffUids = getUserUidCandidates(staff);
+
       if (staffUids.some((candidate) => userUids.includes(candidate))) {
         pushUnique(matches, seen, staff);
       }
     });
+
     if (matches.length) return matches;
   }
 
-  const email = cleanEmail(user.email);
-  if (email) {
+  const userEmails = getUserEmailCandidates(user);
+  if (userEmails.length) {
     staffRows.forEach((staff) => {
       const staffEmails = getStaffEmailCandidates(staff);
-      if (staffEmails.includes(email)) {
+
+      if (staffEmails.some((candidate) => userEmails.includes(candidate))) {
         pushUnique(matches, seen, staff);
       }
     });
+
+    if (matches.length) return matches;
+  }
+
+  const userPhone = cleanPhone(user.phone);
+  if (userPhone) {
+    staffRows.forEach((staff) => {
+      const staffPhone = cleanPhone(staff.phone);
+
+      if (staffPhone && staffPhone === userPhone) {
+        pushUnique(matches, seen, staff);
+      }
+    });
+
+    if (matches.length) return matches;
+  }
+
+  const userNames = getUserNameCandidates(user);
+  if (userNames.length) {
+    const nameHits = staffRows.filter((staff) => {
+      const staffNames = getStaffNameCandidates(staff);
+      return staffNames.some((candidate) => userNames.includes(candidate));
+    });
+
+    // الاسم خطر لو فيه تكرار، لذلك نستخدمه فقط إذا جاب نتيجة واحدة واضحة.
+    if (nameHits.length === 1) {
+      pushUnique(matches, seen, nameHits[0]);
+      return matches;
+    }
   }
 
   return matches;
@@ -194,7 +268,10 @@ function findBestUserMatchForStaff(
 
   const emailCandidates = getStaffEmailCandidates(staff);
   if (emailCandidates.length) {
-    const hit = availableUsers.find((user) => emailCandidates.includes(cleanEmail(user.email)));
+    const hit = availableUsers.find((user) =>
+      emailCandidates.some((email) => getUserEmailCandidates(user).includes(email))
+    );
+
     if (hit) return { user: hit, reason: "email" };
   }
 
@@ -204,11 +281,13 @@ function findBestUserMatchForStaff(
     if (hit) return { user: hit, reason: "phone" };
   }
 
-  const staffName = normalizeArabicName(staff.name);
-  if (staffName) {
-    const nameHits = availableUsers.filter(
-      (user) => normalizeArabicName(user.displayName) === staffName
-    );
+  const staffNames = getStaffNameCandidates(staff);
+  if (staffNames.length) {
+    const nameHits = availableUsers.filter((user) => {
+      const userNames = getUserNameCandidates(user);
+      return userNames.some((name) => staffNames.includes(name));
+    });
+
     if (nameHits.length === 1) return { user: nameHits[0], reason: "name" };
   }
 
@@ -221,11 +300,21 @@ export async function softDeleteLinkedStaffByUser(args: {
   staffRows?: StaffAccountLinkRow[];
 }) {
   const staffRows = args.staffRows ?? (await listStaffLinkRows());
+
   const matches = findStaffMatchesForUser(args.user, staffRows).filter(
     (staff) => !isRemovedFromStaffRecord(staff)
   );
 
   if (!matches.length) {
+    console.warn("[softDeleteLinkedStaffByUser] no linked staff matched", {
+      uid: args.user.uid,
+      email: args.user.email,
+      phone: args.user.phone,
+      displayName: args.user.displayName || args.user.name || args.user.fullName || "",
+      linkedEmployeeDocId: args.user.linkedEmployeeDocId,
+      employeeId: args.user.employeeId,
+    });
+
     return { matchedStaffIds: [] as string[] };
   }
 
@@ -236,7 +325,9 @@ export async function softDeleteLinkedStaffByUser(args: {
   const commitIfNeeded = async (force = false) => {
     if (writes <= 0) return;
     if (!force && writes < 350) return;
+
     await batch.commit();
+
     batch = writeBatch(db);
     writes = 0;
   };
@@ -244,6 +335,19 @@ export async function softDeleteLinkedStaffByUser(args: {
   for (const staff of matches) {
     const staffRef = doc(db, ...STAFF_PUBLIC_COLLECTION, staff.id);
     const employeeRef = doc(db, ...EMPLOYEES_COLLECTION, staff.id);
+
+    const deletePatch = {
+      active: false,
+      isActive: false,
+      showOnAbout: false,
+      showOnBooking: false,
+      removedFromStaff: true,
+      employmentStatus: "deleted",
+      deletedAt: serverTimestamp(),
+      deletedBy: actorUid || null,
+      updatedAt: serverTimestamp(),
+    };
+
     batch.set(
       staffRef,
       {
@@ -258,25 +362,20 @@ export async function softDeleteLinkedStaffByUser(args: {
       },
       { merge: true }
     );
-    batch.set(
-      employeeRef,
-      {
-        isActive: false,
-        active: false,
-        removedFromStaff: true,
-        employmentStatus: "deleted",
-        deletedAt: serverTimestamp(),
-        deletedBy: actorUid || null,
-        showOnAbout: false,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+
+    batch.set(employeeRef, deletePatch, { merge: true });
+
     writes += 2;
     await commitIfNeeded();
   }
 
   await commitIfNeeded(true);
+
+  console.log("[softDeleteLinkedStaffByUser] matched staff deleted", {
+    uid: args.user.uid,
+    matchedStaffIds: matches.map((staff) => staff.id),
+  });
+
   return { matchedStaffIds: matches.map((staff) => staff.id) };
 }
 
@@ -295,7 +394,9 @@ export async function repairLegacyStaffUserLinks() {
   const commitIfNeeded = async (force = false) => {
     if (writes <= 0) return;
     if (!force && writes < 350) return;
+
     await batch.commit();
+
     batch = writeBatch(db);
     writes = 0;
   };
@@ -303,10 +404,12 @@ export async function repairLegacyStaffUserLinks() {
   const patchPair = async (user: AccountUserLinkRow, staff: StaffAccountLinkRow, reason: MatchReason) => {
     const staffPatch: Record<string, unknown> = {};
     const userPatch: Record<string, unknown> = {};
+
     const cleanUid = cleanText(user.uid);
-    const cleanUserEmail = cleanEmail(user.email);
+    const cleanUserEmail = cleanEmail(user.email || user.userEmail);
+    const cleanUserPhone = cleanText(user.phone);
     const cleanStaffId = cleanText(staff.id);
-    const cleanDisplayName = cleanText(user.displayName);
+    const cleanDisplayName = cleanText(user.displayName || user.name || user.fullName);
     const cleanRole = cleanText(user.role || staff.role);
 
     if (shouldPatchField(staff.linkedUid, cleanUid, reason)) staffPatch.linkedUid = cleanUid;
@@ -314,8 +417,10 @@ export async function repairLegacyStaffUserLinks() {
     if (shouldPatchField(staff.uid, cleanUid, reason)) staffPatch.uid = cleanUid;
     if (shouldPatchField(staff.userEmail, cleanUserEmail, reason)) staffPatch.userEmail = cleanUserEmail;
     if (!hasValue(staff.email) && cleanUserEmail) staffPatch.email = cleanUserEmail;
+    if (!hasValue(staff.phone) && cleanUserPhone) staffPatch.phone = cleanUserPhone;
     if (!hasValue(staff.name) && cleanDisplayName) staffPatch.name = cleanDisplayName;
     if (!hasValue(staff.role) && cleanRole) staffPatch.role = cleanRole;
+
     if (typeof staff.active !== "boolean" && typeof user.active === "boolean") {
       staffPatch.active = user.active;
     }
@@ -323,12 +428,23 @@ export async function repairLegacyStaffUserLinks() {
     if (shouldPatchField(user.linkedEmployeeDocId, cleanStaffId, reason)) {
       userPatch.linkedEmployeeDocId = cleanStaffId;
     }
+
     if (shouldPatchField(user.employeeId, cleanStaffId, reason)) {
       userPatch.employeeId = cleanStaffId;
     }
+
     if (!hasValue(user.displayName) && hasValue(staff.name)) {
       userPatch.displayName = cleanText(staff.name);
     }
+
+    if (!hasValue(user.name) && hasValue(staff.name)) {
+      userPatch.name = cleanText(staff.name);
+    }
+
+    if (!hasValue(user.phone) && hasValue(staff.phone)) {
+      userPatch.phone = cleanText(staff.phone);
+    }
+
     if (!hasValue(user.role) && hasValue(staff.role)) {
       userPatch.role = cleanText(staff.role);
     }
@@ -339,6 +455,7 @@ export async function repairLegacyStaffUserLinks() {
         { ...staffPatch, updatedAt: serverTimestamp() },
         { merge: true }
       );
+
       batch.set(
         doc(db, ...EMPLOYEES_COLLECTION, cleanStaffId),
         {
@@ -348,6 +465,7 @@ export async function repairLegacyStaffUserLinks() {
         },
         { merge: true }
       );
+
       patchedStaff += 1;
       writes += 2;
     }
@@ -358,6 +476,7 @@ export async function repairLegacyStaffUserLinks() {
         { ...userPatch, updatedAt: serverTimestamp() },
         { merge: true }
       );
+
       patchedUsers += 1;
       writes += 1;
     }
@@ -374,17 +493,31 @@ export async function repairLegacyStaffUserLinks() {
     const directMatches = findStaffMatchesForUser(user, candidateStaff).filter(
       (staff) => !usedUserUids.has(cleanText(user.uid))
     );
+
     if (!directMatches.length) continue;
-    await patchPair(user, directMatches[0], getStaffDocIdCandidates(user)[0] ? "employee_doc_id" : "uid");
+
+    const reason = getStaffDocIdCandidates(user)[0]
+      ? "employee_doc_id"
+      : getStaffUidCandidates(user)[0]
+        ? "uid"
+        : getUserEmailCandidates(user)[0]
+          ? "email"
+          : cleanPhone(user.phone)
+            ? "phone"
+            : "name";
+
+    await patchPair(user, directMatches[0], reason);
   }
 
   for (const staff of candidateStaff) {
     const match = findBestUserMatchForStaff(staff, activeUsers, usedUserUids);
     if (!match) continue;
+
     await patchPair(match.user, staff, match.reason);
   }
 
   await commitIfNeeded(true);
+
   return {
     usersScanned: activeUsers.length,
     staffScanned: candidateStaff.length,

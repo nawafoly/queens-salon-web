@@ -9,15 +9,28 @@ import {
   setDoc,
   where,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { auth, db } from "./firebase";
 import {
   SALON_ID,
   staffAttendanceCollection,
   staffAttendanceDoc,
 } from "./hrCollections";
+import type { AttendanceLocation, WorkZoneMatch } from "./attendanceSettingsService";
 
 export type AttendanceViolationType = "absent" | "late" | "leave";
 export type AttendancePunchStatus = "not_started" | "checked_in" | "checked_out";
+
+export type AttendanceVerification = {
+  biometricVerified?: boolean;
+  biometricMethod?: string;
+  biometricVerifiedAtClient?: string;
+  biometricCredentialId?: string;
+  location?: AttendanceLocation;
+  workZoneId?: string;
+  workZoneName?: string;
+  distanceMeters?: number;
+  radiusMeters?: number;
+};
 
 export type StaffAttendanceDoc = {
   date: string; // YYYY-MM-DD
@@ -36,6 +49,12 @@ export type StaffAttendanceDoc = {
     uid?: string;
     name?: string;
   };
+  updatedBy?: {
+    uid?: string;
+    name?: string;
+  };
+  checkInVerification?: AttendanceVerification;
+  checkOutVerification?: AttendanceVerification;
 };
 
 export type StaffAttendanceWithId = StaffAttendanceDoc & { id: string };
@@ -84,10 +103,70 @@ function normalizePunchStatus(data: any): AttendancePunchStatus {
 }
 
 function attendanceActor(uid?: string, name?: string) {
+  const fallbackUid = auth.currentUser?.uid || "";
   return {
-    uid: String(uid || "").trim() || undefined,
+    uid: String(uid || fallbackUid || "").trim() || undefined,
     name: String(name || "").trim() || undefined,
   };
+}
+
+function sanitizeVerification(input?: AttendanceVerification): AttendanceVerification | undefined {
+  if (!input) return undefined;
+  const location = input.location
+    ? {
+        lat: Number(input.location.lat),
+        lng: Number(input.location.lng),
+        accuracy: Number.isFinite(Number(input.location.accuracy))
+          ? Math.max(0, Math.round(Number(input.location.accuracy)))
+          : undefined,
+      }
+    : undefined;
+
+  const clean: AttendanceVerification = {
+    biometricVerified: input.biometricVerified === true,
+    biometricMethod: String(input.biometricMethod || "").trim() || undefined,
+    biometricVerifiedAtClient: String(input.biometricVerifiedAtClient || "").trim() || undefined,
+    biometricCredentialId: String(input.biometricCredentialId || "").trim() || undefined,
+    location:
+      location && Number.isFinite(location.lat) && Number.isFinite(location.lng)
+        ? location
+        : undefined,
+    workZoneId: String(input.workZoneId || "").trim() || undefined,
+    workZoneName: String(input.workZoneName || "").trim() || undefined,
+    distanceMeters: Number.isFinite(Number(input.distanceMeters))
+      ? Math.max(0, Math.round(Number(input.distanceMeters)))
+      : undefined,
+    radiusMeters: Number.isFinite(Number(input.radiusMeters))
+      ? Math.max(0, Math.round(Number(input.radiusMeters)))
+      : undefined,
+  };
+
+  return Object.fromEntries(
+    Object.entries(clean).filter(([, value]) => value !== undefined && value !== "")
+  ) as AttendanceVerification;
+}
+
+export function buildAttendanceVerification(args: {
+  biometric?: {
+    verified?: boolean;
+    method?: string;
+    verifiedAtClient?: string;
+    credentialId?: string;
+  };
+  location?: AttendanceLocation;
+  workZoneMatch?: WorkZoneMatch | null;
+}): AttendanceVerification {
+  return sanitizeVerification({
+    biometricVerified: args.biometric?.verified === true,
+    biometricMethod: args.biometric?.method,
+    biometricVerifiedAtClient: args.biometric?.verifiedAtClient,
+    biometricCredentialId: args.biometric?.credentialId,
+    location: args.location,
+    workZoneId: args.workZoneMatch?.zone.id,
+    workZoneName: args.workZoneMatch?.zone.name,
+    distanceMeters: args.workZoneMatch?.distanceMeters,
+    radiusMeters: args.workZoneMatch?.zone.radiusMeters,
+  }) || {};
 }
 
 function mapAttendanceDoc(employeeId: string, date: string, id: string, data: any): StaffAttendanceToday {
@@ -113,6 +192,15 @@ function mapAttendanceDoc(employeeId: string, date: string, id: string, data: an
             name: String(data.createdBy.name || "").trim() || undefined,
           }
         : undefined,
+    updatedBy:
+      data?.updatedBy && typeof data.updatedBy === "object"
+        ? {
+            uid: String(data.updatedBy.uid || "").trim() || undefined,
+            name: String(data.updatedBy.name || "").trim() || undefined,
+          }
+        : undefined,
+    checkInVerification: sanitizeVerification(data?.checkInVerification),
+    checkOutVerification: sanitizeVerification(data?.checkOutVerification),
   };
 }
 
@@ -164,6 +252,7 @@ export async function checkInStaffAttendance(args: {
   createdByUid?: string;
   createdByName?: string;
   salonId?: string;
+  verification?: AttendanceVerification;
 }) {
   const employeeId = String(args.employeeId || "").trim();
   const date = normalizeIsoDate(args.date) || getTodayAttendanceDateKey();
@@ -187,9 +276,9 @@ export async function checkInStaffAttendance(args: {
       checkInAt: serverTimestamp(),
       checkInAtClient: clientTime,
       createdBy: attendanceActor(args.createdByUid, args.createdByName),
+      checkInVerification: sanitizeVerification(args.verification),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      // TODO: add work zone validation later
     }, { merge: true });
   });
 }
@@ -200,6 +289,7 @@ export async function checkOutStaffAttendance(args: {
   createdByUid?: string;
   createdByName?: string;
   salonId?: string;
+  verification?: AttendanceVerification;
 }) {
   const employeeId = String(args.employeeId || "").trim();
   const date = normalizeIsoDate(args.date) || getTodayAttendanceDateKey();
@@ -226,8 +316,8 @@ export async function checkOutStaffAttendance(args: {
       checkOutAt: serverTimestamp(),
       checkOutAtClient: clientTime,
       updatedBy: attendanceActor(args.createdByUid, args.createdByName),
+      checkOutVerification: sanitizeVerification(args.verification),
       updatedAt: serverTimestamp(),
-      // TODO: add work zone validation later
     }, { merge: true });
   });
 }

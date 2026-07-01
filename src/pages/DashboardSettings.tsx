@@ -19,6 +19,7 @@ import SettingsBookings from "./settings/SettingsBookings";
 import SettingsCatalog from "./settings/SettingsCatalog";
 import SettingsUsers from "./settings/SettingsUsers";
 import SettingsContact from "./settings/SettingsContact";
+import SettingsAttendance from "./settings/SettingsAttendance";
 import {
   SettingsPageActions,
   SettingsPageHeader,
@@ -627,6 +628,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                 }
               />
               <Route path="contact" element={<SettingsContact hasAdminPower={hasAdminPower} />} />
+              <Route path="attendance" element={<SettingsAttendance hasAdminPower={hasAdminPower} />} />
 
               <Route path="advanced" element={<Navigate to={SETTINGS_ROOT_PATH} replace />} />
               <Route

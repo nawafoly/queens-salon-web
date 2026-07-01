@@ -19,6 +19,7 @@ import {
   faBars,
   faHouse,
   faClockRotateLeft,
+  faFingerprint,
   faTv,
 } from "@fortawesome/free-solid-svg-icons";
 
@@ -2933,6 +2934,18 @@ const Dashboard: React.FC<DashboardProps> = ({
                     >
                       <FontAwesomeIcon icon={faHouse} />
                       محتوى الموقع
+                    </NavLink>
+                  </li>
+                )}
+                {hasAdminPower && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/settings/attendance"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faFingerprint} />
+                      الحضور والبصمة
                     </NavLink>
                   </li>
                 )}
