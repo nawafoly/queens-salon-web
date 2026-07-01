@@ -275,8 +275,10 @@ function resolveDisplay(args: {
     };
   }
 
-  const candidate = (args.after && isPlainObject(args.after) ? args.after : null) ||
+  const candidate =
+    (args.after && isPlainObject(args.after) ? args.after : null) ||
     (args.before && isPlainObject(args.before) ? args.before : null);
+
   if (!candidate) return undefined;
 
   const clientName =
@@ -286,13 +288,15 @@ function resolveDisplay(args: {
         (candidate as any)?.name ||
         ""
     ).trim() || undefined;
+
   const bookingPublicId =
     String((candidate as any)?.publicId || (candidate as any)?.bookingPublicId || "").trim() || undefined;
-  const bookingId =
-    String((candidate as any)?.bookingId || args.input.entityId || "").trim() || undefined;
+
+  const bookingId = String((candidate as any)?.bookingId || args.input.entityId || "").trim() || undefined;
   const bookingShortId = bookingId ? bookingId.slice(0, 6) : undefined;
 
   if (!clientName && !bookingPublicId && !bookingId) return undefined;
+
   return {
     clientName,
     bookingPublicId,
@@ -353,6 +357,25 @@ function detectSensitive(action: string, description: string, meta?: Record<stri
   );
 }
 
+function removeUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => removeUndefinedDeep(item)) as T;
+  }
+
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+
+    Object.entries(value as Record<string, unknown>).forEach(([key, val]) => {
+      if (val === undefined) return;
+      out[key] = removeUndefinedDeep(val);
+    });
+
+    return out as T;
+  }
+
+  return value;
+}
+
 export async function writeAuditLog(input: AuditLogInput) {
   const salonId = String(input.salonId || "main").trim() || "main";
 
@@ -378,6 +401,7 @@ export async function writeAuditLog(input: AuditLogInput) {
   const after = safeJson(input.after);
   const beforeRecord = isPlainObject(before) ? before : null;
   const afterRecord = isPlainObject(after) ? after : null;
+
   let shouldSnapshotAfter = false;
   if (!beforeProvided && after && typeof after === "object") {
     try {
@@ -387,14 +411,27 @@ export async function writeAuditLog(input: AuditLogInput) {
       shouldSnapshotAfter = false;
     }
   }
+
   const patchMeta = (input.meta?.patch && isPlainObject(input.meta.patch) ? input.meta.patch : null) as
     | Record<string, unknown>
     | null;
-  const changesPreview = buildChangesPreview({ before: beforeRecord, after: afterRecord, patch: patchMeta });
-  const display = resolveDisplay({ input, before: beforeRecord, after: afterRecord });
+
+  const changesPreview = buildChangesPreview({
+    before: beforeRecord,
+    after: afterRecord,
+    patch: patchMeta,
+  });
+
+  const display = resolveDisplay({
+    input,
+    before: beforeRecord,
+    after: afterRecord,
+  });
+
   const summary =
-    String((input.meta?.summary as string | undefined) || input.description || input.action || "")
-      .trim() || String(input.action || "").trim();
+    String((input.meta?.summary as string | undefined) || input.description || input.action || "").trim() ||
+    String(input.action || "").trim();
+
   const severity = resolveSeverity(String(input.action || ""), input.meta);
   const hasSnapshot = Boolean(beforeProvided || shouldSnapshotAfter);
   const restoreMeta = resolveRestoreMeta(String(input.action || ""), hasSnapshot);
@@ -429,22 +466,32 @@ export async function writeAuditLog(input: AuditLogInput) {
   };
 
   try {
-    await setDoc(logRef, { ...payload, logId } as Record<string, unknown>);
+    const cleanPayload = removeUndefinedDeep({
+      ...payload,
+      logId,
+    }) as Record<string, unknown>;
+
+    await setDoc(logRef, cleanPayload);
+
     if (hasSnapshot) {
       const snapshotRef = doc(db, "salons", salonId, "log_snapshots", logId);
-      await setDoc(snapshotRef, {
+
+      const cleanSnapshotPayload = removeUndefinedDeep({
         logId,
         entityType: payload.entityType,
         entityId: payload.entityId,
         before,
         after,
         createdAt: serverTimestamp(),
-      });
+      }) as Record<string, unknown>;
+
+      await setDoc(snapshotRef, cleanSnapshotPayload);
     }
+
     return logId;
   } catch (e) {
     console.warn("writeAuditLog failed (ignored):", e, payload);
-    return null; // ✅ لا تكسر الفلو
+    return null; // لا تكسر الفلو
   }
 }
 
