@@ -1,4 +1,5 @@
 import {
+  deleteField,
   deleteDoc,
   getDoc,
   getDocs,
@@ -55,6 +56,7 @@ export type StaffAttendanceDoc = {
   };
   checkInVerification?: AttendanceVerification;
   checkOutVerification?: AttendanceVerification;
+  adminCorrection?: boolean;
 };
 
 export type StaffAttendanceWithId = StaffAttendanceDoc & { id: string };
@@ -365,6 +367,15 @@ export async function listStaffAttendanceByDateRange(args: {
               name: String(x.createdBy.name || "").trim() || undefined,
             }
           : undefined,
+      updatedBy:
+        x?.updatedBy && typeof x.updatedBy === "object"
+          ? {
+              uid: String(x.updatedBy.uid || "").trim() || undefined,
+              name: String(x.updatedBy.name || "").trim() || undefined,
+            }
+          : undefined,
+      checkInVerification: sanitizeVerification(x?.checkInVerification),
+      checkOutVerification: sanitizeVerification(x?.checkOutVerification),
     };
   });
 }
@@ -413,4 +424,44 @@ export async function removeStaffAttendance(args: {
   const salonId = String(args.salonId || DEFAULT_SALON_ID).trim() || DEFAULT_SALON_ID;
   if (!employeeId || !date) return;
   await deleteDoc(attendanceDoc(employeeId, date, salonId));
+}
+
+export async function setStaffAttendancePunchOverride(args: {
+  employeeId: string;
+  date: string;
+  checkInAtClient: string;
+  checkOutAtClient?: string;
+  notes?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  salonId?: string;
+}) {
+  const employeeId = String(args.employeeId || "").trim();
+  const date = normalizeIsoDate(args.date);
+  const salonId = String(args.salonId || DEFAULT_SALON_ID).trim() || DEFAULT_SALON_ID;
+  const checkInAtClient = String(args.checkInAtClient || "").trim();
+  const checkOutAtClient = String(args.checkOutAtClient || "").trim();
+  if (!employeeId || !date) throw new Error("attendance: invalid employee/date");
+  if (!checkInAtClient) throw new Error("يجب إدخال وقت الحضور قبل حفظ تعديل البصمة.");
+
+  const payload: any = {
+    date,
+    employeeId,
+    salonId,
+    status: checkOutAtClient ? "checked_out" : "checked_in",
+    checkInAtClient,
+    checkOutAtClient: checkOutAtClient || deleteField(),
+    checkOutAt: checkOutAtClient ? undefined : deleteField(),
+    notes: String(args.notes || "").trim() || undefined,
+    adminCorrection: true,
+    updatedBy: attendanceActor(args.createdByUid, args.createdByName),
+    updatedAt: serverTimestamp(),
+    createdAt: serverTimestamp(),
+  };
+
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined) delete payload[key];
+  });
+
+  await setDoc(attendanceDoc(employeeId, date, salonId), payload, { merge: true });
 }

@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 
 import WorkHourOverridesEditor, { type WorkHourOverridesEditorProps } from "./WorkHourOverridesEditor";
 import { WEEKDAY_OPTIONS, normalizeTimeHHMM, type StaffWorkingDay, type WeekdayKey } from "./shared";
+import type { WorkZone } from "../../services/attendanceSettingsService";
 
 type BookingSettingsSectionProps = {
   isVisible: boolean;
@@ -10,10 +11,15 @@ type BookingSettingsSectionProps = {
   employmentEndDate: string;
   modalUseCustomWorkingHours: boolean;
   modalCustomWorkingHours: Record<WeekdayKey, StaffWorkingDay>;
+  attendanceZones: WorkZone[];
+  attendanceZonesLoading: boolean;
+  selectedAttendanceZoneId: string;
   modalHourOverrideHijriPickerRef: RefObject<HTMLDivElement | null>;
   overrideEditor: WorkHourOverridesEditorProps["editor"];
   onEmploymentEndDateChange: (value: string) => void;
   onModalUseCustomWorkingHoursChange: (value: boolean) => void;
+  onSelectedAttendanceZoneIdChange: (value: string) => void;
+  onReloadAttendanceZones: () => void;
   onUpdateModalWorkingDay: (day: WeekdayKey, patch: StaffWorkingDay) => void;
   onCopyModalWorkingDayToAll: (day: WeekdayKey) => void;
 };
@@ -25,16 +31,22 @@ export default function BookingSettingsSection({
   employmentEndDate,
   modalUseCustomWorkingHours,
   modalCustomWorkingHours,
+  attendanceZones,
+  attendanceZonesLoading,
+  selectedAttendanceZoneId,
   modalHourOverrideHijriPickerRef,
   overrideEditor,
   onEmploymentEndDateChange,
   onModalUseCustomWorkingHoursChange,
+  onSelectedAttendanceZoneIdChange,
+  onReloadAttendanceZones,
   onUpdateModalWorkingDay,
   onCopyModalWorkingDayToAll,
 }: BookingSettingsSectionProps) {
   if (!isVisible) return null;
 
   const firstWeekday = WEEKDAY_OPTIONS[0]?.key;
+  const selectedZone = attendanceZones.find((zone) => zone.id === selectedAttendanceZoneId) || null;
 
   return (
     <div className="emp-modal-section">
@@ -62,6 +74,47 @@ export default function BookingSettingsSection({
               onChange={(e) => onEmploymentEndDateChange(e.target.value)}
             />
             <div className="emp-field-note danger">بعد هذا التاريخ لن تظهر الموظفة في صفحة الحجز.</div>
+          </div>
+        </section>
+
+        <section className="emp-panel">
+          <div className="emp-panel-head">
+            <h4 className="emp-panel-title">نطاق الحضور والبصمة</h4>
+            <button
+              type="button"
+              className="exp-btn ghost sm"
+              disabled={busy || attendanceZonesLoading}
+              onClick={onReloadAttendanceZones}
+            >
+              تحديث النطاقات
+            </button>
+          </div>
+          <div className="dash-field">
+            <label className="emp-label">النطاق المسموح للحضور</label>
+            <select
+              className="dash-input"
+              value={selectedAttendanceZoneId}
+              disabled={busy || attendanceZonesLoading}
+              onChange={(e) => onSelectedAttendanceZoneIdChange(e.target.value)}
+            >
+              <option value="">
+                {attendanceZonesLoading ? "جاري تحميل النطاقات..." : "اختر نطاق الحضور"}
+              </option>
+              {attendanceZones.map((zone) => (
+                <option key={zone.id} value={zone.id}>
+                  {zone.name} - {zone.active ? "نشط" : "غير نشط"} - {zone.radiusMeters} م
+                </option>
+              ))}
+            </select>
+            {selectedZone ? (
+              <div className="emp-field-note">
+                النطاق المختار: {selectedZone.name} · الحالة: {selectedZone.active ? "نشط" : "غير نشط"} · نصف القطر: {selectedZone.radiusMeters} م
+              </div>
+            ) : (
+              <div className="emp-field-note danger">
+                يجب تحديد نطاق للموظفة حتى تتمكن من تسجيل الحضور من بوابة الموظف.
+              </div>
+            )}
           </div>
         </section>
 

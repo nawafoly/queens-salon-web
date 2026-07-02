@@ -1571,6 +1571,23 @@
   padding: 7px 12px;
 }
 
+.employee-attendance-month-page {
+  gap: 26px;
+}
+
+.employee-attendance-month-message {
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(245, 183, 0, 0.32);
+  border-radius: 16px;
+  background: rgba(255, 251, 235, 0.86);
+  color: #92400e;
+  font-weight: 900;
+  text-align: center;
+  padding: 12px 16px;
+}
+
 .employee-overview-block {
   padding: 24px;
 }

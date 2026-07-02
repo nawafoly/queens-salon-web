@@ -1,5 +1,6 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash, faXmark } from "@fortawesome/free-solid-svg-icons";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 
 import { getNameInitials } from "./shared";
 import type { EmployeeSplitTab, StaffPublicUi } from "./shared";
@@ -11,7 +12,7 @@ type EmployeeDetailShellProps = {
   selectedEmployeeStatusClass: string;
   busy: boolean;
   activeTab: EmployeeSplitTab;
-  tabs: Array<{ key: EmployeeSplitTab; label: string; hint: string }>;
+  tabs: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: IconDefinition }>;
   canManage: boolean;
   canDelete: boolean;
   onSave: () => void;
@@ -141,7 +142,9 @@ export default function EmployeeDetailShell({
                   onClick={() => onTabChange(tab.key)}
                   aria-current={activeTab === tab.key ? "page" : undefined}
                 >
-                  <span className="emp-split-nav-order">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="emp-split-nav-order">
+                    {tab.icon ? <FontAwesomeIcon icon={tab.icon} /> : String(index + 1).padStart(2, "0")}
+                  </span>
                   <span className="emp-split-nav-copy">
                     <strong>{tab.label}</strong>
                     <small>{tab.hint}</small>

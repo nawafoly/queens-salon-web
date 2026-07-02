@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -23,13 +23,13 @@ import {
   checkOutStaffAttendance,
   getStaffAttendanceForDate,
   getTodayAttendanceDateKey,
+  listStaffAttendanceByDateRange,
+  type StaffAttendanceWithId,
   type StaffAttendanceToday,
 } from "../../services/firestoreAttendance";
 import { AppSettingsService } from "../../services/AppSettingsService";
 import {
-  findMatchingWorkZone,
-  getBrowserPosition,
-  listActiveWorkZones,
+  verifyEmployeeWorkZone,
   type AttendanceLocation,
   type WorkZoneMatch,
 } from "../../services/attendanceSettingsService";
@@ -41,11 +41,13 @@ import {
 } from "../../helpers/hr/attendanceCalculations";
 import { cleanText, formatShortDate, type HrSession } from "./shared";
 import { formatNotificationTime, notificationTone, notificationTypeLabel, toMillis } from "./portalUtils";
+import AttendanceMonthView from "../../components/AttendanceMonthView";
 
 type Props = {
   session: HrSession;
   notifications: EmployeeNotification[];
   onRefresh?: () => void | Promise<void>;
+  attendanceOnly?: boolean;
 };
 
 function roleLabel(role: string) {
@@ -79,7 +81,7 @@ function getAttendanceStatusLabel(status: StaffAttendanceToday["status"]) {
   return "لم يسجل حضور";
 }
 
-export default function EmployeeOverviewPage({ session, notifications, onRefresh }: Props) {
+export default function EmployeeOverviewPage({ session, notifications, onRefresh, attendanceOnly = false }: Props) {
   const navigate = useNavigate();
   const profile = getProfileSource(session);
   const displayName = cleanText(profile.displayName || profile.name || session.displayName || session.email || "Employee");
@@ -96,6 +98,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [attendanceSettings, setAttendanceSettings] = useState(() => AppSettingsService.getCached().attendance);
   const [lastLocation, setLastLocation] = useState<AttendanceLocation | null>(null);
   const [lastWorkZone, setLastWorkZone] = useState<WorkZoneMatch | null>(null);
+  const [attendanceMonthRows, setAttendanceMonthRows] = useState<StaffAttendanceWithId[]>([]);
+  const [attendanceMonthLoading, setAttendanceMonthLoading] = useState(false);
+  const [attendanceMonth, setAttendanceMonth] = useState(() => getTodayAttendanceDateKey().slice(0, 7));
+  const [attendanceSelectedDate, setAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
   const attendanceEmployeeId = cleanText(session.employeeId || session.uid);
   const attendanceDate = getTodayAttendanceDateKey();
 
@@ -153,10 +159,45 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     }
   };
 
+  const loadAttendanceMonth = useCallback(async () => {
+    if (!attendanceEmployeeId) {
+      setAttendanceMonthRows([]);
+      return;
+    }
+    const monthKey = /^\d{4}-\d{2}$/.test(attendanceMonth)
+      ? attendanceMonth
+      : getTodayAttendanceDateKey().slice(0, 7);
+    const fromDate = `${monthKey}-01`;
+    const toDate = new Date(
+      Date.UTC(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)), 0)
+    )
+      .toISOString()
+      .slice(0, 10);
+    setAttendanceMonthLoading(true);
+    try {
+      const rows = await listStaffAttendanceByDateRange({
+        employeeId: attendanceEmployeeId,
+        fromDate,
+        toDate,
+      });
+      setAttendanceMonthRows(rows);
+    } catch (error) {
+      setAttendanceMonthRows([]);
+      setAttendanceMessage(cleanText((error as any)?.message || "تعذر تحميل سجل الحضور الشهري."));
+    } finally {
+      setAttendanceMonthLoading(false);
+    }
+  }, [attendanceEmployeeId, attendanceMonth]);
+
   useEffect(() => {
     void loadAttendance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attendanceEmployeeId, attendanceDate]);
+
+  useEffect(() => {
+    if (!attendanceOnly) return;
+    void loadAttendanceMonth();
+  }, [attendanceOnly, loadAttendanceMonth]);
 
   useEffect(() => {
     AppSettingsService.fetchRemote()
@@ -200,38 +241,34 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     if (!attendanceEmployeeId || attendanceBusy) return;
     setAttendanceBusy(true);
     setAttendanceMessage("");
+    setLastLocation(null);
+    setLastWorkZone(null);
     try {
       const effectiveAttendanceSettings = attendanceSettings || AppSettingsService.getDefaults().attendance!;
       if (effectiveAttendanceSettings.enabled === false) {
         throw new Error("تسجيل الحضور متوقف من إعدادات الإدارة.");
       }
 
+      if (!active) {
+        throw new Error("لا يمكن تسجيل الحضور لموظفة غير نشطة.");
+      }
+
       let location: AttendanceLocation | undefined;
       let workZoneMatch: WorkZoneMatch | null = null;
 
-      if (effectiveAttendanceSettings.requireWorkZone) {
-        setAttendanceMessage("جاري التحقق من الموقع...");
-        location = await getBrowserPosition();
-        setLastLocation(location);
-
-        if (
-          location.accuracy &&
-          location.accuracy > effectiveAttendanceSettings.maxLocationAccuracyMeters
-        ) {
-          throw new Error(`دقة الموقع الحالية ${location.accuracy} م، المطلوب ${effectiveAttendanceSettings.maxLocationAccuracyMeters} م أو أقل.`);
-        }
-
-        const zones = await listActiveWorkZones();
-        if (!zones.length) {
-          throw new Error("لا توجد مناطق عمل مفعلة. راجع إعدادات الحضور والبصمة.");
-        }
-
-        workZoneMatch = findMatchingWorkZone(location, zones);
-        setLastWorkZone(workZoneMatch);
-        if (!workZoneMatch) {
-          throw new Error("أنت خارج نطاق مناطق العمل المسموحة لتسجيل الحضور.");
-        }
-      }
+      setAttendanceMessage("جاري التحقق من الموقع...");
+      const zoneVerification = await verifyEmployeeWorkZone({
+        employeeId: attendanceEmployeeId,
+        profile,
+        maxAllowedAccuracyMeters: effectiveAttendanceSettings.maxLocationAccuracyMeters,
+      });
+      location = zoneVerification.location;
+      workZoneMatch = {
+        zone: zoneVerification.zone,
+        distanceMeters: zoneVerification.distanceMeters,
+      };
+      setLastLocation(location);
+      setLastWorkZone(workZoneMatch);
 
       let biometric: Awaited<ReturnType<typeof requestAttendanceBiometric>> | undefined;
       if (effectiveAttendanceSettings.requireBiometric) {
@@ -267,8 +304,14 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         });
       }
       await loadAttendance();
-      setAttendanceMessage(type === "check_in" ? "تم تسجيل الحضور." : "تم تسجيل الانصراف.");
+      if (attendanceOnly) {
+        await loadAttendanceMonth();
+      }
+      setAttendanceMessage(type === "check_in" ? "تم تسجيل الحضور بنجاح" : "تم تسجيل الانصراف بنجاح");
     } catch (e) {
+      const zoneError = e as any;
+      if (zoneError?.location) setLastLocation(zoneError.location);
+      if (zoneError?.workZoneMatch) setLastWorkZone(zoneError.workZoneMatch);
       setAttendanceMessage(cleanText((e as any)?.message || "Failed to save attendance."));
     } finally {
       setAttendanceBusy(false);
@@ -295,15 +338,50 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     attendance?.checkOutVerification ||
     attendance?.checkInVerification ||
     null;
-  const visibleLocation = latestVerification?.location || lastLocation;
-  const visibleZoneName = latestVerification?.workZoneName || lastWorkZone?.zone.name || "";
+  const visibleLocation = lastLocation || latestVerification?.location;
+  const visibleZoneName = lastWorkZone?.zone.name || latestVerification?.workZoneName || "";
   const visibleDistance =
-    latestVerification?.distanceMeters ??
     lastWorkZone?.distanceMeters ??
+    latestVerification?.distanceMeters ??
     null;
   const visibleAccuracy =
     visibleLocation?.accuracy ??
     null;
+
+  if (attendanceOnly) {
+    return (
+      <div className="employee-panel employee-overview employee-attendance-month-page">
+        <section className="employee-app-intro">
+          <p>الحضور والانصراف</p>
+          <h1>سجل حضور الموظفة</h1>
+          <span>{displayName} · {department || title || "ملف الموظفة"}</span>
+        </section>
+
+        <AttendanceMonthView
+          rows={attendanceMonthRows}
+          loading={attendanceMonthLoading || attendanceLoading}
+          monthKey={attendanceMonth}
+          selectedDate={attendanceSelectedDate}
+          title="ملخص الحضور الشهري"
+          subtitle="اختر شهرًا لتوليد أو عرض الملخص المحفوظ بدون حذف أو أرشفة للسجلات."
+          onMonthChange={(monthKey) => {
+            setAttendanceMonth(monthKey);
+            setAttendanceSelectedDate((current) =>
+              String(current || "").startsWith(monthKey) ? current : `${monthKey}-01`
+            );
+          }}
+          onSelectedDateChange={setAttendanceSelectedDate}
+          onGenerateSummary={() => {
+            void loadAttendanceMonth();
+          }}
+        />
+
+        {attendanceMessage ? (
+          <div className="employee-attendance-month-message">{attendanceMessage}</div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="employee-panel employee-overview">
@@ -374,9 +452,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             {visibleDistance !== null ? ` · المسافة: ${visibleDistance} م` : visibleZoneName ? ` · النطاق: ${visibleZoneName}` : ""}
           </span>
           <div>
-            <small>تسجيل حضور</small>
-            <small>الدقة: 84 م</small>
-            <small>المسافة: 42 م</small>
+            <small>{punchLabel}</small>
+            {visibleZoneName ? <small>{visibleZoneName}</small> : null}
+            {visibleAccuracy !== null ? <small>الدقة: {visibleAccuracy} م</small> : null}
+            {visibleDistance !== null ? <small>المسافة: {visibleDistance} م</small> : null}
           </div>
         </div>
       </section>

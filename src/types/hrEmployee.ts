@@ -112,6 +112,10 @@ export type EmployeeEmploymentDoc = {
   employeeCode?: string | null;
   fingerprintNumber?: string | null;
   allowedZoneIds?: string[] | null;
+  allowedAttendanceZoneId?: string | null;
+  attendanceZoneId?: string | null;
+  attendanceScopeId?: string | null;
+  assignedAttendanceZoneId?: string | null;
   adminNotes?: string | null;
   updatedAt?: unknown;
   updatedByUid?: string | null;

@@ -123,7 +123,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
       {
         label: "البصمة",
         value: attendance.requireBiometric ? "إلزامية" : "اختيارية",
-        hint: "WebAuthn / Windows Hello / Face ID",
+        hint: "تحقق داخلي مخصص للحضور فقط",
       },
       {
         label: "GPS وRadius",

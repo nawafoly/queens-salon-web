@@ -16,6 +16,13 @@ import {
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faCalendarCheck,
+  faClock,
+  faEnvelope,
+  faFileLines,
+  faFolderOpen,
+  faInbox,
+  faMoneyBillWave,
   faRotateRight,
   faUserTie,
 } from "@fortawesome/free-solid-svg-icons";
@@ -29,9 +36,18 @@ import {
 } from "../services/firestoreLeaveBalance";
 import { writeAuditLog } from "../services/logService";
 import { AppSettingsService } from "../services/AppSettingsService";
+import { listWorkZones, type WorkZone } from "../services/attendanceSettingsService";
+import {
+  getTodayAttendanceDateKey,
+  listStaffAttendanceByDateRange,
+  removeStaffAttendance,
+  setStaffAttendancePunchOverride,
+  type StaffAttendanceWithId,
+} from "../services/firestoreAttendance";
 import { createEmployeeNotification } from "../services/employeeHub";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
 import "../styles/DashboardEmployees.css";
+import AttendanceSection from "./dashboardEmployees/AttendanceSection";
 import BasicInfoSection from "./dashboardEmployees/BasicInfoSection";
 import BookingSettingsSection from "./dashboardEmployees/BookingSettingsSection";
 import EmployeeDetailShell from "./dashboardEmployees/EmployeeDetailShell";
@@ -148,6 +164,59 @@ function cleanText(value: unknown) {
   return String(value || "").trim();
 }
 
+function toDateTimeLocalValue(value: unknown) {
+  const raw = cleanText(value);
+  if (!raw) return "";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return "";
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+}
+
+function dateTimeLocalToIso(value: string) {
+  const clean = cleanText(value);
+  if (!clean) return "";
+  const date = new Date(clean);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString();
+}
+
+function EmployeeComingSoonSection({
+  isVisible,
+  title,
+  lead,
+  actionLabel,
+}: {
+  isVisible: boolean;
+  title: string;
+  lead: string;
+  actionLabel: string;
+}) {
+  if (!isVisible) return null;
+  return (
+    <div className="emp-modal-section emp-placeholder-section">
+      <header className="emp-section-header">
+        <div className="emp-section-header__main">
+          <h3 className="emp-modal-section-title">{title}</h3>
+          <p className="emp-section-lead">{lead}</p>
+        </div>
+      </header>
+      <div className="emp-placeholder-box">
+        <FontAwesomeIcon icon={faFolderOpen} />
+        <strong>{title}</strong>
+        <span>تم تجهيز شكل القسم، وسيتم تفعيل الخصائص والأزرار في الخطوة التالية.</span>
+        <button className="exp-btn primary sm" type="button" disabled>
+          {actionLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function resolveStaffNotificationTarget(staff?: StaffPublicUi | null) {
   const targetUid = cleanText((staff as any)?.linkedUid || (staff as any)?.uid || (staff as any)?.linkedUserId || "");
   return {
@@ -164,7 +233,7 @@ export default function DashboardEmployees() {
     authRole === "admin" ||
     authRole === "reception" ||
     authRole === "hr";
-  const canManage = authRole === "owner" || authRole === "hr";
+  const canManage = authRole === "owner" || authRole === "admin" || authRole === "hr";
   const canDeleteEmployees = authRole === "owner";
   const canFixBookings = authRole === "owner";
   const canManageLeaveBalance = canManageLeaveBalanceRole(authUser?.role);
@@ -214,6 +283,18 @@ export default function DashboardEmployees() {
   const [modalLeaveUntil, setModalLeaveUntil] = useState("");
   const [modalLeaveNote, setModalLeaveNote] = useState("");
   const [employmentEndDate, setEmploymentEndDate] = useState("");
+  const [attendanceZones, setAttendanceZones] = useState<WorkZone[]>([]);
+  const [attendanceZonesLoading, setAttendanceZonesLoading] = useState(false);
+  const [selectedAttendanceZoneId, setSelectedAttendanceZoneId] = useState("");
+  const [employeeAttendanceRows, setEmployeeAttendanceRows] = useState<StaffAttendanceWithId[]>([]);
+  const [employeeAttendanceLoading, setEmployeeAttendanceLoading] = useState(false);
+  const [employeeAttendanceMonth, setEmployeeAttendanceMonth] = useState(() => getTodayAttendanceDateKey().slice(0, 7));
+  const [employeeAttendanceSelectedDate, setEmployeeAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
+  const [attendanceEditOpen, setAttendanceEditOpen] = useState(false);
+  const [attendanceEditDate, setAttendanceEditDate] = useState("");
+  const [attendanceEditCheckIn, setAttendanceEditCheckIn] = useState("");
+  const [attendanceEditCheckOut, setAttendanceEditCheckOut] = useState("");
+  const [attendanceEditNote, setAttendanceEditNote] = useState("");
   const [modalExceptionalLeaveWeekdays, setModalExceptionalLeaveWeekdays] = useState<WeekdayKey[]>([]);
   const [modalLeaveWeekdayDraft, setModalLeaveWeekdayDraft] = useState<WeekdayKey | "">("");
   const [modalUseCustomWorkingHours, setModalUseCustomWorkingHours] = useState(false);
@@ -318,6 +399,194 @@ export default function DashboardEmployees() {
     return normalizeExceptionalLeaveWeekdays(values);
   }, []);
 
+  const resolveAttendanceZoneId = useCallback((staffLike: any): string => {
+    const employment = staffLike?.employeeProfile?.employment || staffLike?.employment || {};
+    const allowedZoneIds = Array.isArray(employment?.allowedZoneIds)
+      ? employment.allowedZoneIds
+      : Array.isArray(staffLike?.allowedZoneIds)
+        ? staffLike.allowedZoneIds
+        : [];
+    return String(
+      staffLike?.allowedAttendanceZoneId ||
+      staffLike?.attendanceZoneId ||
+      staffLike?.assignedAttendanceZoneId ||
+      staffLike?.attendanceScopeId ||
+      employment?.allowedAttendanceZoneId ||
+      employment?.attendanceZoneId ||
+      employment?.assignedAttendanceZoneId ||
+      employment?.attendanceScopeId ||
+      allowedZoneIds[0] ||
+      ""
+    ).trim();
+  }, []);
+
+  const loadAttendanceZones = useCallback(async () => {
+    setAttendanceZonesLoading(true);
+    try {
+      setAttendanceZones(await listWorkZones());
+    } catch (error) {
+      setAttendanceZones([]);
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تحميل نطاقات الحضور."));
+    } finally {
+      setAttendanceZonesLoading(false);
+    }
+  }, []);
+
+  const loadSelectedEmployeeAttendance = useCallback(async () => {
+    const employeeId = String(selectedEmployeeId || "").trim();
+    if (!employeeId) {
+      setEmployeeAttendanceRows([]);
+      return;
+    }
+
+    const monthKey = /^\d{4}-\d{2}$/.test(employeeAttendanceMonth)
+      ? employeeAttendanceMonth
+      : getTodayAttendanceDateKey().slice(0, 7);
+    const monthStart = `${monthKey}-01`;
+    const monthEnd = new Date(
+      Date.UTC(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)), 0)
+    )
+      .toISOString()
+      .slice(0, 10);
+    setEmployeeAttendanceLoading(true);
+    try {
+      const rows = await listStaffAttendanceByDateRange({
+        employeeId,
+        fromDate: monthStart,
+        toDate: monthEnd,
+      });
+      setEmployeeAttendanceRows(rows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))));
+    } catch (error) {
+      setEmployeeAttendanceRows([]);
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة."));
+    } finally {
+      setEmployeeAttendanceLoading(false);
+    }
+  }, [employeeAttendanceMonth, selectedEmployeeId]);
+
+  useEffect(() => {
+    void loadAttendanceZones();
+  }, [loadAttendanceZones]);
+
+  useEffect(() => {
+    if (activeTab !== "attendance") return;
+    void loadSelectedEmployeeAttendance();
+  }, [activeTab, loadSelectedEmployeeAttendance]);
+
+  const openAttendancePunchEditor = useCallback((dateKey: string) => {
+    if (!canManage) {
+      setErrorMsg("ليست لديك صلاحية لتعديل بصمة الموظفة.");
+      return;
+    }
+    const cleanDate = normalizeLeaveUntil(dateKey);
+    if (!cleanDate) return;
+    const row = employeeAttendanceRows.find((item) => item.date === cleanDate) || null;
+    setAttendanceEditDate(cleanDate);
+    setAttendanceEditCheckIn(toDateTimeLocalValue(row?.checkInAtClient) || `${cleanDate}T09:00`);
+    setAttendanceEditCheckOut(toDateTimeLocalValue(row?.checkOutAtClient));
+    setAttendanceEditNote(cleanText(row?.notes));
+    setAttendanceEditOpen(true);
+    setErrorMsg("");
+  }, [canManage, employeeAttendanceRows]);
+
+  const closeAttendancePunchEditor = useCallback(() => {
+    setAttendanceEditOpen(false);
+    setAttendanceEditDate("");
+    setAttendanceEditCheckIn("");
+    setAttendanceEditCheckOut("");
+    setAttendanceEditNote("");
+  }, []);
+
+  const saveAttendancePunchEditor = useCallback(async () => {
+    if (!canManage || !selectedEmployeeId) {
+      setErrorMsg("ليست لديك صلاحية لتعديل بصمة الموظفة.");
+      return;
+    }
+    const date = normalizeLeaveUntil(attendanceEditDate);
+    const checkInIso = dateTimeLocalToIso(attendanceEditCheckIn);
+    const checkOutIso = dateTimeLocalToIso(attendanceEditCheckOut);
+    if (!date || !checkInIso) {
+      setErrorMsg("اختر اليوم ووقت الحضور قبل حفظ تعديل البصمة.");
+      return;
+    }
+    if (checkOutIso && Date.parse(checkOutIso) <= Date.parse(checkInIso)) {
+      setErrorMsg("وقت الانصراف يجب أن يكون بعد وقت الحضور.");
+      return;
+    }
+
+    setSaving(true);
+    setErrorMsg("");
+    try {
+      await setStaffAttendancePunchOverride({
+        employeeId: selectedEmployeeId,
+        date,
+        checkInAtClient: checkInIso,
+        checkOutAtClient: checkOutIso || undefined,
+        notes: attendanceEditNote,
+        createdByUid: authUser?.uid,
+        createdByName: authUser?.displayName || authUser?.email,
+      });
+      void writeAuditLog({
+        action: "attendance_updated",
+        entityType: "attendance",
+        entityId: `${selectedEmployeeId}/${date}`,
+        source: "dashboard",
+        description: "تعديل بصمة حضور الموظفة من الإدارة",
+        after: { date, checkInAtClient: checkInIso, checkOutAtClient: checkOutIso || "" },
+        meta: { staffId: selectedEmployeeId },
+      });
+      closeAttendancePunchEditor();
+      await loadSelectedEmployeeAttendance();
+    } catch (error) {
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر حفظ تعديل البصمة."));
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    attendanceEditCheckIn,
+    attendanceEditCheckOut,
+    attendanceEditDate,
+    attendanceEditNote,
+    authUser?.displayName,
+    authUser?.email,
+    authUser?.uid,
+    canManage,
+    closeAttendancePunchEditor,
+    loadSelectedEmployeeAttendance,
+    selectedEmployeeId,
+  ]);
+
+  const deleteAttendancePunch = useCallback(async (dateKey: string) => {
+    if (!canManage || !selectedEmployeeId) {
+      setErrorMsg("ليست لديك صلاحية لمسح بصمة الموظفة.");
+      return;
+    }
+    const date = normalizeLeaveUntil(dateKey);
+    if (!date) return;
+    const ok = confirm(`سيتم مسح سجل البصمة ليوم ${date}. هل تريد المتابعة؟`);
+    if (!ok) return;
+
+    setSaving(true);
+    setErrorMsg("");
+    try {
+      await removeStaffAttendance({ employeeId: selectedEmployeeId, date });
+      void writeAuditLog({
+        action: "attendance_deleted",
+        entityType: "attendance",
+        entityId: `${selectedEmployeeId}/${date}`,
+        source: "dashboard",
+        description: "مسح بصمة حضور الموظفة من الإدارة",
+        before: { date },
+        meta: { staffId: selectedEmployeeId },
+      });
+      await loadSelectedEmployeeAttendance();
+    } catch (error) {
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر مسح البصمة."));
+    } finally {
+      setSaving(false);
+    }
+  }, [canManage, loadSelectedEmployeeAttendance, selectedEmployeeId]);
+
   const resetForm = () => {
     setEditId(null);
     setModalTab("basic");
@@ -336,6 +605,7 @@ export default function DashboardEmployees() {
     setModalLeaveUntil("");
     setModalLeaveNote("");
     setEmploymentEndDate("");
+    setSelectedAttendanceZoneId("");
     setModalExceptionalLeaveWeekdays([]);
     setModalLeaveWeekdayDraft("");
     setModalUseCustomWorkingHours(false);
@@ -400,6 +670,7 @@ export default function DashboardEmployees() {
     setModalLeaveUntil(initialLeaveUntil);
     setModalLeaveNote(String((x as any).leaveNote || ""));
     setEmploymentEndDate(normalizeLeaveUntil((x as any).employmentEndDate));
+    setSelectedAttendanceZoneId(resolveAttendanceZoneId(x));
     setModalExceptionalLeaveWeekdays(resolveStaffWeeklyOffDays(x));
     setModalLeaveWeekdayDraft("");
     setModalUseCustomWorkingHours(!!(x as any).useCustomWorkingHours);
@@ -543,6 +814,11 @@ export default function DashboardEmployees() {
             useCustomWorkingHours: !!data?.useCustomWorkingHours,
             customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
             customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
+            allowedAttendanceZoneId: resolveAttendanceZoneId(data),
+            attendanceZoneId: String(data?.attendanceZoneId || "").trim(),
+            assignedAttendanceZoneId: String(data?.assignedAttendanceZoneId || "").trim(),
+            attendanceScopeId: String(data?.attendanceScopeId || "").trim(),
+            allowedZoneIds: Array.isArray(data?.allowedZoneIds) ? data.allowedZoneIds.filter(Boolean) : [],
             monthlySalary: payrollCfg.monthlySalary,
             overtimeMethod: payrollCfg.method,
             overtimeDaysPerMonth: payrollCfg.daysPerMonth,
@@ -587,7 +863,7 @@ export default function DashboardEmployees() {
         setLoading(false);
       }
     },
-    [resolveStaffWeeklyOffDays]
+    [resolveAttendanceZoneId, resolveStaffWeeklyOffDays]
   );
 
   // ✅ Original logic for fixing bookings
@@ -927,6 +1203,7 @@ export default function DashboardEmployees() {
     setErrorMsg("");
     const normalizedModalLeaveUntil = normalizeLeaveUntil(modalLeaveUntil);
     const normalizedEmploymentEndDate = normalizeLeaveUntil(employmentEndDate);
+    const normalizedAttendanceZoneId = String(selectedAttendanceZoneId || "").trim();
     const modalLeaveExpired = !!normalizedModalLeaveUntil && normalizedModalLeaveUntil < todayIso();
     const effectiveModalOnLeave = modalOnLeave && !modalLeaveExpired;
     const normalizedExceptionalWeekdays = normalizeExceptionalLeaveWeekdays(
@@ -951,6 +1228,11 @@ export default function DashboardEmployees() {
       useCustomWorkingHours: !!modalUseCustomWorkingHours,
       customWorkingHours: normalizedCustomWorkingHours,
       customWorkingHourOverrides: normalizedCustomHourOverrides,
+      allowedAttendanceZoneId: normalizedAttendanceZoneId,
+      attendanceZoneId: normalizedAttendanceZoneId,
+      assignedAttendanceZoneId: normalizedAttendanceZoneId,
+      attendanceScopeId: normalizedAttendanceZoneId,
+      allowedZoneIds: normalizedAttendanceZoneId ? [normalizedAttendanceZoneId] : [],
       monthlySalary: safeNonNegativeNumber(monthlySalary, 0),
       overtimeMethod:
         overtimeMethod === "invoice_percentage" ? "invoice_percentage" : "hours_from_salary",
@@ -972,6 +1254,16 @@ export default function DashboardEmployees() {
       reviewsCount: Math.floor(safeNonNegativeNumber(reviewsCount, 0)),
       updatedAt: serverTimestamp(),
     };
+    const attendanceZoneProfilePatch = {
+      allowedZoneIds: normalizedAttendanceZoneId ? [normalizedAttendanceZoneId] : [],
+      allowedAttendanceZoneId: normalizedAttendanceZoneId,
+      attendanceZoneId: normalizedAttendanceZoneId,
+      assignedAttendanceZoneId: normalizedAttendanceZoneId,
+      attendanceScopeId: normalizedAttendanceZoneId,
+    };
+    const employeeProfilePatch = {
+      employment: attendanceZoneProfilePatch,
+    };
 
     try {
       if (!editId) {
@@ -979,15 +1271,52 @@ export default function DashboardEmployees() {
           .replace(/\s+/g, "_")
           .replace(/[^\w\u0600-\u06FF_]/g, "")
           .slice(0, 40);
-        await setDoc(staffPublicDoc(id || crypto.randomUUID()), {
+        const newEmployeeId = id || crypto.randomUUID();
+        await setDoc(staffPublicDoc(newEmployeeId), {
           ...payload,
+          employment: attendanceZoneProfilePatch,
+          employeeProfile: employeeProfilePatch,
           leaveBalanceDays: 0,
           leaveEntitlementDate: "",
           leaveEntries: [],
           createdAt: serverTimestamp(),
         });
+        await setDoc(doc(db, "salons", SALON_ID, "employees", newEmployeeId), {
+          employeeId: newEmployeeId,
+          name: cleanName,
+          active: !!active,
+          allowedAttendanceZoneId: normalizedAttendanceZoneId,
+          attendanceZoneId: normalizedAttendanceZoneId,
+          assignedAttendanceZoneId: normalizedAttendanceZoneId,
+          attendanceScopeId: normalizedAttendanceZoneId,
+          employment: attendanceZoneProfilePatch,
+          employeeProfile: employeeProfilePatch,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
       } else {
-        await updateDoc(staffPublicDoc(editId), payload as any);
+        await updateDoc(staffPublicDoc(editId), {
+          ...(payload as any),
+          "employment.allowedZoneIds": attendanceZoneProfilePatch.allowedZoneIds,
+          "employment.allowedAttendanceZoneId": normalizedAttendanceZoneId,
+          "employment.attendanceZoneId": normalizedAttendanceZoneId,
+          "employment.assignedAttendanceZoneId": normalizedAttendanceZoneId,
+          "employment.attendanceScopeId": normalizedAttendanceZoneId,
+          "employeeProfile.employment.allowedZoneIds": attendanceZoneProfilePatch.allowedZoneIds,
+          "employeeProfile.employment.allowedAttendanceZoneId": normalizedAttendanceZoneId,
+          "employeeProfile.employment.attendanceZoneId": normalizedAttendanceZoneId,
+          "employeeProfile.employment.assignedAttendanceZoneId": normalizedAttendanceZoneId,
+          "employeeProfile.employment.attendanceScopeId": normalizedAttendanceZoneId,
+        });
+        await setDoc(doc(db, "salons", SALON_ID, "employees", editId), {
+          allowedAttendanceZoneId: normalizedAttendanceZoneId,
+          attendanceZoneId: normalizedAttendanceZoneId,
+          assignedAttendanceZoneId: normalizedAttendanceZoneId,
+          attendanceScopeId: normalizedAttendanceZoneId,
+          employment: attendanceZoneProfilePatch,
+          employeeProfile: employeeProfilePatch,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
       }
 
       if (previousEditSnapshot && editingStaff) {
@@ -1094,8 +1423,8 @@ export default function DashboardEmployees() {
   const availableEmployeeCount = list.filter((employee) => employee.active && !isEmployeeOnLeave(employee)).length;
   const leaveEmployeeCount = list.filter((employee) => isEmployeeOnLeave(employee)).length;
   const inactiveEmployeeCount = list.filter((employee) => !employee.active).length;
-  const showPayrollSubTab = !selectedEmployeeId || activeStatsSubTab === "payroll";
-  const showStatsSubTab = !selectedEmployeeId || activeStatsSubTab === "stats";
+  const showPayrollSubTab = selectedEmployeeId ? activeTab === "payroll" : activeStatsSubTab === "payroll";
+  const showStatsSubTab = selectedEmployeeId ? activeTab === "leave" : activeStatsSubTab === "stats";
 
   const staffScheduleSummary = useMemo(() => {
     const now = new Date(nowTick);
@@ -1984,13 +2313,15 @@ export default function DashboardEmployees() {
         { key: "services", label: "الخدمات" },
         { key: "profile", label: "الملف" },
       ];
-  const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string }> = [
-    { key: "basic", label: "الأساسيات", hint: "الاسم، الحالة، والظهور" },
-    { key: "booking", label: "الدوام", hint: "جدول العمل والاستثناءات" },
-    { key: "services", label: "الخدمات", hint: "الخدمات التي تقدمها" },
-    { key: "profile", label: "الملف", hint: "الصورة، النبذة، والسيرة" },
-    { key: "payroll", label: "الراتب", hint: "الأوفر تايم والرواتب" },
-    { key: "stats", label: "الإجازات والسجل", hint: "الرصيد والحركات" },
+  const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: typeof faUserTie }> = [
+    { key: "basic", label: "بيانات الموظف", hint: "الملخص والبيانات", icon: faUserTie },
+    { key: "booking", label: "جدول الدوام", hint: "الدوام والنطاق", icon: faClock },
+    { key: "attendance", label: "الحضور", hint: "السجل اليومي", icon: faCalendarCheck },
+    { key: "payroll", label: "سجل الرواتب", hint: "القفل والحساب", icon: faMoneyBillWave },
+    { key: "requests", label: "الطلبات", hint: "طلبات الموظفة", icon: faInbox },
+    { key: "leave", label: "الإجازات", hint: "الرصيد والسجل", icon: faCalendarCheck },
+    { key: "messages", label: "الرسائل", hint: "التواصل الداخلي", icon: faEnvelope },
+    { key: "files", label: "الملفات", hint: "المستندات", icon: faFileLines },
   ];
   const modalLeaveExpired = useMemo(() => {
     const leaveUntil = normalizeLeaveUntil(modalLeaveUntil);
@@ -2715,12 +3046,20 @@ export default function DashboardEmployees() {
       setModalTab("stats");
       return;
     }
-    if (tab === "stats") {
+    if (tab === "leave") {
       setActiveStatsSubTab("stats");
       setModalTab("stats");
       return;
     }
-    setModalTab(tab);
+    if (tab === "basic") {
+      setModalTab("basic");
+      return;
+    }
+    if (tab === "booking") {
+      setModalTab("booking");
+      return;
+    }
+    setModalTab("basic");
   };
   const handleCancelEdit = () => {
     const currentTab = activeTab;
@@ -2914,12 +3253,12 @@ export default function DashboardEmployees() {
               onModalTabChange={setModalTab}
             >
               <ScheduleSummarySection
-                isVisible={modalTab === "basic"}
+                isVisible={(!editingStaff && modalTab === "basic") || (!!editingStaff && activeTab === "basic")}
                 nowTick={nowTick}
                 summary={modalStaffScheduleSummary}
               />
               <EmployeeStatsSection
-                isVisible={!!editingStaff && modalTab === "stats"}
+                isVisible={!!editingStaff && (activeTab === "payroll" || activeTab === "leave")}
                 busy={busy}
                 loading={loading}
                 authRole={authUser?.role}
@@ -2978,8 +3317,82 @@ export default function DashboardEmployees() {
                   },
                 }}
               />
+              <AttendanceSection
+                isVisible={!!editingStaff && activeTab === "attendance"}
+                loading={employeeAttendanceLoading}
+                rows={employeeAttendanceRows}
+                monthKey={employeeAttendanceMonth}
+                selectedDate={employeeAttendanceSelectedDate}
+                onMonthChange={(monthKey) => {
+                  setEmployeeAttendanceMonth(monthKey);
+                  setEmployeeAttendanceSelectedDate((current) =>
+                    String(current || "").startsWith(monthKey) ? current : `${monthKey}-01`
+                  );
+                }}
+                onSelectedDateChange={setEmployeeAttendanceSelectedDate}
+                onReload={() => {
+                  void loadSelectedEmployeeAttendance();
+                }}
+                onEditPunch={openAttendancePunchEditor}
+                onDeletePunch={(dateKey) => {
+                  void deleteAttendancePunch(dateKey);
+                }}
+              />
+              {attendanceEditOpen && activeTab === "attendance" ? (
+                <div className="emp-attendance-edit-panel">
+                  <div className="emp-attendance-edit-head">
+                    <div>
+                      <strong>تعديل البصمة</strong>
+                      <span>{attendanceEditDate}</span>
+                    </div>
+                    <button type="button" className="exp-btn ghost sm" onClick={closeAttendancePunchEditor}>
+                      إغلاق
+                    </button>
+                  </div>
+                  <div className="emp-attendance-edit-grid">
+                    <label className="dash-field">
+                      <span className="emp-label">وقت الحضور</span>
+                      <input
+                        className="dash-input"
+                        type="datetime-local"
+                        value={attendanceEditCheckIn}
+                        onChange={(event) => setAttendanceEditCheckIn(event.target.value)}
+                        disabled={saving}
+                      />
+                    </label>
+                    <label className="dash-field">
+                      <span className="emp-label">وقت الانصراف</span>
+                      <input
+                        className="dash-input"
+                        type="datetime-local"
+                        value={attendanceEditCheckOut}
+                        onChange={(event) => setAttendanceEditCheckOut(event.target.value)}
+                        disabled={saving}
+                      />
+                    </label>
+                    <label className="dash-field emp-attendance-edit-note">
+                      <span className="emp-label">ملاحظة الإدارة</span>
+                      <input
+                        className="dash-input"
+                        value={attendanceEditNote}
+                        onChange={(event) => setAttendanceEditNote(event.target.value)}
+                        disabled={saving}
+                        placeholder="مثال: تصحيح بصمة من الإدارة"
+                      />
+                    </label>
+                  </div>
+                  <div className="emp-attendance-edit-actions">
+                    <button type="button" className="exp-btn ghost" onClick={closeAttendancePunchEditor} disabled={saving}>
+                      إلغاء
+                    </button>
+                    <button type="button" className="exp-btn primary" onClick={() => void saveAttendancePunchEditor()} disabled={saving}>
+                      حفظ تعديل البصمة
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <BasicInfoSection
-                isVisible={modalTab === "basic"}
+                isVisible={(!editingStaff && modalTab === "basic") || (!!editingStaff && activeTab === "basic")}
                 name={name}
                 active={active}
                 showOnAbout={showOnAbout}
@@ -2995,21 +3408,26 @@ export default function DashboardEmployees() {
                 onShowOnBookingChange={setShowOnBooking}
               />
               <BookingSettingsSection
-                isVisible={modalTab === "booking"}
+                isVisible={(!editingStaff && modalTab === "booking") || (!!editingStaff && activeTab === "booking")}
                 busy={busy}
                 loading={loading}
                 employmentEndDate={employmentEndDate}
                 modalUseCustomWorkingHours={modalUseCustomWorkingHours}
                 modalCustomWorkingHours={modalCustomWorkingHours}
+                attendanceZones={attendanceZones}
+                attendanceZonesLoading={attendanceZonesLoading}
+                selectedAttendanceZoneId={selectedAttendanceZoneId}
                 modalHourOverrideHijriPickerRef={modalHourOverrideHijriPickerRef}
                 overrideEditor={modalOverrideEditor}
                 onEmploymentEndDateChange={setEmploymentEndDate}
                 onModalUseCustomWorkingHoursChange={setModalUseCustomWorkingHours}
+                onSelectedAttendanceZoneIdChange={setSelectedAttendanceZoneId}
+                onReloadAttendanceZones={() => void loadAttendanceZones()}
                 onUpdateModalWorkingDay={updateModalWorkingDay}
                 onCopyModalWorkingDayToAll={copyModalWorkingDayToAll}
               />
               <ProfileSection
-                isVisible={modalTab === "profile"}
+                isVisible={(!editingStaff && modalTab === "profile") || (!!editingStaff && activeTab === "basic")}
                 avatarUrl={avatarUrl}
                 bio={bio}
                 cvUrl={cvUrl}
@@ -3024,7 +3442,7 @@ export default function DashboardEmployees() {
                 onReviewsCountChange={setReviewsCount}
               />
               <ServicesSection
-                isVisible={modalTab === "services"}
+                isVisible={(!editingStaff && modalTab === "services") || (!!editingStaff && activeTab === "basic")}
                 srvQ={srvQ}
                 srvSection={srvSection}
                 sectionOptions={sectionOptions}
@@ -3035,6 +3453,24 @@ export default function DashboardEmployees() {
                 onSrvSectionChange={setSrvSection}
                 onToggleSpecialty={toggleSpecialty}
                 onSpecialtiesChange={setSpecialties}
+              />
+              <EmployeeComingSoonSection
+                isVisible={!!editingStaff && activeTab === "requests"}
+                title="طلبات الموظفة"
+                lead="يشمل طلبات الاستئذان والتصحيح والاستقالة والخروج والعودة والخطابات."
+                actionLabel="إدارة الطلبات"
+              />
+              <EmployeeComingSoonSection
+                isVisible={!!editingStaff && activeTab === "messages"}
+                title="رسائل HR مع الموظفة"
+                lead="واجهة موحدة للتواصل الداخلي وربط المحادثات بملف الموظفة."
+                actionLabel="بدء محادثة"
+              />
+              <EmployeeComingSoonSection
+                isVisible={!!editingStaff && activeTab === "files"}
+                title="ملفات الموظفة"
+                lead="رفع وعرض المستندات الرسمية وربطها بملف الموظفة."
+                actionLabel="رفع ملف"
               />
             </EmployeeEditorModal>
           </EmployeeDetailShell>

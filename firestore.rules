@@ -106,18 +106,103 @@ service cloud.firestore {
             : request.auth.uid;
     }
 
+    function userDocHasEmployeeId(d, employeeId) {
+      return (
+        (d.employeeId is string && d.employeeId == employeeId)
+        || (d.linkedEmployeeDocId is string && d.linkedEmployeeDocId == employeeId)
+      );
+    }
+
+    function employeeDocLinkedToAuth(d) {
+      return (
+        (d.linkedUid is string && d.linkedUid == request.auth.uid)
+        || (d.uid is string && d.uid == request.auth.uid)
+        || (d.linkedUserId is string && d.linkedUserId == request.auth.uid)
+        || (d.employeeUid is string && d.employeeUid == request.auth.uid)
+      );
+    }
+
     function isOwnEmployeeIdForSalon(salonId, employeeId) {
       return signedIn()
         && (
           employeeId == request.auth.uid
           || employeeId == myEmployeeIdInSalon(salonId)
           || (
+            exists(myUserPathInSalon(salonId))
+            && userDocHasEmployeeId(
+              get(myUserPathInSalon(salonId)).data,
+              employeeId
+            )
+          )
+          || (
+            exists(myAdminUserPathInSalon(salonId))
+            && userDocHasEmployeeId(
+              get(myAdminUserPathInSalon(salonId)).data,
+              employeeId
+            )
+          )
+          || (
             exists(/databases/$(database)/documents/salons/$(salonId)/staff_public/$(employeeId))
-            && get(/databases/$(database)/documents/salons/$(salonId)/staff_public/$(employeeId)).data.linkedUid == request.auth.uid
+            && employeeDocLinkedToAuth(
+              get(/databases/$(database)/documents/salons/$(salonId)/staff_public/$(employeeId)).data
+            )
           )
           || (
             exists(/databases/$(database)/documents/salons/$(salonId)/employees/$(employeeId))
-            && get(/databases/$(database)/documents/salons/$(salonId)/employees/$(employeeId)).data.linkedUid == request.auth.uid
+            && employeeDocLinkedToAuth(
+              get(/databases/$(database)/documents/salons/$(salonId)/employees/$(employeeId)).data
+            )
+          )
+        );
+    }
+
+    function employeeDocHasAttendanceZone(d, zoneId) {
+      return (
+        (d.allowedAttendanceZoneId is string && d.allowedAttendanceZoneId == zoneId)
+        || (d.attendanceZoneId is string && d.attendanceZoneId == zoneId)
+        || (d.assignedAttendanceZoneId is string && d.assignedAttendanceZoneId == zoneId)
+        || (d.attendanceScopeId is string && d.attendanceScopeId == zoneId)
+        || (d.allowedZoneIds is list && zoneId in d.allowedZoneIds)
+        || (
+          d.employment is map
+          && (
+            (d.employment.allowedAttendanceZoneId is string && d.employment.allowedAttendanceZoneId == zoneId)
+            || (d.employment.attendanceZoneId is string && d.employment.attendanceZoneId == zoneId)
+            || (d.employment.assignedAttendanceZoneId is string && d.employment.assignedAttendanceZoneId == zoneId)
+            || (d.employment.attendanceScopeId is string && d.employment.attendanceScopeId == zoneId)
+            || (d.employment.allowedZoneIds is list && zoneId in d.employment.allowedZoneIds)
+          )
+        )
+        || (
+          d.employeeProfile is map
+          && d.employeeProfile.employment is map
+          && (
+            (d.employeeProfile.employment.allowedAttendanceZoneId is string && d.employeeProfile.employment.allowedAttendanceZoneId == zoneId)
+            || (d.employeeProfile.employment.attendanceZoneId is string && d.employeeProfile.employment.attendanceZoneId == zoneId)
+            || (d.employeeProfile.employment.assignedAttendanceZoneId is string && d.employeeProfile.employment.assignedAttendanceZoneId == zoneId)
+            || (d.employeeProfile.employment.attendanceScopeId is string && d.employeeProfile.employment.attendanceScopeId == zoneId)
+            || (d.employeeProfile.employment.allowedZoneIds is list && zoneId in d.employeeProfile.employment.allowedZoneIds)
+          )
+        )
+      );
+    }
+
+    function isMyAssignedAttendanceZoneForSalon(salonId, zoneId) {
+      return signedIn()
+        && (
+          (
+            exists(/databases/$(database)/documents/salons/$(salonId)/staff_public/$(myEmployeeIdInSalon(salonId)))
+            && employeeDocHasAttendanceZone(
+              get(/databases/$(database)/documents/salons/$(salonId)/staff_public/$(myEmployeeIdInSalon(salonId))).data,
+              zoneId
+            )
+          )
+          || (
+            exists(/databases/$(database)/documents/salons/$(salonId)/employees/$(myEmployeeIdInSalon(salonId)))
+            && employeeDocHasAttendanceZone(
+              get(/databases/$(database)/documents/salons/$(salonId)/employees/$(myEmployeeIdInSalon(salonId))).data,
+              zoneId
+            )
           )
         );
     }
@@ -150,6 +235,61 @@ service cloud.firestore {
 
     function isHrManagementForSalon(salonId) {
       return isBootstrapAdmin() || roleForSalon(salonId) in ["owner", "admin", "hr"];
+    }
+
+    function canManageAttendanceForSalon(salonId) {
+      return signedIn()
+        && (
+          isBootstrapAdmin()
+          || roleForSalon(salonId) in ["owner","admin","hr","reception"]
+        );
+    }
+
+    function isOwnAttendanceBaseWrite(salonId, employeeId, dateId) {
+      return signedIn()
+        && isOwnEmployeeIdForSalon(salonId, employeeId)
+        && request.resource.data.employeeId == employeeId
+        && request.resource.data.date == dateId
+        && request.resource.data.salonId == salonId
+        && request.resource.data.status in ["checked_in", "checked_out"];
+    }
+
+    function isOwnAttendanceCheckInCreate(salonId, employeeId, dateId) {
+      return isOwnAttendanceBaseWrite(salonId, employeeId, dateId)
+        && request.resource.data.status == "checked_in"
+        && request.resource.data.keys().hasOnly([
+          "date",
+          "employeeId",
+          "salonId",
+          "status",
+          "checkInAt",
+          "checkInAtClient",
+          "createdBy",
+          "checkInVerification",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.createdBy is map
+        && request.resource.data.createdBy.uid == request.auth.uid;
+    }
+
+    function isOwnAttendanceCheckOutUpdate(salonId, employeeId, dateId) {
+      return isOwnAttendanceBaseWrite(salonId, employeeId, dateId)
+        && resource.data.employeeId == employeeId
+        && resource.data.date == dateId
+        && resource.data.salonId == salonId
+        && resource.data.status == "checked_in"
+        && request.resource.data.status == "checked_out"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "checkOutAt",
+          "checkOutAtClient",
+          "updatedBy",
+          "checkOutVerification",
+          "updatedAt"
+        ])
+        && request.resource.data.updatedBy is map
+        && request.resource.data.updatedBy.uid == request.auth.uid;
     }
 
     function isEmployeeManagementForSalon(salonId) {
@@ -350,9 +490,13 @@ service cloud.firestore {
     }
 
     match /salons/{salonId}/work_zones/{id} {
-      allow read: if signedIn();
+      allow read: if signedIn() && (
+        isBootstrapAdmin()
+        || roleForSalon(salonId) in ["owner","admin","hr","reception"]
+        || isMyAssignedAttendanceZoneForSalon(salonId, id)
+      );
       allow create, update, delete: if signedIn()
-        && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin"]);
+        && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","hr"]);
     }
 
     /* =========================
@@ -919,33 +1063,21 @@ service cloud.firestore {
     }
 
     match /salons/{salonId}/staff/{employeeId}/attendance/{dateId} {
-      allow read: if signedIn() && (
-        isBootstrapAdmin()
-        || roleForSalon(salonId) in ["owner","admin","reception","accountant","hr"]
-        || isOwnEmployeeIdForSalon(salonId, employeeId)
-      );
-      allow create, update, delete: if signedIn() && (
-        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
-      );
-      allow create, update: if signedIn()
-        && isOwnEmployeeIdForSalon(salonId, employeeId)
-        && request.resource.data.employeeId == employeeId
-        && request.resource.data.date == dateId
-        && request.resource.data.salonId == salonId
-        && request.resource.data.status in ["checked_in", "checked_out"]
-        && (
-          (
-            request.resource.data.createdBy is map
-            && request.resource.data.createdBy.uid == request.auth.uid
-          )
-          || (
-            request.resource.data.updatedBy is map
-            && request.resource.data.updatedBy.uid == request.auth.uid
-          )
-        );
-      allow delete: if signedIn() && (
-        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
-      );
+      allow get: if canManageAttendanceForSalon(salonId)
+        || roleForSalon(salonId) == "accountant"
+        || isOwnEmployeeIdForSalon(salonId, employeeId);
+
+      allow list: if canManageAttendanceForSalon(salonId)
+        || roleForSalon(salonId) == "accountant"
+        || isOwnEmployeeIdForSalon(salonId, employeeId);
+
+      allow create: if canManageAttendanceForSalon(salonId)
+        || isOwnAttendanceCheckInCreate(salonId, employeeId, dateId);
+
+      allow update: if canManageAttendanceForSalon(salonId)
+        || isOwnAttendanceCheckOutUpdate(salonId, employeeId, dateId);
+
+      allow delete: if canManageAttendanceForSalon(salonId);
     }
 
     match /salons/{salonId}/service_sections/{id} {

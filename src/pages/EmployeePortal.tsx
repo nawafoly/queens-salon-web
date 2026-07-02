@@ -215,6 +215,7 @@ export default function EmployeePortal() {
                   session={session}
                   notifications={notifications}
                   onRefresh={loadNotifications}
+                  attendanceOnly
                 />
               }
             />

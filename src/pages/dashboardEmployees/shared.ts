@@ -88,6 +88,11 @@ export type StaffPublicDoc = {
   useCustomWorkingHours?: boolean;
   customWorkingHours?: Partial<Record<WeekdayKey, StaffWorkingDay>>;
   customWorkingHourOverrides?: StaffWorkingHourOverride[];
+  allowedAttendanceZoneId?: string;
+  attendanceZoneId?: string;
+  attendanceScopeId?: string;
+  assignedAttendanceZoneId?: string;
+  allowedZoneIds?: string[];
   monthlySalary?: number;
   overtimeMethod?: StaffPayrollMethod;
   overtimeDaysPerMonth?: number;
@@ -122,7 +127,15 @@ export type ServiceOption = {
 };
 
 export type EmployeeModalTab = "stats" | "basic" | "booking" | "services" | "profile";
-export type EmployeeSplitTab = "basic" | "booking" | "services" | "profile" | "payroll" | "stats";
+export type EmployeeSplitTab =
+  | "basic"
+  | "booking"
+  | "attendance"
+  | "payroll"
+  | "requests"
+  | "leave"
+  | "messages"
+  | "files";
 export type EmployeeMode = "view" | "edit";
 
 export type BookingHourOverrideMode = "hours" | "closed";
