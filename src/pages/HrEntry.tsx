@@ -37,6 +37,7 @@ import {
   listStaffAttendanceForDate,
 } from "../services/firestoreAttendance";
 import { logoutFirebase } from "../services/authService";
+import { resolvePostLoginRoute } from "../helpers/routePaths";
 import "../styles/HrEntry.css";
 
 type HrEntryStats = {
@@ -317,6 +318,21 @@ export default function HrEntry() {
   ]);
 
   useEffect(() => {
+    if (session.loading || authorization.checking || !isSignedIn || canUseHr) return;
+
+    const route = resolvePostLoginRoute(normalizedRole);
+
+    navigate(route, { replace: true });
+  }, [
+    authorization.checking,
+    canUseHr,
+    isSignedIn,
+    navigate,
+    normalizedRole,
+    session.loading,
+  ]);
+
+  useEffect(() => {
     let alive = true;
 
     async function loadStats() {
@@ -546,6 +562,14 @@ export default function HrEntry() {
     return (
       <main className="hr-entry" dir="rtl">
         <div className="hr-entry-loading">جاري التحقق من الصلاحية...</div>
+      </main>
+    );
+  }
+
+  if (isSignedIn && !canUseHr) {
+    return (
+      <main className="hr-entry" dir="rtl">
+        <div className="hr-entry-loading">جاري فتح ملف الموظف...</div>
       </main>
     );
   }

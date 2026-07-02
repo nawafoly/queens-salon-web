@@ -73,6 +73,7 @@ function normalizeRole(role: any): UiRole {
   const r = String(role || "").toLowerCase().trim();
   if (r === "administrator") return "admin";
   if (r === "hr" || r === "human resources" || r === "humanresources") return "hr";
+  if (r === "employee") return "staff";
   if (r === "receptionist") return "reception";
   if (r === "frontdesk") return "reception";
   if (r === "desk") return "reception";
@@ -498,8 +499,10 @@ const App: React.FC = () => {
 
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
-    const isDashboardRoot =
-      location.pathname === "/dashboard" || location.pathname === "/dashboard/";
+
+    if (role === "staff") {
+      return <Navigate to="/employee/overview" replace />;
+    }
 
     if (isAdminPortalRole(role) && !isDashboardRole(role)) {
       return <Navigate to="/admin" replace />;
@@ -507,10 +510,6 @@ const App: React.FC = () => {
 
     if (isMalikatAuth) {
       if (isDashboardRole(role)) {
-        if (role === "staff" && isDashboardRoot) {
-          return <Navigate to={resolveDashboardLandingPath(role)} replace />;
-        }
-
         return <>{children}</>;
       }
 
@@ -522,16 +521,12 @@ const App: React.FC = () => {
     }
 
     if (isDashboardRole(role)) {
-      if (role === "staff" && isDashboardRoot) {
-        return <Navigate to={resolveDashboardLandingPath(role)} replace />;
-      }
-
       return <>{children}</>;
     }
 
     if (isClientRole(role)) return <Navigate to="/client" replace />;
 
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/hr" replace />;
   };
 
   const AdminGuard = ({ children }: { children: React.ReactNode }) => {
@@ -543,7 +538,7 @@ const App: React.FC = () => {
       لازم يكون فيه Firebase Auth user فعلي من onAuthStateChanged.
     */
     if (!authUser) {
-      return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+      return <Navigate to="/hr" replace />;
     }
 
     const role = userRole;
@@ -561,7 +556,7 @@ const App: React.FC = () => {
 
     if (isClientRole(role)) return <Navigate to="/client" replace />;
 
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/hr" replace />;
   };
 
   const EmployeeGuard = ({ children }: { children: React.ReactNode }) => {
@@ -578,7 +573,7 @@ const App: React.FC = () => {
 
     if (isClientRole(role)) return <Navigate to="/client" replace />;
 
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/hr" replace />;
   };
 
   const ClientGuard = ({ children }: { children: React.ReactNode }) => {
@@ -669,7 +664,7 @@ const App: React.FC = () => {
 
     if (isClientRole(role)) return <Navigate to="/client" replace />;
 
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/hr" replace />;
   };
 
   return (

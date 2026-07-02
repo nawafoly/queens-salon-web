@@ -1572,8 +1572,15 @@
 }
 
 .employee-attendance-month-page {
-  gap: 26px;
-}
+    gap: 26px;
+    min-height: calc(100vh - 140px);
+    padding: 18px 16px 28px;
+    border: 1px solid rgba(226, 232, 240, 0.86);
+    border-radius: 22px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.9) 58%, rgba(248, 250, 252, 0.92) 100%);
+    box-shadow: 0 22px 60px rgba(15, 23, 42, 0.06);
+  }
 
 .employee-attendance-month-message {
   min-height: 48px;

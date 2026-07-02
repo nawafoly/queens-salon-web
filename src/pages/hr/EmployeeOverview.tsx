@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -16,7 +16,12 @@ import {
   faUser,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { markEmployeeNotificationRead, type EmployeeNotification } from "../../services/employeeHub";
+import {
+  listLeaveRequestsByEmployee,
+  markEmployeeNotificationRead,
+  type EmployeeLeaveRequest,
+  type EmployeeNotification,
+} from "../../services/employeeHub";
 import {
   buildAttendanceVerification,
   checkInStaffAttendance,
@@ -29,6 +34,10 @@ import {
 } from "../../services/firestoreAttendance";
 import { AppSettingsService } from "../../services/AppSettingsService";
 import {
+  listEmployeeBookings,
+  type BookingDocWithId,
+} from "../../services/firestoreBookings";
+import {
   verifyEmployeeWorkZone,
   type AttendanceLocation,
   type WorkZoneMatch,
@@ -39,6 +48,7 @@ import {
   getAttendanceDayStatus,
   type AttendanceRecord,
 } from "../../helpers/hr/attendanceCalculations";
+import { buildApprovedLeaveDateKeys } from "../../helpers/hr/attendanceCalendarData";
 import { cleanText, formatShortDate, type HrSession } from "./shared";
 import { formatNotificationTime, notificationTone, notificationTypeLabel, toMillis } from "./portalUtils";
 import AttendanceMonthView from "../../components/AttendanceMonthView";
@@ -81,6 +91,14 @@ function getAttendanceStatusLabel(status: StaffAttendanceToday["status"]) {
   return "لم يسجل حضور";
 }
 
+function getBookingStatusLabel(status: string | undefined) {
+  const normalized = cleanText(status || "pending").toLowerCase();
+  if (normalized === "confirmed") return "مؤكد";
+  if (normalized === "completed") return "مكتمل";
+  if (normalized === "cancelled") return "ملغي";
+  return "بانتظار التأكيد";
+}
+
 export default function EmployeeOverviewPage({ session, notifications, onRefresh, attendanceOnly = false }: Props) {
   const navigate = useNavigate();
   const profile = getProfileSource(session);
@@ -102,6 +120,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [attendanceMonthLoading, setAttendanceMonthLoading] = useState(false);
   const [attendanceMonth, setAttendanceMonth] = useState(() => getTodayAttendanceDateKey().slice(0, 7));
   const [attendanceSelectedDate, setAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
+  const [employeeBookings, setEmployeeBookings] = useState<BookingDocWithId[]>([]);
+  const [employeeBookingsLoading, setEmployeeBookingsLoading] = useState(false);
+  const [employeeLeaveRequests, setEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
   const attendanceEmployeeId = cleanText(session.employeeId || session.uid);
   const attendanceDate = getTodayAttendanceDateKey();
 
@@ -117,6 +138,30 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const latestNotes = [...notifications]
     .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt))
     .slice(0, 6);
+
+  const upcomingBookings = useMemo(() => {
+    const today = getTodayAttendanceDateKey();
+    return [...employeeBookings]
+      .filter((booking) => cleanText(booking.date) >= today && booking.status !== "cancelled")
+      .sort((a, b) => {
+        const ad = cleanText(a.date);
+        const bd = cleanText(b.date);
+        if (ad !== bd) return ad.localeCompare(bd);
+        return cleanText(a.time || a.startTime).localeCompare(cleanText(b.time || b.startTime));
+      })
+      .slice(0, 5);
+  }, [employeeBookings]);
+
+  const approvedLeaveDateKeys = useMemo(
+    () =>
+      buildApprovedLeaveDateKeys({
+        profile,
+        leaveRequests: employeeLeaveRequests,
+        extraIds: [session.uid, session.employeeId],
+        todayDateKey: attendanceDate,
+      }),
+    [attendanceDate, employeeLeaveRequests, profile, session.employeeId, session.uid]
+  );
 
   const attendanceComputation = useMemo(() => {
     const records: AttendanceRecord[] = [];
@@ -193,6 +238,57 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     void loadAttendance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attendanceEmployeeId, attendanceDate]);
+
+  useEffect(() => {
+    if (!attendanceEmployeeId) {
+      setEmployeeBookings([]);
+      return;
+    }
+
+    let alive = true;
+
+    async function loadEmployeeBookings() {
+      setEmployeeBookingsLoading(true);
+      try {
+        const rows = await listEmployeeBookings(attendanceEmployeeId, displayName);
+        if (alive) setEmployeeBookings(rows);
+      } catch {
+        if (alive) setEmployeeBookings([]);
+      } finally {
+        if (alive) setEmployeeBookingsLoading(false);
+      }
+    }
+
+    void loadEmployeeBookings();
+
+    return () => {
+      alive = false;
+    };
+  }, [attendanceEmployeeId, displayName]);
+
+  useEffect(() => {
+    if (!session.uid) {
+      setEmployeeLeaveRequests([]);
+      return;
+    }
+
+    let alive = true;
+
+    async function loadEmployeeLeaveRequests() {
+      try {
+        const rows = await listLeaveRequestsByEmployee(session.uid, 120);
+        if (alive) setEmployeeLeaveRequests(rows);
+      } catch {
+        if (alive) setEmployeeLeaveRequests([]);
+      }
+    }
+
+    void loadEmployeeLeaveRequests();
+
+    return () => {
+      alive = false;
+    };
+  }, [session.uid]);
 
   useEffect(() => {
     if (!attendanceOnly) return;
@@ -351,19 +447,16 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   if (attendanceOnly) {
     return (
       <div className="employee-panel employee-overview employee-attendance-month-page">
-        <section className="employee-app-intro">
-          <p>الحضور والانصراف</p>
-          <h1>سجل حضور الموظفة</h1>
-          <span>{displayName} · {department || title || "ملف الموظفة"}</span>
-        </section>
-
         <AttendanceMonthView
           rows={attendanceMonthRows}
           loading={attendanceMonthLoading || attendanceLoading}
           monthKey={attendanceMonth}
           selectedDate={attendanceSelectedDate}
-          title="ملخص الحضور الشهري"
-          subtitle="اختر شهرًا لتوليد أو عرض الملخص المحفوظ بدون حذف أو أرشفة للسجلات."
+          title="سجل حضور الموظفة"
+          subtitle="اختر الشهر لعرض تقويم الحضور اليومي، ثم اختر اليوم لمراجعة السجل."
+          viewerMode="employee"
+          schedule={profile}
+          approvedLeaveDateKeys={approvedLeaveDateKeys}
           onMonthChange={(monthKey) => {
             setAttendanceMonth(monthKey);
             setAttendanceSelectedDate((current) =>
@@ -495,6 +588,32 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           ))}
         </div>
       </section>
+      <section className="employee-overview-block">
+        <div className="employee-block-head">
+          <h2>حجوزاتي القادمة</h2>
+          <p>الحجوزات المرتبطة بملفك كموظفة داخل نفس البروفايل.</p>
+        </div>
+        <div className="employee-request-list">
+          {upcomingBookings.map((booking) => (
+            <div key={booking.id} className="employee-request-row">
+              <span className={`employee-notification-tone employee-notification-tone--${booking.status === "confirmed" ? "success" : "info"}`}>
+                {getBookingStatusLabel(booking.status)}
+              </span>
+              <div>
+                <strong>{cleanText(booking.serviceName || booking.serviceSnapshot?.serviceNameAtBooking || "حجز")}</strong>
+                <small>
+                  {cleanText(booking.date) || "-"} | {cleanText(booking.time || booking.startTime) || "-"} | {cleanText(booking.clientName) || "عميلة"}
+                </small>
+              </div>
+            </div>
+          ))}
+          {employeeBookingsLoading ? <div className="employee-empty-box">جاري تحميل الحجوزات...</div> : null}
+          {!employeeBookingsLoading && !upcomingBookings.length ? (
+            <div className="employee-empty-box">لا توجد حجوزات قادمة مرتبطة بملفك.</div>
+          ) : null}
+        </div>
+      </section>
+
 
       <section className="employee-overview-block">
         <div className="employee-block-head">
@@ -548,3 +667,6 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     </div>
   );
 }
+
+
+

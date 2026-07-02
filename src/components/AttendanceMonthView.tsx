@@ -1,16 +1,42 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalendarDay,
+  faCheck,
   faChevronLeft,
   faChevronRight,
   faClock,
   faEllipsisVertical,
   faFingerprint,
+  faPenToSquare,
   faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 
 import type { StaffAttendanceWithId } from "../services/firestoreAttendance";
+import {
+  computeAttendanceDay,
+  getAttendanceDayStatus,
+  type AttendanceRecord,
+  type AttendanceStatus,
+  type ShiftSchedule,
+} from "../helpers/hr/attendanceCalculations";
+import { isWeeklyOffDateKey } from "../helpers/hr/workSchedule";
 import "../styles/AttendanceMonthView.css";
+
+type AttendanceViewerMode = "employee" | "admin";
+
+type AttendanceScheduleInput = ShiftSchedule & {
+  start?: string | null;
+  end?: string | null;
+  workStartTime?: string | null;
+  workEndTime?: string | null;
+  shiftStartTime?: string | null;
+  shiftEndTime?: string | null;
+  offDays?: unknown;
+  weeklyOffDay?: unknown;
+  exceptionalLeaveWeekdays?: unknown;
+  customWorkingHours?: Record<string, { enabled?: boolean; start?: string; end?: string }> | null;
+  customWorkingHourOverrides?: Array<{ date?: string; enabled?: boolean; start?: string; end?: string }> | null;
+};
 
 type AttendanceMonthViewProps = {
   rows: StaffAttendanceWithId[];
@@ -20,29 +46,57 @@ type AttendanceMonthViewProps = {
   title?: string;
   subtitle?: string;
   emptySummaryText?: string;
+  viewerMode?: AttendanceViewerMode;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canReview?: boolean;
   showAdminActions?: boolean;
   showSummaryTools?: boolean;
+  schedule?: AttendanceScheduleInput | null;
+  approvedLeaveDateKeys?: Iterable<string>;
   onMonthChange: (monthKey: string) => void;
   onSelectedDateChange: (dateKey: string) => void;
   onGenerateSummary?: () => void;
   onEditPunch?: (dateKey: string) => void;
   onDeletePunch?: (dateKey: string) => void;
+  onReviewDay?: (dateKey: string) => void;
 };
 
 const WEEK_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+const WEEKDAY_TO_OFF_KEY: Record<(typeof WEEKDAY_KEYS)[number], string> = {
+  sun: "sunday",
+  mon: "monday",
+  tue: "tuesday",
+  wed: "wednesday",
+  thu: "thursday",
+  fri: "friday",
+  sat: "saturday",
+};
 
 function normalizeMonthKey(value: string) {
   const s = String(value || "").trim();
   return /^\d{4}-\d{2}$/.test(s) ? s : new Date().toISOString().slice(0, 7);
 }
 
-function normalizeDateKey(value: string) {
+function normalizeDateKey(value: unknown) {
   const s = String(value || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
 }
 
 function pad2(value: number) {
   return String(value).padStart(2, "0");
+}
+
+function getRiyadhTodayKey() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function monthLabel(monthKey: string) {
@@ -54,9 +108,8 @@ function monthLabel(monthKey: string) {
 }
 
 function monthYearLabel(monthKey: string) {
-  const [year, month] = normalizeMonthKey(monthKey).split("-").map(Number);
-  return new Intl.NumberFormat("ar-SA", { useGrouping: false }).format(year).replace(/\u066c/g, "") ||
-    String(year);
+  const [year] = normalizeMonthKey(monthKey).split("-").map(Number);
+  return new Intl.NumberFormat("ar-SA", { useGrouping: false }).format(year).replace(/\u066c/g, "") || String(year);
 }
 
 function shiftMonth(monthKey: string, delta: number) {
@@ -75,6 +128,70 @@ function firstWeekday(monthKey: string) {
   return new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
 }
 
+function weekdayKeyForDate(dateKey: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return "sun";
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
+  return WEEKDAY_KEYS[date.getUTCDay()] || "sun";
+}
+
+function cleanTime(value: unknown) {
+  const raw = String(value || "").trim();
+  return /^\d{1,2}:\d{2}$/.test(raw) ? raw : "";
+}
+
+function getDayOverride(dateKey: string, input?: AttendanceScheduleInput | null) {
+  const overrides = Array.isArray(input?.customWorkingHourOverrides)
+    ? input?.customWorkingHourOverrides || []
+    : [];
+  return overrides.find((override) => normalizeDateKey(override.date) === dateKey) || null;
+}
+
+function isDateSpecificOff(dateKey: string, input?: AttendanceScheduleInput | null) {
+  const override = getDayOverride(dateKey, input);
+  return override?.enabled === false;
+}
+
+function scheduleForDate(dateKey: string, input?: AttendanceScheduleInput | null): ShiftSchedule {
+  const source = input || {};
+  const weekdayKey = weekdayKeyForDate(dateKey);
+  const customDay = source.customWorkingHours?.[weekdayKey];
+  const override = getDayOverride(dateKey, source);
+  const customOffDays = Object.entries(source.customWorkingHours || {})
+    .filter(([, day]) => day?.enabled === false)
+    .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY])
+    .filter(Boolean);
+  const explicitOffDays = [
+    ...(Array.isArray(source.weeklyOffDays) ? source.weeklyOffDays : []),
+    ...(Array.isArray(source.offDays) ? source.offDays : []),
+    ...(Array.isArray(source.exceptionalLeaveWeekdays) ? source.exceptionalLeaveWeekdays : []),
+    ...(source.weeklyOffDay ? [source.weeklyOffDay] : []),
+  ];
+
+  const startTime =
+    cleanTime(override?.start) ||
+    cleanTime(customDay?.start) ||
+    cleanTime(source.startTime) ||
+    cleanTime(source.start) ||
+    cleanTime(source.workStartTime) ||
+    cleanTime(source.shiftStartTime) ||
+    "09:00";
+  const endTime =
+    cleanTime(override?.end) ||
+    cleanTime(customDay?.end) ||
+    cleanTime(source.endTime) ||
+    cleanTime(source.end) ||
+    cleanTime(source.workEndTime) ||
+    cleanTime(source.shiftEndTime) ||
+    "17:00";
+
+  return {
+    startTime,
+    endTime,
+    weeklyOffDays: [...explicitOffDays, ...customOffDays],
+  };
+}
+
 function formatTime(value: unknown) {
   const raw = String(value || "").trim();
   if (!raw) return "--";
@@ -87,40 +204,64 @@ function formatTime(value: unknown) {
   }).format(date);
 }
 
-function minutesBetween(start?: string, end?: string) {
-  if (!start || !end) return 0;
-  const a = Date.parse(start);
-  const b = Date.parse(end);
-  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
-  return Math.round((b - a) / 60000);
-}
-
-function durationLabel(totalMinutes: number) {
-  if (!totalMinutes) return "--";
+function formatHours(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "--";
+  const totalMinutes = Math.round(value * 60);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (!minutes) return `${hours} ساعة`;
-  return `${hours} ساعة و ${minutes} دقيقة`;
+  if (hours && minutes) return `${hours} ساعة و ${minutes} دقيقة`;
+  if (hours) return `${hours} ساعة`;
+  return `${minutes} دقيقة`;
 }
 
-function rowTone(row: StaffAttendanceWithId | null, dateKey: string, todayKey: string) {
-  if (row?.type === "absent" || row?.absentFullDay) return "absent";
-  if (row?.status === "checked_out" && row.checkInAtClient && row.checkOutAtClient) return "complete";
-  if (row?.status === "checked_in" || row?.checkInAtClient) return "partial";
-  if (dateKey < todayKey && row && row.status === "not_started") return "absent";
+function formatSignedHours(value: number) {
+  if (!Number.isFinite(value) || value === 0) return "0";
+  const sign = value > 0 ? "+" : "-";
+  return `${sign}${formatHours(Math.abs(value))}`;
+}
+
+function recordsFromRow(row: StaffAttendanceWithId | null): AttendanceRecord[] {
+  const records: AttendanceRecord[] = [];
+  if (row?.checkInAtClient) {
+    records.push({ id: `${row.id}-in`, type: "check_in", serverTime: row.checkInAtClient });
+  }
+  if (row?.checkOutAtClient) {
+    records.push({ id: `${row.id}-out`, type: "check_out", serverTime: row.checkOutAtClient });
+  }
+  return records;
+}
+
+function statusTone(status: AttendanceStatus) {
+  if (status === "present") return "complete";
+  if (status === "partial" || status === "today_pending") return "partial";
+  if (status === "absent") return "absent";
+  if (status === "off_day") return "off-day";
+  if (status === "leave") return "leave";
   return "none";
 }
 
-function toneLabel(tone: string) {
-  if (tone === "complete") return "حضور مكتمل";
-  if (tone === "partial") return "حضور يحتاج مراجعة";
-  if (tone === "absent") return "غياب";
-  return "بانتظار تسجيل اليوم";
+function statusLabel(status: AttendanceStatus) {
+  if (status === "present") return "حضور مكتمل";
+  if (status === "partial") return "حضور يحتاج مراجعة";
+  if (status === "absent") return "غياب";
+  if (status === "off_day") return "يوم راحة أسبوعية";
+  if (status === "leave") return "إجازة";
+  if (status === "today_pending") return "بانتظار تسجيل اليوم";
+  return "يوم قادم";
+}
+
+function statusMessage(status: AttendanceStatus) {
+  if (status === "present") return "تم تسجيل الحضور والانصراف لهذا اليوم.";
+  if (status === "partial") return "يوجد حضور بدون اكتمال الانصراف أو يحتاج مراجعة.";
+  if (status === "absent") return "غياب - لا يوجد سجل حضور.";
+  if (status === "off_day") return "هذا اليوم ضمن أيام الراحة الأسبوعية.";
+  if (status === "leave") return "هذا اليوم مسجل ضمن الإجازات.";
+  if (status === "today_pending") return "لم يتم تسجيل حضور لهذا اليوم حتى الآن.";
+  return "هذا اليوم لم يبدأ بعد.";
 }
 
 function selectedEventCount(row: StaffAttendanceWithId | null) {
-  if (!row) return 0;
-  return (row.checkInAtClient ? 1 : 0) + (row.checkOutAtClient ? 1 : 0);
+  return (row?.checkInAtClient ? 1 : 0) + (row?.checkOutAtClient ? 1 : 0);
 }
 
 export default function AttendanceMonthView({
@@ -128,27 +269,50 @@ export default function AttendanceMonthView({
   loading = false,
   monthKey,
   selectedDate,
-  title = "ملخص الحضور الشهري",
-  subtitle = "اختر شهرًا لتوليد أو عرض الملخص المحفوظ بدون حذف أو أرشفة للسجلات.",
-  emptySummaryText = 'لا يوجد ملخص محفوظ لهذا الشهر بعد. اضغط "توليد ملخص الشهر" لإنشاء القراءة الأولى.',
+  title = "سجل الحضور الشهري",
+  subtitle = "اختر الشهر واليوم لعرض حالة الحضور وتفاصيل السجل.",
+  emptySummaryText = "اختر يومًا من التقويم لعرض تفاصيل الحضور.",
+  viewerMode = "employee",
+  canEdit,
+  canDelete,
+  canReview,
   showAdminActions = false,
   showSummaryTools = true,
+  schedule,
+  approvedLeaveDateKeys,
   onMonthChange,
   onSelectedDateChange,
   onGenerateSummary,
   onEditPunch,
   onDeletePunch,
+  onReviewDay,
 }: AttendanceMonthViewProps) {
   const safeMonthKey = normalizeMonthKey(monthKey);
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = getRiyadhTodayKey();
+  const leaveDateKeys = new Set(Array.from(approvedLeaveDateKeys || []).map(normalizeDateKey).filter(Boolean));
   const rowsByDate = new Map(rows.map((row) => [normalizeDateKey(row.date) || row.id, row]));
   const safeSelectedDate =
     normalizeDateKey(selectedDate) && selectedDate.startsWith(safeMonthKey)
       ? selectedDate
       : `${safeMonthKey}-01`;
   const selectedRow = rowsByDate.get(safeSelectedDate) || null;
-  const selectedTone = rowTone(selectedRow, safeSelectedDate, todayKey);
-  const selectedMinutes = minutesBetween(selectedRow?.checkInAtClient, selectedRow?.checkOutAtClient);
+  const selectedSchedule = scheduleForDate(safeSelectedDate, schedule);
+  const selectedComputation = computeAttendanceDay(
+    safeSelectedDate,
+    recordsFromRow(selectedRow),
+    selectedSchedule
+  );
+  const selectedStatus = getAttendanceDayStatus({
+    date: safeSelectedDate,
+    hasAttendance: Boolean(selectedRow?.checkInAtClient || selectedRow?.checkOutAtClient),
+    checkOut: selectedComputation.checkOut,
+    computation: selectedComputation,
+    todayDateKey: todayKey,
+    weeklyOffDays: selectedSchedule.weeklyOffDays,
+    approvedLeaveDateKeys: leaveDateKeys,
+    holidayDateKeys: isDateSpecificOff(safeSelectedDate, schedule) ? [safeSelectedDate] : [],
+  });
+  const selectedTone = statusTone(selectedStatus);
   const selectedCount = selectedEventCount(selectedRow);
   const dayCount = daysInMonth(safeMonthKey);
   const blanks = firstWeekday(safeMonthKey);
@@ -158,16 +322,35 @@ export default function AttendanceMonthView({
       const day = index + 1;
       const dateKey = `${safeMonthKey}-${pad2(day)}`;
       const row = rowsByDate.get(dateKey) || null;
+      const daySchedule = scheduleForDate(dateKey, schedule);
+      const computation = computeAttendanceDay(dateKey, recordsFromRow(row), daySchedule);
+      const status = getAttendanceDayStatus({
+        date: dateKey,
+        hasAttendance: Boolean(row?.checkInAtClient || row?.checkOutAtClient),
+        checkOut: computation.checkOut,
+        computation,
+        todayDateKey: todayKey,
+        weeklyOffDays: daySchedule.weeklyOffDays,
+        approvedLeaveDateKeys: leaveDateKeys,
+        holidayDateKeys: isDateSpecificOff(dateKey, schedule) ? [dateKey] : [],
+      });
       return {
         key: dateKey,
         blank: false as const,
         day,
         dateKey,
-        row,
-        tone: rowTone(row, dateKey, todayKey),
+        status,
+        tone: statusTone(status),
       };
     }),
   ];
+
+  const canShowAdminControls = viewerMode === "admin" || showAdminActions;
+  const shouldShowEdit = canShowAdminControls && (canEdit ?? showAdminActions);
+  const shouldShowDelete = canShowAdminControls && (canDelete ?? showAdminActions);
+  const shouldShowReview = canShowAdminControls && (canReview ?? showAdminActions);
+  const differenceHours = selectedComputation.actualHours - selectedComputation.expectedHours;
+  const isWeeklyOff = isWeeklyOffDateKey(safeSelectedDate, selectedSchedule.weeklyOffDays);
 
   return (
     <section className="attendance-month" dir="rtl">
@@ -184,7 +367,7 @@ export default function AttendanceMonthView({
               onClick={onGenerateSummary}
               disabled={loading || !onGenerateSummary}
             >
-              توليد ملخص الشهر
+              تحديث السجلات
             </button>
             <label className="attendance-month__month-input">
               <FontAwesomeIcon icon={faCalendarDay} />
@@ -221,8 +404,8 @@ export default function AttendanceMonthView({
         </button>
 
         <div className="attendance-month__title">
-          <h3>{monthLabel(safeMonthKey)}</h3>
-          <span>{monthYearLabel(safeMonthKey)}</span>
+          <h3>{showSummaryTools ? monthLabel(safeMonthKey) : "الحضور"}</h3>
+          <span>{monthLabel(safeMonthKey)} {monthYearLabel(safeMonthKey)}</span>
         </div>
 
         <div className="attendance-month__weekdays">
@@ -243,6 +426,7 @@ export default function AttendanceMonthView({
                   safeSelectedDate === cell.dateKey ? "is-selected" : ""
                 }`}
                 onClick={() => onSelectedDateChange(cell.dateKey)}
+                title={`${cell.dateKey} - ${statusLabel(cell.status)}`}
               >
                 <span className="attendance-month__day-marker" />
                 <strong>{cell.day}</strong>
@@ -261,41 +445,56 @@ export default function AttendanceMonthView({
         </div>
 
         <div className="attendance-month__records-meta">
-          {showAdminActions ? (
+          {canShowAdminControls ? (
             <div className="attendance-month__actions">
-              <button type="button" onClick={() => onEditPunch?.(safeSelectedDate)} disabled={!onEditPunch}>
-                تعديل البصمة
-              </button>
-              <button
-                type="button"
-                className="is-danger"
-                onClick={() => onDeletePunch?.(safeSelectedDate)}
-                disabled={!onDeletePunch}
-              >
-                <FontAwesomeIcon icon={faTrash} /> مسح البصمة
-              </button>
+              {shouldShowReview ? (
+                <button type="button" onClick={() => (onReviewDay || onEditPunch)?.(safeSelectedDate)}>
+                  <FontAwesomeIcon icon={faCheck} /> مراجعة
+                </button>
+              ) : null}
+              {shouldShowEdit ? (
+                <button type="button" onClick={() => onEditPunch?.(safeSelectedDate)} disabled={!onEditPunch}>
+                  <FontAwesomeIcon icon={faPenToSquare} /> تعديل البصمة
+                </button>
+              ) : null}
+              {shouldShowDelete ? (
+                <button
+                  type="button"
+                  className="is-danger"
+                  onClick={() => onDeletePunch?.(safeSelectedDate)}
+                  disabled={!onDeletePunch}
+                >
+                  <FontAwesomeIcon icon={faTrash} /> مسح البصمة
+                </button>
+              ) : null}
             </div>
           ) : (
             <div />
           )}
           <div className="attendance-month__count">
-            <span className={`attendance-month__badge is-${selectedTone}`}>{toneLabel(selectedTone)}</span>
+            <span className={`attendance-month__badge is-${selectedTone}`}>{statusLabel(selectedStatus)}</span>
             <b>{selectedCount}</b>
             <FontAwesomeIcon icon={faFingerprint} />
           </div>
         </div>
 
-        {selectedTone === "none" ? (
-          <div className="attendance-month__empty">
+        {selectedStatus === "off_day" || isWeeklyOff ? (
+          <div className="attendance-month__empty is-off-day">
             <FontAwesomeIcon icon={faCalendarDay} />
-            <strong>لم يتم تسجيل حضور لهذا اليوم حتى الآن</strong>
-            <span>لا توجد بيانات حضور فعالة لليوم المحدد.</span>
+            <strong>يوم راحة أسبوعية</strong>
+            <span>هذا اليوم ضمن أيام الراحة الأسبوعية، ولا يعرض كغياب محسوب.</span>
           </div>
-        ) : selectedTone === "absent" ? (
+        ) : selectedStatus === "absent" ? (
           <div className="attendance-month__empty is-absent">
             <FontAwesomeIcon icon={faCalendarDay} />
             <strong>غياب - لا يوجد سجل حضور</strong>
-            <span>هذا يوم عمل سابق بلا سجلات حضور، ويتعامل كغياب محسوب.</span>
+            <span>هذا يوم عمل سابق بلا سجلات حضور، ويظهر كغياب محسوب.</span>
+          </div>
+        ) : selectedStatus === "future" || selectedStatus === "today_pending" ? (
+          <div className="attendance-month__empty">
+            <FontAwesomeIcon icon={faCalendarDay} />
+            <strong>{statusMessage(selectedStatus)}</strong>
+            <span>{safeSelectedDate}</span>
           </div>
         ) : (
           <div className={`attendance-month__record is-${selectedTone}`}>
@@ -307,13 +506,17 @@ export default function AttendanceMonthView({
                 {formatTime(selectedRow?.checkInAtClient)} — {formatTime(selectedRow?.checkOutAtClient)}
               </strong>
               <span>
-                <FontAwesomeIcon icon={faClock} /> {durationLabel(selectedMinutes)}
+                <FontAwesomeIcon icon={faClock} /> {formatHours(selectedComputation.actualHours)}
               </span>
             </div>
           </div>
         )}
 
         <div className={`attendance-month__metrics is-${selectedTone}`}>
+          <div>
+            <span>الحالة</span>
+            <b>{statusLabel(selectedStatus)}</b>
+          </div>
           <div>
             <span>أول حضور</span>
             <b>{formatTime(selectedRow?.checkInAtClient)}</b>
@@ -324,26 +527,26 @@ export default function AttendanceMonthView({
           </div>
           <div>
             <span>مدة العمل</span>
-            <b>{durationLabel(selectedMinutes)}</b>
+            <b>{formatHours(selectedComputation.actualHours)}</b>
           </div>
           <div>
             <span>الفرق</span>
-            <b>0</b>
+            <b>{selectedStatus === "absent" ? "0" : formatSignedHours(differenceHours)}</b>
           </div>
         </div>
 
         <div className={`attendance-month__wide-metrics is-${selectedTone}`}>
           <div>
             <span>الأوفر تايم</span>
-            <b>--</b>
+            <b>{formatHours(selectedComputation.overtimeHours)}</b>
           </div>
           <div>
             <span>التأخير</span>
-            <b>--</b>
+            <b>{formatHours(selectedComputation.lateHours)}</b>
           </div>
           <div>
             <span>نقص الساعات</span>
-            <b>--</b>
+            <b>{formatHours(selectedComputation.missingHours)}</b>
           </div>
         </div>
       </div>

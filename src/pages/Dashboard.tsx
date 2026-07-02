@@ -43,7 +43,6 @@ import DashboardQueueTv from "../pages/DashboardQueueTv";
 import DashboardDayAudit from "../pages/DashboardDayAudit";
 import DashboardAdminProfile from "../pages/DashboardAdminProfile";
 
-import DashboardStaff from "../pages/DashboardStaff";
 
 // ✅ NEW: الحجز الداخلي داخل الداشبورد
 import BookingInternal from "../pages/BookingInternal";
@@ -1720,7 +1719,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             return;
           }
 
-          navigate("/login");
+          navigate("/hr");
           return;
         }
 
@@ -2056,7 +2055,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         sessionStorage.removeItem(DASHBOARD_BOOTSTRAPPED_KEY);
       } catch {}
       window.dispatchEvent(new Event("authChanged"));
-      navigate("/");
+      navigate("/hr", { replace: true });
     }
   };
 
@@ -2680,7 +2679,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 {(isStaff || hasAdminPower || isReception) && (
                   <li>
                     <NavLink
-                      to="/dashboard/staff"
+                      to="/employee/overview"
                       className="nav-link"
                       onClick={() => setIsSidebarOpen(false)}
                     >
@@ -3043,7 +3042,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   index
                   element={
                     isStaff ? (
-                      <Navigate to="staff" replace />
+                      <Navigate to="/employee/overview" replace />
                     ) : (
                       <DashboardOverview
                         userInfo={userInfo}
@@ -3069,13 +3068,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <Route
                   path="staff"
                   element={
-                    isStaff || hasAdminPower || isReception ? (
-                      <DashboardStaff
-                        allowStatusChange={hasAdminPower || isReception || allowStaffChangeStatus}
-                      />
-                    ) : (
-                      <Navigate to="/dashboard/overview" replace />
-                    )
+                    <Navigate to="/employee/overview" replace />
                   }
                 />
 
@@ -3178,7 +3171,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   path="*"
                   element={
                     isStaff ? (
-                      <Navigate to="/dashboard/staff" replace />
+                      <Navigate to="/employee/overview" replace />
                     ) : (
                       <Navigate to="/dashboard/overview" replace />
                     )

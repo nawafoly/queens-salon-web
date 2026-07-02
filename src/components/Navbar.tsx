@@ -15,9 +15,14 @@ const KNOWN_ROLES: UiRole[] = ["owner", "admin", "hr", "reception", "staff", "cl
 function normalizeRole(role: any): UiRole {
   const r = String(role || "").toLowerCase().trim();
   if (r === "administrator") return "admin";
+  if (r === "employee") return "staff";
   if (r === "receptionist" || r === "frontdesk" || r === "desk") return "reception";
   if (KNOWN_ROLES.includes(r as UiRole)) return r as UiRole;
   return "guest";
+}
+
+function isInternalPortalRole(role: UiRole) {
+  return role === "owner" || role === "admin" || role === "hr" || role === "reception" || role === "staff";
 }
 
 type NavbarProps = {
@@ -181,7 +186,7 @@ const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName 
     setIsDropdownOpen(false);
 
     window.dispatchEvent(new Event("authChanged"));
-    navigate("/");
+    navigate(isInternalPortalRole(userRole) ? "/hr" : "/", { replace: true });
   };
 
   const navLinks = [
@@ -253,6 +258,19 @@ const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName 
       );
     }
 
+    if (isStaff) {
+      return (
+        <>
+          <Link to="/employee/overview" onClick={() => setIsDropdownOpen(false)}>
+            ط¨ظˆط§ط¨ط© ط§ظ„ظ…ظˆط¸ظپ
+          </Link>
+          <button onClick={handleLogout} className="dropdown-logout-btn">
+            طھط³ط¬ظٹظ„ ط§ظ„ط®ط±ظˆط¬
+          </button>
+        </>
+      );
+    }
+
     if (isDashboardUser) {
       return (
         <>
@@ -278,7 +296,7 @@ const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName 
     }
 
     return null;
-  }, [isLoggedIn, isClient, isDashboardUser, dashboardPath, isHr, isOwner, isAdmin, handleLogout]);
+  }, [isLoggedIn, isClient, isStaff, isDashboardUser, dashboardPath, isHr, isOwner, isAdmin, handleLogout]);
 
   const hasDropdownContent = !!dropdownItems;
 

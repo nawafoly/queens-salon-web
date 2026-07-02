@@ -1423,7 +1423,7 @@ export default function AdminHrDashboard() {
     try {
       await logoutFirebase();
     } finally {
-      navigate("/login", { replace: true });
+      navigate("/hr", { replace: true });
       setLoggingOut(false);
     }
   };

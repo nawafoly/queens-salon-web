@@ -24,7 +24,6 @@ import {
   type EmployeeNotification,
 } from "../services/employeeHub";
 import { logoutFirebase } from "../services/authService";
-import { resolveDashboardLandingPath } from "../helpers/routePaths";
 import "../styles/EmployeePortal.css";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
@@ -59,10 +58,6 @@ export default function EmployeePortal() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [requestSheetOpen, setRequestSheetOpen] = useState(false);
   const notificationsRequestRef = useRef(0);
-  const dashboardPath =
-    session.role === "hr" || session.role === "admin" || session.role === "owner"
-      ? "/hr"
-      : resolveDashboardLandingPath(session.role);
 
   const loadNotifications = useCallback(async () => {
     const requestId = ++notificationsRequestRef.current;
@@ -108,7 +103,7 @@ export default function EmployeePortal() {
     try {
       await logoutFirebase();
     } finally {
-      navigate("/login", { replace: true });
+      navigate("/hr", { replace: true });
       setLoggingOut(false);
     }
   };
@@ -179,10 +174,6 @@ export default function EmployeePortal() {
             <FontAwesomeIcon icon={faRightFromBracket} />
             <span>{loggingOut ? "..." : "خروج"}</span>
           </button>
-          <Link to={dashboardPath} className="employee-top-pill employee-top-pill--accent">
-            <FontAwesomeIcon icon={faHouse} />
-            <span>بوابة HR</span>
-          </Link>
           <button type="button" className="employee-top-pill">
             <FontAwesomeIcon icon={faGlobe} />
             <span>English</span>
@@ -197,7 +188,10 @@ export default function EmployeePortal() {
       <div className="employee-portal-layout employee-portal-layout--app">
         <main className="employee-portal-main">
           <Routes>
-            <Route index element={<Navigate to="/employee/overview" replace />} />
+            <Route
+              index
+              element={<Navigate to="/employee/overview" replace />}
+            />
             <Route
               path="overview"
               element={

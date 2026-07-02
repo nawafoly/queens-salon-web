@@ -7,6 +7,11 @@ type AttendanceSectionProps = {
   rows: StaffAttendanceWithId[];
   monthKey: string;
   selectedDate: string;
+  schedule?: Record<string, unknown> | null;
+  approvedLeaveDateKeys?: string[];
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canReview?: boolean;
   onMonthChange: (monthKey: string) => void;
   onSelectedDateChange: (dateKey: string) => void;
   onReload: () => void;
@@ -20,6 +25,11 @@ export default function AttendanceSection({
   rows,
   monthKey,
   selectedDate,
+  schedule,
+  approvedLeaveDateKeys,
+  canEdit = false,
+  canDelete = false,
+  canReview = false,
   onMonthChange,
   onSelectedDateChange,
   onReload,
@@ -36,13 +46,20 @@ export default function AttendanceSection({
         monthKey={monthKey}
         selectedDate={selectedDate}
         title="سجل حضور الموظفة"
-        subtitle="اختر الشهر لعرض تقويم الحضور اليومي، ثم اختر اليوم لمراجعة السجلات."
-        showAdminActions
+        subtitle="اختر الشهر لعرض تقويم الحضور اليومي، ثم اختر اليوم لمراجعة السجل."
+        viewerMode="admin"
+        schedule={schedule}
+        approvedLeaveDateKeys={approvedLeaveDateKeys}
+        canEdit={canEdit}
+        canDelete={canDelete}
+        canReview={canReview}
+        showAdminActions={canEdit || canDelete || canReview}
         onMonthChange={onMonthChange}
         onSelectedDateChange={onSelectedDateChange}
         onGenerateSummary={onReload}
         onEditPunch={onEditPunch}
         onDeletePunch={onDeletePunch}
+        onReviewDay={onEditPunch}
       />
     </div>
   );

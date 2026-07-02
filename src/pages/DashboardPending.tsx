@@ -24,7 +24,7 @@ function normalizeAdminRole(raw: any): AdminRole {
     r === "desk"
   )
     return "reception";
-  if (r === "staff") return "staff";
+  if (r === "staff" || r === "employee") return "staff";
   return "pending";
 }
 

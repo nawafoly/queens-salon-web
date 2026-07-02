@@ -21,6 +21,7 @@ const SHOW_WELCOME_KEY = "showWelcome";
 function normalizeRole(raw: unknown): UiRole {
   const role = String(raw || "").toLowerCase().trim();
   if (role === "administrator") return "admin";
+  if (role === "employee") return "staff";
   if (role === "receptionist" || role === "frontdesk" || role === "desk") {
     return "reception";
   }

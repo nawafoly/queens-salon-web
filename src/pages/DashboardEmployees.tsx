@@ -44,7 +44,11 @@ import {
   setStaffAttendancePunchOverride,
   type StaffAttendanceWithId,
 } from "../services/firestoreAttendance";
-import { createEmployeeNotification } from "../services/employeeHub";
+import {
+  createEmployeeNotification,
+  listEmployeeLeaveRequests,
+  type EmployeeLeaveRequest,
+} from "../services/employeeHub";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
 import "../styles/DashboardEmployees.css";
 import AttendanceSection from "./dashboardEmployees/AttendanceSection";
@@ -64,6 +68,10 @@ import {
   type BookingDocWithId,
   type BookingStatus,
 } from "../services/firestoreBookings";
+import {
+  buildApprovedLeaveDateKeys,
+  leaveRequestMatchesProfile,
+} from "../helpers/hr/attendanceCalendarData";
 import {
   computeStaffPayrollForMonth,
   normalizePayrollConfig,
@@ -290,6 +298,7 @@ export default function DashboardEmployees() {
   const [employeeAttendanceLoading, setEmployeeAttendanceLoading] = useState(false);
   const [employeeAttendanceMonth, setEmployeeAttendanceMonth] = useState(() => getTodayAttendanceDateKey().slice(0, 7));
   const [employeeAttendanceSelectedDate, setEmployeeAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
+  const [selectedEmployeeLeaveRequests, setSelectedEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
   const [attendanceEditOpen, setAttendanceEditOpen] = useState(false);
   const [attendanceEditDate, setAttendanceEditDate] = useState("");
   const [attendanceEditCheckIn, setAttendanceEditCheckIn] = useState("");
@@ -436,6 +445,7 @@ export default function DashboardEmployees() {
     const employeeId = String(selectedEmployeeId || "").trim();
     if (!employeeId) {
       setEmployeeAttendanceRows([]);
+      setSelectedEmployeeLeaveRequests([]);
       return;
     }
 
@@ -450,19 +460,29 @@ export default function DashboardEmployees() {
       .slice(0, 10);
     setEmployeeAttendanceLoading(true);
     try {
-      const rows = await listStaffAttendanceByDateRange({
-        employeeId,
-        fromDate: monthStart,
-        toDate: monthEnd,
-      });
+      const employeeProfile = list.find((item) => item.id === employeeId) || { id: employeeId };
+      const [rows, leaveRows] = await Promise.all([
+        listStaffAttendanceByDateRange({
+          employeeId,
+          fromDate: monthStart,
+          toDate: monthEnd,
+        }),
+        listEmployeeLeaveRequests(500),
+      ]);
       setEmployeeAttendanceRows(rows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))));
+      setSelectedEmployeeLeaveRequests(
+        leaveRows.filter((request) =>
+          leaveRequestMatchesProfile(request, employeeProfile, [employeeId])
+        )
+      );
     } catch (error) {
       setEmployeeAttendanceRows([]);
+      setSelectedEmployeeLeaveRequests([]);
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة."));
     } finally {
       setEmployeeAttendanceLoading(false);
     }
-  }, [employeeAttendanceMonth, selectedEmployeeId]);
+  }, [employeeAttendanceMonth, list, selectedEmployeeId]);
 
   useEffect(() => {
     void loadAttendanceZones();
@@ -3130,6 +3150,12 @@ export default function DashboardEmployees() {
   const modalLeaveEntries = Array.isArray((editingStaff as any)?.leaveEntries)
     ? ((editingStaff as any).leaveEntries as LeaveEntry[])
     : [];
+  const selectedEmployeeApprovedLeaveDateKeys = buildApprovedLeaveDateKeys({
+    profile: editingStaff,
+    leaveRequests: selectedEmployeeLeaveRequests,
+    extraIds: [selectedEmployeeId],
+    todayDateKey: todayIso(),
+  });
 
   return (
     <div className="emp-page-wrapper">
@@ -3323,6 +3349,11 @@ export default function DashboardEmployees() {
                 rows={employeeAttendanceRows}
                 monthKey={employeeAttendanceMonth}
                 selectedDate={employeeAttendanceSelectedDate}
+                schedule={editingStaff}
+                approvedLeaveDateKeys={selectedEmployeeApprovedLeaveDateKeys}
+                canEdit={canManage}
+                canDelete={canManage}
+                canReview={canManage}
                 onMonthChange={(monthKey) => {
                   setEmployeeAttendanceMonth(monthKey);
                   setEmployeeAttendanceSelectedDate((current) =>

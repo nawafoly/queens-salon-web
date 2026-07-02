@@ -70,6 +70,7 @@ function normalizeRole(roleRaw: unknown): UiRole {
   const r = String(roleRaw || "").toLowerCase().trim();
 
   if (r === "administrator") return "admin";
+  if (r === "employee") return "staff";
   if (r === "hr" || r === "human resources" || r === "humanresources") return "hr";
   if (r === "receptionist" || r === "frontdesk" || r === "desk")
     return "reception";
