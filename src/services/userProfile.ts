@@ -124,7 +124,11 @@ function isPlaceholderName(name: string, role: UiRole) {
 
 function isBootstrapAdminEmail(email: string) {
   const e = String(email || "").toLowerCase().trim();
-  return e === "nawafaaa0@gmail.com" || e === "nawafaaa6@gmail.com";
+  return (
+    e === "nawafaaa0@gmail.com" ||
+    e === "nawafaaa6@gmail.com" ||
+    e === "alolayan3@gmail.com"
+  );
 }
 
 function isMalikatAdminEmail(email: string) {
@@ -222,7 +226,7 @@ async function consumeInvite(params: {
 /**
  * ✅ createOrLoadUserProfile (FINAL ✅ + Invites ✅)
  * - Source of Truth: salons/main/users/{uid}
- * - Bootstrap Admin safety: nawafaaa0@gmail.com / nawafaaa6@gmail.com => owner
+ * - Bootstrap Admin safety: nawafaaa0@gmail.com / nawafaaa6@gmail.com / alolayan3@gmail.com => owner
  * - If missing users doc:
  *    1) إن وجد invite بالإيميل => role/active منها
  *    2) غير ذلك => client (AUTO)

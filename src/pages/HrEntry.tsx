@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowLeft,
@@ -22,7 +23,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import logoMark from "../assets/images/ssunnamed2.png";
-import { auth } from "../services/firebase";
+import { auth, db } from "../services/firebase";
 import { useEmployeeSession, cleanText } from "./hr/shared";
 import {
   listEmployeeFiles,
@@ -64,8 +65,68 @@ const EMPTY_STATS: HrEntryStats = {
 
 const ADMIN_ROLES = new Set(["owner", "admin", "hr"]);
 
-function normalizeRoleName(role: string) {
+type HrAuthorizationState = {
+  checking: boolean;
+  role: string;
+  active: boolean;
+  source: "pending" | "firestore" | "fallback" | "none";
+  userDoc: Record<string, any> | null;
+};
+
+function normalizeRoleName(role: unknown) {
   return cleanText(role).toLowerCase();
+}
+
+function writeHrAuthorizationCache(args: {
+  uid: string;
+  email: string;
+  name: string;
+  role: string;
+  active: boolean;
+  profile?: Record<string, any> | null;
+}) {
+  try {
+    const currentProfile =
+      JSON.parse(localStorage.getItem("user_profile_v1") || "null") || {};
+    const sourceProfile =
+      args.profile && typeof args.profile === "object" ? args.profile : {};
+    const mergedProfile = {
+      ...currentProfile,
+      ...sourceProfile,
+      uid: args.uid,
+      email: args.email || sourceProfile.email || currentProfile.email || "",
+      name: args.name || sourceProfile.name || sourceProfile.displayName || currentProfile.name || "",
+      displayName:
+        args.name ||
+        sourceProfile.displayName ||
+        sourceProfile.name ||
+        currentProfile.displayName ||
+        "",
+      role: args.role,
+      active: args.active,
+    };
+
+    localStorage.setItem("authToken", "firebase");
+    localStorage.setItem("userUid", args.uid);
+    localStorage.setItem("userRole", args.role);
+    if (mergedProfile.email) localStorage.setItem("userEmail", String(mergedProfile.email));
+    else localStorage.removeItem("userEmail");
+    if (mergedProfile.name) localStorage.setItem("userName", String(mergedProfile.name));
+    else localStorage.removeItem("userName");
+    localStorage.setItem("user_profile_v1", JSON.stringify(mergedProfile));
+    localStorage.setItem(
+      "auth_user",
+      JSON.stringify({
+        uid: args.uid,
+        email: mergedProfile.email || "",
+        role: args.role,
+        displayName: mergedProfile.displayName || mergedProfile.name || "",
+      })
+    );
+    window.dispatchEvent(new Event("authChanged"));
+  } catch {
+    // Keep authorization rendering independent from localStorage failures.
+  }
 }
 
 function roleLabel(role: string) {
@@ -131,14 +192,31 @@ export default function HrEntry() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [authorization, setAuthorization] = useState<HrAuthorizationState>({
+    checking: true,
+    role: "guest",
+    active: false,
+    source: "pending",
+    userDoc: null,
+  });
 
-  const displayName = getProfileName(session);
-  const normalizedRole = normalizeRoleName(session.role);
   const isSignedIn = Boolean(session.uid || session.user?.uid);
-  const canUseHr = isSignedIn && ADMIN_ROLES.has(normalizedRole);
+  const normalizedRole = normalizeRoleName(authorization.role || session.role);
+  const canUseHr =
+    isSignedIn &&
+    !authorization.checking &&
+    authorization.active !== false &&
+    ADMIN_ROLES.has(normalizedRole);
+  const displayName =
+    cleanText(authorization.userDoc?.displayName || authorization.userDoc?.name || "") ||
+    getProfileName(session);
+  const effectiveEmail =
+    cleanText(authorization.userDoc?.email || session.email || session.user?.email || "") ||
+    session.email;
 
   const avatarUrl = cleanText(
-    session.userDoc?.avatarUrl ||
+    authorization.userDoc?.avatarUrl ||
+      session.userDoc?.avatarUrl ||
       session.employeeDoc?.avatarUrl ||
       session.staffDoc?.avatarUrl ||
       session.user?.photoURL ||
@@ -148,8 +226,101 @@ export default function HrEntry() {
   useEffect(() => {
     let alive = true;
 
+    async function verifyHrAuthorization() {
+      if (session.loading) {
+        setAuthorization((current) => ({ ...current, checking: true, source: "pending" }));
+        return;
+      }
+
+      const uid = cleanText(session.user?.uid || session.uid || "");
+
+      if (!uid) {
+        setAuthorization({
+          checking: false,
+          role: "guest",
+          active: false,
+          source: "none",
+          userDoc: null,
+        });
+        return;
+      }
+
+      setAuthorization((current) => ({ ...current, checking: true, source: "pending" }));
+
+      try {
+        const snap = await getDoc(doc(db, "salons", "main", "users", uid));
+        if (!alive) return;
+
+        if (!snap.exists()) {
+          setAuthorization({
+            checking: false,
+            role: "guest",
+            active: false,
+            source: "firestore",
+            userDoc: null,
+          });
+          return;
+        }
+
+        const userDoc = snap.data() as Record<string, any>;
+        const role = normalizeRoleName(userDoc?.role || "guest") || "guest";
+        const active = userDoc?.active !== false;
+        const email = cleanText(userDoc?.email || session.email || session.user?.email || "");
+        const name = cleanText(
+          userDoc?.displayName || userDoc?.name || session.displayName || session.email || ""
+        );
+
+        writeHrAuthorizationCache({
+          uid,
+          email,
+          name,
+          role,
+          active,
+          profile: userDoc,
+        });
+
+        setAuthorization({
+          checking: false,
+          role,
+          active,
+          source: "firestore",
+          userDoc,
+        });
+      } catch (error) {
+        console.warn("[HrEntry] failed to verify live HR authorization", error);
+        if (!alive) return;
+
+        setAuthorization({
+          checking: false,
+          role: normalizeRoleName(session.role || "guest") || "guest",
+          active: session.userDoc?.active !== false,
+          source: "fallback",
+          userDoc: session.userDoc,
+        });
+      }
+    }
+
+    void verifyHrAuthorization();
+
+    return () => {
+      alive = false;
+    };
+  }, [
+    session.displayName,
+    session.email,
+    session.loading,
+    session.role,
+    session.uid,
+    session.user?.email,
+    session.user?.uid,
+    session.userDoc,
+  ]);
+
+  useEffect(() => {
+    let alive = true;
+
     async function loadStats() {
-      if (!isSignedIn || !canUseHr) {
+      if (authorization.checking || !isSignedIn || !canUseHr) {
         setStats(EMPTY_STATS);
         return;
       }
@@ -232,7 +403,14 @@ export default function HrEntry() {
     return () => {
       alive = false;
     };
-  }, [canUseHr, isSignedIn, session.employeeId, session.loading, session.uid]);
+  }, [
+    authorization.checking,
+    canUseHr,
+    isSignedIn,
+    session.employeeId,
+    session.loading,
+    session.uid,
+  ]);
 
   const alertTiles = useMemo(
     () => [
@@ -364,10 +542,10 @@ export default function HrEntry() {
     }
   };
 
-  if (session.loading) {
+  if (session.loading || (isSignedIn && authorization.checking)) {
     return (
       <main className="hr-entry" dir="rtl">
-        <div className="hr-entry-loading">جاري تحميل بوابة الموارد البشرية...</div>
+        <div className="hr-entry-loading">جاري التحقق من الصلاحية...</div>
       </main>
     );
   }
@@ -579,9 +757,9 @@ export default function HrEntry() {
                 </div>
 
                 <div className="hr-entry-profile-meta">
-                  <span>{roleLabel(session.role)}</span>
+                  <span>{roleLabel(normalizedRole)}</span>
                   <strong>{displayName}</strong>
-                  <small>{session.email || "بدون بريد"}</small>
+                  <small>{effectiveEmail || "بدون بريد"}</small>
                 </div>
 
                 <div className="hr-entry-avatar" aria-label={displayName}>

@@ -84,6 +84,7 @@ function isDashboardRole(role: UiRole) {
   return (
     role === "owner" ||
     role === "admin" ||
+    role === "hr" ||
     role === "reception" ||
     role === "staff"
   );
