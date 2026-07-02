@@ -94,7 +94,13 @@ function isAdminPortalRole(role: UiRole) {
 }
 
 function isEmployeePortalRole(role: UiRole) {
-  return role === "owner" || role === "admin" || role === "hr" || role === "reception" || role === "staff";
+  return (
+    role === "owner" ||
+    role === "admin" ||
+    role === "hr" ||
+    role === "reception" ||
+    role === "staff"
+  );
 }
 
 function isClientRole(role: UiRole) {
@@ -211,6 +217,7 @@ function ScrollToTop() {
         el.scrollTop = 0;
       }
     }
+
     if (typeof window !== "undefined") {
       try {
         window.scrollTo({ top: 0, left: 0, behavior });
@@ -226,6 +233,7 @@ function ScrollToTop() {
       runScrollTop("auto");
       return;
     }
+
     for (const t of timersRef.current) {
       window.clearTimeout(t);
     }
@@ -257,9 +265,11 @@ function ScrollToTop() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+
     const onShow = () => {
       forceScrollTop();
     };
+
     window.addEventListener("pageshow", onShow);
     return () => {
       window.removeEventListener("pageshow", onShow);
@@ -267,7 +277,7 @@ function ScrollToTop() {
         window.clearTimeout(t);
       }
       timersRef.current = [];
-    }
+    };
   }, [location.pathname, location.search, location.hash, location.key]);
 
   return null;
@@ -285,6 +295,7 @@ const App: React.FC = () => {
   const [userRole, setUserRole] = useState<UiRole>(() => readStoredAuthSession()?.role || "guest");
 
   const location = useLocation();
+
   const effectiveSessionUser = authUser
     ? authUser
     : storedSession
@@ -301,6 +312,7 @@ const App: React.FC = () => {
     location.pathname.startsWith("/hr") ||
     location.pathname.startsWith("/admin") ||
     location.pathname.startsWith("/employee");
+
   const isProfilePage =
     location.pathname === "/profile" || location.pathname === "/client";
 
@@ -315,41 +327,51 @@ const App: React.FC = () => {
 
   useEffect(() => {
     readWelcomeFromStorage();
+
     const currentSession = readStoredAuthSession();
     setStoredSession(currentSession);
+
     if (!authUser && currentSession) {
       setUserName(currentSession.displayName || getNameFromStorage());
       setUserRole(currentSession.role);
+
       if (!authUser) {
         setAuthReady(true);
       }
+
       return;
     }
+
     setUserName(getNameFromStorage());
   }, []);
 
   useEffect(() => {
     let seq = 0;
     let unsubUserDoc: (() => void) | null = null;
+
     const unsub = onAuthStateChanged(auth, async (user) => {
       const currentSeq = ++seq;
+
       try {
         unsubUserDoc?.();
       } catch {
         // noop
       }
+
       unsubUserDoc = null;
       setAuthUser(user);
 
       if (!user) {
         const currentSession = readStoredAuthSession();
         setStoredSession(currentSession);
+
         if (currentSession) {
           setUserRole(currentSession.role);
           setUserName(currentSession.displayName || getNameFromStorage());
           setAuthReady(true);
           return;
         }
+
         setUserRole("guest");
         setUserName("");
         setAuthReady(true);
@@ -359,14 +381,20 @@ const App: React.FC = () => {
       try {
         const isMalikatAuth = isMalikatAdminEmail(user.email);
         const profile = await createOrLoadUserProfile(user);
+
         if (currentSeq !== seq) return;
+
         let nextRole = normalizeRole(profile.role);
+
         if (isMalikatAuth && (nextRole === "client" || nextRole === "guest")) {
           nextRole = "pending";
         }
+
         const nextName = profile.name || user.displayName || "";
+
         setUserRole(nextRole);
         setUserName(nextName);
+
         writeLiveAuthCache({
           uid: user.uid,
           email: String(profile.email || user.email || "").trim(),
@@ -380,19 +408,25 @@ const App: React.FC = () => {
           doc(db, "salons", "main", "users", user.uid),
           (snap) => {
             if (currentSeq !== seq || !snap.exists()) return;
+
             const data = snap.data() as any;
             const active = data?.active !== false;
+
             let liveRole = normalizeRole(data?.role || nextRole);
+
             if (isMalikatAuth && (liveRole === "client" || liveRole === "guest")) {
               liveRole = "pending";
             }
+
             if (!active) liveRole = "pending";
 
-            const liveName =
-              String(data?.displayName || data?.name || nextName || user.displayName || "").trim();
+            const liveName = String(
+              data?.displayName || data?.name || nextName || user.displayName || ""
+            ).trim();
 
             setUserRole(liveRole);
             setUserName(liveName);
+
             writeLiveAuthCache({
               uid: user.uid,
               email: String(data?.email || profile.email || user.email || "").trim(),
@@ -408,13 +442,13 @@ const App: React.FC = () => {
         );
       } catch {
         if (currentSeq !== seq) return;
-        // For admin-domain users, fail-safe to pending instead of client/login loops.
+
         if (isMalikatAdminEmail(user.email)) {
           setUserRole("pending");
         } else {
-          // Fail-closed: never keep admin permissions if profile lookup fails.
           setUserRole("guest");
         }
+
         setUserName(user.displayName || "");
       } finally {
         if (currentSeq !== seq) return;
@@ -428,6 +462,7 @@ const App: React.FC = () => {
       } catch {
         // noop
       }
+
       unsub();
     };
   }, []);
@@ -435,14 +470,17 @@ const App: React.FC = () => {
   useEffect(() => {
     const onAuthChanged = () => {
       readWelcomeFromStorage();
+
       const currentSession = readStoredAuthSession();
       setStoredSession(currentSession);
+
       if (!authUser && currentSession) {
         setUserRole(currentSession.role);
         setUserName(currentSession.displayName || getNameFromStorage());
         setAuthReady(true);
         return;
       }
+
       if (!authUser) setUserName(getNameFromStorage());
     };
 
@@ -456,6 +494,7 @@ const App: React.FC = () => {
 
   const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
     const isDashboardRoot =
@@ -470,41 +509,63 @@ const App: React.FC = () => {
         if (role === "staff" && isDashboardRoot) {
           return <Navigate to={resolveDashboardLandingPath(role)} replace />;
         }
+
         return <>{children}</>;
       }
+
       return <Navigate to="/dashboard-pending" replace />;
     }
 
-    if (isPendingRole(role))
+    if (isPendingRole(role)) {
       return <Navigate to="/dashboard-pending" replace />;
+    }
 
     if (isDashboardRole(role)) {
       if (role === "staff" && isDashboardRoot) {
         return <Navigate to={resolveDashboardLandingPath(role)} replace />;
       }
+
       return <>{children}</>;
     }
+
     if (isClientRole(role)) return <Navigate to="/client" replace />;
+
     return <Navigate to="/login" replace />;
   };
 
   const AdminGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+
+    /*
+      مهم:
+      /admin لا يعتمد على localStorage.
+      لازم يكون فيه Firebase Auth user فعلي من onAuthStateChanged.
+    */
+    if (!authUser) {
+      return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    }
+
     const role = userRole;
-    const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
+    const isMalikatAuth = isMalikatAdminEmail(authUser.email);
 
     if (isPendingRole(role) || (isMalikatAuth && (role === "client" || role === "guest"))) {
       return <Navigate to="/dashboard-pending" replace />;
     }
 
     if (isAdminPortalRole(role)) return <>{children}</>;
-    if (isDashboardRole(role)) return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+
+    if (isDashboardRole(role)) {
+      return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+    }
+
     if (isClientRole(role)) return <Navigate to="/client" replace />;
-    return <Navigate to="/login" replace />;
+
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   };
 
   const EmployeeGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
 
@@ -513,67 +574,100 @@ const App: React.FC = () => {
     }
 
     if (isEmployeePortalRole(role)) return <>{children}</>;
+
     if (isClientRole(role)) return <Navigate to="/client" replace />;
+
     return <Navigate to="/login" replace />;
   };
 
   const ClientGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
 
     if (isMalikatAuth) {
       if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
-      if (isDashboardRole(role))
+
+      if (isDashboardRole(role)) {
         return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+      }
+
       return <Navigate to="/dashboard-pending" replace />;
     }
 
     if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
-    if (isDashboardRole(role)) return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+
+    if (isDashboardRole(role)) {
+      return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+    }
+
     if (isClientRole(role)) return <>{children}</>;
-    if (isPendingRole(role))
+
+    if (isPendingRole(role)) {
       return <Navigate to="/dashboard-pending" replace />;
+    }
+
     return <Navigate to="/login" replace />;
   };
 
   const ProfileGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
 
     if (isMalikatAuth) {
       if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
-      if (isDashboardRole(role))
+
+      if (isDashboardRole(role)) {
         return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+      }
+
       return <Navigate to="/dashboard-pending" replace />;
     }
 
     if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
-    if (isDashboardRole(role)) return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+
+    if (isDashboardRole(role)) {
+      return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+    }
+
     if (isClientRole(role)) return <>{children}</>;
-    if (isPendingRole(role))
+
+    if (isPendingRole(role)) {
       return <Navigate to="/dashboard-pending" replace />;
+    }
+
     return <Navigate to="/login" replace />;
   };
 
   const PendingGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
 
     if (isMalikatAuth) {
       if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
-      if (isDashboardRole(role))
+
+      if (isDashboardRole(role)) {
         return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+      }
+
       return <>{children}</>;
     }
 
     if (isPendingRole(role)) return <>{children}</>;
+
     if (isAdminPortalRole(role)) return <Navigate to="/admin" replace />;
-    if (isDashboardRole(role))
+
+    if (isDashboardRole(role)) {
       return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+    }
+
     if (isClientRole(role)) return <Navigate to="/client" replace />;
+
     return <Navigate to="/login" replace />;
   };
 
@@ -596,11 +690,14 @@ const App: React.FC = () => {
           <Route path="/services" element={<Services />} />
           <Route path="/about" element={<About />} />
 
-          {/* ✅ Client Booking (Public) */}
+          {/* Client Booking Public */}
           <Route path="/booking" element={<Booking />} />
 
-          {/* ✅ OLD path (keep for backward compatibility) -> redirect into dashboard route */}
-          <Route path="/booking/internal" element={<Navigate to="/dashboard/booking-internal" replace />} />
+          {/* Old path compatibility */}
+          <Route
+            path="/booking/internal"
+            element={<Navigate to="/dashboard/booking-internal" replace />}
+          />
 
           {/* Checkout */}
           <Route path="/checkout" element={<Checkout />} />
@@ -655,6 +752,7 @@ const App: React.FC = () => {
             }
           />
 
+          {/* Admin Dashboard - محمي بتسجيل دخول Firebase فعلي */}
           <Route
             path="/admin/*"
             element={
@@ -664,15 +762,11 @@ const App: React.FC = () => {
             }
           />
 
-          <Route
-            path="/hr"
-            element={
-              <AdminGuard>
-                <HrEntry />
-              </AdminGuard>
-            }
-          />
+          {/* HR Entry - يرجع شكل بوابة الموارد البشرية كما هو */}
+          <Route path="/hr" element={<HrEntry />} />
+          <Route path="/hr/*" element={<Navigate to="/hr" replace />} />
 
+          {/* Employee Portal */}
           <Route
             path="/employee/*"
             element={
@@ -694,7 +788,10 @@ const App: React.FC = () => {
 
           <Route path="/forgot-password" element={<ForgotPassword />} />
 
-          <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
+          <Route
+            path="/settings"
+            element={<Navigate to="/dashboard/settings" replace />}
+          />
 
           {/* Payments */}
           <Route path="/pay" element={<Pay />} />
