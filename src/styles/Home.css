@@ -4,6 +4,8 @@
    =========================== */
 
    .home-page {
+    --qs-public-page-color: var(--qs-text);
+
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
@@ -12,7 +14,6 @@
     flex-direction: column;
     gap: 0;
   
-    color: var(--qs-text);
   }
   
   .home-page section,
@@ -64,10 +65,11 @@
   .home-page .service-card,
   .home-page .testimonial-card,
   .home-page .price-card {
-    background: #ffffff;
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    --qs-public-card-bg: #ffffff;
+    --qs-public-card-border: 1px solid rgba(0, 0, 0, 0.08);
+    --qs-public-card-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+
     color: var(--qs-black);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
   }
   
   /* ===========================

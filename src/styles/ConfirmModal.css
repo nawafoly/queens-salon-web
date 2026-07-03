@@ -4,28 +4,21 @@
 */
 
 .qm-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 5000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
-
-  background: rgba(13, 13, 13, 0.22);
-  backdrop-filter: blur(8px);
+  --qs-modal-overlay-z: 5000;
+  --qs-modal-overlay-bg: rgba(13, 13, 13, 0.22);
+  --qs-modal-overlay-blur: blur(8px);
+  --qs-modal-overlay-padding: 18px;
 }
 
 .qm-modal-box {
-  width: min(520px, 96vw);
-  background: #fff;
-  border-radius: 22px;
-  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.18);
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  overflow: hidden;
-
-  transform: translateY(6px);
-  animation: qmPop 180ms ease-out forwards;
+  --qs-modal-panel-width: min(520px, 96vw);
+  --qs-modal-panel-bg: #fff;
+  --qs-modal-panel-radius: 22px;
+  --qs-modal-panel-shadow: 0 26px 80px rgba(0, 0, 0, 0.18);
+  --qs-modal-panel-border: 1px solid rgba(13, 13, 13, 0.08);
+  --qs-modal-panel-overflow: hidden;
+  --qs-modal-panel-transform: translateY(6px);
+  --qs-modal-panel-animation: qmPop 180ms ease-out forwards;
   font-family: "Tajawal", sans-serif;
 }
 
@@ -41,10 +34,7 @@
 }
 
 .qm-modal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 14px 10px;
+  --qs-modal-head-padding: 14px 14px 10px;
 
   background:
     radial-gradient(520px 220px at 15% 10%, rgba(64, 1, 13, 0.14), transparent 60%),
@@ -104,7 +94,7 @@
 }
 
 .qm-modal-body {
-  padding: 14px 16px 6px;
+  --qs-modal-body-padding: 14px 16px 6px;
 }
 
 .qm-modal-text {
@@ -116,11 +106,10 @@
 }
 
 .qm-modal-actions {
-  padding: 12px 16px 16px;
-  display: flex;
-  gap: 10px;
-  justify-content: flex-start;
-  flex-wrap: wrap;
+  --qs-modal-actions-padding: 12px 16px 16px;
+  --qs-modal-actions-gap: 10px;
+  --qs-modal-actions-justify: flex-start;
+  --qs-modal-actions-wrap: wrap;
 }
 
 .qm-btn-confirm,

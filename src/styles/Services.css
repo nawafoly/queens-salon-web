@@ -2,6 +2,8 @@
 /* WHITE / OFF-WHITE VERSION – MALIKAT SALON */
 
 .services-page{
+  --qs-public-page-direction: rtl;
+
   direction: rtl;
   background:
     radial-gradient(900px 520px at 15% 18%, rgba(64,1,13,0.08), transparent 60%),
@@ -11,25 +13,26 @@
 
 /* العناوين */
 .services-title{
-  font-weight: 900;
-  color: var(--qs-accent);
-  letter-spacing: 0.2px;
+  --qs-public-title-weight: 900;
+  --qs-public-title-color: var(--qs-accent);
+  --qs-public-title-letter-spacing: 0.2px;
 }
 
 .services-subtitle{
-  color: var(--qs-gray-700);
-  opacity: 0.95;
+  --qs-public-subtitle-color: var(--qs-gray-700);
+  --qs-public-subtitle-opacity: 0.95;
 }
 
 /* حالات التحميل / الخطأ */
 .services-state{
-  background: rgba(255,255,255,0.85);
-  border: 1px solid rgba(13,13,13,0.12);
-  border-radius: 18px;
+  --qs-public-card-bg: rgba(255,255,255,0.85);
+  --qs-public-card-border: 1px solid rgba(13,13,13,0.12);
+  --qs-public-card-radius: 18px;
+  --qs-public-card-shadow: var(--qs-shadow-soft);
+
   padding: 1rem 1.1rem;
   color: var(--qs-gray-700);
   text-align: center;
-  box-shadow: var(--qs-shadow-soft);
 }
 
 .services-state.is-error{
@@ -40,12 +43,13 @@
 
 /* بلوك كل قسم */
 .service-category{
-  background: rgba(255,255,255,0.9);
-  border: 1px solid rgba(13,13,13,0.12);
-  border-radius: 26px;
+  --qs-public-card-bg: rgba(255,255,255,0.9);
+  --qs-public-card-border: 1px solid rgba(13,13,13,0.12);
+  --qs-public-card-radius: 26px;
+  --qs-public-card-shadow: var(--qs-shadow-soft);
+  --qs-public-card-overflow: hidden;
+
   padding: 1.1rem;
-  box-shadow: var(--qs-shadow-soft);
-  overflow: hidden;
 }
 
 .service-category.reverse .row{
@@ -120,11 +124,11 @@
 }
 
 .svc-acc-item{
-  border-radius: 18px;
-  overflow: hidden;
-  background: rgba(255,255,255,0.92);
-  border: 1px solid rgba(13,13,13,0.12);
-  box-shadow: var(--qs-shadow-soft);
+  --qs-public-card-bg: rgba(255,255,255,0.92);
+  --qs-public-card-border: 1px solid rgba(13,13,13,0.12);
+  --qs-public-card-radius: 18px;
+  --qs-public-card-shadow: var(--qs-shadow-soft);
+  --qs-public-card-overflow: hidden;
 }
 
 .svc-acc-btn{
@@ -154,15 +158,12 @@
 }
 
 .svc-count-pill{
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  border: 1px solid rgba(13,13,13,0.14);
-  background: rgba(245,245,244,0.92);
-  color: var(--qs-black);
+  --qs-public-pill-padding: 7px 12px;
+  --qs-public-pill-font-size: 12px;
+  --qs-public-pill-font-weight: 900;
+  --qs-public-pill-border: 1px solid rgba(13,13,13,0.14);
+  --qs-public-pill-bg: rgba(245,245,244,0.92);
+  --qs-public-pill-color: var(--qs-black);
 }
 
 .svc-acc-body{
@@ -216,32 +217,23 @@
 }
 
 .services-cta-btn{
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-
-  padding: 14px 34px;
-  min-height: 52px;
-
-  border-radius: 999px;
-  border: 1px solid rgba(37,49,64,0.55);
-
-  background: linear-gradient(135deg, #253140 0%, #2f3e51 100%);
-  color: #ffffff;
-  font-size: 16px;
-  font-weight: 900;
-  letter-spacing: .2px;
-
-  box-shadow: 0 14px 34px rgba(37,49,64,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
-  text-decoration: none;
-
-  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  --qs-public-button-gap: 10px;
+  --qs-public-button-padding: 14px 34px;
+  --qs-public-button-min-height: 52px;
+  --qs-public-button-radius: 999px;
+  --qs-public-button-border: 1px solid rgba(37,49,64,0.55);
+  --qs-public-button-bg: linear-gradient(135deg, #253140 0%, #2f3e51 100%);
+  --qs-public-button-color: #ffffff;
+  --qs-public-button-font-size: 16px;
+  --qs-public-button-font-weight: 900;
+  --qs-public-button-letter-spacing: .2px;
+  --qs-public-button-shadow: 0 14px 34px rgba(37,49,64,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
+  --qs-public-button-transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
 }
 
 .services-cta-btn:hover{
-  background: linear-gradient(135deg, #1f2a38 0%, #253140 100%);
-  transform: translateY(-1px);
+  --qs-public-button-hover-bg: linear-gradient(135deg, #1f2a38 0%, #253140 100%);
+  --qs-public-button-hover-transform: translateY(-1px);
 }
 
 /* موبايل */
@@ -269,13 +261,14 @@
 
 /* حالات التحميل / الخطأ (نفس ستايلك القديم) */
 .services-state{
-  background: rgba(255,255,255,0.85);
-  border: 1px solid rgba(13,13,13,0.12);
-  border-radius: 18px;
+  --qs-public-card-bg: rgba(255,255,255,0.85);
+  --qs-public-card-border: 1px solid rgba(13,13,13,0.12);
+  --qs-public-card-radius: 18px;
+  --qs-public-card-shadow: var(--qs-shadow-soft);
+
   padding: 1rem 1.1rem;
   color: rgba(81,86,89,0.85);
   text-align: center;
-  box-shadow: var(--qs-shadow-soft);
 }
 
 .services-state.is-error{
@@ -328,23 +321,25 @@
 }
 
 .services-item-price{
-  font-weight: 950;
-  color: var(--qs-burgundy);
-  background: rgba(64,1,13,0.10);
-  border: 1px solid rgba(64,1,13,0.28);
-  border-radius: 999px;
-  padding: 6px 10px;
+  --qs-public-pill-padding: 6px 10px;
+  --qs-public-pill-font-size: 13px;
+  --qs-public-pill-font-weight: 950;
+  --qs-public-pill-color: var(--qs-burgundy);
+  --qs-public-pill-bg: rgba(64,1,13,0.10);
+  --qs-public-pill-border: 1px solid rgba(64,1,13,0.28);
+
   white-space: nowrap;
-  font-size: 13px;
 }
 
 .services-item-price-season{
-  color: #1e3a2f;
-  background: rgba(29, 78, 58, 0.11);
-  border-color: rgba(29, 78, 58, 0.35);
+  --qs-public-pill-color: #1e3a2f;
+  --qs-public-pill-bg: rgba(29, 78, 58, 0.11);
+  --qs-public-pill-border: 1px solid rgba(29, 78, 58, 0.35);
 }
 
 .services-page .status-pill.season-period{
+  --qs-public-pill-display: block;
+
   margin-inline-start: 0;
   width: 100%;
   white-space: normal;
@@ -354,21 +349,21 @@
 }
 
 .services-page .status-pill.season-period.season-period-title{
-  background: rgba(13, 13, 13, 0.06);
-  border-color: rgba(13, 13, 13, 0.2);
-  color: #202528;
+  --qs-public-pill-bg: rgba(13, 13, 13, 0.06);
+  --qs-public-pill-border: 1px solid rgba(13, 13, 13, 0.2);
+  --qs-public-pill-color: #202528;
 }
 
 .services-page .status-pill.season-period.season-period-greg{
-  background: rgba(64, 1, 13, 0.14);
-  border-color: rgba(64, 1, 13, 0.34);
-  color: #40010d;
+  --qs-public-pill-bg: rgba(64, 1, 13, 0.14);
+  --qs-public-pill-border: 1px solid rgba(64, 1, 13, 0.34);
+  --qs-public-pill-color: #40010d;
 }
 
 .services-page .status-pill.season-period.season-period-hijri{
-  background: rgba(30, 58, 47, 0.12);
-  border-color: rgba(30, 58, 47, 0.35);
-  color: #1e3a2f;
+  --qs-public-pill-bg: rgba(30, 58, 47, 0.12);
+  --qs-public-pill-border: 1px solid rgba(30, 58, 47, 0.35);
+  --qs-public-pill-color: #1e3a2f;
 }
 
 .services-page button.offer-image{

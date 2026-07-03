@@ -14,41 +14,37 @@
   
   /* عنوان السكشن */
   .features-section .section-title {
-    font-size: clamp(1.6rem, 3.2vw, 2.1rem);
-    font-weight: 800;
-    color: var(--qs-black);
-    margin-bottom: 3.2rem;
-    text-align: center;
+    --qs-public-title-size: clamp(1.6rem, 3.2vw, 2.1rem);
+    --qs-public-title-weight: 800;
+    --qs-public-title-color: var(--qs-black);
+    --qs-public-title-margin-bottom: 3.2rem;
+    --qs-public-title-align: center;
   }
   
   /* ===========================
      Feature Card (Luxury)
      =========================== */
   .feature-card {
-    background: var(--qs-surface);
-    border-radius: 22px;
-    border: 1px solid var(--qs-border);
-    padding: 2.4rem 2rem;
-    text-align: center;
-  
-    box-shadow: var(--bs-shadow-soft);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  
-    transition:
+    --qs-public-card-bg: var(--qs-surface);
+    --qs-public-card-radius: 22px;
+    --qs-public-card-border: 1px solid var(--qs-border);
+    --qs-public-card-shadow: var(--bs-shadow-soft);
+    --qs-public-card-blur: blur(14px);
+    --qs-public-card-transition:
       transform 0.35s ease,
       box-shadow 0.35s ease,
       border-color 0.35s ease;
+    --qs-public-card-hover-transform: translateY(-8px);
+    --qs-public-card-hover-shadow: var(--bs-shadow-medium);
+    --qs-public-card-hover-border-color: rgba(255,255,255,0.22);
+
+    padding: 2.4rem 2rem;
+    text-align: center;
   
     opacity: 0;
     animation: fadeIn 0.9s ease-out forwards;
   }
   
-  .feature-card:hover {
-    transform: translateY(-8px);
-    box-shadow: var(--bs-shadow-medium);
-    border-color: rgba(255,255,255,0.22);
-  }
   
   /* Icon */
   .feature-icon {

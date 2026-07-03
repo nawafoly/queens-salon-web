@@ -42,11 +42,12 @@
 .offers-page .offers-hero{ border-bottom: 1px solid rgba(13,13,13,0.12); }
 
 .offers-page .offers-hero .hero-content{
-  background: rgba(255,255,255,0.85);
-  border: 1px solid rgba(13,13,13,0.12);
-  border-radius: 28px;
+  --qs-public-card-bg: rgba(255,255,255,0.85);
+  --qs-public-card-border: 1px solid rgba(13,13,13,0.12);
+  --qs-public-card-radius: 28px;
+  --qs-public-card-shadow: var(--qs-shadow-soft);
+
   padding: 26px 18px;
-  box-shadow: var(--qs-shadow-soft);
 }
 
 /* --------- Hero Stats --------- */
@@ -60,11 +61,12 @@
 .offers-page .stat-item{
   flex: 1;
   min-width: 140px;
-  background: rgba(255,255,255,0.9);
-  border: 1px solid rgba(13,13,13,0.12);
-  border-radius: 18px;
+  --qs-public-card-bg: rgba(255,255,255,0.9);
+  --qs-public-card-border: 1px solid rgba(13,13,13,0.12);
+  --qs-public-card-radius: 18px;
+  --qs-public-card-shadow: var(--qs-shadow-soft);
+
   padding: 14px 12px;
-  box-shadow: var(--qs-shadow-soft);
 }
 
 .offers-page .stat-number{
@@ -118,19 +120,23 @@
 
 /* --------- Offer Card --------- */
 .offers-page .offer-card-enhanced{
+  --qs-public-card-bg: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(245,245,244,0.9));
+  --qs-public-card-border: 1px solid rgba(13,13,13,0.14);
+  --qs-public-card-radius: 28px;
+  --qs-public-card-shadow: 0 16px 36px rgba(13,13,13,0.1);
+  --qs-public-card-overflow: hidden;
+  --qs-public-card-transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+  --qs-public-card-hover-transform: translateY(-2px);
+  --qs-public-card-hover-border-color: rgba(64,1,13,0.24);
+  --qs-public-card-hover-shadow: 0 24px 46px rgba(13,13,13,0.15);
+
   position: relative;
-  border-radius: 28px;
-  overflow: hidden;
-  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(245,245,244,0.9));
-  border: 1px solid rgba(13,13,13,0.14);
-  box-shadow: 0 16px 36px rgba(13,13,13,0.1);
-  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
 }
 
 .offers-page .offer-card-enhanced:hover{
-  transform: translateY(-2px);
-  border-color: rgba(64,1,13,0.24);
-  box-shadow: 0 24px 46px rgba(13,13,13,0.15);
+  --qs-public-card-hover-transform: translateY(-2px);
+  --qs-public-card-hover-border-color: rgba(64,1,13,0.24);
+  --qs-public-card-hover-shadow: 0 24px 46px rgba(13,13,13,0.15);
 }
 
 .offers-page .offer-card-enhanced.expired{
@@ -207,23 +213,20 @@
 /* pills */
 .offers-page .discount-badge,
 .offers-page .save-badge{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 900;
-  border: 1px solid rgba(13,13,13,0.14);
-  background: rgba(255,255,255,0.92);
-  color: var(--qs-black);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+  --qs-public-pill-gap: 6px;
+  --qs-public-pill-padding: 7px 12px;
+  --qs-public-pill-font-size: 13px;
+  --qs-public-pill-font-weight: 900;
+  --qs-public-pill-border: 1px solid rgba(13,13,13,0.14);
+  --qs-public-pill-bg: rgba(255,255,255,0.92);
+  --qs-public-pill-color: var(--qs-black);
+  --qs-public-pill-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
 }
 
 .offers-page .discount-badge{
-  border-color: rgba(64,1,13,0.24);
-  color: var(--qs-burgundy, #40010D);
-  background: linear-gradient(135deg, rgba(64,1,13,0.12), rgba(255,255,255,0.96));
+  --qs-public-pill-border: 1px solid rgba(64,1,13,0.24);
+  --qs-public-pill-color: var(--qs-burgundy, #40010D);
+  --qs-public-pill-bg: linear-gradient(135deg, rgba(64,1,13,0.12), rgba(255,255,255,0.96));
 }
 
 .offers-page .save-badge b{
@@ -232,47 +235,44 @@
 
 /* status pills */
 .offers-page .status-pill{
+  --qs-public-pill-padding: 8px 13px;
+  --qs-public-pill-font-size: 12px;
+  --qs-public-pill-font-weight: 900;
+  --qs-public-pill-border: 1px solid rgba(13,13,13,0.16);
+  --qs-public-pill-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+
   margin-inline-start: auto;
-  padding: 8px 13px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  border: 1px solid rgba(13,13,13,0.16);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
 }
 
 .offers-page .status-pill.active{
-  background: rgba(22,163,74,0.12);
-  border-color: rgba(22,163,74,0.26);
-  color: #166534;
+  --qs-public-pill-bg: rgba(22,163,74,0.12);
+  --qs-public-pill-border: 1px solid rgba(22,163,74,0.26);
+  --qs-public-pill-color: #166534;
 }
 
 .offers-page .status-pill.ended{
-  background: rgba(64,1,13,0.12);
-  border-color: rgba(64,1,13,0.26);
-  color: var(--qs-burgundy, #40010D);
+  --qs-public-pill-bg: rgba(64,1,13,0.12);
+  --qs-public-pill-border: 1px solid rgba(64,1,13,0.26);
+  --qs-public-pill-color: var(--qs-burgundy, #40010D);
 }
 
 .offers-page .offer-scope-pill{
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  border: 1px solid rgba(13,13,13,0.16);
+  --qs-public-pill-padding: 8px 12px;
+  --qs-public-pill-font-size: 12px;
+  --qs-public-pill-font-weight: 900;
+  --qs-public-pill-border: 1px solid rgba(13,13,13,0.16);
 }
 
 .offers-page .offer-scope-pill.scope-services{
-  color: #0f5132;
-  border-color: rgba(25,135,84,0.28);
-  background: rgba(25,135,84,0.12);
+  --qs-public-pill-color: #0f5132;
+  --qs-public-pill-border: 1px solid rgba(25,135,84,0.28);
+  --qs-public-pill-bg: rgba(25,135,84,0.12);
 }
 
 .offers-page .offer-scope-pill.scope-all{
-  color: #1f3a5f;
-  border-color: rgba(31,58,95,0.26);
-  background: rgba(31,58,95,0.12);
+  --qs-public-pill-color: #1f3a5f;
+  --qs-public-pill-border: 1px solid rgba(31,58,95,0.26);
+  --qs-public-pill-bg: rgba(31,58,95,0.12);
 }
 
 /* Validity row */
@@ -533,39 +533,26 @@
 
 /* ✅ CTA واضح – مو زر تحميل */
 .offers-page .offers-cta-btn{
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-
-  padding: 14px 34px;
-  min-height: 52px;
-
-  border-radius: 999px;
-  border: 1px solid rgba(37,49,64,0.55);
-
-  background: linear-gradient(
-    135deg,
-    #253140 0%,
-    #2f3e51 100%
-  );
-
-  color: #ffffff;
-  font-size: 16px;
-  font-weight: 900;
-  letter-spacing: .2px;
-
-  box-shadow:
-    0 14px 34px rgba(37,49,64,0.35),
-    inset 0 1px 0 rgba(255,255,255,0.18);
-
-  cursor: pointer;
-  user-select: none;
+  --qs-public-button-gap: 10px;
+  --qs-public-button-padding: 14px 34px;
+  --qs-public-button-min-height: 52px;
+  --qs-public-button-radius: 999px;
+  --qs-public-button-border: 1px solid rgba(37,49,64,0.55);
+  --qs-public-button-bg: linear-gradient(135deg, #253140 0%, #2f3e51 100%);
+  --qs-public-button-color: #ffffff;
+  --qs-public-button-font-size: 16px;
+  --qs-public-button-font-weight: 900;
+  --qs-public-button-letter-spacing: .2px;
+  --qs-public-button-shadow: 0 14px 34px rgba(37,49,64,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
+  --qs-public-button-cursor: pointer;
+  --qs-public-button-user-select: none;
+  --qs-public-button-transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  --qs-public-button-hover-bg: var(--qs-public-button-bg);
+  --qs-public-button-hover-transform: none;
+  --qs-public-button-hover-shadow: var(--qs-public-button-shadow);
 
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-
-  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
 }
 
 /* =========================
@@ -824,21 +811,21 @@
    Soft Card Redesign
 ========================= */
 .offers-page .offer-card-enhanced{
-  border-radius: 24px;
-  border: 1px solid rgba(37, 49, 64, 0.14);
-  background:
+  --qs-public-card-radius: 24px;
+  --qs-public-card-border: 1px solid rgba(37, 49, 64, 0.14);
+  --qs-public-card-bg:
     radial-gradient(560px 220px at 8% 0%, rgba(64, 1, 13, 0.06), transparent 60%),
     linear-gradient(180deg, #ffffff 0%, #faf8f6 100%);
-  box-shadow:
+  --qs-public-card-shadow:
     0 12px 28px rgba(13, 13, 13, 0.08),
     0 2px 6px rgba(13, 13, 13, 0.04);
-  overflow: hidden;
+  --qs-public-card-overflow: hidden;
 }
 
 .offers-page .offer-card-enhanced:hover{
-  transform: translateY(-2px);
-  border-color: rgba(64, 1, 13, 0.2);
-  box-shadow:
+  --qs-public-card-hover-transform: translateY(-2px);
+  --qs-public-card-hover-border-color: rgba(64, 1, 13, 0.2);
+  --qs-public-card-hover-shadow:
     0 18px 34px rgba(13, 13, 13, 0.11),
     0 3px 8px rgba(13, 13, 13, 0.05);
 }
@@ -878,26 +865,22 @@
 .offers-page .save-badge,
 .offers-page .status-pill,
 .offers-page .offer-scope-pill{
-  min-height: 34px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  font-size: 0.79rem;
-  font-weight: 900;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  --qs-public-pill-min-height: 34px;
+  --qs-public-pill-padding: 7px 12px;
+  --qs-public-pill-font-size: 0.79rem;
+  --qs-public-pill-font-weight: 900;
 }
 
 .offers-page .discount-badge{
-  color: #40010d;
-  border: 1px solid rgba(64, 1, 13, 0.26);
-  background: linear-gradient(180deg, #fff5f8 0%, #fcecf1 100%);
+  --qs-public-pill-color: #40010d;
+  --qs-public-pill-border: 1px solid rgba(64, 1, 13, 0.26);
+  --qs-public-pill-bg: linear-gradient(180deg, #fff5f8 0%, #fcecf1 100%);
 }
 
 .offers-page .save-badge{
-  border: 1px solid rgba(37, 49, 64, 0.2);
-  background: #ffffff;
-  color: #243142;
+  --qs-public-pill-border: 1px solid rgba(37, 49, 64, 0.2);
+  --qs-public-pill-bg: #ffffff;
+  --qs-public-pill-color: #243142;
 }
 
 .offers-page .save-badge b{
@@ -905,9 +888,9 @@
 }
 
 .offers-page .save-badge.is-previous{
-  color: #6b7280;
-  border-color: rgba(107, 114, 128, 0.28);
-  background: #f8fafc;
+  --qs-public-pill-color: #6b7280;
+  --qs-public-pill-border: 1px solid rgba(107, 114, 128, 0.28);
+  --qs-public-pill-bg: #f8fafc;
   text-decoration: line-through;
   text-decoration-thickness: 1.4px;
 }
@@ -917,27 +900,27 @@
 }
 
 .offers-page .status-pill.active{
-  border-color: rgba(22, 163, 74, 0.26);
-  background: #ecfdf3;
-  color: #166534;
+  --qs-public-pill-border: 1px solid rgba(22, 163, 74, 0.26);
+  --qs-public-pill-bg: #ecfdf3;
+  --qs-public-pill-color: #166534;
 }
 
 .offers-page .status-pill.ended{
-  border-color: rgba(64, 1, 13, 0.22);
-  background: #fdf1f5;
-  color: #40010d;
+  --qs-public-pill-border: 1px solid rgba(64, 1, 13, 0.22);
+  --qs-public-pill-bg: #fdf1f5;
+  --qs-public-pill-color: #40010d;
 }
 
 .offers-page .offer-scope-pill.scope-services{
-  border-color: rgba(22, 163, 74, 0.26);
-  background: #ecfdf3;
-  color: #166534;
+  --qs-public-pill-border: 1px solid rgba(22, 163, 74, 0.26);
+  --qs-public-pill-bg: #ecfdf3;
+  --qs-public-pill-color: #166534;
 }
 
 .offers-page .offer-scope-pill.scope-all{
-  border-color: rgba(37, 49, 64, 0.24);
-  background: #eef3f8;
-  color: #1f3247;
+  --qs-public-pill-border: 1px solid rgba(37, 49, 64, 0.24);
+  --qs-public-pill-bg: #eef3f8;
+  --qs-public-pill-color: #1f3247;
 }
 
 .offers-page .offer-copy-btn{

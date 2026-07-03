@@ -10,6 +10,8 @@
 }
 
 .bs-testimonials {
+  --qs-public-page-direction: rtl;
+
   direction: rtl;
   position: relative;
   padding: 60px 0;
@@ -26,10 +28,10 @@
 }
 
 .bs-testimonials-title {
-  font-size: 1.8rem;
-  font-weight: 900;
-  color: #253140;
-  margin: 0;
+  --qs-public-title-size: 1.8rem;
+  --qs-public-title-weight: 900;
+  --qs-public-title-color: #253140;
+  --qs-public-title-margin: 0;
 }
 
 .bs-testimonials-title::after {
@@ -43,11 +45,11 @@
 }
 
 .bs-testimonials-subtitle {
-  margin: 15px auto 0;
-  max-width: 650px;
-  font-size: 1.05rem;
-  color: rgba(13, 13, 13, 0.6);
-  line-height: 1.7;
+  --qs-public-subtitle-margin: 15px auto 0;
+  --qs-public-subtitle-max-width: 650px;
+  --qs-public-subtitle-size: 1.05rem;
+  --qs-public-subtitle-color: rgba(13, 13, 13, 0.6);
+  --qs-public-subtitle-line-height: 1.7;
 }
 
 /* Slider */
@@ -74,27 +76,23 @@
 }
 
 .bs-slide-card {
+  --qs-public-card-bg: rgba(255, 255, 255, 0.6);
+  --qs-public-card-blur: blur(12px);
+  --qs-public-card-border: 1px solid rgba(255, 255, 255, 0.4);
+  --qs-public-card-radius: 24px;
+  --qs-public-card-shadow: var(--shadow-sm);
+  --qs-public-card-transition: var(--transition-base);
+  --qs-public-card-hover-transform: translateY(-6px);
+  --qs-public-card-hover-shadow: var(--shadow-md);
+  --qs-public-card-hover-border-color: rgba(64, 1, 13, 0.15);
+  --qs-public-card-hover-bg: rgba(255, 255, 255, 0.75);
+
   flex: 0 0 360px;
   scroll-snap-align: center;
-  /* Glassy Effect Modifications */
-  background: rgba(255, 255, 255, 0.6); 
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 24px;
   padding: 30px;
-  box-shadow: var(--shadow-sm);
-  transition: var(--transition-base);
   display: flex;
   flex-direction: column;
   position: relative;
-}
-
-.bs-slide-card:hover {
-  transform: translateY(-6px);
-  box-shadow: var(--shadow-md);
-  border-color: rgba(64, 1, 13, 0.15);
-  background: rgba(255, 255, 255, 0.75);
 }
 
 .bs-slide-card.is-hidden { opacity: 0.5; filter: grayscale(0.5); }
@@ -159,12 +157,11 @@
 .bs-slide-role { font-size: 0.85rem; color: rgba(0, 0, 0, 0.5); font-weight: 600; }
 
 .bs-badge {
-  background: var(--brand-primary);
-  color: #fff;
-  font-size: 0.65rem;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-weight: 900;
+  --qs-public-pill-bg: var(--brand-primary);
+  --qs-public-pill-color: #fff;
+  --qs-public-pill-font-size: 0.65rem;
+  --qs-public-pill-padding: 2px 8px;
+  --qs-public-pill-font-weight: 900;
 }
 
 .bs-slide-stars { display: flex; gap: 2px; margin-top: 4px; }
@@ -228,12 +225,13 @@
 
 /* Review Box */
 .bs-review-box {
+  --qs-public-card-bg: #fff;
+  --qs-public-card-radius: 28px;
+  --qs-public-card-shadow: var(--shadow-md);
+
   max-width: 850px;
   margin: 50px auto 0;
-  background: #fff;
-  border-radius: 28px;
   padding: 40px;
-  box-shadow: var(--shadow-md);
 }
 
 .bs-review-title { font-size: 1.4rem; font-weight: 900; margin-bottom: 30px; text-align: center; }
@@ -248,16 +246,19 @@
 .bs-star-btn:hover { transform: scale(1.2); }
 
 .bs-field {
-  width: 100%;
-  padding: 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  background: #fcfcfb;
-  font-size: 1rem;
-  transition: var(--transition-base);
-  outline: none;
+  --qs-public-control-width: 100%;
+  --qs-public-control-padding: 16px;
+  --qs-public-control-radius: 14px;
+  --qs-public-control-border: 1px solid rgba(0, 0, 0, 0.1);
+  --qs-public-control-bg: #fcfcfb;
+  --qs-public-control-font-size: 1rem;
+  --qs-public-control-transition: var(--transition-base);
 }
-.bs-field:focus { border-color: var(--brand-primary); background: #fff; box-shadow: 0 0 0 4px rgba(64, 1, 13, 0.05); }
+.bs-field:focus {
+  --qs-public-control-focus-border: var(--brand-primary);
+  --qs-public-control-focus-bg: #fff;
+  --qs-public-control-focus-shadow: 0 0 0 4px rgba(64, 1, 13, 0.05);
+}
 .bs-textarea { min-height: 140px; resize: vertical; }
 .bs-textarea-small { min-height: 80px; font-size: 0.9rem; }
 
@@ -314,14 +315,15 @@
 }
 
 .modal-box {
-  background: #fff;
-  width: 100%;
-  max-width: 450px;
-  border-radius: 32px;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
+  --qs-modal-panel-bg: #fff;
+  --qs-modal-panel-width: 100%;
+  --qs-modal-panel-max-width: 450px;
+  --qs-modal-panel-radius: 32px;
+  --qs-modal-panel-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
+  --qs-modal-panel-overflow: hidden;
+  --qs-modal-panel-animation: slideUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
   position: relative;
-  animation: slideUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .modal-head { padding: 20px 25px 0; display: flex; justify-content: flex-end; }
