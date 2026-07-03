@@ -6,6 +6,15 @@
 
 /* --- Page Wrapper --- */
 .emp-page-wrapper {
+  --emp-surface: var(--dash-surface, #ffffff);
+  --emp-surface-soft: var(--dash-surface-soft, #f8fafc);
+  --emp-border: var(--dash-border, rgba(13, 13, 13, 0.12));
+  --emp-card-radius: var(--dash-card-radius, 18px);
+  --emp-card-shadow: var(--dash-panel-shadow, 0 12px 24px rgba(0,0,0,0.06));
+  --emp-control-radius: var(--dash-control-radius, 12px);
+  --emp-control-border: var(--dash-control-border, 1px solid rgba(13, 13, 13, 0.12));
+  --emp-control-focus: var(--dash-control-focus-shadow, 0 0 0 3px rgba(64, 1, 13, 0.08));
+  --emp-pill-radius: var(--dash-pill-radius, 999px);
   direction: rtl;
   font-family: "Tajawal", sans-serif;
   width: 100%;
@@ -245,9 +254,9 @@
 }
 
 .emp-page-wrapper .emp-item {
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 16px;
-  background: #ffffff;
+  border: 1px solid var(--emp-border);
+  border-radius: var(--emp-card-radius);
+  background: var(--emp-surface);
   padding: 14px;
   display: grid;
   gap: 12px;
@@ -323,8 +332,8 @@
 .emp-page-wrapper .staff-summary-table-wrap {
   width: 100%;
   overflow-x: auto;
-  border: 1px solid rgba(13, 13, 13, 0.08);
-  border-radius: 14px;
+  border: 1px solid var(--emp-border);
+  border-radius: var(--emp-card-radius);
 }
 
 .emp-page-wrapper .staff-summary-table {
@@ -589,15 +598,15 @@
 /* Staff Card Specifics */
 .emp-page-wrapper .staff-card {
   padding: 20px;
-  border-radius: 18px;
-  background: #ffffff;
-  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: var(--emp-card-radius);
+  background: var(--emp-surface);
+  border: 1px solid var(--emp-border);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .emp-page-wrapper .staff-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0,0,0,0.06);
+  box-shadow: var(--emp-card-shadow);
 }
 
 .emp-page-wrapper .staff-top {
@@ -643,7 +652,7 @@
 /* Status Pills */
 .emp-page-wrapper .staff-pill {
   padding: 4px 12px;
-  border-radius: 999px;
+  border-radius: var(--emp-pill-radius);
   font-size: 12px;
   font-weight: 700;
 }
@@ -668,12 +677,12 @@
 }
 
 .emp-page-wrapper .staff-chip {
-  background: #f3f4f6;
+  background: var(--emp-surface-soft);
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 12px;
   color: #374151;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--emp-border);
 }
 
 .emp-page-wrapper .staff-chips-toggle {
@@ -746,9 +755,9 @@
 .emp-page-wrapper .staff-booking-inline-input {
   width: 100%;
   min-height: 40px;
-  border: 1px solid rgba(13, 13, 13, 0.12);
-  border-radius: 10px;
-  background: #fff;
+  border: var(--emp-control-border);
+  border-radius: var(--emp-control-radius);
+  background: var(--emp-surface);
   padding: 8px 12px;
   font-family: inherit;
   font-size: 14px;
@@ -758,7 +767,7 @@
 .emp-page-wrapper .staff-booking-inline-input:focus {
   outline: none;
   border-color: #40010D;
-  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.08);
+  box-shadow: var(--emp-control-focus);
 }
 
 .emp-page-wrapper .staff-booking-inline-hint {
@@ -4142,21 +4151,21 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .emp-page-wrapper .staff-pill.on {
-  background: rgba(16, 185, 129, 0.12);
-  color: #0f7d56;
-  border-color: rgba(16, 185, 129, 0.22);
+  background: var(--dash-status-success-bg, rgba(16, 185, 129, 0.12));
+  color: var(--dash-status-success-color, #0f7d56);
+  border-color: var(--dash-status-success-border, rgba(16, 185, 129, 0.22));
 }
 
 .emp-page-wrapper .staff-pill.warn {
-  background: rgba(202, 138, 4, 0.12);
-  color: #9d6906;
-  border-color: rgba(202, 138, 4, 0.22);
+  background: var(--dash-status-warning-bg, rgba(202, 138, 4, 0.12));
+  color: var(--dash-status-warning-color, #9d6906);
+  border-color: var(--dash-status-warning-border, rgba(202, 138, 4, 0.22));
 }
 
 .emp-page-wrapper .staff-pill.off {
-  background: rgba(148, 163, 184, 0.14);
-  color: #475569;
-  border-color: rgba(148, 163, 184, 0.22);
+  background: var(--dash-status-muted-bg, rgba(148, 163, 184, 0.14));
+  color: var(--dash-status-muted-color, #475569);
+  border-color: var(--dash-status-muted-border, rgba(148, 163, 184, 0.22));
 }
 
 .emp-page-wrapper .emp-split-empty b {
@@ -5326,7 +5335,7 @@ h1, h2, h3, h4, h5, h6 {
 .emp-page-wrapper .emp-detail-cockpit .emp-split-kicker {
   width: fit-content;
   border: 1px solid rgba(194, 138, 42, 0.28);
-  border-radius: 999px;
+  border-radius: var(--emp-pill-radius);
   background: rgba(255, 247, 235, 0.86);
   color: #9a651c;
   padding: 4px 10px;

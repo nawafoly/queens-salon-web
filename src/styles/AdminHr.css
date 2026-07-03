@@ -1,26 +1,26 @@
 :root {
   --hr-bg: #f6f1e8;
-  --hr-surface: rgba(255, 255, 255, 0.88);
-  --hr-surface-strong: #ffffff;
-  --hr-border: rgba(15, 23, 42, 0.1);
+  --hr-surface: var(--dash-panel-bg, rgba(255, 255, 255, 0.88));
+  --hr-surface-strong: var(--dash-surface, #ffffff);
+  --hr-border: var(--dash-border, rgba(15, 23, 42, 0.1));
   --hr-border-soft: rgba(148, 163, 184, 0.22);
-  --hr-text: #0f172a;
-  --hr-muted: #64748b;
-  --hr-muted-strong: #475569;
+  --hr-text: var(--text-strong, #0f172a);
+  --hr-muted: var(--muted-soft, #64748b);
+  --hr-muted-strong: var(--muted, #475569);
   --hr-primary: #0f172a;
   --hr-primary-soft: #d9e0ec;
   --hr-accent: #f3b61f;
   --hr-accent-2: #e8d4a6;
-  --hr-success: #18b57c;
-  --hr-warning: #c88a12;
-  --hr-neutral: #64748b;
-  --hr-danger: #b42318;
-  --hr-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
-  --hr-shadow-soft: 0 12px 32px rgba(15, 23, 42, 0.06);
+  --hr-success: var(--dash-status-success-color, #18b57c);
+  --hr-warning: var(--dash-status-warning-color, #c88a12);
+  --hr-neutral: var(--dash-status-muted-color, #64748b);
+  --hr-danger: var(--dash-status-danger-color, #b42318);
+  --hr-shadow: var(--dash-panel-shadow, 0 24px 60px rgba(15, 23, 42, 0.08));
+  --hr-shadow-soft: var(--dash-card-shadow, 0 12px 32px rgba(15, 23, 42, 0.06));
   --hr-radius-xl: 30px;
-  --hr-radius-lg: 24px;
-  --hr-radius-md: 18px;
-  --hr-radius-sm: 14px;
+  --hr-radius-lg: var(--dash-panel-radius, 24px);
+  --hr-radius-md: var(--dash-card-radius, 18px);
+  --hr-radius-sm: var(--dash-control-radius, 14px);
 }
 
 .hr-shell {
@@ -397,27 +397,27 @@
 }
 
 .hr-badge--success {
-  background: rgba(24, 181, 124, 0.12);
+  background: var(--dash-status-success-bg, rgba(24, 181, 124, 0.12));
   color: #0f7d56;
-  border-color: rgba(24, 181, 124, 0.24);
+  border-color: var(--dash-status-success-border, rgba(24, 181, 124, 0.24));
 }
 
 .hr-badge--warning {
-  background: rgba(200, 138, 18, 0.12);
+  background: var(--dash-status-warning-bg, rgba(200, 138, 18, 0.12));
   color: #9d6906;
-  border-color: rgba(200, 138, 18, 0.24);
+  border-color: var(--dash-status-warning-border, rgba(200, 138, 18, 0.24));
 }
 
 .hr-badge--neutral {
-  background: rgba(100, 116, 139, 0.12);
+  background: var(--dash-status-muted-bg, rgba(100, 116, 139, 0.12));
   color: #475569;
-  border-color: rgba(100, 116, 139, 0.18);
+  border-color: var(--dash-status-muted-border, rgba(100, 116, 139, 0.18));
 }
 
 .hr-badge--muted {
-  background: rgba(148, 163, 184, 0.12);
+  background: var(--dash-status-muted-bg, rgba(148, 163, 184, 0.12));
   color: #64748b;
-  border-color: rgba(148, 163, 184, 0.22);
+  border-color: var(--dash-status-muted-border, rgba(148, 163, 184, 0.22));
 }
 
 .hr-metric-grid {
@@ -1093,8 +1093,8 @@
 .hr-field textarea {
   width: 100%;
   min-height: 48px;
-  border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: var(--hr-radius-sm);
+  border: var(--dash-control-border, 1px solid rgba(15, 23, 42, 0.12));
   background: #ffffff;
   padding: 0 14px;
   font-size: 14px;
@@ -1116,7 +1116,7 @@
 .hr-field textarea:focus,
 .hr-search input:focus {
   border-color: rgba(243, 182, 31, 0.6);
-  box-shadow: 0 0 0 4px rgba(243, 182, 31, 0.16);
+  box-shadow: var(--dash-control-focus-shadow, 0 0 0 4px rgba(243, 182, 31, 0.16));
 }
 
 .hr-field--wide {

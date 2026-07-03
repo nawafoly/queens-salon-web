@@ -60,10 +60,10 @@
   width: min(980px, 96vw);
   max-height: calc(100dvh - 44px);
 
-  background: var(--dash-modal-bg, rgba(255, 255, 255, 0.92));
-  border: var(--dash-modal-border, 1px solid rgba(13, 13, 13, 0.10));
-  border-radius: var(--dash-modal-radius, 22px);
-  box-shadow: var(--dash-modal-shadow, 0 26px 70px rgba(0, 0, 0, 0.22));
+  background: var(--dash-modal-bg, var(--dash-surface, rgba(255, 255, 255, 0.92)));
+  border: var(--dash-modal-border, var(--dash-card-border, 1px solid rgba(13, 13, 13, 0.10)));
+  border-radius: var(--dash-modal-radius, var(--dash-panel-radius, 22px));
+  box-shadow: var(--dash-modal-shadow, var(--dash-panel-shadow, 0 26px 70px rgba(0, 0, 0, 0.22)));
   backdrop-filter: blur(10px);
 
   display: flex;
@@ -259,10 +259,10 @@
 .dash-modal .form-control {
   min-height: 44px;
   font-size: 14px;
-  border-radius: 14px;
+  border-radius: var(--dash-control-radius, 14px);
 
-  border: 1px solid rgba(0, 0, 0, 0.10);
-  background: #fff;
+  border: var(--dash-control-border, 1px solid rgba(0, 0, 0, 0.10));
+  background: var(--dash-surface, #fff);
   box-shadow: none;
 }
 

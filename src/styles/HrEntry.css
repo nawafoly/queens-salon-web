@@ -1,10 +1,18 @@
 .hr-entry {
+  --hr-entry-surface: var(--dash-surface, rgba(255, 255, 255, 0.94));
+  --hr-entry-surface-soft: var(--dash-surface-soft, #f8fafc);
+  --hr-entry-border: var(--dash-border, rgba(148, 163, 184, 0.28));
+  --hr-entry-text: var(--text-strong, #0f172a);
+  --hr-entry-muted: var(--muted-soft, #64748b);
+  --hr-entry-shadow: var(--dash-panel-shadow, 0 28px 80px rgba(15, 23, 42, 0.1));
+  --hr-entry-control-radius: var(--dash-control-radius, 16px);
+  --hr-entry-control-focus: var(--dash-control-focus-shadow, 0 0 0 4px rgba(15, 23, 42, 0.08));
   min-height: 100vh;
   width: 100%;
   overflow-x: hidden;
   background:
     linear-gradient(135deg, #f8fafc 0%, #f8fafc 42%, #071020 42%, #071020 100%);
-  color: #0f172a;
+  color: var(--hr-entry-text);
   font-family: inherit;
 }
 
@@ -37,11 +45,11 @@
 }
 
 .hr-entry-menu-panel {
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: var(--hr-entry-surface);
+  border: 1px solid var(--hr-entry-border);
   border-radius: 34px;
   padding: 34px;
-  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.1);
+  box-shadow: var(--hr-entry-shadow);
 }
 
 .hr-entry-login-panel {
@@ -82,7 +90,7 @@
 
 .hr-entry-menu-head p {
   margin: 0;
-  color: #64748b;
+  color: var(--hr-entry-muted);
   font-size: 15px;
   line-height: 1.8;
 }
@@ -104,7 +112,7 @@
   width: 100%;
   min-height: 56px;
   border: 1px solid #dbe3ef;
-  border-radius: 16px;
+  border-radius: var(--hr-entry-control-radius);
   background: #eaf2ff;
   color: #0f172a;
   padding: 0 18px;
@@ -116,7 +124,7 @@
 .hr-entry-login-form input:focus {
   border-color: #111827;
   background: #fff;
-  box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--hr-entry-control-focus);
 }
 
 .hr-entry-password-field {
@@ -144,9 +152,9 @@
 .hr-entry-login-error {
   padding: 12px 14px;
   border-radius: 14px;
-  background: #fef2f2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
+  background: var(--dash-status-danger-bg, #fef2f2);
+  color: var(--dash-status-danger-color, #b91c1c);
+  border: 1px solid var(--dash-status-danger-border, #fecaca);
   font-size: 13px;
   font-weight: 800;
 }
@@ -204,7 +212,7 @@
   min-height: 86px;
   padding: 18px;
   border-radius: 22px;
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--hr-entry-border);
   background: rgba(255, 255, 255, 0.82);
   color: #020617;
   text-decoration: none;

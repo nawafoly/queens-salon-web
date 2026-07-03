@@ -126,6 +126,36 @@
   --dash-table-border: 1px solid rgba(13, 13, 13, 0.10);
   --dash-table-radius: 16px;
 
+  /* HR / employee / bookings cleanup primitives */
+  --dash-page-gap: 18px;
+  --dash-page-pad-bottom: 34px;
+  --dash-panel-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(251, 247, 239, 0.84));
+  --dash-panel-border: 1px solid rgba(64, 1, 13, 0.08);
+  --dash-panel-radius: 24px;
+  --dash-panel-shadow: 0 20px 46px rgba(13, 13, 13, 0.08);
+  --dash-control-height: 44px;
+  --dash-control-height-lg: 52px;
+
+  --dash-status-success-bg: rgba(34, 197, 94, 0.14);
+  --dash-status-success-border: rgba(34, 197, 94, 0.34);
+  --dash-status-success-color: #166534;
+  --dash-status-warning-bg: rgba(251, 191, 36, 0.16);
+  --dash-status-warning-border: rgba(251, 191, 36, 0.38);
+  --dash-status-warning-color: #92400e;
+  --dash-status-danger-bg: rgba(239, 68, 68, 0.12);
+  --dash-status-danger-border: rgba(239, 68, 68, 0.34);
+  --dash-status-danger-color: #7f1d1d;
+  --dash-status-info-bg: rgba(20, 184, 166, 0.12);
+  --dash-status-info-border: rgba(20, 184, 166, 0.34);
+  --dash-status-info-color: #115e59;
+  --dash-status-muted-bg: rgba(13, 13, 13, 0.04);
+  --dash-status-muted-border: rgba(13, 13, 13, 0.12);
+  --dash-status-muted-color: rgba(13, 13, 13, 0.70);
+
+  --dash-empty-bg: rgba(248, 250, 252, 0.92);
+  --dash-empty-border: 1px dashed rgba(15, 23, 42, 0.14);
+  --dash-empty-color: #64748b;
+
   overflow: visible;
   /* ✅ لا نحط overflow هنا عشان sticky يشتغل */
 }
@@ -851,6 +881,131 @@
 /* =========================
    ✅ Buttons (dash-btn / exp-btn) - Queens
 ========================= */
+/* HR / Employees / Bookings shared compatibility aliases. */
+.dashboard-skin :where(
+  .bk-page-wrapper,
+  .emp-page-wrapper,
+  .clients-page,
+  .dashstaff-page
+) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--text);
+}
+
+.dashboard-skin :where(
+  .bk-page-wrapper .bk-mini,
+  .bk-page-wrapper .bookings-table-card,
+  .bk-page-wrapper .bk-bookings-section,
+  .bk-page-wrapper .bk-bookings-section-head,
+  .clients-page .cl-mini,
+  .clients-page .clients-table-card,
+  .clients-page .cl-sum-card,
+  .clients-page .cl-notes,
+  .emp-page-wrapper .staff-card,
+  .emp-page-wrapper .emp-item,
+  .emp-page-wrapper .staff-summary-card,
+  .emp-page-wrapper .staff-summary-table-wrap,
+  .dashstaff-page .dashstaff-card,
+  .dashstaff-page .dashstaff-filters,
+  .dashstaff-page .dashstaff-actions,
+  .dashstaff-page .dashstaff-kpis
+) {
+  background: var(--dash-panel-bg);
+  border: var(--dash-panel-border);
+  border-radius: var(--dash-panel-radius);
+  box-shadow: var(--dash-panel-shadow);
+}
+
+.dashboard-skin :where(
+  .bk-page-wrapper .bk-input,
+  .bk-page-wrapper .bk-select,
+  .clients-page .cl-form input,
+  .clients-page .cl-form .cl-input,
+  .clients-page .cl-select,
+  .emp-page-wrapper .staff-booking-inline-input,
+  .dashstaff-page .dashstaff-input
+) {
+  min-height: var(--dash-control-height);
+  border: var(--dash-control-border);
+  border-radius: var(--dash-control-radius);
+  background: var(--dash-control-bg);
+  color: var(--dash-control-color);
+  outline: none;
+}
+
+.dashboard-skin :where(
+  .bk-page-wrapper .bk-input,
+  .bk-page-wrapper .bk-select,
+  .clients-page .cl-form input,
+  .clients-page .cl-form .cl-input,
+  .clients-page .cl-select,
+  .emp-page-wrapper .staff-booking-inline-input,
+  .dashstaff-page .dashstaff-input
+):focus {
+  border-color: var(--dash-control-focus-border);
+  box-shadow: var(--dash-control-focus-shadow);
+}
+
+.dashboard-skin :where(
+  .clients-page .cl-btn,
+  .bk-page-wrapper .bk-new-alert-btn,
+  .dashstaff-page .dashstaff-actions button
+) {
+  min-height: var(--dash-button-min-height);
+  border: var(--dash-button-border);
+  border-radius: var(--dash-button-radius);
+  background: var(--dash-button-bg);
+  color: var(--dash-button-color);
+  font-weight: var(--dash-button-font-weight);
+  cursor: pointer;
+}
+
+.dashboard-skin :where(
+  .bk-page-wrapper .bk-status-tab,
+  .bk-page-wrapper .bk-new-count,
+  .bk-page-wrapper .bk-bookings-section-count,
+  .clients-page .dash-pill,
+  .emp-page-wrapper .staff-pill,
+  .dashstaff-page .pill,
+  .dashstaff-page .dashstaff-status
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dash-pill-gap);
+  padding: var(--dash-pill-padding);
+  border-radius: var(--dash-pill-radius);
+  border: var(--dash-pill-border);
+  background: var(--dash-pill-bg);
+  color: var(--dash-pill-color);
+  font-size: var(--dash-pill-font-size);
+  font-weight: var(--dash-pill-font-weight);
+  line-height: 1.2;
+}
+
+.dashboard-skin :where(
+  .bk-page-wrapper .bk-bookings-section-empty,
+  .dashstaff-page .dashstaff-box.empty
+) {
+  background: var(--dash-empty-bg);
+  border: var(--dash-empty-border);
+  color: var(--dash-empty-color);
+}
+
+.dashboard-skin :where(
+  .bk-page-wrapper .bk-table-wrap,
+  .clients-page .cl-table-wrap,
+  .emp-page-wrapper .staff-summary-table-wrap
+) {
+  background: var(--dash-table-bg);
+  border: var(--dash-table-border);
+  border-radius: var(--dash-table-radius);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .dashboard-skin .dash-btn,
 .dashboard-skin .exp-btn {
   border: var(--dash-button-border);

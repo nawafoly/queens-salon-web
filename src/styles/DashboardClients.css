@@ -5,6 +5,17 @@
 ================================== */
 
 .clients-page {
+  --cl-surface: var(--dash-surface, #ffffff);
+  --cl-surface-soft: var(--dash-surface-soft, #faf9f7);
+  --cl-border: var(--dash-border, rgba(13, 13, 13, 0.12));
+  --cl-card-radius: var(--dash-card-radius, 16px);
+  --cl-card-shadow: var(--dash-panel-shadow, 0 10px 26px rgba(17, 24, 39, 0.08));
+  --cl-control-radius: var(--dash-control-radius, 12px);
+  --cl-control-border: var(--dash-control-border, 1px solid #e8e8e8);
+  --cl-control-focus: var(--dash-control-focus-shadow, 0 0 0 3px rgba(139, 92, 246, 0.12));
+  --cl-button-border: var(--dash-button-border, 1px solid rgba(13, 13, 13, 0.16));
+  --cl-button-radius: var(--dash-button-radius, 12px);
+  --cl-pill-radius: var(--dash-pill-radius, 999px);
   padding: 18px;
   direction: rtl;
   font-family: "Tajawal", Arial, sans-serif;
@@ -48,9 +59,9 @@
 
 /* Mini card */
 .clients-page .cl-mini {
-  background: #fff;
-  border: 1px solid #eee;
-  border-radius: 16px;
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-card-radius);
   padding: 14px;
 }
 
@@ -120,8 +131,8 @@
 /* Input (يدعم input مباشرة + يدعم .cl-input) */
 .clients-page .cl-form input,
 .clients-page .cl-form .cl-input {
-  border: 1px solid #e8e8e8;
-  border-radius: 12px;
+  border: var(--cl-control-border);
+  border-radius: var(--cl-control-radius);
   padding: 10px 10px;
   outline: none;
   font-size: 14px;
@@ -156,8 +167,8 @@
 
 .clients-page .cl-form input:focus,
 .clients-page .cl-form .cl-input:focus {
-  border-color: #cdb6ff;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+  border-color: var(--dash-control-focus-border, #cdb6ff);
+  box-shadow: var(--cl-control-focus);
 }
 
 /* hint */
@@ -173,10 +184,10 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid rgba(13, 13, 13, 0.16);
-  background: #fff;
+  border: var(--cl-button-border);
+  background: var(--cl-surface);
   color: #111;
-  border-radius: 12px;
+  border-radius: var(--cl-button-radius);
   padding: 10px 12px;
   cursor: pointer;
   font-weight: 800;
@@ -219,18 +230,18 @@
 /* Sorting select */
 .clients-page .cl-select {
   height: 44px;
-  border: 1px solid #e8e8e8;
-  border-radius: 12px;
+  border: var(--cl-control-border);
+  border-radius: var(--cl-control-radius);
   padding: 10px 12px;
-  background: #fff;
+  background: var(--cl-surface);
   font-weight: 800;
   cursor: pointer;
   outline: none;
 }
 
 .clients-page .cl-select:focus {
-  border-color: #cdb6ff;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+  border-color: var(--dash-control-focus-border, #cdb6ff);
+  box-shadow: var(--cl-control-focus);
 }
 
 @media (max-width: 980px) {
@@ -297,16 +308,16 @@
 
 /* White card for tables */
 .clients-page .clients-table-card {
-  background: #ffffff;
+  background: var(--cl-surface);
   border-radius: 18px;
   padding: 10px;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--cl-card-shadow);
 }
 
 /* Table wrap */
 .clients-page .cl-table-wrap {
   overflow: auto;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--cl-border);
   border-radius: 14px;
 }
 
@@ -373,7 +384,7 @@
   justify-content: center;
 
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--cl-pill-radius);
 
   font-size: 12px;
   font-weight: 700;
@@ -570,7 +581,7 @@
   border: 1px solid rgba(124, 58, 237, 0.14);
   border-radius: 18px;
   padding: 14px 14px;
-  box-shadow: 0 10px 26px rgba(17, 24, 39, 0.08);
+  box-shadow: var(--cl-card-shadow);
 
   display: flex;
   align-items: center;
@@ -639,10 +650,10 @@
 .clients-page .cl-sum-card {
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid rgba(124, 58, 237, 0.14);
-  border-radius: 16px;
+  border-radius: var(--cl-card-radius);
   padding: 12px 12px;
   text-align: center;
-  box-shadow: 0 10px 22px rgba(17, 24, 39, 0.06);
+  box-shadow: var(--cl-card-shadow);
 }
 
 .clients-page .cl-sum-num {
@@ -661,7 +672,7 @@
 .clients-page .cl-notes {
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(124, 58, 237, 0.14);
-  border-radius: 16px;
+  border-radius: var(--cl-card-radius);
   padding: 12px;
   margin-bottom: 12px;
 }
@@ -675,8 +686,8 @@
   width: 100%;
   min-height: 90px;
   resize: vertical;
-  border: 1px solid #e8e8e8;
-  border-radius: 12px;
+  border: var(--cl-control-border);
+  border-radius: var(--cl-control-radius);
   padding: 10px;
   outline: none;
   font-size: 13px;
@@ -684,8 +695,8 @@
 }
 
 .clients-page .cl-notesInput:focus {
-  border-color: #cdb6ff;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+  border-color: var(--dash-control-focus-border, #cdb6ff);
+  box-shadow: var(--cl-control-focus);
 }
 
 @media (max-width: 900px) {

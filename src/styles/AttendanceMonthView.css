@@ -1,4 +1,20 @@
 .attendance-month {
+  --attendance-surface: var(--dash-surface, #ffffff);
+  --attendance-surface-soft: var(--dash-surface-soft, #f8fafc);
+  --attendance-border: var(--dash-border, rgba(203, 213, 225, 0.86));
+  --attendance-shadow: var(--dash-panel-shadow, 0 18px 42px rgba(15, 23, 42, 0.06));
+  --attendance-radius: var(--dash-card-radius, 14px);
+  --attendance-complete: #10b981;
+  --attendance-complete-strong: #059669;
+  --attendance-complete-bg: #ecfdf5;
+  --attendance-partial: #ff7a00;
+  --attendance-partial-bg: #fff7ed;
+  --attendance-absent: #ff2f61;
+  --attendance-absent-bg: #fff1f2;
+  --attendance-off: #0891b2;
+  --attendance-off-bg: #ecfeff;
+  --attendance-leave: #8b5cf6;
+  --attendance-leave-bg: #f5f3ff;
   width: 100%;
   display: grid;
   gap: 26px;
@@ -10,10 +26,10 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   padding: 20px;
-  border: 1px solid rgba(203, 213, 225, 0.82);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--attendance-border);
+  border-radius: var(--attendance-radius);
+  background: var(--attendance-surface);
+  box-shadow: var(--attendance-shadow);
 }
 
 .attendance-month__summary-copy {
@@ -208,23 +224,23 @@
 }
 
 .attendance-month__day.is-complete .attendance-month__day-marker {
-  background: #10b981;
+  background: var(--attendance-complete);
 }
 
 .attendance-month__day.is-partial .attendance-month__day-marker {
-  background: #ff7a00;
+  background: var(--attendance-partial);
 }
 
 .attendance-month__day.is-absent .attendance-month__day-marker {
-  background: #ff2f61;
+  background: var(--attendance-absent);
 }
 
 .attendance-month__day.is-off-day .attendance-month__day-marker {
-  background: #0891b2;
+  background: var(--attendance-off);
 }
 
 .attendance-month__day.is-leave .attendance-month__day-marker {
-  background: #8b5cf6;
+  background: var(--attendance-leave);
 }
 
 .attendance-month__day.is-selected {
@@ -233,28 +249,28 @@
 }
 
 .attendance-month__day.is-selected.is-complete {
-  background: #ecfdf5;
-  border-color: #10b981;
+  background: var(--attendance-complete-bg);
+  border-color: var(--attendance-complete);
 }
 
 .attendance-month__day.is-selected.is-partial {
-  background: #fff7ed;
-  border-color: #ff7a00;
+  background: var(--attendance-partial-bg);
+  border-color: var(--attendance-partial);
 }
 
 .attendance-month__day.is-selected.is-absent {
-  background: #fff1f2;
-  border-color: #ff2f61;
+  background: var(--attendance-absent-bg);
+  border-color: var(--attendance-absent);
 }
 
 .attendance-month__day.is-selected.is-off-day {
-  background: #ecfeff;
-  border-color: #0891b2;
+  background: var(--attendance-off-bg);
+  border-color: var(--attendance-off);
 }
 
 .attendance-month__day.is-selected.is-leave {
-  background: #f5f3ff;
-  border-color: #8b5cf6;
+  background: var(--attendance-leave-bg);
+  border-color: var(--attendance-leave);
 }
 
 .attendance-month__day.is-selected strong {
@@ -264,23 +280,23 @@
 }
 
 .attendance-month__day.is-selected.is-complete strong {
-  background: #059669;
+  background: var(--attendance-complete-strong);
 }
 
 .attendance-month__day.is-selected.is-partial strong {
-  background: #ff7a00;
+  background: var(--attendance-partial);
 }
 
 .attendance-month__day.is-selected.is-absent strong {
-  background: #ff2f61;
+  background: var(--attendance-absent);
 }
 
 .attendance-month__day.is-selected.is-off-day strong {
-  background: #0891b2;
+  background: var(--attendance-off);
 }
 
 .attendance-month__day.is-selected.is-leave strong {
-  background: #8b5cf6;
+  background: var(--attendance-leave);
 }
 
 .attendance-month__detail {
@@ -383,31 +399,31 @@
 .attendance-month__badge.is-complete {
   color: #047857;
   border-color: rgba(16, 185, 129, 0.35);
-  background: #ecfdf5;
+  background: var(--attendance-complete-bg);
 }
 
 .attendance-month__badge.is-partial {
   color: #c2410c;
   border-color: rgba(251, 146, 60, 0.36);
-  background: #fff7ed;
+  background: var(--attendance-partial-bg);
 }
 
 .attendance-month__badge.is-absent {
   color: #e11d48;
   border-color: rgba(244, 63, 94, 0.3);
-  background: #fff1f2;
+  background: var(--attendance-absent-bg);
 }
 
 .attendance-month__badge.is-off-day {
   color: #0e7490;
   border-color: rgba(6, 182, 212, 0.35);
-  background: #ecfeff;
+  background: var(--attendance-off-bg);
 }
 
 .attendance-month__badge.is-leave {
   color: #6d28d9;
   border-color: rgba(139, 92, 246, 0.34);
-  background: #f5f3ff;
+  background: var(--attendance-leave-bg);
 }
 
 .attendance-month__empty,
@@ -422,7 +438,7 @@
   gap: 8px;
   text-align: center;
   border: 1px dashed rgba(203, 213, 225, 0.9);
-  background: #f8fafc;
+  background: var(--attendance-surface-soft);
   color: #94a3b8;
 }
 
@@ -443,7 +459,7 @@
 
 .attendance-month__empty.is-absent {
   border-color: rgba(255, 47, 97, 0.24);
-  background: #fff1f2;
+  background: var(--attendance-absent-bg);
   color: #9f1239;
 }
 
@@ -453,7 +469,7 @@
 
 .attendance-month__empty.is-off-day {
   border-color: rgba(6, 182, 212, 0.28);
-  background: #ecfeff;
+  background: var(--attendance-off-bg);
   color: #0e7490;
 }
 
@@ -464,14 +480,14 @@
 .attendance-month__record {
   justify-items: stretch;
   align-items: stretch;
-  background: #ecfdf5;
-  border-inline-start: 16px solid #10d69a;
+  background: var(--attendance-complete-bg);
+  border-inline-start: 16px solid var(--attendance-complete);
   overflow: hidden;
 }
 
 .attendance-month__record.is-partial {
-  background: #fff7ed;
-  border-inline-start-color: #ff7a00;
+  background: var(--attendance-partial-bg);
+  border-inline-start-color: var(--attendance-partial);
 }
 
 .attendance-month__record-main {
@@ -557,27 +573,27 @@
 
 .attendance-month__wide-metrics.is-complete {
   border-color: rgba(16, 185, 129, 0.35);
-  background: #ecfdf5;
+  background: var(--attendance-complete-bg);
 }
 
 .attendance-month__wide-metrics.is-partial {
   border-color: rgba(251, 146, 60, 0.38);
-  background: #fff7ed;
+  background: var(--attendance-partial-bg);
 }
 
 .attendance-month__wide-metrics.is-absent {
   border-color: rgba(244, 63, 94, 0.32);
-  background: #fff1f2;
+  background: var(--attendance-absent-bg);
 }
 
 .attendance-month__wide-metrics.is-off-day {
   border-color: rgba(6, 182, 212, 0.32);
-  background: #ecfeff;
+  background: var(--attendance-off-bg);
 }
 
 .attendance-month__wide-metrics.is-leave {
   border-color: rgba(139, 92, 246, 0.3);
-  background: #f5f3ff;
+  background: var(--attendance-leave-bg);
 }
 
 @media (max-width: 980px) {

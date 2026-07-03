@@ -6,13 +6,17 @@
 
 .bk-page-wrapper {
   --bk-accent: var(--accent, #40010d);
-  --bk-accent-soft: rgba(64, 1, 13, 0.08);
+  --bk-accent-soft: var(--dash-button-primary-bg, rgba(64, 1, 13, 0.08));
   --bk-surface: var(--dash-surface, #ffffff);
   --bk-surface-soft: var(--dash-surface-soft, #faf9f7);
-  --bk-border: rgba(13, 13, 13, 0.12);
-  --bk-text: #111827;
-  --bk-muted: #6b7280;
-  --bk-shadow: 0 14px 34px rgba(13, 13, 13, 0.08);
+  --bk-border: var(--dash-border, rgba(13, 13, 13, 0.12));
+  --bk-text: var(--text-strong, #111827);
+  --bk-muted: var(--muted-soft, #6b7280);
+  --bk-shadow: var(--dash-panel-shadow, 0 14px 34px rgba(13, 13, 13, 0.08));
+  --bk-card-radius: var(--dash-panel-radius, 22px);
+  --bk-control-radius: var(--dash-control-radius, 12px);
+  --bk-control-border: var(--dash-control-border, 1px solid rgba(0, 0, 0, 0.10));
+  --bk-control-focus: var(--dash-control-focus-shadow, 0 0 0 3px rgba(64, 1, 13, 0.05));
   direction: rtl;
   font-family: "Tajawal", sans-serif;
   width: 100%;
@@ -39,7 +43,7 @@
   isolation: isolate;
   background: linear-gradient(140deg, rgba(64, 1, 13, 0.06), rgba(64, 1, 13, 0.015) 48%, rgba(255, 255, 255, 0.95));
   border: 1px solid var(--bk-border);
-  border-radius: 22px;
+  border-radius: var(--bk-card-radius);
   padding: 20px 22px;
   margin-bottom: 18px;
   box-shadow: var(--bk-shadow);
@@ -156,7 +160,7 @@
   min-width: 20px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(64, 1, 13, 0.08);
+  background: var(--bk-accent-soft);
   color: var(--bk-accent);
   font-weight: 900;
   text-align: center;
@@ -188,7 +192,7 @@
 }
 
 .bk-page-wrapper .bk-new-alert {
-  border: 1px solid rgba(5, 150, 105, 0.3);
+  border: 1px solid var(--dash-status-success-border, rgba(5, 150, 105, 0.3));
   background: linear-gradient(145deg, rgba(240, 253, 250, 0.96), rgba(236, 253, 245, 0.96));
   border-radius: 14px;
   padding: 12px;
@@ -287,7 +291,7 @@
 }
 
 .bk-page-wrapper .bk-stale-alert {
-  border: 1px solid rgba(217, 119, 6, 0.28);
+  border: 1px solid var(--dash-status-warning-border, rgba(217, 119, 6, 0.28));
   background: linear-gradient(145deg, rgba(255, 247, 237, 0.96), rgba(255, 251, 235, 0.96));
   border-radius: 14px;
   padding: 12px;
@@ -392,8 +396,8 @@
   color: #0D0D0D;
   height: 48px;
   padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: var(--bk-control-radius);
+  border: var(--bk-control-border);
   background: #ffffff;
   font-size: 14px;
   transition: all 0.2s;
@@ -432,7 +436,7 @@
   outline: none;
   border-color: #40010D;
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.05);
+  box-shadow: var(--bk-control-focus);
 }
 
 .bk-page-wrapper .bk-select {
@@ -2648,7 +2652,7 @@
 
 .bk-page-wrapper .bk-headline {
   padding: 14px;
-  border-radius: 22px;
+  border-radius: var(--bk-card-radius);
   background: rgba(13, 19, 36, 0.035);
   border: 1px solid rgba(13, 13, 13, 0.06);
 }
@@ -2684,7 +2688,7 @@
 .bk-page-wrapper .bk-filters {
   grid-template-columns: minmax(260px, 1.3fr) repeat(4, minmax(150px, 0.7fr)) !important;
   padding: 14px;
-  border-radius: 22px;
+  border-radius: var(--bk-card-radius);
   background: #ffffff;
   border: 1px solid rgba(13, 13, 13, 0.07);
   box-shadow: 0 14px 34px rgba(13, 13, 13, 0.05);
