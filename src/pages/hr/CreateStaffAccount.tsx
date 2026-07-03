@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
+import { initializeApp, getApps } from "firebase/app";
+import {
+  createUserWithEmailAndPassword,
+  getAuth,
+  signOut,
+  updateProfile,
+  type Auth,
+} from "firebase/auth";
 
-import { adminCreateStaffUser } from "../../services/adminStaffService";
+import { auth } from "../../services/firebase";
 import {
   createEmployeeNotification,
   syncEmployeeRecordFromUser,
@@ -12,8 +20,76 @@ type Props = {
   session: HrSession;
 };
 
+type CreateRole = "staff" | "reception" | "admin" | "hr";
+
+const CREATE_ROLE_OPTIONS: Array<{ value: CreateRole; label: string }> = [
+  { value: "staff", label: "موظف" },
+  { value: "hr", label: "الموارد البشرية" },
+  { value: "reception", label: "الاستقبال" },
+  { value: "admin", label: "مدير" },
+];
+
+const PROMOTE_ROLE_OPTIONS: Array<{ value: EmployeeRole; label: string }> = [
+  { value: "staff", label: "موظف" },
+  { value: "hr", label: "الموارد البشرية" },
+  { value: "reception", label: "الاستقبال" },
+  { value: "admin", label: "مدير" },
+  { value: "owner", label: "المالك" },
+];
+
 function makeTempPassword() {
   return `Hr${Math.random().toString(36).slice(2, 6)}${Math.random().toString(36).slice(2, 6)}!`;
+}
+
+function getSecondaryAuth() {
+  const options = (auth as any)?.app?.options;
+  if (!options) throw new Error("تعذر تجهيز Firebase Auth لإنشاء الحساب.");
+
+  const name = "hr-secondary-auth-app";
+  const app = getApps().find((item) => item.name === name) || initializeApp(options, name);
+  return getAuth(app);
+}
+
+function hasArabicText(value: string) {
+  return /[\u0600-\u06FF]/.test(value);
+}
+
+function getRoleLabel(role: unknown) {
+  const value = cleanText(role).toLowerCase();
+  if (value === "owner") return "المالك";
+  if (value === "admin") return "مدير";
+  if (value === "hr") return "الموارد البشرية";
+  if (value === "reception") return "الاستقبال";
+  if (value === "staff") return "موظف";
+  return cleanText(role) || "غير محدد";
+}
+
+function getFriendlyAuthError(error: unknown, fallback: string) {
+  const code = cleanText((error as any)?.code).toLowerCase();
+  const raw = cleanText((error as any)?.message)
+    .replace(/^FirebaseError:\s*/i, "")
+    .replace(/^FunctionsError:\s*/i, "");
+
+  if (code.includes("email-already-in-use") || raw.includes("email-already-in-use")) {
+    return "هذا البريد مستخدم مسبقًا.";
+  }
+  if (code.includes("weak-password") || raw.includes("weak-password")) {
+    return "كلمة المرور ضعيفة. استخدم 6 أحرف على الأقل.";
+  }
+  if (code.includes("invalid-email") || raw.includes("invalid-email")) {
+    return "صيغة البريد الإلكتروني غير صحيحة.";
+  }
+  if (code.includes("permission-denied") || raw.includes("permission-denied")) {
+    return "لا توجد صلاحية كافية لإنشاء أو ربط الحساب.";
+  }
+  if (code.includes("unauthenticated") || raw.includes("unauthenticated")) {
+    return "انتهت جلسة الدخول. سجل الدخول مرة أخرى ثم حاول إنشاء الحساب.";
+  }
+  if (code.includes("network-request-failed") || raw.includes("network-request-failed")) {
+    return "تعذر الاتصال بـ Firebase. تحقق من الاتصال ثم حاول مرة أخرى.";
+  }
+  if (hasArabicText(raw)) return raw;
+  return fallback;
 }
 
 export default function CreateStaffAccountPage({ session }: Props) {
@@ -29,7 +105,7 @@ export default function CreateStaffAccountPage({ session }: Props) {
     title: "",
     avatarUrl: "",
     password: makeTempPassword(),
-    role: "staff" as "staff" | "reception" | "admin" | "hr",
+    role: "staff" as CreateRole,
     specialties: "",
     bio: "",
   });
@@ -49,42 +125,86 @@ export default function CreateStaffAccountPage({ session }: Props) {
     active: true,
   });
 
-  const canCreate = useMemo(() => !!session.uid, [session.uid]);
+  const sessionRole = cleanText(session.role).toLowerCase();
+  const hasFirebaseAuth = !!auth.currentUser;
+  const canManageAccounts = useMemo(
+    () => ["owner", "admin", "hr"].includes(sessionRole),
+    [sessionRole]
+  );
+  const canCreate = useMemo(
+    () => !!session.uid && hasFirebaseAuth && canManageAccounts,
+    [canManageAccounts, hasFirebaseAuth, session.uid]
+  );
+
+  const disabledReason = !hasFirebaseAuth
+    ? "جاري التحقق من جلسة Firebase. إذا استمرت الرسالة، سجل الخروج ثم ادخل من جديد."
+    : !canManageAccounts
+      ? "إنشاء حسابات الموظفين متاح للمالك أو المدير أو الموارد البشرية فقط."
+      : "";
+
+  const ensureCanManageAccounts = () => {
+    if (!auth.currentUser) {
+      setMessage("انتهت جلسة الدخول. سجل الدخول مرة أخرى ثم حاول إنشاء الحساب.");
+      return false;
+    }
+    if (!canManageAccounts) {
+      setMessage("لا توجد صلاحية كافية لإنشاء أو ربط حسابات الموظفين.");
+      return false;
+    }
+    return true;
+  };
 
   const handleCreate = async () => {
+    if (!ensureCanManageAccounts()) return;
+
     const displayName = cleanText(createForm.displayName);
     const email = cleanText(createForm.email).toLowerCase();
+    const password = cleanText(createForm.password);
     if (!displayName || !email || !email.includes("@")) {
-      setMessage("Display name and valid email are required.");
+      setMessage("الاسم والبريد الإلكتروني الصحيح مطلوبان.");
       return;
     }
-    if (!createForm.password || createForm.password.length < 6) {
-      setMessage("Password must be at least 6 characters.");
+    if (!password || password.length < 6) {
+      setMessage("كلمة المرور يجب أن تكون 6 أحرف على الأقل.");
       return;
     }
 
     setBusy(true);
     setMessage("");
+    let secondary: Auth | null = null;
     try {
-      const result = await adminCreateStaffUser({
+      secondary = getSecondaryAuth();
+      const cred = await createUserWithEmailAndPassword(secondary, email, password);
+      await updateProfile(cred.user, { displayName }).catch(() => {});
+
+      const uid = cred.user.uid;
+      const employeeId = cleanText(createForm.employeeId) || uid;
+      const role = createForm.role;
+
+      await syncEmployeeRecordFromUser({
+        uid,
         email,
-        password: createForm.password,
         displayName,
         phone: createForm.phone,
-        employeeId: cleanText(createForm.employeeId),
+        employeeId,
         department: cleanText(createForm.department),
         title: cleanText(createForm.title),
         avatarUrl: cleanText(createForm.avatarUrl),
-        role: createForm.role,
+        role,
+        active: true,
+        linkedEmployeeDocId: employeeId,
         specialties: createForm.specialties
           ? createForm.specialties.split(",").map((x) => cleanText(x)).filter(Boolean)
           : [],
         bio: createForm.bio,
+        employeeProfileEnabled: true,
+        showOnAbout: role === "staff",
+        showOnBooking: role === "staff",
       });
 
       await createEmployeeNotification({
-        targetUid: result.uid,
-        targetEmployeeId: result.employeeId || result.uid,
+        targetUid: uid,
+        targetEmployeeId: employeeId,
         type: "system",
         title: "تم إنشاء حساب الموظف",
         body: "يمكنك الآن الدخول إلى بوابة الموظف ومتابعة التنبيهات الخاصة بك.",
@@ -92,10 +212,10 @@ export default function CreateStaffAccountPage({ session }: Props) {
       }).catch(() => {});
 
       const createdIdentity =
-        result.employeeId && result.employeeId !== result.uid
-          ? `${result.uid} / ${result.employeeId}`
-          : result.uid;
-      setMessage(`Created ${result.displayName} (${createdIdentity}) as ${result.role}.`);
+        employeeId && employeeId !== uid
+          ? `${uid} / ${employeeId}`
+          : uid;
+      setMessage(`تم إنشاء حساب الموظف: ${displayName} (${createdIdentity}) بدور ${getRoleLabel(role)}.`);
       setCreateForm({
         displayName: "",
         email: "",
@@ -110,18 +230,21 @@ export default function CreateStaffAccountPage({ session }: Props) {
         bio: "",
       });
     } catch (e) {
-      setMessage(cleanText((e as any)?.message || "Failed to create staff account."));
+      setMessage(getFriendlyAuthError(e, "تعذر إنشاء حساب الموظف. تأكد من الصلاحيات والبيانات ثم حاول مرة أخرى."));
     } finally {
+      if (secondary) await signOut(secondary).catch(() => {});
       setBusy(false);
     }
   };
 
   const handlePromote = async () => {
+    if (!ensureCanManageAccounts()) return;
+
     const uid = cleanText(promoteForm.uid);
     const displayName = cleanText(promoteForm.displayName);
     const email = cleanText(promoteForm.email).toLowerCase();
     if (!uid || !displayName || !email || !email.includes("@")) {
-      setMessage("UID, name, and email are required to promote an existing user.");
+      setMessage("معرّف المستخدم والاسم والبريد الإلكتروني مطلوبة لربط مستخدم موجود.");
       return;
     }
 
@@ -162,7 +285,7 @@ export default function CreateStaffAccountPage({ session }: Props) {
         promoteForm.employeeId && promoteForm.employeeId !== uid
           ? `${uid} / ${promoteForm.employeeId}`
           : uid;
-      setMessage(`Promoted ${displayName} (${promotedIdentity}) to ${promoteForm.role}.`);
+      setMessage(`تم ربط المستخدم: ${displayName} (${promotedIdentity}) بدور ${getRoleLabel(promoteForm.role)}.`);
       setPromoteForm({
         uid: "",
         displayName: "",
@@ -178,7 +301,7 @@ export default function CreateStaffAccountPage({ session }: Props) {
         active: true,
       });
     } catch (e) {
-      setMessage(cleanText((e as any)?.message || "Failed to promote existing user."));
+      setMessage(getFriendlyAuthError(e, "تعذر ربط المستخدم الموجود. تأكد من الصلاحيات والبيانات ثم حاول مرة أخرى."));
     } finally {
       setBusy(false);
     }
@@ -189,28 +312,28 @@ export default function CreateStaffAccountPage({ session }: Props) {
       <section className="hr-card">
         <div className="hr-card-head">
           <div>
-            <h2>Create Staff Account</h2>
-            <p>Use the callable for brand new users or sync an existing user into the HR model.</p>
+            <h2>إنشاء حساب موظف</h2>
+            <p>أنشئ حساب Firebase جديدًا للموظف أو اربط مستخدمًا موجودًا بملف الموارد البشرية.</p>
           </div>
         </div>
 
         {message ? <div className="hr-alert">{message}</div> : null}
-        {!canCreate ? <div className="hr-muted">Waiting for signed-in HR session...</div> : null}
+        {disabledReason ? <div className="hr-muted">{disabledReason}</div> : null}
 
         <div className="hr-grid">
           <div className="hr-card hr-card--soft">
-            <h3>New Account</h3>
+            <h3>حساب جديد</h3>
             <div className="hr-form-grid">
               <label className="hr-field">
-                <span>Display name</span>
+                <span>الاسم الظاهر</span>
                 <input value={createForm.displayName} onChange={(e) => setCreateForm((p) => ({ ...p, displayName: e.target.value }))} />
               </label>
               <label className="hr-field">
-                <span>Email</span>
+                <span>البريد الإلكتروني</span>
                 <input value={createForm.email} onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))} />
               </label>
               <label className="hr-field">
-                <span>Phone</span>
+                <span>رقم الجوال</span>
                 <input value={createForm.phone} onChange={(e) => setCreateForm((p) => ({ ...p, phone: e.target.value }))} />
               </label>
               <label className="hr-field">
@@ -246,28 +369,29 @@ export default function CreateStaffAccountPage({ session }: Props) {
                 />
               </label>
               <label className="hr-field">
-                <span>Role</span>
+                <span>الدور</span>
                 <select value={createForm.role} onChange={(e) => setCreateForm((p) => ({ ...p, role: e.target.value as any }))}>
-                  <option value="staff">Staff</option>
-                  <option value="hr">HR</option>
-                  <option value="reception">Reception</option>
-                  <option value="admin">Admin</option>
+                  {CREATE_ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="hr-field hr-field--wide">
-                <span>Temporary password</span>
+                <span>كلمة مرور مؤقتة</span>
                 <input value={createForm.password} onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))} />
               </label>
               <label className="hr-field hr-field--wide">
-                <span>Specialties</span>
+                <span>التخصصات</span>
                 <input
                   value={createForm.specialties}
                   onChange={(e) => setCreateForm((p) => ({ ...p, specialties: e.target.value }))}
-                  placeholder="hair, color, nails"
+                  placeholder="شعر، صبغات، أظافر"
                 />
               </label>
               <label className="hr-field hr-field--wide">
-                <span>Bio</span>
+                <span>نبذة</span>
                 <textarea
                   rows={4}
                   value={createForm.bio}
@@ -278,69 +402,69 @@ export default function CreateStaffAccountPage({ session }: Props) {
 
             <div className="hr-actions">
               <button className="hr-button hr-button--ghost" type="button" onClick={() => setCreateForm((p) => ({ ...p, password: makeTempPassword() }))} disabled={busy}>
-                Generate password
+                توليد كلمة مرور
               </button>
-              <button className="hr-button hr-button--accent" type="button" onClick={() => void handleCreate()} disabled={busy}>
-                Create account
+              <button className="hr-button hr-button--accent" type="button" onClick={() => void handleCreate()} disabled={busy || !canCreate}>
+                {busy ? "جارٍ إنشاء الحساب..." : "إنشاء الحساب"}
               </button>
             </div>
           </div>
 
           <div className="hr-card hr-card--soft">
-            <h3>Promote Existing User</h3>
+            <h3>ربط مستخدم موجود</h3>
             <div className="hr-form-grid">
               <label className="hr-field">
-                <span>UID</span>
+                <span>معرّف المستخدم UID</span>
                 <input value={promoteForm.uid} onChange={(e) => setPromoteForm((p) => ({ ...p, uid: e.target.value }))} />
               </label>
               <label className="hr-field">
-                <span>Display name</span>
+                <span>الاسم الظاهر</span>
                 <input value={promoteForm.displayName} onChange={(e) => setPromoteForm((p) => ({ ...p, displayName: e.target.value }))} />
               </label>
               <label className="hr-field">
-                <span>Email</span>
+                <span>البريد الإلكتروني</span>
                 <input value={promoteForm.email} onChange={(e) => setPromoteForm((p) => ({ ...p, email: e.target.value }))} />
               </label>
               <label className="hr-field">
-                <span>Phone</span>
+                <span>رقم الجوال</span>
                 <input value={promoteForm.phone} onChange={(e) => setPromoteForm((p) => ({ ...p, phone: e.target.value }))} />
               </label>
               <label className="hr-field">
-                <span>Employee ID</span>
-                <input value={promoteForm.employeeId} onChange={(e) => setPromoteForm((p) => ({ ...p, employeeId: e.target.value }))} placeholder="defaults to UID" />
+                <span>الرقم الوظيفي</span>
+                <input value={promoteForm.employeeId} onChange={(e) => setPromoteForm((p) => ({ ...p, employeeId: e.target.value }))} placeholder="يُترك فارغًا ليستخدم UID" />
               </label>
               <label className="hr-field">
-                <span>Department</span>
-                <input value={promoteForm.department} onChange={(e) => setPromoteForm((p) => ({ ...p, department: e.target.value }))} placeholder="Salon / branch / team" />
+                <span>القسم</span>
+                <input value={promoteForm.department} onChange={(e) => setPromoteForm((p) => ({ ...p, department: e.target.value }))} placeholder="إدارة / فرع / فريق" />
               </label>
               <label className="hr-field">
-                <span>Title</span>
-                <input value={promoteForm.title} onChange={(e) => setPromoteForm((p) => ({ ...p, title: e.target.value }))} placeholder="Senior stylist" />
+                <span>المسمى الوظيفي</span>
+                <input value={promoteForm.title} onChange={(e) => setPromoteForm((p) => ({ ...p, title: e.target.value }))} placeholder="مثال: أخصائية شعر" />
               </label>
               <label className="hr-field hr-field--wide">
-                <span>Avatar URL</span>
+                <span>رابط الصورة</span>
                 <input value={promoteForm.avatarUrl} onChange={(e) => setPromoteForm((p) => ({ ...p, avatarUrl: e.target.value }))} placeholder="https://..." />
               </label>
               <label className="hr-field">
-                <span>Role</span>
+                <span>الدور</span>
                 <select value={promoteForm.role} onChange={(e) => setPromoteForm((p) => ({ ...p, role: e.target.value as EmployeeRole }))}>
-                  <option value="staff">Staff</option>
-                  <option value="hr">HR</option>
-                  <option value="reception">Reception</option>
-                  <option value="admin">Admin</option>
-                  <option value="owner">Owner</option>
+                  {PROMOTE_ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="hr-field hr-field--wide">
-                <span>Specialties</span>
+                <span>التخصصات</span>
                 <input
                   value={promoteForm.specialties}
                   onChange={(e) => setPromoteForm((p) => ({ ...p, specialties: e.target.value }))}
-                  placeholder="hair, color, nails"
+                  placeholder="شعر، صبغات، أظافر"
                 />
               </label>
               <label className="hr-field hr-field--wide">
-                <span>Bio</span>
+                <span>نبذة</span>
                 <textarea
                   rows={4}
                   value={promoteForm.bio}
@@ -355,12 +479,12 @@ export default function CreateStaffAccountPage({ session }: Props) {
                 checked={promoteForm.active}
                 onChange={(e) => setPromoteForm((p) => ({ ...p, active: e.target.checked }))}
               />
-              Active
+              نشط
             </label>
 
             <div className="hr-actions">
-              <button className="hr-button" type="button" onClick={() => void handlePromote()} disabled={busy}>
-                Sync user
+              <button className="hr-button" type="button" onClick={() => void handlePromote()} disabled={busy || !canCreate}>
+                {busy ? "جارٍ المزامنة..." : "مزامنة المستخدم"}
               </button>
             </div>
           </div>

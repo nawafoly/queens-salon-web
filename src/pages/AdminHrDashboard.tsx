@@ -699,16 +699,16 @@ function HrOverview({
 
         <div className="hr-hero__aside">
           <span className="hr-chip">الحساب الحالي</span>
-          <strong>{session.displayName || "HR User"}</strong>
+          <strong>{session.displayName || "مستخدم الموارد البشرية"}</strong>
           <span>{session.email || "غير محدد"}</span>
           <div className="hr-hero__badges">
             <span className="hr-badge hr-badge--soft">{readableRole(session.role)}</span>
-            <span className="hr-badge hr-badge--outline">HR</span>
+            <span className="hr-badge hr-badge--outline">الموارد</span>
           </div>
         </div>
       </section>
 
-      <section className="hr-metric-grid" aria-label="HR summary">
+      <section className="hr-metric-grid" aria-label="ملخص الموارد البشرية">
         <HrMetricCard
           label="الموظفون"
           value={String(rosterSorted.length)}
@@ -1444,7 +1444,7 @@ export default function AdminHrDashboard() {
         <main className="hr-shell-main">
           <div className="hr-shell-header">
             <div>
-              <p className="hr-shell-kicker">Human Resources</p>
+              <p className="hr-shell-kicker">الموارد البشرية</p>
               <h1>جاري تحميل لوحة الموارد البشرية...</h1>
               <p className="hr-shell-subtitle">نجهز بيانات الموظفين والطلبات قبل عرض اللوحة.</p>
             </div>
@@ -1525,7 +1525,7 @@ export default function AdminHrDashboard() {
         </nav>
 
         <div className="hr-shell-note">
-          <span>{session.displayName || "Signed in"}</span>
+          <span>{session.displayName || "مسجل الدخول"}</span>
           <span>{session.email || ""}</span>
           <small>{readableRole(session.role)}</small>
         </div>
@@ -1534,7 +1534,7 @@ export default function AdminHrDashboard() {
       <main className="hr-shell-main">
         <header className="hr-shell-header">
           <div>
-            <p className="hr-shell-kicker">Human Resources</p>
+            <p className="hr-shell-kicker">الموارد البشرية</p>
             <h1>إدارة الموارد البشرية</h1>
             <p className="hr-shell-subtitle">
               مساحة موحدة لإدارة التوظيف والموظفين والملفات الإدارية مع فصل واضح بين العرض والتعديل.
@@ -1542,7 +1542,7 @@ export default function AdminHrDashboard() {
           </div>
 
           <div className="hr-shell-user">
-            <strong>{session.displayName || "HR User"}</strong>
+            <strong>{session.displayName || "مستخدم الموارد البشرية"}</strong>
             <span>{readableRole(session.role)}</span>
             <button className="hr-refresh" type="button" onClick={() => void loadData()} disabled={loadingData}>
               {loadingData ? "جارٍ التحديث..." : "تحديث البيانات"}
