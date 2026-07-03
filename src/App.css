@@ -4,10 +4,6 @@
    Dark Elegant Theme
    =========================== */
 
-/* Fonts (once only) */
-@import url("https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap");
-
 /* ===========================
    Root Variables
    =========================== */
@@ -24,7 +20,7 @@
 
   /* Semantic tokens */
   --qs-bg: var(--qs-black);
-  --qs-surface: rgba(255, 255, 255, 0.06);
+  --qs-surface: var(--qs-card);
   --qs-border: rgba(255, 255, 255, 0.12);
 
   --qs-text: var(--qs-offwhite);
@@ -61,9 +57,9 @@
   --bs-border-light: rgba(255, 255, 255, 0.08);
   --bs-border-dark: rgba(255, 255, 255, 0.18);
 
-  --bs-shadow-soft: 0 2px 18px rgba(0,0,0,0.25);
+  --bs-shadow-soft: var(--qs-shadow-soft);
   --bs-shadow-medium: 0 10px 30px rgba(0,0,0,0.35);
-  --bs-shadow-strong: 0 18px 55px rgba(0,0,0,0.45);
+  --bs-shadow-strong: var(--qs-shadow);
 
   --bs-success-color: #22c55e;
   --bs-warning-color: #f59e0b;
@@ -79,35 +75,32 @@
 }
 
 html {
-  font-size: 16px;
-  scroll-behavior: smooth;
-  direction: rtl;
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
+  --qs-root-font-size: 16px;
+  --qs-root-scroll-behavior: smooth;
+  --qs-root-direction: rtl;
 }
 
 html,
 body {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-  margin: 0;
-  padding: 0;
+  --qs-root-width: 100%;
+  --qs-root-max-width: 100%;
+  --qs-root-overflow-x: hidden;
+  --qs-root-margin: 0;
+  --qs-root-padding: 0;
 }
 
 /* Body */
 body {
-  font-family: "Tajawal", "Cairo", sans-serif;
-  color: var(--qs-text);
-  background-color: var(--qs-bg);
-  line-height: 1.6;
-  direction: rtl;
-  text-align: right;
-  min-height: 100vh;
-
-  background:
+  --qs-body-font-family: "Tajawal", "Cairo", system-ui, -apple-system, Segoe UI, Arial, sans-serif;
+  --qs-body-color: var(--qs-text);
+  --qs-body-bg-color: var(--qs-bg);
+  --qs-body-line-height: 1.6;
+  --qs-body-direction: rtl;
+  --qs-body-text-align: right;
+  --qs-body-min-height: 100vh;
+  --qs-body-background:
     radial-gradient(900px 520px at 15% 20%, rgba(255,255,255,0.06), transparent 60%),
-    radial-gradient(800px 450px at 85% 25%, rgba(64,1,13,0.10), transparent 55%),
+    radial-gradient(800px 450px at 85% 25%, rgba(64,1,13,0.12), transparent 55%),
     linear-gradient(180deg, var(--qs-black) 0%, #090909 100%);
 }
 
@@ -115,18 +108,18 @@ body {
 #root,
 .app,
 .main-content {
-  width: 100%;
-  max-width: 100%;
+  --qs-root-wrapper-width: 100%;
+  --qs-root-wrapper-max-width: 100%;
 }
 
 .app {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
+  --qs-app-display: flex;
+  --qs-app-flex-direction: column;
+  --qs-app-min-height: 100vh;
 }
 
 .main-content {
-  flex: 1;
+  --qs-main-content-flex: 1;
 }
 
 /* Media */
@@ -160,9 +153,9 @@ p {
 }
 
 .section-title {
-  font-size: 2rem;
-  font-weight: 900;
-  margin-bottom: 2rem;
+  --qs-section-title-size: 2rem;
+  --qs-section-title-weight: 900;
+  --qs-section-title-margin-bottom: 2rem;
 }
 
 /* ===========================
@@ -181,23 +174,28 @@ a:hover {
    Buttons
    =========================== */
 .btn {
-  font-weight: 700;
-  transition: all 0.25s ease;
+  --qs-button-font-weight: 800;
+  --qs-button-transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    filter 0.2s ease;
 }
 
 .btn:not(.btn-sm):not(.btn-lg) {
-  padding: 0.75rem 1.5rem;
+  --qs-button-padding: 0.75rem 1.5rem;
 }
 
 .btn-outline {
-  background: transparent;
-  color: var(--qs-text);
-  border: 1px solid var(--qs-border);
+  --qs-button-outline-bg: transparent;
+  --qs-button-outline-color: var(--qs-text);
+  --qs-button-outline-border: 1px solid var(--qs-border);
 }
 
 .btn-outline:hover {
-  background: var(--qs-accent);
-  color: var(--qs-offwhite);
+  --qs-button-outline-hover-bg: var(--qs-accent);
+  --qs-button-outline-hover-color: var(--qs-offwhite);
 }
 
 /* ===========================
@@ -207,25 +205,24 @@ a:hover {
 .form-select,
 input,
 textarea {
-  font-family: "Tajawal", "Cairo", sans-serif;
+  --qs-control-font-family: "Tajawal", "Cairo", sans-serif;
 }
 
 .form-control {
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--qs-border);
-  border-radius: 12px;
-  background: rgba(255,255,255,0.05);
-  color: var(--qs-text);
+  --qs-control-padding: 0.75rem 1rem;
+  --qs-control-border: 1px solid var(--qs-border);
+  --qs-control-radius: 12px;
+  --qs-control-bg: rgba(255,255,255,0.06);
+  --qs-control-color: var(--qs-text);
 }
 
 .form-control::placeholder {
-  color: var(--qs-text-muted);
+  --qs-control-placeholder-color: var(--qs-text-muted);
 }
 
 .form-control:focus {
-  outline: none;
-  border-color: rgba(64,1,13,0.7);
-  box-shadow: 0 0 0 0.25rem rgba(64,1,13,0.25);
+  --qs-control-focus-border: rgba(64,1,13,0.75);
+  --qs-control-focus-shadow: var(--qs-focus);
 }
 
 /* ===========================
@@ -240,14 +237,14 @@ textarea {
    Responsive
    =========================== */
 @media (max-width: 991.98px) {
-  .section-title { font-size: 1.8rem; }
+  .section-title { --qs-section-title-size: 1.8rem; }
 }
 
 @media (max-width: 767.98px) {
-  .section-title { font-size: 1.5rem; }
+  .section-title { --qs-section-title-size: 1.5rem; }
 }
 
 @media (max-width: 575.98px) {
-  body { font-size: 0.95rem; }
+  body { --qs-body-font-size: 0.95rem; }
 }
 

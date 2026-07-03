@@ -26,6 +26,7 @@
   /* ✅ Semantic Tokens */
   --qs-bg: var(--qs-black);
   --qs-card: rgba(255, 255, 255, 0.06);
+  --qs-surface: var(--qs-card);
   --qs-card-2: rgba(255, 255, 255, 0.09);
   --qs-border: rgba(255, 255, 255, 0.12);
 
@@ -44,6 +45,38 @@
 
   /* Focus */
   --qs-focus: 0 0 0 3px rgba(64, 1, 13, 0.25);
+
+  /* Shared primitive defaults */
+  --qs-section-title-size: 2rem;
+  --qs-section-title-weight: 900;
+  --qs-section-title-color: var(--qs-text);
+  --qs-section-title-margin-bottom: 2rem;
+
+  --qs-control-padding: 0.75rem 1rem;
+  --qs-control-border: 1px solid var(--qs-border);
+  --qs-control-radius: 12px;
+  --qs-control-bg: rgba(255, 255, 255, 0.06);
+  --qs-control-color: var(--qs-text);
+  --qs-control-placeholder-color: var(--qs-text-muted);
+  --qs-control-focus-border: rgba(64, 1, 13, 0.75);
+  --qs-control-focus-shadow: var(--qs-focus);
+
+  --qs-button-radius: 16px;
+  --qs-button-font-weight: 800;
+  --qs-button-padding: 0.75rem 1.5rem;
+  --qs-button-transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    filter 0.2s ease;
+  --qs-button-outline-bg: transparent;
+  --qs-button-outline-color: var(--qs-text);
+  --qs-button-outline-border: 1px solid var(--qs-border);
+  --qs-button-outline-hover-bg: var(--qs-accent);
+  --qs-button-outline-hover-border: rgba(255, 255, 255, 0.10);
+  --qs-button-outline-hover-color: var(--qs-offwhite);
+  --qs-button-outline-hover-shadow: var(--qs-shadow-soft);
 
   /* ===========================
      ✅ Compatibility Tokens
@@ -102,55 +135,56 @@
 }
 
 html {
-  font-size: 16px;
-  scroll-behavior: smooth;
-  direction: rtl;
+  font-size: var(--qs-root-font-size, 16px);
+  scroll-behavior: var(--qs-root-scroll-behavior, smooth);
+  direction: var(--qs-root-direction, rtl);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
 html,
 body {
-  width: 100%;
-  max-width: 100%;
-  height: 100%;
-  overflow-x: hidden;
-  margin: 0;
-  padding: 0;
+  width: var(--qs-root-width, 100%);
+  max-width: var(--qs-root-max-width, 100%);
+  height: var(--qs-root-height, 100%);
+  overflow-x: var(--qs-root-overflow-x, hidden);
+  margin: var(--qs-root-margin, 0);
+  padding: var(--qs-root-padding, 0);
 }
 
 #root {
-  min-height: 100%;
+  min-height: var(--qs-root-min-height, 100%);
 }
 
 body {
-  font-family: "Tajawal", "Cairo", system-ui, -apple-system, Segoe UI, Arial, sans-serif;
-  color: var(--qs-text);
-  background-color: var(--qs-bg);
-  direction: rtl;
-  text-align: right;
-  min-height: 100vh;
-  line-height: 1.6;
+  font-family: var(--qs-body-font-family, "Tajawal", "Cairo", system-ui, -apple-system, Segoe UI, Arial, sans-serif);
+  font-size: var(--qs-body-font-size, inherit);
+  color: var(--qs-body-color, var(--qs-text));
+  background-color: var(--qs-body-bg-color, var(--qs-bg));
+  direction: var(--qs-body-direction, rtl);
+  text-align: var(--qs-body-text-align, right);
+  min-height: var(--qs-body-min-height, 100vh);
+  line-height: var(--qs-body-line-height, 1.6);
 
   /* خلفية دارك أنيقة */
-  background:
+  background: var(--qs-body-background,
     radial-gradient(900px 520px at 15% 20%, rgba(255, 255, 255, 0.06), transparent 60%),
     radial-gradient(800px 450px at 85% 25%, rgba(64, 1, 13, 0.12), transparent 55%),
-    linear-gradient(180deg, var(--qs-black) 0%, #090909 100%);
+    linear-gradient(180deg, var(--qs-black) 0%, #090909 100%));
 }
 
 /* Root wrappers */
 #root,
 .app,
 .main-content {
-  width: 100%;
-  max-width: 100%;
+  width: var(--qs-root-wrapper-width, 100%);
+  max-width: var(--qs-root-wrapper-max-width, 100%);
 }
 
 .app {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
+  display: var(--qs-app-display, flex);
+  flex-direction: var(--qs-app-flex-direction, column);
+  min-height: var(--qs-app-min-height, 100vh);
 }
 
 /* Public pages: unify primary button color to #253140 (exclude dashboard routes). */
@@ -217,7 +251,7 @@ body {
 }
 
 .main-content {
-  flex: 1;
+  flex: var(--qs-main-content-flex, 1);
 }
 
 /* ===========================
@@ -549,10 +583,10 @@ p {
 }
 
 .section-title {
-  font-size: 2rem;
-  font-weight: 900;
-  color: var(--qs-text);
-  margin-bottom: 2rem;
+  font-size: var(--qs-section-title-size, 2rem);
+  font-weight: var(--qs-section-title-weight, 900);
+  color: var(--qs-section-title-color, var(--qs-text));
+  margin-bottom: var(--qs-section-title-margin-bottom, 2rem);
 }
 
 /* Links */
@@ -573,20 +607,21 @@ a:hover {
 input,
 select,
 textarea {
-  font-family: "Tajawal", "Cairo", sans-serif;
+  font-family: var(--qs-control-font-family, "Tajawal", "Cairo", sans-serif);
 }
 
 .form-control,
 .form-select {
-  border: 1px solid var(--qs-border);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--qs-text);
-  border-radius: 12px;
+  padding: var(--qs-control-padding, 0.75rem 1rem);
+  border: var(--qs-control-border, 1px solid var(--qs-border));
+  background: var(--qs-control-bg, rgba(255, 255, 255, 0.06));
+  color: var(--qs-control-color, var(--qs-text));
+  border-radius: var(--qs-control-radius, 12px);
 }
 
 .form-control::placeholder,
 textarea::placeholder {
-  color: var(--qs-text-muted);
+  color: var(--qs-control-placeholder-color, var(--qs-text-muted));
   opacity: 1;
 }
 
@@ -596,8 +631,8 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  box-shadow: var(--qs-focus);
-  border-color: rgba(64, 1, 13, 0.75);
+  box-shadow: var(--qs-control-focus-shadow, var(--qs-focus));
+  border-color: var(--qs-control-focus-border, rgba(64, 1, 13, 0.75));
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator {
@@ -610,18 +645,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 button,
 .btn,
 .qs-btn {
-  border-radius: 16px;
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.2s ease,
-    background-color 0.2s ease,
-    border-color 0.2s ease,
-    filter 0.2s ease;
+  border-radius: var(--qs-button-radius, 16px);
+  transition: var(--qs-button-transition, transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, filter 0.2s ease);
 }
 
 /* Generic bootstrap-like button touch */
 .btn {
-  font-weight: 800;
+  font-weight: var(--qs-button-font-weight, 800);
+}
+
+.btn:not(.btn-sm):not(.btn-lg) {
+  padding: var(--qs-button-padding, 0.75rem 1.5rem);
 }
 
 /* QS button */
@@ -641,15 +675,15 @@ button,
 
 /* Outline (custom) */
 .btn-outline {
-  background: transparent;
-  color: var(--qs-text);
-  border: 1px solid var(--qs-border);
+  background: var(--qs-button-outline-bg, transparent);
+  color: var(--qs-button-outline-color, var(--qs-text));
+  border: var(--qs-button-outline-border, 1px solid var(--qs-border));
 }
 .btn-outline:hover {
-  background: var(--qs-accent);
-  border-color: rgba(255, 255, 255, 0.10);
-  color: var(--qs-offwhite);
-  box-shadow: var(--qs-shadow-soft);
+  background: var(--qs-button-outline-hover-bg, var(--qs-accent));
+  border-color: var(--qs-button-outline-hover-border, rgba(255, 255, 255, 0.10));
+  color: var(--qs-button-outline-hover-color, var(--qs-offwhite));
+  box-shadow: var(--qs-button-outline-hover-shadow, var(--qs-shadow-soft));
   transform: translateY(-1px);
 }
 
@@ -658,8 +692,8 @@ button,
    No !important ✅
    =========================== */
 #root :where(.btn) {
-  font-weight: 800;
-  border-radius: 16px;
+  font-weight: var(--qs-button-font-weight, 800);
+  border-radius: var(--qs-button-radius, 16px);
 }
 
 /* Primary */
