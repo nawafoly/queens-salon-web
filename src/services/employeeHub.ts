@@ -416,6 +416,15 @@ export async function syncEmployeeRecordFromUser(args: {
   const specialties = Array.isArray(args.specialties)
     ? args.specialties.map((x) => cleanText(x)).filter(Boolean)
     : [];
+  const userRef = hrDoc("users", uid);
+  let shouldSetUserCreatedAt = true;
+
+  try {
+    const existingUser = await getDoc(userRef);
+    shouldSetUserCreatedAt = !existingUser.exists() || !(existingUser.data() as any)?.createdAt;
+  } catch {
+    shouldSetUserCreatedAt = true;
+  }
 
   const employeeDocData = {
     uid,
@@ -455,6 +464,7 @@ export async function syncEmployeeRecordFromUser(args: {
     employeeId,
     linkedEmployeeDocId: employeeId,
     employeeProfileEnabled,
+    ...(shouldSetUserCreatedAt ? { createdAt: serverTimestamp() } : {}),
     updatedAt: serverTimestamp(),
   };
 
@@ -482,7 +492,7 @@ export async function syncEmployeeRecordFromUser(args: {
   };
 
   await Promise.all([
-    setDoc(hrDoc("users", uid), userDocData, { merge: true }),
+    setDoc(userRef, userDocData, { merge: true }),
     setDoc(hrDoc("employees", employeeId), employeeDocData, { merge: true }),
     isStaffLike
       ? setDoc(

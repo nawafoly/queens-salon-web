@@ -16,8 +16,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  orderBy,
-  query,
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
@@ -302,8 +300,20 @@ export default function SettingsUsers({
     return cleanEmail(email).endsWith("@malikat.com");
   }
 
+  function isBootstrapAccountEmail(email: string) {
+    return ["nawafaaa0@gmail.com", "nawafaaa6@gmail.com", "alolayan3@gmail.com"].includes(cleanEmail(email));
+  }
+
   function isEmployeeRole(role: UiRole) {
     return ["owner", "admin", "hr", "reception", "staff"].includes(role);
+  }
+
+  function isManagedAccountRole(role: UiRole) {
+    return ["owner", "admin", "hr", "reception", "staff", "pending"].includes(role);
+  }
+
+  function shouldShowManagedAccount(row: UserRow) {
+    return isManagedAccountRole(row.role) || isMalikatEmail(row.email) || isBootstrapAccountEmail(row.email);
   }
 
   const toastMsg = (msg: string, ms = 2200) => {
@@ -512,11 +522,10 @@ export default function SettingsUsers({
         repairResult = await repairLegacyStaffUserLinks();
       }
 
-      const qy = query(
-        collection(db, ...USERS_COLLECTION),
-        orderBy("createdAt", "desc")
-      );
-      const [snap, staffRows] = await Promise.all([getDocs(qy), listStaffLinkRows()]);
+      const [snap, staffRows] = await Promise.all([
+        getDocs(collection(db, ...USERS_COLLECTION)),
+        listStaffLinkRows(),
+      ]);
 
       const listAll: UserRow[] = snap.docs.map((d) => {
         const x = d.data() as any;
@@ -551,10 +560,10 @@ export default function SettingsUsers({
         };
       });
 
-      // ✅ عرض حسابات malikat.com فقط
+      // ✅ عرض الحسابات الداخلية + bootstrap حتى لو createdAt ناقص أو البريد ليس malikat.com
       const listFiltered = listAll
         .filter((u) => !u.deletedAt)
-        .filter((u) => isMalikatEmail(u.email))
+        .filter((u) => shouldShowManagedAccount(u))
         .map((u) => {
           // أي حساب malikat.com لو كان client/guest نخليه pending (عرض + إدارة)
           const fixedRole: UiRole =
@@ -569,8 +578,13 @@ export default function SettingsUsers({
                     role: fixedRole as any,
                     permissions: u.permissions,
                     permissionOverrides: u.permissionOverrides,
-                  }),
+                }),
           };
+        })
+        .sort((a, b) => {
+          const aTime = toMillis(a.createdAt) || toMillis(a.updatedAt);
+          const bTime = toMillis(b.createdAt) || toMillis(b.updatedAt);
+          return bTime - aTime || cleanText(a.displayName || a.email).localeCompare(cleanText(b.displayName || b.email), "ar");
         });
 
       setUsers(listFiltered);
