@@ -1943,6 +1943,7 @@
 .accounts-page--settings .accounts-modal__card--edit {
   width: min(1180px, 100%);
   max-height: calc(100vh - 44px);
+  overflow: hidden;
   padding: 0;
   border: 1px solid rgba(219, 229, 240, 0.92);
   border-radius: 34px;
@@ -1984,6 +1985,10 @@
   grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1.22fr);
   gap: 18px;
   padding: 22px 30px;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 42, 0.22) transparent;
 }
 
 .accounts-page--settings .accounts-modal__card--edit .accounts-modal__sidebar-card,
@@ -2231,14 +2236,13 @@
 }
 
 .accounts-page--settings .accounts-modal__card--edit .accounts-modal__footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
+  position: static;
+  z-index: 1;
   margin-top: 0;
-  padding: 16px 30px 24px;
-  background:
-    linear-gradient(180deg, rgba(248, 250, 252, 0), rgba(248, 250, 252, 0.96) 26%, #f8fafc 100%);
+  padding: 14px 30px 20px;
+  background: rgba(248, 250, 252, 0.96);
   border-top: 1px solid rgba(219, 229, 240, 0.72);
+  box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.04);
 }
 
 @media (max-width: 1280px) {
