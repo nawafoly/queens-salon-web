@@ -1920,3 +1920,371 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* =========================================
+   Account Editor v2: safe sidebar + real permissions
+========================================= */
+
+.dashboard-skin.is-sidebar-drawer .accounts-modal {
+  inset: 0 calc(var(--dash-fixed-sidebar-width, 320px) + var(--dash-fixed-sidebar-gap, 14px) + 12px) 0 0;
+}
+
+.accounts-page--settings .accounts-modal {
+  padding: clamp(18px, 2.2vw, 34px);
+}
+
+.accounts-page--settings .accounts-modal__backdrop {
+  background:
+    radial-gradient(circle at 78% 12%, rgba(244, 180, 0, 0.14), transparent 28%),
+    rgba(7, 17, 38, 0.54);
+  backdrop-filter: blur(11px) saturate(1.1);
+}
+
+.accounts-page--settings .accounts-modal__card--edit {
+  width: min(1180px, 100%);
+  max-height: calc(100vh - 44px);
+  padding: 0;
+  border: 1px solid rgba(219, 229, 240, 0.92);
+  border-radius: 34px;
+  background:
+    radial-gradient(520px 260px at 92% 4%, rgba(244, 180, 0, 0.13), transparent 58%),
+    radial-gradient(480px 220px at 8% 0%, rgba(9, 18, 37, 0.07), transparent 62%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow:
+    0 34px 72px rgba(7, 17, 38, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-modal__head {
+  align-items: center;
+  padding: 28px 30px 16px;
+  border-bottom: 1px solid rgba(219, 229, 240, 0.72);
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-modal__head h2 {
+  margin: 4px 0 6px;
+  font-size: clamp(30px, 4vw, 52px);
+  letter-spacing: -0.04em;
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-modal__head p {
+  max-width: 760px;
+  color: #64748b;
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-modal__close {
+  width: 48px;
+  height: 48px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-modal__body {
+  grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1.22fr);
+  gap: 18px;
+  padding: 22px 30px;
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-modal__sidebar-card,
+.accounts-page--settings .accounts-modal__card--edit .accounts-modal__main,
+.accounts-page--settings .accounts-permissions-editor {
+  border: 1px solid rgba(219, 229, 240, 0.88);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.07);
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-modal__main {
+  padding: 20px;
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-modal__sidebar-card--dark {
+  border: 0;
+  background:
+    radial-gradient(220px 160px at 12% 18%, rgba(244, 180, 0, 0.18), transparent 68%),
+    linear-gradient(145deg, #071126 0%, #101c34 58%, #251624 100%);
+  box-shadow: 0 22px 46px rgba(7, 17, 38, 0.18);
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-profile--modal {
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-avatar {
+  min-height: 96px;
+  border-radius: 30px;
+  background:
+    linear-gradient(135deg, #f7decf, #efd0bd);
+  color: #8a1230;
+  box-shadow: inset 0 0 0 1px rgba(138, 18, 48, 0.08);
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-form-grid {
+  gap: 14px;
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-field span {
+  color: #475569;
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-field input,
+.accounts-page--settings .accounts-modal__card--edit .accounts-field select,
+.accounts-page--settings .accounts-modal__card--edit .accounts-field textarea,
+.accounts-page--settings .accounts-modal__card--edit .accounts-field--switch .accounts-switch {
+  min-height: 52px;
+  border-radius: 18px;
+  border-color: #d7e2ef;
+  background: rgba(248, 250, 252, 0.8);
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-field textarea {
+  min-height: 108px;
+}
+
+.accounts-page--settings .accounts-permissions-editor {
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.accounts-page--settings .accounts-permissions-editor__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.accounts-page--settings .accounts-permissions-editor__head h3 {
+  margin: 4px 0 6px;
+  color: #071126;
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.accounts-page--settings .accounts-permissions-editor__head p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.75;
+}
+
+.accounts-page--settings .accounts-permissions-editor__stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.accounts-page--settings .accounts-permissions-editor__stats span {
+  min-height: 34px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #fff7df;
+  border: 1px solid #f2c859;
+  color: #6b4a00;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.accounts-page--settings .accounts-permissions-editor__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.accounts-page--settings .accounts-permission-toggle {
+  appearance: none;
+  width: 100%;
+  min-height: 110px;
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid #dbe5f0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94));
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 12px;
+  text-align: right;
+  align-items: start;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+.accounts-page--settings .accounts-permission-toggle:hover {
+  transform: translateY(-2px);
+  border-color: rgba(244, 180, 0, 0.6);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.09);
+}
+
+.accounts-page--settings .accounts-permission-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  transform: none;
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-on {
+  border-color: rgba(244, 180, 0, 0.78);
+  background:
+    radial-gradient(180px 90px at 100% 0%, rgba(244, 180, 0, 0.18), transparent 68%),
+    linear-gradient(180deg, #fff9e8, #fff3cb);
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-added {
+  border-color: rgba(16, 185, 129, 0.42);
+  background:
+    radial-gradient(180px 90px at 100% 0%, rgba(16, 185, 129, 0.14), transparent 70%),
+    #ecfdf5;
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-disabled-default {
+  border-color: rgba(239, 68, 68, 0.22);
+  background: #fff7f7;
+}
+
+.accounts-page--settings .accounts-permission-toggle__dot {
+  width: 12px;
+  height: 12px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  box-shadow: 0 0 0 5px rgba(203, 213, 225, 0.22);
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-on .accounts-permission-toggle__dot {
+  background: #f4b400;
+  box-shadow: 0 0 0 5px rgba(244, 180, 0, 0.18);
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-added .accounts-permission-toggle__dot {
+  background: #10b981;
+  box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.18);
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-disabled-default .accounts-permission-toggle__dot {
+  background: #ef4444;
+  box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.12);
+}
+
+.accounts-page--settings .accounts-permission-toggle__copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.accounts-page--settings .accounts-permission-toggle__copy strong {
+  color: #071126;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.5;
+}
+
+.accounts-page--settings .accounts-permission-toggle__copy small {
+  color: #64748b;
+  direction: ltr;
+  unicode-bidi: plaintext;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.accounts-page--settings .accounts-permission-toggle__copy em {
+  color: #64748b;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.65;
+}
+
+.accounts-page--settings .accounts-permission-toggle__state {
+  align-self: start;
+  white-space: nowrap;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(7, 17, 38, 0.06);
+  color: #334155;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-on .accounts-permission-toggle__state {
+  background: rgba(244, 180, 0, 0.18);
+  color: #7a5200;
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-added .accounts-permission-toggle__state {
+  background: rgba(16, 185, 129, 0.16);
+  color: #047857;
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-disabled-default .accounts-permission-toggle__state {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+}
+
+.accounts-page--settings .accounts-permissions-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.accounts-page--settings .accounts-modal__card--edit .accounts-modal__footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 0;
+  padding: 16px 30px 24px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0), rgba(248, 250, 252, 0.96) 26%, #f8fafc 100%);
+  border-top: 1px solid rgba(219, 229, 240, 0.72);
+}
+
+@media (max-width: 1280px) {
+  .accounts-page--settings .accounts-modal__card--edit .accounts-modal__body,
+  .accounts-page--settings .accounts-permissions-editor__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .accounts-page--settings .accounts-permissions-editor__head {
+    flex-direction: column;
+  }
+
+  .accounts-page--settings .accounts-permissions-editor__stats {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 991px) {
+  .dashboard-skin.is-sidebar-drawer .accounts-modal {
+    inset: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .accounts-page--settings .accounts-modal {
+    padding: 10px;
+  }
+
+  .accounts-page--settings .accounts-modal__card--edit {
+    max-height: calc(100vh - 20px);
+    border-radius: 24px;
+  }
+
+  .accounts-page--settings .accounts-modal__card--edit .accounts-modal__head,
+  .accounts-page--settings .accounts-modal__card--edit .accounts-modal__body,
+  .accounts-page--settings .accounts-modal__card--edit .accounts-modal__footer {
+    padding-inline: 16px;
+  }
+
+  .accounts-page--settings .accounts-permission-toggle {
+    grid-template-columns: 14px minmax(0, 1fr);
+  }
+
+  .accounts-page--settings .accounts-permission-toggle__state {
+    grid-column: 2;
+    width: fit-content;
+  }
+}

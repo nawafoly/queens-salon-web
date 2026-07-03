@@ -57,6 +57,12 @@ export default function EmployeeDetailShell({
       ""
   ).trim();
   const selectedEmployeeInitials = getNameInitials(selectedEmployeeName);
+  const selectedEmployeeServicesCount = Array.isArray(selectedEmployee?.specialties)
+    ? selectedEmployee.specialties.length
+    : 0;
+  const selectedEmployeeBookingLabel = selectedEmployee?.showOnBooking === false ? "مخفي من الحجز" : "ظاهر بالحجز";
+  const selectedEmployeeScheduleLabel = selectedEmployee?.useCustomWorkingHours ? "دوام خاص" : "دوام عام";
+  const selectedEmployeeAccessLabel = canManage ? "وضع تعديل" : "عرض فقط";
 
   return (
     <div
@@ -81,7 +87,7 @@ export default function EmployeeDetailShell({
           aria-label="إغلاق تفاصيل الموظفة"
           onClick={onClose}
         />
-        <div className="dash-card emp-split-head-card emp-detail-modal">
+        <div className="dash-card emp-split-head-card emp-detail-modal emp-detail-cockpit">
           <div className="emp-split-head">
             <div className="emp-split-head__identity">
               <div className="emp-split-avatar" aria-hidden="true">
@@ -100,9 +106,24 @@ export default function EmployeeDetailShell({
                   {selectedEmployeeDepartment ? (
                     <span className="emp-meta-chip">{selectedEmployeeDepartment}</span>
                   ) : null}
-                  {canManage ? <span className="emp-meta-chip">تعديل مباشر</span> : <span className="emp-meta-chip">عرض فقط</span>}
+                  <span className="emp-meta-chip">{selectedEmployeeAccessLabel}</span>
                 </div>
               </div>
+            </div>
+
+            <div className="emp-detail-snapshot" aria-label="ملخص سريع للموظفة">
+              <span>
+                <b>{selectedEmployeeServicesCount}</b>
+                <small>خدمة</small>
+              </span>
+              <span>
+                <b>{selectedEmployeeBookingLabel}</b>
+                <small>الحجز</small>
+              </span>
+              <span>
+                <b>{selectedEmployeeScheduleLabel}</b>
+                <small>الدوام</small>
+              </span>
             </div>
 
             <div className="emp-inline-actions">
@@ -134,12 +155,15 @@ export default function EmployeeDetailShell({
 
           <div className="emp-split-body">
             <nav className="emp-split-nav" role="tablist" aria-label="أقسام الموظفة">
+              <span className="emp-split-nav-title">أقسام الملف</span>
               {tabs.map((tab, index) => (
                 <button
                   key={tab.key}
                   type="button"
+                  role="tab"
                   className={`emp-split-nav-item ${activeTab === tab.key ? "active" : ""}`}
                   onClick={() => onTabChange(tab.key)}
+                  aria-selected={activeTab === tab.key}
                   aria-current={activeTab === tab.key ? "page" : undefined}
                 >
                   <span className="emp-split-nav-order">
@@ -153,7 +177,22 @@ export default function EmployeeDetailShell({
               ))}
             </nav>
 
-            <div className="emp-split-content">{children}</div>
+            <div className="emp-split-content">
+              <div className="emp-split-content-inner">{children}</div>
+              {canManage ? (
+                <div className="emp-detail-save-dock" aria-label="إجراءات حفظ ملف الموظفة">
+                  <span>راجعي التغييرات ثم احفظيها من هنا في أي وقت.</span>
+                  <div>
+                    <button className="exp-btn ghost sm" type="button" onClick={onCancelEdit} disabled={busy}>
+                      إلغاء
+                    </button>
+                    <button className="exp-btn primary sm" type="button" onClick={onSave} disabled={busy}>
+                      حفظ التغييرات
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
         </>

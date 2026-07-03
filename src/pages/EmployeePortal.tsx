@@ -15,6 +15,7 @@ import {
   faTableColumns,
   faTriangleExclamation,
   faUser,
+  faUserShield,
   faWallet,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
@@ -165,6 +166,14 @@ export default function EmployeePortal() {
         </div>
 
         <div className="employee-mobile-topbar__actions">
+          <Link to="/admin" className="employee-top-pill employee-top-pill--hr">
+            <FontAwesomeIcon icon={faUserShield} />
+            <span>لوحة HR</span>
+          </Link>
+          <Link to="/dashboard/overview" className="employee-top-pill employee-top-pill--dashboard">
+            <FontAwesomeIcon icon={faTableColumns} />
+            <span>الداشبورد</span>
+          </Link>
           <button
             type="button"
             className="employee-top-pill employee-top-pill--danger"

@@ -47,40 +47,76 @@ export default function BasicInfoSection({
           />
         </div>
 
-        <div className="dash-field">
+        <div className="dash-field emp-choice-field">
           <label className="emp-label">الحالة</label>
-          <select
-            className="dash-select"
-            value={active ? "1" : "0"}
-            onChange={(e) => onActiveChange(e.target.value === "1")}
-          >
-            <option value="1">نشطة</option>
-            <option value="0">غير نشطة</option>
-          </select>
+          <div className="emp-choice-group" role="group" aria-label="حالة الموظفة">
+            <button
+              type="button"
+              className={`emp-choice-card ${active ? "is-selected" : ""}`}
+              aria-pressed={active}
+              onClick={() => onActiveChange(true)}
+            >
+              <strong>نشطة</strong>
+              <span>تظهر وتعمل حسب الإعدادات</span>
+            </button>
+            <button
+              type="button"
+              className={`emp-choice-card ${!active ? "is-selected" : ""}`}
+              aria-pressed={!active}
+              onClick={() => onActiveChange(false)}
+            >
+              <strong>غير نشطة</strong>
+              <span>إيقاف مؤقت من النظام</span>
+            </button>
+          </div>
         </div>
 
-        <div className="dash-field">
+        <div className="dash-field emp-choice-field">
           <label className="emp-label">يظهر في صفحة "من نحن"؟</label>
-          <select
-            className="dash-select"
-            value={showOnAbout ? "1" : "0"}
-            onChange={(e) => onShowOnAboutChange(e.target.value === "1")}
-          >
-            <option value="1">نعم (يظهر)</option>
-            <option value="0">لا (مخفي)</option>
-          </select>
+          <div className="emp-choice-group" role="group" aria-label="الظهور في صفحة من نحن">
+            <button
+              type="button"
+              className={`emp-choice-card ${showOnAbout ? "is-selected" : ""}`}
+              aria-pressed={showOnAbout}
+              onClick={() => onShowOnAboutChange(true)}
+            >
+              <strong>يظهر</strong>
+              <span>مناسب للملف العام</span>
+            </button>
+            <button
+              type="button"
+              className={`emp-choice-card ${!showOnAbout ? "is-selected" : ""}`}
+              aria-pressed={!showOnAbout}
+              onClick={() => onShowOnAboutChange(false)}
+            >
+              <strong>مخفي</strong>
+              <span>لا يظهر للعملاء</span>
+            </button>
+          </div>
         </div>
 
-        <div className="dash-field">
+        <div className="dash-field emp-choice-field">
           <label className="emp-label">تظهر في صفحة "الحجز"؟</label>
-          <select
-            className="dash-select"
-            value={showOnBooking ? "1" : "0"}
-            onChange={(e) => onShowOnBookingChange(e.target.value === "1")}
-          >
-            <option value="1">نعم (تظهر)</option>
-            <option value="0">لا (مخفية)</option>
-          </select>
+          <div className="emp-choice-group" role="group" aria-label="الظهور في صفحة الحجز">
+            <button
+              type="button"
+              className={`emp-choice-card ${showOnBooking ? "is-selected" : ""}`}
+              aria-pressed={showOnBooking}
+              onClick={() => onShowOnBookingChange(true)}
+            >
+              <strong>متاحة للحجز</strong>
+              <span>تظهر للعميلات</span>
+            </button>
+            <button
+              type="button"
+              className={`emp-choice-card ${!showOnBooking ? "is-selected" : ""}`}
+              aria-pressed={!showOnBooking}
+              onClick={() => onShowOnBookingChange(false)}
+            >
+              <strong>مخفية</strong>
+              <span>لا تظهر في الحجز</span>
+            </button>
+          </div>
         </div>
 
         <div className="dash-field">

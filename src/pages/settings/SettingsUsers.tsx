@@ -24,7 +24,15 @@ import {
 
 import { auth, db } from "../../services/firebase";
 import { writeAuditLog } from "../../services/logService";
-import { can, type Permission } from "../../helpers/permissions";
+import {
+  APP_PERMISSION_CATALOG,
+  buildPermissionOverrides,
+  getEffectiveAppPermissions,
+  getRoleAppPermissions,
+  normalizePermissionOverrides,
+  type AppPermission,
+  type PermissionOverrides,
+} from "../../helpers/permissions";
 import {
   findStaffMatchesForUser,
   listStaffLinkRows,
@@ -109,6 +117,8 @@ type UserRow = {
   notes?: string;
   linkedEmployeeDocId?: string;
   employeeId?: string;
+  permissions?: AppPermission[];
+  permissionOverrides?: PermissionOverrides;
   deletedAt?: any;
   createdAt?: any;
   updatedAt?: any;
@@ -122,6 +132,7 @@ type EditUserDraft = {
   role: UiRole;
   active: boolean;
   notes: string;
+  permissions: AppPermission[];
 };
 
 type InviteRow = {
@@ -144,17 +155,7 @@ type InviteDraft = {
   notes: string;
 };
 
-const PERMISSION_META: Array<{ key: Permission; label: string; hint: string }> = [
-  { key: "BOOKINGS_VIEW", label: "عرض لوحة الحجوزات", hint: "الدخول على قائمة الحجوزات ومتابعة الحالات." },
-  { key: "BOOKINGS_UPDATE_STATUS", label: "تحديث حالة الحجز", hint: "تغيير الحالة وإدارة مرحلة التنفيذ." },
-  { key: "BOOKINGS_ADD_NOTES", label: "إضافة ملاحظات", hint: "تسجيل ملاحظات تشغيلية داخل الحجز." },
-  { key: "EMPLOYEES_MANAGE", label: "إدارة الموظفات", hint: "عرض وتعديل ملفات الموظفات وبياناتهن." },
-  { key: "SERVICES_MANAGE", label: "إدارة الخدمات", hint: "تعديل الأقسام والخدمات والكتالوج." },
-  { key: "OFFERS_MANAGE", label: "إدارة العروض", hint: "إنشاء وتحديث العروض الترويجية." },
-  { key: "REPORTS_VIEW", label: "عرض التقارير", hint: "الوصول إلى ملخصات الأداء والتقارير." },
-  { key: "SETTINGS_MANAGE", label: "إدارة الإعدادات", hint: "ضبط إعدادات المنصة والتشغيل." },
-  { key: "USERS_MANAGE", label: "إدارة الحسابات", hint: "إنشاء الحسابات وتعديل صلاحياتها." },
-];
+const PERMISSION_META = APP_PERMISSION_CATALOG;
 
 const ROLE_LABELS: Record<UiRole, string> = {
   owner: "المالك",
@@ -323,6 +324,14 @@ export default function SettingsUsers({
     return ROLE_TONES[role] || ROLE_TONES.guest;
   }
 
+  function getUserPermissions(row: Pick<UserRow, "role" | "permissions" | "permissionOverrides">) {
+    return getEffectiveAppPermissions({
+      role: row.role as any,
+      permissions: row.permissions,
+      permissionOverrides: row.permissionOverrides,
+    });
+  }
+
   function formatDate(value: any) {
     if (!value) return "-";
     try {
@@ -382,6 +391,8 @@ export default function SettingsUsers({
     role: UiRole;
     active: boolean;
     displayName: string;
+    permissions?: AppPermission[];
+    permissionOverrides?: PermissionOverrides;
     createIfMissing?: boolean;
   }) => {
     const userRow = toAccountUserLinkRow(args.user);
@@ -398,6 +409,16 @@ export default function SettingsUsers({
     const nextRole = toFirestoreRole(args.role);
     const isEmployeeRole = ["owner", "admin", "hr", "reception", "staff"].includes(args.role);
     const isPublicStaffRole = args.role === "staff";
+    const effectivePermissions = getEffectiveAppPermissions({
+      role: args.role as any,
+      permissions: args.permissions,
+      permissionOverrides: args.permissionOverrides,
+    });
+    const permissionPayload = {
+      permissions: effectivePermissions,
+      permissionOverrides: args.permissionOverrides || buildPermissionOverrides(args.role, effectivePermissions),
+      permissionVersion: 2,
+    };
 
     await setDoc(
       doc(db, ...STAFF_PUBLIC_COLLECTION, staffId),
@@ -430,6 +451,7 @@ export default function SettingsUsers({
         ...(email ? { userEmail: email, email } : {}),
         name: displayName,
         role: nextRole,
+        ...permissionPayload,
         isActive: isEmployeeRole ? args.active : false,
         active: isEmployeeRole ? args.active : false,
         showOnAbout: isPublicStaffRole ? existing?.showOnAbout !== false : false,
@@ -451,6 +473,7 @@ export default function SettingsUsers({
           displayName,
           phone: cleanText(userRow.phone || ""),
           role: nextRole,
+          ...permissionPayload,
           active: args.active,
           employeeId: staffId,
           updatedAt: serverTimestamp(),
@@ -497,16 +520,25 @@ export default function SettingsUsers({
 
       const listAll: UserRow[] = snap.docs.map((d) => {
         const x = d.data() as any;
+        const role = mapFirestoreRoleToUi(x?.role);
+        const permissionOverrides = normalizePermissionOverrides(x?.permissionOverrides);
+        const permissions = getEffectiveAppPermissions({
+          role: role as any,
+          permissions: x?.permissions,
+          permissionOverrides,
+        });
         const baseRow: UserRow = {
           uid: d.id,
           email: String(x?.email || ""),
           phone: String(x?.phone || ""),
           displayName: String(x?.displayName || x?.name || ""),
-          role: mapFirestoreRoleToUi(x?.role),
+          role,
           active: x?.active !== false,
           notes: String(x?.notes || x?.memo || ""),
           linkedEmployeeDocId: String(x?.linkedEmployeeDocId || ""),
           employeeId: String(x?.employeeId || ""),
+          permissions,
+          permissionOverrides,
           deletedAt: x?.deletedAt,
           createdAt: x?.createdAt,
           updatedAt: x?.updatedAt,
@@ -527,7 +559,18 @@ export default function SettingsUsers({
           // أي حساب malikat.com لو كان client/guest نخليه pending (عرض + إدارة)
           const fixedRole: UiRole =
             u.role === "client" || u.role === "guest" ? "pending" : u.role;
-          return { ...u, role: fixedRole };
+          return {
+            ...u,
+            role: fixedRole,
+            permissions:
+              fixedRole === u.role
+                ? u.permissions
+                : getEffectiveAppPermissions({
+                    role: fixedRole as any,
+                    permissions: u.permissions,
+                    permissionOverrides: u.permissionOverrides,
+                  }),
+          };
         });
 
       setUsers(listFiltered);
@@ -613,6 +656,8 @@ export default function SettingsUsers({
     try {
       setCreateLoading(true);
       const secondary = getSecondaryAuth();
+      const permissions = getRoleAppPermissions(role as any);
+      const permissionOverrides = buildPermissionOverrides(role as any, permissions);
 
       const cred = await createUserWithEmailAndPassword(secondary, email, password);
       await updateProfile(cred.user, { displayName }).catch(() => {});
@@ -628,6 +673,9 @@ export default function SettingsUsers({
           phone,
           notes,
           role: toFirestoreRole(role),
+          permissions,
+          permissionOverrides,
+          permissionVersion: 2,
           active: true,
           createdAt: serverTimestamp(),
           createdByUid: (auth as any)?.currentUser?.uid || "",
@@ -646,12 +694,16 @@ export default function SettingsUsers({
             phone,
             role,
             active: true,
+            permissions,
+            permissionOverrides,
             linkedEmployeeDocId: uid,
             employeeId: uid,
           },
           role,
           active: true,
           displayName,
+          permissions,
+          permissionOverrides,
           createIfMissing: true,
         });
       }
@@ -670,6 +722,7 @@ export default function SettingsUsers({
           email,
           displayName,
           role: toFirestoreRole(role),
+          permissions,
           active: true,
         },
         meta: {
@@ -734,6 +787,8 @@ export default function SettingsUsers({
 
     try {
       setInviteSaving(true);
+      const permissions = getRoleAppPermissions(role as any);
+      const permissionOverrides = buildPermissionOverrides(role as any, permissions);
 
       const inviteRef = doc(collection(db, "salons", SALON_ID, "user_invites"));
       await setDoc(
@@ -741,6 +796,9 @@ export default function SettingsUsers({
         {
           email,
           role: toFirestoreRole(role),
+          permissions,
+          permissionOverrides,
+          permissionVersion: 2,
           active: true,
           notes,
           createdAt: serverTimestamp(),
@@ -760,6 +818,7 @@ export default function SettingsUsers({
         after: {
           email,
           role: toFirestoreRole(role),
+          permissions,
           active: true,
         },
         meta: {
@@ -799,11 +858,16 @@ export default function SettingsUsers({
     try {
       const oldRole = String(row?.role || "").trim();
       const oldActive = row?.active !== false;
+      const permissions = getRoleAppPermissions(newRole as any);
+      const permissionOverrides = buildPermissionOverrides(newRole as any, permissions);
 
       await setDoc(
         doc(db, ...USERS_COLLECTION, uid),
         {
           role: toFirestoreRole(newRole),
+          permissions,
+          permissionOverrides,
+          permissionVersion: 2,
           active: nextActive,
           updatedAt: serverTimestamp(),
         },
@@ -819,17 +883,25 @@ export default function SettingsUsers({
           displayName: name,
           role: newRole,
           active: nextActive,
+          permissions,
+          permissionOverrides,
           linkedEmployeeDocId: row?.linkedEmployeeDocId || row?.employeeId || "",
           employeeId: row?.employeeId || row?.linkedEmployeeDocId || "",
         },
         role: newRole,
         active: nextActive,
         displayName: name,
+        permissions,
+        permissionOverrides,
         createIfMissing: isEmployeeRole(newRole),
       });
 
       setUsers((prev) =>
-        prev.map((u) => (u.uid === uid ? { ...u, role: newRole, active: nextActive } : u))
+        prev.map((u) =>
+          u.uid === uid
+            ? { ...u, role: newRole, active: nextActive, permissions, permissionOverrides }
+            : u
+        )
       );
 
       void writeAuditLog({
@@ -846,6 +918,7 @@ export default function SettingsUsers({
         after: {
           role: newRole,
           active: nextActive,
+          permissions,
         },
         meta: {
           oldRole: oldRole || null,
@@ -892,12 +965,16 @@ export default function SettingsUsers({
             displayName: row?.displayName || "",
             role: row?.role || "staff",
             active,
+            permissions: row.permissions,
+            permissionOverrides: row.permissionOverrides,
             linkedEmployeeDocId: row?.linkedEmployeeDocId || row?.employeeId || "",
             employeeId: row?.employeeId || row?.linkedEmployeeDocId || "",
           },
           role: row?.role || "staff",
           active,
           displayName: row?.displayName || "",
+          permissions: row.permissions,
+          permissionOverrides: row.permissionOverrides,
           createIfMissing: false,
         });
       }
@@ -962,12 +1039,16 @@ export default function SettingsUsers({
             displayName: name,
             role: roleNow,
             active: row?.active !== false,
+            permissions: row.permissions,
+            permissionOverrides: row.permissionOverrides,
             linkedEmployeeDocId: row?.linkedEmployeeDocId || row?.employeeId || "",
             employeeId: row?.employeeId || row?.linkedEmployeeDocId || "",
           },
           role: roleNow,
           active: row?.active !== false,
           displayName: name,
+          permissions: row.permissions,
+          permissionOverrides: row.permissionOverrides,
           createIfMissing: false,
         });
       }
@@ -1014,6 +1095,10 @@ export default function SettingsUsers({
     const notes = editDraft.notes.trim();
     const role = editDraft.role;
     const active = role === "pending" ? false : editDraft.active !== false;
+    const permissions = PERMISSION_META
+      .map((item) => item.key)
+      .filter((permission) => editDraft.permissions.includes(permission));
+    const permissionOverrides = buildPermissionOverrides(role as any, permissions);
 
     if (!displayName) {
       toastMsg("❌ الاسم لا يمكن أن يكون فارغًا", 2000);
@@ -1037,12 +1122,16 @@ export default function SettingsUsers({
           displayName,
           role,
           active,
+          permissions,
+          permissionOverrides,
           linkedEmployeeDocId: row.linkedEmployeeDocId || row.employeeId || "",
           employeeId: row.employeeId || row.linkedEmployeeDocId || "",
         },
         role,
         active,
         displayName,
+        permissions,
+        permissionOverrides,
         createIfMissing: isEmployeeRole(role),
       });
 
@@ -1053,6 +1142,9 @@ export default function SettingsUsers({
           phone,
           notes,
           role: nextRole,
+          permissions,
+          permissionOverrides,
+          permissionVersion: 2,
           active,
           linkedEmployeeDocId: staffId || row.linkedEmployeeDocId || row.employeeId || "",
           employeeId: staffId || row.employeeId || row.linkedEmployeeDocId || "",
@@ -1070,6 +1162,8 @@ export default function SettingsUsers({
                 phone,
                 notes,
                 role,
+                permissions,
+                permissionOverrides,
                 active,
                 linkedEmployeeDocId: staffId || u.linkedEmployeeDocId,
                 employeeId: staffId || u.employeeId,
@@ -1091,6 +1185,7 @@ export default function SettingsUsers({
           role: row.role,
           active: row.active,
           notes: row.notes || null,
+          permissions: row.permissions || [],
         },
         after: {
           displayName,
@@ -1098,6 +1193,7 @@ export default function SettingsUsers({
           role,
           active,
           notes: notes || null,
+          permissions,
         },
         meta: {
           field: "profile",
@@ -1124,6 +1220,11 @@ export default function SettingsUsers({
       role: row.role,
       active: row.active !== false,
       notes: row.notes || "",
+      permissions: getEffectiveAppPermissions({
+        role: row.role as any,
+        permissions: row.permissions,
+        permissionOverrides: row.permissionOverrides,
+      }),
     });
   };
 
@@ -1331,11 +1432,6 @@ export default function SettingsUsers({
     return visibleUsers.find((user) => user.uid === selectedUserId) || visibleUsers[0] || null;
   }, [selectedUserId, visibleUsers]);
 
-  const selectedPermissions = useMemo(() => {
-    if (!selectedUser) return [];
-    return PERMISSION_META.filter((item) => can(item.key, selectedUser.role as any));
-  }, [selectedUser]);
-
   const stats = useMemo(() => {
     const total = users.length;
     const active = users.filter((user) => getUserState(user) === "active").length;
@@ -1358,7 +1454,7 @@ export default function SettingsUsers({
   const averagePermissions = useMemo(() => {
     if (!users.length) return 0;
     const totalPermissions = users.reduce(
-      (sum, user) => sum + PERMISSION_META.filter((item) => can(item.key, user.role as any)).length,
+      (sum, user) => sum + getUserPermissions(user).length,
       0
     );
     return Math.round((totalPermissions / users.length) * 10) / 10;
@@ -1398,12 +1494,21 @@ export default function SettingsUsers({
         : "غير نشطة";
   const selectedRoleLabel = selectedUser ? getRoleLabel(selectedUser.role) : "-";
   const selectedRoleTone = selectedUser ? getRoleTone(selectedUser.role) : "gray";
-  const selectedPermissionCount = selectedPermissions.length;
-  const createPermissionCount = PERMISSION_META.filter((item) => can(item.key, createForm.role as any)).length;
-  const invitePreviewPermissions = PERMISSION_META.filter((item) => can(item.key, inviteDraft.role as any));
+  const createPermissionCount = getRoleAppPermissions(createForm.role as any).length;
+  const invitePreviewPermissions = PERMISSION_META.filter((item) =>
+    getRoleAppPermissions(inviteDraft.role as any).includes(item.key)
+  );
   const currentUid = String((auth as any)?.currentUser?.uid || "");
   const selectedIsSelf = Boolean(selectedUser && selectedUser.uid === currentUid);
   const selectedCanMutate = Boolean(selectedUser && !selectedIsSelf && canEditTargetUser(selectedUser));
+  const editRoleDefaultPermissions = editDraft ? getRoleAppPermissions(editDraft.role as any) : [];
+  const editPermissionSet = new Set<AppPermission>(editDraft?.permissions || []);
+  const editAddedPermissions = editDraft
+    ? editDraft.permissions.filter((permission) => !editRoleDefaultPermissions.includes(permission)).length
+    : 0;
+  const editDisabledDefaults = editDraft
+    ? editRoleDefaultPermissions.filter((permission) => !editPermissionSet.has(permission)).length
+    : 0;
   const bannerTone = createMsg.startsWith("❌")
     ? "danger"
     : createMsg.startsWith("✅")
@@ -1824,13 +1929,13 @@ export default function SettingsUsers({
 
             {visibleUsers.map((row) => {
               const state = getUserState(row);
-              const effectiveCount = PERMISSION_META.filter((permission) => can(permission.key, row.role as any)).length;
+              const rowPermissions = getUserPermissions(row);
+              const effectiveCount = rowPermissions.length;
               const rowCanMutate = canEditTargetUser(row) && row.uid !== currentUid;
               const rowBlockedMessage =
                 row.uid === currentUid
                   ? "لا يمكن تعديل الحساب المستخدم حاليًا من هذه البطاقة."
                   : "لا تملك صلاحية تعديل هذا الحساب.";
-              const rowPermissions = PERMISSION_META.filter((permission) => can(permission.key, row.role as any));
               const rowInitial = cleanText(row.displayName || row.email || row.uid).slice(0, 1) || "?";
 
               return (
@@ -1879,7 +1984,7 @@ export default function SettingsUsers({
                     <p>{row.notes || "لا توجد ملاحظات مرتبطة بهذا الحساب."}</p>
 
                     <div className="accounts-card__perms">
-                      {rowPermissions.slice(0, 4).map((permission) => (
+                      {PERMISSION_META.filter((permission) => rowPermissions.includes(permission.key)).slice(0, 4).map((permission) => (
                         <span key={permission.key} className="accounts-permission-preview__chip">
                           {permission.label}
                         </span>
@@ -2067,7 +2172,7 @@ export default function SettingsUsers({
                 <div className="accounts-permission-preview">
                   <span>الصلاحيات المتوقعة لهذا الدور</span>
                   <div className="accounts-permission-preview__chips">
-                    {PERMISSION_META.filter((item) => can(item.key, createForm.role as any)).map((permission) => (
+                    {PERMISSION_META.filter((item) => getRoleAppPermissions(createForm.role as any).includes(item.key)).map((permission) => (
                       <span key={permission.key} className="accounts-permission-preview__chip">
                         {permission.label}
                       </span>
@@ -2152,7 +2257,7 @@ export default function SettingsUsers({
                         </div>
                         <div className="accounts-modal__summary-item">
                           <span>الصلاحيات</span>
-                          <strong>{selectedPermissionCount}</strong>
+                          <strong>{editDraft.permissions.length}</strong>
                         </div>
                         <div className="accounts-modal__summary-item">
                           <span>الحالة</span>
@@ -2197,7 +2302,16 @@ export default function SettingsUsers({
                     <select
                       value={editDraft.role}
                       onChange={(e) =>
-                        setEditDraft((prev) => (prev ? { ...prev, role: e.target.value as UiRole } : prev))
+                        setEditDraft((prev) => {
+                          if (!prev) return prev;
+                          const role = e.target.value as UiRole;
+                          return {
+                            ...prev,
+                            role,
+                            active: role === "pending" ? false : prev.active,
+                            permissions: getRoleAppPermissions(role as any),
+                          };
+                        })
                       }
                       disabled={!canEditTargetUser(selectedUser)}
                     >
@@ -2234,19 +2348,83 @@ export default function SettingsUsers({
                   </label>
                 </div>
 
-                <div className="accounts-permission-preview">
-                  <span>الصلاحيات الفعلية حسب الدور الحالي</span>
-                  <div className="accounts-permission-preview__chips">
-                    {PERMISSION_META.filter((item) => can(item.key, editDraft.role as any)).map((permission) => (
-                      <span key={permission.key} className="accounts-permission-preview__chip">
-                        {permission.label}
-                      </span>
-                    ))}
-                    {!PERMISSION_META.filter((item) => can(item.key, editDraft.role as any)).length ? (
-                      <span className="accounts-permission-preview__empty">لا توجد صلاحيات</span>
-                    ) : null}
+                <section className="accounts-permissions-editor">
+                  <div className="accounts-permissions-editor__head">
+                    <div>
+                      <span className="accounts-kicker">الصلاحيات الفعلية</span>
+                      <h3>مفاتيح الوصول الجديدة</h3>
+                      <p>اضغط على أي صلاحية لإضافتها أو إيقافها كاستثناء على الدور الأساسي.</p>
+                    </div>
+                    <div className="accounts-permissions-editor__stats">
+                      <span>الدور: {editRoleDefaultPermissions.length}</span>
+                      <span>الفعلية: {editDraft.permissions.length}</span>
+                      <span>الاستثناءات: {editAddedPermissions + editDisabledDefaults}</span>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="accounts-permissions-editor__grid">
+                    {PERMISSION_META.map((permission) => {
+                      const isEnabled = editPermissionSet.has(permission.key);
+                      const isDefault = editRoleDefaultPermissions.includes(permission.key);
+                      const isAdded = isEnabled && !isDefault;
+                      const isDisabledDefault = !isEnabled && isDefault;
+
+                      return (
+                        <button
+                          key={permission.key}
+                          type="button"
+                          className={[
+                            "accounts-permission-toggle",
+                            isEnabled ? "is-on" : "is-off",
+                            isDefault ? "is-default" : "",
+                            isAdded ? "is-added" : "",
+                            isDisabledDefault ? "is-disabled-default" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                          disabled={!canEditTargetUser(selectedUser)}
+                          onClick={() =>
+                            setEditDraft((prev) => {
+                              if (!prev) return prev;
+                              const current = new Set(prev.permissions);
+                              if (current.has(permission.key)) current.delete(permission.key);
+                              else current.add(permission.key);
+                              const permissions = PERMISSION_META
+                                .map((item) => item.key)
+                                .filter((key) => current.has(key));
+                              return { ...prev, permissions };
+                            })
+                          }
+                        >
+                          <span className="accounts-permission-toggle__dot" aria-hidden="true" />
+                          <span className="accounts-permission-toggle__copy">
+                            <strong>{permission.label}</strong>
+                            <small>{permission.key}</small>
+                            <em>{permission.hint}</em>
+                          </span>
+                          <span className="accounts-permission-toggle__state">
+                            {isAdded ? "استثناء مضاف" : isDisabledDefault ? "متوقف" : isDefault ? "ضمن الدور" : isEnabled ? "مفعلة" : "غير مفعلة"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="accounts-permissions-editor__actions">
+                    <button
+                      type="button"
+                      className="accounts-btn"
+                      disabled={!canEditTargetUser(selectedUser)}
+                      onClick={() =>
+                        setEditDraft((prev) =>
+                          prev ? { ...prev, permissions: getRoleAppPermissions(prev.role as any) } : prev
+                        )
+                      }
+                    >
+                      استعادة صلاحيات الدور
+                    </button>
+                  </div>
+                </section>
               </div>
             </div>
 

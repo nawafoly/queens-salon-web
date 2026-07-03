@@ -1499,6 +1499,61 @@
   border-color: rgba(248, 113, 113, 0.24) !important;
 }
 
+/* Desktop shell: keep the admin sidebar fixed on the right, not as a drawer. */
+@media (min-width: 992px) {
+  .dashboard-skin.is-sidebar-drawer.dashboard-page {
+    --dash-fixed-sidebar-width: clamp(292px, 22vw, 320px);
+    --dash-fixed-sidebar-gap: 14px;
+    padding-right: calc(var(--dash-fixed-sidebar-width) + var(--dash-fixed-sidebar-gap));
+  }
+
+  .dashboard-skin.is-sidebar-drawer .container-fluid,
+  .dashboard-skin.is-sidebar-drawer .row {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .dashboard-skin.is-sidebar-drawer .row {
+    display: block !important;
+  }
+
+  .dashboard-skin.is-sidebar-drawer .dashboard-sidebar,
+  .dashboard-skin.is-sidebar-drawer .dashboard-sidebar.is-open {
+    position: fixed !important;
+    top: 12px !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    left: auto !important;
+    width: var(--dash-fixed-sidebar-width) !important;
+    max-width: calc(100vw - 24px) !important;
+    transform: none !important;
+    pointer-events: auto !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  .dashboard-skin.is-sidebar-drawer .dashboard-main {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 0 0 100% !important;
+    padding-right: 0 !important;
+    padding-left: 0 !important;
+  }
+
+  .dashboard-skin.is-sidebar-drawer .dashboard-main.col-md-9,
+  .dashboard-skin.is-sidebar-drawer .dashboard-main.col-lg-10 {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex-basis: 100% !important;
+  }
+
+  .dashboard-skin.is-sidebar-drawer .dash-topbar-toggle,
+  .dashboard-skin.is-sidebar-drawer .dash-mobile-close,
+  .dashboard-skin.is-sidebar-drawer .dash-side-overlay {
+    display: none !important;
+  }
+}
+
 /* Shared dashboard surfaces so pages stop feeling unrelated */
 .dashboard-skin .overview-page,
 .dashboard-skin .bk-page-wrapper,

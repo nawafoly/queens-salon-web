@@ -24,6 +24,18 @@
   direction: rtl;
 }
 
+.hr-entry--login-only .hr-entry-shell--login-only {
+  width: min(640px, calc(100% - 24px));
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  justify-items: stretch;
+}
+
+.hr-entry--login-only .hr-entry-hero-panel,
+.hr-entry--login-only .hr-entry-footer-links {
+  display: none;
+}
+
 .hr-entry-menu-panel {
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(148, 163, 184, 0.28);

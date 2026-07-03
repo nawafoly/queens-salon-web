@@ -575,8 +575,8 @@ export default function HrEntry() {
   }
 
   return (
-    <main className="hr-entry" dir="rtl">
-      <div className="hr-entry-shell">
+    <main className={`hr-entry${!isSignedIn ? " hr-entry--login-only" : ""}`} dir="rtl">
+      <div className={`hr-entry-shell${!isSignedIn ? " hr-entry-shell--login-only" : ""}`}>
         {!isSignedIn ? (
           <section className="hr-entry-menu-panel hr-entry-login-panel" aria-label="تسجيل الدخول">
             <div className="hr-entry-login-card">

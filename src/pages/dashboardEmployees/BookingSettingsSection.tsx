@@ -135,7 +135,7 @@ export default function BookingSettingsSection({
           </div>
 
           {modalUseCustomWorkingHours ? (
-            <div className="emp-working-table-wrap">
+            <div className="emp-working-week">
               <div className="emp-working-table-toolbar">
                 <span>عدّلي يومًا واحدًا ثم انسخي الإعداد على بقية الأسبوع.</span>
                 {firstWeekday ? (
@@ -149,42 +149,34 @@ export default function BookingSettingsSection({
                   </button>
                 ) : null}
               </div>
-              <table className="emp-working-table">
-                <thead>
-                  <tr>
-                    <th scope="col">اليوم</th>
-                    <th scope="col">دوام</th>
-                    <th scope="col">من</th>
-                    <th scope="col">إلى</th>
-                    <th scope="col">نسخ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {WEEKDAY_OPTIONS.map((day) => {
-                    const row = modalCustomWorkingHours[day.key] || {
-                      enabled: true,
-                      start: "10:00",
-                      end: "22:00",
-                    };
-                    const isOff = row.enabled === false;
 
-                    return (
-                      <tr key={`work_${day.key}`} className={isOff ? "is-off" : undefined}>
-                        <td className="day-cell" data-label="اليوم">
-                          {day.label}
-                        </td>
-                        <td data-label="دوام">
-                          <label className="emp-mini-check">
-                            <input
-                              type="checkbox"
-                              checked={row.enabled !== false}
-                              disabled={busy}
-                              onChange={(e) => onUpdateModalWorkingDay(day.key, { enabled: e.target.checked })}
-                            />
-                            <span>دوام</span>
-                          </label>
-                        </td>
-                        <td data-label="من">
+              <div className="emp-working-week-cards" aria-label="جدول دوام الموظفة الأسبوعي">
+                {WEEKDAY_OPTIONS.map((day) => {
+                  const row = modalCustomWorkingHours[day.key] || {
+                    enabled: true,
+                    start: "10:00",
+                    end: "22:00",
+                  };
+                  const isOff = row.enabled === false;
+
+                  return (
+                    <article key={`work_${day.key}`} className={`emp-working-day-card ${isOff ? "is-off" : ""}`}>
+                      <div className="emp-working-day-card__head">
+                        <strong>{day.label}</strong>
+                        <label className="emp-switch">
+                          <input
+                            type="checkbox"
+                            checked={row.enabled !== false}
+                            disabled={busy}
+                            onChange={(e) => onUpdateModalWorkingDay(day.key, { enabled: e.target.checked })}
+                          />
+                          <span>{isOff ? "إجازة" : "دوام"}</span>
+                        </label>
+                      </div>
+
+                      <div className="emp-working-day-card__times">
+                        <label>
+                          <span>من</span>
                           <input
                             className="dash-input"
                             type="time"
@@ -192,8 +184,9 @@ export default function BookingSettingsSection({
                             disabled={loading || isOff}
                             onChange={(e) => onUpdateModalWorkingDay(day.key, { start: e.target.value })}
                           />
-                        </td>
-                        <td data-label="إلى">
+                        </label>
+                        <label>
+                          <span>إلى</span>
                           <input
                             className="dash-input"
                             type="time"
@@ -201,23 +194,22 @@ export default function BookingSettingsSection({
                             disabled={loading || isOff}
                             onChange={(e) => onUpdateModalWorkingDay(day.key, { end: e.target.value })}
                           />
-                        </td>
-                        <td data-label="نسخ">
-                          <button
-                            type="button"
-                            className="exp-btn ghost sm emp-working-copy-btn"
-                            disabled={busy}
-                            onClick={() => onCopyModalWorkingDayToAll(day.key)}
-                            title={`نسخ ساعات ${day.label} لكل الأيام`}
-                          >
-                            نسخ
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        </label>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="exp-btn ghost sm emp-working-copy-btn"
+                        disabled={busy}
+                        onClick={() => onCopyModalWorkingDayToAll(day.key)}
+                        title={`نسخ ساعات ${day.label} لكل الأيام`}
+                      >
+                        نسخ هذا اليوم
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
         </section>

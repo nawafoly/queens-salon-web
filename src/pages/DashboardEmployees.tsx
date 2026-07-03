@@ -242,6 +242,8 @@ export default function DashboardEmployees() {
     authRole === "reception" ||
     authRole === "hr";
   const canManage = authRole === "owner" || authRole === "admin" || authRole === "hr";
+  const canManageAttendance =
+    canManage || authRole === "reception";
   const canDeleteEmployees = authRole === "owner";
   const canFixBookings = authRole === "owner";
   const canManageLeaveBalance = canManageLeaveBalanceRole(authUser?.role);
@@ -494,7 +496,7 @@ export default function DashboardEmployees() {
   }, [activeTab, loadSelectedEmployeeAttendance]);
 
   const openAttendancePunchEditor = useCallback((dateKey: string) => {
-    if (!canManage) {
+    if (!canManageAttendance) {
       setErrorMsg("ليست لديك صلاحية لتعديل بصمة الموظفة.");
       return;
     }
@@ -507,7 +509,7 @@ export default function DashboardEmployees() {
     setAttendanceEditNote(cleanText(row?.notes));
     setAttendanceEditOpen(true);
     setErrorMsg("");
-  }, [canManage, employeeAttendanceRows]);
+  }, [canManageAttendance, employeeAttendanceRows]);
 
   const closeAttendancePunchEditor = useCallback(() => {
     setAttendanceEditOpen(false);
@@ -518,7 +520,7 @@ export default function DashboardEmployees() {
   }, []);
 
   const saveAttendancePunchEditor = useCallback(async () => {
-    if (!canManage || !selectedEmployeeId) {
+    if (!canManageAttendance || !selectedEmployeeId) {
       setErrorMsg("ليست لديك صلاحية لتعديل بصمة الموظفة.");
       return;
     }
@@ -570,14 +572,14 @@ export default function DashboardEmployees() {
     authUser?.displayName,
     authUser?.email,
     authUser?.uid,
-    canManage,
+    canManageAttendance,
     closeAttendancePunchEditor,
     loadSelectedEmployeeAttendance,
     selectedEmployeeId,
   ]);
 
   const deleteAttendancePunch = useCallback(async (dateKey: string) => {
-    if (!canManage || !selectedEmployeeId) {
+    if (!canManageAttendance || !selectedEmployeeId) {
       setErrorMsg("ليست لديك صلاحية لمسح بصمة الموظفة.");
       return;
     }
@@ -605,7 +607,7 @@ export default function DashboardEmployees() {
     } finally {
       setSaving(false);
     }
-  }, [canManage, loadSelectedEmployeeAttendance, selectedEmployeeId]);
+  }, [canManageAttendance, loadSelectedEmployeeAttendance, selectedEmployeeId]);
 
   const resetForm = () => {
     setEditId(null);
@@ -3351,9 +3353,9 @@ export default function DashboardEmployees() {
                 selectedDate={employeeAttendanceSelectedDate}
                 schedule={editingStaff}
                 approvedLeaveDateKeys={selectedEmployeeApprovedLeaveDateKeys}
-                canEdit={canManage}
-                canDelete={canManage}
-                canReview={canManage}
+                canEdit={canManageAttendance}
+                canDelete={canManageAttendance}
+                canReview={canManageAttendance}
                 onMonthChange={(monthKey) => {
                   setEmployeeAttendanceMonth(monthKey);
                   setEmployeeAttendanceSelectedDate((current) =>

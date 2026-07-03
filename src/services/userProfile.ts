@@ -14,6 +14,14 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { writeAuditLog } from "./logService";
+import {
+  buildPermissionOverrides,
+  getEffectiveAppPermissions,
+  getRoleAppPermissions,
+  normalizePermissionOverrides,
+  type AppPermission,
+  type PermissionOverrides,
+} from "../helpers/permissions";
 
 export type UiRole =
   | "owner"
@@ -40,6 +48,9 @@ export type UserProfile = {
   membershipPercent?: number;
 
   active?: boolean;
+  permissions?: AppPermission[];
+  permissionOverrides?: PermissionOverrides;
+  permissionVersion?: number;
 
   createdAt?: any;
   updatedAt?: any;
@@ -151,6 +162,7 @@ function writeLocalCache(profile: UserProfile) {
       email: profile.email,
       role: profile.role,
       displayName: profile.name,
+      permissions: profile.permissions || [],
     })
   );
 
@@ -170,6 +182,8 @@ type InviteDoc = {
   email?: string;
   role?: string;
   active?: boolean;
+  permissions?: unknown;
+  permissionOverrides?: unknown;
   createdAt?: any;
 
   // tracking
@@ -274,6 +288,12 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
 
     // ✅ Bootstrap يفرض owner دائماً
     if (isBootstrap) role = "owner";
+    const permissionOverrides = normalizePermissionOverrides(data?.permissionOverrides);
+    const permissions = getEffectiveAppPermissions({
+      role,
+      permissions: data?.permissions,
+      permissionOverrides,
+    });
 
     const dataName = safeStr(data?.name).trim();
     const dataDisplayName = safeStr(data?.displayName).trim();
@@ -307,6 +327,9 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       avatarUrl: safeStr(data?.avatarUrl),
       role,
       active,
+      permissions,
+      permissionOverrides,
+      permissionVersion: 2,
       membershipId: safeStr(data?.membershipId),
       membershipPercent:
         typeof data?.membershipPercent === "number" ? data.membershipPercent : 0,
@@ -372,16 +395,18 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
   let active = isBootstrap ? true : isMalikatDomain ? false : true;
 
   let inviteId: string | null = null;
+  let inviteData: InviteDoc | null = null;
 
   if (!isBootstrap && emailLower) {
     try {
       const invite = await findInviteByEmail(emailLower);
       if (invite) {
         inviteId = invite.id;
-        const invRole = normalizeRole(invite.data?.role);
+        inviteData = invite.data;
+        const invRole = normalizeRole(inviteData?.role);
         if (invRole !== "guest") role = invRole;
 
-        active = invite.data?.active !== false;
+        active = inviteData?.active !== false;
 
         // ✅ لو الدعوة غير مفعلة => Pending
         if (!active) role = "pending";
@@ -397,6 +422,19 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
   }
 
   const name = authDisplayName || buildPersistedDefaultName(role);
+  const permissionOverrides = normalizePermissionOverrides(inviteData?.permissionOverrides);
+  const invitePermissions =
+    inviteData
+      ? getEffectiveAppPermissions({
+          role,
+          permissions: inviteData.permissions,
+          permissionOverrides,
+        })
+      : [];
+  const permissions = invitePermissions.length ? invitePermissions : getRoleAppPermissions(role);
+  const finalPermissionOverrides = invitePermissions.length
+    ? permissionOverrides
+    : buildPermissionOverrides(role, permissions);
 
   const membershipId =
     role === "client"
@@ -412,6 +450,9 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     birthdate: "",
     role,
     active,
+    permissions,
+    permissionOverrides: finalPermissionOverrides,
+    permissionVersion: 2,
     membershipId,
     membershipPercent: 0,
     createdAt: serverTimestamp(), // ✅ وقت إنشاء الحساب فقط

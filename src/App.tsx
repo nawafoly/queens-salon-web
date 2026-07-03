@@ -170,6 +170,12 @@ function writeLiveAuthCache(args: {
         email: merged.email || "",
         role: args.role,
         displayName: merged.name || "",
+        permissions: Array.isArray(merged.permissions) ? merged.permissions : [],
+        permissionOverrides:
+          merged.permissionOverrides && typeof merged.permissionOverrides === "object"
+            ? merged.permissionOverrides
+            : undefined,
+        permissionVersion: merged.permissionVersion || undefined,
       })
     );
     window.dispatchEvent(new Event("authChanged"));

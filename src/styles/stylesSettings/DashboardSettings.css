@@ -1902,8 +1902,8 @@
 
 .dashboard-skin .settings-attendance__zones-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
-  gap: 18px;
+  grid-template-columns: minmax(520px, 1.35fr) minmax(320px, 0.65fr);
+  gap: 22px;
   align-items: start;
 }
 
@@ -1915,7 +1915,7 @@
     radial-gradient(560px 160px at 8% 0%, rgba(243, 182, 31, 0.08), transparent 62%),
     rgba(255, 255, 255, 0.9);
   box-shadow: var(--hr-shadow-soft);
-  padding: 18px;
+  padding: 20px;
 }
 
 .dashboard-skin .settings-attendance__zone-form {
@@ -1927,7 +1927,7 @@
 .dashboard-skin .settings-attendance__map-card {
   grid-column: 1 / -1;
   border: 1px solid rgba(15, 23, 42, 0.09);
-  border-radius: 22px;
+  border-radius: 28px;
   overflow: hidden;
   background: #eef2f7;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
@@ -1935,7 +1935,7 @@
 
 .dashboard-skin .settings-attendance__map {
   width: 100%;
-  min-height: 340px;
+  min-height: 460px;
   position: relative;
   display: block;
   overflow: hidden;
@@ -1944,11 +1944,11 @@
 }
 
 .dashboard-skin .settings-attendance__map--google {
-  height: 420px;
+  height: clamp(460px, 48vh, 620px);
 }
 
 .dashboard-skin .settings-attendance__map--embed {
-  height: 420px;
+  height: clamp(460px, 48vh, 620px);
   background: #e2e8f0;
 }
 
@@ -2121,6 +2121,36 @@
 .dashboard-skin .settings-attendance__zones-list {
   display: grid;
   gap: 12px;
+}
+
+.dashboard-skin .settings-attendance__zones-alert {
+  display: grid;
+  gap: 12px;
+  align-content: center;
+  min-height: 180px;
+  border: 1px solid rgba(220, 38, 38, 0.18);
+  border-radius: 22px;
+  background:
+    radial-gradient(320px 120px at 85% 0%, rgba(239, 68, 68, 0.1), transparent 65%),
+    rgba(255, 247, 247, 0.92);
+  color: #7f1d1d;
+  padding: 18px;
+}
+
+.dashboard-skin .settings-attendance__zones-alert strong {
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.dashboard-skin .settings-attendance__zones-alert span {
+  color: #9f1239;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.8;
+}
+
+.dashboard-skin .settings-attendance__zones-alert .exp-btn {
+  width: fit-content;
 }
 
 .dashboard-skin .settings-attendance__zone {

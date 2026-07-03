@@ -1006,6 +1006,18 @@
   background: rgba(243, 182, 31, 0.1);
 }
 
+.employee-top-pill--hr {
+  color: #40010d;
+  border-color: rgba(64, 1, 13, 0.2);
+  background: rgba(64, 1, 13, 0.06);
+}
+
+.employee-top-pill--dashboard {
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.14);
+  background: #f8fafc;
+}
+
 .employee-top-pill--danger {
   color: #dc2626;
   border-color: rgba(248, 113, 113, 0.38);
@@ -1778,6 +1790,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .employee-top-pill--hr span,
+  .employee-top-pill--dashboard span {
+    display: none;
   }
 
   .employee-top-icon {

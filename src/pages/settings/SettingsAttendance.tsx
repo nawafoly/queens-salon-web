@@ -47,6 +47,24 @@ function numberInput(value: number, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function attendanceErrorMessage(error: unknown, fallback: string) {
+  const err = (error || {}) as { code?: string; message?: string };
+  const code = String(err.code || "").toLowerCase();
+  const message = String(err.message || "").trim();
+
+  if (code.includes("permission-denied")) {
+    return "حساب هذه النافذة لا يملك صلاحية قراءة مناطق العمل. سجّل الدخول بحساب Owner / Admin / HR / Reception أو حددي نطاقًا مسموحًا للموظفة.";
+  }
+  if (code.includes("unavailable")) {
+    return "تعذر الاتصال بـ Firestore مؤقتًا. جرّبي التحديث بعد لحظات.";
+  }
+  if (code.includes("failed-precondition")) {
+    return "استعلام مناطق العمل يحتاج إعدادًا في Firestore. راجعي الـ console لمعرفة رابط الـ index إن وجد.";
+  }
+
+  return message || fallback;
+}
+
 function loadGoogleMaps() {
   const win = window as any;
   if (win.google?.maps) return Promise.resolve(win.google);
@@ -85,6 +103,8 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     lng: emptyZone.lng,
   });
   const [loading, setLoading] = useState(true);
+  const [zonesLoading, setZonesLoading] = useState(false);
+  const [zonesError, setZonesError] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const googleMapEl = useRef<HTMLDivElement | null>(null);
@@ -137,19 +157,49 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
       },
     ];
 
+  const applyZonesResult = (remoteZones: WorkZone[]) => {
+    setZones(remoteZones);
+    setZonesError("");
+  };
+
+  const loadZones = async () => {
+    setZonesLoading(true);
+    setZonesError("");
+    try {
+      applyZonesResult(await listWorkZones());
+    } catch (error) {
+      setZones([]);
+      setZonesError(attendanceErrorMessage(error, "تعذر تحميل مناطق العمل."));
+    } finally {
+      setZonesLoading(false);
+    }
+  };
+
   const load = async () => {
     setLoading(true);
+    setZonesLoading(true);
     setMessage("");
+    setZonesError("");
     try {
-      const [remoteSettings, remoteZones] = await Promise.all([
+      const [settingsResult, zonesResult] = await Promise.allSettled([
         AppSettingsService.fetchRemote(),
         listWorkZones(),
       ]);
-      setSettings(remoteSettings);
-      setZones(remoteZones);
-    } catch (error) {
-      setMessage((error as any)?.message || "تعذر تحميل إعدادات الحضور.");
+
+      if (settingsResult.status === "fulfilled") {
+        setSettings(settingsResult.value);
+      } else {
+        setMessage(attendanceErrorMessage(settingsResult.reason, "تعذر تحميل إعدادات الحضور."));
+      }
+
+      if (zonesResult.status === "fulfilled") {
+        applyZonesResult(zonesResult.value);
+      } else {
+        setZones([]);
+        setZonesError(attendanceErrorMessage(zonesResult.reason, "تعذر تحميل مناطق العمل."));
+      }
     } finally {
+      setZonesLoading(false);
       setLoading(false);
     }
   };
@@ -271,7 +321,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
           ...zoneDraft,
           name: zoneDraft.name.trim() || "منطقة عمل جديدة",
         });
-        setZones(await listWorkZones());
+        applyZonesResult(await listWorkZones());
       }
       const saved = await AppSettingsService.saveRemote(settings);
       setSettings(saved);
@@ -314,7 +364,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
       setMapFrameCenter({ lat: emptyZone.lat, lng: emptyZone.lng });
       setManualMarkerOffset({ x: 0, y: 0 });
       const nextZones = await listWorkZones();
-      setZones(nextZones);
+      applyZonesResult(nextZones);
       setMessage("تم حفظ منطقة العمل.");
     } catch (error) {
       setMessage((error as any)?.message || "تعذر حفظ منطقة العمل.");
@@ -695,7 +745,17 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
           </div>
 
           <div className="settings-attendance__zones-list">
-            {zones.length ? (
+            {zonesError ? (
+              <div className="settings-attendance__zones-alert">
+                <strong>تعذر قراءة مناطق العمل</strong>
+                <span>{zonesError}</span>
+                <button className="exp-btn" type="button" disabled={zonesLoading} onClick={() => void loadZones()}>
+                  <FontAwesomeIcon icon={faRotateRight} /> إعادة المحاولة
+                </button>
+              </div>
+            ) : zonesLoading ? (
+              <SettingsState title="جاري تحميل مناطق العمل..." loading />
+            ) : zones.length ? (
               zones.map((zone) => (
                 <article key={zone.id} className={`settings-attendance__zone ${zone.active ? "is-active" : ""}`}>
                   <div>
