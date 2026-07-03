@@ -1098,9 +1098,34 @@
   background: #ffffff;
   padding: 0 14px;
   font-size: 14px;
-  color: var(--hr-text);
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a;
   outline: none;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.hr-field input::placeholder,
+.hr-field textarea::placeholder {
+  color: #7c8796 !important;
+  -webkit-text-fill-color: #7c8796 !important;
+  opacity: 1;
+}
+
+.hr-field select option,
+.hr-field select optgroup {
+  color: #0f172a;
+  background: #ffffff;
+}
+
+.hr-field input:disabled,
+.hr-field select:disabled,
+.hr-field textarea:disabled {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+  opacity: 1;
+  background: #f8fafc;
+  cursor: not-allowed;
 }
 
 .hr-field textarea {
