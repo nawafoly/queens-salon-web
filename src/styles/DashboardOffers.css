@@ -7,6 +7,24 @@
 ========================= */
 
 .offers-page{
+  --dash-card-bg: rgba(255, 255, 255, 0.88);
+  --dash-card-border: 1px solid rgba(13, 13, 13, 0.07);
+  --dash-card-radius: 18px;
+  --dash-card-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
+  --dash-control-bg: #fff;
+  --dash-control-border: 1px solid rgba(13, 13, 13, 0.14);
+  --dash-control-radius: 12px;
+  --dash-control-color: #0D0D0D;
+  --dash-pill-bg: rgba(64, 1, 13, 0.06);
+  --dash-pill-border: 1px solid rgba(64, 1, 13, 0.14);
+  --dash-pill-color: #40010D;
+  --dash-pill-padding: 6px 12px;
+  --dash-pill-gap: 6px;
+  --dash-pill-font-size: 13px;
+  --dash-pill-font-weight: 700;
+  --dash-table-bg: rgba(255, 255, 255, 0.92);
+  --dash-table-border: 1px solid rgba(13, 13, 13, 0.07);
+  --dash-table-radius: 18px;
   min-height: 100vh;
   padding: 18px 0;
   overflow-x: hidden;
@@ -73,11 +91,11 @@
 .offers-card {
   width: min(1800px, 98vw);
   margin: 0 auto 14px auto;
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(13, 13, 13, 0.07);
-  border-radius: 18px;
+  --dash-card-bg: rgba(255, 255, 255, 0.88);
+  --dash-card-border: 1px solid rgba(13, 13, 13, 0.07);
+  --dash-card-radius: 18px;
   padding: 14px;
-  box-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
+  --dash-card-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
 }
 
 .offers-card-title {
@@ -142,11 +160,11 @@
 }
 
 .of-stat {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(13, 13, 13, 0.07);
-  border-radius: 18px;
+  --dash-card-bg: rgba(255, 255, 255, 0.92);
+  --dash-card-border: 1px solid rgba(13, 13, 13, 0.07);
+  --dash-card-radius: 18px;
   padding: 14px;
-  box-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
+  --dash-card-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
 }
 
 .of-stat h3 {
@@ -167,11 +185,11 @@
 .offers-table-card {
   width: min(1800px, 98vw);
   margin: 0 auto 18px auto;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(13, 13, 13, 0.07);
-  border-radius: 18px;
+  --dash-card-bg: rgba(255, 255, 255, 0.92);
+  --dash-card-border: 1px solid rgba(13, 13, 13, 0.07);
+  --dash-card-radius: 18px;
   padding: 12px;
-  box-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
+  --dash-card-shadow: 0 10px 26px rgba(13, 13, 13, 0.06);
   overflow: hidden;
 }
 
@@ -362,9 +380,9 @@
 .pkgm .pkgm__field input,
 .pkgm .pkgm__field textarea {
   width: 100%;
-  border: 1px solid rgba(13, 13, 13, 0.14);
-  background: #fff;
-  border-radius: 12px;
+  border: var(--dash-control-border);
+  background: var(--dash-control-bg);
+  border-radius: var(--dash-control-radius);
   padding: 10px 12px;
 }
 .pkgm .pkgm__field textarea {
@@ -1570,16 +1588,16 @@
 }
 
 .offers-kpi {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(13, 13, 13, 0.04);
-  border-radius: 12px;
+  --dash-card-bg: rgba(255, 255, 255, 0.9);
+  --dash-card-border: 1px solid rgba(13, 13, 13, 0.04);
+  --dash-card-radius: 12px;
+  --dash-card-shadow: 0 2px 8px rgba(13, 13, 13, 0.035);
   padding: 7px 9px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   min-height: 46px;
-  box-shadow: 0 2px 8px rgba(13, 13, 13, 0.035);
   transition: box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
 }
 

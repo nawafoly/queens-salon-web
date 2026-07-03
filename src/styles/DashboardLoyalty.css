@@ -7,6 +7,36 @@
 ========================= */
 
 .loyalty-page {
+    --dash-card-bg: #ffffff;
+    --dash-card-border: 1px solid rgba(0, 0, 0, 0.05);
+    --dash-card-radius: 20px;
+    --dash-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    --dash-control-bg: #fcfcfc;
+    --dash-control-border: 1.5px solid #eee;
+    --dash-control-radius: 12px;
+    --dash-control-color: #1a1a1a;
+    --dash-control-focus-border: #40010d;
+    --dash-control-focus-shadow: 0 0 0 4px rgba(64, 1, 13, 0.05);
+    --dash-button-bg: #f5f5f5;
+    --dash-button-border: none;
+    --dash-button-radius: 12px;
+    --dash-button-color: #333;
+    --dash-button-padding: 0 24px;
+    --dash-button-min-height: 48px;
+    --dash-button-font-size: 14px;
+    --dash-button-font-weight: 700;
+    --dash-button-hover-bg: #eeeeee;
+    --dash-button-hover-border: transparent;
+    --dash-button-primary-bg: #40010d;
+    --dash-button-primary-border: none;
+    --dash-button-primary-color: #fff;
+    --dash-button-primary-hover-bg: #5a0212;
+    --dash-button-danger-bg: #fff0f1;
+    --dash-button-danger-border: #ffcdd2;
+    --dash-button-danger-color: #d32f2f;
+    --dash-table-bg: #fff;
+    --dash-table-border: 1px solid #eee;
+    --dash-table-radius: 15px;
     direction: rtl;
     padding: 24px 16px;
     max-width: min(1800px, 98vw);
@@ -18,11 +48,11 @@
   
   /* Cards */
   .loyalty-page .dashboard-card {
-    background: #ffffff;
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    border-radius: 20px;
+    --dash-card-bg: #ffffff;
+    --dash-card-border: 1px solid rgba(0, 0, 0, 0.05);
+    --dash-card-radius: 20px;
     padding: 24px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    --dash-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
     margin-bottom: 20px;
     box-sizing: border-box;
     transition: all 0.3s ease;
@@ -67,10 +97,10 @@
   .loyalty-page .dash-grid select {
     width: 100%;
     height: 48px;
-    border-radius: 12px;
+    border-radius: var(--dash-control-radius);
     padding: 0 16px;
-    border: 1.5px solid #eee;
-    background: #fcfcfc;
+    border: var(--dash-control-border);
+    background: var(--dash-control-bg);
     font-weight: 600;
     font-size: 14px;
     outline: none;
@@ -80,9 +110,9 @@
   
   .loyalty-page .dash-grid input:focus,
   .loyalty-page .dash-grid select:focus {
-    border-color: #40010d;
+    border-color: var(--dash-control-focus-border);
     background: #fff;
-    box-shadow: 0 0 0 4px rgba(64, 1, 13, 0.05);
+    box-shadow: var(--dash-control-focus-shadow);
   }
   
   /* Checkbox align */
@@ -109,10 +139,10 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    height: 48px;
-    padding: 0 24px;
-    border-radius: 12px;
-    font-weight: 700;
+    height: var(--dash-button-min-height);
+    padding: var(--dash-button-padding);
+    border-radius: var(--dash-button-radius);
+    font-weight: var(--dash-button-font-weight);
     cursor: pointer;
     border: none;
     transition: all 0.2s ease;
@@ -121,13 +151,13 @@
   }
   
   .loyalty-page .dash-btn-primary {
-    background: #40010d;
-    color: #fff;
+    background: var(--dash-button-primary-bg);
+    color: var(--dash-button-primary-color);
     box-shadow: 0 4px 12px rgba(64, 1, 13, 0.2);
   }
   
   .loyalty-page .dash-btn-primary:hover {
-    background: #5a0212;
+    background: var(--dash-button-primary-hover-bg);
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(64, 1, 13, 0.25);
   }
@@ -137,19 +167,19 @@
   }
   
   .loyalty-page .dash-btn {
-    background: #f5f5f5;
-    color: #333;
+    background: var(--dash-button-bg);
+    color: var(--dash-button-color);
   }
   
   .loyalty-page .dash-btn:hover {
-    background: #eeeeee;
+    background: var(--dash-button-hover-bg);
     transform: translateY(-2px);
   }
   
   .loyalty-page .dash-btn-danger {
-    background: #fff0f1;
-    color: #d32f2f;
-    border: 1px solid #ffcdd2;
+    background: var(--dash-button-danger-bg);
+    color: var(--dash-button-danger-color);
+    border: 1px solid var(--dash-button-danger-border);
   }
   
   .loyalty-page .dash-btn-danger:hover {
@@ -185,14 +215,14 @@
   /* ===== Table ===== */
   .loyalty-page .table-wrapper {
     overflow-x: auto;
-    border-radius: 15px;
-    border: 1px solid #eee;
+    border-radius: var(--dash-table-radius);
+    border: var(--dash-table-border);
   }
 
   .loyalty-page .dash-table {
     width: 100%;
     border-collapse: collapse;
-    background: #fff;
+    background: var(--dash-table-bg);
   }
   
   .loyalty-page .dash-table th,

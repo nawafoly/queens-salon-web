@@ -8,6 +8,26 @@
   --accent: #40010d;
   --accent-2: #6e7372;
   --accent-3: #888c8c;
+  --dash-card-bg: var(--card);
+  --dash-card-border: 1px solid rgba(13, 13, 13, 0.1);
+  --dash-card-radius: 14px;
+  --dash-card-shadow: 0 10px 22px rgba(13, 13, 13, 0.06);
+  --dash-control-bg: #fff;
+  --dash-control-border: 1px solid rgba(13, 13, 13, 0.12);
+  --dash-control-radius: 10px;
+  --dash-control-color: #0d0d0d;
+  --dash-control-focus-border: rgba(64, 1, 13, 0.28);
+  --dash-control-focus-shadow: 0 0 0 3px rgba(64, 1, 13, 0.12);
+  --dash-button-bg: #fff;
+  --dash-button-border: 1px solid rgba(13, 13, 13, 0.14);
+  --dash-button-radius: 10px;
+  --dash-button-color: #0d0d0d;
+  --dash-button-padding: 8px 13px;
+  --dash-button-min-height: 36px;
+  --dash-button-font-weight: 900;
+  --dash-table-bg: #fff;
+  --dash-table-border: 1px solid rgba(13, 13, 13, 0.1);
+  --dash-table-radius: 10px;
   width: min(1560px, calc(100% - 18px));
   margin: 0 auto;
   padding: 14px 0 34px;
@@ -20,10 +40,10 @@
 .reports-v2__section,
 .reports-v2__kpis .kpi,
 .reports-v2__charts-board .chart-card {
-  background: var(--card);
-  border: 1px solid rgba(13, 13, 13, 0.1);
-  border-radius: 14px;
-  box-shadow: 0 10px 22px rgba(13, 13, 13, 0.06);
+  --dash-card-bg: var(--card);
+  --dash-card-border: 1px solid rgba(13, 13, 13, 0.1);
+  --dash-card-radius: 14px;
+  --dash-card-shadow: 0 10px 22px rgba(13, 13, 13, 0.06);
 }
 
 .reports-v2__header {
@@ -80,11 +100,11 @@
 }
 
 .f-btn {
-  border: 1px solid rgba(13, 13, 13, 0.14);
-  background: #fff;
-  color: #0d0d0d;
-  border-radius: 10px;
-  padding: 8px 13px;
+  border: var(--dash-button-border);
+  background: var(--dash-button-bg);
+  color: var(--dash-button-color);
+  border-radius: var(--dash-button-radius);
+  padding: var(--dash-button-padding);
   font-size: 13px;
   font-weight: 900;
   cursor: pointer;
@@ -119,13 +139,13 @@
 
 .reports-v2__custom-range input {
   height: 36px;
-  border-radius: 10px;
-  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: var(--dash-control-radius);
+  border: var(--dash-control-border);
   padding: 0 10px;
   font-size: 13px;
   font-weight: 800;
-  color: #0d0d0d;
-  background: #fff;
+  color: var(--dash-control-color);
+  background: var(--dash-control-bg);
 }
 
 .reports-v2__range-caption {
@@ -140,10 +160,10 @@
 
 .reports-v2__payroll-cycle {
   margin-top: 12px;
-  background: var(--card);
-  border: 1px solid rgba(13, 13, 13, 0.1);
-  border-radius: 14px;
-  box-shadow: 0 12px 28px rgba(13, 13, 13, 0.08);
+  --dash-card-bg: var(--card);
+  --dash-card-border: 1px solid rgba(13, 13, 13, 0.1);
+  --dash-card-radius: 14px;
+  --dash-card-shadow: 0 12px 28px rgba(13, 13, 13, 0.08);
   padding: 12px;
 }
 
@@ -192,10 +212,10 @@
 
 .reports-v2__month-compare {
   margin-top: 12px;
-  background: var(--card);
-  border: 1px solid rgba(13, 13, 13, 0.1);
-  border-radius: 14px;
-  box-shadow: 0 12px 28px rgba(13, 13, 13, 0.08);
+  --dash-card-bg: var(--card);
+  --dash-card-border: 1px solid rgba(13, 13, 13, 0.1);
+  --dash-card-radius: 14px;
+  --dash-card-shadow: 0 12px 28px rgba(13, 13, 13, 0.08);
   padding: 12px;
 }
 
@@ -591,9 +611,9 @@
 .table-wrap {
   width: 100%;
   overflow: auto;
-  border: 1px solid rgba(13, 13, 13, 0.1);
-  border-radius: 10px;
-  background: #fff;
+  border: var(--dash-table-border);
+  border-radius: var(--dash-table-radius);
+  background: var(--dash-table-bg);
 }
 
 .table-wrap table {

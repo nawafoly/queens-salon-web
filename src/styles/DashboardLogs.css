@@ -1,5 +1,18 @@
 /* src/styles/DashboardLogs.css - premium logs dashboard */
 
+.logs-page {
+  --dash-card-bg: #fff;
+  --dash-card-border: 1px solid rgba(15, 23, 42, 0.14);
+  --dash-card-radius: 18px;
+  --dash-card-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  --dash-control-bg: rgba(255, 255, 255, 0.88);
+  --dash-control-border: 1px solid rgba(13, 13, 13, 0.14);
+  --dash-control-radius: 12px;
+  --dash-control-color: #0d0d0d;
+  --dash-control-focus-border: rgba(64, 1, 13, 0.26);
+  --dash-control-focus-shadow: 0 0 0 3px rgba(64, 1, 13, 0.1);
+}
+
 .logs-page .container {
   width: min(1800px, 98vw);
   max-width: min(1800px, 98vw);
@@ -64,10 +77,11 @@
 }
 
 .logs-kpi {
-  border-radius: 16px;
+  --dash-card-radius: 16px;
   padding: 12px;
-  border: 1px solid rgba(13, 13, 13, 0.1);
-  background: rgba(255, 255, 255, 0.88);
+  --dash-card-border: 1px solid rgba(13, 13, 13, 0.1);
+  --dash-card-bg: rgba(255, 255, 255, 0.88);
+  --dash-card-shadow: none;
   min-height: 86px;
   display: grid;
   align-content: center;
@@ -173,16 +187,16 @@
 .logs-filters .dash-input,
 .logs-filters .dash-select {
   min-height: 42px;
-  border-radius: 12px;
-  border: 1px solid rgba(13, 13, 13, 0.14);
-  background: rgba(255, 255, 255, 0.88);
-  color: #0d0d0d;
+  border-radius: var(--dash-control-radius);
+  border: var(--dash-control-border);
+  background: var(--dash-control-bg);
+  color: var(--dash-control-color);
 }
 
 .logs-filters .dash-input:focus,
 .logs-filters .dash-select:focus {
-  border-color: rgba(64, 1, 13, 0.26);
-  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.1);
+  border-color: var(--dash-control-focus-border);
+  box-shadow: var(--dash-control-focus-shadow);
 }
 
 .logs-meta {
@@ -240,13 +254,13 @@
 }
 
 .log-card {
-  border-radius: 18px;
-  border: 1px solid rgba(15, 23, 42, 0.14);
-  background: #fff;
+  --dash-card-radius: 18px;
+  --dash-card-border: 1px solid rgba(15, 23, 42, 0.14);
+  --dash-card-bg: #fff;
+  --dash-card-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
   padding: 14px 16px;
   display: grid;
   gap: 12px;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
 }
 
 .log-card--critical {

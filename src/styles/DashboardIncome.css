@@ -13,6 +13,33 @@
   --inc-muted: #6b7280;
   --inc-surface: #ffffff;
   --inc-surface-soft: #fcf8f9;
+  --dash-card-bg: #fff;
+  --dash-card-border: 1px solid var(--inc-border);
+  --dash-card-radius: 18px;
+  --dash-card-shadow: 0 10px 22px rgba(17, 24, 39, 0.05);
+  --dash-control-bg: #fff;
+  --dash-control-border: 1px solid #e4e7ec;
+  --dash-control-radius: 14px;
+  --dash-control-color: #111827;
+  --dash-control-focus-border: #d8a5b3;
+  --dash-control-focus-shadow: 0 0 0 3px rgba(91, 0, 21, 0.12);
+  --dash-button-bg: #fff;
+  --dash-button-border: 1px solid var(--inc-border);
+  --dash-button-radius: 14px;
+  --dash-button-color: #3f3d56;
+  --dash-button-padding: 9px 14px;
+  --dash-button-min-height: 40px;
+  --dash-button-font-weight: 800;
+  --dash-pill-bg: #fff;
+  --dash-pill-border: 1px solid var(--inc-border);
+  --dash-pill-color: var(--inc-brand);
+  --dash-pill-padding: 0 14px;
+  --dash-pill-gap: 8px;
+  --dash-pill-font-size: 13px;
+  --dash-pill-font-weight: 800;
+  --dash-table-bg: #fff;
+  --dash-table-border: 1px solid #e8ecf2;
+  --dash-table-radius: 16px;
 }
 
 .income-page .income-container {
@@ -63,18 +90,15 @@
 
 /* Actions */
 .income-page .dash-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   gap: 8px;
   min-height: 40px;
-  padding: 0 14px;
-  border-radius: 999px;
+  padding: var(--dash-pill-padding);
+  border-radius: var(--dash-pill-radius);
   font-size: 13px;
   font-weight: 800;
-  border: 1px solid var(--inc-border);
-  background: #fff;
-  color: var(--inc-brand);
+  border: var(--dash-pill-border);
+  background: var(--dash-pill-bg);
+  color: var(--dash-pill-color);
   cursor: pointer;
   transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, border-color 0.16s ease;
 }
@@ -112,10 +136,10 @@
 .income-page .form-control {
   width: 100%;
   min-height: 44px;
-  border-radius: 14px;
-  border: 1px solid #e4e7ec;
-  background: #fff;
-  color: #111827;
+  border-radius: var(--dash-control-radius);
+  border: var(--dash-control-border);
+  background: var(--dash-control-bg);
+  color: var(--dash-control-color);
   padding: 10px 12px;
   font-size: 13px;
   font-weight: 700;
@@ -124,17 +148,17 @@
 }
 
 .income-page .form-control:focus {
-  border-color: #d8a5b3;
-  box-shadow: 0 0 0 3px rgba(91, 0, 21, 0.12);
+  border-color: var(--dash-control-focus-border);
+  box-shadow: var(--dash-control-focus-shadow);
 }
 
 .income-page .income-filters {
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid var(--inc-border);
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 10px 22px rgba(17, 24, 39, 0.05);
+  --dash-card-bg: #fff;
+  --dash-card-border: 1px solid var(--inc-border);
+  --dash-card-radius: 18px;
+  --dash-card-shadow: 0 10px 22px rgba(17, 24, 39, 0.05);
 }
 
 .income-page .income-filter-head {
@@ -189,10 +213,10 @@
   min-width: 0;
   min-height: 74px;
   padding: 14px;
-  border: 1px solid #eceff3;
-  border-radius: 18px;
-  background: linear-gradient(160deg, #fff, #fcfdff);
-  box-shadow: 0 10px 20px rgba(17, 24, 39, 0.05);
+  --dash-card-bg: linear-gradient(160deg, #fff, #fcfdff);
+  --dash-card-border: 1px solid #eceff3;
+  --dash-card-radius: 18px;
+  --dash-card-shadow: 0 10px 20px rgba(17, 24, 39, 0.05);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -249,10 +273,10 @@
 .income-page .income-table-wrap {
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid var(--inc-border);
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 12px 26px rgba(17, 24, 39, 0.05);
+  --dash-card-bg: #fff;
+  --dash-card-border: 1px solid var(--inc-border);
+  --dash-card-radius: 18px;
+  --dash-card-shadow: 0 12px 26px rgba(17, 24, 39, 0.05);
 }
 
 .income-page .income-table-head {
@@ -276,9 +300,9 @@
 }
 
 .income-page .income-table-responsive {
-  border: 1px solid #e8ecf2;
-  border-radius: 16px;
-  background: #fff;
+  border: var(--dash-table-border);
+  border-radius: var(--dash-table-radius);
+  background: var(--dash-table-bg);
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
@@ -737,9 +761,9 @@
   width: 100%;
   min-height: 44px;
   border-radius: 12px;
-  border: 1px solid #d8dde6;
-  background: #fff;
-  color: #111;
+  border: var(--dash-control-border, 1px solid #d8dde6);
+  background: var(--dash-control-bg, #fff);
+  color: var(--dash-control-color, #111);
   padding: 10px 12px;
   font-size: 14px;
   font-weight: 700;
@@ -752,8 +776,8 @@
 }
 
 .income-modal-input:focus {
-  border-color: rgba(91, 0, 21, 0.45);
-  box-shadow: 0 0 0 3px rgba(91, 0, 21, 0.14);
+  border-color: var(--dash-control-focus-border, rgba(91, 0, 21, 0.45));
+  box-shadow: var(--dash-control-focus-shadow, 0 0 0 3px rgba(91, 0, 21, 0.14));
 }
 
 .income-modal-actions {
@@ -862,11 +886,11 @@
 
 /* Optional helper classes kept for compatibility */
 .income-page .reports-btn {
-  border: 1px solid var(--inc-border);
-  background: #fff;
-  color: #3f3d56;
-  border-radius: 14px;
-  padding: 9px 14px;
+  border: var(--dash-button-border);
+  background: var(--dash-button-bg);
+  color: var(--dash-button-color);
+  border-radius: var(--dash-button-radius);
+  padding: var(--dash-button-padding);
   font-size: 13px;
   font-weight: 800;
   display: inline-flex;

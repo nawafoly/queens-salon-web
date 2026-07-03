@@ -13,6 +13,35 @@
   --exp-brand-soft: rgba(91, 31, 38, 0.08);
   --exp-danger: #b42318;
   --exp-shadow: 0 14px 28px rgba(40, 24, 16, 0.08);
+  --dash-card-bg: var(--exp-card-bg);
+  --dash-card-border: 1px solid var(--exp-border);
+  --dash-card-radius: 18px;
+  --dash-card-shadow: var(--exp-shadow);
+  --dash-control-bg: #fff;
+  --dash-control-border: 1px solid var(--exp-border);
+  --dash-control-radius: 12px;
+  --dash-control-color: #1f1a17;
+  --dash-control-focus-border: rgba(91, 31, 38, 0.5);
+  --dash-control-focus-shadow: 0 0 0 3px rgba(91, 31, 38, 0.12);
+  --dash-button-bg: #fff;
+  --dash-button-border: 1px solid var(--exp-border);
+  --dash-button-radius: 12px;
+  --dash-button-color: #241e1b;
+  --dash-button-padding: 8px 14px;
+  --dash-button-min-height: 40px;
+  --dash-button-font-weight: 900;
+  --dash-button-hover-bg: rgba(255, 255, 255, 0.7);
+  --dash-button-hover-border: var(--exp-border);
+  --dash-button-primary-bg: var(--exp-brand);
+  --dash-button-primary-border: 1px solid var(--exp-brand);
+  --dash-button-primary-color: #fff;
+  --dash-button-primary-hover-bg: #4d1a20;
+  --dash-button-danger-bg: rgba(180, 35, 24, 0.08);
+  --dash-button-danger-border: rgba(180, 35, 24, 0.28);
+  --dash-button-danger-color: var(--exp-danger);
+  --dash-table-bg: #fff;
+  --dash-table-border: 1px solid rgba(73, 53, 40, 0.12);
+  --dash-table-radius: 16px;
 
   direction: rtl;
   font-family: "Tajawal", Arial, sans-serif;
@@ -58,10 +87,10 @@
 }
 
 .exp-card {
-  background: var(--exp-card-bg);
-  border: 1px solid var(--exp-border);
-  border-radius: 18px;
-  box-shadow: var(--exp-shadow);
+  --dash-card-bg: var(--exp-card-bg);
+  --dash-card-border: 1px solid var(--exp-border);
+  --dash-card-radius: 18px;
+  --dash-card-shadow: var(--exp-shadow);
   padding: 16px;
   min-width: 0;
 }
@@ -154,11 +183,11 @@
 .exp-page .dash-select {
   width: 100%;
   min-height: 42px;
-  border: 1px solid var(--exp-border);
-  border-radius: 12px;
+  border: var(--dash-control-border);
+  border-radius: var(--dash-control-radius);
   padding: 9px 11px;
-  background: #fff;
-  color: #1f1a17;
+  background: var(--dash-control-bg);
+  color: var(--dash-control-color);
   font-family: inherit;
   font-size: 14px;
   outline: none;
@@ -172,8 +201,8 @@
 .exp-table input:focus,
 .exp-table select:focus,
 .exp-page .dash-select:focus {
-  border-color: rgba(91, 31, 38, 0.5);
-  box-shadow: 0 0 0 3px rgba(91, 31, 38, 0.12);
+  border-color: var(--dash-control-focus-border);
+  box-shadow: var(--dash-control-focus-shadow);
 }
 
 .exp-page input::placeholder,
@@ -227,12 +256,12 @@
 
 .exp-btn,
 .reports-btn {
-  min-height: 40px;
-  border-radius: 12px;
-  border: 1px solid var(--exp-border);
-  background: #fff;
-  color: #241e1b;
-  padding: 8px 14px;
+  min-height: var(--dash-button-min-height);
+  border-radius: var(--dash-button-radius);
+  border: var(--dash-button-border);
+  background: var(--dash-button-bg);
+  color: var(--dash-button-color);
+  padding: var(--dash-button-padding);
   font-family: inherit;
   font-size: 13px;
   font-weight: 900;
@@ -247,25 +276,25 @@
 .exp-btn:hover,
 .reports-btn:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--dash-button-hover-bg);
 }
 
 .exp-btn.primary,
 .reports-btn.primary {
   border-color: var(--exp-brand);
-  background: var(--exp-brand);
-  color: #fff;
+  background: var(--dash-button-primary-bg);
+  color: var(--dash-button-primary-color);
 }
 
 .exp-btn.primary:hover,
 .reports-btn.primary:hover {
-  background: #4d1a20;
+  background: var(--dash-button-primary-hover-bg);
 }
 
 .exp-btn.danger {
-  border-color: rgba(180, 35, 24, 0.28);
-  background: rgba(180, 35, 24, 0.08);
-  color: var(--exp-danger);
+  border-color: var(--dash-button-danger-border);
+  background: var(--dash-button-danger-bg);
+  color: var(--dash-button-danger-color);
 }
 
 .exp-btn:disabled,
@@ -329,9 +358,9 @@
 .exp-table-wrap {
   width: 100%;
   max-width: 100%;
-  border: 1px solid rgba(73, 53, 40, 0.12);
-  border-radius: 16px;
-  background: #fff;
+  border: var(--dash-table-border);
+  border-radius: var(--dash-table-radius);
+  background: var(--dash-table-bg);
   overflow: visible;
   box-shadow: 0 10px 22px rgba(30, 20, 14, 0.05);
 }

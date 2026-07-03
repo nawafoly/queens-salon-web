@@ -6,6 +6,17 @@
 ========================================= */
 
 .dashboard-skin .settings-page {
+  --dash-card-bg: rgba(255, 255, 255, 0.62);
+  --dash-card-border: 1px solid rgba(255, 255, 255, 0.65);
+  --dash-card-radius: 22px;
+  --dash-card-shadow: var(--shadow-soft);
+  --dash-control-bg: rgba(255, 255, 255, 0.85);
+  --dash-control-border: 1px solid rgba(124, 58, 237, 0.18);
+  --dash-control-radius: 14px;
+  --dash-control-color: rgba(58, 47, 68, 0.92);
+  --dash-control-focus-border: rgba(124, 58, 237, 0.45);
+  --dash-control-focus-shadow: 0 0 0 3px rgba(139, 92, 246, 0.14);
+  --dash-table-radius: 16px;
   width: 100%;
   max-width: 100%;
 }
@@ -68,10 +79,10 @@
 
 /* ✅ Card Glass */
 .dashboard-skin .settings-card {
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  box-shadow: var(--shadow-soft);
-  border-radius: 22px;
+  --dash-card-bg: rgba(255, 255, 255, 0.62);
+  --dash-card-border: 1px solid rgba(255, 255, 255, 0.65);
+  --dash-card-shadow: var(--shadow-soft);
+  --dash-card-radius: 22px;
   padding: 16px;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -121,11 +132,11 @@
   min-height: 44px;
   padding: 10px 12px;
 
-  border-radius: 14px;
-  border: 1px solid rgba(124, 58, 237, 0.18);
+  border-radius: var(--dash-control-radius);
+  border: var(--dash-control-border);
 
-  background: rgba(255, 255, 255, 0.85);
-  color: rgba(58, 47, 68, 0.92);
+  background: var(--dash-control-bg);
+  color: var(--dash-control-color);
 
   font-family: "Tajawal", sans-serif;
   font-size: 14px;
@@ -161,8 +172,8 @@
 }
 
 .dashboard-skin .settings-input:focus {
-  border-color: rgba(124, 58, 237, 0.45);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.14);
+  border-color: var(--dash-control-focus-border);
+  box-shadow: var(--dash-control-focus-shadow);
 }
 
 .dashboard-skin .settings-input:disabled {
@@ -299,7 +310,7 @@
   width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  border-radius: 16px;
+  border-radius: var(--dash-table-radius);
 }
 
 .dashboard-skin .ov-table {

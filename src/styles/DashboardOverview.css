@@ -9,6 +9,19 @@
   --ov-brand-soft: rgba(64, 1, 13, 0.08);
   --ov-success: #16a34a;
   --ov-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  --dash-card-bg: var(--ov-surface);
+  --dash-card-border: 1px solid var(--ov-border);
+  --dash-card-radius: 16px;
+  --dash-card-shadow: var(--ov-shadow);
+  --dash-control-bg: #fff;
+  --dash-control-border: 1px solid #d7deea;
+  --dash-control-radius: 10px;
+  --dash-control-color: var(--ov-text);
+  --dash-control-focus-border: rgba(64, 1, 13, 0.45);
+  --dash-control-focus-shadow: 0 0 0 3px rgba(64, 1, 13, 0.12);
+  --dash-table-bg: #fff;
+  --dash-table-border: 1px solid var(--ov-border);
+  --dash-table-radius: 16px;
 
   background: var(--ov-bg);
   border: 1px solid var(--ov-border);
@@ -89,11 +102,11 @@
 }
 
 .dashboard-skin .ov-stat-card {
-  background: var(--ov-surface);
-  border: 1px solid var(--ov-border);
-  border-radius: 14px;
+  --dash-card-bg: var(--ov-surface);
+  --dash-card-border: 1px solid var(--ov-border);
+  --dash-card-radius: 14px;
   padding: 14px;
-  box-shadow: var(--ov-shadow);
+  --dash-card-shadow: var(--ov-shadow);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -141,10 +154,10 @@
 }
 
 .dashboard-skin .ov-card {
-  background: #fff;
-  border: 1px solid var(--ov-border);
-  border-radius: 16px;
-  box-shadow: var(--ov-shadow);
+  --dash-card-bg: #fff;
+  --dash-card-border: 1px solid var(--ov-border);
+  --dash-card-radius: 16px;
+  --dash-card-shadow: var(--ov-shadow);
   overflow: hidden;
 }
 
@@ -278,10 +291,10 @@
 
 .dashboard-skin .ov-date-filter input[type="date"] {
   height: 42px;
-  border: 1px solid #d7deea;
-  border-radius: 10px;
-  background: #fff;
-  color: var(--ov-text);
+  border: var(--dash-control-border);
+  border-radius: var(--dash-control-radius);
+  background: var(--dash-control-bg);
+  color: var(--dash-control-color);
   color-scheme: light;
   padding: 0 10px;
   font-weight: 800;
@@ -290,8 +303,8 @@
 }
 
 .dashboard-skin .ov-date-filter input[type="date"]:focus {
-  border-color: rgba(64, 1, 13, 0.45);
-  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.12);
+  border-color: var(--dash-control-focus-border);
+  box-shadow: var(--dash-control-focus-shadow);
 }
 
 .dashboard-skin .ov-date-filter input[type="date"]::-webkit-calendar-picker-indicator {

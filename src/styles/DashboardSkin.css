@@ -81,6 +81,51 @@
   /* Lines */
   --line: rgba(13, 13, 13, 0.10);
 
+  /* Shared dashboard primitives */
+  --dash-card-bg: var(--dash-surface);
+  --dash-card-border: 1px solid var(--dash-border);
+  --dash-card-radius: var(--radius-lg);
+  --dash-card-shadow: none;
+  --dash-card-color: var(--text);
+
+  --dash-control-bg: var(--dash-surface-soft);
+  --dash-control-border: 1px solid var(--dash-border);
+  --dash-control-radius: 12px;
+  --dash-control-color: var(--text-strong);
+  --dash-control-focus-border: rgba(64, 1, 13, 0.28);
+  --dash-control-focus-shadow: 0 0 0 2px rgba(64, 1, 13, 0.12);
+
+  --dash-button-bg: var(--dash-surface-strong);
+  --dash-button-border: 1px solid var(--dash-border);
+  --dash-button-radius: 12px;
+  --dash-button-color: var(--text-strong);
+  --dash-button-font-size: 13px;
+  --dash-button-font-weight: 800;
+  --dash-button-padding: 8px 12px;
+  --dash-button-min-height: 38px;
+  --dash-button-hover-bg: rgba(245, 245, 244, 0.95);
+  --dash-button-hover-border: rgba(64, 1, 13, 0.22);
+  --dash-button-primary-bg: rgba(64, 1, 13, 0.10);
+  --dash-button-primary-border: 1px solid rgba(64, 1, 13, 0.22);
+  --dash-button-primary-color: rgba(64, 1, 13, 0.98);
+  --dash-button-primary-hover-bg: rgba(64, 1, 13, 0.14);
+  --dash-button-danger-bg: rgba(239, 68, 68, 0.10);
+  --dash-button-danger-border: rgba(239, 68, 68, 0.22);
+  --dash-button-danger-color: #991b1b;
+
+  --dash-pill-bg: rgba(13, 13, 13, 0.04);
+  --dash-pill-border: 1px solid rgba(13, 13, 13, 0.10);
+  --dash-pill-color: #0D0D0D;
+  --dash-pill-radius: 999px;
+  --dash-pill-padding: 7px 11px;
+  --dash-pill-gap: 8px;
+  --dash-pill-font-size: 12px;
+  --dash-pill-font-weight: 900;
+
+  --dash-table-bg: #fff;
+  --dash-table-border: 1px solid rgba(13, 13, 13, 0.10);
+  --dash-table-radius: 16px;
+
   overflow: visible;
   /* ✅ لا نحط overflow هنا عشان sticky يشتغل */
 }
@@ -573,9 +618,9 @@
 ========================= */
 .dashboard-skin .form-control,
 .dashboard-skin .form-select {
-  background: var(--dash-surface-soft);
-  border: 1px solid var(--dash-border);
-  color: var(--text-strong);
+  background: var(--dash-control-bg);
+  border: var(--dash-control-border);
+  color: var(--dash-control-color);
 }
 
 .dashboard-skin input,
@@ -599,11 +644,44 @@
 ========================================================= */
 
 /* ✅ Card base (used everywhere) */
+/* Card primitive aliases: scoped to current dashboard cleanup pages only. */
+.dashboard-skin :where(
+  .overview-page .ov-card,
+  .overview-page .ov-stat-card,
+  .reports-v2 .reports-v2__header,
+  .reports-v2 .reports-v2__filters,
+  .reports-v2 .reports-v2__section,
+  .reports-v2 .reports-v2__payroll-cycle,
+  .reports-v2 .reports-v2__month-compare,
+  .reports-v2 .reports-v2__kpis .kpi,
+  .reports-v2 .reports-v2__charts-board .chart-card,
+  .income-page .stat-card,
+  .income-page .income-filters,
+  .income-page .income-table-wrap,
+  .exp-page .exp-card,
+  .logs-page .logs-kpi,
+  .logs-page .log-card,
+  .loyalty-page .dashboard-card,
+  .offers-page .offers-card,
+  .offers-page .offers-table-card,
+  .offers-page .of-stat,
+  .offers-page .offers-kpi,
+  .settings-page .settings-card
+) {
+  background: var(--dash-card-bg);
+  border: var(--dash-card-border);
+  border-radius: var(--dash-card-radius);
+  box-shadow: var(--dash-card-shadow);
+  color: var(--dash-card-color);
+}
+
 .dashboard-skin .dash-card {
   width: 100%;
-  background: var(--dash-surface);
-  border: 1px solid var(--dash-border);
-  border-radius: 18px;
+  background: var(--dash-card-bg);
+  border: var(--dash-card-border);
+  border-radius: var(--dash-card-radius);
+  box-shadow: var(--dash-card-shadow);
+  color: var(--dash-card-color);
   padding: 14px;
   margin: 12px 0;
 }
@@ -620,11 +698,11 @@
 .dashboard-skin .dash-input,
 .dashboard-skin .dash-textarea {
   width: 100%;
-  border: 1px solid var(--dash-border);
-  border-radius: 12px;
+  border: var(--dash-control-border);
+  border-radius: var(--dash-control-radius);
   padding: 10px 12px;
-  background: var(--dash-surface-soft);
-  color: var(--text-strong);
+  background: var(--dash-control-bg);
+  color: var(--dash-control-color);
   font-family: "Tajawal", sans-serif;
   outline: none;
 }
@@ -636,24 +714,69 @@
 
 .dashboard-skin .dash-input:focus,
 .dashboard-skin .dash-textarea:focus {
-  border-color: rgba(64, 1, 13, 0.28);
-  box-shadow: 0 0 0 2px rgba(64, 1, 13, 0.12);
+  border-color: var(--dash-control-focus-border);
+  box-shadow: var(--dash-control-focus-shadow);
+}
+
+/* Form control aliases for the dashboard cleanup scope. */
+.dashboard-skin :where(
+  .reports-v2 .reports-v2__custom-range input,
+  .income-page .form-control,
+  .income-page-modal__card .income-modal-input,
+  .exp-page .exp-form input,
+  .exp-page .exp-filters input,
+  .exp-page .exp-form select,
+  .exp-page .exp-filters select,
+  .exp-page .exp-table input,
+  .exp-page .exp-table select,
+  .exp-page textarea,
+  .loyalty-page .dash-grid input,
+  .loyalty-page .dash-grid select,
+  .loyalty-page .search-box input,
+  .settings-page .settings-input
+) {
+  background: var(--dash-control-bg);
+  border: var(--dash-control-border);
+  border-radius: var(--dash-control-radius);
+  color: var(--dash-control-color);
+}
+
+.dashboard-skin :where(
+  .reports-v2 .reports-v2__custom-range input,
+  .income-page .form-control,
+  .income-page-modal__card .income-modal-input,
+  .exp-page .exp-form input,
+  .exp-page .exp-filters input,
+  .exp-page .exp-form select,
+  .exp-page .exp-filters select,
+  .exp-page .exp-table input,
+  .exp-page .exp-table select,
+  .exp-page textarea,
+  .loyalty-page .dash-grid input,
+  .loyalty-page .dash-grid select,
+  .loyalty-page .search-box input,
+  .settings-page .settings-input
+):focus {
+  border-color: var(--dash-control-focus-border);
+  box-shadow: var(--dash-control-focus-shadow);
 }
 
 /* ✅ Pills base (global) + support existing staff-pill without touching TSX */
 .dashboard-skin .dashboard-pill,
-.dashboard-skin  .staff-pill {
+.dashboard-skin  .staff-pill,
+.dashboard-skin :where(.income-page .dash-pill, .exp-page .dash-pill, .offers-page .dash-pill) {
   display: inline-flex !important;
   align-items: center !important;
-  gap: 8px !important;
-  padding: 7px 11px !important;
-  border-radius: 999px !important;
-  font-size: 12px !important;
-  font-weight: 900 !important;
+  justify-content: center !important;
+  gap: var(--dash-pill-gap) !important;
+  padding: var(--dash-pill-padding) !important;
+  border-radius: var(--dash-pill-radius) !important;
+  font-size: var(--dash-pill-font-size) !important;
+  font-weight: var(--dash-pill-font-weight) !important;
   line-height: 1 !important;
-  border: 1px solid rgba(13, 13, 13, 0.10) !important;
-  background: rgba(13, 13, 13, 0.04) !important;
-  color: #0D0D0D !important;
+  border: var(--dash-pill-border) !important;
+  background: var(--dash-pill-bg) !important;
+  color: var(--dash-pill-color) !important;
   white-space: nowrap !important;
 }
 
@@ -681,7 +804,7 @@
   font-size: 14px;
   font-weight: 800;
   line-height: 1;
-  border: 1px solid rgba(13, 13, 13, 0.10);
+  border: var(--dash-status-border, 1px solid rgba(13, 13, 13, 0.10));
   box-shadow: 0 10px 22px rgba(13, 13, 13, 0.06);
   white-space: nowrap;
 }
@@ -710,18 +833,33 @@
   border-color: rgba(64, 1, 13, 0.22);
 }
 
+/* Table shell aliases. Cell layout stays in page CSS. */
+.dashboard-skin :where(
+  .reports-v2 .table-wrap,
+  .income-page .income-table-responsive,
+  .exp-page .exp-table-wrap,
+  .loyalty-page .table-wrapper,
+  .settings-page .table-responsive
+) {
+  background: var(--dash-table-bg);
+  border: var(--dash-table-border);
+  border-radius: var(--dash-table-radius);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* =========================
    ✅ Buttons (dash-btn / exp-btn) - Queens
 ========================= */
 .dashboard-skin .dash-btn,
 .dashboard-skin .exp-btn {
-  border: 1px solid var(--dash-border);
-  background: var(--dash-surface-strong);
-  color: var(--text-strong);
-  border-radius: 12px;
+  border: var(--dash-button-border);
+  background: var(--dash-button-bg);
+  color: var(--dash-button-color);
+  border-radius: var(--dash-button-radius);
 
-  font-size: 13px;
-  font-weight: 800;
+  font-size: var(--dash-button-font-size);
+  font-weight: var(--dash-button-font-weight);
 
   cursor: pointer;
   display: inline-flex;
@@ -737,21 +875,59 @@
 
 .dashboard-skin .dash-btn:hover,
 .dashboard-skin .exp-btn:hover {
-  background: rgba(245, 245, 244, 0.95);
+  background: var(--dash-button-hover-bg);
   transform: translateY(-1px);
-  border-color: rgba(64, 1, 13, 0.22);
+  border-color: var(--dash-button-hover-border);
 }
 
 .dashboard-skin .dash-btn {
-  padding: 8px 12px;
-  min-height: 38px;
+  padding: var(--dash-button-padding);
+  min-height: var(--dash-button-min-height);
 }
 
 .dashboard-skin .exp-btn {
-  padding: 11px 16px;
-  min-height: 44px;
-  border-radius: 16px;
-  font-weight: 900;
+  padding: var(--dash-exp-button-padding, 11px 16px);
+  min-height: var(--dash-exp-button-min-height, 44px);
+  border-radius: var(--dash-exp-button-radius, 16px);
+  font-weight: var(--dash-exp-button-font-weight, 900);
+}
+
+.dashboard-skin :where(
+  .reports-v2 .f-btn,
+  .income-page .reports-btn,
+  .exp-page .reports-btn,
+  .loyalty-page .dash-btn,
+  .loyalty-page .dash-btn-primary,
+  .loyalty-page .dash-btn-danger
+) {
+  min-height: var(--dash-button-min-height);
+  border-radius: var(--dash-button-radius);
+  border: var(--dash-button-border);
+  background: var(--dash-button-bg);
+  color: var(--dash-button-color);
+  padding: var(--dash-button-padding);
+  font-family: "Tajawal", sans-serif;
+  font-size: var(--dash-button-font-size);
+  font-weight: var(--dash-button-font-weight);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform .15s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.dashboard-skin :where(
+  .reports-v2 .f-btn,
+  .income-page .reports-btn,
+  .exp-page .reports-btn,
+  .loyalty-page .dash-btn,
+  .loyalty-page .dash-btn-primary,
+  .loyalty-page .dash-btn-danger
+):hover {
+  background: var(--dash-button-hover-bg);
+  border-color: var(--dash-button-hover-border);
+  transform: translateY(-1px);
 }
 
 .dashboard-skin .dash-btn.primary,
@@ -760,16 +936,16 @@
   align-items: center;
   gap: 8px;
 
-  background: rgba(64, 1, 13, 0.10);
-  color: rgba(64, 1, 13, 0.98);
+  background: var(--dash-button-primary-bg);
+  color: var(--dash-button-primary-color);
 
-  border: 1px solid rgba(64, 1, 13, 0.22);
+  border: var(--dash-button-primary-border);
   transition: all 0.2s ease;
 }
 
 .dashboard-skin .dash-btn.primary:hover,
 .dashboard-skin .exp-btn.primary:hover {
-  background: rgba(64, 1, 13, 0.14);
+  background: var(--dash-button-primary-hover-bg);
   border-color: rgba(64, 1, 13, 0.30);
 }
 
@@ -797,9 +973,9 @@
 
 .dashboard-skin .dash-btn.danger,
 .dashboard-skin .exp-btn.danger {
-  background: rgba(239, 68, 68, 0.10);
-  color: #991b1b;
-  border-color: rgba(239, 68, 68, 0.22);
+  background: var(--dash-button-danger-bg);
+  color: var(--dash-button-danger-color);
+  border-color: var(--dash-button-danger-border);
 }
 
 .dashboard-skin .dash-btn.danger:hover,
@@ -856,16 +1032,16 @@
   gap: 10px;
 
   padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: var(--dash-control-radius);
 
-  background: rgba(245, 245, 244, 0.92);
-  border: 1px solid rgba(13, 13, 13, 0.12);
+  background: var(--dash-control-bg);
+  border: var(--dash-control-border);
   box-shadow: none;
 
   font-family: "Tajawal", sans-serif;
   font-size: 14px;
   font-weight: 700;
-  color: #0D0D0D;
+  color: var(--dash-control-color);
 
   cursor: pointer;
   text-align: right;
@@ -888,8 +1064,8 @@
 .dashboard-skin .dash-select:focus,
 .dashboard-skin .dash-select:focus-visible {
   outline: none !important;
-  box-shadow: 0 0 0 2px rgba(64, 1, 13, 0.16) !important;
-  border-color: rgba(64, 1, 13, 0.28) !important;
+  box-shadow: var(--dash-control-focus-shadow) !important;
+  border-color: var(--dash-control-focus-border) !important;
   background: rgba(245, 245, 244, 0.95) !important;
 }
 
