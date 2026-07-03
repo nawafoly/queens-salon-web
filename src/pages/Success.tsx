@@ -19,7 +19,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 
-import "../styles/Success.css";
+import "../styles/PublicFlows.css";
 import LoadingBrand from "../components/LoadingBrand";
 import { readBookingTotalAmount } from "../helpers/bookingPaymentUtils";
 

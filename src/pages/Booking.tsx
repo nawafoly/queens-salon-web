@@ -110,7 +110,7 @@ import { AppSettingsService } from "../services/AppSettingsService";
 import { FirestoreReadStats } from "../services/firestoreReadStats";
 import { normalizeBookedSlotsMap } from "../services/firestoreAvailabilityDays";
 
-import "../styles/Booking.css";
+import "../styles/PublicFlows.css";
 
 // ✅ Firestore slot availability check
 import {

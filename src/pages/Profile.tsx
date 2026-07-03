@@ -22,7 +22,7 @@ import {
   LuStar,
   LuUser,
 } from "react-icons/lu";
-import "../styles/Profile.css";
+import "../styles/PublicFlows.css";
 
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { auth, db } from "../services/firebase";

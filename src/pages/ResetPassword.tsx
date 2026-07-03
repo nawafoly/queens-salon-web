@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import "../styles/ForgotPassword.css";
+import "../styles/PublicFlows.css";
 
 import {
     getAuth,

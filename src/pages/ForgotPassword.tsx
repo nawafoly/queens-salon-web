@@ -1,7 +1,7 @@
 
 
 import React, { useMemo, useState } from "react";
-import "../styles/ForgotPassword.css";
+import "../styles/PublicFlows.css";
 
 const SERVER_URL = "http://localhost:5173"; // عدل إذا تغير
 
@@ -310,4 +310,3 @@ const ForgotPassword: React.FC = () => {
 };
 
 export default ForgotPassword;
-

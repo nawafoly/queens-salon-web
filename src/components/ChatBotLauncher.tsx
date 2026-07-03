@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCommentDots } from "@fortawesome/free-solid-svg-icons";
-import "../styles/ChatBot.css";
+import "../styles/PublicFlows.css";
 
 const ChatBotLauncher: React.FC = () => {
   return (

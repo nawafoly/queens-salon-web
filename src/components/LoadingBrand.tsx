@@ -1,5 +1,5 @@
 import React from "react";
-import "../styles/LoadingBrand.css";
+import "../styles/PublicFlows.css";
 import logo from "../assets/images/ssunnamed.png";
 
 /**
