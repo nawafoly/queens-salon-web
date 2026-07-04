@@ -1,0 +1,10 @@
+/* Dashboard bookings: booking admin wrappers, headers, tables and modal hooks. */
+
+
+.dashboard-skin .bk-page-wrapper,
+.dashboard-skin .bookings-page,
+.dashboard-skin .dashboard-bookings,
+.dashboard-skin .bookings-header {
+  max-width: 100%;
+  min-width: 0;
+}

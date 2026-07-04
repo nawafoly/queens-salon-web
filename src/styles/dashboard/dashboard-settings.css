@@ -1,0 +1,10 @@
+/* Dashboard settings: settings, users, catalog and admin profile hooks. */
+
+
+.dashboard-skin .settings-shell,
+.dashboard-skin .settings-page,
+.dashboard-skin .settings-panel,
+.dashboard-skin .admin-profile-page {
+  max-width: 100%;
+  min-width: 0;
+}

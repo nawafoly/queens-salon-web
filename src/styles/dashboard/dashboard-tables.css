@@ -1,0 +1,52 @@
+/* Dashboard tables: wrappers, overflow, cells, responsive table behavior. */
+
+
+.dashboard-skin .table-responsive,
+.dashboard-skin .dash-table-wrap,
+.dashboard-skin .dashboard-table-wrap,
+.dashboard-skin .emp-table-wrap,
+.dashboard-skin .reports-table-wrap,
+.dashboard-skin .bookings-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dashboard-skin table,
+.dashboard-skin .table,
+.dashboard-skin .dash-table {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.dashboard-skin th,
+.dashboard-skin td,
+.dashboard-skin .table th,
+.dashboard-skin .table td {
+  color: var(--text-strong);
+  vertical-align: middle;
+  white-space: normal;
+}
+
+.dashboard-skin thead th,
+.dashboard-skin .table thead th {
+  color: var(--text-strong);
+  background: var(--dash-surface-strong);
+}
+
+@media (max-width: 767px) {
+  .dashboard-skin .table-responsive,
+  .dashboard-skin .dash-table-wrap,
+  .dashboard-skin .dashboard-table-wrap,
+  .dashboard-skin .emp-table-wrap,
+  .dashboard-skin .reports-table-wrap,
+  .dashboard-skin .bookings-table-wrap {
+    margin-inline: 0;
+    padding-bottom: 6px;
+  }
+}

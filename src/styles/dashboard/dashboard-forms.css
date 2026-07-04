@@ -1,0 +1,193 @@
+/* Dashboard forms: inputs, selects, filter controls, placeholders, focus states. */
+
+/* =========================
+   ✅ Forms inside dashboard (Bootstrap inputs)
+========================= */
+.dashboard-skin .form-control,
+.dashboard-skin .form-select{
+  background: var(--dash-surface-soft);
+  border: 1px solid var(--dash-border);
+  color: var(--text-strong);
+}
+
+.dashboard-skin input,
+.dashboard-skin textarea,
+.dashboard-skin select{
+  color: var(--text-strong);
+}
+
+.dashboard-skin input::placeholder,
+.dashboard-skin textarea::placeholder{
+  color: var(--muted-soft);
+  opacity: 1;
+}
+
+/* ✅ Field label base */
+.dashboard-skin .dash-field label{
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 900;
+  color: var(--text-strong);
+}
+
+/* ✅ Unified Input / Textarea base */
+.dashboard-skin .dash-input,
+.dashboard-skin .dash-textarea{
+  width: 100%;
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--dash-surface-soft);
+  color: var(--text-strong);
+  font-family: "Tajawal", sans-serif;
+  outline: none;
+}
+
+.dashboard-skin .dash-textarea{
+  min-height: 110px;
+  resize: vertical;
+}
+
+.dashboard-skin .dash-input:focus,
+.dashboard-skin .dash-textarea:focus{
+  border-color: rgba(64, 1, 13, 0.28);
+  box-shadow: 0 0 0 2px rgba(64, 1, 13, 0.12);
+}
+
+/* =========================
+   ✅ Custom Dropdown: Clients Sort
+========================= */
+.dashboard-skin .cl-sort-wrap{
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.dashboard-skin .cl-sort-btn{
+  width: 180px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding-right: 34px;
+}
+
+.dashboard-skin .cl-sort-caret{
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-55%) rotate(45deg);
+  border-right: 2px solid rgba(64, 1, 13, 0.78);
+  border-bottom: 2px solid rgba(64, 1, 13, 0.78);
+}
+
+/* =========================
+   ✅ Select (Unified) - Queens
+========================= */
+.dashboard-skin .dash-select{
+  width: 100%;
+  min-height: 44px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  padding: 10px 12px;
+  border-radius: 14px;
+
+  background: rgba(245, 245, 244, 0.92);
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  box-shadow: none;
+
+  font-family: "Tajawal", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0D0D0D;
+
+  cursor: pointer;
+  text-align: right;
+
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  background-image: none !important;
+}
+
+.dashboard-skin .dash-select:hover{
+  border-color: rgba(64, 1, 13, 0.22);
+  box-shadow: 0 12px 28px rgba(13, 13, 13, 0.10);
+}
+
+.dashboard-skin .dash-select:focus,
+.dashboard-skin .dash-select:focus-visible{
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(64, 1, 13, 0.16) !important;
+  border-color: rgba(64, 1, 13, 0.28) !important;
+  background: rgba(245, 245, 244, 0.95) !important;
+}
+
+.dashboard-skin .dash-select:active{
+  background: rgba(245, 245, 244, 0.95) !important;
+  box-shadow: none !important;
+}
+
+/* arrow helper (اختياري) */
+.dashboard-skin .bk-field{
+  position: relative;
+}
+
+.dashboard-skin .bk-field .dash-select{
+  padding-right: 38px;
+}
+
+.dashboard-skin .bk-field::after{
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 38px;
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  border-right: 2px solid rgba(64, 1, 13, 0.78);
+  border-bottom: 2px solid rgba(64, 1, 13, 0.78);
+  pointer-events: none;
+}
+
+/* ✅ Small select helper */
+.dashboard-skin .dash-select--sm{
+  min-height: 38px;
+  border-radius: 12px;
+  font-size: 13px;
+  padding: 0 10px;
+}
+
+.dashboard-skin .dash-input,
+.dashboard-skin .dash-select,
+.dashboard-skin .form-control,
+.dashboard-skin .form-select,
+.dashboard-skin input,
+.dashboard-skin select,
+.dashboard-skin textarea {
+  background-color: var(--dash-surface-soft) !important;
+  color: var(--text-strong) !important;
+}
+
+.dashboard-skin select option,
+.dashboard-skin .dash-select option,
+.dashboard-skin .form-select option {
+  background: #ffffff;
+  color: #0D0D0D;
+}
+
+.dashboard-skin .dash-input::placeholder,
+.dashboard-skin .form-control::placeholder,
+.dashboard-skin textarea::placeholder {
+  color: var(--muted-soft) !important;
+  opacity: 1;
+}

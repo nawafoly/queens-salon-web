@@ -1,0 +1,327 @@
+/* Dashboard components: cards, buttons, pills, badges, empty/loading states, dropdown primitives. */
+
+.dashboard-skin .card,
+.dashboard-skin .dashboard-card,
+.dashboard-skin .dash-card,
+.dashboard-skin .table-responsive,
+.dashboard-skin .modal-content{
+  background: var(--dash-surface);
+  color: var(--text);
+  border-color: var(--dash-border);
+}
+
+/* =========================
+   ✅ Loading
+========================= */
+.dashboard-skin .dashboard-loading{
+  min-height: 70vh;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+}
+
+.dashboard-skin .loading-spinner{
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 4px solid rgba(13, 13, 13, 0.10);
+  border-top-color: rgba(64, 1, 13, 0.55);
+  animation: dashspin 1s linear infinite;
+}
+
+/* Badge */
+.dashboard-skin .dash-nav-label{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-skin .dash-badge{
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 900;
+  color: rgba(245, 245, 244, 0.95);
+  background: rgba(64, 1, 13, 0.85);
+  border: 1px solid rgba(64, 1, 13, 0.28);
+}
+
+/* =========================================================
+   ✅✅ UNIFIED Dashboard Components (NO DUPLICATION)
+   - dash-card
+   - dash-field label
+   - dash-input / dash-textarea (base)
+   - pills / chips base (includes staff-pill/staff-chip)
+========================================================= */
+/* ✅ Card base (used everywhere) */
+.dashboard-skin .dash-card{
+  width: 100%;
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: 18px;
+  padding: 14px;
+  margin: 12px 0;
+}
+
+/* ✅ Pills base (global) + support existing staff-pill without touching TSX */
+.dashboard-skin .dashboard-pill,
+.dashboard-skin  .staff-pill{
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 7px 11px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  border: 1px solid rgba(13, 13, 13, 0.10) !important;
+  background: rgba(13, 13, 13, 0.04) !important;
+  color: #0D0D0D !important;
+  white-space: nowrap !important;
+}
+
+/* ✅ Chips base (global) + support existing staff-chip without touching TSX */
+.dashboard-skin .dashboard-chip,
+.dashboard-skin  .staff-chip{
+  padding: 7px 10px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  background: rgba(245, 245, 244, 0.90) !important;
+  border: 1px dashed rgba(13, 13, 13, 0.18) !important;
+  color: #0D0D0D !important;
+}
+
+/* =========================================
+   ✅ Status Badges
+========================================= */
+.dashboard-skin .status-badge{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  border: 1px solid rgba(13, 13, 13, 0.10);
+  box-shadow: 0 10px 22px rgba(13, 13, 13, 0.06);
+  white-space: nowrap;
+}
+
+.dashboard-skin .status-badge.confirmed{
+  background: #E8F8EE;
+  color: #147A3D;
+  border-color: rgba(20, 122, 61, 0.18);
+}
+
+.dashboard-skin .status-badge.pending{
+  background: #FFF2DD;
+  color: #A45400;
+  border-color: rgba(164, 84, 0, 0.18);
+}
+
+.dashboard-skin .status-badge.cancelled{
+  background: #FFE6E6;
+  color: #B42318;
+  border-color: rgba(180, 35, 24, 0.18);
+}
+
+.dashboard-skin .status-badge.completed{
+  background: rgba(64, 1, 13, 0.10);
+  color: rgba(64, 1, 13, 0.95);
+  border-color: rgba(64, 1, 13, 0.22);
+}
+
+/* =========================
+   ✅ Buttons (dash-btn / exp-btn) - Queens
+========================= */
+.dashboard-skin .dash-btn,
+.dashboard-skin .exp-btn{
+  border: 1px solid var(--dash-border);
+  background: var(--dash-surface-strong);
+  color: var(--text-strong);
+  border-radius: 12px;
+
+  font-size: 13px;
+  font-weight: 800;
+
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+  user-select: none;
+}
+
+.dashboard-skin .dash-btn:hover,
+.dashboard-skin .exp-btn:hover{
+  background: rgba(245, 245, 244, 0.95);
+  transform: translateY(-1px);
+  border-color: rgba(64, 1, 13, 0.22);
+}
+
+.dashboard-skin .dash-btn{
+  padding: 8px 12px;
+  min-height: 38px;
+}
+
+.dashboard-skin .exp-btn{
+  padding: 11px 16px;
+  min-height: 44px;
+  border-radius: 16px;
+  font-weight: 900;
+}
+
+.dashboard-skin .dash-btn.primary,
+.dashboard-skin .exp-btn.primary{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  background: rgba(64, 1, 13, 0.10);
+  color: rgba(64, 1, 13, 0.98);
+
+  border: 1px solid rgba(64, 1, 13, 0.22);
+  transition: all 0.2s ease;
+}
+
+.dashboard-skin .dash-btn.primary:hover,
+.dashboard-skin .exp-btn.primary:hover{
+  background: rgba(64, 1, 13, 0.14);
+  border-color: rgba(64, 1, 13, 0.30);
+}
+
+.dashboard-skin .dash-btn.primary:active,
+.dashboard-skin .exp-btn.primary:active{
+  background: rgba(64, 1, 13, 0.18);
+}
+
+.dashboard-skin .dash-btn.primary:focus-visible,
+.dashboard-skin .exp-btn.primary:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(64, 1, 13, 0.18);
+}
+
+.dashboard-skin .dash-btn svg,
+.dashboard-skin .exp-btn svg{
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.dashboard-skin .dash-btn.ghost,
+.dashboard-skin .exp-btn.ghost{
+  background: rgba(245, 245, 244, 0.78);
+}
+
+.dashboard-skin .dash-btn.danger,
+.dashboard-skin .exp-btn.danger{
+  background: rgba(239, 68, 68, 0.10);
+  color: #991b1b;
+  border-color: rgba(239, 68, 68, 0.22);
+}
+
+.dashboard-skin .dash-btn.danger:hover,
+.dashboard-skin .exp-btn.danger:hover{
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.30);
+  transform: translateY(-1px);
+}
+
+.dashboard-skin .dash-btn.sm{
+  padding: 6px 10px;
+  font-size: 12.5px;
+  min-height: 34px;
+}
+
+/* =========================
+   ✅ Custom Dropdown (Unified / Scoped)
+========================= */
+.dashboard-skin .dash-dd-wrap{
+  position: relative;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.dashboard-skin .dash-dd-btn{
+  width: 180px;
+  justify-content: center;
+  position: relative;
+  padding-right: 34px;
+}
+
+/* caret */
+.dashboard-skin .dash-dd-caret{
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-55%) rotate(45deg);
+  border-right: 2px solid rgba(64, 1, 13, 0.78);
+  border-bottom: 2px solid rgba(64, 1, 13, 0.78);
+  pointer-events: none;
+}
+
+/* menu */
+.dashboard-skin .dash-dd-menu{
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  left: 0;
+
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+
+  background: rgba(245, 245, 244, 0.92);
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 16px;
+
+  box-shadow: 0 22px 60px rgba(13, 13, 13, 0.14);
+  backdrop-filter: blur(10px);
+
+  padding: 6px;
+  z-index: 999999;
+}
+
+/* item */
+.dashboard-skin .dash-dd-item{
+  width: 100%;
+  padding: 10px 12px;
+
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+
+  text-align: right;
+  color: #0D0D0D;
+  font-weight: 700;
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  transition: .15s ease;
+}
+
+.dashboard-skin .dash-dd-item:hover{
+  background: rgba(13, 13, 13, 0.06);
+}
+
+/* menu scrollbar (hidden) */
+.dashboard-skin .dash-dd-menu::-webkit-scrollbar{
+  width: 0 !important;
+  height: 0 !important;
+}

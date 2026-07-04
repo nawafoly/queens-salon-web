@@ -1,0 +1,177 @@
+/* =========================================================
+   Dashboard Core Tokens
+   Scope: .dashboard-skin only
+========================================================= */
+
+.dashboard-skin {
+  /* Bootstrap tokens scoped to the dashboard shell. */
+  --bs-primary: #40010d;
+  --bs-primary-rgb: 64, 1, 13;
+  --bs-secondary: #515659;
+  --bs-secondary-rgb: 81, 86, 89;
+  --bs-link-color: inherit;
+  --bs-link-hover-color: inherit;
+  --bs-border-color: rgba(13, 13, 13, 0.12);
+  --bs-body-color: #141414;
+  --bs-body-bg: transparent;
+  --bs-light: #f7f3ee;
+
+  /* Brand and semantic colors. */
+  --dash-primary: #40010d;
+  --dash-primary-rgb: 64, 1, 13;
+  --dash-primary-soft: rgba(64, 1, 13, 0.10);
+  --dash-primary-muted: rgba(64, 1, 13, 0.64);
+  --dash-accent: #c99726;
+  --dash-accent-soft: rgba(201, 151, 38, 0.16);
+
+  --dash-success: #15803d;
+  --dash-success-bg: #eaf8ef;
+  --dash-success-border: #b9e6c8;
+  --dash-warning: #a16207;
+  --dash-warning-bg: #fff6df;
+  --dash-warning-border: #f2d28b;
+  --dash-danger: #b91c1c;
+  --dash-danger-bg: #fff0f0;
+  --dash-danger-border: #f3b8b8;
+  --dash-info: #0f766e;
+  --dash-info-bg: #e8f7f5;
+  --dash-info-border: #addbd6;
+
+  /* Page and surface colors. */
+  --dash-bg-1: #fffdf9;
+  --dash-bg-2: #f7f2ea;
+  --dash-bg-3: #eee7dd;
+  --dash-page-bg: linear-gradient(180deg, var(--dash-bg-1) 0%, var(--dash-bg-2) 48%, var(--dash-bg-3) 100%);
+  --dash-surface: #ffffff;
+  --dash-surface-soft: #fbf7ef;
+  --dash-surface-strong: #f3ede5;
+  --dash-surface-tint: rgba(255, 255, 255, 0.86);
+  --dash-glass: rgba(255, 255, 255, 0.78);
+  --dash-glass-strong: rgba(255, 255, 255, 0.92);
+
+  /* Text and borders. */
+  --dash-text: #151515;
+  --dash-text-strong: #0d0d0d;
+  --dash-muted: #5f6670;
+  --dash-muted-strong: #424952;
+  --dash-muted-soft: #7a818a;
+  --dash-border: rgba(32, 24, 18, 0.12);
+  --dash-border-strong: rgba(64, 1, 13, 0.18);
+  --dash-line: rgba(32, 24, 18, 0.10);
+
+  /* Shadows and shape. */
+  --dash-shadow-xs: 0 4px 12px rgba(13, 13, 13, 0.05);
+  --dash-shadow-sm: 0 12px 28px rgba(13, 13, 13, 0.08);
+  --dash-shadow-md: 0 20px 46px rgba(13, 13, 13, 0.10);
+  --dash-shadow-lg: 0 30px 80px rgba(13, 13, 13, 0.16);
+  --dash-radius-sm: 10px;
+  --dash-radius-md: 14px;
+  --dash-radius-lg: 18px;
+  --dash-radius-xl: 24px;
+  --dash-radius-2xl: 30px;
+  --dash-radius-pill: 999px;
+
+  /* Backward-compatible aliases used by existing dashboard CSS. */
+  --text: var(--dash-text);
+  --text-strong: var(--dash-text-strong);
+  --muted: var(--dash-muted);
+  --muted-soft: var(--dash-muted-soft);
+  --accent: var(--dash-primary);
+  --accent-ink: var(--dash-primary);
+  --glass: var(--dash-glass);
+  --glass-strong: var(--dash-glass-strong);
+  --glass-border: var(--dash-border);
+  --shadow: var(--dash-shadow-md);
+  --shadow-soft: var(--dash-shadow-sm);
+  --radius-md: var(--dash-radius-md);
+  --radius-lg: var(--dash-radius-lg);
+  --radius-xl: var(--dash-radius-xl);
+  --line: var(--dash-line);
+
+  --dash-card-bg: var(--dash-surface);
+  --dash-card-border: 1px solid var(--dash-border);
+  --dash-card-radius: var(--dash-radius-lg);
+  --dash-card-shadow: none;
+  --dash-card-color: var(--dash-text);
+
+  --dash-control-bg: var(--dash-surface);
+  --dash-control-border: 1px solid var(--dash-border);
+  --dash-control-radius: 12px;
+  --dash-control-color: var(--dash-text-strong);
+  --dash-control-placeholder: var(--dash-muted-soft);
+  --dash-control-height: 44px;
+  --dash-control-height-sm: 38px;
+  --dash-control-height-lg: 52px;
+  --dash-control-focus-border: rgba(64, 1, 13, 0.30);
+  --dash-control-focus-shadow: 0 0 0 3px rgba(64, 1, 13, 0.12);
+
+  --dash-page-gap: 18px;
+  --dash-page-pad-bottom: 34px;
+  --dash-layout-gap: clamp(14px, 1.6vw, 24px);
+  --dash-content-pad-x: clamp(12px, 1.8vw, 24px);
+  --dash-content-pad-y: 16px;
+  --dash-sidebar-width: clamp(280px, 22vw, 324px);
+  --dash-sidebar-gap: clamp(14px, 1.6vw, 24px);
+  --dash-topbar-height: 72px;
+
+  --dash-font-family: "Tajawal", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --dash-font-size-sm: 12px;
+  --dash-font-size-base: 14px;
+  --dash-font-size-lg: 18px;
+  --dash-font-weight-strong: 900;
+  --dash-letter-spacing: 0;
+
+  --dash-transition-fast: 140ms ease;
+  --dash-transition: 180ms ease;
+  --dash-transition-slow: 240ms ease;
+
+  --dash-status-success-bg: var(--dash-success-bg);
+  --dash-status-success-border: var(--dash-success-border);
+  --dash-status-success-color: var(--dash-success);
+  --dash-status-warning-bg: var(--dash-warning-bg);
+  --dash-status-warning-border: var(--dash-warning-border);
+  --dash-status-warning-color: var(--dash-warning);
+  --dash-status-danger-bg: var(--dash-danger-bg);
+  --dash-status-danger-border: var(--dash-danger-border);
+  --dash-status-danger-color: var(--dash-danger);
+  --dash-status-info-bg: var(--dash-info-bg);
+  --dash-status-info-border: var(--dash-info-border);
+  --dash-status-info-color: var(--dash-info);
+  --dash-status-muted-bg: rgba(13, 13, 13, 0.04);
+  --dash-status-muted-border: rgba(13, 13, 13, 0.12);
+  --dash-status-muted-color: rgba(13, 13, 13, 0.70);
+
+  --dash-empty-bg: #f8fafc;
+  --dash-empty-border: 1px dashed rgba(15, 23, 42, 0.16);
+  --dash-empty-color: #64748b;
+
+  color: var(--dash-text);
+}
+
+.dashboard-skin.dashboard-page {
+  direction: rtl;
+  min-height: 100vh;
+  background: var(--dash-page-bg);
+  color: var(--dash-text);
+  font-family: var(--dash-font-family);
+  letter-spacing: var(--dash-letter-spacing);
+}
+
+.dashboard-skin * {
+  box-sizing: border-box;
+}
+
+.dashboard-skin .text-muted,
+.dashboard-skin small,
+.dashboard-skin .small {
+  color: var(--dash-muted) !important;
+}
+
+.dashboard-skin .nav-link,
+.dashboard-skin .nav-link:hover,
+.dashboard-skin .nav-link:focus,
+.dashboard-skin .nav-link.active {
+  background: unset !important;
+  color: inherit !important;
+  box-shadow: none !important;
+}

@@ -1,0 +1,26 @@
+/* Dashboard modals: overlays, modal surfaces, headers, bodies, actions. */
+
+
+.dashboard-skin .modal-content,
+.dashboard-skin .dash-modal,
+.dashboard-skin .modal-box {
+  background: var(--dash-surface);
+  color: var(--text);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--radius-lg);
+}
+
+.dashboard-skin .modal-header,
+.dashboard-skin .modal-body,
+.dashboard-skin .modal-footer,
+.dashboard-skin .dash-modal__header,
+.dashboard-skin .dash-modal__body,
+.dashboard-skin .dash-modal__actions {
+  color: var(--text);
+}
+
+.dashboard-skin .modal-backdrop,
+.dashboard-skin .modal-overlay,
+.dashboard-skin .dash-modal-overlay {
+  z-index: 10000;
+}

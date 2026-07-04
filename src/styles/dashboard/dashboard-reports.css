@@ -1,0 +1,58 @@
+/* Dashboard reports: overview, KPI/filter sections, income, expenses, logs, loyalty and offers hooks. */
+
+/* Shared dashboard surfaces so pages stop feeling unrelated */
+.dashboard-skin .overview-page,
+.dashboard-skin .bk-page-wrapper,
+.dashboard-skin .dashstaff-page{
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.dashboard-skin .overview-header,
+.dashboard-skin .bookings-header,
+.dashboard-skin .dashstaff-header{
+  position: relative;
+  overflow: hidden;
+  border-radius: 30px !important;
+  border: 1px solid rgba(64, 1, 13, 0.10) !important;
+  background:
+    radial-gradient(420px 190px at 88% 8%, rgba(243, 182, 31, 0.16), transparent 62%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(251, 247, 239, 0.84)) !important;
+  box-shadow: 0 24px 58px rgba(13, 13, 13, 0.10) !important;
+}
+
+.dashboard-skin .overview-header::before,
+.dashboard-skin .bookings-header::after,
+.dashboard-skin .dashstaff-header::before{
+  content: "";
+  position: absolute;
+  inset: 18px auto 18px 18px;
+  width: 7px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--dash-gold), var(--dash-wine));
+  opacity: 0.9;
+}
+
+.dashboard-skin .overview-header h1,
+.dashboard-skin .bookings-header h1,
+.dashboard-skin .dashstaff-title{
+  color: var(--dash-deep) !important;
+  letter-spacing: -0.03em;
+}
+
+.dashboard-skin .overview-header p,
+.dashboard-skin .bookings-header p,
+.dashboard-skin .dashstaff-sub{
+  color: #647084 !important;
+}
+
+.dashboard-skin .overview-page,
+.dashboard-skin .reports-page,
+.dashboard-skin .income-page,
+.dashboard-skin .expenses-page,
+.dashboard-skin .logs-page,
+.dashboard-skin .loyalty-page,
+.dashboard-skin .offers-page {
+  max-width: 100%;
+  min-width: 0;
+}

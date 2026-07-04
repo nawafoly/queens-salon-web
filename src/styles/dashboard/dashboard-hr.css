@@ -1,0 +1,12 @@
+/* Dashboard HR: HR shell, HR entry, attendance and HR dashboard scoped hooks. */
+
+
+.hr-shell,
+.hr-entry {
+  color: var(--text, #171717);
+}
+
+.hr-shell *,
+.hr-entry * {
+  box-sizing: border-box;
+}
