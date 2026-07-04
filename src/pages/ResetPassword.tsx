@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import "../styles/PublicFlows.css";
 
 import {
     getAuth,

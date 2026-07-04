@@ -12,9 +12,6 @@ import { AppSettingsService } from "../services/AppSettingsService";
 import type { AppSettings, SectionKey } from "../services/AppSettingsService";
 import { readStoredAuthSession } from "../services/localAuthSession";
 
-import "../styles/DashboardModals.css";
-import "../styles/stylesSettings/DashboardSettings.css";
-
 import SettingsBookings from "./settings/SettingsBookings";
 import SettingsCatalog from "./settings/SettingsCatalog";
 import SettingsUsers from "./settings/SettingsUsers";

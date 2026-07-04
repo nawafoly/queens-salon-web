@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCalendarDays, faChartLine, faClockRotateLeft } from "@fortawesome/free-solid-svg-icons";
 import { collection, getDocs } from "firebase/firestore";
-
-import "../styles/DashboardReports.css";
 import { db } from "../services/firebase";
 import { AppSettingsService } from "../services/AppSettingsService";
 import { FirestoreReadStats } from "../services/firestoreReadStats";

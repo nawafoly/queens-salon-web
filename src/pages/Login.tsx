@@ -13,7 +13,6 @@ import {
   faCity,
   faCalendarAlt,
 } from "@fortawesome/free-solid-svg-icons";
-import "../styles/PublicFlows.css";
 
 // ✅ Firebase Auth
 import { auth, db } from "../services/firebase";

@@ -12,9 +12,6 @@ import {
   faRotate,
   faPen,
 } from "@fortawesome/free-solid-svg-icons";
-
-import "../styles/DashboardIncome.css";
-import "../styles/DashboardModals.css";
 import Modal from "../components/Modal";
 
 import { onAuthStateChanged } from "firebase/auth";

@@ -13,10 +13,6 @@ import {
 import { db } from "../../services/firebase";
 import { AppSettingsService } from "../../services/AppSettingsService";
 import { SettingsPageHeader, SettingsSection, SettingsState, SettingsStats, SettingsTabs } from "./SettingsFrame";
-
-import "../../styles/DashboardModals.css";
-import "../../styles/stylesSettings/DashboardSettings.css";
-import "../../styles/stylesSettings/SettingsCatalog.css";
 import {
   PackageService,
   normalizePackageServiceIds,

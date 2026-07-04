@@ -38,7 +38,6 @@ import {
 } from "../services/firestoreAttendance";
 import { logoutFirebase } from "../services/authService";
 import { resolvePostLoginRoute } from "../helpers/routePaths";
-import "../styles/HrEntry.css";
 
 type HrEntryStats = {
   applications: number;

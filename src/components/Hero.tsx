@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
 import heroBg from "../assets/images/malikat_header_v2.png";
-import "../styles/Hero.css";
 
 // ✅ تاريخ التأسيس
 const SALON_START = new Date("1996-01-01T00:00:00");

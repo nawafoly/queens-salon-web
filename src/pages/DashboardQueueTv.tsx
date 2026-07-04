@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../services/firebase";
 import defaultLogo from "../assets/images/ssunnamed.png";
-import "../styles/DashboardQueueTv.css";
 
 const SALON_ID = "main";
 const SHOW_AFTER_TURN_MS = 20 * 60 * 1000;

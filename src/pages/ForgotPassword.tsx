@@ -1,7 +1,6 @@
 
 
 import React, { useMemo, useState } from "react";
-import "../styles/PublicFlows.css";
 
 const SERVER_URL = "http://localhost:5173"; // عدل إذا تغير
 

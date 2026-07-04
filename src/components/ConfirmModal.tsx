@@ -1,7 +1,6 @@
 // src/components/ConfirmModal.tsx
 import React, { useEffect } from "react";
 import Modal from "./Modal";
-import "../styles/ConfirmModal.css";
 
 type Variant = "info" | "danger" | "success";
 

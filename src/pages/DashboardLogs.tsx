@@ -26,7 +26,6 @@ import { upsertExpenseFS } from "../services/firestoreExpenses";
 import { upsertIncomeFS } from "../services/firestoreIncome";
 import { writeAuditLog } from "../services/logService";
 import type { Expense, IncomeItem, PaymentMethod } from "../types/finance";
-import "../styles/DashboardLogs.css";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 

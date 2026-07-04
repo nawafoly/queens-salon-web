@@ -213,7 +213,6 @@ import * as firestoreBookings from "../services/firestoreBookings";
 	// Modal
 	import ConfirmModal from "../components/ConfirmModal";
 	import type { BookingFormData, CartItem } from "../types/bookingShared";
-	import "../styles/PublicFlows.css";
 
 const createBookingGroup = (
   firestoreBookings as {

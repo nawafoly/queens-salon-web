@@ -26,10 +26,7 @@ import {
   faChevronUp,
   faList,
 } from "@fortawesome/free-solid-svg-icons";
-
-import "../styles/Services.css";
 // ✅ نستعمل نفس شكل كرت العروض 1:1
-import "../styles/Offers.css";
 
 // ✅ Firestore
 import { collection, getDocs, query, orderBy, where } from "firebase/firestore";

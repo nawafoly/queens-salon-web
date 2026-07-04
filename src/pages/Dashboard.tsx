@@ -22,10 +22,6 @@ import {
   faFingerprint,
   faTv,
 } from "@fortawesome/free-solid-svg-icons";
-
-import "../styles/DashboardSkin.css";
-import "../styles/DashboardModals.css";
-import "../styles/DashboardOverview.css";
 import LoadingBrand from "../components/LoadingBrand";
 import Modal from "../components/Modal";
 

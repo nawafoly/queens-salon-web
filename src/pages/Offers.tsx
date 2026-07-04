@@ -14,7 +14,6 @@ import {
   faEye,
   faEyeSlash,
 } from "@fortawesome/free-solid-svg-icons";
-import "../styles/Offers.css";
 
 // ✅ Realtime from Firestore
 import { onSnapshot, collection, query, orderBy } from "firebase/firestore";

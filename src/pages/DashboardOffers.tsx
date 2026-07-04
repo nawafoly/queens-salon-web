@@ -16,10 +16,6 @@ import {
   faSkullCrossbones,
   faFilter,
 } from "@fortawesome/free-solid-svg-icons";
-
-
-import "../styles/DashboardModals.css";
-import "../styles/DashboardOffers.css";
 import { db } from "../services/firebase";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 

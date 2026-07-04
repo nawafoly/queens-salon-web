@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import logoNavbar from "../assets/images/ssunnamed.png";
-import "../styles/navbar.css";
 import UserIcon from "./icons/UserIcon";
 import { resolveDashboardLandingPath } from "../helpers/routePaths";
 

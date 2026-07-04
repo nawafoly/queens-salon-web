@@ -18,8 +18,6 @@ import * as XLSX from "xlsx";
  * - ستايل المودالات الموحّد أولاً
  * - ثم ستايل الصفحة الخاص
  */
-import "../styles/DashboardModals.css"; // ✅ مودالات موحّدة للداشبورد
-import "../styles/DashboardClients.css";
 import Modal from "../components/Modal";
 
 // ✅ Firestore Bookings

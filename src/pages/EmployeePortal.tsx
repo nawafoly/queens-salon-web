@@ -25,7 +25,6 @@ import {
   type EmployeeNotification,
 } from "../services/employeeHub";
 import { logoutFirebase } from "../services/authService";
-import "../styles/EmployeePortal.css";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeNotificationsPage from "./hr/EmployeeNotifications";

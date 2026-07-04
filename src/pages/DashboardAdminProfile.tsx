@@ -5,9 +5,6 @@ import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { auth, db } from "../services/firebase";
 import { readStoredAuthSession } from "../services/localAuthSession";
 
-import "../styles/DashboardModals.css";
-import "../styles/stylesSettings/DashboardSettings.css";
-
 type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "pending" | "client" | "guest";
 
 type AdminProfileDoc = {

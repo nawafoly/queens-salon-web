@@ -5,7 +5,6 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 
 import "react-toastify/dist/ReactToastify.css";
-import "./App.css";
 
 // Components
 import Navbar from "./components/Navbar";

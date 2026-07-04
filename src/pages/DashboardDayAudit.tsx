@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { FirestoreReadStats } from "../services/firestoreReadStats";
-import "../styles/DashboardDayAudit.css";
 
 const SALON_ID = "main";
 const LOCK_KEY = "dashboard_day_audit_lock_v1";

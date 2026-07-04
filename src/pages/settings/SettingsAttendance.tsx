@@ -24,8 +24,6 @@ import {
   SettingsStats,
 } from "./SettingsFrame";
 
-import "../../styles/stylesSettings/DashboardSettings.css";
-
 type Props = {
   hasAdminPower: boolean;
 };

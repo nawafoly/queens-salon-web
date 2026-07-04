@@ -20,7 +20,6 @@ import {
   type ShiftSchedule,
 } from "../helpers/hr/attendanceCalculations";
 import { isWeeklyOffDateKey } from "../helpers/hr/workSchedule";
-import "../styles/AttendanceMonthView.css";
 
 type AttendanceViewerMode = "employee" | "admin";
 

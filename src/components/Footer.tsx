@@ -11,7 +11,6 @@ import {
 } from "@fortawesome/free-brands-svg-icons";
 
 import logo from "../assets/images/ssunnamed.png";
-import "../styles/Footer.css";
 
 const INSTAGRAM_URL =
   "https://www.instagram.com/malikat_sallon?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==";

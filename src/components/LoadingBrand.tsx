@@ -1,5 +1,4 @@
 import React from "react";
-import "../styles/PublicFlows.css";
 import logo from "../assets/images/ssunnamed.png";
 
 /**

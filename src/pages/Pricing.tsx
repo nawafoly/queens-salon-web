@@ -12,8 +12,6 @@ import {
   faMagic,
   faSpa,
 } from "@fortawesome/free-solid-svg-icons";
-
-import "../styles/Pricing.css";
 import Modal from "../components/Modal";
 import { AppSettingsService } from "../services/AppSettingsService";
 import { pickEffectivePrice } from "../helpers/seasonPricing";

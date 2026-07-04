@@ -50,7 +50,6 @@ import {
   type EmployeeLeaveRequest,
 } from "../services/employeeHub";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
-import "../styles/DashboardEmployees.css";
 import AttendanceSection from "./dashboardEmployees/AttendanceSection";
 import BasicInfoSection from "./dashboardEmployees/BasicInfoSection";
 import BookingSettingsSection from "./dashboardEmployees/BookingSettingsSection";

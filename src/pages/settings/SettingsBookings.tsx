@@ -20,9 +20,6 @@ import {
   SettingsTabs,
 } from "./SettingsFrame";
 
-import "../../styles/DashboardModals.css";
-import "../../styles/stylesSettings/DashboardSettings.css";
-
 type UiRole =
   | "owner"
   | "admin"

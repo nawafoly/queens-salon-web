@@ -9,8 +9,6 @@ import { faFileCsv } from "@fortawesome/free-solid-svg-icons";
  * - المشترك/العام أولاً
  * - ستايل الصفحة الخاصة آخر شيء عشان يفوز بالأولوية
  */
-import "../styles/DashboardModals.css";
-import "../styles/DashboardExpenses.css";
 import Modal from "../components/Modal";
 
 import type { Expense, PaymentMethod } from "../types/finance";

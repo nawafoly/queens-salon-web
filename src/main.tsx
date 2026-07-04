@@ -7,6 +7,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 
 // CSS العام
 import "./index.css";
+import "./styles/DashboardSkin.css";
 
 if (import.meta.env.DEV) {
   void import("./services/firestoreDebug");

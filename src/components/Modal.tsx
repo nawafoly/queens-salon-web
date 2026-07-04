@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import "../styles/Modal.css";
 
 type ModalSize = "sm" | "md" | "lg";
 

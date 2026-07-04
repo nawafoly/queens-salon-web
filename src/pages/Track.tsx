@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
-import "../styles/PublicFlows.css";
 import { getBookingById, getTrackByPublicId } from "../services/firestoreBookings";
 
 // ✅ Firebase (للإعدادات العامة: واتساب + خريطة)

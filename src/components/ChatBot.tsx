@@ -6,7 +6,6 @@ import { collection, doc, getDoc, getDocs, query, where } from "firebase/firesto
 import { db } from "../services/firebase";
 import { formatTime12 } from "../helpers/timeDisplay";
 import { generateSalonTimeSlots } from "../helpers/timeSlots";
-import "../styles/PublicFlows.css";
 
 type Sender = "user" | "bot";
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";

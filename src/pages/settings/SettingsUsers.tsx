@@ -40,11 +40,6 @@ import {
 } from "../../services/staffAccountLinkService";
 import { SettingsPageHeader, SettingsState } from "./SettingsFrame";
 
-import "../../styles/DashboardModals.css";
-import "../../styles/stylesSettings/SettingsCatalog.css";
-import "../../styles/stylesSettings/DashboardSettings.css";
-import "../../styles/stylesSettings/SettingsUsers.css";
-
 /* =========================
    Roles helpers
 ========================= */

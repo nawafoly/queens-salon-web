@@ -9,9 +9,6 @@ import {
   faClock,
   faPaperPlane,
 } from "@fortawesome/free-solid-svg-icons";
-
-import "../styles/contact.css";
-import "../styles/DashboardModals.css";
 import Modal from "../components/Modal";
 
 // ✅ Firebase

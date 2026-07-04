@@ -1,7 +1,6 @@
 // src/components/HomeServices.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import "../styles/HomeServices.css";
 
 // ✅ صور (ثابتة حسب sectionId)
 import hair from "../assets/images/hair.png";

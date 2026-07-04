@@ -1,7 +1,6 @@
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSpa, faAward, faUserFriends } from "@fortawesome/free-solid-svg-icons";
-import "../styles/Features.css";
 
 const Features = () => {
   const features = [

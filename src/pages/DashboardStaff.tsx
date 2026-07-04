@@ -18,7 +18,6 @@ import { auth, db } from "../services/firebase";
 import { readStoredAuthSession } from "../services/localAuthSession";
 import { updateBookingStatus as updateBookingStatusFS } from "../services/firestoreBookings";
 import { FirestoreReadStats } from "../services/firestoreReadStats";
-import "../styles/DashboardStaff.css";
 
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 

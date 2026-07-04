@@ -15,8 +15,6 @@ import {
   faAward,
   faHandHoldingHeart,
 } from "@fortawesome/free-solid-svg-icons";
-
-import "../styles/About.css";
 import { isStaffOperationallyActiveForDate } from "../helpers/staffAvailability";
 
 // ✅ Firestore

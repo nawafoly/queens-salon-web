@@ -72,7 +72,6 @@ import {
   parseEmployeePayrollMonth,
   type EmployeePayrollComputation,
 } from "../helpers/hr/employeePayroll";
-import "../styles/AdminHr.css";
 
 type DirectoryEmployee = Record<string, any> & { id?: string };
 type StatusTone = "success" | "warning" | "neutral" | "muted";

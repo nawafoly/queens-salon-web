@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Modal from "./Modal";
-import "../styles/Testimonials.css";
 
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
