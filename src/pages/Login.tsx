@@ -859,9 +859,9 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="login-page">
+    <div className="login-page madan-auth-shell">
       <div className="login-container">
-        <div className="login-card">
+        <div className={`login-card ${isRegister ? "is-register" : "is-login"}`}>
           <div className="login-header">
             <div className="login-logo">
               <img
@@ -870,6 +870,7 @@ const Login: React.FC = () => {
                 className="login-logo-img"
               />
             </div>
+            <div className="madan-auth-kicker">QUEENS SALON · SECURE ACCESS</div>
             <h1 className="login-title">
               {isRegister ? "تسجيل حساب جديد" : "تسجيل الدخول"}
             </h1>
@@ -922,12 +923,10 @@ const Login: React.FC = () => {
               </div>
 
               {errorMsg && (
-                <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>
+                <div className="madan-auth-alert is-error">{errorMsg}</div>
               )}
               {successMsg && (
-                <div style={{ color: "green", marginBottom: 8 }}>
-                  {successMsg}
-                </div>
+                <div className="madan-auth-alert is-success">{successMsg}</div>
               )}
 
               <button
@@ -948,7 +947,7 @@ const Login: React.FC = () => {
                 )}
               </button>
 
-              <div style={{ marginTop: 10, textAlign: "center" }}>
+              <div className="madan-auth-link-row">
                 <Link to="/forgot-password">نسيت كلمة المرور؟</Link>
               </div>
 
@@ -1077,12 +1076,10 @@ const Login: React.FC = () => {
               </div>
 
               {errorMsg && (
-                <div style={{ color: "red", marginBottom: 8 }}>{errorMsg}</div>
+                <div className="madan-auth-alert is-error">{errorMsg}</div>
               )}
               {successMsg && (
-                <div style={{ color: "green", marginBottom: 8 }}>
-                  {successMsg}
-                </div>
+                <div className="madan-auth-alert is-success">{successMsg}</div>
               )}
 
               <button
@@ -1111,13 +1108,7 @@ const Login: React.FC = () => {
                 <>
                   ليس لديك حساب؟
                   <button
-                    className="register-link"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      fontWeight: "bold",
-                      marginRight: 5,
-                    }}
+                    className="register-link madan-auth-switch"
                     onClick={() => {
                       setErrorMsg(null);
                       setSuccessMsg(null);
@@ -1132,13 +1123,7 @@ const Login: React.FC = () => {
                 <>
                   لديك حساب؟
                   <button
-                    className="register-link"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      fontWeight: "bold",
-                      marginRight: 5,
-                    }}
+                    className="register-link madan-auth-switch"
                     onClick={() => {
                       setErrorMsg(null);
                       setSuccessMsg(null);

@@ -28,6 +28,10 @@ type EmployeeListPanelProps = {
   onOpenEmployee: (staff: StaffPublicUi) => void;
 };
 
+function cleanText(value: unknown) {
+  return String(value || "").trim();
+}
+
 export default function EmployeeListPanel({
   qText,
   onlyActive,
@@ -48,15 +52,15 @@ export default function EmployeeListPanel({
 }: EmployeeListPanelProps) {
   return (
     <>
-      <div className="dash-card">
-        <div className="dash-row">
-          <div className="dash-field">
+      <div className="dash-card emp-list-filter-card">
+        <div className="dash-row emp-list-filter-grid">
+          <div className="dash-field emp-list-search-field">
             <label className="emp-label">بحث</label>
             <input
               className="dash-input"
               value={qText}
               onChange={(e) => onQTextChange(e.target.value)}
-              placeholder="ابحث باسم الموظفة"
+              placeholder="الاسم، الجوال، البريد أو الرقم الوظيفي"
             />
           </div>
           <div className="dash-field">
@@ -78,17 +82,18 @@ export default function EmployeeListPanel({
               value={specialtyFilter}
               onChange={(e) => onSpecialtyFilterChange(e.target.value)}
             >
-              <option value="all">كل الخدمات</option>
-              {Array.from(new Set(serviceOptions.map((x) => String(x.id || "").trim()).filter(Boolean))).map(
+              <option value="all">كل الموظفات</option>
+              <option value="none">بدون خدمات مسندة</option>
+              {Array.from(new Set(serviceOptions.map((x) => cleanText(x.id)).filter(Boolean))).map(
                 (serviceId) => (
                   <option key={serviceId} value={serviceId}>
-                    {serviceOptions.find((x) => String(x.id || "").trim() === serviceId)?.label || serviceId}
+                    {serviceOptions.find((x) => cleanText(x.id) === serviceId)?.label || serviceId}
                   </option>
                 )
               )}
             </select>
           </div>
-          <div className="dash-actions">
+          <div className="dash-actions emp-list-filter-actions">
             {canManage ? (
               <button className="exp-btn primary" type="button" onClick={onCreateEmployee}>
                 إضافة موظفة
@@ -100,25 +105,33 @@ export default function EmployeeListPanel({
         </div>
       </div>
 
-      <div className="dash-card mt-3">
+      <div className="dash-card mt-3 emp-list-card">
         <div className="emp-list-title">
-          <b>الموظفات ({filtered.length})</b>
-          <span>موظفاتي</span>
+          <div>
+            <b>الموظفات ({filtered.length})</b>
+            <span>تظهر جميع الملفات حتى قبل إسناد الخدمات.</span>
+          </div>
         </div>
         {loading ? (
-          <div className="emp-field-note">جاري تحميل الموظفات...</div>
+          <div className="emp-list-state">
+            <span className="emp-list-loader" aria-hidden="true" />
+            <b>جاري تحميل ملفات الموظفات...</b>
+          </div>
         ) : filtered.length ? (
           <div className="emp-staff-list">
             {filtered.map((staff) => {
               const specialtyIds = normalizeSpecialties(staff.specialties);
               const mainService = serviceOptions.find((option) => option.id === specialtyIds[0]);
-              const sectionId = String(mainService?.sectionId || "").trim();
-              const department = sectionId
-                ? toArabicSectionLabel(
-                    sectionId,
-                    sectionOptions.find((section) => section.id === sectionId)?.label || ""
-                  )
-                : "قسم غير محدد";
+              const sectionId = cleanText(mainService?.sectionId);
+              const storedDepartment = cleanText(staff.department || staff.title);
+              const department = storedDepartment
+                ? storedDepartment
+                : sectionId
+                  ? toArabicSectionLabel(
+                      sectionId,
+                      sectionOptions.find((section) => section.id === sectionId)?.label || ""
+                    )
+                  : "قسم غير محدد";
               const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
               const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
               const onLeave = !!(staff as any).onLeave && !leaveExpired;
@@ -129,32 +142,44 @@ export default function EmployeeListPanel({
               const kpi = total > 0 ? Math.round((confirmed / total) * 100) : 0;
               const kpiLabel = statsLoading ? "..." : `${kpi}%`;
               const isSelected = selectedEmployeeId === staff.id;
+              const hasServices = specialtyIds.length > 0;
+              const needsCompletion = staff.profileIncomplete || staff.source !== "staff_public";
 
               return (
                 <button
-                  key={staff.id}
+                  key={`${staff.source || "staff"}:${staff.id}`}
                   type="button"
-                  className={`emp-staff-row ${isSelected ? "is-selected" : ""}`}
+                  className={`emp-staff-row ${isSelected ? "is-selected" : ""} ${
+                    hasServices ? "" : "has-no-services"
+                  }`}
                   onClick={() => onOpenEmployee(staff)}
                 >
                   <div className="emp-staff-avatar">
                     {staff.avatarUrl ? (
-                      <img src={staff.avatarUrl} alt={String(staff.name || "صورة الموظفة")} />
+                      <img src={staff.avatarUrl} alt={cleanText(staff.name) || "صورة الموظفة"} />
                     ) : (
-                      getNameInitials(String(staff.name || ""))
+                      getNameInitials(cleanText(staff.name))
                     )}
                   </div>
 
                   <div className="emp-staff-main">
                     <div className="emp-staff-headline">
-                      <b>{staff.name || "—"}</b>
+                      <b>{cleanText(staff.name) || "موظفة بدون اسم"}</b>
                       <span className={`staff-pill ${statusClass}`}>{statusLabel}</span>
                     </div>
                     <div className="emp-staff-dept">{department}</div>
+                    <div className="emp-staff-meta-row">
+                      <span className={`emp-staff-service-chip ${hasServices ? "is-ready" : "is-empty"}`}>
+                        {hasServices ? `${specialtyIds.length} خدمة` : "بدون خدمات"}
+                      </span>
+                      {needsCompletion ? (
+                        <span className="emp-staff-source-chip">ملف يحتاج إكمال</span>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="emp-staff-kpi">
-                    <span>الأداء</span>
+                    <span>أداء الشهر</span>
                     <b>{kpiLabel}</b>
                   </div>
                 </button>
@@ -162,7 +187,10 @@ export default function EmployeeListPanel({
             })}
           </div>
         ) : (
-          <div className="emp-field-note">لا توجد موظفات مطابقة للفلاتر الحالية.</div>
+          <div className="emp-list-state emp-list-state--empty">
+            <b>لا توجد موظفات مطابقة للفلاتر الحالية.</b>
+            <span>جرّبي اختيار «كل الموظفات» أو مسح عبارة البحث.</span>
+          </div>
         )}
       </div>
     </>

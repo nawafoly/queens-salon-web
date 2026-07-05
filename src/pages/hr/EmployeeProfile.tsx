@@ -1,28 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faBriefcase,
+  faBuilding,
+  faCamera,
+  faCircleCheck,
+  faEnvelope,
+  faFloppyDisk,
+  faIdBadge,
+  faPhone,
+  faShieldHalved,
+  faUser,
+} from "@fortawesome/free-solid-svg-icons";
 
-import {
-  createEmployeeNotification,
-  createLeaveRequest,
-  listLeaveRequestsByEmployee,
-  listEmployeeNotifications,
-  listPayrollRecordsByEmployee,
-  markEmployeeNotificationsRead,
-  syncEmployeeRecordFromUser,
-  type EmployeeLeaveRequest,
-  type EmployeePayrollRecord,
-} from "../../services/employeeHub";
-import {
-  calculateLeaveDaysCount,
-  formatLeaveDateRange,
-  getLeaveStatusMeta,
-  getLeaveTypeLabel,
-} from "../../helpers/hr/employeeLeave";
+import { syncEmployeeRecordFromUser } from "../../services/employeeHub";
 import { uploadFileToR2 } from "../../services/r2Upload";
 import { cleanText, type HrSession } from "./shared";
 
 type Props = {
   session: HrSession;
-  initialTab?: "profile" | "leave" | "payroll";
   onPortalChange?: () => void | Promise<void>;
 };
 
@@ -38,12 +34,16 @@ type ProfileState = {
   showOnBooking: boolean;
 };
 
-function makeTempRequestDate() {
-  return new Date().toISOString().slice(0, 10);
+function roleLabel(value: unknown) {
+  const role = cleanText(value).toLowerCase();
+  if (role === "owner") return "المالك";
+  if (role === "admin") return "الإدارة";
+  if (role === "hr") return "الموارد البشرية";
+  if (role === "reception") return "الاستقبال";
+  return "موظفة";
 }
 
-export default function EmployeeProfilePage({ session, initialTab = "profile", onPortalChange }: Props) {
-  const [activeTab, setActiveTab] = useState<Props["initialTab"]>(initialTab);
+export default function EmployeeProfilePage({ session, onPortalChange }: Props) {
   const [profile, setProfile] = useState<ProfileState>({
     displayName: "",
     phone: "",
@@ -57,20 +57,7 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [leaveLoading, setLeaveLoading] = useState(false);
-  const [leaveRequests, setLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
-  const [payrollRecords, setPayrollRecords] = useState<EmployeePayrollRecord[]>([]);
-  const [leaveForm, setLeaveForm] = useState({
-    type: "annual" as EmployeeLeaveRequest["type"],
-    fromDate: makeTempRequestDate(),
-    toDate: makeTempRequestDate(),
-    note: "",
-  });
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    setActiveTab(initialTab);
-  }, [initialTab]);
 
   useEffect(() => {
     const base = session.employeeDoc || session.staffDoc || session.userDoc || {};
@@ -85,63 +72,25 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
       showOnAbout: base.showOnAbout !== false,
       showOnBooking: base.showOnBooking !== false,
     });
-  }, [session.employeeDoc, session.staffDoc, session.userDoc, session.displayName]);
+  }, [session.displayName, session.employeeDoc, session.staffDoc, session.userDoc]);
 
-  const employeeLabel = useMemo(() => {
-    return cleanText(profile.displayName || session.displayName || session.email || "Employee");
-  }, [profile.displayName, session.displayName, session.email]);
+  const employeeLabel = useMemo(
+    () => cleanText(profile.displayName || session.displayName || session.email || "الموظفة"),
+    [profile.displayName, session.displayName, session.email],
+  );
+  const role = roleLabel(session.role);
+  const employeeId = cleanText(session.employeeId || session.uid || "—");
 
-  const loadHistory = async () => {
-    if (!session.uid) return;
-    setLeaveLoading(true);
-    try {
-      const [leaveRows, payrollRows] = await Promise.all([
-        listLeaveRequestsByEmployee(session.uid),
-        listPayrollRecordsByEmployee(session.uid),
-      ]);
-      setLeaveRequests(leaveRows);
-      setPayrollRecords(payrollRows);
-    } finally {
-      setLeaveLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.uid]);
-
-  useEffect(() => {
-    if (!session.uid) return;
-    if (activeTab !== "leave" && activeTab !== "payroll") return;
-
-    const route = activeTab === "leave" ? "/employee/leave" : "/employee/payroll";
-    void (async () => {
-      try {
-        const notifications = await listEmployeeNotifications({
-          targetUid: session.uid,
-          targetEmployeeId: session.employeeId,
-          limitCount: 200,
-        });
-        const unreadIds = notifications
-          .filter((note) => !note.isRead && (note.route === route || note.type === activeTab))
-          .map((note) => note.id);
-        if (unreadIds.length) {
-          await markEmployeeNotificationsRead({ notificationIds: unreadIds, readerUid: session.uid });
-          await Promise.resolve(onPortalChange?.());
-        }
-      } catch {
-        // no-op
-      }
-    })();
-  }, [activeTab, session.uid, session.employeeId, onPortalChange]);
+  const completion = useMemo(() => {
+    const values = [profile.displayName, profile.phone, profile.department, profile.title, profile.avatarUrl, profile.bio];
+    return Math.round((values.filter((value) => cleanText(value)).length / values.length) * 100);
+  }, [profile]);
 
   const saveProfile = async (nextPatch?: Partial<ProfileState>) => {
     if (!session.uid) return;
     const next = { ...profile, ...(nextPatch || {}) };
-
     if (!cleanText(next.displayName)) {
-      setMessage("Display name is required.");
+      setMessage("اسم الموظفة مطلوب.");
       return;
     }
 
@@ -165,20 +114,18 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
         avatarUrl: next.avatarUrl,
         bio: next.bio,
       });
-
       setProfile(next);
-      setMessage("تم تحديث الملف الشخصي.");
-    } catch (e) {
-      setMessage(cleanText((e as any)?.message || "تعذر حفظ الملف الشخصي."));
+      await Promise.resolve(onPortalChange?.());
+      setMessage("تم حفظ بيانات الملف الشخصي بنجاح.");
+    } catch (error) {
+      setMessage(cleanText((error as any)?.message || "تعذر حفظ الملف الشخصي."));
     } finally {
       setSaving(false);
     }
   };
 
   const handleAvatarPick = async (file: File | null | undefined) => {
-    if (!file) return;
-    if (!session.uid) return;
-
+    if (!file || !session.uid) return;
     setSaving(true);
     setMessage("");
     try {
@@ -187,53 +134,29 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
         keyPrefix: "employee-assets/avatars",
         ownerId: session.employeeId || session.uid,
       });
-      await saveProfile({ avatarUrl: uploaded.storageUrl });
-    } catch (e) {
-      setMessage(cleanText((e as any)?.message || "تعذر رفع الصورة."));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const submitLeaveRequest = async () => {
-    if (!session.uid) return;
-    if (!leaveForm.fromDate || !leaveForm.toDate) {
-      setMessage("اختر نطاق إجازة صحيح.");
-      return;
-    }
-    setSaving(true);
-    setMessage("");
-    try {
-      const days = calculateLeaveDaysCount(leaveForm.fromDate, leaveForm.toDate) || 1;
-
-      await createLeaveRequest({
-        employeeUid: session.uid,
+      const next = { ...profile, avatarUrl: uploaded.storageUrl };
+      await syncEmployeeRecordFromUser({
+        uid: session.uid,
+        email: session.email,
+        displayName: next.displayName,
+        phone: next.phone,
+        role: session.role as any,
+        active: true,
         employeeId: session.employeeId || session.uid,
-        employeeName: employeeLabel,
-        type: leaveForm.type,
-        fromDate: leaveForm.fromDate,
-        toDate: leaveForm.toDate,
-        note: leaveForm.note,
-        days,
-        createdByUid: session.uid,
-        createdByName: employeeLabel,
+        linkedEmployeeDocId: session.employeeId || session.uid,
+        employeeProfileEnabled: next.employeeProfileEnabled,
+        showOnAbout: next.showOnAbout,
+        showOnBooking: next.showOnBooking,
+        department: next.department,
+        title: next.title,
+        avatarUrl: next.avatarUrl,
+        bio: next.bio,
       });
-
-      await createEmployeeNotification({
-        targetUid: session.uid,
-        targetEmployeeId: session.employeeId || session.uid,
-        type: "leave",
-        title: "تم إرسال طلب إجازة",
-        body: `من ${leaveForm.fromDate} إلى ${leaveForm.toDate}`,
-        route: "/employee/leave",
-      }).catch(() => {});
-
-      setLeaveForm((p) => ({ ...p, note: "" }));
-      await loadHistory();
+      setProfile(next);
       await Promise.resolve(onPortalChange?.());
-      setMessage("تم إرسال طلب الإجازة.");
-    } catch (e) {
-      setMessage(cleanText((e as any)?.message || "تعذر إرسال طلب الإجازة."));
+      setMessage("تم تحديث الصورة الشخصية.");
+    } catch (error) {
+      setMessage(cleanText((error as any)?.message || "تعذر رفع الصورة."));
     } finally {
       setSaving(false);
     }
@@ -241,7 +164,7 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
 
   if (!session.user) {
     return (
-      <div className="employee-portal-card">
+      <div className="employee-workspace employee-workspace--empty">
         <h2>الملف الشخصي</h2>
         <p>لم يتم العثور على جلسة موظف مسجلة.</p>
       </div>
@@ -249,264 +172,110 @@ export default function EmployeeProfilePage({ session, initialTab = "profile", o
   }
 
   return (
-    <div className="employee-panel" dir="rtl">
-      <div className="employee-panel-head">
-        <div>
-          <p className="employee-panel-kicker">بوابة الموظف</p>
-          <h2>{employeeLabel}</h2>
-          <p className="employee-panel-subtitle">
-            {session.email || "لا يوجد بريد"} | {session.role || "ضيف"} | {session.employeeId ? `الرقم الوظيفي ${session.employeeId}` : "لا يوجد ملف موظف"}
-          </p>
-        </div>
-        <div className="employee-panel-actions">
-          <button className="employee-button" type="button" onClick={() => void loadHistory()} disabled={saving || leaveLoading}>
-            تحديث البيانات
+    <div className="employee-workspace employee-profile-workspace" dir="rtl">
+      <section className="employee-workspace-hero employee-workspace-hero--profile">
+        <div className="employee-profile-identity">
+          <button type="button" className="employee-profile-avatar" onClick={() => avatarInputRef.current?.click()} disabled={saving} aria-label="تغيير الصورة">
+            {profile.avatarUrl ? <img src={profile.avatarUrl} alt={employeeLabel} /> : <span>{employeeLabel.slice(0, 1).toUpperCase()}</span>}
+            <em><FontAwesomeIcon icon={faCamera} /></em>
           </button>
-          <button className="employee-button employee-button--ghost" type="button" onClick={() => avatarInputRef.current?.click()} disabled={saving}>
-            رفع صورة
-          </button>
-          <input
-            ref={avatarInputRef}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={(e) => void handleAvatarPick(e.target.files?.[0])}
-          />
+          <input ref={avatarInputRef} type="file" accept="image/*" hidden onChange={(event) => void handleAvatarPick(event.target.files?.[0])} />
+          <div>
+            <span className="employee-workspace-kicker">الملف الشخصي</span>
+            <h1>{employeeLabel}</h1>
+            <p>{profile.title || role} · {profile.department || "لم يحدد القسم"}</p>
+          </div>
         </div>
+        <div className="employee-profile-completion">
+          <span>اكتمال الملف</span>
+          <strong>{completion}%</strong>
+          <div><i style={{ width: `${completion}%` }} /></div>
+        </div>
+      </section>
+
+      {message ? <div className="employee-workspace-alert">{message}</div> : null}
+
+      <section className="employee-profile-summary">
+        <article><span><FontAwesomeIcon icon={faEnvelope} /></span><div><small>البريد</small><strong>{session.email || "—"}</strong></div></article>
+        <article><span><FontAwesomeIcon icon={faIdBadge} /></span><div><small>الرقم الوظيفي</small><strong>{employeeId}</strong></div></article>
+        <article><span><FontAwesomeIcon icon={faShieldHalved} /></span><div><small>الدور</small><strong>{role}</strong></div></article>
+        <article><span><FontAwesomeIcon icon={faCircleCheck} /></span><div><small>حالة الملف</small><strong>{profile.employeeProfileEnabled ? "مفعّل" : "غير مفعّل"}</strong></div></article>
+      </section>
+
+      <div className="employee-profile-layout">
+        <section className="employee-workspace-panel employee-profile-form-panel">
+          <div className="employee-workspace-panel__head">
+            <div>
+              <span className="employee-workspace-kicker">البيانات</span>
+              <h2>بياناتك الوظيفية</h2>
+              <p>حدّث البيانات المسموح لك بتعديلها ثم احفظ التغييرات.</p>
+            </div>
+          </div>
+
+          <div className="employee-modern-form">
+            <label>
+              <span><FontAwesomeIcon icon={faUser} /> الاسم</span>
+              <input value={profile.displayName} onChange={(event) => setProfile((current) => ({ ...current, displayName: event.target.value }))} />
+            </label>
+            <label>
+              <span><FontAwesomeIcon icon={faPhone} /> الهاتف</span>
+              <input value={profile.phone} onChange={(event) => setProfile((current) => ({ ...current, phone: event.target.value }))} />
+            </label>
+            <label>
+              <span><FontAwesomeIcon icon={faBuilding} /> القسم</span>
+              <input value={profile.department} onChange={(event) => setProfile((current) => ({ ...current, department: event.target.value }))} />
+            </label>
+            <label>
+              <span><FontAwesomeIcon icon={faBriefcase} /> المسمى الوظيفي</span>
+              <input value={profile.title} onChange={(event) => setProfile((current) => ({ ...current, title: event.target.value }))} />
+            </label>
+            <label className="is-wide">
+              <span><FontAwesomeIcon icon={faCamera} /> رابط الصورة</span>
+              <input value={profile.avatarUrl} onChange={(event) => setProfile((current) => ({ ...current, avatarUrl: event.target.value }))} placeholder="ارفع صورة أو ألصق رابطًا مباشرًا" />
+            </label>
+            <label className="is-wide">
+              <span>نبذة مختصرة</span>
+              <textarea rows={5} value={profile.bio} onChange={(event) => setProfile((current) => ({ ...current, bio: event.target.value }))} placeholder="اكتب نبذة مهنية مختصرة..." />
+            </label>
+          </div>
+
+          <div className="employee-form-savebar">
+            <span>تأكد من صحة البيانات قبل الحفظ.</span>
+            <button type="button" className="employee-primary-action" onClick={() => void saveProfile()} disabled={saving}>
+              <FontAwesomeIcon icon={faFloppyDisk} />
+              {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+            </button>
+          </div>
+        </section>
+
+        <aside className="employee-workspace-panel employee-profile-settings-panel">
+          <div className="employee-workspace-panel__head">
+            <div>
+              <span className="employee-workspace-kicker">الظهور</span>
+              <h2>إعدادات الملف</h2>
+              <p>تحكم في ظهور حسابك داخل النظام والموقع.</p>
+            </div>
+          </div>
+
+          <div className="employee-profile-switches">
+            <label>
+              <span><strong>تفعيل الملف الشخصي</strong><small>السماح باستخدام ملف الموظفة داخل النظام.</small></span>
+              <input type="checkbox" checked={profile.employeeProfileEnabled} onChange={(event) => setProfile((current) => ({ ...current, employeeProfileEnabled: event.target.checked }))} />
+              <i />
+            </label>
+            <label>
+              <span><strong>الظهور في صفحة من نحن</strong><small>عرض بياناتك ضمن فريق العمل.</small></span>
+              <input type="checkbox" checked={profile.showOnAbout} onChange={(event) => setProfile((current) => ({ ...current, showOnAbout: event.target.checked }))} />
+              <i />
+            </label>
+            <label>
+              <span><strong>الظهور في صفحة الحجز</strong><small>السماح للعميلات باختيارك أثناء الحجز.</small></span>
+              <input type="checkbox" checked={profile.showOnBooking} onChange={(event) => setProfile((current) => ({ ...current, showOnBooking: event.target.checked }))} />
+              <i />
+            </label>
+          </div>
+        </aside>
       </div>
-
-      {message ? <div className="employee-alert">{message}</div> : null}
-
-      <div className="employee-tabs">
-        <button className={`employee-tab ${activeTab === "profile" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("profile")}>
-          الملف الشخصي
-        </button>
-        <button className={`employee-tab ${activeTab === "leave" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("leave")}>
-          الإجازات
-        </button>
-        <button className={`employee-tab ${activeTab === "payroll" ? "is-active" : ""}`} type="button" onClick={() => setActiveTab("payroll")}>
-          الرواتب
-        </button>
-      </div>
-
-      {activeTab === "profile" ? (
-        <section className="employee-card-stack">
-          <div className="employee-card employee-card--hero">
-            <div className="employee-avatar">
-              {profile.avatarUrl ? <img src={profile.avatarUrl} alt={employeeLabel} /> : <span>{employeeLabel.slice(0, 1).toUpperCase()}</span>}
-            </div>
-
-            <div className="employee-form-grid">
-              <label className="employee-field">
-                <span>الاسم</span>
-                <input
-                  value={profile.displayName}
-                  onChange={(e) => setProfile((p) => ({ ...p, displayName: e.target.value }))}
-                />
-              </label>
-              <label className="employee-field">
-                <span>الهاتف</span>
-                <input
-                  value={profile.phone}
-                  onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))}
-                />
-              </label>
-              <label className="employee-field">
-                <span>القسم</span>
-                <input
-                  value={profile.department}
-                  onChange={(e) => setProfile((p) => ({ ...p, department: e.target.value }))}
-                />
-              </label>
-              <label className="employee-field">
-                <span>المسمى الوظيفي</span>
-                <input
-                  value={profile.title}
-                  onChange={(e) => setProfile((p) => ({ ...p, title: e.target.value }))}
-                />
-              </label>
-              <label className="employee-field employee-field--wide">
-                <span>رابط الصورة</span>
-                <input
-                  value={profile.avatarUrl}
-                  onChange={(e) => setProfile((p) => ({ ...p, avatarUrl: e.target.value }))}
-                  placeholder="ألصق رابط صورة مباشر أو ارفع صورة"
-                />
-              </label>
-              <label className="employee-field employee-field--wide">
-                <span>نبذة</span>
-                <textarea
-                  rows={4}
-                  value={profile.bio}
-                  onChange={(e) => setProfile((p) => ({ ...p, bio: e.target.value }))}
-                />
-              </label>
-              <label className="employee-check">
-                <input
-                  type="checkbox"
-                  checked={profile.employeeProfileEnabled}
-                  onChange={(e) => setProfile((p) => ({ ...p, employeeProfileEnabled: e.target.checked }))}
-                />
-                تفعيل الملف الشخصي
-              </label>
-              <label className="employee-check">
-                <input
-                  type="checkbox"
-                  checked={profile.showOnAbout}
-                  onChange={(e) => setProfile((p) => ({ ...p, showOnAbout: e.target.checked }))}
-                />
-                إظهار في صفحة من نحن
-              </label>
-              <label className="employee-check">
-                <input
-                  type="checkbox"
-                  checked={profile.showOnBooking}
-                  onChange={(e) => setProfile((p) => ({ ...p, showOnBooking: e.target.checked }))}
-                />
-                إظهار في صفحة الحجز
-              </label>
-            </div>
-
-            <div className="employee-actions">
-              <button className="employee-button employee-button--accent" type="button" onClick={() => void saveProfile()} disabled={saving}>
-                حفظ الملف الشخصي
-              </button>
-            </div>
-          </div>
-
-          <div className="employee-card">
-            <div className="employee-card-head">
-              <h3>طلبات الإجازة الأخيرة</h3>
-              <span>{leaveRequests.length}</span>
-            </div>
-            <div className="employee-list">
-              {leaveRequests.map((item) => {
-                const statusMeta = getLeaveStatusMeta(item.status);
-                return (
-                  <div key={item.id} className="employee-list-item">
-                    <strong>{getLeaveTypeLabel(item.type)}</strong>
-                    <span>{formatLeaveDateRange(item.fromDate, item.toDate)}</span>
-                    <small>{statusMeta.label}</small>
-                  </div>
-                );
-              })}
-              {!leaveRequests.length ? <div className="employee-muted">لا توجد طلبات إجازة حتى الآن</div> : null}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {activeTab === "leave" ? (
-        <section className="employee-card-stack">
-          <div className="employee-card">
-            <div className="employee-card-head">
-              <h3>إرسال طلب إجازة</h3>
-              <span>قيد المراجعة</span>
-            </div>
-
-            <div className="employee-form-grid">
-              <label className="employee-field">
-                <span>من تاريخ</span>
-                <input
-                  type="date"
-                  value={leaveForm.fromDate}
-                  onChange={(e) => setLeaveForm((p) => ({ ...p, fromDate: e.target.value }))}
-                />
-              </label>
-              <label className="employee-field">
-                <span>إلى تاريخ</span>
-                <input
-                  type="date"
-                  value={leaveForm.toDate}
-                  onChange={(e) => setLeaveForm((p) => ({ ...p, toDate: e.target.value }))}
-                />
-              </label>
-              <label className="employee-field">
-                <span>نوع الإجازة</span>
-                <select
-                  value={leaveForm.type}
-                  onChange={(e) => setLeaveForm((p) => ({ ...p, type: e.target.value as EmployeeLeaveRequest["type"] }))}
-                >
-                  <option value="annual">سنوية</option>
-                  <option value="sick">مرضية</option>
-                  <option value="emergency">طارئة</option>
-                  <option value="unpaid">بدون راتب</option>
-                  <option value="other">أخرى</option>
-                </select>
-              </label>
-              <label className="employee-field employee-field--wide">
-                <span>ملاحظة</span>
-                <textarea
-                  rows={4}
-                  value={leaveForm.note}
-                  onChange={(e) => setLeaveForm((p) => ({ ...p, note: e.target.value }))}
-                  placeholder="ملاحظة اختيارية"
-                />
-              </label>
-            </div>
-
-            <div className="employee-actions">
-              <button className="employee-button employee-button--accent" type="button" onClick={() => void submitLeaveRequest()} disabled={saving}>
-                إرسال الطلب
-              </button>
-            </div>
-          </div>
-
-          <div className="employee-card">
-            <div className="employee-card-head">
-              <h3>السجل</h3>
-              <span>{leaveLoading ? "..." : leaveRequests.length}</span>
-            </div>
-            <div className="employee-list">
-              {leaveRequests.map((item) => {
-                const statusMeta = getLeaveStatusMeta(item.status);
-                return (
-                  <div key={item.id} className="employee-list-item">
-                    <strong>{getLeaveTypeLabel(item.type)}</strong>
-                    <span>{formatLeaveDateRange(item.fromDate, item.toDate)}</span>
-                    <small>{statusMeta.label}{item.note ? ` | ${item.note}` : ""}</small>
-                  </div>
-                );
-              })}
-              {!leaveRequests.length ? <div className="employee-muted">لا توجد طلبات إجازة حتى الآن</div> : null}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {activeTab === "payroll" ? (
-        <section className="employee-card-stack">
-          <div className="employee-card">
-            <div className="employee-card-head">
-              <h3>سجلات الرواتب</h3>
-              <span>{leaveLoading ? "..." : payrollRecords.length}</span>
-            </div>
-            <div className="employee-list">
-              {payrollRecords.map((row) => (
-                <div key={row.id} className="employee-list-item">
-                  <strong>{row.monthKey}</strong>
-                  <span>
-                    الراتب: {Number(row.salary || row.total || 0).toFixed(2)}
-                  </span>
-                  <small>
-                    الأساسي {Number(row.baseSalary || 0).toFixed(2)} | الإضافي {Number(row.overtime || 0).toFixed(2)}
-                  </small>
-                </div>
-              ))}
-              {!payrollRecords.length ? <div className="employee-muted">لا توجد سجلات رواتب حتى الآن.</div> : null}
-            </div>
-          </div>
-
-          <div className="employee-card">
-            <div className="employee-card-head">
-              <h3>ملاحظات</h3>
-            </div>
-            <div className="employee-copy">
-              يتم تخزين سجلات الرواتب شهريًا في `employee_payroll_records` باستخدام صيغة `employeeId__YYYY-MM`.
-            </div>
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }

@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { toArabicSectionLabel, type ServiceOption } from "./shared";
 
 type ServicePickerView = "all" | "selected";
+
+const SERVICE_RENDER_BATCH = 36;
 
 type ServicesSectionProps = {
   isVisible: boolean;
@@ -42,6 +44,7 @@ export default function ServicesSection({
   onSpecialtiesChange,
 }: ServicesSectionProps) {
   const [pickerView, setPickerView] = useState<ServicePickerView>("all");
+  const [renderLimit, setRenderLimit] = useState(SERVICE_RENDER_BATCH);
   const selectedCount = specialties.length;
 
   const serviceById = useMemo(
@@ -66,6 +69,17 @@ export default function ServicesSection({
         : filteredServicesForPicks,
     [filteredServicesForPicks, pickerView, selectedSet]
   );
+
+
+  useEffect(() => {
+    setRenderLimit(SERVICE_RENDER_BATCH);
+  }, [pickerView, srvQ, srvSection]);
+
+  const renderedServices = useMemo(
+    () => visibleServices.slice(0, renderLimit),
+    [renderLimit, visibleServices]
+  );
+  const hasMoreServices = renderedServices.length < visibleServices.length;
 
   const selectVisibleServices = () => {
     onSpecialtiesChange(
@@ -164,7 +178,7 @@ export default function ServicesSection({
             {visibleServices.length === 0 ? (
               <div className="emp-service-empty">لا توجد خدمات مطابقة للبحث أو القسم المحدد.</div>
             ) : (
-              visibleServices.map((service) => {
+              renderedServices.map((service) => {
                 const selected = selectedSet.has(service.id);
                 const sectionLabel = toArabicSectionLabel(
                   String(service.sectionId || ""),
@@ -196,6 +210,15 @@ export default function ServicesSection({
                 );
               })
             )}
+            {hasMoreServices ? (
+              <button
+                type="button"
+                className="exp-btn ghost emp-service-load-more"
+                onClick={() => setRenderLimit((current) => current + SERVICE_RENDER_BATCH)}
+              >
+                عرض المزيد ({visibleServices.length - renderedServices.length})
+              </button>
+            ) : null}
           </div>
 
           <aside className="emp-service-selected">

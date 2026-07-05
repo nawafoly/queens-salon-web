@@ -70,6 +70,29 @@ function roleLabel(role: string) {
   return "موظف";
 }
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 5) return "مساء الخير";
+  if (hour < 12) return "صباح الخير";
+  if (hour < 17) return "نهارك سعيد";
+  return "مساء الخير";
+}
+
+function displayInitial(value: unknown) {
+  return cleanText(value || "م").slice(0, 1).toUpperCase();
+}
+
+function formatAttendanceDateLabel(dateKey: string) {
+  const parsed = new Date(`${dateKey}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return dateKey;
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(parsed);
+}
+
 function getProfileSource(session: HrSession) {
   return session.staffDoc || session.employeeDoc || session.userDoc || {};
 }
@@ -443,6 +466,13 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const visibleAccuracy =
     visibleLocation?.accuracy ??
     null;
+  const leaveBalanceValue = cleanText(profile.leaveBalanceDays ?? profile.leaveBalance ?? "") || "—";
+  const attendanceDateLabel = formatAttendanceDateLabel(attendanceDate);
+  const punchHint = attendanceStatus === "checked_out"
+    ? "تم حفظ الحضور والانصراف لهذا اليوم"
+    : attendanceBusy
+      ? "لا تغلق الصفحة أثناء التحقق"
+      : "اضغط بعد السماح بالوصول إلى الموقع والبصمة";
 
   if (attendanceOnly) {
     return (
@@ -479,26 +509,58 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   return (
     <div className="employee-panel employee-overview">
       <section className="employee-app-intro">
-        <p>مساء الخير</p>
-        <h1>{displayName}</h1>
-        <span>{department || "بدون قسم"} · {title || "بدون مسمى وظيفي"}</span>
+        <div className="employee-app-intro__identity">
+          <span className="employee-app-intro__avatar">
+            {avatarUrl ? <img src={avatarUrl} alt="" /> : displayInitial(displayName)}
+          </span>
+          <div>
+            <p>{getGreeting()}</p>
+            <h1>{displayName}</h1>
+            <span>{department || "بدون قسم"} · {title || "بدون مسمى وظيفي"}</span>
+          </div>
+        </div>
+        <div className="employee-app-intro__meta">
+          <span className={`employee-status-pill ${onLeave ? "is-leave" : active ? "is-active" : "is-inactive"}`}>{statusLabel}</span>
+          <span>{roleLabel(session.role)}</span>
+          <span>{attendanceDateLabel}</span>
+        </div>
       </section>
 
-      <section className="employee-attendance-card">
+      <section className="employee-overview-kpis" aria-label="ملخص التنبيهات">
+        <Link to="/employee/notifications" className="employee-overview-kpi">
+          <span>التنبيهات غير المقروءة</span>
+          <strong>{summary.all}</strong>
+        </Link>
+        <Link to="/employee/messages" className="employee-overview-kpi">
+          <span>الرسائل</span>
+          <strong>{summary.message}</strong>
+        </Link>
+        <Link to="/employee/files" className="employee-overview-kpi">
+          <span>تحديثات الملفات</span>
+          <strong>{summary.file}</strong>
+        </Link>
+        <Link to="/employee/leave" className="employee-overview-kpi">
+          <span>الإجازات والرواتب</span>
+          <strong>{summary.leave + summary.payroll}</strong>
+        </Link>
+      </section>
+
+      <section className={`employee-attendance-card employee-attendance-card--${attendanceStatus}`} data-status={attendanceStatus}>
         <div className="employee-section-title">
           <div>
             <small><FontAwesomeIcon icon={faClock} /> الحضور والانصراف</small>
             <h2>تسجيل الدوام</h2>
+            <p>{attendanceDateLabel}</p>
           </div>
-          <span className="employee-gps-chip">GPS</span>
+          <span className="employee-gps-chip"><i aria-hidden="true" /> يعتمد على GPS</span>
         </div>
 
         <div className="employee-attendance-console">
-          <div className="employee-attendance-side">
-            <span>الانصراف</span>
+          <div className="employee-attendance-side employee-attendance-side--out">
+            <span>وقت الانصراف</span>
             <strong>{checkOutTime}</strong>
             <em className={attendance?.checkOutAtClient ? "is-done" : ""}>
-              {attendance?.checkOutAtClient ? "تم الانصراف" : "لم يتم الانصراف"}
+              {attendance?.checkOutAtClient ? "تم تسجيل الانصراف" : "لم يتم الانصراف"}
             </em>
           </div>
 
@@ -507,45 +569,57 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             className={`employee-punch-button employee-punch-button--${punchTone}`}
             onClick={() => void handleAttendancePunch(punchAction)}
             disabled={punchDisabled}
+            aria-describedby="employee-punch-hint"
           >
             <span><FontAwesomeIcon icon={faFingerprint} /></span>
             <strong>{attendanceBusy ? "جاري التسجيل..." : punchLabel}</strong>
+            <small id="employee-punch-hint">{punchHint}</small>
           </button>
 
-          <div className="employee-attendance-side">
-            <span>الحضور</span>
+          <div className="employee-attendance-side employee-attendance-side--in">
+            <span>وقت الحضور</span>
             <strong>{checkInTime}</strong>
             <em className={attendance?.checkInAtClient ? "is-done" : ""}>
-              {attendance?.checkInAtClient ? "تم الحضور" : "لم يتم الحضور"}
+              {attendance?.checkInAtClient ? "تم تسجيل الحضور" : "لم يتم الحضور"}
             </em>
           </div>
         </div>
 
-        <div className="employee-attendance-status">
-          {attendanceLoading ? "جاري تحديث حالة اليوم..." : getAttendanceStatusLabel(attendanceStatus)}
+        <div className={`employee-attendance-status employee-attendance-status--${attendanceStatus}`} aria-live="polite">
+          <span>{attendanceLoading ? "جاري تحديث حالة اليوم..." : getAttendanceStatusLabel(attendanceStatus)}</span>
+          <small>{attendanceDayStatus}</small>
         </div>
 
         <div className="employee-attendance-records">
           <div className={attendance?.checkOutAtClient ? "is-out" : ""}>
-            <strong>سجل الانصراف</strong>
-            <span>{checkOutTime}</span>
-            <small>{attendance?.checkOutAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل انصراف"}</small>
+            <span className="employee-attendance-records__icon"><FontAwesomeIcon icon={faClock} /></span>
+            <div>
+              <strong>سجل الانصراف</strong>
+              <small>{attendance?.checkOutAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل انصراف"}</small>
+            </div>
+            <b>{checkOutTime}</b>
           </div>
           <div className={attendance?.checkInAtClient ? "is-in" : ""}>
-            <strong>سجل الحضور</strong>
-            <span>{checkInTime}</span>
-            <small>{attendance?.checkInAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل حضور"}</small>
+            <span className="employee-attendance-records__icon"><FontAwesomeIcon icon={faFingerprint} /></span>
+            <div>
+              <strong>سجل الحضور</strong>
+              <small>{attendance?.checkInAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل حضور"}</small>
+            </div>
+            <b>{checkInTime}</b>
           </div>
         </div>
 
-        <div className={`employee-attendance-note ${attendanceStatus === "not_started" ? "" : "is-done"}`}>
+        <div
+          className={`employee-attendance-note ${attendanceStatus === "not_started" ? "" : "is-done"}`}
+          role="status"
+          aria-live="polite"
+        >
           <span>
             {attendanceMessage || attendanceDayStatus}
             {visibleAccuracy !== null ? ` · الدقة: ${visibleAccuracy} م` : ""}
             {visibleDistance !== null ? ` · المسافة: ${visibleDistance} م` : visibleZoneName ? ` · النطاق: ${visibleZoneName}` : ""}
           </span>
           <div>
-            <small>{punchLabel}</small>
             {visibleZoneName ? <small>{visibleZoneName}</small> : null}
             {visibleAccuracy !== null ? <small>الدقة: {visibleAccuracy} م</small> : null}
             {visibleDistance !== null ? <small>المسافة: {visibleDistance} م</small> : null}
@@ -649,7 +723,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           </div>
           <div className="employee-balance-card">
             <span>رصيد الإجازات</span>
-            <strong>{cleanText(profile.leaveBalanceDays ?? profile.leaveBalance ?? "19")} يوم</strong>
+            <strong>{leaveBalanceValue === "—" ? "—" : `${leaveBalanceValue} يوم`}</strong>
           </div>
         </div>
 

@@ -1,8 +1,16 @@
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faTrash, faXmark } from "@fortawesome/free-solid-svg-icons";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 
-import Modal from "../../components/Modal";
-import type { EmployeeModalTab, StaffPublicUi } from "./shared";
+import {
+  getNameInitials,
+  normalizeSpecialties,
+  type EmployeeModalTab,
+  type EmployeeSplitTab,
+  type StaffPublicUi,
+} from "./shared";
 
 type EmployeeEditorModalProps = {
   isOpen: boolean;
@@ -14,11 +22,51 @@ type EmployeeEditorModalProps = {
   name: string;
   modalTab: EmployeeModalTab;
   modalTabs: Array<{ key: EmployeeModalTab; label: string }>;
+  activeTab?: EmployeeSplitTab;
+  detailTabs?: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: IconDefinition }>;
+  selectedEmployeeStatusLabel?: string;
+  selectedEmployeeStatusClass?: string;
+  canDelete?: boolean;
   onClose: () => void;
   onSave: () => void;
+  onDelete?: () => void;
+  onCancelEdit?: () => void;
   onModalTabChange: (tab: EmployeeModalTab) => void;
-  children: React.ReactNode;
+  onDetailTabChange?: (tab: EmployeeSplitTab) => void;
+  children: ReactNode;
 };
+
+let employeeModalOpenCount = 0;
+let previousBodyOverflow = "";
+let previousBodyPaddingRight = "";
+
+function lockBodyScroll() {
+  if (typeof document === "undefined") return;
+  employeeModalOpenCount += 1;
+  if (employeeModalOpenCount !== 1) return;
+
+  const body = document.body;
+  previousBodyOverflow = body.style.overflow;
+  previousBodyPaddingRight = body.style.paddingRight;
+
+  const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+  if (scrollbarWidth > 0) {
+    body.style.paddingRight = `${scrollbarWidth}px`;
+  }
+  body.style.overflow = "hidden";
+  body.classList.add("emp-editor-open");
+}
+
+function unlockBodyScroll() {
+  if (typeof document === "undefined") return;
+  employeeModalOpenCount = Math.max(0, employeeModalOpenCount - 1);
+  if (employeeModalOpenCount !== 0) return;
+
+  const body = document.body;
+  body.style.overflow = previousBodyOverflow;
+  body.style.paddingRight = previousBodyPaddingRight;
+  body.classList.remove("emp-editor-open");
+}
 
 export default function EmployeeEditorModal({
   isOpen,
@@ -30,61 +78,199 @@ export default function EmployeeEditorModal({
   name,
   modalTab,
   modalTabs,
+  activeTab = "basic",
+  detailTabs = [],
+  selectedEmployeeStatusLabel = "",
+  selectedEmployeeStatusClass = "",
+  canDelete = false,
   onClose,
   onSave,
+  onDelete,
+  onCancelEdit,
   onModalTabChange,
+  onDetailTabChange,
   children,
 }: EmployeeEditorModalProps) {
-  if (!isOpen) return null;
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  const isCreateMode = !editId;
+  const employeeName = String(editingStaff?.name || name || "").trim();
+  const specialtiesCount = normalizeSpecialties(editingStaff?.specialties).length;
+  const employeeInitials = getNameInitials(employeeName || "موظفة");
 
-  return (
-    <Modal
-      open={isOpen}
-      onClose={onClose}
-      ariaLabel="محرر الموظفة"
-      size="lg"
-      panelClassName="emp-modal"
-      inline
-      closeOnOverlayClick={false}
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    lockBodyScroll();
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const raf = window.requestAnimationFrame(() => {
+      panelRef.current?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      if (!busy) onCloseRef.current();
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      document.removeEventListener("keydown", handleKeyDown);
+      unlockBodyScroll();
+      previouslyFocused?.focus?.();
+    };
+  }, [busy, isOpen]);
+
+  const title = isCreateMode ? "إضافة موظفة" : employeeName || "ملف الموظفة";
+  const subtitle = isCreateMode
+    ? "أكملي البيانات الأساسية والدوام والخدمات والملف قبل إنشاء الموظفة."
+    : "تعديل بيانات الموظفة من نافذة مستقلة بدون التأثير على تمرير الصفحة.";
+
+  const tabs = useMemo(
+    () =>
+      isCreateMode
+        ? modalTabs.map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+            active: modalTab === tab.key,
+            onClick: () => onModalTabChange(tab.key),
+            hint: "",
+            icon: undefined as IconDefinition | undefined,
+          }))
+        : detailTabs.map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+            active: activeTab === tab.key,
+            onClick: () => onDetailTabChange?.(tab.key),
+            hint: tab.hint,
+            icon: tab.icon,
+          })),
+    [
+      activeTab,
+      detailTabs,
+      isCreateMode,
+      modalTab,
+      modalTabs,
+      onDetailTabChange,
+      onModalTabChange,
+    ]
+  );
+
+  if (!isOpen || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className={`emp-editor-overlay ${isCreateMode ? "is-create" : "is-edit"}`}
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
     >
-      {!editId ? (
-        <div className="modal-head">
-          <h3>إضافة موظفة</h3>
-          <button className="exp-btn ghost sm" type="button" onClick={onClose}>
+      <div
+        ref={panelRef}
+        className={`emp-editor-panel ${isCreateMode ? "emp-editor-panel--create" : "emp-editor-panel--edit"}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={isCreateMode ? "إضافة موظفة" : `تحرير ملف ${employeeName || "الموظفة"}`}
+        tabIndex={-1}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="emp-editor-header">
+          <div className="emp-editor-identity">
+            {!isCreateMode ? (
+              <div className="emp-editor-avatar" aria-hidden="true">
+                {editingStaff?.avatarUrl ? (
+                  <img src={editingStaff.avatarUrl} alt="" />
+                ) : (
+                  <span>{employeeInitials}</span>
+                )}
+              </div>
+            ) : null}
+            <div className="emp-editor-title">
+              <span>{isCreateMode ? "إدارة الموظفات" : "الملف الحالي"}</span>
+              <h3>{title}</h3>
+              <p>{subtitle}</p>
+              {!isCreateMode ? (
+                <div className="emp-editor-chips">
+                  {selectedEmployeeStatusLabel ? (
+                    <span className={`staff-pill ${selectedEmployeeStatusClass}`}>
+                      {selectedEmployeeStatusLabel}
+                    </span>
+                  ) : null}
+                  <span className="emp-meta-chip">
+                    {specialtiesCount > 0 ? `${specialtiesCount} خدمة` : "بدون خدمات"}
+                  </span>
+                  {editingStaff?.showOnBooking === false || specialtiesCount === 0 ? (
+                    <span className="emp-meta-chip emp-meta-chip--warning">مخفية من الحجز</span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <button className="exp-btn ghost sm" type="button" onClick={onClose} disabled={busy} aria-label="إغلاق">
             <FontAwesomeIcon icon={faXmark} />
           </button>
-        </div>
-      ) : null}
+        </header>
 
-      {!editId ? (
-        <div className="emp-modal-tabs">
-          {modalTabs.map((tab) => (
+        <nav className="emp-editor-tabs" role="tablist" aria-label={isCreateMode ? "أقسام إنشاء الموظفة" : "أقسام ملف الموظفة"}>
+          {tabs.map((tab) => (
             <button
-              key={tab.key}
+              key={String(tab.key)}
               type="button"
-              className={`emp-modal-tab ${modalTab === tab.key ? "active" : ""}`}
-              onClick={() => onModalTabChange(tab.key)}
+              role="tab"
+              className={`emp-editor-tab ${tab.active ? "active" : ""}`}
+              onClick={tab.onClick}
+              aria-selected={tab.active}
             >
-              {tab.label}
+              {tab.icon ? <FontAwesomeIcon icon={tab.icon} /> : null}
+              <span>{tab.label}</span>
+              {tab.hint ? <small>{tab.hint}</small> : null}
             </button>
           ))}
-        </div>
-      ) : null}
+        </nav>
 
-      <fieldset className={`emp-inline-fieldset ${editId ? "emp-inline-fieldset--detail" : "emp-inline-fieldset--create"}`} disabled={!canManage}>
-        <div className="modal-body emp-modal-grid">{children}</div>
+        <fieldset className="emp-editor-fieldset" disabled={!canManage}>
+          <main className="emp-editor-content">{children}</main>
+        </fieldset>
 
-        {!editId && canManage ? (
-          <div className="modal-foot">
-            <button className="exp-btn" onClick={onClose} type="button">
-              إلغاء
-            </button>
-            <button className="exp-btn primary" onClick={onSave} disabled={busy} type="button">
-              {saving ? "جارٍ الحفظ..." : "إنشاء الموظفة"}
-            </button>
+        <footer className="emp-editor-footer">
+          <span>
+            {isCreateMode
+              ? "يمكن حفظ الموظفة بدون خدمات، وستكون مخفية من الحجز حتى يتم إسناد خدمات لها."
+              : "راجعي التغييرات ثم احفظيها من هنا دون أن يغطي الشريط محتوى الخدمات."}
+          </span>
+          <div className="emp-editor-footer-actions">
+            {!isCreateMode && canManage && canDelete && onDelete ? (
+              <button className="exp-btn ghost sm text-danger" type="button" onClick={onDelete} disabled={busy}>
+                <FontAwesomeIcon icon={faTrash} />
+              </button>
+            ) : null}
+            {!isCreateMode && canManage && onCancelEdit ? (
+              <button className="exp-btn ghost" type="button" onClick={onCancelEdit} disabled={busy}>
+                إلغاء التعديلات
+              </button>
+            ) : (
+              <button className="exp-btn ghost" type="button" onClick={onClose} disabled={saving}>
+                إلغاء
+              </button>
+            )}
+            {canManage ? (
+              <button className="exp-btn primary" type="button" onClick={onSave} disabled={busy}>
+                {saving ? "جاري الحفظ..." : isCreateMode ? "إنشاء الموظفة" : "حفظ التغييرات"}
+              </button>
+            ) : (
+              <span className="emp-meta-chip">عرض فقط</span>
+            )}
           </div>
-        ) : null}
-      </fieldset>
-    </Modal>
+        </footer>
+      </div>
+    </div>,
+    document.body
   );
 }

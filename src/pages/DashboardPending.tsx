@@ -30,7 +30,9 @@ function normalizeAdminRole(raw: any): AdminRole {
 
 export default function DashboardPending() {
   const navigate = useNavigate();
-  const [statusText, setStatusText] = useState<string>("بانتظار تفعيل الحساب من الإدارة...");
+  const [statusText, setStatusText] = useState<string>(
+    "بانتظار تفعيل الحساب من الإدارة...",
+  );
 
   useEffect(() => {
     let unsubUserDoc: null | (() => void) = null;
@@ -39,33 +41,44 @@ export default function DashboardPending() {
     const startWatch = (uid: string) => {
       if (!uid) return;
 
+      if (unsubUserDoc) {
+        try {
+          unsubUserDoc();
+        } catch {
+          // ignore duplicate unsubscribe
+        }
+      }
+
       const userRef = doc(db, ...USERS_COL, uid);
 
       unsubUserDoc = onSnapshot(
         userRef,
         (snap) => {
           if (!snap.exists()) {
-            setStatusText("تم إنشاء الحساب وبانتظار إضافته/تفعيله من الإدارة...");
+            setStatusText("تم إنشاء الحساب وبانتظار إضافته أو تفعيله من الإدارة...");
             return;
           }
 
           const data: any = snap.data();
-
-          // ✅ نفس منطقك في Login:
-          // active=false => pending
           const active = data?.active !== false;
-          const role: AdminRole = active ? normalizeAdminRole(data?.role) : "pending";
+          const role: AdminRole = active
+            ? normalizeAdminRole(data?.role)
+            : "pending";
 
-          // ✅ إذا تفعل الحساب وصار role مو pending -> حدّث الجلسة ووجّه للداشبورد
           if (role !== "pending") {
-            // تحديث localStorage role
             localStorage.setItem("userRole", role);
 
-            // تحديث auth_user (لأن الداشبورد يعتمد عليه)
             try {
-              const old = JSON.parse(localStorage.getItem("auth_user") || "{}");
-              const displayName =
-                String(data?.displayName || data?.name || old?.displayName || localStorage.getItem("userName") || "").trim();
+              const old = JSON.parse(
+                localStorage.getItem("auth_user") || "{}",
+              );
+              const displayName = String(
+                data?.displayName ||
+                  data?.name ||
+                  old?.displayName ||
+                  localStorage.getItem("userName") ||
+                  "",
+              ).trim();
 
               if (displayName) localStorage.setItem("userName", displayName);
 
@@ -76,35 +89,33 @@ export default function DashboardPending() {
                   uid,
                   role,
                   displayName: displayName || old?.displayName || "",
-                  email: old?.email || data?.email || auth.currentUser?.email || "",
-                })
+                  email:
+                    old?.email || data?.email || auth.currentUser?.email || "",
+                }),
               );
             } catch {
-              // ignore
+              // ignore malformed cache
             }
 
-            // ✅ علشان Login.tsx و أي listener يسمع
             window.dispatchEvent(new Event("authChanged"));
-
-            // ✅ تحويل تلقائي
             navigate(resolveDashboardLandingPath(role), { replace: true });
             return;
           }
 
-          setStatusText("تم تسجيل دخولك، وحسابك ما زال بانتظار التفعيل من الإدارة.");
+          setStatusText(
+            "تم تسجيل دخولك، وحسابك ما زال بانتظار التفعيل من الإدارة.",
+          );
         },
         (err) => {
           console.error("Pending onSnapshot error:", err);
           setStatusText("تعذر التحقق من حالة التفعيل الآن. حاول تحديث الصفحة.");
-        }
+        },
       );
     };
 
-    // 1) جرّب uid من localStorage (أسرع)
     const uidLS = String(localStorage.getItem("userUid") || "").trim();
     if (uidLS) startWatch(uidLS);
 
-    // 2) تابع auth عشان لو uid ما كان مخزن أو تغير
     unsubAuth = onAuthStateChanged(auth, (u) => {
       const uid = u?.uid || uidLS;
       if (uid) startWatch(uid);
@@ -113,92 +124,49 @@ export default function DashboardPending() {
     return () => {
       try {
         if (unsubUserDoc) unsubUserDoc();
-      } catch {}
+      } catch {
+        // ignore
+      }
       try {
         if (unsubAuth) unsubAuth();
-      } catch {}
+      } catch {
+        // ignore
+      }
     };
   }, [navigate]);
 
-  const styles = {
-    page: {
-      minHeight: "70vh",
-      display: "grid",
-      placeItems: "center",
-      padding: 24,
-    } as React.CSSProperties,
-
-    card: {
-      maxWidth: 520,
-      width: "100%",
-      padding: 22,
-      borderRadius: 18,
-      border: "1px solid rgba(13,13,13,.08)",
-      background: "rgba(245,245,244,.92)",
-      backdropFilter: "blur(12px)",
-      WebkitBackdropFilter: "blur(12px)",
-      boxShadow: "0 10px 30px rgba(0,0,0,.06)",
-    } as React.CSSProperties,
-
-    title: {
-      margin: "0 0 8px 0",
-      fontSize: 20,
-      fontWeight: 900,
-      color: "#0D0D0D",
-    } as React.CSSProperties,
-
-    text: {
-      margin: 0,
-      opacity: 0.85,
-      lineHeight: 1.9,
-      color: "#515659",
-    } as React.CSSProperties,
-
-    actions: {
-      display: "flex",
-      gap: 10,
-      marginTop: 16,
-      color: "#111",
-      justifyContent: "flex-end",
-    } as React.CSSProperties,
-
-    btnPrimary: {
-      padding: "10px 14px",
-      borderRadius: 12,
-      border: "none",
-      background: "#0D0D0D",
-      color: "#fff",
-      cursor: "pointer",
-      fontWeight: 700,
-    } as React.CSSProperties,
-
-    btnSecondary: {
-      padding: "10px 14px",
-      borderRadius: 12,
-      border: "1px solid rgba(13,13,13,.12)",
-      background: "#fff",
-      cursor: "pointer",
-      fontWeight: 700,
-    } as React.CSSProperties,
-  };
-
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <h2 style={styles.title}>حسابك بانتظار التفعيل</h2>
+    <main className="madan-pending-page" dir="rtl">
+      <section className="madan-pending-card" aria-live="polite">
+        <div className="madan-pending-brand" aria-hidden="true">
+          <span className="madan-pending-brand__mark">Q</span>
+          <span className="madan-pending-brand__pulse" />
+        </div>
 
-        <p style={styles.text}>{statusText}</p>
+        <div className="madan-pending-kicker">Queens Salon · إدارة الحسابات</div>
+        <h1 className="madan-pending-title">حسابك بانتظار التفعيل</h1>
+        <p className="madan-pending-text">{statusText}</p>
 
-        <div style={styles.actions}>
+        <div className="madan-pending-progress" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+
+        <div className="madan-pending-note">
+          سيتم تحويلك تلقائيًا إلى لوحة التحكم فور اعتماد الحساب.
+        </div>
+
+        <div className="madan-pending-actions">
           <button
             type="button"
             onClick={() => navigate("/")}
-            style={styles.btnPrimary}
+            className="madan-pending-button"
           >
-            رجوع للموقع
+            الرجوع إلى الموقع
           </button>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

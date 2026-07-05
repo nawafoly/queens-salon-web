@@ -559,7 +559,7 @@ export default function HrEntry() {
 
   if (session.loading || (isSignedIn && authorization.checking)) {
     return (
-      <main className="hr-entry" dir="rtl">
+      <main className="hr-entry madan-hr-entry" dir="rtl">
         <div className="hr-entry-loading">جاري التحقق من الصلاحية...</div>
       </main>
     );
@@ -567,14 +567,14 @@ export default function HrEntry() {
 
   if (isSignedIn && !canUseHr) {
     return (
-      <main className="hr-entry" dir="rtl">
+      <main className="hr-entry madan-hr-entry" dir="rtl">
         <div className="hr-entry-loading">جاري فتح ملف الموظف...</div>
       </main>
     );
   }
 
   return (
-    <main className={`hr-entry${!isSignedIn ? " hr-entry--login-only" : ""}`} dir="rtl">
+    <main className={`hr-entry madan-hr-entry${!isSignedIn ? " hr-entry--login-only" : ""}`} dir="rtl">
       <div className={`hr-entry-shell${!isSignedIn ? " hr-entry-shell--login-only" : ""}`}>
         {!isSignedIn ? (
           <section className="hr-entry-menu-panel hr-entry-login-panel" aria-label="تسجيل الدخول">

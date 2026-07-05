@@ -64,13 +64,17 @@ export type RecruitmentApplication = {
   email: string;
   phone?: string;
   roleApplied?: string;
-  status?: "new" | "reviewing" | "interview" | "accepted" | "rejected";
+  status?: "new" | "reviewing" | "interview" | "accepted" | "rejected" | "hired";
   notes?: string;
   message?: string;
   createdAt?: any;
   updatedAt?: any;
   reviewedAt?: any;
   reviewedByUid?: string;
+  hiredAt?: any;
+  hiredByUid?: string;
+  hiredUid?: string;
+  hiredEmployeeId?: string;
   source?: string;
 };
 
@@ -349,6 +353,10 @@ export async function listRecruitmentApplications(limitCount = 100): Promise<Rec
       updatedAt: data?.updatedAt,
       reviewedAt: data?.reviewedAt,
       reviewedByUid: cleanText(data?.reviewedByUid || "") || undefined,
+      hiredAt: data?.hiredAt,
+      hiredByUid: cleanText(data?.hiredByUid || "") || undefined,
+      hiredUid: cleanText(data?.hiredUid || "") || undefined,
+      hiredEmployeeId: cleanText(data?.hiredEmployeeId || "") || undefined,
       source: cleanText(data?.source || "") || undefined,
     };
   });

@@ -1,6 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faBriefcase,
+  faCheck,
+  faClock,
+  faEnvelope,
+  faMagnifyingGlass,
+  faPhone,
+  faPlus,
+  faRotate,
+  faUserCheck,
+  faUserClock,
+  faUserPlus,
+  faUserTie,
+  faXmark,
+} from "@fortawesome/free-solid-svg-icons";
 
-import { adminCreateStaffUser, type StaffCreateRole } from "../../services/adminStaffService";
 import {
   createRecruitmentApplication,
   listRecruitmentApplications,
@@ -13,18 +29,19 @@ type Props = {
   session: HrSession;
 };
 
-function makeTempPassword() {
-  return `Hr${Math.random().toString(36).slice(2, 6)}${Math.random().toString(36).slice(2, 6)}!`;
-}
+type ApplicationFilter = "all" | "new" | "reviewing" | "accepted" | "rejected" | "hired";
+
+const STAFF_DRAFT_STORAGE_KEY = "queens.hr.createStaffDraft";
 
 function statusLabel(status?: RecruitmentApplication["status"] | string | null) {
   const value = cleanText(status).toLowerCase();
   if (value === "new") return "جديد";
   if (value === "reviewing") return "قيد المراجعة";
+  if (value === "interview") return "مقابلة";
   if (value === "accepted") return "مقبول";
   if (value === "rejected") return "مرفوض";
   if (value === "hired") return "تم التوظيف";
-  return status || "غير محدد";
+  return cleanText(status) || "غير محدد";
 }
 
 function roleLabel(role?: string | null) {
@@ -35,20 +52,51 @@ function roleLabel(role?: string | null) {
   return "موظف";
 }
 
+function toMillis(value: unknown) {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === "object") {
+    const maybe = value as { toMillis?: () => number; seconds?: number; nanoseconds?: number };
+    if (typeof maybe.toMillis === "function") return maybe.toMillis();
+    if (typeof maybe.seconds === "number") {
+      return maybe.seconds * 1000 + Math.floor((maybe.nanoseconds || 0) / 1_000_000);
+    }
+  }
+  return 0;
+}
+
+function formatDate(value: unknown) {
+  const ms = toMillis(value);
+  if (!ms) return "—";
+  return new Intl.DateTimeFormat("ar-SA", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(ms));
+}
+
+function initials(value: unknown) {
+  const parts = cleanText(value).split(/\s+/).filter(Boolean);
+  return `${parts[0]?.[0] || "؟"}${parts[1]?.[0] || ""}`;
+}
+
 export default function RecruitmentApplicationsPage({ session }: Props) {
+  const navigate = useNavigate();
   const [items, setItems] = useState<RecruitmentApplication[]>([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const [selectedId, setSelectedId] = useState<string>("");
   const [saving, setSaving] = useState(false);
-  const [hirePassword, setHirePassword] = useState(makeTempPassword());
-  const [hireRole, setHireRole] = useState<StaffCreateRole>("staff");
-  const [hireEmployeeId, setHireEmployeeId] = useState("");
-  const [hireDepartment, setHireDepartment] = useState("");
-  const [hireTitle, setHireTitle] = useState("");
-  const [hireAvatarUrl, setHireAvatarUrl] = useState("");
-  const [hireSpecialties, setHireSpecialties] = useState("");
-
+  const [notice, setNotice] = useState("");
+  const [selectedId, setSelectedId] = useState("");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<ApplicationFilter>("all");
+  const [createOpen, setCreateOpen] = useState(false);
   const [newApp, setNewApp] = useState({
     fullName: "",
     email: "",
@@ -58,75 +106,72 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
     message: "",
   });
 
-  const selected = useMemo(
-    () => items.find((item) => item.id === selectedId) || items[0] || null,
-    [items, selectedId]
-  );
-
-  useEffect(() => {
-    let alive = true;
+  const reload = async (preserveSelection = true) => {
     setLoading(true);
-
-    listRecruitmentApplications()
-      .then((rows) => {
-        if (!alive) return;
-        setItems(rows);
-        setSelectedId((current) => current || rows[0]?.id || "");
-      })
-      .catch((e) => {
-        if (!alive) return;
-        setMessage(cleanText((e as any)?.message || "تعذر تحميل الطلبات."));
-      })
-      .finally(() => {
-        if (!alive) return;
-        setLoading(false);
-      });
-
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-    setHirePassword((current) => current || makeTempPassword());
-    setHireEmployeeId("");
-    setHireDepartment("");
-    setHireTitle("");
-    setHireAvatarUrl("");
-    setHireSpecialties("");
-    const normalizedRole: StaffCreateRole =
-      selected.roleApplied === "hr" ||
-      selected.roleApplied === "admin" ||
-      selected.roleApplied === "reception"
-        ? selected.roleApplied
-        : "staff";
-    setHireRole(normalizedRole);
-  }, [selected]);
-
-  const reload = async () => {
-    setLoading(true);
+    setNotice("");
     try {
-      const rows = await listRecruitmentApplications();
+      const rows = await listRecruitmentApplications(240);
       setItems(rows);
-      if (!selectedId && rows[0]?.id) setSelectedId(rows[0].id);
+      setSelectedId((current) => {
+        if (preserveSelection && current && rows.some((item) => item.id === current)) return current;
+        return rows[0]?.id || "";
+      });
+    } catch (error) {
+      setNotice(cleanText((error as any)?.message || "تعذر تحميل طلبات التوظيف."));
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    void reload(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selected = useMemo(
+    () => items.find((item) => item.id === selectedId) || null,
+    [items, selectedId]
+  );
+
+  const stats = useMemo(() => ({
+    total: items.length,
+    new: items.filter((item) => cleanText(item.status || "new") === "new").length,
+    reviewing: items.filter((item) => ["reviewing", "interview"].includes(cleanText(item.status))).length,
+    accepted: items.filter((item) => cleanText(item.status) === "accepted").length,
+    hired: items.filter((item) => cleanText(item.status) === "hired").length,
+    rejected: items.filter((item) => cleanText(item.status) === "rejected").length,
+  }), [items]);
+
+  const filteredItems = useMemo(() => {
+    const q = cleanText(search).toLowerCase();
+    return items.filter((item) => {
+      const status = cleanText(item.status || "new").toLowerCase();
+      if (filter === "reviewing" && !["reviewing", "interview"].includes(status)) return false;
+      if (filter !== "all" && filter !== "reviewing" && status !== filter) return false;
+      if (!q) return true;
+      return [item.fullName, item.email, item.phone, roleLabel(item.roleApplied), item.notes, item.message]
+        .map((value) => cleanText(value).toLowerCase())
+        .some((value) => value.includes(q));
+    });
+  }, [filter, items, search]);
+
+  useEffect(() => {
+    if (selectedId && filteredItems.some((item) => item.id === selectedId)) return;
+    setSelectedId(filteredItems[0]?.id || "");
+  }, [filteredItems, selectedId]);
+
   const handleCreateApplication = async () => {
     const fullName = cleanText(newApp.fullName);
     const email = cleanText(newApp.email).toLowerCase();
     if (!fullName || !email || !email.includes("@")) {
-      setMessage("الاسم والبريد الإلكتروني مطلوبان.");
+      setNotice("الاسم والبريد الإلكتروني الصحيح مطلوبان.");
       return;
     }
 
     setSaving(true);
-    setMessage("");
+    setNotice("");
     try {
-      await createRecruitmentApplication({
+      const created = await createRecruitmentApplication({
         fullName,
         email,
         phone: newApp.phone,
@@ -137,10 +182,12 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
         source: "manual",
       });
       setNewApp({ fullName: "", email: "", phone: "", roleApplied: "staff", notes: "", message: "" });
-      await reload();
-      setMessage("تم حفظ الطلب بنجاح.");
-    } catch (e) {
-      setMessage(cleanText((e as any)?.message || "تعذر حفظ الطلب."));
+      setCreateOpen(false);
+      await reload(false);
+      setSelectedId(created.id);
+      setNotice("تم حفظ طلب التوظيف بنجاح.");
+    } catch (error) {
+      setNotice(cleanText((error as any)?.message || "تعذر حفظ الطلب."));
     } finally {
       setSaving(false);
     }
@@ -149,7 +196,7 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
   const handleStatus = async (status: RecruitmentApplication["status"]) => {
     if (!selected) return;
     setSaving(true);
-    setMessage("");
+    setNotice("");
     try {
       await updateRecruitmentApplication(selected.id, {
         status,
@@ -157,282 +204,180 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
         reviewedAt: new Date().toISOString(),
       });
       await reload();
-      setMessage(`تم تحديث حالة الطلب إلى ${statusLabel(status)}.`);
-    } catch (e) {
-      setMessage(cleanText((e as any)?.message || "تعذر تحديث الطلب."));
+      setNotice(`تم تحديث حالة الطلب إلى «${statusLabel(status)}».`);
+    } catch (error) {
+      setNotice(cleanText((error as any)?.message || "تعذر تحديث حالة الطلب."));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleHire = async () => {
+  const openCreateAccount = () => {
     if (!selected) return;
-    if (!selected.email) {
-      setMessage("الطلب المحدد لا يحتوي على بريد إلكتروني.");
-      return;
-    }
-
-    if (!hirePassword || hirePassword.length < 6) {
-      setMessage("كلمة المرور يجب أن تكون 6 أحرف على الأقل.");
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
+    const role = ["hr", "admin", "reception"].includes(cleanText(selected.roleApplied).toLowerCase())
+      ? cleanText(selected.roleApplied).toLowerCase()
+      : "staff";
+    const draft = {
+      applicationId: selected.id,
+      displayName: selected.fullName,
+      email: selected.email,
+      phone: selected.phone || "",
+      role,
+      bio: selected.notes || selected.message || "",
+      source: "recruitment",
+    };
     try {
-      const result = await adminCreateStaffUser({
-        email: selected.email,
-        password: hirePassword,
-        displayName: selected.fullName || selected.email,
-        phone: selected.phone || "",
-        role: hireRole,
-        employeeId: cleanText(hireEmployeeId),
-        department: cleanText(hireDepartment),
-        title: cleanText(hireTitle),
-        avatarUrl: cleanText(hireAvatarUrl),
-        specialties: hireSpecialties
-          ? hireSpecialties.split(",").map((x) => cleanText(x)).filter(Boolean)
-          : [],
-        bio: selected.notes || selected.message || "",
-      });
-
-      await updateRecruitmentApplication(selected.id, {
-        status: "accepted",
-        reviewedByUid: session.uid,
-        reviewedAt: new Date().toISOString(),
-      });
-
-      await reload();
-      const createdIdentity =
-        result.employeeId && result.employeeId !== result.uid
-          ? `${result.uid} / ${result.employeeId}`
-          : result.uid;
-      setMessage(`تم إنشاء حساب الموظف: ${result.displayName} (${createdIdentity}).`);
-      setHirePassword(makeTempPassword());
-      setHireEmployeeId("");
-      setHireDepartment("");
-      setHireTitle("");
-      setHireAvatarUrl("");
-      setHireSpecialties("");
-    } catch (e) {
-      setMessage(cleanText((e as any)?.message || "تعذر إنشاء حساب الموظف."));
-    } finally {
-      setSaving(false);
+      window.sessionStorage.setItem(STAFF_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch {
+      // Navigation still works; the query id is retained as a fallback.
     }
+    navigate(`/admin/create-staff?applicationId=${encodeURIComponent(selected.id)}`);
   };
 
   return (
-    <div className="hr-page">
-      <section className="hr-card">
-        <div className="hr-card-head">
-          <div>
-            <h2>طلبات التوظيف</h2>
-            <p>راجع المرشحين الجدد ثم حوّل المناسب منهم إلى حسابات موظفين داخلية.</p>
-          </div>
-          <button className="hr-button hr-button--ghost" type="button" onClick={() => void reload()} disabled={loading || saving}>
-            {loading ? "جارٍ التحديث..." : "تحديث"}
+    <div className="hr-ops-page hr-recruitment-page" dir="rtl">
+      <section className="hr-ops-hero">
+        <div className="hr-ops-hero__icon"><FontAwesomeIcon icon={faUserTie} /></div>
+        <div>
+          <span>دورة التوظيف</span>
+          <h2>طلبات التوظيف</h2>
+          <p>استقبال الطلبات، مراجعتها، ثم تحويل المرشح المقبول إلى حساب موظف مترابط مع النظام.</p>
+        </div>
+        <div className="hr-ops-hero__actions">
+          <button className="hr-ops-button hr-ops-button--ghost" type="button" onClick={() => void reload()} disabled={loading || saving}>
+            <FontAwesomeIcon icon={faRotate} /><span>{loading ? "جارٍ التحديث" : "تحديث"}</span>
           </button>
-        </div>
-
-        {message ? <div className="hr-alert">{message}</div> : null}
-        {loading ? <div className="hr-muted">جارٍ تحميل الطلبات...</div> : null}
-
-        <div className="hr-form-grid">
-          <label className="hr-field">
-            <span>الاسم الكامل</span>
-            <input
-              value={newApp.fullName}
-              onChange={(e) => setNewApp((p) => ({ ...p, fullName: e.target.value }))}
-              placeholder="اسم المرشح"
-            />
-          </label>
-          <label className="hr-field">
-            <span>البريد الإلكتروني</span>
-            <input
-              value={newApp.email}
-              onChange={(e) => setNewApp((p) => ({ ...p, email: e.target.value }))}
-              placeholder="name@example.com"
-            />
-          </label>
-          <label className="hr-field">
-            <span>رقم الجوال</span>
-            <input
-              value={newApp.phone}
-              onChange={(e) => setNewApp((p) => ({ ...p, phone: e.target.value }))}
-              placeholder="+966..."
-            />
-          </label>
-          <label className="hr-field">
-            <span>الوظيفة المتقدم لها</span>
-            <select
-              value={newApp.roleApplied}
-              onChange={(e) => setNewApp((p) => ({ ...p, roleApplied: e.target.value }))}
-            >
-              <option value="staff">موظف</option>
-              <option value="hr">الموارد البشرية</option>
-              <option value="reception">الاستقبال</option>
-              <option value="admin">الإدارة</option>
-            </select>
-          </label>
-          <label className="hr-field hr-field--wide">
-            <span>ملاحظات</span>
-            <textarea
-              rows={3}
-              value={newApp.notes}
-              onChange={(e) => setNewApp((p) => ({ ...p, notes: e.target.value }))}
-              placeholder="ملاحظات المقابلة"
-            />
-          </label>
-          <label className="hr-field hr-field--wide">
-            <span>رسالة المرشح</span>
-            <textarea
-              rows={3}
-              value={newApp.message}
-              onChange={(e) => setNewApp((p) => ({ ...p, message: e.target.value }))}
-              placeholder="رسالة المتقدم"
-            />
-          </label>
-        </div>
-
-        <div className="hr-actions">
-          <button className="hr-button hr-button--accent" type="button" onClick={() => void handleCreateApplication()} disabled={saving}>
-            حفظ الطلب
+          <button className="hr-ops-button hr-ops-button--primary" type="button" onClick={() => setCreateOpen(true)}>
+            <FontAwesomeIcon icon={faPlus} /><span>طلب جديد</span>
           </button>
         </div>
       </section>
 
-      <div className="hr-grid">
-        <section className="hr-card">
-          <div className="hr-card-head">
-            <div>
-              <h3>الطلبات</h3>
-              <p>{items.length} سجل</p>
-            </div>
+      <section className="hr-ops-stats" aria-label="إحصاءات التوظيف">
+        <article><span>إجمالي الطلبات</span><strong>{stats.total}</strong><FontAwesomeIcon icon={faBriefcase} /></article>
+        <article className={stats.new ? "is-warning" : ""}><span>طلبات جديدة</span><strong>{stats.new}</strong><FontAwesomeIcon icon={faUserClock} /></article>
+        <article><span>قيد المراجعة</span><strong>{stats.reviewing}</strong><FontAwesomeIcon icon={faClock} /></article>
+        <article className="is-success"><span>تم التوظيف</span><strong>{stats.hired}</strong><FontAwesomeIcon icon={faUserCheck} /></article>
+      </section>
+
+      {notice ? <div className="hr-ops-alert">{notice}</div> : null}
+
+      <section className="hr-recruitment-shell">
+        <aside className="hr-recruitment-list-panel">
+          <div className="hr-recruitment-list-panel__head">
+            <div><span>قائمة المرشحين</span><strong>{filteredItems.length} طلب</strong></div>
+            <label className="hr-ops-search">
+              <FontAwesomeIcon icon={faMagnifyingGlass} />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث بالاسم أو البريد..." />
+            </label>
           </div>
 
-          <div className="hr-list">
-            {items.map((app) => (
-              <button
-                key={app.id}
-                type="button"
-                className={`hr-list-item ${selected?.id === app.id ? "is-active" : ""}`}
-                onClick={() => setSelectedId(app.id)}
-              >
-                <strong>{app.fullName}</strong>
-                <span>{app.email}</span>
-                <small>
-                  {statusLabel(app.status)} | {roleLabel(app.roleApplied)}
-                </small>
+          <div className="hr-recruitment-filters">
+            {([
+              ["all", "الكل", stats.total],
+              ["new", "جديد", stats.new],
+              ["reviewing", "مراجعة", stats.reviewing],
+              ["accepted", "مقبول", stats.accepted],
+              ["hired", "موظف", stats.hired],
+              ["rejected", "مرفوض", stats.rejected],
+            ] as Array<[ApplicationFilter, string, number]>).map(([value, label, count]) => (
+              <button key={value} type="button" className={filter === value ? "is-active" : ""} onClick={() => setFilter(value)}>
+                <span>{label}</span><em>{count}</em>
               </button>
             ))}
-            {!items.length ? <div className="hr-muted">لا توجد طلبات بعد.</div> : null}
           </div>
-        </section>
 
-        <section className="hr-card">
+          <div className="hr-recruitment-list">
+            {filteredItems.map((item) => (
+              <button key={item.id} type="button" className={selectedId === item.id ? "is-active" : ""} onClick={() => setSelectedId(item.id)}>
+                <span className="hr-recruitment-avatar">{initials(item.fullName)}</span>
+                <span className="hr-recruitment-list__copy">
+                  <strong>{item.fullName || "مرشح بدون اسم"}</strong>
+                  <small>{roleLabel(item.roleApplied)}</small>
+                  <p>{item.email || item.phone || "لا توجد بيانات تواصل"}</p>
+                </span>
+                <span className={`hr-status-pill is-${cleanText(item.status || "new")}`}>{statusLabel(item.status)}</span>
+              </button>
+            ))}
+            {!loading && !filteredItems.length ? (
+              <div className="hr-ops-empty"><FontAwesomeIcon icon={faUserTie} /><strong>لا توجد طلبات مطابقة</strong><span>غيّر البحث أو أضف طلبًا جديدًا.</span></div>
+            ) : null}
+            {loading ? <div className="hr-ops-loading">جارٍ تحميل طلبات التوظيف...</div> : null}
+          </div>
+        </aside>
+
+        <main className="hr-recruitment-detail">
           {selected ? (
             <>
-              <div className="hr-card-head">
+              <header className="hr-recruitment-detail__head">
+                <span className="hr-recruitment-avatar hr-recruitment-avatar--large">{initials(selected.fullName)}</span>
                 <div>
-                  <h3>الطلب المحدد</h3>
-                  <p>{selected.fullName}</p>
+                  <span>طلب توظيف</span>
+                  <h3>{selected.fullName}</h3>
+                  <p>{roleLabel(selected.roleApplied)} · {formatDate(selected.createdAt)}</p>
                 </div>
+                <span className={`hr-status-pill is-${cleanText(selected.status || "new")}`}>{statusLabel(selected.status)}</span>
+              </header>
+
+              <div className="hr-recruitment-contact-grid">
+                <a href={`mailto:${selected.email}`}><FontAwesomeIcon icon={faEnvelope} /><span><small>البريد الإلكتروني</small><strong>{selected.email || "—"}</strong></span></a>
+                <a href={selected.phone ? `tel:${selected.phone}` : undefined}><FontAwesomeIcon icon={faPhone} /><span><small>رقم الجوال</small><strong>{selected.phone || "—"}</strong></span></a>
+                <div><FontAwesomeIcon icon={faBriefcase} /><span><small>الوظيفة</small><strong>{roleLabel(selected.roleApplied)}</strong></span></div>
               </div>
 
-              <div className="hr-detail-grid">
-                <div className="hr-detail-card">
-                  <span>البريد</span>
-                  <strong>{selected.email}</strong>
-                </div>
-                <div className="hr-detail-card">
-                  <span>الجوال</span>
-                  <strong>{selected.phone || "—"}</strong>
-                </div>
-                <div className="hr-detail-card">
-                  <span>الوظيفة</span>
-                  <strong>{roleLabel(selected.roleApplied || "staff")}</strong>
-                </div>
-                <div className="hr-detail-card">
-                  <span>الحالة</span>
-                  <strong>{statusLabel(selected.status)}</strong>
-                </div>
-              </div>
+              <section className="hr-recruitment-copy">
+                <div><span>رسالة المرشح</span><p>{selected.message || "لم يرفق المرشح رسالة إضافية."}</p></div>
+                <div><span>ملاحظات الموارد البشرية</span><p>{selected.notes || "لا توجد ملاحظات مسجلة."}</p></div>
+              </section>
 
-              <div className="hr-copy">{selected.notes || selected.message || "لا توجد ملاحظات إضافية."}</div>
+              {selected.status === "hired" ? (
+                <div className="hr-recruitment-hired">
+                  <FontAwesomeIcon icon={faUserCheck} />
+                  <div><strong>تم تحويل الطلب إلى موظف</strong><span>معرّف الموظف: {selected.hiredEmployeeId || selected.hiredUid || "محفوظ في حساب الموظف"}</span></div>
+                </div>
+              ) : null}
 
-              <div className="hr-form-grid">
-                <label className="hr-field">
-                  <span>رقم الموظف</span>
-                  <input
-                    value={hireEmployeeId}
-                    onChange={(e) => setHireEmployeeId(e.target.value)}
-                    placeholder="يُترك فارغًا ليستخدم UID"
-                  />
-                </label>
-                <label className="hr-field">
-                  <span>القسم</span>
-                  <input
-                    value={hireDepartment}
-                    onChange={(e) => setHireDepartment(e.target.value)}
-                    placeholder="مثال: الفرع الرئيسي"
-                  />
-                </label>
-                <label className="hr-field">
-                  <span>المسمى الوظيفي</span>
-                  <input
-                    value={hireTitle}
-                    onChange={(e) => setHireTitle(e.target.value)}
-                    placeholder="مثال: أخصائية شعر"
-                  />
-                </label>
-                <label className="hr-field hr-field--wide">
-                  <span>رابط الصورة</span>
-                  <input
-                    value={hireAvatarUrl}
-                    onChange={(e) => setHireAvatarUrl(e.target.value)}
-                    placeholder="https://..."
-                  />
-                </label>
-                <label className="hr-field hr-field--wide">
-                  <span>كلمة المرور المؤقتة</span>
-                  <input value={hirePassword} onChange={(e) => setHirePassword(e.target.value)} />
-                </label>
-                <label className="hr-field">
-                  <span>دور التعيين</span>
-                  <select value={hireRole} onChange={(e) => setHireRole(e.target.value as StaffCreateRole)} id="hire-role">
-                    <option value="staff">موظف</option>
-                    <option value="hr">الموارد البشرية</option>
-                    <option value="reception">الاستقبال</option>
-                    <option value="admin">الإدارة</option>
-                  </select>
-                </label>
-                <label className="hr-field hr-field--wide">
-                  <span>التخصصات</span>
-                  <input
-                    value={hireSpecialties}
-                    onChange={(e) => setHireSpecialties(e.target.value)}
-                    placeholder="hair, color, nails"
-                  />
-                </label>
-              </div>
-
-              <div className="hr-actions">
-                <button className="hr-button hr-button--ghost" type="button" onClick={() => void handleStatus("reviewing")} disabled={saving}>
-                  قيد المراجعة
+              <footer className="hr-recruitment-actions">
+                <button type="button" className="hr-ops-button hr-ops-button--ghost" onClick={() => void handleStatus("reviewing")} disabled={saving || selected.status === "hired"}>
+                  <FontAwesomeIcon icon={faClock} /><span>قيد المراجعة</span>
                 </button>
-                <button className="hr-button hr-button--ghost" type="button" onClick={() => void handleStatus("rejected")} disabled={saving}>
-                  رفض الطلب
+                <button type="button" className="hr-ops-button hr-ops-button--soft-success" onClick={() => void handleStatus("accepted")} disabled={saving || selected.status === "hired"}>
+                  <FontAwesomeIcon icon={faCheck} /><span>قبول مبدئي</span>
                 </button>
-                <button className="hr-button hr-button--accent" type="button" onClick={() => void handleHire()} disabled={saving}>
-                  إنشاء حساب موظف
+                <button type="button" className="hr-ops-button hr-ops-button--danger" onClick={() => void handleStatus("rejected")} disabled={saving || selected.status === "hired"}>
+                  <FontAwesomeIcon icon={faXmark} /><span>رفض الطلب</span>
                 </button>
-              </div>
+                <button type="button" className="hr-ops-button hr-ops-button--primary" onClick={openCreateAccount} disabled={saving || selected.status === "hired"}>
+                  <FontAwesomeIcon icon={faUserPlus} /><span>تحويل إلى حساب موظف</span>
+                </button>
+              </footer>
             </>
           ) : (
-            <div className="hr-muted">اختر طلبًا لعرض التفاصيل.</div>
+            <div className="hr-ops-empty hr-ops-empty--large"><FontAwesomeIcon icon={faUserTie} /><strong>اختر طلب توظيف</strong><span>حدد مرشحًا من القائمة لعرض التفاصيل والإجراءات.</span></div>
           )}
-        </section>
-      </div>
+        </main>
+      </section>
+
+      {createOpen ? (
+        <div className="hr-ops-modal" role="dialog" aria-modal="true" aria-label="إضافة طلب توظيف">
+          <button className="hr-ops-modal__backdrop" type="button" onClick={() => !saving && setCreateOpen(false)} aria-label="إغلاق" />
+          <section className="hr-ops-modal__card">
+            <header>
+              <div><span>إضافة مرشح</span><h3>طلب توظيف جديد</h3><p>أدخل بيانات التواصل والوظيفة المطلوبة.</p></div>
+              <button type="button" onClick={() => !saving && setCreateOpen(false)} aria-label="إغلاق"><FontAwesomeIcon icon={faXmark} /></button>
+            </header>
+            <div className="hr-ops-form-grid">
+              <label className="hr-ops-field"><span>الاسم الكامل</span><input value={newApp.fullName} onChange={(event) => setNewApp((current) => ({ ...current, fullName: event.target.value }))} /></label>
+              <label className="hr-ops-field"><span>البريد الإلكتروني</span><input type="email" value={newApp.email} onChange={(event) => setNewApp((current) => ({ ...current, email: event.target.value }))} /></label>
+              <label className="hr-ops-field"><span>رقم الجوال</span><input value={newApp.phone} onChange={(event) => setNewApp((current) => ({ ...current, phone: event.target.value }))} /></label>
+              <label className="hr-ops-field"><span>الوظيفة المتقدم لها</span><select value={newApp.roleApplied} onChange={(event) => setNewApp((current) => ({ ...current, roleApplied: event.target.value }))}><option value="staff">موظف</option><option value="reception">الاستقبال</option><option value="hr">الموارد البشرية</option><option value="admin">الإدارة</option></select></label>
+              <label className="hr-ops-field hr-ops-field--wide"><span>رسالة المرشح</span><textarea rows={4} value={newApp.message} onChange={(event) => setNewApp((current) => ({ ...current, message: event.target.value }))} /></label>
+              <label className="hr-ops-field hr-ops-field--wide"><span>ملاحظات داخلية</span><textarea rows={4} value={newApp.notes} onChange={(event) => setNewApp((current) => ({ ...current, notes: event.target.value }))} /></label>
+            </div>
+            <footer><button className="hr-ops-button hr-ops-button--ghost" type="button" onClick={() => setCreateOpen(false)} disabled={saving}>إلغاء</button><button className="hr-ops-button hr-ops-button--primary" type="button" onClick={() => void handleCreateApplication()} disabled={saving}><FontAwesomeIcon icon={faUserPlus} /><span>{saving ? "جارٍ الحفظ" : "حفظ الطلب"}</span></button></footer>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

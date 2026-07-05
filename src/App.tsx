@@ -296,6 +296,7 @@ function ScrollToTop() {
 const App: React.FC = () => {
   const [storedSession, setStoredSession] = useState(() => readStoredAuthSession());
   const [authReady, setAuthReady] = useState(() => !!readStoredAuthSession());
+  const [firebaseAuthReady, setFirebaseAuthReady] = useState(false);
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
   const [userName, setUserName] = useState(() => readStoredAuthSession()?.displayName || "");
@@ -369,6 +370,7 @@ const App: React.FC = () => {
       setAuthUser(user);
 
       if (!user) {
+        setFirebaseAuthReady(true);
         const currentSession = readStoredAuthSession();
         setStoredSession(currentSession);
 
@@ -384,6 +386,8 @@ const App: React.FC = () => {
         setAuthReady(true);
         return;
       }
+
+      setAuthReady(false);
 
       try {
         const isMalikatAuth = isMalikatAdminEmail(user.email);
@@ -459,6 +463,7 @@ const App: React.FC = () => {
         setUserName(user.displayName || "");
       } finally {
         if (currentSeq !== seq) return;
+        setFirebaseAuthReady(true);
         setAuthReady(true);
       }
     });
@@ -535,7 +540,9 @@ const App: React.FC = () => {
   };
 
   const AdminGuard = ({ children }: { children: React.ReactNode }) => {
-    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+    if (!authReady || !firebaseAuthReady) {
+      return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+    }
 
     /*
       مهم:

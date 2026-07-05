@@ -75,6 +75,15 @@ export type StaffPublicDoc = {
   linkedUid?: string;
   linkedUserId?: string;
   employeeId?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  department?: string;
+  title?: string;
+  employeeProfileEnabled?: boolean;
+  includeInEmployeeManagement?: boolean;
+  source?: "staff_public" | "employees" | "users";
+  profileIncomplete?: boolean;
   name: string;
   active: boolean;
   employmentEndDate?: string;
