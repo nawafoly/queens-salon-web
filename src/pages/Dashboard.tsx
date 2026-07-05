@@ -923,18 +923,35 @@ const DashboardOverview: React.FC<OverviewProps> = ({
   };
 
   return (
-    <div className="overview-page">
+    <div className="overview-page madan-overview-v2">
       <div className="overview-header">
         <div className="overview-title">
+          <span className="overview-kicker">لوحة التشغيل اليومية</span>
           <h1>مرحباً بك، {userInfo.name}</h1>
-          <p>إليك نظرة عامة على أنشطة الصالون اليوم</p>
+          <p>إليك نظرة عامة واضحة ومباشرة على أنشطة الصالون اليوم</p>
+        </div>
+
+        <div className="overview-live-status" aria-label="حالة البيانات">
+          <span className="overview-live-status__dot" aria-hidden="true" />
+          <div>
+            <strong>بيانات مباشرة</strong>
+            <small>تتحدث مع نشاط لوحة التحكم</small>
+          </div>
         </div>
       </div>
 
       <div className="overview-content">
-        <div className="overview-grid">
+        <div className="overview-section-heading">
+          <div>
+            <span>المؤشرات الرئيسية</span>
+            <h2>أداء الصالون اليوم</h2>
+          </div>
+          <p>قراءة سريعة للحجوزات والإيرادات وحركة التشغيل.</p>
+        </div>
+
+        <div className="overview-grid overview-grid--primary">
           <div
-            className="ov-stat-card"
+            className="ov-stat-card ov-stat-card--bookings"
             role="button"
             onClick={() => onQuickAction("bookings")}
           >
@@ -948,7 +965,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
           </div>
 
           <div
-            className="ov-stat-card"
+            className="ov-stat-card ov-stat-card--revenue"
             role="button"
             onClick={() => onQuickAction("reports")}
           >
@@ -962,7 +979,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
           </div>
 
           <div
-            className="ov-stat-card"
+            className="ov-stat-card ov-stat-card--operations"
             role="button"
             onClick={() => onQuickAction("bookings")}
           >
@@ -975,7 +992,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
             </div>
           </div>
 
-          <div className="ov-stat-card">
+          <div className="ov-stat-card ov-stat-card--staff">
             <div className="ov-icon">
               <FontAwesomeIcon icon={faUsers} />
             </div>
@@ -986,8 +1003,16 @@ const DashboardOverview: React.FC<OverviewProps> = ({
           </div>
         </div>
 
-        <div className="overview-grid overview-grid-3">
-          <div className="ov-stat-card">
+        <div className="overview-section-heading overview-section-heading--compact">
+          <div>
+            <span>الملخص المالي</span>
+            <h2>الحركة المالية</h2>
+          </div>
+          <p>ملخص الدخل والمصروفات وصافي الربح المسجل.</p>
+        </div>
+
+        <div className="overview-grid overview-grid-3 overview-grid--finance">
+          <div className="ov-stat-card ov-stat-card--income">
             <div className="ov-icon">
               <FontAwesomeIcon icon={faWallet} />
             </div>
@@ -997,7 +1022,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
             </div>
           </div>
 
-          <div className="ov-stat-card">
+          <div className="ov-stat-card ov-stat-card--expenses">
             <div className="ov-icon">
               <FontAwesomeIcon icon={faMoneyBillWave} />
             </div>
@@ -1007,7 +1032,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
             </div>
           </div>
 
-          <div className="ov-stat-card">
+          <div className="ov-stat-card ov-stat-card--profit">
             <div className="ov-icon">
               <FontAwesomeIcon icon={faChartLine} />
             </div>
@@ -1016,6 +1041,14 @@ const DashboardOverview: React.FC<OverviewProps> = ({
               <p>صافي الربح</p>
             </div>
           </div>
+        </div>
+
+        <div className="overview-section-heading overview-section-heading--compact">
+          <div>
+            <span>التشغيل اليومي</span>
+            <h2>الجدول والعمليات الأخيرة</h2>
+          </div>
+          <p>متابعة الحجوزات حسب الساعة وآخر الحركات المالية.</p>
         </div>
 
         <div className="ov-main-grid">
@@ -1174,7 +1207,15 @@ const DashboardOverview: React.FC<OverviewProps> = ({
           </div>
         </div>
 
-        <div className="ov-card">
+        <div className="overview-section-heading overview-section-heading--compact">
+          <div>
+            <span>الاختصارات</span>
+            <h2>إجراءات سريعة</h2>
+          </div>
+          <p>انتقال مباشر إلى أكثر المهام استخدامًا داخل لوحة الإدارة.</p>
+        </div>
+
+        <div className="ov-card ov-card--quick-actions">
           <div className="ov-card-head">
             <h3>إجراءات سريعة</h3>
           </div>
@@ -2199,7 +2240,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   if (!userInfo) {
     return (
-      <div className="dashboard-skin dashboard-page dashboard-skin-page is-sidebar-drawer">
+      <div className="dashboard-skin madan-admin-shell dashboard-page dashboard-skin-page is-sidebar-drawer">
         <div className="container-fluid">
           <div className="row">
             <div className="col-md-3 col-lg-2 dashboard-sidebar" />
@@ -2224,7 +2265,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
 
   return (
-    <div className={`dashboard-skin dashboard-page dashboard-skin-page is-sidebar-drawer${isBookingInternalPage ? " is-booking-internal-route" : ""}`}>
+    <div className={`dashboard-skin madan-admin-shell dashboard-page dashboard-skin-page is-sidebar-drawer${isBookingInternalPage ? " is-booking-internal-route" : ""}`}>
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
       <style>
         {`

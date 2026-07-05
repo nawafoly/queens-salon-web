@@ -674,7 +674,7 @@ function HrOverview({
   const selectedStartDate = selected ? getStartDate(selected) : "غير محدد";
 
   return (
-    <div className="hr-overview">
+    <div className="hr-overview madan-hr-overview-v2">
       <section className="hr-hero">
         <div className="hr-hero__copy">
           <span className="hr-hero__eyebrow">لوحة الموارد البشرية</span>
@@ -1429,7 +1429,7 @@ export default function AdminHrDashboard() {
 
   if (session.loading) {
     return (
-      <div className="hr-shell" dir="rtl">
+      <div className="hr-shell madan-admin-shell" dir="rtl">
         <aside className="hr-shell-sidebar hr-shell-sidebar--loading">
           <div className="hr-brand">
             <span className="hr-brand__mark">HR</span>
@@ -1459,7 +1459,7 @@ export default function AdminHrDashboard() {
   }
 
   return (
-    <div className="hr-shell" dir="rtl">
+    <div className="hr-shell madan-admin-shell" dir="rtl">
       <aside className="hr-shell-sidebar">
         <div className="hr-brand">
           <span className="hr-brand__mark">HR</span>

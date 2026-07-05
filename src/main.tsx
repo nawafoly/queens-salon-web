@@ -8,6 +8,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 // CSS العام
 import "./index.css";
 import "./styles/DashboardSkin.css";
+import "./styles/MadanAdminTheme.css";
 
 if (import.meta.env.DEV) {
   void import("./services/firestoreDebug");
