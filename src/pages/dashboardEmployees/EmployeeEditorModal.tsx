@@ -235,9 +235,11 @@ export default function EmployeeEditorModal({
           ))}
         </nav>
 
-        <fieldset className="emp-editor-fieldset" disabled={!canManage}>
-          <main className="emp-editor-content">{children}</main>
-        </fieldset>
+        <fieldset
+  className={`emp-editor-fieldset ${!canManage ? "is-readonly" : ""}`}
+>
+  <main className="emp-editor-content">{children}</main>
+</fieldset>
 
         <footer className="emp-editor-footer">
           <span>

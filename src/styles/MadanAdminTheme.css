@@ -26091,3 +26091,28 @@ body.emp-detail-open {
     transition-duration: 0.01ms !important;
   }
 }
+
+.emp-editor-fieldset,
+.emp-editor-fieldset.is-readonly {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.emp-editor-fieldset.is-readonly .emp-editor-content,
+.emp-editor-fieldset.is-readonly .emp-editor-content * {
+  opacity: 1 !important;
+  filter: none !important;
+  color: inherit;
+}
+
+.emp-editor-content {
+  color: #0f172a !important;
+}
+
+.emp-editor-content :where(h1, h2, h3, h4, strong, label) {
+  color: #0f172a !important;
+}
+
+.emp-editor-content :where(p, span, small, div) {
+  color: inherit;
+}
