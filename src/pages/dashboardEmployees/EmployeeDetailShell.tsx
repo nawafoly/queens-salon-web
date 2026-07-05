@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash, faXmark } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
@@ -64,6 +65,25 @@ export default function EmployeeDetailShell({
   const selectedEmployeeScheduleLabel = selectedEmployee?.useCustomWorkingHours ? "دوام خاص" : "دوام عام";
   const selectedEmployeeAccessLabel = canManage ? "وضع تعديل" : "عرض فقط";
 
+  useEffect(() => {
+    if (!selectedEmployeeId || typeof document === "undefined") return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.body.classList.add("emp-detail-open");
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      document.body.classList.remove("emp-detail-open");
+    };
+  }, [busy, onClose, selectedEmployeeId]);
+
   return (
     <div
       className={`emp-split-col emp-split-col--details ${
@@ -87,7 +107,7 @@ export default function EmployeeDetailShell({
           aria-label="إغلاق تفاصيل الموظفة"
           onClick={onClose}
         />
-        <div className="dash-card emp-split-head-card emp-detail-modal emp-detail-cockpit">
+        <div className="dash-card emp-split-head-card emp-detail-modal emp-detail-cockpit" role="dialog" aria-modal="true" aria-label={`ملف الموظفة ${selectedEmployeeName}`}>
           <div className="emp-split-head">
             <div className="emp-split-head__identity">
               <div className="emp-split-avatar" aria-hidden="true">
@@ -126,7 +146,7 @@ export default function EmployeeDetailShell({
               </span>
             </div>
 
-            <div className="emp-inline-actions">
+            <div className="emp-inline-actions emp-detail-header-actions">
               {canManage ? (
                 <>
                   <button className="exp-btn primary sm" type="button" onClick={onSave} disabled={busy}>
@@ -177,7 +197,7 @@ export default function EmployeeDetailShell({
               ))}
             </nav>
 
-            <div className="emp-split-content">
+            <main className="emp-split-content">
               <div className="emp-split-content-inner">{children}</div>
               {canManage ? (
                 <div className="emp-detail-save-dock" aria-label="إجراءات حفظ ملف الموظفة">
@@ -192,7 +212,7 @@ export default function EmployeeDetailShell({
                   </div>
                 </div>
               ) : null}
-            </div>
+            </main>
           </div>
         </div>
         </>

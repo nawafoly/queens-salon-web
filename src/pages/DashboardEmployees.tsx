@@ -192,6 +192,15 @@ function dateTimeLocalToIso(value: string) {
   return date.toISOString();
 }
 
+const EMPLOYEE_BOOKING_STATS_CACHE_TTL_MS = 5 * 60 * 1000;
+let employeeBookingStatsCache:
+  | {
+      staffSignature: string;
+      stats: Record<string, StaffBookingStats>;
+      savedAt: number;
+    }
+  | null = null;
+
 function EmployeeComingSoonSection({
   isVisible,
   title,
@@ -791,20 +800,18 @@ export default function DashboardEmployees() {
       setErrorMsg("");
       try {
         const linkedUserRoleByUid = new Map<string, string>();
-        try {
-          const userSnap = await getDocs(usersCol());
-          userSnap.docs.forEach((u) => {
-            const x = u.data() as any;
-            const uid = String(u.id || "").trim();
-            const role = String(x?.role || "").trim();
-            if (uid && role) linkedUserRoleByUid.set(uid, role);
-          });
-        } catch {
-          // skip optional role enrichment
-        }
+        const [userSnap, snap] = await Promise.all([
+          getDocs(usersCol()).catch(() => null),
+          getDocs(staffPublicCol()),
+        ]);
+        userSnap?.docs.forEach((u) => {
+          const x = u.data() as any;
+          const uid = String(u.id || "").trim();
+          const role = String(x?.role || "").trim();
+          if (uid && role) linkedUserRoleByUid.set(uid, role);
+        });
 
         const serviceLookup = optionsOverride ?? serviceOptionsRef.current;
-        const snap = await getDocs(staffPublicCol());
         const deduped = new Map<string, StaffPublicUi>();
 
         snap.docs.forEach((d) => {
@@ -939,7 +946,8 @@ export default function DashboardEmployees() {
     }
   };
 
-  const reloadData = useCallback(async () => {
+  const reloadData = useCallback(async (forceStatsRefresh = false) => {
+    if (forceStatsRefresh) employeeBookingStatsCache = null;
     const opts = await loadServiceOptions();
     await load(opts);
   }, [load, loadServiceOptions]);
@@ -976,11 +984,36 @@ export default function DashboardEmployees() {
 
   useEffect(() => {
     let alive = true;
+    let timer = 0;
+    const canLoadStats = authUser?.role === "owner" || authUser?.role === "admin";
+    const staffSignature = list
+      .map((staff) => String(staff.id || "").trim())
+      .filter(Boolean)
+      .sort()
+      .join("|");
+
+    if (!canLoadStats || !list.length) {
+      setBookingStats({});
+      setStatsLoading(false);
+      return () => {
+        alive = false;
+      };
+    }
+
+    const cached = employeeBookingStatsCache;
+    if (
+      cached &&
+      cached.staffSignature === staffSignature &&
+      Date.now() - cached.savedAt < EMPLOYEE_BOOKING_STATS_CACHE_TTL_MS
+    ) {
+      setBookingStats(cached.stats);
+      setStatsLoading(false);
+      return () => {
+        alive = false;
+      };
+    }
+
     const compute = async () => {
-      if (!(authUser?.role === "owner" || authUser?.role === "admin") || !list.length) {
-        setBookingStats({});
-        return;
-      }
       setStatsLoading(true);
       try {
         const thisMonth = currentMonthKey();
@@ -1069,6 +1102,12 @@ export default function DashboardEmployees() {
             );
           }
         });
+
+        employeeBookingStatsCache = {
+          staffSignature,
+          stats: m,
+          savedAt: Date.now(),
+        };
         if (alive) setBookingStats(m);
       } catch (e) {
         console.warn("booking stats error:", e);
@@ -1077,9 +1116,14 @@ export default function DashboardEmployees() {
         if (alive) setStatsLoading(false);
       }
     };
-    compute();
+
+    timer = window.setTimeout(() => {
+      void compute();
+    }, 180);
+
     return () => {
       alive = false;
+      window.clearTimeout(timer);
     };
   }, [authUser?.role, list]);
 
@@ -2335,7 +2379,9 @@ export default function DashboardEmployees() {
         { key: "profile", label: "الملف" },
       ];
   const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: typeof faUserTie }> = [
-    { key: "basic", label: "بيانات الموظف", hint: "الملخص والبيانات", icon: faUserTie },
+    { key: "basic", label: "البيانات الأساسية", hint: "الاسم والحالة والظهور", icon: faUserTie },
+    { key: "profile", label: "الملف والصورة", hint: "الصورة والنبذة والتقييم", icon: faFileLines },
+    { key: "services", label: "الخدمات", hint: "الخدمات المسندة للموظفة", icon: faInbox },
     { key: "booking", label: "جدول الدوام", hint: "الدوام والنطاق", icon: faClock },
     { key: "attendance", label: "الحضور", hint: "السجل اليومي", icon: faCalendarCheck },
     { key: "payroll", label: "سجل الرواتب", hint: "القفل والحساب", icon: faMoneyBillWave },
@@ -3080,6 +3126,14 @@ export default function DashboardEmployees() {
       setModalTab("booking");
       return;
     }
+    if (tab === "profile") {
+      setModalTab("profile");
+      return;
+    }
+    if (tab === "services") {
+      setModalTab("services");
+      return;
+    }
     setModalTab("basic");
   };
   const handleCancelEdit = () => {
@@ -3187,7 +3241,7 @@ export default function DashboardEmployees() {
             )}
             <button
               className="exp-btn"
-              onClick={() => void reloadData()}
+              onClick={() => void reloadData(true)}
               disabled={busy}
               type="button"
             >
@@ -3459,7 +3513,7 @@ export default function DashboardEmployees() {
                 onCopyModalWorkingDayToAll={copyModalWorkingDayToAll}
               />
               <ProfileSection
-                isVisible={(!editingStaff && modalTab === "profile") || (!!editingStaff && activeTab === "basic")}
+                isVisible={(!editingStaff && modalTab === "profile") || (!!editingStaff && activeTab === "profile")}
                 avatarUrl={avatarUrl}
                 bio={bio}
                 cvUrl={cvUrl}
@@ -3474,7 +3528,7 @@ export default function DashboardEmployees() {
                 onReviewsCountChange={setReviewsCount}
               />
               <ServicesSection
-                isVisible={(!editingStaff && modalTab === "services") || (!!editingStaff && activeTab === "basic")}
+                isVisible={(!editingStaff && modalTab === "services") || (!!editingStaff && activeTab === "services")}
                 srvQ={srvQ}
                 srvSection={srvSection}
                 sectionOptions={sectionOptions}

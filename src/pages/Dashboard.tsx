@@ -26,7 +26,6 @@ import LoadingBrand from "../components/LoadingBrand";
 import Modal from "../components/Modal";
 
 import DashboardBookings from "../pages/DashboardBookings";
-import DashboardEmployees from "../pages/DashboardEmployees";
 import DashboardOffers from "../pages/DashboardOffers";
 import DashboardReports from "./DashboardReports";
 import DashboardClients from "./DashboardClients";
@@ -3163,9 +3162,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                 )}
 
 
-                {hasAdminPower && (
-                  <Route path="employees" element={<DashboardEmployees />} />
-                )}
 
                 {hasAdminPower && (
                   <Route path="offers" element={<DashboardOffers />} />

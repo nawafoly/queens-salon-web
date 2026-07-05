@@ -129,6 +129,8 @@ export type ServiceOption = {
 export type EmployeeModalTab = "stats" | "basic" | "booking" | "services" | "profile";
 export type EmployeeSplitTab =
   | "basic"
+  | "profile"
+  | "services"
   | "booking"
   | "attendance"
   | "payroll"

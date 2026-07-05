@@ -71,7 +71,7 @@ export default function EmployeeEditorModal({
         </div>
       ) : null}
 
-      <fieldset className="emp-inline-fieldset" disabled={!canManage}>
+      <fieldset className={`emp-inline-fieldset ${editId ? "emp-inline-fieldset--detail" : "emp-inline-fieldset--create"}`} disabled={!canManage}>
         <div className="modal-body emp-modal-grid">{children}</div>
 
         {!editId && canManage ? (
