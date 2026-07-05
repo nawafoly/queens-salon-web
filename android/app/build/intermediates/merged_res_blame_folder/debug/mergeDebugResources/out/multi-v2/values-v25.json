@@ -4,7 +4,7 @@
             "outputFile": "com.queenssalon.app-mergeDebugResources-26:/values-v25/values-v25.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\nawaf\\.gradle\\caches\\9.3.1\\transforms\\9b2cb716a1a2d48cc6e82764a884e839\\workspace\\transformed\\appcompat-1.7.1\\res\\values-v25\\values-v25.xml",
+                    "source": "C:\\Users\\nawaf\\.gradle\\caches\\8.14.3\\transforms\\c3f09e8abd8bb01c9314454bd06bb337\\transformed\\appcompat-1.7.1\\res\\values-v25\\values-v25.xml",
                     "from": {
                         "startLines": "2,3,4,6",
                         "startColumns": "4,4,4,4",

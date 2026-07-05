@@ -4,7 +4,7 @@
             "outputFile": "com.queenssalon.app-mergeDebugResources-26:/values-es-rUS/values-es-rUS.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\nawaf\\.gradle\\caches\\9.3.1\\transforms\\dc172d7877f97e00bd0f792241f6864b\\workspace\\transformed\\core-1.17.0\\res\\values-es-rUS\\values-es-rUS.xml",
+                    "source": "C:\\Users\\nawaf\\.gradle\\caches\\8.14.3\\transforms\\11094a199bb7945826b161d8a9c17beb\\transformed\\core-1.17.0\\res\\values-es-rUS\\values-es-rUS.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9",
                         "startColumns": "4,4,4,4,4,4,4,4",
@@ -21,7 +21,7 @@
                     }
                 },
                 {
-                    "source": "C:\\Users\\nawaf\\.gradle\\caches\\9.3.1\\transforms\\9b2cb716a1a2d48cc6e82764a884e839\\workspace\\transformed\\appcompat-1.7.1\\res\\values-es-rUS\\values-es-rUS.xml",
+                    "source": "C:\\Users\\nawaf\\.gradle\\caches\\8.14.3\\transforms\\c3f09e8abd8bb01c9314454bd06bb337\\transformed\\appcompat-1.7.1\\res\\values-es-rUS\\values-es-rUS.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4",

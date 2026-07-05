@@ -1,0 +1,20 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.queenssalon.app-mergeDebugResources-26:/values-v25/values-v25.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\nawaf\\.gradle\\caches\\9.3.1\\transforms\\9b2cb716a1a2d48cc6e82764a884e839\\workspace\\transformed\\appcompat-1.7.1\\res\\values-v25\\values-v25.xml",
+                    "from": {
+                        "startLines": "2,3,4,6",
+                        "startColumns": "4,4,4,4",
+                        "startOffsets": "55,126,209,308",
+                        "endLines": "2,3,5,7",
+                        "endColumns": "70,82,12,12",
+                        "endOffsets": "121,204,303,414"
+                    }
+                }
+            ]
+        }
+    ]
+}

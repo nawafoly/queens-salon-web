@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#0a0a0a</color>
+    <color name="ic_launcher_background">#FFFFFF</color>
     <string name="app_name">Queens Salon</string>
     <string name="custom_url_scheme">com.queenssalon.app</string>
     <string name="package_name">com.queenssalon.app</string>
