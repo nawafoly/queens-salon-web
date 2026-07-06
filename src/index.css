@@ -2281,11 +2281,94 @@ textarea {
   @keyframes slide {0%{opacity:0;transform:translateY(-10px)}50%{opacity:1}100%{opacity:0;transform:translateY(10px)}}
   @keyframes light-pulse {0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.12);opacity:1}}
   
-  /* Mobile */
+  /* Mobile application hero */
   @media (max-width: 768px) {
     .heroV2 {
-      padding-top: 72px;
-      padding-inline: 16px;
+      box-sizing: border-box;
+      min-height: calc(
+        100dvh -
+        68px -
+        78px -
+        env(safe-area-inset-top, 0px) -
+        env(safe-area-inset-bottom, 0px)
+      );
+
+      padding:
+        clamp(28px, 7dvh, 56px)
+        20px
+        38px;
+
+      background-position: 48% center;
+      align-items: center;
+    }
+
+    .heroV2__overlay {
+      background:
+        linear-gradient(
+          270deg,
+          rgba(8, 8, 10, 0.95) 0%,
+          rgba(8, 8, 10, 0.84) 42%,
+          rgba(8, 8, 10, 0.56) 72%,
+          rgba(8, 8, 10, 0.24) 100%
+        ),
+        linear-gradient(
+          0deg,
+          rgba(8, 8, 10, 0.52) 0%,
+          rgba(8, 8, 10, 0) 48%
+        );
+    }
+
+    .heroV2__container {
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+
+    .heroV2__content {
+      width: min(100%, 360px);
+      max-width: none;
+      margin-right: 0;
+      margin-left: auto;
+      text-align: right;
+    }
+
+    .heroV2__title {
+      margin: 0;
+      font-size: clamp(2.1rem, 9.6vw, 2.8rem);
+      font-weight: 900;
+      line-height: 1.28;
+      color: #ffffff;
+      text-shadow:
+        0 3px 10px rgba(0, 0, 0, 0.75),
+        0 12px 34px rgba(0, 0, 0, 0.64);
+    }
+
+    .heroV2__brand {
+      background:
+        linear-gradient(
+          135deg,
+          #ffffff 0%,
+          #efbfd2 52%,
+          #ffffff 100%
+        );
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: none;
+    }
+
+    .heroV2__ageLine {
+      margin-top: 18px;
+      font-size: 1rem;
+      color: #ffffff;
+      text-shadow:
+        0 3px 10px rgba(0, 0, 0, 0.8),
+        0 10px 26px rgba(0, 0, 0, 0.55);
+    }
+
+    .heroV2__ageText {
+      font-size: 1.25rem;
     }
   }
 
