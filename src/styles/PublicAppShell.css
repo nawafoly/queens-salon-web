@@ -71,3 +71,45 @@
     );
   }
 }
+
+/* Keep floating chat above mobile bottom navigation */
+@media (max-width: 768px) {
+  .public-app-shell__chat .chatbot:not(.chatbot-page) {
+    right: calc(14px + env(safe-area-inset-right, 0px));
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .public-app-shell__chat .chatbot-panel:not(.chatbot-panel-page) {
+    max-height: calc(
+      100dvh -
+      190px -
+      env(safe-area-inset-top, 0px) -
+      env(safe-area-inset-bottom, 0px)
+    );
+  }
+}
+
+/* Hide application navigation while mobile chat is open */
+@media (max-width: 768px) {
+  .mobile-bottom-nav {
+    transition:
+      opacity 180ms ease,
+      transform 220ms ease,
+      visibility 180ms ease;
+  }
+
+  html.mobile-floating-chat-open .mobile-bottom-nav {
+    opacity: 0;
+    visibility: hidden;
+    transform: translate3d(0, 100%, 0);
+    pointer-events: none;
+  }
+
+  html.mobile-floating-chat-open .public-app-shell__chat {
+    z-index: 1600;
+  }
+
+  html.mobile-floating-chat-open .public-app-shell__viewport {
+    padding-bottom: 0;
+  }
+}

@@ -437,6 +437,26 @@ const ChatBot: React.FC = () => {
   const navigate = useNavigate();
   const isChatPage = location.pathname.startsWith("/chat");
 
+  const hideFloatingChatPaths = [
+    "/booking",
+    "/checkout",
+    "/pay",
+    "/payment-callback",
+    "/success",
+    "/success-internal",
+    "/track",
+    "/login",
+    "/forgot-password",
+  ];
+
+  const shouldHideFloatingChat =
+    !isChatPage &&
+    hideFloatingChatPaths.some(
+      (path) =>
+        location.pathname === path ||
+        location.pathname.startsWith(`${path}/`)
+    );
+
   const [services, setServices] = useState<ServiceDoc[]>([]);
   const [sections, setSections] = useState<SectionDoc[]>([]);
   const [categories, setCategories] = useState<CategoryDoc[]>([]);
@@ -1380,6 +1400,32 @@ const ChatBot: React.FC = () => {
   }, [isChatPage]);
 
   useEffect(() => {
+    const mobileQuery = window.matchMedia("(max-width: 768px)");
+
+    const syncMobileChatState = () => {
+      const mobileFloatingChatOpen =
+        open &&
+        !isChatPage &&
+        mobileQuery.matches;
+
+      document.documentElement.classList.toggle(
+        "mobile-floating-chat-open",
+        mobileFloatingChatOpen
+      );
+    };
+
+    syncMobileChatState();
+    mobileQuery.addEventListener("change", syncMobileChatState);
+
+    return () => {
+      mobileQuery.removeEventListener("change", syncMobileChatState);
+      document.documentElement.classList.remove(
+        "mobile-floating-chat-open"
+      );
+    };
+  }, [isChatPage, open]);
+
+  useEffect(() => {
     if (!isChatPage) return;
     const y = window.scrollY;
     document.body.style.position = "fixed";
@@ -1495,7 +1541,7 @@ const ChatBot: React.FC = () => {
 
   return (
     <div className={`chatbot ${open ? "open" : ""} ${isChatPage ? "chatbot-page" : ""}`} style={chatRootStyle}>
-      {!isChatPage && (
+      {!isChatPage && !shouldHideFloatingChat && (
         <button className="chatbot-toggle" type="button" onClick={toggleFloatingChat} aria-label="Chatbot">
           <FontAwesomeIcon icon={faCommentDots} />
         </button>
