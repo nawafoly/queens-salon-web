@@ -504,3 +504,53 @@
     max-width: 90px;
   }
 }
+
+/* Restore original admin navy and gold identity */
+.dashboard-skin.madan-admin-shell.dashboard-page {
+  --admin-wine: #101a3d;
+  --admin-wine-light: #25345f;
+  --admin-sidebar: #07112e;
+  --admin-sidebar-soft: #111b3d;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
+  background:
+    radial-gradient(
+      280px 190px at 50% 0%,
+      rgba(197, 157, 45, 0.14),
+      transparent 74%
+    ),
+    linear-gradient(180deg, #111b3d, #07112e) !important;
+}
+
+.dashboard-skin .sidebar-nav .nav-link.active {
+  color: #ffffff !important;
+  border-color: rgba(207, 170, 61, 0.32) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(188, 145, 28, 0.24),
+    rgba(25, 38, 82, 0.9)
+  ) !important;
+  box-shadow: inset 3px 0 0 #c9a438 !important;
+}
+
+.dashboard-skin .sidebar-nav .nav-link.active svg {
+  color: #d8b64d !important;
+}
+
+.dashboard-skin .user-avatar {
+  color: #d8b64d !important;
+  border-color: rgba(216, 182, 77, 0.24) !important;
+  background: rgba(216, 182, 77, 0.09) !important;
+}
+
+.dashboard-skin .dash-badge {
+  color: #07112e !important;
+  background: #d8b64d !important;
+}
+
+.dashboard-skin .sidebar-footer .exp-btn.logout {
+  color: #ffcbd0 !important;
+  border-color: rgba(255, 110, 125, 0.2) !important;
+  background: rgba(160, 38, 54, 0.14) !important;
+}
