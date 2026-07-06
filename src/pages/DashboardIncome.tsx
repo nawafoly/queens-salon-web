@@ -2,6 +2,7 @@
 
 // ✅ src/pages/DashboardIncome.tsx
 import { useEffect, useMemo, useState } from "react";
+import "../styles/AdminDashboardIncome.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPlus,
