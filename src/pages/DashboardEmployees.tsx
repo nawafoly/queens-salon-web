@@ -1,6 +1,7 @@
-﻿// src/pages/DashboardEmployees.tsx
+// src/pages/DashboardEmployees.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "../styles/AdminDashboardEmployees.css";
 import {
   collection,
   getDocs,
