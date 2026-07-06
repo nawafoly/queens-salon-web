@@ -1,5 +1,6 @@
 // src/pages/Success.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import "../styles/SuccessMobile.css";
 import { useNavigate, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
