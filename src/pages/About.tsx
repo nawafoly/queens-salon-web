@@ -2,6 +2,7 @@
 
 // src/pages/About.tsx
 import { useEffect, useMemo, useState } from "react";
+import "../styles/AboutMobile.css";
 
 import ava from "../assets/images/ava.webp";
 import emma from "../assets/images/emma.webp";

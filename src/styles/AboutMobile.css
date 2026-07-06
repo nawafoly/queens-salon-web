@@ -1,0 +1,322 @@
+﻿/* Mobile app layout for About */
+@media (max-width: 768px) {
+  .about-page.py-5 {
+    padding:
+      16px
+      10px
+      calc(28px + env(safe-area-inset-bottom, 0px))
+      !important;
+    overflow-x: hidden;
+    background:
+      radial-gradient(
+        340px 190px at 50% 0%,
+        rgba(180, 84, 123, 0.11),
+        transparent 72%
+      ),
+      #f7f4f5;
+  }
+
+  .about-page > .container {
+    max-width: none;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .about-page .row {
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  .about-page .row > [class*="col-"] {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  /* Introduction */
+  .about-page .about-intro.mb-5 {
+    margin-bottom: 28px !important;
+    overflow: hidden;
+    border: 1px solid rgba(64, 1, 13, 0.09);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow:
+      0 12px 28px rgba(64, 1, 13, 0.07),
+      0 2px 6px rgba(13, 13, 13, 0.04);
+  }
+
+  .about-page .about-intro .col-lg-6.mb-4 {
+    margin-bottom: 0 !important;
+  }
+
+  .about-page .about-image {
+    height: 175px;
+    overflow: hidden;
+  }
+
+  .about-page .about-image img {
+    width: 100%;
+    height: 100%;
+    border-radius: 0 !important;
+    object-fit: cover;
+  }
+
+  .about-page .about-content {
+    padding: 16px 14px;
+  }
+
+  .about-page .about-title {
+    margin-bottom: 10px !important;
+    color: #40010d;
+    font-size: clamp(1.55rem, 7.5vw, 1.9rem);
+    line-height: 1.3;
+  }
+
+  .about-page .about-text {
+    margin-bottom: 10px !important;
+    color: #5f5960;
+    font-size: 0.82rem;
+    font-weight: 650;
+    line-height: 1.85;
+  }
+
+  .about-page .about-text:last-child {
+    margin-bottom: 0 !important;
+  }
+
+  /* Shared headings */
+  .about-page .section-title {
+    margin-bottom: 6px !important;
+    color: #40010d;
+    font-size: clamp(1.45rem, 7vw, 1.75rem);
+    line-height: 1.35;
+  }
+
+  .about-page .section-subtitle {
+    margin-bottom: 0;
+    color: #6b656c;
+    font-size: 0.8rem;
+    line-height: 1.65;
+  }
+
+  /* Team slider */
+  .about-page .about-team.mb-5 {
+    margin-bottom: 28px !important;
+  }
+
+  .about-page .about-team > .text-center.mb-5 {
+    margin-bottom: 14px !important;
+  }
+
+  .about-page .about-team-slider {
+    position: relative;
+    width: 100%;
+  }
+
+  .about-page .about-team-arrow {
+    display: none !important;
+  }
+
+  .about-page .about-team-track {
+    display: flex !important;
+    gap: 11px;
+    width: 100%;
+    padding: 2px 2px 10px;
+    overflow-x: auto !important;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .about-page .about-team-track::-webkit-scrollbar {
+    display: none;
+  }
+
+  .about-page .about-team-slide {
+    width: auto !important;
+    min-width: 0;
+    flex: 0 0 min(78vw, 280px) !important;
+    scroll-snap-align: start;
+  }
+
+  .about-page .team-member-enhanced {
+    height: 100%;
+    overflow: hidden;
+    border: 1px solid rgba(64, 1, 13, 0.08);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 8px 22px rgba(64, 1, 13, 0.06);
+  }
+
+  .about-page .team-member-image-container {
+    height: 190px;
+  }
+
+  .about-page .team-member-image-enhanced {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .about-page .team-member-overlay,
+  .about-page .team-member-social {
+    display: none;
+  }
+
+  .about-page .team-member-content {
+    padding: 12px;
+    text-align: center;
+  }
+
+  .about-page .team-member-name-enhanced {
+    margin-bottom: 7px;
+    color: #40010d;
+    font-size: 1.05rem;
+  }
+
+  .about-page .team-member-skills {
+    justify-content: center;
+  }
+
+  .about-page .skill-tag {
+    padding: 5px 9px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+  }
+
+  .about-page .qs-cv-btn {
+    width: 100%;
+    min-height: 42px;
+    margin-top: 9px;
+    border-radius: 12px;
+    font-size: 0.78rem;
+  }
+
+  .about-page .about-team-hint {
+    margin-top: 5px;
+    color: #7a7379;
+    font-size: 0.7rem;
+    text-align: center;
+  }
+
+  /* Why choose us */
+  .about-page .why-choose-us > .section-title.mb-5 {
+    margin-bottom: 14px !important;
+  }
+
+  .about-page .why-choose-us > .row {
+    display: grid;
+    gap: 9px;
+  }
+
+  .about-page .why-choose-us > .row > .col-md-4 {
+    width: 100%;
+    margin-bottom: 0 !important;
+  }
+
+  .about-page .why-choose-item {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 11px;
+    row-gap: 3px;
+    min-height: 92px;
+    padding: 12px;
+    border: 1px solid rgba(64, 1, 13, 0.08);
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 7px 20px rgba(64, 1, 13, 0.05);
+    text-align: right;
+  }
+
+  .about-page .why-choose-icon {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    grid-row: 1 / 3;
+    place-items: center;
+    margin: 0;
+    border-radius: 14px;
+    background: rgba(180, 84, 123, 0.1);
+    color: #8f365b;
+    font-size: 1rem;
+  }
+
+  .about-page .why-choose-title {
+    margin: 0;
+    color: #40010d;
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+
+  .about-page .why-choose-description {
+    margin: 0;
+    color: #696269;
+    font-size: 0.75rem;
+    line-height: 1.65;
+  }
+
+  /* Features and values */
+  .about-page .about-features.mt-5 {
+    margin-top: 18px !important;
+  }
+
+  .about-page .about-features > .row {
+    display: grid;
+    gap: 10px;
+  }
+
+  .about-page .about-features .col-lg-6 {
+    width: 100%;
+    margin-bottom: 0 !important;
+    padding: 14px !important;
+    border: 1px solid rgba(64, 1, 13, 0.08);
+    border-radius: 17px;
+    background: #fff;
+    box-shadow: 0 7px 20px rgba(64, 1, 13, 0.05);
+  }
+
+  .about-page .about-features-title {
+    margin-bottom: 11px !important;
+    color: #40010d !important;
+    font-size: 1rem;
+  }
+
+  .about-page .features-list {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .about-page .features-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    color: #50494f;
+    font-size: 0.78rem;
+    line-height: 1.65;
+  }
+
+  .about-page .feature-icon {
+    flex: 0 0 auto;
+    margin-top: 4px;
+    color: #9a3f64;
+    font-size: 0.72rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .about-page.py-5 {
+    padding-right: 7px !important;
+    padding-left: 7px !important;
+  }
+
+  .about-page .about-team-slide {
+    flex-basis: 84vw !important;
+  }
+}
