@@ -1,6 +1,7 @@
-﻿// src/pages/Booking.tsx
+// src/pages/Booking.tsx
 
 import { Fragment, useEffect, useMemo, useState, useRef } from "react";
+import "../styles/BookingMobile.css";
 import type React from "react"; // ✅ ADD: عشان React.ChangeEvent / React.FormEvent
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -7642,7 +7643,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const step1HintText = `عدد الخدمات المضافة (${cartItems.length})`;
   const stepRows: Array<{ id: BookingStep; title: string; hint: string; summary: string; action: string }> = [
     { id: 1, title: "الخدمة", hint: step1HintText, summary: step1SummaryText, action: "اختيار وإضافة" },
-    { id: 2, title: "الموظفة", hint: "لكل خدمة موظفتها ووقتها داخل كرت الموعد", summary: step2SummaryText, action: "تحديد الموعد" },
+    { id: 2, title: "الموعد", hint: "اختاري التاريخ ثم الموظفة والوقت لكل خدمة", summary: step2SummaryText, action: "تحديد الموعد" },
     { id: 3, title: "بيانات العميل", hint: "أدخلي الاسم والجوال ثم أضيفي الملاحظة أو كود الخصم إن رغبتِ", summary: step3SummaryText, action: "إكمال البيانات" },
     { id: 4, title: "تأكيد", hint: "راجعي التفاصيل واضغطي تأكيد", summary: step4SummaryText, action: "مراجعة نهائية" },
   ];
