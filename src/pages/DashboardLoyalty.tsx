@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
+import "../styles/AdminDashboardLoyalty.css";
 
 import {
   collection,
@@ -211,6 +212,21 @@ export default function DashboardLoyalty() {
 
   return (
     <div className="loyalty-page">
+      <header className="loyalty-header">
+        <div className="loyalty-header-copy">
+          <p className="loyalty-kicker">Customer Retention</p>
+          <h1>برنامج الولاء والعملاء المميزون</h1>
+          <p>
+            إدارة النقاط، درجة الولاء، والتأهيل التلقائي لعملاء VIP من شاشة واحدة.
+          </p>
+        </div>
+
+        <div className="loyalty-header-count">
+          <span>إجمالي العملاء</span>
+          <strong>{clients.length}</strong>
+          <small>{filtered.length} نتيجة ظاهرة</small>
+        </div>
+      </header>
       {/* SETTINGS */}
       <div className="dashboard-card">
         <h3>
