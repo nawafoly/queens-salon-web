@@ -1,4 +1,5 @@
 // src/pages/DashboardClients.tsx
+import "../styles/AdminDashboardClients.css";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -1383,7 +1384,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
           open={importOpen}
           onClose={closeImport}
           ariaLabel="استيراد عميلات من Excel"
-          panelClassName="dash-modal"
+          panelClassName="dash-modal cl-import-modal"
           size="lg"
         >
             <div className="dash-modal-header">
