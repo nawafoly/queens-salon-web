@@ -2,6 +2,7 @@
 
 // src/pages/Checkout.tsx
 import { useEffect, useMemo, useState } from "react";
+import "../styles/CheckoutMobile.css";
 import {
   createBooking,
   type BookingStatus,
