@@ -1,5 +1,6 @@
 // src/pages/Login.tsx
 import React, { useEffect, useState } from "react";
+import "../styles/AuthMobile.css";
 import logoBelak from "../assets/images/ssunnamed2.png";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
