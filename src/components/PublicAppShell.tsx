@@ -1,5 +1,6 @@
 ﻿import "../styles/PublicAppShell.css";
 import type { ReactNode } from "react";
+import PublicPageTransition from "./PublicPageTransition";
 
 type PublicAppShellProps = {
   header?: ReactNode;
@@ -23,7 +24,9 @@ export default function PublicAppShell({
       )}
 
       <div className="public-app-shell__viewport">
-        {children}
+        <PublicPageTransition>
+          {children}
+        </PublicPageTransition>
       </div>
 
       {footer && (
@@ -40,4 +43,5 @@ export default function PublicAppShell({
     </div>
   );
 }
+
 
