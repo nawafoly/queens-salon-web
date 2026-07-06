@@ -1,0 +1,51 @@
+﻿.public-app-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.public-app-shell__header {
+  position: relative;
+  z-index: 1000;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.public-app-shell__viewport {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.public-app-shell__viewport > .main-content {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.public-app-shell__footer {
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.public-app-shell__chat {
+  position: relative;
+  z-index: 1100;
+}
+
+@media (max-width: 768px) {
+  .public-app-shell {
+    overflow-x: clip;
+  }
+
+  .public-app-shell__viewport {
+    min-height: 0;
+  }
+}

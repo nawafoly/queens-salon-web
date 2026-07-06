@@ -12,6 +12,7 @@ import Footer from "./components/Footer";
 import WelcomeModal from "./components/WelcomeModal";
 import ChatBot from "./components/ChatBot";
 import LoadingBrand from "./components/LoadingBrand";
+import PublicAppShell from "./components/PublicAppShell";
 
 // Pages
 import Home from "./pages/Home";
@@ -679,140 +680,150 @@ const App: React.FC = () => {
     return <Navigate to="/hr" replace />;
   };
 
+  const showPublicAppShell = !isInDashboard && !isProfilePage;
+
+  const appRoutes = (
+    <main className="main-content">
+      <ScrollToTop />
+
+      <Routes>
+        {/* Public */}
+        <Route path="/" element={<Home />} />
+        <Route path="/services" element={<Services />} />
+        <Route path="/about" element={<About />} />
+
+        {/* Client Booking Public */}
+        <Route path="/booking" element={<Booking />} />
+
+        {/* Old path compatibility */}
+        <Route
+          path="/booking/internal"
+          element={<Navigate to="/dashboard/booking-internal" replace />}
+        />
+
+        {/* Checkout */}
+        <Route path="/checkout" element={<Checkout />} />
+
+        {/* Success */}
+        <Route path="/success" element={<Success />} />
+        <Route path="/success-internal" element={<SuccessInternal />} />
+
+        <Route path="/offers" element={<Offers />} />
+        <Route path="/reviews" element={<Reviews />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/chat" element={<Navigate to="/" replace />} />
+
+        {/* Track */}
+        <Route path="/track" element={<Track />} />
+        <Route path="/track/:trackId" element={<Track />} />
+
+        {/* Pending */}
+        <Route
+          path="/dashboard-pending"
+          element={
+            <PendingGuard>
+              <DashboardPending />
+            </PendingGuard>
+          }
+        />
+
+        {/* Client */}
+        <Route
+          path="/client"
+          element={
+            <ClientGuard>
+              <Profile />
+            </ClientGuard>
+          }
+        />
+
+        {/* Dashboard */}
+        <Route
+          path="/dashboard/*"
+          element={
+            <DashboardGuard>
+              <Dashboard
+                initialRole={userRole}
+                initialName={userName}
+                initialEmail={String(effectiveSessionUser?.email || "")}
+                authReady={authReady}
+              />
+            </DashboardGuard>
+          }
+        />
+
+        {/* Admin Dashboard - محمي بتسجيل دخول Firebase فعلي */}
+        <Route
+          path="/admin/*"
+          element={
+            <AdminGuard>
+              <AdminHrDashboard />
+            </AdminGuard>
+          }
+        />
+
+        {/* HR Entry - يرجع شكل بوابة الموارد البشرية كما هو */}
+        <Route path="/hr" element={<HrEntry />} />
+        <Route path="/hr/*" element={<Navigate to="/hr" replace />} />
+
+        {/* Employee Portal */}
+        <Route
+          path="/employee/*"
+          element={
+            <EmployeeGuard>
+              <EmployeePortal />
+            </EmployeeGuard>
+          }
+        />
+
+        {/* Profile */}
+        <Route
+          path="/profile"
+          element={
+            <ProfileGuard>
+              <Profile />
+            </ProfileGuard>
+          }
+        />
+
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+
+        <Route
+          path="/settings"
+          element={<Navigate to="/dashboard/settings" replace />}
+        />
+
+        {/* Payments */}
+        <Route path="/pay" element={<Pay />} />
+        <Route path="/payment-callback" element={<PaymentCallback />} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </main>
+  );
+
   return (
     <div className={`app ${isInDashboard ? "is-dashboard" : "is-public"}`}>
-      {!isInDashboard && !isProfilePage && (
-        <Navbar
-          authUser={effectiveSessionUser}
-          currentRole={userRole}
-          currentUserName={userName}
-        />
+      {showPublicAppShell ? (
+        <PublicAppShell
+          header={
+            <Navbar
+              authUser={effectiveSessionUser}
+              currentRole={userRole}
+              currentUserName={userName}
+            />
+          }
+          footer={<Footer />}
+          chat={<ChatBot />}
+        >
+          {appRoutes}
+        </PublicAppShell>
+      ) : (
+        appRoutes
       )}
-
-      <main className="main-content">
-        <ScrollToTop />
-
-        <Routes>
-          {/* Public */}
-          <Route path="/" element={<Home />} />
-          <Route path="/services" element={<Services />} />
-          <Route path="/about" element={<About />} />
-
-          {/* Client Booking Public */}
-          <Route path="/booking" element={<Booking />} />
-
-          {/* Old path compatibility */}
-          <Route
-            path="/booking/internal"
-            element={<Navigate to="/dashboard/booking-internal" replace />}
-          />
-
-          {/* Checkout */}
-          <Route path="/checkout" element={<Checkout />} />
-
-          {/* Success */}
-          <Route path="/success" element={<Success />} />
-          <Route path="/success-internal" element={<SuccessInternal />} />
-
-          <Route path="/offers" element={<Offers />} />
-          <Route path="/reviews" element={<Reviews />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/pricing" element={<Pricing />} />
-          <Route path="/chat" element={<Navigate to="/" replace />} />
-
-          {/* Track */}
-          <Route path="/track" element={<Track />} />
-          <Route path="/track/:trackId" element={<Track />} />
-
-          {/* Pending */}
-          <Route
-            path="/dashboard-pending"
-            element={
-              <PendingGuard>
-                <DashboardPending />
-              </PendingGuard>
-            }
-          />
-
-          {/* Client */}
-          <Route
-            path="/client"
-            element={
-              <ClientGuard>
-                <Profile />
-              </ClientGuard>
-            }
-          />
-
-          {/* Dashboard */}
-          <Route
-            path="/dashboard/*"
-            element={
-              <DashboardGuard>
-                <Dashboard
-                  initialRole={userRole}
-                  initialName={userName}
-                  initialEmail={String(effectiveSessionUser?.email || "")}
-                  authReady={authReady}
-                />
-              </DashboardGuard>
-            }
-          />
-
-          {/* Admin Dashboard - محمي بتسجيل دخول Firebase فعلي */}
-          <Route
-            path="/admin/*"
-            element={
-              <AdminGuard>
-                <AdminHrDashboard />
-              </AdminGuard>
-            }
-          />
-
-          {/* HR Entry - يرجع شكل بوابة الموارد البشرية كما هو */}
-          <Route path="/hr" element={<HrEntry />} />
-          <Route path="/hr/*" element={<Navigate to="/hr" replace />} />
-
-          {/* Employee Portal */}
-          <Route
-            path="/employee/*"
-            element={
-              <EmployeeGuard>
-                <EmployeePortal />
-              </EmployeeGuard>
-            }
-          />
-
-          {/* Profile */}
-          <Route
-            path="/profile"
-            element={
-              <ProfileGuard>
-                <Profile />
-              </ProfileGuard>
-            }
-          />
-
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-
-          <Route
-            path="/settings"
-            element={<Navigate to="/dashboard/settings" replace />}
-          />
-
-          {/* Payments */}
-          <Route path="/pay" element={<Pay />} />
-          <Route path="/payment-callback" element={<PaymentCallback />} />
-
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
-
-      {!isInDashboard && !isProfilePage && <Footer />}
-      {!isInDashboard && !isProfilePage && <ChatBot />}
-
       <WelcomeModal
         show={showWelcome}
         userName={userName}
@@ -827,3 +838,5 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+
