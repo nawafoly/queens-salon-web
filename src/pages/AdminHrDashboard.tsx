@@ -1,3 +1,4 @@
+import "../styles/AdminHrMobileShell.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -1240,6 +1241,38 @@ export default function AdminHrDashboard() {
         </div>
       </aside>
 
+      <header className="hr-mobile-appbar">
+        <div className="hr-mobile-appbar__brand">
+          <span className="hr-mobile-appbar__mark">HR</span>
+
+          <div>
+            <small>الموارد البشرية</small>
+            <strong>{isEmployeesRoute ? "إدارة الموظفات" : routeMeta.title}</strong>
+          </div>
+        </div>
+
+        <div className="hr-mobile-appbar__actions">
+          <Link
+            to={dashboardPath}
+            className="hr-mobile-appbar__button"
+            aria-label={dashboardLabel}
+            title={dashboardLabel}
+          >
+            <FontAwesomeIcon icon={faChartLine} />
+          </Link>
+
+          <button
+            type="button"
+            className="hr-mobile-appbar__button hr-mobile-appbar__button--logout"
+            onClick={() => void handleLogout()}
+            disabled={loggingOut}
+            aria-label="تسجيل الخروج"
+            title="تسجيل الخروج"
+          >
+            <FontAwesomeIcon icon={faRightFromBracket} />
+          </button>
+        </div>
+      </header>
       <main className={`hr-shell-main ${isEmployeesRoute ? "hr-shell-main--workspace" : ""}`}>
         {!isEmployeesRoute ? (
           <header className="hr-shell-header">
@@ -1316,6 +1349,57 @@ export default function AdminHrDashboard() {
           </Routes>
         </section>
       </main>
+      <nav className="hr-mobile-bottom-nav" aria-label="تنقل الموارد البشرية">
+        <NavLink
+          to="/admin/overview"
+          className={({ isActive }) =>
+            `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
+          }
+        >
+          <FontAwesomeIcon icon={faHouse} />
+          <span>الرئيسية</span>
+        </NavLink>
+
+        <NavLink
+          to="/admin/employees"
+          className={({ isActive }) =>
+            `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
+          }
+        >
+          <FontAwesomeIcon icon={faUsers} />
+          <span>الموظفات</span>
+        </NavLink>
+
+        <NavLink
+          to="/admin/recruitment-applications"
+          className={({ isActive }) =>
+            `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
+          }
+        >
+          <FontAwesomeIcon icon={faUserTie} />
+          <span>التوظيف</span>
+        </NavLink>
+
+        <NavLink
+          to="/admin/messages"
+          className={({ isActive }) =>
+            `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
+          }
+        >
+          <FontAwesomeIcon icon={faEnvelope} />
+          <span>الرسائل</span>
+        </NavLink>
+
+        <NavLink
+          to="/admin/files"
+          className={({ isActive }) =>
+            `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
+          }
+        >
+          <FontAwesomeIcon icon={faFileLines} />
+          <span>الملفات</span>
+        </NavLink>
+      </nav>
     </div>
   );
 }

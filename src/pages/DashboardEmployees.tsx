@@ -2,6 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../styles/AdminDashboardEmployees.css";
+import "../styles/AdminHrEmployees.css";
+import "../styles/AdminHrEmployeeDetail.css";
 import {
   collection,
   getDocs,

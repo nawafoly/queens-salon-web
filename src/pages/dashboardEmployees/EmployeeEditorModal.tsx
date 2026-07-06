@@ -97,6 +97,9 @@ export default function EmployeeEditorModal({
   const employeeName = String(editingStaff?.name || name || "").trim();
   const specialtiesCount = normalizeSpecialties(editingStaff?.specialties).length;
   const employeeInitials = getNameInitials(employeeName || "موظفة");
+  const isHrRoute =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/admin/");
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -165,7 +168,7 @@ export default function EmployeeEditorModal({
 
   return createPortal(
     <div
-      className={`emp-editor-overlay ${isCreateMode ? "is-create" : "is-edit"}`}
+      className={`emp-editor-overlay ${isHrRoute ? "emp-editor-overlay--hr" : ""} ${isCreateMode ? "is-create" : "is-edit"}`}
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !busy) onClose();
