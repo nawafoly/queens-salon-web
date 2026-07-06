@@ -438,6 +438,7 @@ const ChatBot: React.FC = () => {
   const isChatPage = location.pathname.startsWith("/chat");
 
   const hideFloatingChatPaths = [
+    "/offers",
     "/booking",
     "/checkout",
     "/pay",

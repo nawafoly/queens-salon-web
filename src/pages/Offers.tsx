@@ -1,5 +1,6 @@
 // src/pages/Offers.tsx
 import { useEffect, useMemo, useState } from "react";
+import "../styles/OffersMobile.css";
 import emma from "../assets/images/emma.webp";
 import hair from "../assets/images/hair1.webp";
 import skin from "../assets/images/skin1.webp";
@@ -644,8 +645,16 @@ const Offers = () => {
           </div>
 
           {activeNow.length === 0 && (
-            <div style={{ textAlign: "center", marginTop: 20, opacity: 0.8 }}>
-              لا توجد عروض سارية الآن — أضيفي عرض من Dashboard وحددي التواريخ وسيظهر هنا تلقائيًا.
+            <div className="offers-empty-state" role="status">
+              <span className="offers-empty-state__icon">
+                <FontAwesomeIcon icon={faTag} aria-hidden="true" />
+              </span>
+
+              <strong>لا توجد عروض سارية الآن</strong>
+
+              <span>
+                ستظهر العروض الجديدة هنا تلقائيًا فور تفعيلها.
+              </span>
             </div>
           )}
 
@@ -852,7 +861,7 @@ const Offers = () => {
               </p>
 
               <div className="cta-actions">
-                <Link to="/contact" className="btn btn-outline btn-lg rounded-pill">
+                <Link to="/contact" className="btn btn-outline btn-lg rounded-pill offers-cta-btn">
                   <FontAwesomeIcon icon={faTag} className="me-2" />
                   استفسري عن العروض
                 </Link>
