@@ -1,0 +1,273 @@
+﻿/* Mobile app layout for Track */
+@media (max-width: 768px) {
+  .track-page.success-page {
+    min-height: auto;
+    align-items: stretch;
+    padding:
+      14px
+      10px
+      calc(28px + env(safe-area-inset-bottom, 0px));
+    overflow-x: hidden;
+    background:
+      radial-gradient(
+        330px 190px at 50% 0%,
+        rgba(180, 84, 123, 0.12),
+        transparent 72%
+      ),
+      #f7f4f5 !important;
+  }
+
+  .track-page .track-card.success-card {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid rgba(64, 1, 13, 0.1);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow:
+      0 14px 34px rgba(64, 1, 13, 0.08),
+      0 2px 7px rgba(13, 13, 13, 0.04);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .track-page .track-card.success-card::after {
+    display: none;
+  }
+
+  .track-page .success-topline {
+    height: 5px;
+  }
+
+  .track-page .track-head.success-header {
+    padding: 22px 16px 14px;
+  }
+
+  /* Navbar already contains the brand logo */
+  .track-page .track-logo {
+    display: none;
+  }
+
+  .track-page .track-title.success-title {
+    margin: 0 0 7px;
+    font-size: clamp(1.65rem, 8vw, 2rem);
+    line-height: 1.25;
+    color: #40010d !important;
+  }
+
+  .track-page .track-subtitle.success-subtitle {
+    max-width: 330px;
+    margin: 0 auto;
+    font-size: 0.84rem;
+    font-weight: 700;
+    line-height: 1.75;
+    color: #66616a;
+  }
+
+  .track-page .track-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 0 12px 14px;
+  }
+
+  .track-page .track-panel.success-details,
+  .track-page .track-side.success-policy {
+    width: 100%;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid rgba(64, 1, 13, 0.08);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 7px 20px rgba(64, 1, 13, 0.05);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .track-page .track-form {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin: 0 0 10px;
+  }
+
+  .track-page .track-input {
+    order: 1;
+    width: 100%;
+    height: 52px;
+    min-width: 0;
+    padding: 0 13px;
+    border: 1px solid rgba(64, 1, 13, 0.16);
+    border-radius: 14px;
+    background: #fbfafb;
+    font-size: 1rem;
+    text-align: center;
+    box-shadow: none;
+  }
+
+  .track-page .track-input:focus {
+    border-color: rgba(143, 54, 91, 0.55);
+    box-shadow: 0 0 0 4px rgba(180, 84, 123, 0.1);
+    transform: none;
+  }
+
+  .track-page .track-btn {
+    order: 2;
+    width: 100%;
+    min-width: 0;
+    min-height: 50px;
+    border-radius: 14px;
+    font-size: 0.96rem;
+    touch-action: manipulation;
+  }
+
+  .track-page .success-alert,
+  .track-page .track-state,
+  .track-page .track-error,
+  .track-page .track-notfound {
+    margin-top: 9px;
+    padding: 12px;
+    border-radius: 14px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.7;
+    text-align: center;
+  }
+
+  .track-page .track-contact-wrap {
+    display: grid;
+    gap: 9px !important;
+    margin-top: 10px;
+  }
+
+  .track-page .track-btn-ghost {
+    min-height: 48px;
+    margin-top: 0;
+    border-radius: 14px;
+    font-size: 0.88rem;
+    touch-action: manipulation;
+  }
+
+  .track-page .track-contact-map {
+    margin-top: 0;
+    overflow: hidden;
+    border-radius: 15px;
+  }
+
+  .track-page .track-contact-map iframe {
+    display: block;
+    height: 210px !important;
+    min-height: 210px;
+    border-radius: 15px !important;
+    box-shadow: none !important;
+  }
+
+  .track-page .track-map-fallback {
+    padding: 16px 12px;
+    border-radius: 14px;
+    font-size: 0.82rem;
+    line-height: 1.7;
+  }
+
+  .track-page .track-status {
+    gap: 8px;
+    margin-bottom: 9px;
+    padding: 11px;
+    border-radius: 14px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .track-page .track-status span {
+    font-size: 0.82rem;
+  }
+
+  .track-page .track-status .status-pill {
+    padding: 6px 9px;
+    font-size: 0.74rem;
+  }
+
+  .track-page .track-grid {
+    gap: 7px;
+  }
+
+  .track-page .track-row {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid rgba(64, 1, 13, 0.08);
+    border-radius: 13px;
+    background: #fbfafb;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .track-page .track-row:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .track-page .track-row span {
+    font-size: 0.74rem;
+  }
+
+  .track-page .track-row strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+
+  .track-page .track-hint {
+    margin-top: 9px;
+    padding: 10px;
+    border-radius: 13px;
+    background: rgba(180, 84, 123, 0.07);
+    font-size: 0.76rem;
+    line-height: 1.75;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .track-page .track-skeleton {
+    gap: 8px;
+    margin-top: 9px;
+  }
+
+  .track-page .skel {
+    height: 44px;
+    border-radius: 13px;
+  }
+}
+
+@media (max-width: 360px) {
+  .track-page.success-page {
+    padding-right: 7px;
+    padding-left: 7px;
+  }
+
+  .track-page .track-body {
+    padding-right: 9px;
+    padding-left: 9px;
+  }
+
+  .track-page .track-row {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+}
+
+/* Fill the mobile viewport between top navbar and bottom navigation */
+@media (max-width: 768px) {
+  .track-page.success-page {
+    box-sizing: border-box;
+    min-height: calc(
+      100dvh
+      - 56px
+      - 78px
+      - env(safe-area-inset-top, 0px)
+      - env(safe-area-inset-bottom, 0px)
+    );
+  }
+}

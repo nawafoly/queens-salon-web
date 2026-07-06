@@ -1,5 +1,6 @@
 // src/pages/Track.tsx
 import { useEffect, useMemo, useState } from "react";
+import "../styles/TrackMobile.css";
 import { useNavigate, useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
