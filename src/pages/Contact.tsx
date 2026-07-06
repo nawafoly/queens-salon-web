@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import "../styles/ContactMobile.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { formatTime12 } from "../helpers/timeDisplay";
 
