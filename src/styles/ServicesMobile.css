@@ -192,3 +192,164 @@
     padding: 12px;
   }
 }
+
+/* Services mobile redesign V2 — flatter, cleaner app hierarchy */
+@media (max-width: 768px) {
+  .services-page > section.bg-gradient-primary.py-5 {
+    padding: 18px 16px 14px !important;
+  }
+
+  .services-page > section.bg-gradient-primary h1 {
+    margin-bottom: 5px !important;
+    font-size: 1.85rem !important;
+  }
+
+  .services-page > section.bg-gradient-primary .lead {
+    max-width: 290px;
+    font-size: 0.8rem;
+    line-height: 1.65;
+  }
+
+  .services-page > section.py-5:not(.bg-gradient-primary) {
+    padding: 10px 7px 24px !important;
+  }
+
+  .services-page .cards-grid-2 {
+    gap: 12px;
+  }
+
+  .services-page .offer-card-enhanced {
+    border: 1px solid rgba(64, 1, 13, 0.08);
+    border-radius: 17px;
+    box-shadow: 0 5px 16px rgba(42, 25, 31, 0.06);
+  }
+
+  .services-page .offer-image {
+    height: 132px;
+    border-radius: 17px 17px 0 0;
+  }
+
+  .services-page .offer-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .services-page .offer-content {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .services-page .offer-title {
+    font-size: 1.35rem;
+    line-height: 1.25;
+  }
+
+  .services-page .offer-mini-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .services-page .discount-badge,
+  .services-page .save-badge {
+    width: 100%;
+    min-height: 30px;
+    justify-content: center;
+    padding: 5px 8px;
+    font-size: 0.69rem;
+  }
+
+  .services-page .status-pill.season-period-title {
+    display: none !important;
+  }
+
+  .services-page .status-pill.season-period-greg {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin: 0;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 10px;
+    background: #f5f1f2;
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .services-page .offer-validity {
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 11px;
+    background: #f7f7f8;
+    font-size: 0.75rem;
+    line-height: 1.6;
+  }
+
+  .services-page .services-cat-stack {
+    gap: 7px;
+    margin-top: 1px;
+  }
+
+  .services-page .services-cat-item {
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .services-page .toggle-details {
+    min-height: 46px;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 12px;
+    color: #fff;
+    background: #253140;
+    font-size: 0.86rem;
+    box-shadow: none;
+  }
+
+  .services-page .toggle-details.is-open {
+    color: #fff;
+    background: #40010d;
+  }
+
+  .services-page .offer-details.services-cat-details {
+    margin-top: 5px;
+    padding: 7px 0 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .services-page .services-items {
+    gap: 6px;
+  }
+
+  .services-page .services-li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 10px;
+    border: 1px solid rgba(64, 1, 13, 0.09);
+    border-radius: 11px;
+    background: #fff;
+  }
+
+  .services-page .services-item-name {
+    flex-basis: auto;
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+
+  .services-page .services-item-price {
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+  }
+
+  .services-page .services-hair-guide-trigger-badge {
+    right: 8px;
+    bottom: 8px;
+    padding: 5px 8px;
+    font-size: 0.66rem;
+  }
+}
