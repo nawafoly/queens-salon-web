@@ -1,5 +1,6 @@
 // src/pages/Services.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import "../styles/ServicesMobile.css";
 
 // ✅ صور منتجات (لا تغيّر منطق الصور)
 import hair from "../assets/images/hair.png";

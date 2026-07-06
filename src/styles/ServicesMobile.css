@@ -1,0 +1,194 @@
+﻿/* Mobile app layout for Services */
+@media (max-width: 768px) {
+  .services-page {
+    overflow-x: hidden;
+    background:
+      radial-gradient(
+        320px 180px at 50% 0%,
+        rgba(180, 84, 123, 0.1),
+        transparent 72%
+      ),
+      #f8f6f7;
+  }
+
+  .services-page > section.bg-gradient-primary.py-5 {
+    padding: 24px 14px 18px !important;
+  }
+
+  .services-page > section.bg-gradient-primary .container {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .services-page > section.bg-gradient-primary h1 {
+    margin-bottom: 7px !important;
+    font-size: clamp(1.75rem, 9vw, 2.2rem) !important;
+    line-height: 1.2;
+  }
+
+  .services-page > section.bg-gradient-primary .lead {
+    max-width: 320px;
+    margin-inline: auto;
+    font-size: 0.88rem;
+    line-height: 1.75;
+  }
+
+  .services-page > section.py-5:not(.bg-gradient-primary) {
+    padding: 16px 12px 28px !important;
+  }
+
+  .services-page > section.py-5:not(.bg-gradient-primary) > .container {
+    max-width: none;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .services-page .cards-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .services-page .offer-card-enhanced {
+    overflow: hidden;
+    border: 1px solid rgba(64, 1, 13, 0.09);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow:
+      0 12px 28px rgba(64, 1, 13, 0.07),
+      0 2px 6px rgba(13, 13, 13, 0.04);
+  }
+
+  .services-page .offer-card-enhanced:hover {
+    transform: none;
+  }
+
+  .services-page .offer-image {
+    height: clamp(170px, 48vw, 205px);
+  }
+
+  .services-page .offer-content {
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .services-page .offer-title {
+    margin-bottom: 0;
+    font-size: clamp(1.35rem, 6.5vw, 1.65rem);
+    line-height: 1.3;
+  }
+
+  .services-page .offer-mini-row {
+    gap: 6px;
+    row-gap: 7px;
+  }
+
+  .services-page .discount-badge,
+  .services-page .save-badge,
+  .services-page .status-pill {
+    min-height: 32px;
+    padding: 6px 9px;
+    font-size: 0.72rem;
+  }
+
+  .services-page .offer-validity {
+    min-height: 0;
+    padding: 9px 10px;
+    border-radius: 13px;
+    font-size: 0.78rem;
+    line-height: 1.65;
+  }
+
+  .services-page .services-cat-stack {
+    gap: 9px;
+    margin-top: 3px;
+  }
+
+  .services-page .services-cat-item {
+    border-radius: 15px;
+  }
+
+  .services-page .toggle-details {
+    min-height: 48px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-size: 0.88rem;
+    touch-action: manipulation;
+  }
+
+  .services-page .offer-details.services-cat-details {
+    margin-top: 7px;
+    padding: 9px;
+    border-radius: 14px;
+  }
+
+  .services-page .services-items {
+    gap: 7px;
+  }
+
+  .services-page .services-li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 11px;
+    border-radius: 13px;
+  }
+
+  .services-page .services-item-name {
+    min-width: 0;
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+
+  .services-page .services-item-price {
+    padding: 6px 9px;
+    font-size: 0.76rem;
+  }
+
+  .services-page .services-hair-guide-trigger-badge {
+    right: 9px;
+    bottom: 9px;
+    padding: 6px 9px;
+    font-size: 0.7rem;
+  }
+
+  .services-page .services-hair-guide-panel {
+    padding: 9px;
+  }
+
+  .services-page .services-hair-guide-image {
+    max-height: 430px;
+    border-radius: 14px;
+  }
+
+  .services-page .services-state {
+    padding: 20px 14px;
+    border-radius: 18px;
+    font-size: 0.86rem;
+    line-height: 1.7;
+  }
+
+  .services-page .services-bottom-cta {
+    margin-top: 18px;
+    padding-top: 0;
+  }
+
+  .services-page .services-bottom-cta .offers-cta-btn {
+    width: 100%;
+    min-height: 50px;
+    justify-content: center;
+    border-radius: 16px;
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .services-page > section.py-5:not(.bg-gradient-primary) {
+    padding-right: 8px !important;
+    padding-left: 8px !important;
+  }
+
+  .services-page .offer-content {
+    padding: 12px;
+  }
+}
