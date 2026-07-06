@@ -2,6 +2,7 @@
 
 // ✅ src/pages/DashboardExpenses.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import "../styles/AdminDashboardExpenses.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFileCsv } from "@fortawesome/free-solid-svg-icons";
 /**
