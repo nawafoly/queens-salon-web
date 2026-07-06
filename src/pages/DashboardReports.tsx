@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import "../styles/AdminDashboardReports.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCalendarDays, faChartLine, faClockRotateLeft } from "@fortawesome/free-solid-svg-icons";
 import { collection, getDocs } from "firebase/firestore";
