@@ -1,5 +1,8 @@
 ﻿import "../styles/PublicAppShell.css";
+
 import type { ReactNode } from "react";
+
+import MobileBottomNav from "./MobileBottomNav";
 import PublicPageTransition from "./PublicPageTransition";
 
 type PublicAppShellProps = {
@@ -40,8 +43,8 @@ export default function PublicAppShell({
           {chat}
         </div>
       )}
+
+      <MobileBottomNav />
     </div>
   );
 }
-
-
