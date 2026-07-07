@@ -1,3 +1,4 @@
+import EmployeeSelect from "../../components/EmployeeSelect";
 import {
   WEEKDAY_OPTIONS,
   formatDailyHourBucketsLabel,
@@ -186,15 +187,26 @@ export default function EmployeeStatsSection({
             </div>
             <div className="dash-field">
               <label className="emp-label">طريقة احتساب الأوفر تايم</label>
-              <select
-                className="dash-select"
+                            <EmployeeSelect
                 value={payroll.overtimeMethod}
                 disabled={busy}
-                onChange={(e) => payroll.onOvertimeMethodChange(e.target.value as StaffPayrollMethod)}
-              >
-                <option value="hours_from_salary">من الراتب + الساعات الإضافية</option>
-                <option value="invoice_percentage">نسبة من فواتير الموظفة</option>
-              </select>
+                ariaLabel="طريقة احتساب الأوفر تايم"
+                options={[
+                  {
+                    value: "hours_from_salary",
+                    label: "من الراتب + الساعات الإضافية",
+                  },
+                  {
+                    value: "invoice_percentage",
+                    label: "نسبة من فواتير الموظفة",
+                  },
+                ]}
+                onChange={(value) =>
+                  payroll.onOvertimeMethodChange(
+                    value as StaffPayrollMethod
+                  )
+                }
+              />
             </div>
             {payroll.overtimeMethod === "hours_from_salary" ? (
               <>
@@ -239,17 +251,28 @@ export default function EmployeeStatsSection({
                 </div>
                 <div className="dash-field">
                   <label className="emp-label">أساس حساب الأوفر تايم</label>
-                  <select
-                    className="dash-select"
+                                    <EmployeeSelect
                     value={payroll.overtimeHoursBasis}
                     disabled={busy}
-                    onChange={(e) =>
-                      payroll.onOvertimeHoursBasisChange(e.target.value === "season" ? "season" : "regular")
+                    ariaLabel="أساس حساب الأوفر تايم"
+                    options={[
+                      {
+                        value: "regular",
+                        label: "الأيام العادية",
+                      },
+                      {
+                        value: "season",
+                        label: "الموسم",
+                      },
+                    ]}
+                    onChange={(value) =>
+                      payroll.onOvertimeHoursBasisChange(
+                        value === "season"
+                          ? "season"
+                          : "regular"
+                      )
                     }
-                  >
-                    <option value="regular">الأيام العادية</option>
-                    <option value="season">الموسم</option>
-                  </select>
+                  />
                 </div>
                 <div className="dash-field">
                   <label className="emp-label">نسبة زيادة الأوفر تايم (%)</label>
@@ -411,19 +434,29 @@ export default function EmployeeStatsSection({
             <div className="dash-field staff-leave-settings-wide">
               <label className="emp-label">الإجازة الأسبوعية الثابتة</label>
               <div className="emp-inline-actions">
-                <select
-                  className="dash-select"
-                  value={String(leave.modalLeaveWeekdayDraft || "")}
+                                <EmployeeSelect
+                  value={String(
+                    leave.modalLeaveWeekdayDraft || ""
+                  )}
                   disabled={busy}
-                  onChange={(e) => leave.onModalLeaveWeekdayDraftChange(e.target.value as WeekdayKey | "")}
-                >
-                  <option value="">اختاري اليوم</option>
-                  {WEEKDAY_OPTIONS.map((day) => (
-                    <option key={`modal_leave_day_${day.key}`} value={day.key}>
-                      {day.label}
-                    </option>
-                  ))}
-                </select>
+                  ariaLabel="الإجازة الأسبوعية الثابتة"
+                  placeholder="اختاري اليوم"
+                  options={[
+                    {
+                      value: "",
+                      label: "اختاري اليوم",
+                    },
+                    ...WEEKDAY_OPTIONS.map((day) => ({
+                      value: day.key,
+                      label: day.label,
+                    })),
+                  ]}
+                  onChange={(value) =>
+                    leave.onModalLeaveWeekdayDraftChange(
+                      value as WeekdayKey | ""
+                    )
+                  }
+                />
                 <button
                   type="button"
                   className="exp-btn ghost sm"

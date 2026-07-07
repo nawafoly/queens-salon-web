@@ -209,33 +209,79 @@ function EmployeeComingSoonSection({
   title,
   lead,
   actionLabel,
+  actionHref,
+  moduleLabel,
+  notes,
 }: {
   isVisible: boolean;
   title: string;
   lead: string;
   actionLabel: string;
+  actionHref: string;
+  moduleLabel: string;
+  notes: string[];
 }) {
   if (!isVisible) return null;
+
   return (
-    <div className="emp-modal-section emp-placeholder-section">
-      <header className="emp-section-header">
+    <section className="emp-modal-section emp-linked-module-section">
+      <header className="emp-section-header emp-linked-module-header">
         <div className="emp-section-header__main">
-          <h3 className="emp-modal-section-title">{title}</h3>
-          <p className="emp-section-lead">{lead}</p>
+          <span className="emp-linked-module-eyebrow">
+            EMPLOYEE WORKSPACE
+          </span>
+
+          <h3 className="emp-modal-section-title">
+            {title}
+          </h3>
+
+          <p className="emp-section-lead">
+            {lead}
+          </p>
         </div>
+
+        <span className="emp-linked-module-status">
+          نظام مفعّل
+        </span>
       </header>
-      <div className="emp-placeholder-box">
-        <FontAwesomeIcon icon={faFolderOpen} />
-        <strong>{title}</strong>
-        <span>تم تجهيز شكل القسم، وسيتم تفعيل الخصائص والأزرار في الخطوة التالية.</span>
-        <button className="exp-btn primary sm" type="button" disabled>
+
+      <div className="emp-linked-module-card">
+        <div
+          className="emp-linked-module-icon"
+          aria-hidden="true"
+        >
+          <FontAwesomeIcon icon={faFolderOpen} />
+        </div>
+
+        <div className="emp-linked-module-content">
+          <span className="emp-linked-module-label">
+            {moduleLabel}
+          </span>
+
+          <strong>{title}</strong>
+
+          <p>
+            هذا التبويب مرتبط بالنظام الإداري الفعلي،
+            ويمكن فتحه لإدارة البيانات مباشرة.
+          </p>
+
+          <div className="emp-linked-module-points">
+            {notes.map((note) => (
+              <span key={note}>{note}</span>
+            ))}
+          </div>
+        </div>
+
+        <a
+          className="exp-btn primary emp-linked-module-action"
+          href={actionHref}
+        >
           {actionLabel}
-        </button>
+        </a>
       </div>
-    </div>
+    </section>
   );
 }
-
 function resolveStaffNotificationTarget(staff?: StaffPublicUi | null) {
   const targetUid = cleanText((staff as any)?.linkedUid || (staff as any)?.uid || (staff as any)?.linkedUserId || "");
   return {
@@ -3760,23 +3806,44 @@ export default function DashboardEmployees() {
                 onToggleSpecialty={toggleSpecialty}
                 onSpecialtiesChange={setSpecialties}
               />
-              <EmployeeComingSoonSection
+                            <EmployeeComingSoonSection
                 isVisible={!!editingStaff && activeTab === "requests"}
                 title="طلبات الموظفة"
-                lead="يشمل طلبات الاستئذان والتصحيح والاستقالة والخروج والعودة والخطابات."
-                actionLabel="إدارة الطلبات"
+                lead="راجعي طلبات الإجازة والطلبات الإدارية الواردة من الموظفات داخل لوحة الموارد البشرية."
+                actionLabel="فتح لوحة الطلبات"
+                actionHref="/admin/overview"
+                moduleLabel="HR REQUESTS"
+                notes={[
+                  "مراجعة أحدث طلبات الإجازة",
+                  "عرض الطلبات المعلقة",
+                  "الوصول إلى إجراءات القبول والرفض",
+                ]}
               />
-              <EmployeeComingSoonSection
+                            <EmployeeComingSoonSection
                 isVisible={!!editingStaff && activeTab === "messages"}
                 title="رسائل HR مع الموظفة"
-                lead="واجهة موحدة للتواصل الداخلي وربط المحادثات بملف الموظفة."
-                actionLabel="بدء محادثة"
+                lead="افتحي نظام الرسائل الداخلية لبدء محادثة أو متابعة الرسائل السابقة مع الموظفة."
+                actionLabel="فتح الرسائل"
+                actionHref="/admin/messages"
+                moduleLabel="INTERNAL MESSAGES"
+                notes={[
+                  "عرض المحادثات السابقة",
+                  "إرسال رسالة داخلية جديدة",
+                  "متابعة الرسائل غير المقروءة",
+                ]}
               />
-              <EmployeeComingSoonSection
+                            <EmployeeComingSoonSection
                 isVisible={!!editingStaff && activeTab === "files"}
                 title="ملفات الموظفة"
-                lead="رفع وعرض المستندات الرسمية وربطها بملف الموظفة."
-                actionLabel="رفع ملف"
+                lead="افتحي نظام الملفات الداخلية لرفع المستندات وعرض الملفات المرتبطة بالموظفات."
+                actionLabel="فتح إدارة الملفات"
+                actionHref="/admin/files"
+                moduleLabel="EMPLOYEE FILES"
+                notes={[
+                  "رفع مستند أو مرفق جديد",
+                  "عرض الملفات الواردة والمرسلة",
+                  "متابعة حالة القراءة والنسخة الحالية",
+                ]}
               />
             </EmployeeEditorModal>
           </EmployeeDetailShell>

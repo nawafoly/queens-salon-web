@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Employee Detail Workspace
  * Scoped to /admin/* through .emp-editor-overlay--hr
  */
@@ -2320,3 +2320,8080 @@
 }
 
 /* HR EMPLOYEE PROFILE SECTION END */
+
+/* HR EMPLOYEE CONTROLS SYSTEM START */
+
+/* =========================================================
+   Root typography and spacing
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content {
+  color: #172033 !important;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  :where(h1, h2, h3, h4, h5, h6) {
+  letter-spacing: 0 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  :where(p, span, small, strong, label) {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  .dash-field {
+  display: grid !important;
+  min-width: 0 !important;
+  gap: 7px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  .emp-label {
+  display: block;
+
+  margin: 0 !important;
+
+  color: #657187 !important;
+  font-size: 0.68rem !important;
+  font-weight: 900 !important;
+  line-height: 1.5;
+}
+
+/* =========================================================
+   CRITICAL FIX:
+   Remove text-input dimensions from checkbox and radio
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="checkbox"],
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="radio"] {
+  position: relative !important;
+
+  display: inline-grid !important;
+  flex: 0 0 auto !important;
+
+  width: 22px !important;
+  max-width: 22px !important;
+  min-width: 22px !important;
+
+  height: 22px !important;
+  max-height: 22px !important;
+  min-height: 22px !important;
+
+  place-content: center;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  border: 2px solid #c5cedb !important;
+  border-radius: 7px !important;
+
+  color: #11182c !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+
+  appearance: none !important;
+  -webkit-appearance: none !important;
+
+  cursor: pointer;
+  vertical-align: middle;
+
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="radio"] {
+  border-radius: 50% !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="checkbox"]::after {
+  content: "";
+
+  display: block;
+  width: 10px;
+  height: 6px;
+
+  border-inline-start: 2px solid #11182c;
+  border-bottom: 2px solid #11182c;
+
+  opacity: 0;
+
+  transform:
+    translateY(-1px)
+    rotate(-45deg)
+    scale(0.6);
+
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="radio"]::after {
+  content: "";
+
+  display: block;
+  width: 10px;
+  height: 10px;
+
+  border-radius: 50%;
+
+  opacity: 0;
+  background: #11182c;
+
+  transform: scale(0.45);
+
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="checkbox"]:checked,
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="radio"]:checked {
+  border-color: #f2b800 !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffe67d,
+      #f2b800
+    ) !important;
+
+  box-shadow:
+    0 0 0 4px rgba(242, 184, 0, 0.12) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="checkbox"]:checked::after,
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="radio"]:checked::after {
+  opacity: 1;
+
+  transform:
+    translateY(-1px)
+    rotate(-45deg)
+    scale(1);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="radio"]:checked::after {
+  transform: scale(1);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="checkbox"]:focus-visible,
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="radio"]:focus-visible {
+  outline: 3px solid rgba(242, 184, 0, 0.25) !important;
+  outline-offset: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="checkbox"]:disabled,
+.emp-editor-overlay.emp-editor-overlay--hr
+  input[type="radio"]:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   Checkbox / radio rows
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  label:has(input[type="checkbox"]),
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  label:has(input[type="radio"]) {
+  display: flex !important;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+
+  align-items: center;
+  justify-content: flex-start;
+  gap: 11px;
+
+  margin: 0 !important;
+  padding: 11px 13px !important;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 13px;
+
+  color: #273246 !important;
+  background: #fafbfc;
+
+  font-size: 0.69rem !important;
+  font-weight: 850 !important;
+  line-height: 1.6;
+
+  cursor: pointer;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  label:has(input[type="checkbox"]:checked),
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  label:has(input[type="radio"]:checked) {
+  border-color: rgba(242, 184, 0, 0.7);
+
+  color: #11182c !important;
+  background:
+    linear-gradient(
+      135deg,
+      #fffdf5,
+      #fff7d8
+    );
+
+  box-shadow: 0 0 0 3px rgba(242, 184, 0, 0.08);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  label:has(input[type="checkbox"])
+  input,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  label:has(input[type="radio"])
+  input {
+  order: -1;
+}
+
+/* =========================================================
+   Text fields and selects
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.emp-editor-overlay.emp-editor-overlay--hr
+  select,
+.emp-editor-overlay.emp-editor-overlay--hr
+  textarea {
+  width: 100% !important;
+  min-width: 0 !important;
+
+  border: 1px solid #d8e0ea !important;
+  border-radius: 12px !important;
+
+  color: #172033 !important;
+  background: #fbfcfd !important;
+
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):hover,
+.emp-editor-overlay.emp-editor-overlay--hr
+  select:hover,
+.emp-editor-overlay.emp-editor-overlay--hr
+  textarea:hover {
+  border-color: #c2ccd9 !important;
+  background: #ffffff !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+.emp-editor-overlay.emp-editor-overlay--hr
+  select:focus,
+.emp-editor-overlay.emp-editor-overlay--hr
+  textarea:focus {
+  border-color: #17244c !important;
+
+  background: #ffffff !important;
+
+  box-shadow:
+    0 0 0 4px rgba(23, 36, 76, 0.08) !important;
+
+  outline: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  input::placeholder,
+.emp-editor-overlay.emp-editor-overlay--hr
+  textarea::placeholder {
+  color: #a0aabc !important;
+  opacity: 1;
+}
+
+/* =========================================================
+   Field notes, warnings and inline information
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-field-note {
+  width: 100%;
+  min-width: 0;
+
+  margin: 0 !important;
+  padding: 11px 13px !important;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 12px;
+
+  color: #647187 !important;
+  background: #f7f9fb;
+
+  font-size: 0.65rem !important;
+  font-weight: 750 !important;
+  line-height: 1.75;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-field-note.danger {
+  border-color: #f0c9d0;
+
+  color: #a32b40 !important;
+  background: #fff5f7;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-field-note.is-boxed {
+  border-style: dashed;
+}
+
+/* =========================================================
+   Panels and visual hierarchy
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  .emp-panel,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  .emp-modal-section {
+  color: #172033 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  .emp-panel-head {
+  align-items: center !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  .emp-panel-title {
+  margin: 0 !important;
+
+  color: #081432 !important;
+  font-size: 1rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  hr {
+  height: 1px;
+
+  margin: 16px 0;
+
+  border: 0;
+  background: #e8edf3;
+}
+
+/* =========================================================
+   Buttons inside section content
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  button {
+  font-family: inherit;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  .exp-btn {
+  min-height: 43px !important;
+
+  padding: 8px 14px !important;
+
+  border-radius: 11px !important;
+
+  font-size: 0.67rem !important;
+  font-weight: 900 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  .exp-btn.primary {
+  border-color: #f2b800 !important;
+
+  color: #11182c !important;
+  background:
+    linear-gradient(
+      135deg,
+      #ffe47a,
+      #f2b800
+    ) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  .exp-btn:disabled {
+  color: #9ba4b3 !important;
+  background: #e8eaed !important;
+  opacity: 1 !important;
+}
+
+/* =========================================================
+   Service list general normalization
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-picker {
+  width: 100%;
+  min-width: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-picker__body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-list {
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+
+  padding: 0 !important;
+
+  overflow: visible !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-list
+  > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* =========================================================
+   Metrics and attendance cards
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-content
+  :where(
+    .attendance-summary-card,
+    .attendance-day-card,
+    .employee-attendance-card,
+    .emp-stats-card,
+    .emp-payroll-card
+  ) {
+  min-width: 0;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 15px !important;
+
+  background: #ffffff !important;
+  box-shadow: 0 5px 18px rgba(15, 31, 65, 0.045) !important;
+}
+
+/* =========================================================
+   Footer refinement
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-footer {
+  min-height: 70px !important;
+
+  padding:
+    9px
+    12px
+    calc(9px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-footer-actions {
+  gap: 8px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-editor-footer-actions
+  .exp-btn {
+  min-height: 48px !important;
+
+  border-radius: 12px !important;
+}
+
+/* =========================================================
+   Mobile
+   ========================================================= */
+
+@media (max-width: 820px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-content {
+    font-size: 13px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    input[type="checkbox"],
+  .emp-editor-overlay.emp-editor-overlay--hr
+    input[type="radio"] {
+    width: 23px !important;
+    max-width: 23px !important;
+    min-width: 23px !important;
+
+    height: 23px !important;
+    max-height: 23px !important;
+    min-height: 23px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-content
+    label:has(input[type="checkbox"]),
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-content
+    label:has(input[type="radio"]) {
+    min-height: 55px;
+
+    gap: 10px;
+
+    padding: 11px 12px !important;
+
+    border-radius: 12px;
+
+    font-size: 0.72rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-content
+    .emp-panel,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-content
+    .emp-modal-section {
+    padding: 14px 12px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-content
+    .emp-panel-head {
+    display: grid !important;
+    gap: 9px;
+
+    align-items: start !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-content
+    .emp-panel-head
+    .exp-btn {
+    width: 100%;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-content
+    .emp-panel-title {
+    font-size: 0.95rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-field-note {
+    padding: 10px 11px !important;
+
+    font-size: 0.68rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-footer-actions {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(0, 1fr)
+      48px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-footer-actions
+    .text-danger {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-footer-actions
+    .primary {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-footer-actions {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(0, 1fr)
+      46px !important;
+  }
+}
+
+/* HR EMPLOYEE CONTROLS SYSTEM END */
+
+/* HR EMPLOYEE SERVICES SECTION START */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-section {
+  padding: 0 !important;
+  overflow: visible !important;
+
+  border: 0 !important;
+
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Header */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-header {
+  margin: 0 0 14px !important;
+  padding: 18px 20px !important;
+
+  border: 1px solid var(--employee-detail-border) !important;
+  border-radius: 17px !important;
+
+  background:
+    radial-gradient(
+      circle at 91% 0%,
+      rgba(242, 184, 0, 0.14),
+      transparent 34%
+    ),
+    linear-gradient(
+      135deg,
+      #ffffff,
+      #f8f9fc
+    ) !important;
+
+  box-shadow:
+    0 8px 25px rgba(19, 34, 69, 0.05) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-eyebrow {
+  color: #a47700 !important;
+
+  font-size: 0.55rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.12em;
+
+  text-transform: uppercase;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-header__summary {
+  display: flex;
+  flex-wrap: wrap;
+
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-header__summary span {
+  display: inline-flex;
+  min-height: 30px;
+
+  align-items: center;
+  justify-content: center;
+
+  padding: 5px 10px;
+
+  border: 1px solid #dce2e9;
+  border-radius: 999px;
+
+  color: #667287;
+  background: #f0f3f6;
+
+  font-size: 0.56rem;
+  font-weight: 900;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-header__summary
+  span.is-selected {
+  border-color: #e3c15f;
+
+  color: #795800;
+  background: #fff6d3;
+}
+
+/* Toolbar */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-toolbar {
+  display: grid !important;
+  grid-template-columns:
+    minmax(260px, 1.5fr)
+    minmax(190px, 0.75fr)
+    auto;
+
+  align-items: end;
+  gap: 11px;
+
+  margin-bottom: 12px;
+  padding: 14px;
+
+  border: 1px solid var(--employee-detail-border);
+  border-radius: 16px;
+
+  background: #ffffff;
+  box-shadow:
+    0 7px 20px rgba(19, 34, 69, 0.04);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-search,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-section-filter {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-view-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(110px, 1fr));
+  gap: 7px;
+
+  padding: 4px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 13px;
+
+  background: #f3f5f8;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-view-switch button {
+  display: flex;
+  min-width: 0;
+  min-height: 45px;
+
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  margin: 0;
+  padding: 7px 10px;
+
+  border: 1px solid transparent;
+  border-radius: 10px;
+
+  color: #667287;
+  background: transparent;
+
+  font-family: inherit;
+  font-size: 0.62rem;
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-view-switch button strong {
+  display: inline-flex;
+  min-width: 24px;
+  height: 24px;
+
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 999px;
+
+  color: #59667a;
+  background: #ffffff;
+
+  font-size: 0.54rem;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-view-switch button.is-active {
+  border-color: #f2b800;
+
+  color: #11182c;
+  background:
+    linear-gradient(
+      135deg,
+      #ffe47a,
+      #f2b800
+    );
+
+  box-shadow:
+    0 5px 13px rgba(242, 184, 0, 0.18);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-view-switch
+  button.is-active
+  strong {
+  color: #11182c;
+  background: rgba(255, 255, 255, 0.63);
+}
+
+/* Bulk actions */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar {
+  display: flex;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  margin-bottom: 12px;
+  padding: 12px 14px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 15px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #fafbfd,
+      #f5f7fa
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar
+  > div:first-child
+  strong {
+  color: #172033;
+
+  font-size: 0.7rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar
+  > div:first-child
+  span {
+  color: #7a8698;
+
+  font-size: 0.56rem;
+  line-height: 1.65;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
+/* Workspace */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-workspace {
+  display: grid !important;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(270px, 0.34fr);
+
+  align-items: start;
+  gap: 13px;
+
+  width: 100%;
+  min-width: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel {
+  min-width: 0;
+
+  border: 1px solid var(--employee-detail-border);
+  border-radius: 17px;
+
+  background: #ffffff;
+  box-shadow:
+    0 8px 24px rgba(19, 34, 69, 0.045);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog {
+  padding: 15px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog__head {
+  display: flex;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  margin-bottom: 13px;
+  padding-bottom: 12px;
+
+  border-bottom: 1px solid #ebeff3;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog__head > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog__head strong {
+  color: #081432;
+
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog__head
+  span:not(.emp-services-result-count) {
+  color: #7a8698;
+
+  font-size: 0.56rem;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-result-count {
+  display: inline-flex;
+  flex: 0 0 auto;
+
+  min-height: 29px;
+  align-items: center;
+
+  padding: 5px 9px;
+
+  border-radius: 999px;
+
+  color: #667287;
+  background: #edf1f5;
+
+  font-size: 0.55rem;
+  font-weight: 900;
+}
+
+/* Service cards */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-grid {
+  display: grid !important;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 9px;
+
+  width: 100%;
+  min-width: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card {
+  position: relative;
+
+  display: grid !important;
+  grid-template-columns:
+    24px
+    minmax(0, 1fr);
+  grid-template-areas:
+    "check body"
+    "check facts";
+
+  min-width: 0;
+  min-height: 96px;
+
+  align-items: center;
+  gap: 5px 11px;
+
+  margin: 0;
+  padding: 13px;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 14px !important;
+
+  color: #273246 !important;
+  background: #fafbfc !important;
+  box-shadow: none !important;
+
+  font-family: inherit;
+  text-align: right;
+
+  cursor: pointer;
+
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card:hover {
+  border-color: #c2ccd8 !important;
+
+  background: #ffffff !important;
+
+  transform: translateY(-1px);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card.is-selected {
+  border-color: #e2b539 !important;
+
+  color: #10172a !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      #fffef9,
+      #fff6d3
+    ) !important;
+
+  box-shadow:
+    0 0 0 3px rgba(242, 184, 0, 0.09) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__check {
+  position: relative;
+  grid-area: check;
+
+  display: block;
+
+  width: 23px;
+  height: 23px;
+
+  border: 2px solid #c5ceda;
+  border-radius: 7px;
+
+  background: #ffffff;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card.is-selected
+  .emp-service-card__check {
+  border-color: #f2b800;
+
+  background:
+    linear-gradient(
+      145deg,
+      #ffe67c,
+      #f2b800
+    );
+
+  box-shadow:
+    0 0 0 4px rgba(242, 184, 0, 0.11);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card.is-selected
+  .emp-service-card__check::after {
+  content: "";
+
+  position: absolute;
+
+  width: 10px;
+  height: 6px;
+
+  top: 5px;
+  left: 4px;
+
+  border-inline-start: 2px solid #11182c;
+  border-bottom: 2px solid #11182c;
+
+  transform: rotate(-45deg);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__body {
+  grid-area: body;
+
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__body strong {
+  min-width: 0;
+
+  overflow: hidden;
+
+  color: inherit !important;
+
+  font-size: 0.72rem !important;
+  font-weight: 950 !important;
+  line-height: 1.55;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__body small {
+  overflow: hidden;
+
+  color: #7b8799 !important;
+
+  font-size: 0.55rem !important;
+  font-weight: 750 !important;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__facts {
+  grid-area: facts;
+
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__facts em {
+  display: inline-flex;
+  min-height: 24px;
+
+  align-items: center;
+
+  padding: 3px 7px;
+
+  border-radius: 999px;
+
+  color: #647187;
+  background: #edf1f5;
+
+  font-size: 0.5rem;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.4;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card.is-selected
+  .emp-service-card__facts em {
+  color: #715300;
+  background: rgba(242, 184, 0, 0.14);
+}
+
+/* Empty and load more */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-empty {
+  display: grid;
+
+  min-height: 190px;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+
+  padding: 24px;
+
+  border: 1px dashed #ccd5e0;
+  border-radius: 15px;
+
+  color: #667287;
+  background: #f7f9fb;
+
+  text-align: center;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-empty strong {
+  color: #172033;
+
+  font-size: 0.8rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-empty span {
+  font-size: 0.6rem;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-load-more {
+  width: 100% !important;
+
+  margin-top: 11px !important;
+}
+
+/* Selected panel */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel {
+  position: sticky;
+  top: 0;
+
+  overflow: hidden;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel__head {
+  display: flex;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  padding: 15px;
+
+  color: #ffffff;
+
+  background:
+    radial-gradient(
+      circle at 90% 0%,
+      rgba(242, 184, 0, 0.2),
+      transparent 42%
+    ),
+    linear-gradient(
+      135deg,
+      #061033,
+      #121c40
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel__head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel__head span {
+  color: rgba(255, 255, 255, 0.57);
+
+  font-size: 0.53rem;
+  font-weight: 800;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel__head strong {
+  color: #ffffff !important;
+
+  font-size: 0.78rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel__head b {
+  display: inline-flex;
+
+  width: 38px;
+  height: 38px;
+
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 12px;
+
+  color: #11182c;
+  background: #f2b800;
+
+  font-size: 0.75rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-list {
+  display: grid;
+  gap: 0;
+
+  max-height: 470px;
+
+  overflow-y: auto;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item {
+  display: flex;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  padding: 12px 14px;
+
+  border-bottom: 1px solid #ebeff3;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item:last-child {
+  border-bottom: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item strong {
+  overflow: hidden;
+
+  color: #172033 !important;
+
+  font-size: 0.62rem !important;
+  font-weight: 900 !important;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item span {
+  overflow: hidden;
+
+  color: #7b8799;
+
+  font-size: 0.51rem;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item button {
+  flex: 0 0 auto;
+
+  min-height: 33px;
+
+  padding: 5px 9px;
+
+  border: 1px solid #efc8cf;
+  border-radius: 9px;
+
+  color: #b12843;
+  background: #fff7f8;
+
+  font-family: inherit;
+  font-size: 0.52rem;
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-empty {
+  display: grid;
+
+  min-height: 190px;
+
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+
+  padding: 22px;
+
+  color: #778397;
+  background: #fafbfc;
+
+  text-align: center;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-empty strong {
+  color: #172033;
+
+  font-size: 0.71rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-empty span {
+  font-size: 0.55rem;
+  line-height: 1.7;
+}
+
+/* Tablet */
+
+@media (max-width: 1180px) and (min-width: 821px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-toolbar {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(190px, 0.6fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-view-switch {
+    grid-column: 1 / -1;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-selected-panel {
+    position: static;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-selected-list {
+    max-height: 320px;
+  }
+}
+
+/* Mobile */
+
+@media (max-width: 820px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-header {
+    display: grid !important;
+    gap: 12px;
+
+    margin-bottom: 10px !important;
+    padding: 14px 12px !important;
+
+    border-radius: 15px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-header__summary {
+    display: grid;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+
+    width: 100%;
+    gap: 6px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-header__summary span {
+    width: 100%;
+    min-width: 0;
+    min-height: 34px;
+
+    padding-inline: 7px;
+
+    font-size: 0.52rem;
+    text-align: center;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+
+    margin-bottom: 10px;
+    padding: 12px;
+
+    border-radius: 15px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-view-switch {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-view-switch button {
+    min-height: 48px;
+
+    font-size: 0.64rem;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-bulkbar {
+    display: grid;
+    gap: 10px;
+
+    margin-bottom: 10px;
+    padding: 12px;
+
+    border-radius: 14px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-bulkbar__actions {
+    display: grid;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+
+    width: 100%;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-bulkbar__actions
+    .exp-btn {
+    width: 100%;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-catalog {
+    padding: 12px;
+
+    border-radius: 15px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-catalog__head {
+    align-items: flex-start;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-service-card {
+    min-height: 92px;
+
+    padding: 12px;
+
+    border-radius: 13px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-service-card__body strong {
+    font-size: 0.75rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-service-card__body small {
+    font-size: 0.58rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-service-card__facts em {
+    font-size: 0.52rem;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-selected-panel {
+    position: static;
+
+    border-radius: 15px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-selected-list {
+    max-height: 300px;
+  }
+}
+
+@media (max-width: 390px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-header__summary,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-bulkbar__actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* HR EMPLOYEE SERVICES SECTION END */
+
+/* HR EMPLOYEE ATTENDANCE SECTION START */
+
+/* =========================================================
+   Attendance root
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin {
+  width: 100% !important;
+  min-width: 0 !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  overflow: visible !important;
+
+  border: 0 !important;
+
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month {
+  --attendance-complete: #1c9b6c;
+  --attendance-complete-bg: #eefaf5;
+  --attendance-partial: #e89821;
+  --attendance-partial-bg: #fff7e9;
+  --attendance-absent: #df4560;
+  --attendance-absent-bg: #fff1f4;
+  --attendance-off: #2099b4;
+  --attendance-off-bg: #ecf9fc;
+  --attendance-leave: #7757c8;
+  --attendance-leave-bg: #f4f0ff;
+
+  display: grid !important;
+  grid-template-columns:
+    minmax(0, 1.15fr)
+    minmax(330px, 0.85fr);
+  grid-template-areas:
+    "summary summary"
+    "calendar detail";
+
+  align-items: start;
+  gap: 12px !important;
+
+  width: 100%;
+  min-width: 0;
+
+  color: #172033;
+}
+
+/* =========================================================
+   Header and controls
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__summary {
+  grid-area: summary;
+
+  display: grid !important;
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto;
+
+  width: 100%;
+  min-width: 0;
+
+  align-items: center;
+  gap: 14px;
+
+  margin: 0 !important;
+  padding: 15px 17px !important;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 16px !important;
+
+  color: #172033 !important;
+
+  background:
+    radial-gradient(
+      circle at 91% 0%,
+      rgba(242, 184, 0, 0.13),
+      transparent 34%
+    ),
+    linear-gradient(
+      135deg,
+      #ffffff,
+      #f8f9fc
+    ) !important;
+
+  box-shadow:
+    0 7px 22px rgba(19, 34, 69, 0.045) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__summary-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__summary-copy h3 {
+  margin: 0 !important;
+
+  color: #081432 !important;
+
+  font-size: 1rem !important;
+  font-weight: 950 !important;
+  line-height: 1.4;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__summary-copy p {
+  margin: 0 !important;
+
+  color: #768297 !important;
+
+  font-size: 0.61rem !important;
+  font-weight: 750 !important;
+  line-height: 1.7;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__summary-tools {
+  display: flex !important;
+  flex-wrap: wrap;
+
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+
+  min-width: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__primary {
+  min-width: 132px !important;
+  min-height: 43px !important;
+
+  margin: 0 !important;
+  padding: 8px 14px !important;
+
+  border: 1px solid #081432 !important;
+  border-radius: 11px !important;
+
+  color: #ffffff !important;
+  background:
+    linear-gradient(
+      135deg,
+      #071132,
+      #111b3f
+    ) !important;
+
+  box-shadow:
+    0 7px 18px rgba(7, 17, 50, 0.15) !important;
+
+  font-family: inherit;
+  font-size: 0.65rem !important;
+  font-weight: 900 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__month-input {
+  display: flex !important;
+  min-width: 175px;
+  min-height: 43px !important;
+
+  align-items: center;
+  gap: 8px;
+
+  margin: 0 !important;
+  padding: 5px 10px !important;
+
+  border: 1px solid #d8e0ea !important;
+  border-radius: 11px !important;
+
+  color: #172033 !important;
+  background: #ffffff !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__month-input input {
+  width: 125px !important;
+  min-width: 0 !important;
+  min-height: 32px !important;
+
+  margin: 0 !important;
+  padding: 3px !important;
+
+  border: 0 !important;
+
+  color: #172033 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+
+  font-size: 0.68rem !important;
+  font-weight: 850 !important;
+}
+
+/* =========================================================
+   Compact calendar
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__calendar-shell {
+  position: relative;
+  grid-area: calendar;
+
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+
+  gap: 9px !important;
+
+  margin: 0 !important;
+  padding: 13px !important;
+
+  overflow: hidden !important;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 16px !important;
+
+  background: #ffffff !important;
+
+  box-shadow:
+    0 7px 22px rgba(19, 34, 69, 0.045) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__title {
+  display: grid !important;
+  min-height: 42px;
+
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+
+  margin: 0 !important;
+  padding: 0 48px !important;
+
+  text-align: center;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__title h3 {
+  margin: 0 !important;
+
+  color: #081432 !important;
+
+  font-size: 0.95rem !important;
+  font-weight: 950 !important;
+  line-height: 1.3;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__title span {
+  margin: 0 !important;
+
+  color: #929db0 !important;
+
+  font-size: 0.63rem !important;
+  font-weight: 800 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__arrow {
+  position: absolute !important;
+  top: 13px !important;
+
+  display: grid !important;
+  width: 38px !important;
+  height: 38px !important;
+
+  place-items: center;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  border: 1px solid #e0e5ec !important;
+  border-radius: 11px !important;
+
+  color: #172033 !important;
+  background: #f8f9fb !important;
+  box-shadow: none !important;
+
+  font-size: 1rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__arrow--prev {
+  right: 13px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__arrow--next {
+  left: 13px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__weekdays,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__grid {
+  direction: rtl;
+
+  display: grid !important;
+  grid-template-columns:
+    repeat(7, minmax(0, 1fr)) !important;
+
+  width: 100%;
+  min-width: 0 !important;
+
+  column-gap: 4px !important;
+  row-gap: 4px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__weekdays {
+  margin: 0 !important;
+  padding: 0 1px 3px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__weekdays span {
+  display: grid;
+  min-width: 0;
+  min-height: 28px;
+
+  place-items: center;
+
+  color: #8b97aa !important;
+
+  font-size: 0.55rem !important;
+  font-weight: 900 !important;
+  line-height: 1;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__blank {
+  min-height: 47px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day {
+  display: grid !important;
+  min-width: 0 !important;
+  min-height: 47px !important;
+
+  place-items: center;
+  align-content: center;
+  gap: 3px !important;
+
+  margin: 0 !important;
+  padding: 3px 1px !important;
+
+  border: 1px solid transparent !important;
+  border-radius: 11px !important;
+
+  color: #172033 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+
+  font-family: inherit;
+
+  transform: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day:hover {
+  border-color: #dfe5ed !important;
+  background: #f7f9fb !important;
+
+  transform: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day-marker {
+  display: block;
+
+  width: 23px !important;
+  height: 3px !important;
+
+  border-radius: 999px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day strong {
+  display: inline-grid !important;
+  width: 29px !important;
+  height: 29px !important;
+
+  place-items: center;
+
+  margin: 0 !important;
+
+  border: 0 !important;
+  border-radius: 9px !important;
+
+  color: #172033 !important;
+  background: transparent !important;
+
+  font-size: 0.68rem !important;
+  font-weight: 850 !important;
+  line-height: 1 !important;
+}
+
+/* حالة اليوم تظهر في الخط الصغير فقط */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-complete
+  .attendance-month__day-marker {
+  background: var(--attendance-complete) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-partial
+  .attendance-month__day-marker {
+  background: var(--attendance-partial) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-absent
+  .attendance-month__day-marker {
+  background: var(--attendance-absent) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-off-day
+  .attendance-month__day-marker {
+  background: var(--attendance-off) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-leave
+  .attendance-month__day-marker {
+  background: var(--attendance-leave) !important;
+}
+
+/* إطار واحد فقط لليوم المحدد */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected.is-complete,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected.is-partial,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected.is-absent,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected.is-off-day,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected.is-leave {
+  border-color: transparent !important;
+
+  background: #fff8db !important;
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected strong,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected.is-complete strong,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected.is-partial strong,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected.is-absent strong,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected.is-off-day strong,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__day.is-selected.is-leave strong {
+  border: 1px solid #e5ad00 !important;
+
+  color: #10172a !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffe47a,
+      #f2b800
+    ) !important;
+
+  box-shadow:
+    0 0 0 3px rgba(242, 184, 0, 0.12) !important;
+}
+
+/* =========================================================
+   Selected day detail
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__detail {
+  grid-area: detail;
+
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+
+  align-content: start;
+  gap: 10px !important;
+
+  margin: 0 !important;
+  padding: 13px !important;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 16px !important;
+
+  background: #ffffff !important;
+
+  box-shadow:
+    0 7px 22px rgba(19, 34, 69, 0.045) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__detail-head {
+  display: flex !important;
+
+  min-height: 0 !important;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  margin: 0 !important;
+  padding: 0 0 10px !important;
+
+  border-bottom: 1px solid #e9edf2;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__leave {
+  display: inline-flex;
+  min-height: 28px;
+
+  align-items: center;
+
+  padding: 4px 9px;
+
+  border: 1px solid #ddd4f5;
+  border-radius: 999px;
+
+  color: #6b4db8 !important;
+  background: #f5f1ff;
+
+  font-size: 0.55rem !important;
+  font-weight: 900 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__records-tab {
+  display: flex !important;
+  min-width: 0 !important;
+
+  align-items: center;
+  gap: 7px;
+
+  color: #172033 !important;
+
+  font-size: 0.68rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__records-tab::after {
+  content: "";
+
+  display: block;
+  width: 25px !important;
+  height: 3px !important;
+
+  border-radius: 999px;
+
+  background: #f2b800 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__records-meta {
+  display: flex !important;
+
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  min-width: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__actions {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__actions button {
+  min-height: 37px !important;
+
+  padding: 6px 10px !important;
+
+  border: 1px solid #dce3eb !important;
+  border-radius: 10px !important;
+
+  color: #172033 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+
+  font-size: 0.55rem !important;
+  font-weight: 900 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__count {
+  display: flex !important;
+
+  align-items: center;
+  gap: 7px;
+
+  color: #172033 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__count b {
+  font-size: 0.75rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__count svg {
+  font-size: 1.15rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__badge {
+  display: inline-flex;
+  min-height: 27px;
+
+  align-items: center;
+
+  padding: 4px 9px;
+
+  border-radius: 999px;
+
+  font-size: 0.53rem !important;
+  font-weight: 900 !important;
+}
+
+/* =========================================================
+   Empty and record state
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__empty {
+  display: grid !important;
+  min-height: 108px !important;
+
+  place-items: center;
+  align-content: center;
+  gap: 5px;
+
+  padding: 15px !important;
+
+  border: 1px dashed #ccd6e2 !important;
+  border-radius: 13px !important;
+
+  color: #7c8799 !important;
+  background: #f8fafc !important;
+
+  text-align: center;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__empty svg {
+  font-size: 1.2rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__empty strong {
+  color: #172033 !important;
+
+  font-size: 0.72rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__empty span {
+  font-size: 0.56rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__record {
+  min-height: 76px !important;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed !important;
+  border-inline-start: 5px solid var(--attendance-complete) !important;
+  border-radius: 13px !important;
+
+  background: var(--attendance-complete-bg) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__record.is-partial {
+  border-inline-start-color: var(--attendance-partial) !important;
+  background: var(--attendance-partial-bg) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__record-main {
+  display: grid !important;
+  grid-template-columns:
+    auto
+    minmax(0, 1fr);
+
+  align-content: center;
+  gap: 3px 9px !important;
+
+  padding: 11px 12px !important;
+
+  text-align: right;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__record-main button {
+  grid-row: 1 / 3;
+
+  width: 33px !important;
+  height: 33px !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  border-radius: 9px !important;
+
+  font-size: 0.85rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__record-main strong {
+  color: #172033 !important;
+
+  font-size: 0.7rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__record-main span {
+  color: #6f7b8e !important;
+
+  font-size: 0.56rem !important;
+  font-weight: 750 !important;
+}
+
+/* =========================================================
+   Compact metrics
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__metrics {
+  display: grid !important;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr)) !important;
+
+  gap: 7px !important;
+
+  width: 100%;
+  min-width: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__metrics > div {
+  display: grid !important;
+  min-width: 0;
+  min-height: 72px !important;
+
+  align-content: center;
+  gap: 5px !important;
+
+  padding: 10px !important;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 12px !important;
+
+  background: #fbfcfd !important;
+
+  text-align: right;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__wide-metrics {
+  display: grid !important;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr)) !important;
+
+  width: 100%;
+  min-width: 0;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 13px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__wide-metrics > div {
+  display: grid !important;
+  min-width: 0;
+  min-height: 72px !important;
+
+  align-content: center;
+  gap: 5px !important;
+
+  padding: 9px !important;
+
+  border: 0 !important;
+  border-inline-start: 1px solid #e8edf2 !important;
+  border-radius: 0 !important;
+
+  background: transparent !important;
+
+  text-align: right;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  .attendance-month__wide-metrics > div:first-child {
+  border-inline-start: 0 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  :is(
+    .attendance-month__metrics,
+    .attendance-month__wide-metrics
+  )
+  span {
+  color: #91a0b7 !important;
+
+  font-size: 0.53rem !important;
+  font-weight: 850 !important;
+  line-height: 1.45;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .employee-attendance-admin
+  :is(
+    .attendance-month__metrics,
+    .attendance-month__wide-metrics
+  )
+  b {
+  color: #172033 !important;
+
+  font-size: 0.72rem !important;
+  font-weight: 950 !important;
+  line-height: 1.4;
+}
+
+/* =========================================================
+   Tablet
+   ========================================================= */
+
+@media (max-width: 1180px) and (min-width: 821px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "summary"
+      "calendar"
+      "detail";
+  }
+}
+
+/* =========================================================
+   Mobile
+   ========================================================= */
+
+@media (max-width: 820px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "summary"
+      "calendar"
+      "detail";
+
+    gap: 9px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__summary {
+    grid-template-columns: minmax(0, 1fr);
+
+    gap: 11px;
+
+    padding: 13px 12px !important;
+
+    border-radius: 14px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__summary-copy h3 {
+    font-size: 0.95rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__summary-copy p {
+    font-size: 0.63rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__summary-tools {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+
+    width: 100%;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__primary,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__month-input {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__month-input input {
+    width: 100% !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__calendar-shell {
+    gap: 7px !important;
+
+    padding: 10px 8px 12px !important;
+
+    border-radius: 14px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__title {
+    min-height: 40px;
+    padding-inline: 43px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__arrow {
+    top: 9px !important;
+
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__arrow--prev {
+    right: 8px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__arrow--next {
+    left: 8px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__weekdays,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__grid {
+    column-gap: 2px !important;
+    row-gap: 3px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__weekdays span {
+    min-height: 25px;
+
+    font-size: 0.5rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__day,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__blank {
+    min-height: 43px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__day strong {
+    width: 27px !important;
+    height: 27px !important;
+
+    border-radius: 8px !important;
+
+    font-size: 0.65rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__day-marker {
+    width: 19px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__detail {
+    gap: 8px !important;
+
+    padding: 11px 9px !important;
+
+    border-radius: 14px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__detail-head {
+    display: flex !important;
+
+    min-height: 0 !important;
+    padding-bottom: 8px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__records-meta {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+
+    align-items: stretch;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__actions {
+    display: grid !important;
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+
+    width: 100%;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__actions button {
+    width: 100%;
+    min-width: 0;
+
+    padding-inline: 5px !important;
+
+    font-size: 0.5rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__metrics {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr)) !important;
+
+    gap: 6px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__metrics > div {
+    min-height: 68px !important;
+
+    padding: 9px !important;
+  }
+
+  /*
+   * تبقى الأوفر تايم والتأخير والنقص في صف واحد
+   * بدل ثلاث بطاقات طويلة فوق بعضها.
+   */
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__wide-metrics {
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__wide-metrics > div {
+    min-height: 70px !important;
+
+    padding: 8px 6px !important;
+
+    text-align: center;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    :is(
+      .attendance-month__metrics,
+      .attendance-month__wide-metrics
+    )
+    span {
+    font-size: 0.49rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    :is(
+      .attendance-month__metrics,
+      .attendance-month__wide-metrics
+    )
+    b {
+    font-size: 0.66rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__empty {
+    min-height: 94px !important;
+
+    padding: 12px !important;
+  }
+}
+
+@media (max-width: 370px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__actions {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .employee-attendance-admin
+    .attendance-month__actions button:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* HR EMPLOYEE ATTENDANCE SECTION END */
+
+/* HR EMPLOYEE STATS PAYROLL LEAVE START */
+
+/* =========================================================
+   General statistics workspace
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-stats-stack {
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+
+  gap: 14px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-stats-stack
+  > * {
+  width: 100%;
+  min-width: 0;
+
+  margin: 0 !important;
+}
+
+/* =========================================================
+   Payroll container
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-box {
+  display: grid !important;
+  min-width: 0;
+
+  gap: 14px;
+
+  padding: 0 !important;
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 17px !important;
+
+  background: #ffffff !important;
+  box-shadow:
+    0 8px 25px rgba(19, 34, 69, 0.05) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-head {
+  display: flex !important;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  min-height: 74px;
+
+  padding: 15px 18px;
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+  color: #ffffff;
+
+  background:
+    radial-gradient(
+      circle at 90% 0%,
+      rgba(242, 184, 0, 0.2),
+      transparent 38%
+    ),
+    linear-gradient(
+      135deg,
+      #061033,
+      #131d40
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-head b {
+  color: #ffffff !important;
+
+  font-size: 0.9rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-head span {
+  color: rgba(255, 255, 255, 0.63) !important;
+
+  font-size: 0.58rem !important;
+  font-weight: 750 !important;
+}
+
+/* =========================================================
+   Payroll form
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-form {
+  display: grid !important;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+
+  width: 100%;
+  min-width: 0;
+
+  gap: 12px;
+
+  padding: 0 17px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-form
+  .dash-field {
+  display: grid !important;
+  min-width: 0;
+
+  align-content: start;
+  gap: 7px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-form
+  input[type="number"] {
+  direction: ltr !important;
+  text-align: right !important;
+
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-form
+  input[type="number"]::placeholder {
+  direction: rtl;
+  text-align: right;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-form
+  select {
+  text-overflow: ellipsis;
+}
+
+/* الحقول أو التنبيهات الطويلة */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-form
+  :where(
+    .emp-field-note,
+    .staff-payroll-form-wide,
+    .staff-payroll-wide,
+    .dash-field:has(textarea)
+  ) {
+  grid-column: 1 / -1;
+}
+
+/* =========================================================
+   Payroll results
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-preview {
+  display: grid !important;
+  min-width: 0;
+
+  gap: 12px;
+
+  margin: 0 17px 17px;
+  padding: 15px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 16px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #fafbfd,
+      #f5f7fa
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-preview-grid {
+  display: grid !important;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr)) !important;
+
+  width: 100%;
+  min-width: 0;
+
+  gap: 9px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-chip {
+  position: relative;
+
+  display: grid !important;
+  min-width: 0;
+  min-height: 82px;
+
+  align-content: center;
+  gap: 6px;
+
+  padding: 12px !important;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 13px !important;
+
+  color: #172033 !important;
+  background: #ffffff !important;
+
+  text-align: right;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-chip::before {
+  content: "";
+
+  position: absolute;
+  inset-block: 12px;
+  inset-inline-start: 0;
+
+  width: 3px;
+
+  border-radius: 999px;
+
+  background: #b9c3d1;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-chip span {
+  color: #8692a5 !important;
+
+  font-size: 0.53rem !important;
+  font-weight: 850 !important;
+  line-height: 1.5;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-chip b {
+  overflow: hidden;
+
+  color: #081432 !important;
+
+  font-size: 0.77rem !important;
+  font-weight: 950 !important;
+  line-height: 1.45;
+
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-chip.accent {
+  border-color: rgba(242, 184, 0, 0.48) !important;
+
+  background:
+    radial-gradient(
+      circle at 92% 0%,
+      rgba(242, 184, 0, 0.2),
+      transparent 42%
+    ),
+    #fff9df !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-chip.accent::before {
+  background: #f2b800;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-chip.accent b {
+  color: #6f5100 !important;
+}
+
+/* =========================================================
+   Payroll notes
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-notes {
+  display: grid !important;
+  gap: 7px;
+
+  width: 100%;
+  min-width: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-note {
+  width: 100%;
+  min-width: 0;
+
+  padding: 10px 12px;
+
+  border: 1px dashed #d8e0e9;
+  border-radius: 11px;
+
+  color: #68758a !important;
+  background: #ffffff;
+
+  font-size: 0.57rem !important;
+  font-weight: 750 !important;
+  line-height: 1.8;
+}
+
+/* =========================================================
+   Leave section
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-box {
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+
+  gap: 13px;
+
+  padding: 16px !important;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 17px !important;
+
+  background: #ffffff !important;
+  box-shadow:
+    0 8px 25px rgba(19, 34, 69, 0.05) !important;
+}
+
+/* Leave KPIs */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-box
+  .emp-kpi-strip {
+  display: grid !important;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr)) !important;
+
+  width: 100%;
+  min-width: 0;
+
+  gap: 9px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-box
+  .emp-kpi-card {
+  position: relative;
+
+  display: grid !important;
+  min-width: 0;
+  min-height: 80px !important;
+
+  align-content: center;
+  gap: 5px;
+
+  padding: 12px !important;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 13px !important;
+
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f8fafc
+    ) !important;
+
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-box
+  .emp-kpi-card::after {
+  content: "";
+
+  position: absolute;
+  inset-block: 12px;
+  inset-inline-start: 0;
+
+  width: 3px;
+
+  border-radius: 999px;
+
+  background: #aeb9c8;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-box
+  .emp-kpi-card span {
+  color: #8793a5 !important;
+
+  font-size: 0.54rem !important;
+  font-weight: 850 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-box
+  .emp-kpi-card b {
+  color: #081432 !important;
+
+  font-size: 0.78rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-box
+  .emp-kpi-card.accent {
+  border-color: rgba(242, 184, 0, 0.48) !important;
+
+  background:
+    linear-gradient(
+      145deg,
+      #fffef8,
+      #fff6d4
+    ) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-box
+  .emp-kpi-card.accent::after {
+  background: #f2b800;
+}
+
+/* Leave header */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-head {
+  display: flex !important;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  min-height: 48px;
+
+  padding: 10px 12px;
+
+  border: 1px solid #e2e7ee;
+  border-radius: 13px;
+
+  background: #f7f9fb;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-head span,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-head b,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-head h3 {
+  margin: 0 !important;
+
+  color: #081432 !important;
+
+  font-size: 0.76rem !important;
+  font-weight: 950 !important;
+}
+
+/* Leave settings */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-settings-grid {
+  display: grid !important;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr)) !important;
+
+  width: 100%;
+  min-width: 0;
+
+  align-items: start;
+  gap: 11px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-settings-grid
+  > * {
+  min-width: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-settings-wide {
+  grid-column: 1 / -1;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-settings-grid
+  input[type="number"] {
+  direction: ltr !important;
+  text-align: right !important;
+
+  font-variant-numeric: tabular-nums;
+}
+
+/* Weekly leave selector */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-settings-wide
+  .emp-inline-actions {
+  display: grid !important;
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto;
+
+  width: 100%;
+  min-width: 0;
+
+  align-items: center;
+  gap: 8px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-settings-wide
+  .emp-inline-actions
+  .exp-btn {
+  min-width: 105px !important;
+  min-height: 48px !important;
+}
+
+/* =========================================================
+   Leave history
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .leave-log-list {
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+
+  gap: 8px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .leave-log-row {
+  display: grid !important;
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto;
+
+  min-width: 0;
+  min-height: 58px;
+
+  align-items: center;
+  gap: 10px;
+
+  padding: 10px 12px !important;
+
+  border: 1px solid #e0e6ed !important;
+  border-radius: 12px !important;
+
+  color: #273246 !important;
+  background: #fafbfc !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .leave-log-row
+  :where(strong, b) {
+  color: #172033 !important;
+
+  font-size: 0.65rem !important;
+  font-weight: 900 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .leave-log-row
+  :where(span, small) {
+  color: #7d899a !important;
+
+  font-size: 0.53rem !important;
+  line-height: 1.6;
+}
+
+/* =========================================================
+   Tablet
+   ========================================================= */
+
+@media (max-width: 1180px) and (min-width: 821px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-form {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-preview-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* =========================================================
+   Mobile
+   ========================================================= */
+
+@media (max-width: 820px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-stats-stack {
+    gap: 10px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-box,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-box {
+    border-radius: 15px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-head {
+    display: grid !important;
+    gap: 3px;
+
+    min-height: 67px;
+
+    padding: 13px 12px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-head b {
+    font-size: 0.83rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-form {
+    grid-template-columns: minmax(0, 1fr);
+
+    gap: 10px;
+
+    padding-inline: 12px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-preview {
+    margin:
+      0
+      12px
+      12px;
+
+    padding: 11px;
+
+    border-radius: 14px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-preview-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr)) !important;
+
+    gap: 7px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-chip {
+    min-height: 76px;
+
+    padding: 10px !important;
+
+    border-radius: 12px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-chip span {
+    font-size: 0.51rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-chip b {
+    font-size: 0.7rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-note {
+    font-size: 0.58rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-box {
+    gap: 10px;
+
+    padding: 12px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-box
+    .emp-kpi-strip {
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr)) !important;
+
+    gap: 6px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-box
+    .emp-kpi-card {
+    min-height: 72px !important;
+
+    padding: 8px !important;
+
+    border-radius: 11px !important;
+
+    text-align: center;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-box
+    .emp-kpi-card::after {
+    inset-block: auto;
+    inset-inline: 9px;
+    top: 0;
+
+    width: auto;
+    height: 3px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-box
+    .emp-kpi-card span {
+    font-size: 0.48rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-box
+    .emp-kpi-card b {
+    font-size: 0.67rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-head {
+    min-height: 45px;
+
+    padding: 9px 10px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-settings-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+
+    gap: 9px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-settings-wide {
+    grid-column: auto;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-settings-wide
+    .emp-inline-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-settings-wide
+    .emp-inline-actions
+    .exp-btn {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .leave-log-row {
+    grid-template-columns: minmax(0, 1fr);
+
+    gap: 5px;
+
+    padding: 10px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-payroll-preview-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-box
+    .emp-kpi-strip {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-box
+    .emp-kpi-card {
+    min-height: 65px !important;
+    text-align: right;
+  }
+}
+
+/* HR EMPLOYEE STATS PAYROLL LEAVE END */
+
+/* HR EMPLOYEE SCHEDULE SUMMARY START */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-card--refined {
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+
+  gap: 11px !important;
+
+  margin: 0 0 16px !important;
+  padding: 0 !important;
+
+  overflow: hidden !important;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 17px !important;
+
+  background: #ffffff !important;
+
+  box-shadow:
+    0 8px 25px rgba(19, 34, 69, 0.05) !important;
+}
+
+/* Header */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-hero {
+  display: flex;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  padding: 16px 18px;
+
+  color: #ffffff;
+
+  background:
+    radial-gradient(
+      circle at 90% 0%,
+      rgba(242, 184, 0, 0.22),
+      transparent 38%
+    ),
+    linear-gradient(
+      135deg,
+      #061033,
+      #141e41
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-hero__copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-hero__copy > span {
+  color: #f2b800 !important;
+
+  font-size: 0.5rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.12em;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-hero__copy h4 {
+  margin: 0 !important;
+
+  color: #ffffff !important;
+
+  font-size: 0.95rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-hero__copy p {
+  margin: 0 !important;
+
+  color: rgba(255, 255, 255, 0.62) !important;
+
+  font-size: 0.56rem !important;
+  font-weight: 750 !important;
+  line-height: 1.7;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-state-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+
+  min-height: 35px;
+
+  align-items: center;
+  justify-content: center;
+
+  padding: 6px 11px;
+
+  border: 1px solid transparent;
+  border-radius: 999px;
+
+  font-size: 0.58rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-state-badge.is-open {
+  border-color: rgba(52, 211, 153, 0.3);
+
+  color: #b7f7db;
+  background: rgba(16, 185, 129, 0.14);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-state-badge.is-closed {
+  border-color: rgba(251, 113, 133, 0.3);
+
+  color: #ffd0d8;
+  background: rgba(225, 29, 72, 0.15);
+}
+
+/* KPI summary */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-kpi-grid {
+  display: grid !important;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+
+  gap: 8px;
+
+  padding: 0 13px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-kpi {
+  position: relative;
+
+  display: grid;
+  min-width: 0;
+  min-height: 78px;
+
+  align-content: center;
+  gap: 4px;
+
+  padding: 11px;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 13px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f8fafc
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-kpi::before {
+  content: "";
+
+  position: absolute;
+  inset-block: 12px;
+  inset-inline-start: 0;
+
+  width: 3px;
+
+  border-radius: 999px;
+
+  background: #b4bfcd;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-kpi--window::before {
+  background: #f2b800;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-kpi__label {
+  color: #8a96a8 !important;
+
+  font-size: 0.51rem !important;
+  font-weight: 850 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-kpi__value {
+  overflow: hidden;
+
+  color: #081432 !important;
+
+  font-size: 0.72rem !important;
+  font-weight: 950 !important;
+  line-height: 1.5;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-kpi__value--time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-kpi__value--time svg {
+  color: #a57a00;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-kpi__note {
+  overflow: hidden;
+
+  color: #788599 !important;
+
+  font-size: 0.48rem !important;
+  font-weight: 700 !important;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Inline reason */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-inline-note {
+  display: flex;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  margin: 0 13px;
+  padding: 9px 11px;
+
+  border: 1px solid #f0d3d9;
+  border-radius: 11px;
+
+  color: #8d2438;
+  background: #fff6f7;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-inline-note strong {
+  font-size: 0.58rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-inline-note span {
+  font-size: 0.55rem;
+  font-weight: 750;
+}
+
+/* Return card */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact {
+  display: grid;
+  gap: 10px;
+
+  margin: 0 13px;
+  padding: 12px;
+
+  border: 1px solid rgba(242, 184, 0, 0.38);
+  border-radius: 14px;
+
+  background:
+    radial-gradient(
+      circle at 91% 0%,
+      rgba(242, 184, 0, 0.16),
+      transparent 40%
+    ),
+    #fffdf5;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__head {
+  display: flex;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__head > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__head span,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__dates span,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__meta span {
+  color: #8a96a8 !important;
+
+  font-size: 0.5rem !important;
+  font-weight: 850 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__head strong {
+  color: #081432 !important;
+
+  font-size: 0.72rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__badge {
+  display: inline-flex;
+
+  min-height: 28px;
+
+  align-items: center;
+
+  padding: 4px 9px;
+
+  border-radius: 999px;
+
+  color: #765700 !important;
+  background: #ffe992;
+
+  font-size: 0.51rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__dates,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__meta {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 7px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__dates > div,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__meta > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+
+  padding: 9px;
+
+  border: 1px solid #e7e2cc;
+  border-radius: 10px;
+
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__meta
+  > div.is-wide {
+  grid-column: 1 / -1;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__dates strong,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-return-compact__meta strong {
+  overflow-wrap: anywhere;
+
+  color: #273246 !important;
+
+  font-size: 0.57rem !important;
+  font-weight: 850 !important;
+  line-height: 1.6;
+}
+
+/* Disclosure */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure {
+  margin: 0 13px;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 13px;
+
+  background: #ffffff;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure:last-child {
+  margin-bottom: 13px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure > summary {
+  position: relative;
+
+  display: flex;
+
+  min-height: 58px;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 11px;
+
+  padding: 10px 42px 10px 12px;
+
+  cursor: pointer;
+
+  list-style: none;
+
+  background: #f8fafc;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure > summary::before {
+  content: "‹";
+
+  position: absolute;
+  inset-inline-start: 14px;
+  top: 50%;
+
+  color: #69768a;
+
+  font-size: 1.15rem;
+  font-weight: 950;
+
+  transform:
+    translateY(-50%)
+    rotate(-90deg);
+
+  transition: transform 150ms ease;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure[open]
+  > summary::before {
+  transform:
+    translateY(-50%)
+    rotate(90deg);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure__title {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure__title strong {
+  color: #081432 !important;
+
+  font-size: 0.68rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure__title span {
+  color: #8390a3 !important;
+
+  font-size: 0.51rem !important;
+  font-weight: 750 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure__count {
+  display: inline-flex;
+  flex: 0 0 auto;
+
+  width: 30px;
+  height: 30px;
+
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 10px;
+
+  color: #11182c;
+  background: #f2b800;
+
+  font-size: 0.58rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure__body {
+  display: grid;
+  gap: 9px;
+
+  padding: 11px;
+
+  border-top: 1px solid #e8edf2;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure__note,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure__end,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-disclosure__empty {
+  padding: 9px 10px;
+
+  border: 1px dashed #d2dae4;
+  border-radius: 10px;
+
+  color: #6f7c90 !important;
+  background: #f8fafc;
+
+  font-size: 0.54rem !important;
+  font-weight: 750 !important;
+  line-height: 1.75;
+}
+
+/* Exceptions */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exceptions-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 8px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+
+  padding: 11px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 12px;
+
+  background: #ffffff;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card header {
+  display: flex;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card header span {
+  display: inline-flex;
+
+  min-height: 25px;
+
+  align-items: center;
+
+  padding: 3px 7px;
+
+  border-radius: 999px;
+
+  color: #775900 !important;
+  background: #fff0ad;
+
+  font-size: 0.47rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card header strong {
+  overflow: hidden;
+
+  color: #172033 !important;
+
+  font-size: 0.61rem !important;
+  font-weight: 950 !important;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card__window {
+  padding: 8px 9px;
+
+  border-radius: 9px;
+
+  color: #081432;
+  background: #f2f5f8;
+
+  font-size: 0.65rem;
+  font-weight: 950;
+  text-align: center;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card__dates {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 6px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card__dates > div,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card__support > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+
+  padding: 7px;
+
+  border: 1px solid #e5eaf0;
+  border-radius: 9px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card__dates span,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card__support span {
+  color: #8a96a8 !important;
+
+  font-size: 0.47rem !important;
+  font-weight: 850 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card__dates strong,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card__support strong {
+  overflow-wrap: anywhere;
+
+  color: #273246 !important;
+
+  font-size: 0.52rem !important;
+  font-weight: 850 !important;
+  line-height: 1.6;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-exception-card__support {
+  display: grid;
+  gap: 5px;
+}
+
+/* Technical data */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-data-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 8px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-data-card {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+
+  padding: 10px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 11px;
+
+  background: #ffffff;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-data-card > span {
+  color: #8a96a8 !important;
+
+  font-size: 0.5rem !important;
+  font-weight: 850 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-data-card > strong {
+  color: #172033 !important;
+
+  font-size: 0.63rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-data-card p {
+  margin: 0 !important;
+
+  color: #68758a !important;
+
+  font-size: 0.53rem !important;
+  line-height: 1.7;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-data-card > div {
+  display: grid;
+  gap: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-schedule-data-card small {
+  color: #758196 !important;
+
+  font-size: 0.5rem !important;
+  line-height: 1.65;
+}
+
+/* Mobile */
+
+@media (max-width: 820px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-content {
+    padding-bottom:
+      calc(
+        96px +
+        env(safe-area-inset-bottom, 0px)
+      ) !important;
+
+    scroll-padding-bottom: 110px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-card--refined {
+    gap: 9px !important;
+
+    border-radius: 15px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-hero {
+    align-items: flex-start;
+
+    padding: 14px 12px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-hero__copy h4 {
+    font-size: 0.9rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-state-badge {
+    min-height: 32px;
+
+    padding-inline: 9px;
+
+    font-size: 0.53rem;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-kpi-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+
+    gap: 6px;
+
+    padding-inline: 9px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-kpi {
+    min-height: 72px;
+
+    padding: 9px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-kpi__value {
+    font-size: 0.67rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-inline-note,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-return-compact,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-disclosure {
+    margin-inline: 9px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-inline-note {
+    display: grid;
+    gap: 3px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-return-compact__dates,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-return-compact__meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-return-compact__meta
+    > div.is-wide {
+    grid-column: auto;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-exceptions-grid,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-data-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-disclosure
+    > summary {
+    min-height: 55px;
+
+    padding-inline-end: 9px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-exception-card__dates {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 370px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-schedule-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* HR EMPLOYEE SCHEDULE SUMMARY END */
+
+/* HR WORK OVERRIDES EDITOR START */
+
+/* =========================================================
+   Working-hour override form
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-ov-field {
+  display: grid !important;
+  min-width: 0;
+  gap: 7px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-ov-field
+  input[type="time"] {
+  direction: ltr !important;
+  text-align: center !important;
+
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+
+  font-weight: 850 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-ov-note {
+  grid-column: 1 / -1;
+}
+
+/* Work status toggle */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-ov-toggle-redesigned {
+  display: flex !important;
+  grid-column: 1 / -1;
+
+  min-height: 55px;
+
+  align-items: center;
+  gap: 11px;
+
+  padding: 11px 13px !important;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 13px !important;
+
+  color: #273246 !important;
+  background: #f8fafc !important;
+
+  font-size: 0.65rem !important;
+  font-weight: 900 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-ov-toggle-redesigned:has(input:checked) {
+  border-color: rgba(34, 197, 94, 0.35) !important;
+
+  color: #166534 !important;
+  background: #f0fdf4 !important;
+}
+
+/* =========================================================
+   Preview
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-preview-card {
+  position: relative;
+
+  display: grid !important;
+  grid-template-columns:
+    auto
+    minmax(0, 1fr);
+
+  align-items: center;
+  gap: 10px;
+
+  min-width: 0;
+  min-height: 72px;
+
+  margin: 12px 0 0 !important;
+  padding: 12px 14px !important;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(242, 184, 0, 0.42) !important;
+  border-radius: 14px !important;
+
+  background:
+    radial-gradient(
+      circle at 94% 0%,
+      rgba(242, 184, 0, 0.19),
+      transparent 42%
+    ),
+    linear-gradient(
+      135deg,
+      #fffef8,
+      #fff8dc
+    ) !important;
+
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-preview-card::after {
+  content: "";
+
+  position: absolute;
+  inset-block: 12px;
+  inset-inline-start: 0;
+
+  width: 4px;
+
+  border-radius: 999px;
+
+  background: #f2b800;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-preview-label {
+  display: inline-flex;
+
+  min-height: 31px;
+
+  align-items: center;
+  justify-content: center;
+
+  padding: 5px 10px;
+
+  border-radius: 999px;
+
+  color: #725400 !important;
+  background: #ffe783;
+
+  font-size: 0.53rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-preview-card p {
+  min-width: 0;
+
+  margin: 0 !important;
+
+  color: #273246 !important;
+
+  font-size: 0.62rem !important;
+  font-weight: 800 !important;
+  line-height: 1.8;
+
+  overflow-wrap: anywhere;
+}
+
+/* =========================================================
+   Advanced settings
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-advanced {
+  margin-top: 10px;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 13px;
+
+  background: #ffffff;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-advanced > summary {
+  position: relative;
+
+  display: flex;
+
+  min-height: 52px;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  padding: 9px 42px 9px 12px;
+
+  color: #172033;
+
+  background: #f8fafc;
+
+  font-size: 0.63rem;
+  font-weight: 950;
+
+  cursor: pointer;
+  list-style: none;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-advanced > summary::before {
+  content: "‹";
+
+  position: absolute;
+  inset-inline-start: 15px;
+  top: 50%;
+
+  color: #68758a;
+
+  font-size: 1.1rem;
+  font-weight: 950;
+
+  transform:
+    translateY(-50%)
+    rotate(-90deg);
+
+  transition: transform 150ms ease;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-advanced[open]
+  > summary::before {
+  transform:
+    translateY(-50%)
+    rotate(90deg);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-advanced-flag {
+  display: inline-flex;
+
+  min-height: 27px;
+
+  align-items: center;
+
+  padding: 4px 8px;
+
+  border-radius: 999px;
+
+  color: #765700 !important;
+  background: #ffe992;
+
+  font-size: 0.49rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-advanced-body {
+  display: grid;
+  gap: 10px;
+
+  padding: 11px;
+
+  border-top: 1px solid #e8edf2;
+}
+
+/* Advanced tabs */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-override-mode-tabs {
+  display: grid !important;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+
+  gap: 7px;
+
+  padding: 4px;
+
+  border: 1px solid #e0e6ed;
+  border-radius: 12px;
+
+  background: #f3f5f8;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-override-mode-tabs
+  .exp-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px !important;
+
+  padding-inline: 6px !important;
+
+  border-radius: 9px !important;
+
+  font-size: 0.56rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-override-mode-tabs
+  .exp-btn.is-active {
+  border-color: #f2b800 !important;
+
+  color: #11182c !important;
+  background:
+    linear-gradient(
+      135deg,
+      #ffe47a,
+      #f2b800
+    ) !important;
+}
+
+/* Weekday chips */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-override-weekday-chips {
+  display: grid !important;
+  grid-template-columns:
+    repeat(7, minmax(0, 1fr));
+
+  gap: 5px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-weekday-chip {
+  min-width: 0;
+  min-height: 39px;
+
+  padding: 5px 3px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 9px;
+
+  color: #667287;
+  background: #ffffff;
+
+  font-family: inherit;
+  font-size: 0.52rem;
+  font-weight: 900;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-weekday-chip.active {
+  border-color: #f2b800;
+
+  color: #11182c;
+  background: #fff0a9;
+}
+
+/* Apply-method rows */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-override-presets--advanced {
+  display: grid !important;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 7px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-ov-apply-method-row {
+  min-height: 60px !important;
+
+  padding: 10px 11px !important;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 12px !important;
+
+  background: #f8fafc !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-ov-apply-method-row.is-active {
+  border-color: rgba(242, 184, 0, 0.48) !important;
+
+  background: #fff8dd !important;
+}
+
+/* =========================================================
+   Main action
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-editor-actions {
+  display: flex !important;
+
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+
+  margin-top: 10px;
+  padding-top: 11px;
+
+  border-top: 1px solid #e8edf2;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-editor-actions
+  .exp-btn {
+  min-width: 145px;
+  min-height: 46px !important;
+}
+
+/* =========================================================
+   Saved overrides list
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-list {
+  display: grid !important;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  width: 100%;
+  min-width: 0;
+
+  gap: 9px !important;
+
+  margin-top: 13px;
+  padding: 0 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-list-head {
+  grid-column: 1 / -1;
+
+  display: flex !important;
+
+  min-height: 58px;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  padding: 11px 13px;
+
+  overflow: hidden;
+
+  border: 1px solid #111b3e;
+  border-radius: 14px;
+
+  color: #ffffff;
+
+  background:
+    radial-gradient(
+      circle at 92% 0%,
+      rgba(242, 184, 0, 0.19),
+      transparent 42%
+    ),
+    linear-gradient(
+      135deg,
+      #061033,
+      #151f42
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-list-head > span {
+  color: #ffffff !important;
+
+  font-size: 0.63rem !important;
+  font-weight: 900 !important;
+  line-height: 1.65;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-list-head
+  .exp-btn {
+  flex: 0 0 auto;
+
+  min-height: 37px !important;
+
+  border-color: rgba(255, 255, 255, 0.22) !important;
+
+  color: #ffd2da !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Saved card */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item {
+  position: relative;
+
+  display: grid !important;
+  grid-template-rows:
+    minmax(0, 1fr)
+    auto;
+
+  min-width: 0;
+  min-height: 190px;
+
+  gap: 11px;
+
+  margin: 0 !important;
+  padding: 13px !important;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 14px !important;
+
+  color: #273246 !important;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f8fafc
+    ) !important;
+
+  box-shadow:
+    0 6px 18px rgba(15, 31, 65, 0.035) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item::before {
+  content: "";
+
+  position: absolute;
+  inset-block: 14px;
+  inset-inline-start: 0;
+
+  width: 4px;
+
+  border-radius: 999px;
+
+  background: #f2b800;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item.tone-2::before {
+  background: #3b82f6;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item.tone-3::before {
+  background: #8b5cf6;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item.tone-4::before {
+  background: #10b981;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item.editing {
+  border-color: rgba(242, 184, 0, 0.75) !important;
+
+  background: #fffbed !important;
+
+  box-shadow:
+    0 0 0 3px rgba(242, 184, 0, 0.11) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item-main {
+  display: grid !important;
+  grid-template-columns:
+    auto
+    minmax(0, 1fr);
+
+  min-width: 0;
+
+  align-content: start;
+  gap: 7px 9px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item-badge {
+  display: inline-flex;
+
+  min-height: 28px;
+
+  align-items: center;
+  justify-content: center;
+
+  padding: 4px 8px;
+
+  border: 1px solid rgba(242, 184, 0, 0.35) !important;
+  border-radius: 999px !important;
+
+  color: #755700 !important;
+  background: #fff1af !important;
+
+  font-size: 0.49rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item-date {
+  display: flex;
+  min-width: 0;
+  min-height: 28px;
+
+  align-items: center;
+
+  overflow: hidden;
+
+  color: #172033 !important;
+
+  font-size: 0.61rem !important;
+  font-weight: 950 !important;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item-time {
+  grid-column: 1 / -1;
+
+  display: flex;
+  min-width: 0;
+  min-height: 34px;
+
+  align-items: center;
+
+  padding: 6px 9px;
+
+  border: 1px solid #e4e9ef;
+  border-radius: 9px;
+
+  color: #647187 !important;
+  background: #f7f9fb;
+
+  font-size: 0.54rem !important;
+  font-weight: 800 !important;
+  line-height: 1.6;
+
+  overflow-wrap: anywhere;
+}
+
+/* Item actions */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item-actions {
+  display: grid !important;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 7px;
+
+  padding-top: 10px;
+
+  border-top: 1px solid #e8edf2;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item-actions
+  .exp-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px !important;
+
+  border-radius: 10px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-override-item-actions
+  .exp-btn:last-child {
+  border-color: #efc8d0 !important;
+
+  color: #b12843 !important;
+  background: #fff6f8 !important;
+}
+
+/* =========================================================
+   Mobile
+   ========================================================= */
+
+@media (max-width: 820px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-preview-card {
+    grid-template-columns: minmax(0, 1fr);
+
+    gap: 7px;
+
+    min-height: 0;
+
+    padding: 11px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-preview-label {
+    justify-self: start;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-override-mode-tabs {
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-override-weekday-chips {
+    grid-template-columns:
+      repeat(4, minmax(0, 1fr));
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-override-presets--advanced {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-editor-actions {
+    display: grid !important;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+
+    width: 100%;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-editor-actions
+    .exp-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-editor-actions
+    .exp-btn:only-child {
+    grid-column: 1 / -1;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-list {
+    grid-template-columns: minmax(0, 1fr);
+
+    gap: 8px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-list-head {
+    display: grid !important;
+    grid-template-columns:
+      minmax(0, 1fr)
+      auto;
+
+    min-height: 55px;
+
+    padding: 10px 11px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-list-head > span {
+    font-size: 0.56rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-item {
+    min-height: 0;
+
+    padding: 11px !important;
+
+    border-radius: 13px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-item-main {
+    grid-template-columns:
+      auto
+      minmax(0, 1fr);
+
+    gap: 6px 8px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-item-date {
+    font-size: 0.57rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-item-time {
+    min-height: 32px;
+
+    padding: 6px 8px;
+
+    font-size: 0.52rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-item-actions
+    .exp-btn {
+    min-height: 43px !important;
+  }
+}
+
+@media (max-width: 370px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-override-mode-tabs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-override-weekday-chips {
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-list-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-override-list-head
+    .exp-btn {
+    width: 100%;
+  }
+}
+
+/* HR WORK OVERRIDES EDITOR END */
+
+/* HR EMPLOYEE WORKING WEEK START */
+
+/* =========================================================
+   Custom weekly schedule container
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-week {
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+
+  gap: 11px;
+
+  margin-top: 12px;
+}
+
+/* =========================================================
+   Main custom-hours toggle
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-toggle-row {
+  width: 100%;
+  min-width: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-toggle-row
+  .emp-check-label {
+  display: flex !important;
+  width: 100%;
+  min-height: 54px;
+
+  align-items: center;
+  gap: 11px;
+
+  margin: 0 !important;
+  padding: 10px 12px !important;
+
+  border: 1px solid rgba(242, 184, 0, 0.6) !important;
+  border-radius: 13px !important;
+
+  color: #172033 !important;
+  background:
+    linear-gradient(
+      135deg,
+      #fffef8,
+      #fff7d8
+    ) !important;
+
+  font-size: 0.66rem !important;
+  font-weight: 950 !important;
+
+  box-shadow:
+    0 0 0 3px rgba(242, 184, 0, 0.07);
+}
+
+/* =========================================================
+   Weekly toolbar
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-table-toolbar {
+  display: flex !important;
+
+  width: 100%;
+  min-width: 0;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  padding: 10px 12px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 13px;
+
+  background: #f8fafc;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-table-toolbar
+  > span {
+  min-width: 0;
+
+  color: #6f7c90 !important;
+
+  font-size: 0.57rem !important;
+  font-weight: 750 !important;
+  line-height: 1.7;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-table-toolbar
+  .exp-btn {
+  flex: 0 0 auto;
+
+  min-height: 38px !important;
+
+  padding: 6px 11px !important;
+
+  border-radius: 10px !important;
+
+  font-size: 0.55rem !important;
+}
+
+/* =========================================================
+   Weekly cards grid
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-week-cards {
+  display: grid !important;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  width: 100%;
+  min-width: 0;
+
+  gap: 9px;
+}
+
+/* =========================================================
+   Day card
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card {
+  position: relative;
+
+  display: grid !important;
+  grid-template-rows:
+    auto
+    auto
+    auto;
+
+  width: 100%;
+  min-width: 0;
+
+  gap: 9px;
+
+  margin: 0 !important;
+  padding: 11px !important;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(242, 184, 0, 0.48) !important;
+  border-radius: 14px !important;
+
+  background:
+    radial-gradient(
+      circle at 92% 0%,
+      rgba(242, 184, 0, 0.13),
+      transparent 38%
+    ),
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #fffdf5
+    ) !important;
+
+  box-shadow:
+    0 5px 16px rgba(15, 31, 65, 0.035) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card::before {
+  content: "";
+
+  position: absolute;
+  inset-block: 12px;
+  inset-inline-start: 0;
+
+  width: 3px;
+
+  border-radius: 999px;
+
+  background: #f2b800;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card.is-off {
+  border-color: #dfe5ed !important;
+
+  background:
+    linear-gradient(
+      145deg,
+      #fafbfd,
+      #f2f4f7
+    ) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card.is-off::before {
+  background: #aab5c4;
+}
+
+/* =========================================================
+   Day card header
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card__head {
+  display: flex !important;
+
+  min-width: 0;
+  min-height: 36px;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  padding-bottom: 8px;
+
+  border-bottom: 1px solid #ebeff3;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card__head
+  > strong {
+  color: #081432 !important;
+
+  font-size: 0.72rem !important;
+  font-weight: 950 !important;
+}
+
+/* =========================================================
+   Proper compact switch
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card
+  .emp-switch {
+  position: relative;
+
+  display: inline-flex !important;
+  flex: 0 0 auto;
+
+  width: auto !important;
+  min-width: 78px;
+  min-height: 34px !important;
+
+  align-items: center;
+  justify-content: center;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  border: 0 !important;
+  border-radius: 999px !important;
+
+  background: transparent !important;
+  box-shadow: none !important;
+
+  cursor: pointer;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card
+  .emp-switch
+  input[type="checkbox"] {
+  position: absolute !important;
+
+  width: 1px !important;
+  min-width: 1px !important;
+  max-width: 1px !important;
+
+  height: 1px !important;
+  min-height: 1px !important;
+  max-height: 1px !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  overflow: hidden;
+
+  border: 0 !important;
+
+  opacity: 0;
+
+  clip-path: inset(50%);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card
+  .emp-switch
+  > span {
+  position: relative;
+
+  display: inline-flex;
+  width: 78px;
+  min-height: 34px;
+
+  align-items: center;
+  justify-content: center;
+
+  padding:
+    5px
+    31px
+    5px
+    9px;
+
+  border: 1px solid #d9e0e9;
+  border-radius: 999px;
+
+  color: #667287 !important;
+  background: #edf1f5;
+
+  font-size: 0.54rem !important;
+  font-weight: 950 !important;
+
+  transition:
+    border-color 150ms ease,
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card
+  .emp-switch
+  > span::before {
+  content: "×";
+
+  position: absolute;
+  inset-inline-start: 4px;
+  top: 50%;
+
+  display: grid;
+  width: 25px;
+  height: 25px;
+
+  place-items: center;
+
+  border-radius: 50%;
+
+  color: #ffffff;
+  background: #9aa6b7;
+
+  font-size: 0.7rem;
+  font-weight: 950;
+
+  transform: translateY(-50%);
+
+  transition:
+    background-color 150ms ease,
+    transform 150ms ease;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card
+  .emp-switch
+  input:checked
+  + span {
+  border-color: rgba(242, 184, 0, 0.7);
+
+  color: #5f4700 !important;
+  background: #fff1ad;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card
+  .emp-switch
+  input:checked
+  + span::before {
+  content: "✓";
+
+  color: #11182c;
+  background: #f2b800;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card
+  .emp-switch
+  input:focus-visible
+  + span {
+  outline: 3px solid rgba(242, 184, 0, 0.22);
+  outline-offset: 2px;
+}
+
+/* =========================================================
+   Time fields
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card__times {
+  display: grid !important;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  width: 100%;
+  min-width: 0;
+
+  gap: 7px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card__times
+  > label {
+  display: grid !important;
+  min-width: 0;
+  min-height: 0 !important;
+
+  gap: 5px;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  border: 0 !important;
+  border-radius: 0 !important;
+
+  color: #6c788b !important;
+  background: transparent !important;
+
+  font-size: 0.53rem !important;
+  font-weight: 850 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card__times
+  > label
+  > span {
+  color: #7b8799 !important;
+
+  font-size: 0.52rem !important;
+  font-weight: 850 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card__times
+  input[type="time"] {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 43px !important;
+
+  margin: 0 !important;
+  padding: 7px 8px !important;
+
+  border: 1px solid #d8e0ea !important;
+  border-radius: 11px !important;
+
+  color: #172033 !important;
+  background: #ffffff !important;
+
+  font-size: 0.68rem !important;
+  font-weight: 850 !important;
+
+  direction: ltr;
+  text-align: center;
+
+  font-variant-numeric: tabular-nums;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card__times
+  input[type="time"]:focus {
+  border-color: #17244c !important;
+
+  box-shadow:
+    0 0 0 3px rgba(23, 36, 76, 0.08) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-day-card.is-off
+  .emp-working-day-card__times {
+  opacity: 0.48;
+}
+
+/* =========================================================
+   Copy button
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-copy-btn {
+  justify-self: end;
+
+  width: auto !important;
+  min-width: 105px;
+  min-height: 36px !important;
+
+  margin: 0 !important;
+  padding: 5px 10px !important;
+
+  border: 1px solid #dce3eb !important;
+  border-radius: 10px !important;
+
+  color: #59667a !important;
+  background: #f8fafc !important;
+
+  font-size: 0.52rem !important;
+  font-weight: 900 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-working-copy-btn:hover {
+  border-color: rgba(242, 184, 0, 0.55) !important;
+
+  color: #6d5100 !important;
+  background: #fff8dd !important;
+}
+
+/* =========================================================
+   Tablet
+   ========================================================= */
+
+@media (max-width: 1180px) and (min-width: 821px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-week-cards {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* =========================================================
+   Mobile
+   ========================================================= */
+
+@media (max-width: 820px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-week {
+    gap: 8px;
+
+    margin-top: 9px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-toggle-row
+    .emp-check-label {
+    min-height: 50px;
+
+    padding: 9px 10px !important;
+
+    font-size: 0.63rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-table-toolbar {
+    display: grid !important;
+    grid-template-columns:
+      minmax(0, 1fr)
+      auto;
+
+    gap: 8px;
+
+    padding: 9px 10px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-table-toolbar
+    > span {
+    font-size: 0.54rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-table-toolbar
+    .exp-btn {
+    min-width: 108px;
+    min-height: 38px !important;
+
+    padding-inline: 7px !important;
+
+    font-size: 0.5rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-week-cards {
+    grid-template-columns: minmax(0, 1fr);
+
+    gap: 7px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-day-card {
+    gap: 8px;
+
+    padding: 10px !important;
+
+    border-radius: 13px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-day-card__head {
+    min-height: 34px;
+
+    padding-bottom: 7px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-day-card__head
+    > strong {
+    font-size: 0.69rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-day-card
+    .emp-switch {
+    min-width: 72px;
+    min-height: 32px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-day-card
+    .emp-switch
+    > span {
+    width: 72px;
+    min-height: 32px;
+
+    padding-inline-start: 29px;
+
+    font-size: 0.51rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-day-card
+    .emp-switch
+    > span::before {
+    width: 23px;
+    height: 23px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-day-card__times {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+
+    gap: 6px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-day-card__times
+    input[type="time"] {
+    min-height: 42px !important;
+
+    padding-inline: 5px !important;
+
+    font-size: 16px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-copy-btn {
+    min-width: 98px;
+    min-height: 35px !important;
+
+    font-size: 0.5rem !important;
+  }
+}
+
+@media (max-width: 370px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-table-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-table-toolbar
+    .exp-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-day-card__times {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-working-copy-btn {
+    width: 100% !important;
+  }
+}
+
+/* HR EMPLOYEE WORKING WEEK END */
+
+/* HR EMPLOYEE LINKED MODULES START */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-section {
+  display: grid !important;
+  gap: 12px;
+
+  padding: 0 !important;
+
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Header */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-header {
+  display: flex !important;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  margin: 0 !important;
+  padding: 17px 18px !important;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 16px !important;
+
+  background:
+    radial-gradient(
+      circle at 91% 0%,
+      rgba(242, 184, 0, 0.14),
+      transparent 35%
+    ),
+    linear-gradient(
+      135deg,
+      #ffffff,
+      #f8f9fc
+    ) !important;
+
+  box-shadow:
+    0 7px 22px rgba(19, 34, 69, 0.045) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-eyebrow {
+  display: block;
+
+  margin-bottom: 3px;
+
+  color: #a47700 !important;
+
+  font-size: 0.49rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.12em;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+
+  min-height: 31px;
+
+  align-items: center;
+  justify-content: center;
+
+  padding: 5px 10px;
+
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  border-radius: 999px;
+
+  color: #16733a !important;
+  background: #effcf4;
+
+  font-size: 0.53rem !important;
+  font-weight: 950 !important;
+}
+
+/* Main module card */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-card {
+  position: relative;
+
+  display: grid !important;
+  grid-template-columns:
+    68px
+    minmax(0, 1fr)
+    auto;
+
+  width: 100%;
+  min-width: 0;
+  min-height: 180px;
+
+  align-items: center;
+  gap: 16px;
+
+  padding: 18px;
+
+  overflow: hidden;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 17px;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 8px 25px rgba(19, 34, 69, 0.05);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-card::before {
+  content: "";
+
+  position: absolute;
+  inset-block: 18px;
+  inset-inline-start: 0;
+
+  width: 4px;
+
+  border-radius: 999px;
+
+  background:
+    linear-gradient(
+      #f2b800,
+      #ffd95a
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-icon {
+  display: grid;
+
+  width: 68px;
+  height: 68px;
+
+  place-items: center;
+
+  border: 1px solid rgba(242, 184, 0, 0.35);
+  border-radius: 20px;
+
+  color: #10172a;
+
+  background:
+    linear-gradient(
+      145deg,
+      #ffe77e,
+      #f2b800
+    );
+
+  box-shadow:
+    0 10px 22px rgba(242, 184, 0, 0.17);
+
+  font-size: 1.25rem;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-content {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-label {
+  color: #a47700 !important;
+
+  font-size: 0.49rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.1em;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-content
+  > strong {
+  color: #081432 !important;
+
+  font-size: 0.88rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-content
+  > p {
+  max-width: 680px;
+
+  margin: 0 !important;
+
+  color: #6f7c90 !important;
+
+  font-size: 0.59rem !important;
+  font-weight: 750 !important;
+  line-height: 1.8;
+}
+
+/* Capabilities */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  margin-top: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-points
+  span {
+  position: relative;
+
+  display: inline-flex;
+  min-height: 29px;
+
+  align-items: center;
+
+  padding:
+    4px
+    19px
+    4px
+    9px;
+
+  border: 1px solid #e0e6ed;
+  border-radius: 999px;
+
+  color: #5e6a7e !important;
+  background: #f7f9fb;
+
+  font-size: 0.5rem !important;
+  font-weight: 850 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-points
+  span::before {
+  content: "";
+
+  position: absolute;
+  inset-inline-start: 8px;
+
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: #f2b800;
+}
+
+/* Action */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-action {
+  display: inline-flex !important;
+  flex: 0 0 auto;
+
+  min-width: 155px;
+  min-height: 48px !important;
+
+  align-items: center;
+  justify-content: center;
+
+  padding: 8px 15px !important;
+
+  border: 1px solid #f2b800 !important;
+  border-radius: 12px !important;
+
+  color: #11182c !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      #ffe47a,
+      #f2b800
+    ) !important;
+
+  box-shadow:
+    0 8px 18px rgba(242, 184, 0, 0.17);
+
+  font-family: inherit;
+  font-size: 0.62rem !important;
+  font-weight: 950 !important;
+
+  text-decoration: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-linked-module-action:hover {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 11px 22px rgba(242, 184, 0, 0.22);
+}
+
+/* Mobile */
+
+@media (max-width: 820px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-section {
+    gap: 9px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-header {
+    display: grid !important;
+    grid-template-columns:
+      minmax(0, 1fr)
+      auto;
+
+    gap: 9px;
+
+    padding: 13px 12px !important;
+
+    border-radius: 14px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-status {
+    min-height: 28px;
+
+    padding-inline: 8px;
+
+    font-size: 0.49rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-card {
+    grid-template-columns:
+      51px
+      minmax(0, 1fr);
+
+    min-height: 0;
+
+    align-items: start;
+    gap: 11px;
+
+    padding: 13px 11px;
+
+    border-radius: 14px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-icon {
+    width: 51px;
+    height: 51px;
+
+    border-radius: 15px;
+
+    font-size: 1rem;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-content
+    > strong {
+    font-size: 0.78rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-content
+    > p {
+    font-size: 0.56rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-points {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+
+    width: 100%;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-points
+    span {
+    width: 100%;
+
+    border-radius: 10px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-action {
+    grid-column: 1 / -1;
+
+    width: 100%;
+    min-width: 0;
+    min-height: 47px !important;
+
+    margin-top: 2px;
+  }
+}
+
+@media (max-width: 370px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-linked-module-status {
+    justify-self: start;
+  }
+}
+
+/* HR EMPLOYEE LINKED MODULES END */
+
+/* HR LEAVE BALANCE CONTROLS START */
+
+/* =========================================================
+   Entitlement date
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-head {
+  display: grid !important;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(280px, auto);
+
+  align-items: center;
+  gap: 12px;
+
+  width: 100%;
+  min-width: 0;
+
+  padding: 12px 13px !important;
+
+  border: 1px solid #dfe5ed !important;
+  border-radius: 14px !important;
+
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f8fafc
+    ) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-head
+  > span {
+  color: #172033 !important;
+
+  font-size: 0.67rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-head-actions {
+  display: grid !important;
+  grid-template-columns:
+    minmax(150px, 1fr)
+    auto;
+
+  align-items: center;
+  gap: 8px;
+
+  min-width: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-head-actions
+  input {
+  min-width: 0 !important;
+  min-height: 45px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-head-actions
+  .exp-btn {
+  min-width: 115px;
+  min-height: 45px !important;
+
+  border-radius: 11px !important;
+}
+
+/* =========================================================
+   Leave balance adjustment form
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-controls {
+  display: grid !important;
+  grid-template-columns:
+    minmax(100px, 0.55fr)
+    minmax(160px, 0.8fr)
+    minmax(220px, 1.45fr)
+    auto
+    auto;
+
+  width: 100%;
+  min-width: 0;
+
+  align-items: end;
+  gap: 9px;
+
+  margin-top: 1px;
+  padding: 13px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 14px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f8fafc
+    );
+
+  box-shadow:
+    0 5px 16px rgba(19, 34, 69, 0.035);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-controls
+  > input {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 46px !important;
+
+  margin: 0 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-controls
+  > input[type="number"] {
+  direction: ltr !important;
+  text-align: center !important;
+
+  font-variant-numeric: tabular-nums;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-controls
+  > input[type="date"] {
+  direction: ltr !important;
+  text-align: center !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-controls
+  > .exp-btn {
+  min-width: 128px;
+  min-height: 46px !important;
+
+  margin: 0 !important;
+  padding-inline: 13px !important;
+
+  border-radius: 11px !important;
+
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-controls
+  > .exp-btn.primary {
+  border-color: #f2b800 !important;
+
+  color: #11182c !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      #ffe47a,
+      #f2b800
+    ) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-leave-controls
+  > .exp-btn.ghost {
+  border-color: #d8e0ea !important;
+
+  color: #273246 !important;
+  background: #ffffff !important;
+}
+
+/* =========================================================
+   Leave history spacing
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .leave-log-list {
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+
+  gap: 8px !important;
+
+  margin-top: 4px !important;
+  padding-top: 14px !important;
+
+  border-top: 1px solid #e5eaf0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .leave-log-title {
+  margin: 0 !important;
+  padding: 0 2px 8px !important;
+
+  color: #081432 !important;
+
+  font-size: 0.76rem !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .leave-log-head {
+  display: grid !important;
+  grid-template-columns:
+    repeat(7, minmax(0, 1fr));
+
+  gap: 6px;
+
+  padding: 9px 10px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 11px;
+
+  color: #788599;
+  background: #f4f6f8;
+
+  font-size: 0.49rem;
+  font-weight: 900;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .leave-log-empty {
+  padding: 14px;
+
+  border: 1px dashed #d3dbe5;
+  border-radius: 11px;
+
+  color: #788599;
+  background: #f8fafc;
+
+  font-size: 0.57rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+/* =========================================================
+   Mobile
+   ========================================================= */
+
+@media (max-width: 820px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-head {
+    grid-template-columns: minmax(0, 1fr);
+
+    gap: 9px;
+
+    padding: 11px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-head-actions {
+    grid-template-columns:
+      minmax(0, 1fr)
+      auto;
+
+    width: 100%;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-head-actions
+    .exp-btn {
+    min-width: 112px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls {
+    grid-template-columns:
+      minmax(0, 0.72fr)
+      minmax(0, 1.28fr);
+
+    gap: 8px;
+
+    padding: 11px;
+
+    border-radius: 13px;
+  }
+
+  /* عدد الأيام */
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > input:nth-of-type(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  /* التاريخ */
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > input:nth-of-type(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  /* الملاحظة */
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > input:nth-of-type(3) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  /* إضافة رصيد */
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > .exp-btn.primary {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  /* تسجيل إجازة */
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > .exp-btn.ghost {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > .exp-btn {
+    width: 100%;
+    min-width: 0;
+
+    min-height: 44px !important;
+
+    padding-inline: 7px !important;
+
+    font-size: 0.55rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > input {
+    min-height: 45px !important;
+
+    font-size: 16px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .leave-log-head {
+    display: none !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .leave-log-row {
+    display: grid !important;
+    grid-template-columns:
+      minmax(0, 1fr)
+      auto;
+
+    gap: 6px 10px;
+
+    padding: 11px !important;
+
+    border: 1px solid #dfe5ed !important;
+    border-radius: 12px !important;
+
+    background: #ffffff !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .leave-log-delete {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+
+    align-self: center;
+
+    width: 38px;
+    height: 38px;
+
+    border-radius: 10px;
+  }
+}
+
+@media (max-width: 370px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-head-actions,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > input:nth-of-type(1),
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > input:nth-of-type(2),
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > input:nth-of-type(3),
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > .exp-btn.primary,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-controls
+    > .exp-btn.ghost {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .staff-leave-head-actions
+    .exp-btn {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* HR LEAVE BALANCE CONTROLS END */
+
+/* =========================================================
+   EMPLOYEE PROFILE SECTION
+   ========================================================= */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-section {
+  display: grid;
+  gap: 18px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+
+  padding: 20px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 18px;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 235, 150, 0.25),
+      rgba(255, 255, 255, 0.96)
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-eyebrow {
+  display: inline-flex;
+
+  margin-bottom: 7px;
+
+  color: #b88900;
+
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-header__summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+
+  min-width: 190px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-header__summary
+  span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 32px;
+  padding: 6px 10px;
+
+  border-radius: 999px;
+
+  font-size: 0.63rem;
+  font-weight: 900;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-header__summary
+  .is-ready {
+  border: 1px solid #a9dec0;
+
+  color: #17663b;
+  background: #eaf8f0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-header__summary
+  .is-empty {
+  border: 1px solid #dfe5ed;
+
+  color: #69768a;
+  background: #f5f7fa;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-workspace {
+  display: grid;
+  grid-template-columns:
+    minmax(240px, 0.78fr)
+    minmax(0, 1.7fr);
+
+  align-items: start;
+  gap: 16px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-sidebar,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-main {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-card,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-preview-card {
+  min-width: 0;
+  padding: 16px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 17px;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 10px 30px rgba(8, 20, 50, 0.04);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+
+  margin-bottom: 14px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-card__head
+  > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-card-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 31px;
+  height: 31px;
+
+  border-radius: 10px;
+
+  color: #8e6900;
+  background: #fff3bd;
+
+  font-size: 0.61rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-card__head
+  h4 {
+  margin: 0;
+
+  color: #081432;
+
+  font-size: 0.83rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-card__head
+  p,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-card__head
+  small {
+  margin: 0;
+
+  color: #7a8698;
+
+  font-size: 0.61rem;
+  font-weight: 750;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-preview {
+  display: grid;
+  place-items: center;
+
+  width: 100%;
+  aspect-ratio: 1 / 1;
+
+  overflow: hidden;
+
+  margin-bottom: 12px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 16px;
+
+  background: #f4f6f9;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-preview
+  img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-preview__placeholder {
+  display: grid;
+  place-items: center;
+  gap: 7px;
+
+  padding: 22px;
+
+  color: #788599;
+
+  text-align: center;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-preview__placeholder
+  strong {
+  color: #273246;
+
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-preview__placeholder
+  span {
+  font-size: 0.62rem;
+  line-height: 1.7;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-preview-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  min-height: 40px;
+  padding: 8px 10px;
+
+  border-bottom: 1px solid #edf0f4;
+
+  color: #69768a;
+
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-preview-meta:last-child {
+  border-bottom: 0;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-preview-meta
+  strong {
+  color: #081432;
+
+  font-size: 0.75rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-gallery {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fill, minmax(115px, 1fr));
+
+  gap: 10px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-image-option {
+  display: grid;
+  gap: 8px;
+
+  min-width: 0;
+  padding: 8px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 14px;
+
+  color: #273246;
+  background: #ffffff;
+
+  cursor: pointer;
+
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-image-option:hover {
+  border-color: #d3ad2d;
+
+  transform: translateY(-1px);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-image-option.is-selected {
+  border-color: #c99b0a;
+
+  box-shadow:
+    0 0 0 3px rgba(242, 184, 0, 0.18);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-image-option__preview,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-image-option__empty {
+  display: grid;
+  place-items: center;
+
+  width: 100%;
+  aspect-ratio: 1 / 1;
+
+  overflow: hidden;
+
+  border-radius: 10px;
+
+  color: #7a8698;
+  background: #f3f5f8;
+
+  font-size: 0.59rem;
+  font-weight: 850;
+  text-align: center;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-image-option__preview
+  img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-image-option
+  strong {
+  overflow: hidden;
+
+  color: #273246;
+
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-rating-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 12px;
+
+  margin-bottom: 14px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-label-row
+  small,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-field-help {
+  color: #7a8698;
+
+  font-size: 0.59rem;
+  font-weight: 750;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-profile-bio-field
+  textarea {
+  min-height: 140px;
+
+  resize: vertical;
+}
+
+@media (max-width: 900px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-sidebar {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-header {
+    display: grid;
+
+    padding: 15px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-header__summary {
+    justify-content: flex-start;
+
+    min-width: 0;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-sidebar,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-rating-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-card,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-preview-card {
+    padding: 13px;
+
+    border-radius: 15px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-gallery {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-card__head {
+    display: grid;
+
+    gap: 7px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-card__head
+    p {
+    padding-inline-start: 40px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-section
+    input,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-profile-section
+    textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* EMPLOYEE PROFILE SECTION END */
+
+
+/* EMPLOYEE SERVICES SECTION START */
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-section {
+  display: grid;
+  gap: 16px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+
+  padding: 19px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 18px;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 236, 158, 0.28),
+      rgba(255, 255, 255, 0.97)
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-eyebrow {
+  display: inline-flex;
+
+  margin-bottom: 7px;
+
+  color: #ad8100;
+
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.07em;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-header__summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+
+  min-width: 205px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-header__summary
+  span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 32px;
+  padding: 6px 11px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 999px;
+
+  color: #667085;
+  background: #f7f9fb;
+
+  font-size: 0.61rem;
+  font-weight: 900;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-header__summary
+  .is-selected {
+  border-color: #e6ca67;
+
+  color: #765800;
+  background: #fff7d7;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-toolbar {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.35fr)
+    minmax(180px, 0.85fr)
+    auto;
+
+  align-items: end;
+  gap: 11px;
+
+  padding: 14px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 16px;
+
+  background: #ffffff;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-search,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-section-filter {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-view-switch {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(105px, 1fr));
+
+  gap: 5px;
+
+  min-height: 46px;
+  padding: 4px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 13px;
+
+  background: #f3f5f8;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-view-switch
+  button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+
+  min-height: 36px;
+  padding: 7px 10px;
+
+  border: 0;
+  border-radius: 9px;
+
+  color: #667085;
+  background: transparent;
+
+  font-size: 0.61rem;
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-view-switch
+  button.is-active {
+  color: #11182c;
+  background: #ffffff;
+
+  box-shadow:
+    0 3px 10px rgba(8, 20, 50, 0.08);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-view-switch
+  strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 23px;
+  height: 23px;
+  padding-inline: 6px;
+
+  border-radius: 999px;
+
+  color: #8a6800;
+  background: #fff0ae;
+
+  font-size: 0.57rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  padding: 13px 14px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 15px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f8fafc
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar
+  > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar
+  strong {
+  color: #172033;
+
+  font-size: 0.73rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar
+  span {
+  color: #7a8698;
+
+  font-size: 0.59rem;
+  font-weight: 750;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-bulkbar__actions
+  .exp-btn {
+  min-width: 112px;
+  min-height: 42px !important;
+
+  border-radius: 11px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-workspace {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.65fr)
+    minmax(240px, 0.65fr);
+
+  align-items: start;
+  gap: 14px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel {
+  min-width: 0;
+  padding: 15px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 17px;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 8px 26px rgba(8, 20, 50, 0.035);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+
+  margin-bottom: 13px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog__head
+  > div {
+  display: grid;
+  gap: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog__head
+  strong {
+  color: #081432;
+
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-catalog__head
+  span {
+  color: #7a8698;
+
+  font-size: 0.59rem;
+  font-weight: 750;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-result-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 30px;
+  padding: 5px 9px;
+
+  border-radius: 999px;
+
+  color: #475467 !important;
+  background: #f1f4f7;
+
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 9px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card {
+  position: relative;
+
+  display: grid;
+  grid-template-columns:
+    28px
+    minmax(0, 1fr);
+
+  align-items: start;
+  gap: 9px;
+
+  min-width: 0;
+  min-height: 104px;
+  padding: 12px;
+
+  border: 1px solid #dfe5ed;
+  border-radius: 14px;
+
+  color: #273246;
+  background: #ffffff;
+
+  text-align: start;
+
+  cursor: pointer;
+
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card:hover {
+  border-color: #d8b84e;
+
+  transform: translateY(-1px);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card.is-selected {
+  border-color: #d2a70d;
+
+  background:
+    linear-gradient(
+      145deg,
+      #fffdf4,
+      #fff8d9
+    );
+
+  box-shadow:
+    0 0 0 3px rgba(242, 184, 0, 0.13);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__check {
+  position: relative;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 25px;
+  height: 25px;
+
+  border: 2px solid #cfd7e2;
+  border-radius: 8px;
+
+  background: #ffffff;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card.is-selected
+  .emp-service-card__check {
+  border-color: #d4a800;
+
+  background:
+    linear-gradient(
+      135deg,
+      #ffe678,
+      #f2b800
+    );
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card.is-selected
+  .emp-service-card__check::after {
+  content: "✓";
+
+  color: #11182c;
+
+  font-size: 0.75rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__body {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__body
+  strong {
+  overflow: hidden;
+
+  color: #172033;
+
+  font-size: 0.73rem;
+  font-weight: 950;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__body
+  small {
+  overflow: hidden;
+
+  color: #7a8698;
+
+  font-size: 0.57rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__facts {
+  grid-column: 2;
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+
+  margin-top: 4px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-service-card__facts
+  em {
+  display: inline-flex;
+  align-items: center;
+
+  min-height: 24px;
+  padding: 4px 7px;
+
+  border-radius: 8px;
+
+  color: #5f6b7d;
+  background: #f2f4f7;
+
+  font-size: 0.52rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-empty,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-empty {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+
+  min-height: 150px;
+  padding: 22px;
+
+  border: 1px dashed #d4dce6;
+  border-radius: 14px;
+
+  color: #7a8698;
+  background: #f8fafc;
+
+  text-align: center;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-empty
+  strong,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-empty
+  strong {
+  color: #344054;
+
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-empty
+  span,
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-empty
+  span {
+  font-size: 0.58rem;
+  font-weight: 750;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-load-more {
+  width: 100%;
+  min-height: 44px !important;
+
+  margin-top: 12px;
+
+  border-radius: 11px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel {
+  position: sticky;
+  top: 10px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  margin-bottom: 12px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel__head
+  > div {
+  display: grid;
+  gap: 2px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel__head
+  span {
+  color: #8a6900;
+
+  font-size: 0.56rem;
+  font-weight: 900;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel__head
+  strong {
+  color: #081432;
+
+  font-size: 0.8rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-panel__head
+  b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 39px;
+  height: 39px;
+  padding-inline: 8px;
+
+  border-radius: 12px;
+
+  color: #765800;
+  background: #fff0ae;
+
+  font-size: 0.74rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-list {
+  display: grid;
+  gap: 7px;
+
+  max-height: 520px;
+  overflow-y: auto;
+
+  padding-inline-end: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto;
+
+  align-items: center;
+  gap: 8px;
+
+  padding: 10px;
+
+  border: 1px solid #e3e8ef;
+  border-radius: 11px;
+
+  background: #fafbfc;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item
+  > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item
+  strong {
+  overflow: hidden;
+
+  color: #273246;
+
+  font-size: 0.64rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item
+  span {
+  overflow: hidden;
+
+  color: #7a8698;
+
+  font-size: 0.53rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .emp-services-selected-item
+  button {
+  min-height: 31px;
+  padding: 5px 8px;
+
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+
+  color: #be123c;
+  background: #fff7f8;
+
+  font-size: 0.52rem;
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
+@media (max-width: 980px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-toolbar {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(180px, 0.7fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-view-switch {
+    grid-column: 1 / -1;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-selected-panel {
+    position: static;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-selected-list {
+    max-height: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-header {
+    display: grid;
+
+    padding: 15px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-header__summary {
+    justify-content: flex-start;
+
+    min-width: 0;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+
+    padding: 11px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-view-switch {
+    grid-column: auto;
+
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-bulkbar {
+    display: grid;
+
+    padding: 12px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-bulkbar__actions {
+    display: grid;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+
+    width: 100%;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-bulkbar__actions
+    .exp-btn {
+    width: 100%;
+    min-width: 0;
+
+    padding-inline: 6px !important;
+
+    font-size: 0.56rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-catalog,
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-selected-panel {
+    padding: 12px;
+
+    border-radius: 14px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-service-card {
+    min-height: 96px;
+
+    padding: 11px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-section
+    input {
+    font-size: 16px !important;
+  }
+}
+
+@media (max-width: 370px) {
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-bulkbar__actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-catalog__head {
+    display: grid;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-services-result-count {
+    justify-self: start;
+  }
+}
+
+/* EMPLOYEE SERVICES SECTION END */

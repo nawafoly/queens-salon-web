@@ -1,47 +1,69 @@
-import React from "react";
 import logo from "../assets/images/ssunnamed.png";
+import "../styles/LoadingBrand.css";
 
-/**
- * Props for the LoadingBrand component.
- */
 type Props = {
   text?: string;
   small?: boolean;
   fullScreen?: boolean;
 };
 
-/**
- * LoadingBrand Component
- * مكون شاشة التحميل المطور مع الحفاظ على الهيكل الأصلي وإضافة تحسينات تقنية.
- */
 export default function LoadingBrand({
-  text = "جاري التحميل...",
+  text = "جاري تجهيز مساحة العمل...",
   small = false,
-  fullScreen = false,
+  fullScreen = true,
 }: Props) {
-  // دمج الفئات (Classes) بناءً على الخصائص (Props)
   const containerClasses = [
     "lb-root",
+    "malikat-session-loader",
     small ? "is-small" : "",
     fullScreen ? "is-fullscreen" : "",
-  ].filter(Boolean).join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div className={containerClasses} aria-live="polite" aria-busy="true">
-      <div className="lb-content">
-        <div className="lb-logo-container">
+    <div
+      className={containerClasses}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label={text || "جاري التحميل"}
+    >
+      <div className="malikat-loader__glow malikat-loader__glow--one" aria-hidden="true" />
+      <div className="malikat-loader__glow malikat-loader__glow--two" aria-hidden="true" />
+
+      <div className="malikat-loader__content">
+        <div className="malikat-loader__logo-frame">
+          <span className="malikat-loader__scan" aria-hidden="true" />
+
           <img
             src={logo}
-            alt="Malikat Logo"
-            className="lb-logo"
+            alt="ملكات"
+            className="malikat-loader__logo"
             draggable={false}
             loading="eager"
           />
-          {/* حلقة تحميل اختيارية يمكن تفعيلها عبر CSS */}
-          <div className="lb-loader-ring"></div>
         </div>
 
-        {text && <div className="lb-text">{text}</div>}
+        <div className="malikat-loader__copy">
+          <strong>ملكات</strong>
+
+          {text ? (
+            <span className="malikat-loader__text">
+              {text}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="malikat-loader__wave" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+
+        <div className="malikat-loader__track" aria-hidden="true">
+          <span />
+        </div>
       </div>
     </div>
   );

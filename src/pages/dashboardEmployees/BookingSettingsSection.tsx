@@ -1,3 +1,4 @@
+import EmployeeSelect from "../../components/EmployeeSelect";
 import type { RefObject } from "react";
 
 import WorkHourOverridesEditor, { type WorkHourOverridesEditorProps } from "./WorkHourOverridesEditor";
@@ -91,21 +92,23 @@ export default function BookingSettingsSection({
           </div>
           <div className="dash-field">
             <label className="emp-label">النطاق المسموح للحضور</label>
-            <select
-              className="dash-input"
+                        <EmployeeSelect
               value={selectedAttendanceZoneId}
               disabled={busy || attendanceZonesLoading}
-              onChange={(e) => onSelectedAttendanceZoneIdChange(e.target.value)}
-            >
-              <option value="">
-                {attendanceZonesLoading ? "جاري تحميل النطاقات..." : "اختر نطاق الحضور"}
-              </option>
-              {attendanceZones.map((zone) => (
-                <option key={zone.id} value={zone.id}>
-                  {zone.name} - {zone.active ? "نشط" : "غير نشط"} - {zone.radiusMeters} م
-                </option>
-              ))}
-            </select>
+              ariaLabel="النطاق المسموح للحضور"
+              placeholder={
+                attendanceZonesLoading
+                  ? "جاري تحميل النطاقات..."
+                  : "اختر نطاق الحضور"
+              }
+              options={attendanceZones.map((zone) => ({
+                value: zone.id,
+                label: `${zone.name} - ${
+                  zone.active ? "نشط" : "غير نشط"
+                } - ${zone.radiusMeters} م`,
+              }))}
+              onChange={onSelectedAttendanceZoneIdChange}
+            />
             {selectedZone ? (
               <div className="emp-field-note">
                 النطاق المختار: {selectedZone.name} · الحالة: {selectedZone.active ? "نشط" : "غير نشط"} · نصف القطر: {selectedZone.radiusMeters} م

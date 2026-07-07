@@ -1,0 +1,486 @@
+/* =========================================================
+   Malikat Session Loader
+   Full-screen branded loading experience
+   ========================================================= */
+
+.lb-root.malikat-session-loader {
+  --malikat-loader-navy: #030725;
+  --malikat-loader-navy-soft: #0b1237;
+  --malikat-loader-gold: #f2b800;
+  --malikat-loader-gold-light: #ffe37a;
+
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+
+  display: grid !important;
+  width: 100vw !important;
+  max-width: none !important;
+  min-width: 0 !important;
+
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+
+  place-items: center !important;
+
+  margin: 0 !important;
+
+  padding:
+    calc(24px + env(safe-area-inset-top, 0px))
+    calc(20px + env(safe-area-inset-right, 0px))
+    calc(24px + env(safe-area-inset-bottom, 0px))
+    calc(20px + env(safe-area-inset-left, 0px)) !important;
+
+  overflow: hidden !important;
+  isolation: isolate;
+
+  color: #ffffff !important;
+
+  background:
+    radial-gradient(
+      circle at 82% 14%,
+      rgba(242, 184, 0, 0.16),
+      transparent 27%
+    ),
+    radial-gradient(
+      circle at 13% 84%,
+      rgba(100, 82, 206, 0.16),
+      transparent 31%
+    ),
+    linear-gradient(
+      155deg,
+      #02051c 0%,
+      var(--malikat-loader-navy) 48%,
+      #090d20 100%
+    ) !important;
+}
+
+.lb-root.malikat-session-loader::before,
+.lb-root.malikat-session-loader::after {
+  content: "";
+
+  position: absolute;
+  z-index: -1;
+
+  width: 320px;
+  height: 320px;
+
+  border-radius: 50%;
+
+  opacity: 0.42;
+  filter: blur(70px);
+
+  pointer-events: none;
+}
+
+.lb-root.malikat-session-loader::before {
+  top: -150px;
+  right: -110px;
+
+  background: rgba(242, 184, 0, 0.26);
+
+  animation: malikatLoaderDriftOne 5.4s ease-in-out infinite alternate;
+}
+
+.lb-root.malikat-session-loader::after {
+  bottom: -170px;
+  left: -120px;
+
+  background: rgba(75, 72, 190, 0.28);
+
+  animation: malikatLoaderDriftTwo 6.2s ease-in-out infinite alternate;
+}
+
+.malikat-session-loader .malikat-loader__content {
+  position: relative;
+  z-index: 2;
+
+  display: grid !important;
+  width: min(100%, 340px);
+
+  justify-items: center;
+  gap: 18px;
+
+  text-align: center;
+  direction: rtl;
+
+  animation: malikatLoaderEnter 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.malikat-session-loader .malikat-loader__logo-frame {
+  position: relative;
+
+  display: grid;
+  width: 132px;
+  height: 132px;
+
+  place-items: center;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 32px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.11),
+      rgba(255, 255, 255, 0.035)
+    );
+
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13);
+
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+}
+
+.malikat-session-loader .malikat-loader__logo-frame::after {
+  content: "";
+
+  position: absolute;
+  inset: 9px;
+
+  border: 1px solid rgba(242, 184, 0, 0.22);
+  border-radius: 25px;
+
+  pointer-events: none;
+}
+
+.malikat-session-loader .malikat-loader__logo {
+  position: relative;
+  z-index: 2;
+
+  display: block;
+  width: 98px !important;
+  max-width: none !important;
+  height: 98px !important;
+
+  object-fit: contain;
+
+  filter:
+    drop-shadow(0 13px 28px rgba(0, 0, 0, 0.3))
+    brightness(1.08);
+
+  animation: malikatLoaderLogoFloat 2.8s ease-in-out infinite;
+}
+
+.malikat-session-loader .malikat-loader__scan {
+  position: absolute;
+  z-index: 3;
+  top: -25%;
+  bottom: -25%;
+  left: -58%;
+
+  width: 38%;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 226, 111, 0.08),
+      rgba(255, 238, 169, 0.78),
+      rgba(255, 226, 111, 0.08),
+      transparent
+    );
+
+  filter: blur(2px);
+  transform: skewX(-14deg);
+
+  pointer-events: none;
+
+  animation: malikatLoaderScan 2.35s ease-in-out infinite;
+}
+
+.malikat-session-loader .malikat-loader__copy {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+}
+
+.malikat-session-loader .malikat-loader__copy strong {
+  color: #ffffff;
+
+  font-size: 1.12rem;
+  font-weight: 950;
+  letter-spacing: 0.03em;
+}
+
+.malikat-session-loader .malikat-loader__text {
+  max-width: 290px;
+
+  color: rgba(226, 232, 245, 0.7) !important;
+
+  font-size: 0.76rem !important;
+  font-weight: 800 !important;
+  line-height: 1.7;
+
+  animation: malikatLoaderTextPulse 1.9s ease-in-out infinite;
+}
+
+/* موجة جديدة بدل الدائرة التقليدية */
+
+.malikat-session-loader .malikat-loader__wave {
+  display: flex;
+  height: 24px;
+
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.malikat-session-loader .malikat-loader__wave span {
+  display: block;
+  width: 5px;
+  height: 11px;
+
+  border-radius: 999px;
+
+  background:
+    linear-gradient(
+      180deg,
+      var(--malikat-loader-gold-light),
+      var(--malikat-loader-gold)
+    );
+
+  box-shadow: 0 0 14px rgba(242, 184, 0, 0.35);
+
+  transform-origin: center;
+
+  animation: malikatLoaderWave 1.05s ease-in-out infinite;
+}
+
+.malikat-session-loader .malikat-loader__wave span:nth-child(2) {
+  animation-delay: 130ms;
+}
+
+.malikat-session-loader .malikat-loader__wave span:nth-child(3) {
+  animation-delay: 260ms;
+}
+
+/* شعاع ضوئي يتحرك داخل مسار */
+
+.malikat-session-loader .malikat-loader__track {
+  position: relative;
+
+  width: min(210px, 66vw);
+  height: 3px;
+
+  overflow: hidden;
+
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.malikat-session-loader .malikat-loader__track span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -42%;
+
+  width: 42%;
+
+  border-radius: inherit;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      var(--malikat-loader-gold-light),
+      var(--malikat-loader-gold),
+      transparent
+    );
+
+  box-shadow: 0 0 13px rgba(242, 184, 0, 0.45);
+
+  animation: malikatLoaderTrack 1.55s ease-in-out infinite;
+}
+
+/* Inline / small version */
+
+.lb-root.malikat-session-loader.is-small {
+  position: relative !important;
+  inset: auto !important;
+  z-index: auto !important;
+
+  width: 100% !important;
+  height: auto !important;
+  min-height: 180px !important;
+
+  padding: 22px !important;
+
+  border-radius: 22px;
+
+  background:
+    radial-gradient(
+      circle at 85% 10%,
+      rgba(242, 184, 0, 0.15),
+      transparent 35%
+    ),
+    var(--malikat-loader-navy) !important;
+}
+
+.malikat-session-loader.is-small .malikat-loader__logo-frame {
+  width: 82px;
+  height: 82px;
+
+  border-radius: 23px;
+}
+
+.malikat-session-loader.is-small .malikat-loader__logo-frame::after {
+  inset: 7px;
+  border-radius: 17px;
+}
+
+.malikat-session-loader.is-small .malikat-loader__logo {
+  width: 60px !important;
+  height: 60px !important;
+}
+
+.malikat-session-loader.is-small .malikat-loader__copy strong {
+  font-size: 0.88rem;
+}
+
+.malikat-session-loader.is-small .malikat-loader__text {
+  font-size: 0.67rem !important;
+}
+
+/* Animations */
+
+@keyframes malikatLoaderEnter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes malikatLoaderLogoFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes malikatLoaderScan {
+  0% {
+    left: -62%;
+    opacity: 0;
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  68% {
+    opacity: 1;
+  }
+
+  100% {
+    left: 128%;
+    opacity: 0;
+  }
+}
+
+@keyframes malikatLoaderWave {
+  0%,
+  100% {
+    height: 8px;
+    opacity: 0.45;
+  }
+
+  50% {
+    height: 23px;
+    opacity: 1;
+  }
+}
+
+@keyframes malikatLoaderTrack {
+  0% {
+    left: -44%;
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    left: 104%;
+    opacity: 0;
+  }
+}
+
+@keyframes malikatLoaderTextPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes malikatLoaderDriftOne {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(-35px, 38px, 0) scale(1.15);
+  }
+}
+
+@keyframes malikatLoaderDriftTwo {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(42px, -30px, 0) scale(1.12);
+  }
+}
+
+@media (max-width: 480px) {
+  .malikat-session-loader .malikat-loader__logo-frame {
+    width: 116px;
+    height: 116px;
+
+    border-radius: 29px;
+  }
+
+  .malikat-session-loader .malikat-loader__logo {
+    width: 86px !important;
+    height: 86px !important;
+  }
+
+  .malikat-session-loader .malikat-loader__content {
+    gap: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .malikat-session-loader *,
+  .malikat-session-loader *::before,
+  .malikat-session-loader *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

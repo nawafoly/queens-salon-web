@@ -1,0 +1,283 @@
+.employee-select {
+  position: relative;
+
+  width: 100%;
+  min-width: 0;
+}
+
+.employee-select__trigger {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    26px;
+
+  width: 100%;
+  min-width: 0;
+  min-height: 49px;
+
+  align-items: center;
+  gap: 8px;
+
+  margin: 0;
+  padding: 8px 13px;
+
+  border: 1px solid #d8e0ea;
+  border-radius: 12px;
+
+  color: #172033;
+  background: #fbfcfd;
+
+  box-shadow: none;
+
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-align: right;
+
+  cursor: pointer;
+
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.employee-select__trigger:hover {
+  border-color: #bcc7d5;
+  background: #ffffff;
+}
+
+.employee-select.is-open
+  .employee-select__trigger {
+  border-color: #17244c;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 0 0 4px rgba(23, 36, 76, 0.08);
+}
+
+.employee-select__trigger:focus-visible {
+  border-color: #17244c;
+
+  outline: none;
+
+  box-shadow:
+    0 0 0 4px rgba(23, 36, 76, 0.1);
+}
+
+.employee-select__value {
+  min-width: 0;
+
+  overflow: hidden;
+
+  color: #172033;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-select__value.is-placeholder {
+  color: #929db0;
+  font-weight: 700;
+}
+
+.employee-select__chevron {
+  display: grid;
+
+  width: 25px;
+  height: 25px;
+
+  place-items: center;
+
+  border-radius: 8px;
+
+  color: #637085;
+  background: #edf1f5;
+
+  font-size: 1rem;
+  font-weight: 950;
+
+  transform: rotate(-90deg);
+
+  transition:
+    transform 150ms ease,
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.employee-select.is-open
+  .employee-select__chevron {
+  color: #11182c;
+  background: #ffe47a;
+
+  transform: rotate(90deg);
+}
+
+.employee-select.is-disabled {
+  opacity: 0.58;
+}
+
+.employee-select.is-disabled
+  .employee-select__trigger {
+  cursor: not-allowed;
+}
+
+/* القائمة المنبثقة */
+
+.employee-select__menu {
+  position: fixed;
+  z-index: 1000000;
+
+  display: grid;
+  gap: 4px;
+
+  padding: 6px;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  border: 1px solid #d8e0ea;
+  border-radius: 13px;
+
+  background: rgba(255, 255, 255, 0.98);
+
+  box-shadow:
+    0 18px 48px rgba(8, 20, 50, 0.2),
+    0 3px 10px rgba(8, 20, 50, 0.08);
+
+  direction: rtl;
+
+  overscroll-behavior: contain;
+
+  animation:
+    employeeSelectEnter 130ms ease-out;
+}
+
+.employee-select__option {
+  position: relative;
+
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    24px;
+
+  width: 100%;
+  min-width: 0;
+  min-height: 45px;
+
+  align-items: center;
+  gap: 8px;
+
+  margin: 0;
+  padding: 8px 11px;
+
+  border: 1px solid transparent;
+  border-radius: 9px;
+
+  color: #273246;
+  background: transparent;
+
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.55;
+  text-align: right;
+
+  cursor: pointer;
+}
+
+.employee-select__option > span:first-child {
+  min-width: 0;
+
+  overflow-wrap: anywhere;
+}
+
+.employee-select__option:hover,
+.employee-select__option.is-active {
+  border-color: #e0e6ed;
+
+  color: #11182c;
+  background: #f3f6f9;
+}
+
+.employee-select__option.is-selected {
+  border-color: rgba(242, 184, 0, 0.58);
+
+  color: #11182c;
+
+  background:
+    linear-gradient(
+      135deg,
+      #fffdf4,
+      #fff3bd
+    );
+}
+
+.employee-select__check {
+  display: grid;
+
+  width: 23px;
+  height: 23px;
+
+  place-items: center;
+
+  border-radius: 8px;
+
+  color: #11182c;
+  background: #f2b800;
+
+  font-size: 0.66rem;
+  font-weight: 950;
+}
+
+.employee-select__option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@keyframes employeeSelectEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 820px) {
+  .employee-select__trigger {
+    min-height: 48px;
+
+    padding-inline: 11px;
+
+    font-size: 16px;
+  }
+
+  .employee-select__menu {
+    border-radius: 12px;
+
+    box-shadow:
+      0 16px 38px rgba(8, 20, 50, 0.22);
+  }
+
+  .employee-select__option {
+    min-height: 48px;
+
+    font-size: 0.72rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .employee-select__menu {
+    animation: none;
+  }
+
+  .employee-select__chevron,
+  .employee-select__trigger {
+    transition: none;
+  }
+}

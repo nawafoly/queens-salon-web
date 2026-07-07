@@ -1,4 +1,4 @@
-type ProfileSectionProps = {
+﻿type ProfileSectionProps = {
   isVisible: boolean;
   avatarUrl: string;
   bio: string;
@@ -57,15 +57,13 @@ export default function ProfileSection({
     <section className="emp-modal-section emp-profile-section">
       <header className="emp-section-header emp-profile-header">
         <div className="emp-section-header__main">
-          <span className="emp-profile-eyebrow">Public Profile</span>
+          <span className="emp-profile-eyebrow">الملف العام</span>
 
-          <h3 className="emp-modal-section-title">
-            الملف والصورة
-          </h3>
+          <h3 className="emp-modal-section-title">الملف والصورة</h3>
 
           <p className="emp-section-lead">
-            الصورة والنبذة والتقييمات التي تظهر في ملف الموظفة
-            وواجهات العميلات.
+            تحكّمي في صورة الموظفة، النبذة التعريفية والتقييمات التي تظهر
+            للعميلات داخل الموقع والتطبيق.
           </p>
         </div>
 
@@ -83,7 +81,7 @@ export default function ProfileSection({
       <div className="emp-profile-workspace">
         <aside className="emp-profile-sidebar">
           <article className="emp-profile-preview-card">
-            <div className="emp-profile-preview-card__head">
+            <div className="emp-profile-card__head">
               <div>
                 <span className="emp-profile-card-number">01</span>
                 <h4>معاينة الملف</h4>
@@ -105,7 +103,9 @@ export default function ProfileSection({
               ) : (
                 <div className="emp-profile-preview__placeholder">
                   <strong>بدون صورة</strong>
-                  <span>اختاري صورة من المعرض أو أضيفي رابطًا.</span>
+                  <span>
+                    اختاري صورة من المعرض أو أضيفي رابطًا مباشرًا للصورة.
+                  </span>
                 </div>
               )}
             </div>
@@ -187,6 +187,7 @@ export default function ProfileSection({
                 <span className="emp-profile-image-option__empty">
                   بدون صورة
                 </span>
+
                 <strong>إزالة الصورة</strong>
               </button>
 
@@ -203,12 +204,17 @@ export default function ProfileSection({
                       selected ? "is-selected" : ""
                     }`}
                     aria-pressed={selected}
-                    onClick={() => onAvatarUrlChange(image.value)}
+                    onClick={() =>
+                      onAvatarUrlChange(image.value)
+                    }
                     title={image.label}
                   >
                     <span className="emp-profile-image-option__preview">
                       {resolvedImage ? (
-                        <img src={resolvedImage} alt="" />
+                        <img
+                          src={resolvedImage}
+                          alt={image.label}
+                        />
                       ) : (
                         <span>لا توجد معاينة</span>
                       )}
@@ -228,7 +234,9 @@ export default function ProfileSection({
                 <h4>بيانات الملف العام</h4>
               </div>
 
-              <p>النبذة والتقييم المعروض للعميلات.</p>
+              <p>
+                النبذة والتقييم الظاهر للعميلات.
+              </p>
             </div>
 
             <div className="emp-profile-rating-grid">
