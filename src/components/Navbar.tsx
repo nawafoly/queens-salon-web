@@ -1,4 +1,4 @@
-// src/components/Navbar.tsx
+﻿// src/components/Navbar.tsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import logoNavbar from "../assets/images/ssunnamed.png";
@@ -261,10 +261,10 @@ const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName 
       return (
         <>
           <Link to="/employee/overview" onClick={() => setIsDropdownOpen(false)}>
-            ط¨ظˆط§ط¨ط© ط§ظ„ظ…ظˆط¸ظپ
+            بوابة الموظف
           </Link>
           <button onClick={handleLogout} className="dropdown-logout-btn">
-            طھط³ط¬ظٹظ„ ط§ظ„ط®ط±ظˆط¬
+            تسجيل الخروج
           </button>
         </>
       );

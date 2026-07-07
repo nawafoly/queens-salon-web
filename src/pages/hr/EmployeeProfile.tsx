@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBriefcase,
@@ -279,3 +279,4 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
     </div>
   );
 }
+

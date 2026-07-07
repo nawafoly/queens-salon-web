@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+﻿import { useEffect, useMemo, useState, useRef } from "react";
 import type React from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -3811,7 +3811,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           const clientName = String(data?.clientName || data?.name || "").trim();
           const clientPhone = phone10Digits(data?.clientPhone || data?.phone || "");
           const channel = String(data?.channel || data?.source || "").trim();
-          const who = [clientName || "ط¨ط¯ظˆظ† ط§ط³ظ…", clientPhone ? `(${clientPhone})` : ""]
+          const who = [clientName || "بدون اسم", clientPhone ? `(${clientPhone})` : ""]
             .filter(Boolean)
             .join(" ");
           const ch = channel ? ` - ${channel}` : "";
@@ -7831,4 +7831,5 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 };
 
 export default BookingInternal;
+
 

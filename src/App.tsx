@@ -1,4 +1,4 @@
-﻿// src/App.tsx
+// src/App.tsx
 import React, { useEffect, useLayoutEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -506,7 +506,7 @@ const App: React.FC = () => {
   ================================ */
 
   const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
-    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+    if (!authReady) return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
 
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
@@ -542,7 +542,7 @@ const App: React.FC = () => {
 
   const AdminGuard = ({ children }: { children: React.ReactNode }) => {
     if (!authReady || !firebaseAuthReady) {
-      return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+      return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
     }
 
     /*
@@ -573,7 +573,7 @@ const App: React.FC = () => {
   };
 
   const EmployeeGuard = ({ children }: { children: React.ReactNode }) => {
-    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+    if (!authReady) return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
 
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
@@ -590,7 +590,7 @@ const App: React.FC = () => {
   };
 
   const ClientGuard = ({ children }: { children: React.ReactNode }) => {
-    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+    if (!authReady) return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
 
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
@@ -621,7 +621,7 @@ const App: React.FC = () => {
   };
 
   const ProfileGuard = ({ children }: { children: React.ReactNode }) => {
-    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+    if (!authReady) return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
 
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);
@@ -652,7 +652,7 @@ const App: React.FC = () => {
   };
 
   const PendingGuard = ({ children }: { children: React.ReactNode }) => {
-    if (!authReady) return <LoadingBrand text="جاري التحقق من الجلسة..." />;
+    if (!authReady) return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
 
     const role = userRole;
     const isMalikatAuth = isMalikatAdminEmail(effectiveSessionUser?.email);

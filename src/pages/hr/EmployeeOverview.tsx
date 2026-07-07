@@ -556,15 +556,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         </div>
 
         <div className="employee-attendance-console">
-          <div className="employee-attendance-side employee-attendance-side--out">
-            <span>وقت الانصراف</span>
-            <strong>{checkOutTime}</strong>
-            <em className={attendance?.checkOutAtClient ? "is-done" : ""}>
-              {attendance?.checkOutAtClient ? "تم تسجيل الانصراف" : "لم يتم الانصراف"}
-            </em>
-          </div>
-
-          <button
+<button
             type="button"
             className={`employee-punch-button employee-punch-button--${punchTone}`}
             onClick={() => void handleAttendancePunch(punchAction)}
@@ -575,15 +567,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             <strong>{attendanceBusy ? "جاري التسجيل..." : punchLabel}</strong>
             <small id="employee-punch-hint">{punchHint}</small>
           </button>
-
-          <div className="employee-attendance-side employee-attendance-side--in">
-            <span>وقت الحضور</span>
-            <strong>{checkInTime}</strong>
-            <em className={attendance?.checkInAtClient ? "is-done" : ""}>
-              {attendance?.checkInAtClient ? "تم تسجيل الحضور" : "لم يتم الحضور"}
-            </em>
-          </div>
-        </div>
+</div>
 
         <div className={`employee-attendance-status employee-attendance-status--${attendanceStatus}`} aria-live="polite">
           <span>{attendanceLoading ? "جاري تحديث حالة اليوم..." : getAttendanceStatusLabel(attendanceStatus)}</span>
@@ -741,6 +725,8 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     </div>
   );
 }
+
+
 
 
 

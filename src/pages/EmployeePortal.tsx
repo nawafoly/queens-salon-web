@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBell,
@@ -32,6 +32,7 @@ import EmployeeLeavePage from "./hr/EmployeeLeave";
 import EmployeePayrollPage from "./hr/EmployeePayroll";
 import EmployeeProfilePage from "./hr/EmployeeProfile";
 import { useEmployeeSession } from "./hr/shared";
+import "../styles/EmployeePortalMobileNav.css";
 
 function PortalSkeleton({ title, subtitle }: { title: string; subtitle: string }) {
   return (
@@ -61,9 +62,146 @@ function portalRoleLabel(role: unknown) {
   return "موظفة";
 }
 
+type EmployeeMorePageProps = {
+  displayName: string;
+  roleLabel: string;
+  notificationCounts: {
+    all: number;
+    messages: number;
+    files: number;
+    leave: number;
+    payroll: number;
+    profile: number;
+  };
+  canOpenHr: boolean;
+  canOpenDashboard: boolean;
+  loggingOut: boolean;
+  onLogout: () => void;
+};
+
+function EmployeeMorePage({
+  displayName,
+  roleLabel,
+  notificationCounts,
+  canOpenHr,
+  canOpenDashboard,
+  loggingOut,
+  onLogout,
+}: EmployeeMorePageProps) {
+  const items = [
+    {
+      to: "/employee/notifications",
+      label: "التنبيهات",
+      description: "آخر التحديثات والتنبيهات",
+      icon: faBell,
+      badge: notificationCounts.all,
+    },
+    {
+      to: "/employee/messages",
+      label: "الرسائل",
+      description: "التواصل الداخلي مع الإدارة",
+      icon: faPaperPlane,
+      badge: notificationCounts.messages,
+    },
+    {
+      to: "/employee/files",
+      label: "الملفات",
+      description: "العقود والمستندات والمرفقات",
+      icon: faFileLines,
+      badge: notificationCounts.files,
+    },
+    {
+      to: "/employee/payroll",
+      label: "الراتب",
+      description: "التفاصيل والسجلات المالية",
+      icon: faWallet,
+      badge: notificationCounts.payroll,
+    },
+  ];
+
+  return (
+    <section className="employee-more-page">
+      <header className="employee-more-hero">
+        <span className="employee-more-hero__avatar">
+          {displayInitial(displayName, "")}
+        </span>
+
+        <div>
+          <small>حساب الموظفة</small>
+          <h1>{displayName}</h1>
+          <p>{roleLabel}</p>
+        </div>
+      </header>
+
+      <div className="employee-more-grid">
+        {items.map((item) => (
+          <Link
+            key={item.to}
+            to={item.to}
+            className="employee-more-card"
+          >
+            <span className="employee-more-card__icon">
+              <FontAwesomeIcon icon={item.icon} />
+            </span>
+
+            <div>
+              <strong>{item.label}</strong>
+              <small>{item.description}</small>
+            </div>
+
+            {item.badge > 0 ? (
+              <em>{item.badge}</em>
+            ) : null}
+          </Link>
+        ))}
+      </div>
+
+      {canOpenHr || canOpenDashboard ? (
+        <section className="employee-more-management">
+          <div className="employee-more-section-title">
+            <strong>أنظمة الإدارة</strong>
+            <span>تظهر حسب صلاحيات الحساب</span>
+          </div>
+
+          <div className="employee-more-management__links">
+            {canOpenHr ? (
+              <Link to="/admin">
+                <FontAwesomeIcon icon={faUserShield} />
+                <span>لوحة الموارد البشرية</span>
+              </Link>
+            ) : null}
+
+            {canOpenDashboard ? (
+              <Link to="/dashboard/overview">
+                <FontAwesomeIcon icon={faTableColumns} />
+                <span>لوحة التحكم</span>
+              </Link>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      <button
+        type="button"
+        className="employee-more-logout"
+        disabled={loggingOut}
+        onClick={onLogout}
+      >
+        <FontAwesomeIcon icon={faRightFromBracket} />
+        <span>
+          {loggingOut
+            ? "جاري تسجيل الخروج..."
+            : "تسجيل الخروج"}
+        </span>
+      </button>
+    </section>
+  );
+}
+
 export default function EmployeePortal() {
   const session = useEmployeeSession();
   const navigate = useNavigate();
+  const location = useLocation();
   const [notifications, setNotifications] = useState<EmployeeNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -161,7 +299,7 @@ export default function EmployeePortal() {
     { to: "/employee/attendance", label: "الحضور", icon: faCalendarDays, end: true },
     { to: "/employee/leave", label: "الطلبات", icon: faPaperPlane },
     { to: "/employee/profile", label: "الملف الشخصي", icon: faUser },
-    { to: "/employee/notifications", label: "المزيد", icon: faTableColumns, badge: notificationCounts.all },
+    { to: "/employee/more", label: "المزيد", icon: faTableColumns, badge: notificationCounts.all },
   ];
 
   const desktopNavItems = [
@@ -200,40 +338,75 @@ export default function EmployeePortal() {
 
   return (
     <div className="employee-portal madan-employee-portal" dir="rtl">
-      <header className="employee-mobile-topbar" aria-label="بوابة الموظف">
-        <div className="employee-mobile-topbar__identity">
-          <span className="employee-mobile-avatar">{displayInitial(displayName, session.email)}</span>
-          <div>
-            <strong>بوابة الموظف</strong>
-            <small>{displayName} · {roleLabel}</small>
-          </div>
-        </div>
+      <header
+        className="employee-mobile-topbar employee-app-topbar"
+        aria-label="بوابة الموظف"
+      >
+        <Link
+          to="/employee/profile"
+          className="employee-app-topbar__profile"
+          aria-label="فتح الملف الشخصي"
+        >
+          <span className="employee-app-topbar__avatar">
+            {displayInitial(displayName, session.email)}
+          </span>
 
-        <div className="employee-mobile-topbar__actions">
-          {canOpenHr ? (
-            <Link to="/admin" className="employee-top-pill employee-top-pill--hr">
-              <FontAwesomeIcon icon={faUserShield} />
-              <span>لوحة HR</span>
-            </Link>
-          ) : null}
-          {canOpenDashboard ? (
-            <Link to="/dashboard/overview" className="employee-top-pill employee-top-pill--dashboard">
-              <FontAwesomeIcon icon={faTableColumns} />
-              <span>الداشبورد</span>
-            </Link>
-          ) : null}
+          <span className="employee-app-topbar__copy">
+            <strong>بوابة الموظف</strong>
+            <small>{displayName}</small>
+          </span>
+        </Link>
+
+        <div
+          className="employee-app-topbar__actions"
+          aria-label="اختصارات بوابة الموظف"
+        >
           <button
             type="button"
-            className="employee-top-pill employee-top-pill--danger"
+            className="employee-app-topbar__action employee-app-topbar__action--logout"
             onClick={() => void handleLogout()}
             disabled={loggingOut}
+            aria-label="تسجيل الخروج"
+            title="تسجيل الخروج"
           >
             <FontAwesomeIcon icon={faRightFromBracket} />
-            <span>{loggingOut ? "جاري الخروج..." : "خروج"}</span>
           </button>
-          <Link to="/employee/notifications" className="employee-top-icon" aria-label="التنبيهات">
+
+          {canOpenDashboard ? (
+            <Link
+              to="/dashboard/overview"
+              className="employee-app-topbar__action employee-app-topbar__action--dashboard"
+              aria-label="فتح لوحة التحكم"
+              title="لوحة التحكم"
+            >
+              <FontAwesomeIcon icon={faTableColumns} />
+            </Link>
+          ) : null}
+
+          {canOpenHr ? (
+            <Link
+              to="/admin"
+              className="employee-app-topbar__action employee-app-topbar__action--hr"
+              aria-label="فتح لوحة الموارد البشرية"
+              title="لوحة HR"
+            >
+              <FontAwesomeIcon icon={faUserShield} />
+            </Link>
+          ) : null}
+
+          <Link
+            to="/employee/notifications"
+            className="employee-app-topbar__action employee-app-topbar__action--notifications"
+            aria-label="التنبيهات"
+            title="التنبيهات"
+          >
             <FontAwesomeIcon icon={faBell} />
-            {notificationCounts.all > 0 ? <span>{notificationCounts.all}</span> : null}
+
+            {notificationCounts.all > 0 ? (
+              <span className="employee-app-topbar__badge">
+                {notificationCounts.all}
+              </span>
+            ) : null}
           </Link>
         </div>
       </header>
@@ -296,7 +469,8 @@ export default function EmployeePortal() {
         </aside>
 
         <main className="employee-portal-main">
-          <Routes>
+          <div className="employee-app-route-scroll">
+<Routes>
             <Route index element={<Navigate to="/employee/overview" replace />} />
             <Route
               path="overview"
@@ -330,8 +504,27 @@ export default function EmployeePortal() {
               }
             />
             <Route
+              path="more"
+              element={
+                <EmployeeMorePage
+                  displayName={displayName}
+                  roleLabel={roleLabel}
+                  notificationCounts={notificationCounts}
+                  canOpenHr={canOpenHr}
+                  canOpenDashboard={canOpenDashboard}
+                  loggingOut={loggingOut}
+                  onLogout={() => void handleLogout()}
+                />
+              }
+            />
+            <Route
               path="profile"
-              element={<EmployeeProfilePage session={session} onPortalChange={loadNotifications} />}
+              element={
+                <EmployeeProfilePage
+                    session={session}
+                    onPortalChange={loadNotifications}
+                  />
+              }
             />
             <Route
               path="messages"
@@ -351,17 +544,20 @@ export default function EmployeePortal() {
             />
             <Route path="*" element={<Navigate to="/employee/overview" replace />} />
           </Routes>
+</div>
         </main>
       </div>
 
-      <button
-        type="button"
-        className="employee-floating-request"
-        onClick={() => setRequestSheetOpen(true)}
-      >
-        <FontAwesomeIcon icon={faPlus} />
-        <span>طلب جديد</span>
-      </button>
+      {location.pathname.startsWith("/employee/leave") ? (
+        <button
+          type="button"
+          className="employee-floating-request"
+          onClick={() => setRequestSheetOpen(true)}
+        >
+          <FontAwesomeIcon icon={faPlus} />
+          <span>طلب جديد</span>
+        </button>
+      ) : null}
 
       <nav className="employee-bottom-nav" aria-label="تنقل بوابة الموظف">
         {bottomNavItems.map((item) => (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { getDocs, limit, orderBy, query } from "firebase/firestore";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -101,6 +101,7 @@ export default function EmployeeMessagesPage({ session, onPortalChange }: Props)
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ConversationFilter>("all");
   const [creating, setCreating] = useState(false);
+  const [mobileThreadOpen, setMobileThreadOpen] = useState(false);
 
   const canManage = isManagementRole(session.role);
 
@@ -261,6 +262,7 @@ export default function EmployeeMessagesPage({ session, onPortalChange }: Props)
 
   const startNewConversation = () => {
     setCreating(true);
+    setMobileThreadOpen(true);
     setRecipientUid("");
     setRecipientName("");
     setBody("");
@@ -271,6 +273,7 @@ export default function EmployeeMessagesPage({ session, onPortalChange }: Props)
     setSelectedConversationId(conversationId);
     setRecipientUid(otherUid);
     setRecipientName(directoryByUid.get(otherUid)?.name || "");
+    setMobileThreadOpen(true);
   };
 
   const handleSend = async () => {
@@ -342,7 +345,7 @@ export default function EmployeeMessagesPage({ session, onPortalChange }: Props)
   }
 
   return (
-    <div className={`hr-ops-page hr-comms-page ${canManage ? "is-admin-view" : "is-employee-view"}`} dir="rtl">
+    <div className={`hr-ops-page hr-comms-page ${canManage ? "is-admin-view" : "is-employee-view"} ${mobileThreadOpen ? "is-mobile-thread-open" : ""}`} dir="rtl">
       <section className="hr-ops-hero">
         <div className="hr-ops-hero__icon"><FontAwesomeIcon icon={faEnvelope} /></div>
         <div>
@@ -375,7 +378,6 @@ export default function EmployeeMessagesPage({ session, onPortalChange }: Props)
         <aside className="hr-comms-inbox">
           <div className="hr-comms-inbox__head">
             <div><span>صندوق الرسائل</span><strong>{filteredConversations.length} محادثة</strong></div>
-            <button type="button" onClick={startNewConversation} aria-label="رسالة جديدة"><FontAwesomeIcon icon={faPlus} /></button>
           </div>
 
           <label className="hr-ops-search">
@@ -427,7 +429,10 @@ export default function EmployeeMessagesPage({ session, onPortalChange }: Props)
           {creating ? (
             <div className="hr-comms-new">
               <div className="hr-comms-thread__head">
-                <button type="button" className="hr-comms-back" onClick={() => setCreating(false)}><FontAwesomeIcon icon={faArrowRight} /></button>
+                <button type="button" className="hr-comms-back" onClick={() => {
+                  setCreating(false);
+                  setMobileThreadOpen(false);
+                }}><FontAwesomeIcon icon={faArrowRight} /></button>
                 <div><span>محادثة جديدة</span><strong>اختر المستلم واكتب رسالتك</strong></div>
               </div>
               <div className="hr-comms-new__body">
@@ -462,6 +467,14 @@ export default function EmployeeMessagesPage({ session, onPortalChange }: Props)
           ) : activeConversation ? (
             <>
               <div className="hr-comms-thread__head">
+                <button
+                  type="button"
+                  className="hr-comms-back"
+                  onClick={() => setMobileThreadOpen(false)}
+                  aria-label="العودة إلى قائمة المحادثات"
+                >
+                  <FontAwesomeIcon icon={faArrowRight} />
+                </button>
                 <span className="hr-comms-avatar hr-comms-avatar--large">{initials(activeConversation.title)}</span>
                 <div>
                   <span>{activeConversation.kind === "hr" ? "محادثة موارد بشرية" : "محادثة داخلية"}</span>
@@ -501,3 +514,10 @@ export default function EmployeeMessagesPage({ session, onPortalChange }: Props)
     </div>
   );
 }
+
+
+
+
+
+
+

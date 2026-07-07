@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowUpFromBracket,
@@ -439,3 +439,4 @@ export default function EmployeeFilesPage({ session, onPortalChange }: Props) {
     </div>
   );
 }
+
