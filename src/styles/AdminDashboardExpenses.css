@@ -662,3 +662,504 @@
     grid-template-columns: 88px minmax(0, 1fr);
   }
 }
+/* EXPENSES MOBILE APP UI START */
+
+@media (max-width: 767px) {
+  .dashboard-skin.madan-admin-shell .exp-page {
+    display: grid !important;
+    gap: 11px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+
+  /* Header */
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 11px !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 14px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 18px !important;
+    background:
+      radial-gradient(
+        circle at 90% 0%,
+        rgba(201, 164, 56, 0.16),
+        transparent 42%
+      ),
+      #ffffff !important;
+    box-shadow: 0 7px 22px rgba(15, 23, 42, 0.045) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-header::after {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-header h1 {
+    margin: 0 !important;
+    color: #111a38 !important;
+    font-size: 20px !important;
+    font-weight: 950 !important;
+    line-height: 1.35 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-header-actions > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 42px !important;
+    margin: 0 !important;
+    border-radius: 12px !important;
+    justify-content: center !important;
+    font-size: 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-header-actions .reports-btn.primary {
+    grid-column: 1 / -1 !important;
+    min-height: 46px !important;
+    color: #ffffff !important;
+    border-color: #101a3d !important;
+    background: #101a3d !important;
+  }
+
+  /* Shared app cards */
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 13px !important;
+    overflow: visible !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 18px !important;
+    background: #ffffff !important;
+    box-shadow: 0 7px 22px rgba(15, 23, 42, 0.04) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-card-title,
+  .dashboard-skin.madan-admin-shell .exp-page .exp-card h3 {
+    margin: 0 0 11px !important;
+    color: #111a38 !important;
+    font-size: 12px !important;
+    font-weight: 950 !important;
+    line-height: 1.5 !important;
+  }
+
+  /* Period information */
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-control-points {
+    display: grid !important;
+    gap: 7px !important;
+    margin: 0 0 12px !important;
+    padding: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-control-points > div {
+    padding: 9px 10px !important;
+    border-radius: 12px !important;
+    color: #667085 !important;
+    background: #f8fafc !important;
+    font-size: 8px !important;
+    line-height: 1.7 !important;
+  }
+
+  /* Filters */
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-filters {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-filters > label,
+  .dashboard-skin.madan-admin-shell .exp-page .exp-form > label {
+    display: grid !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+    color: #647084 !important;
+    font-size: 8px !important;
+    font-weight: 850 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .span-2 {
+    grid-column: 1 / -1 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page :where(
+    input,
+    select,
+    textarea,
+    .dash-select
+  ) {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 46px !important;
+    padding: 9px 11px !important;
+    border: 1px solid rgba(15, 23, 42, 0.11) !important;
+    border-radius: 13px !important;
+    color: #17213d !important;
+    background: #fafbfc !important;
+    box-shadow: none !important;
+    font-size: 16px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .dash-dd-wrap {
+    position: relative !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .dash-dd-menu {
+    position: absolute !important;
+    top: calc(100% + 5px) !important;
+    right: 0 !important;
+    left: 0 !important;
+    z-index: 80 !important;
+    max-height: 240px !important;
+    padding: 6px !important;
+    overflow-y: auto !important;
+    border-radius: 13px !important;
+    background: #ffffff !important;
+    box-shadow: 0 15px 35px rgba(15, 23, 42, 0.16) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-actions > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 42px !important;
+    margin: 0 !important;
+    border-radius: 12px !important;
+    justify-content: center !important;
+    font-size: 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-actions > :last-child:nth-child(3) {
+    grid-column: 1 / -1 !important;
+  }
+
+  /* Main layout */
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-grid--main {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 11px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-form {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-card--form .exp-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-divider {
+    margin: 14px 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-mini {
+    padding: 11px !important;
+    border-radius: 14px !important;
+    background: #f8fafc !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-mini .exp-form {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-mini .reports-btn {
+    min-width: 70px !important;
+    min-height: 46px !important;
+    border-radius: 12px !important;
+  }
+
+  /* Records header */
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table-head {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-results-count {
+    min-width: 32px !important;
+    min-height: 32px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 4px 8px !important;
+    border-radius: 999px !important;
+    color: #745900 !important;
+    background: #fff2bf !important;
+    font-size: 9px !important;
+    font-weight: 950 !important;
+  }
+
+  /* Table becomes mobile cards */
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table-wrap,
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table-wrap--main {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: auto !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table colgroup,
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table thead {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table tbody {
+    display: grid !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table tr {
+    position: relative !important;
+    display: grid !important;
+    gap: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 13px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(15, 23, 42, 0.09) !important;
+    border-radius: 19px !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 25px rgba(15, 23, 42, 0.055) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table tr::before {
+    content: "" !important;
+    position: absolute !important;
+    top: 12px !important;
+    right: 0 !important;
+    bottom: 12px !important;
+    width: 4px !important;
+    border-radius: 999px 0 0 999px !important;
+    background: #c9a438 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table tr.exp-row-auto-payroll::before {
+    background: #2563eb !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table td {
+    display: grid !important;
+    grid-template-columns: 82px minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: 9px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    padding: 8px 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
+    color: #111a38 !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    line-height: 1.6 !important;
+    text-align: start !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table td:last-child {
+    border-bottom: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table td::before {
+    content: attr(data-label) !important;
+    color: #7b8698 !important;
+    font-size: 8px !important;
+    font-weight: 850 !important;
+    line-height: 1.6 !important;
+    text-align: start !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table td.amount,
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table .exp-cell-amount {
+    color: #b42318 !important;
+    font-size: 13px !important;
+    font-weight: 950 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table td.empty {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    min-height: 140px !important;
+    place-items: center !important;
+    border-bottom: 0 !important;
+    color: #7b8596 !important;
+    text-align: center !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table td.empty::before {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-title-text,
+  .dashboard-skin.madan-admin-shell .exp-page .exp-note-text {
+    display: block !important;
+    max-width: none !important;
+    overflow: visible !important;
+    white-space: normal !important;
+    text-overflow: clip !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-auto-pill {
+    width: fit-content !important;
+    min-height: 27px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 4px 8px !important;
+    border-radius: 999px !important;
+    color: #1d4ed8 !important;
+    background: #dbeafe !important;
+    font-size: 8px !important;
+    font-weight: 900 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-row-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-row-actions .exp-btn {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 40px !important;
+    margin: 0 !important;
+    border-radius: 11px !important;
+    justify-content: center !important;
+    font-size: 9px !important;
+  }
+
+  /* Inline edit mode */
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table tr:has(input) {
+    overflow: visible !important;
+    border-color: rgba(201, 164, 56, 0.45) !important;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.1) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table td input,
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table td .dash-select {
+    min-height: 44px !important;
+    font-size: 16px !important;
+  }
+
+  /* Generic confirmation and alert modals */
+
+  .dashboard-skin.madan-admin-shell .modal-box {
+    width: min(calc(100vw - 24px), 420px) !important;
+    max-width: none !important;
+    max-height: calc(100dvh - 24px) !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    border-radius: 20px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .modal-box .modal-head {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 4 !important;
+    padding: 13px !important;
+    background: rgba(255, 255, 255, 0.97) !important;
+    backdrop-filter: blur(12px) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .modal-box .modal-body {
+    max-height: calc(100dvh - 170px) !important;
+    padding: 14px !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .modal-box .modal-actions {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 4 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    padding: 10px 13px calc(10px + env(safe-area-inset-bottom)) !important;
+    background: rgba(255, 255, 255, 0.97) !important;
+    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .modal-box .modal-actions .dash-pill {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 43px !important;
+    margin: 0 !important;
+    border-radius: 12px !important;
+    justify-content: center !important;
+    font-size: 9px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-skin.madan-admin-shell .exp-page .exp-header-actions,
+  .dashboard-skin.madan-admin-shell .exp-page .exp-filters,
+  .dashboard-skin.madan-admin-shell .exp-page .exp-form {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .span-2,
+  .dashboard-skin.madan-admin-shell .exp-page .exp-header-actions .reports-btn.primary {
+    grid-column: auto !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .exp-page .exp-table td {
+    grid-template-columns: 72px minmax(0, 1fr) !important;
+  }
+}
+
+/* EXPENSES MOBILE APP UI END */

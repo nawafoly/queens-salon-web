@@ -901,3 +901,654 @@
     grid-template-columns: 90px minmax(0, 1fr);
   }
 }
+/* REPORTS MOBILE APP UI START */
+
+@media (max-width: 767px) {
+  .dashboard-skin.madan-admin-shell .reports-v2 {
+    display: grid !important;
+    gap: 11px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+
+  /* Header */
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 11px !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 14px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 18px !important;
+    background:
+      radial-gradient(
+        circle at 90% 0%,
+        rgba(201, 164, 56, 0.16),
+        transparent 42%
+      ),
+      #ffffff !important;
+    box-shadow: 0 7px 22px rgba(15, 23, 42, 0.045) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__header::after {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__header h1 {
+    margin: 0 0 4px !important;
+    color: #111a38 !important;
+    font-size: 20px !important;
+    font-weight: 950 !important;
+    line-height: 1.35 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__header p {
+    margin: 0 !important;
+    color: #788398 !important;
+    font-size: 9px !important;
+    line-height: 1.7 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__sync {
+    width: 100% !important;
+    min-height: 38px !important;
+    display: flex !important;
+    align-items: center !important;
+    padding: 8px 10px !important;
+    border-radius: 11px !important;
+    color: #687386 !important;
+    background: #f8fafc !important;
+    font-size: 8px !important;
+    white-space: normal !important;
+  }
+
+  /* Period filters */
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__filters {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    align-items: stretch !important;
+    gap: 7px !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 11px !important;
+    overflow: visible !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 17px !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .f-btn {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 42px !important;
+    padding: 7px 6px !important;
+    border-radius: 11px !important;
+    justify-content: center !important;
+    font-size: 8px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .f-btn.is-active {
+    color: #ffffff !important;
+    border-color: #101a3d !important;
+    background: #101a3d !important;
+    box-shadow: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__custom-range {
+    display: grid !important;
+    grid-column: 1 / -1 !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__custom-range label {
+    display: grid !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+    color: #687386 !important;
+    font-size: 8px !important;
+    font-weight: 850 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 :where(
+    .reports-v2__custom-range input,
+    .reports-v2__custom-range select
+  ) {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 46px !important;
+    padding: 9px 10px !important;
+    border: 1px solid rgba(15, 23, 42, 0.11) !important;
+    border-radius: 12px !important;
+    color: #17213d !important;
+    background: #fafbfc !important;
+    font-size: 16px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__range-caption {
+    grid-column: 1 / -1 !important;
+    padding: 9px 10px !important;
+    border-radius: 11px !important;
+    color: #667085 !important;
+    background: #f8fafc !important;
+    font-size: 8px !important;
+    line-height: 1.6 !important;
+  }
+
+  /* Shared section cards */
+
+  .dashboard-skin.madan-admin-shell .reports-v2 :where(
+    .reports-v2__payroll-cycle,
+    .reports-v2__month-compare,
+    .reports-v2__section,
+    .chart-card
+  ) {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 13px !important;
+    overflow: visible !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 18px !important;
+    background: #ffffff !important;
+    box-shadow: 0 7px 22px rgba(15, 23, 42, 0.04) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .section-head,
+  .dashboard-skin.madan-admin-shell .reports-v2 .chart-card__head {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    margin-bottom: 11px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .section-head h2,
+  .dashboard-skin.madan-admin-shell .reports-v2 .section-head h3,
+  .dashboard-skin.madan-admin-shell .reports-v2 .chart-card__head h3 {
+    margin: 0 !important;
+    color: #111a38 !important;
+    font-size: 12px !important;
+    font-weight: 950 !important;
+    line-height: 1.5 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .section-head p,
+  .dashboard-skin.madan-admin-shell .reports-v2 .chart-card__head p {
+    margin: 0 !important;
+    color: #7a8496 !important;
+    font-size: 8px !important;
+    line-height: 1.6 !important;
+  }
+
+  /* Payroll chips */
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__payroll-cycle-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .payroll-chip {
+    min-width: 0 !important;
+    min-height: 82px !important;
+    display: grid !important;
+    align-content: center !important;
+    gap: 5px !important;
+    padding: 11px !important;
+    border: 1px solid rgba(15, 23, 42, 0.07) !important;
+    border-radius: 14px !important;
+    background: #f8fafc !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .payroll-chip strong {
+    color: #111a38 !important;
+    font-size: 12px !important;
+    font-weight: 950 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .payroll-chip span {
+    color: #7a8496 !important;
+    font-size: 8px !important;
+  }
+
+  /* KPI cards become horizontal swipe cards */
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__kpis {
+    display: flex !important;
+    grid-template-columns: none !important;
+    gap: 8px !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 0 4px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x proximity !important;
+    scrollbar-width: none !important;
+    overscroll-behavior-x: contain !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__kpis::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi {
+    flex: 0 0 min(66vw, 230px) !important;
+    min-width: 0 !important;
+    min-height: 112px !important;
+    display: grid !important;
+    align-content: center !important;
+    gap: 6px !important;
+    margin: 0 !important;
+    padding: 14px !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 17px !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.045) !important;
+    scroll-snap-align: start !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi h3 {
+    margin: 0 !important;
+    color: #111a38 !important;
+    font-size: 17px !important;
+    font-weight: 950 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi p {
+    margin: 0 !important;
+    color: #778397 !important;
+    font-size: 8px !important;
+  }
+
+  /* Month comparison */
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .month-compare-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .month-compare-card {
+    min-width: 0 !important;
+    padding: 12px !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 15px !important;
+    background: #fafbfc !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .month-compare-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    padding: 7px 0 !important;
+    font-size: 9px !important;
+  }
+
+  /* Charts */
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__charts-board {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 11px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .chart-card--wide {
+    grid-column: auto !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .chart-switch {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .chart-switch__btn {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 39px !important;
+    padding: 6px 8px !important;
+    border-radius: 10px !important;
+    font-size: 8px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .top-chart-wrap,
+  .dashboard-skin.madan-admin-shell .reports-v2 .mini-chart-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: thin !important;
+    overscroll-behavior-x: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .top-chart {
+    min-width: 680px !important;
+    height: 290px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .mini-chart {
+    min-width: 420px !important;
+    height: 250px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .pie-legend {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 6px !important;
+    margin-top: 10px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .pie-legend__item {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto auto !important;
+    align-items: center !important;
+    gap: 7px !important;
+    min-width: 0 !important;
+    padding: 8px 9px !important;
+    border-radius: 10px !important;
+    background: #f8fafc !important;
+    font-size: 8px !important;
+  }
+
+  /* Tables become mobile cards */
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap table {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: auto !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap thead {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap tbody {
+    display: grid !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap tr {
+    position: relative !important;
+    display: grid !important;
+    gap: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 13px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(15, 23, 42, 0.09) !important;
+    border-radius: 19px !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 25px rgba(15, 23, 42, 0.055) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap tr::before {
+    content: "" !important;
+    position: absolute !important;
+    top: 12px !important;
+    right: 0 !important;
+    bottom: 12px !important;
+    width: 4px !important;
+    border-radius: 999px 0 0 999px !important;
+    background: #c9a438 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap td {
+    display: grid !important;
+    grid-template-columns: 92px minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: 9px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    padding: 8px 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
+    color: #111a38 !important;
+    background: transparent !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    line-height: 1.6 !important;
+    text-align: start !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap td:last-child {
+    border-bottom: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap td::before {
+    content: attr(data-label) !important;
+    color: #7b8698 !important;
+    font-size: 8px !important;
+    font-weight: 850 !important;
+    line-height: 1.6 !important;
+    text-align: start !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap td.empty-cell {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    min-height: 140px !important;
+    place-items: center !important;
+    border-bottom: 0 !important;
+    color: #7b8596 !important;
+    text-align: center !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap td.empty-cell::before {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 :where(
+    .amount-pos,
+    .amount-neg,
+    .amount-exp
+  ) {
+    font-size: 12px !important;
+    font-weight: 950 !important;
+    white-space: normal !important;
+  }
+
+  /* Messages */
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__error,
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__loading {
+    width: 100% !important;
+    min-height: 48px !important;
+    margin: 0 !important;
+    padding: 11px !important;
+    border-radius: 13px !important;
+    font-size: 8px !important;
+    line-height: 1.6 !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__filters,
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__custom-range,
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__payroll-cycle-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__custom-range,
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__range-caption {
+    grid-column: auto !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .table-wrap td {
+    grid-template-columns: 76px minmax(0, 1fr) !important;
+  }
+}
+
+/* REPORTS MOBILE APP UI END */
+
+/* REPORTS KPI MOBILE FIX START */
+
+@media (max-width: 767px) {
+  .dashboard-skin.madan-admin-shell .reports-v2 {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__kpis {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    scroll-snap-type: none !important;
+    direction: rtl !important;
+    box-sizing: border-box !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi {
+    flex: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: 105px !important;
+    margin: 0 !important;
+    padding: 13px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(15, 23, 42, 0.09) !important;
+    border-radius: 17px !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.045) !important;
+    scroll-snap-align: none !important;
+    box-sizing: border-box !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-net {
+    grid-column: 1 / -1 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi::before {
+    top: 12px !important;
+    right: 0 !important;
+    bottom: 12px !important;
+    left: auto !important;
+    width: 4px !important;
+    height: auto !important;
+    border-radius: 999px 0 0 999px !important;
+    opacity: 1 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-revenue::before {
+    background: #27885b !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-expense::before {
+    background: #c9a438 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-net::before {
+    background: #52627a !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-net.is-negative {
+    color: #111a38 !important;
+    border-color: rgba(189, 76, 94, 0.2) !important;
+    background: #fff7f8 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-net.is-negative::before {
+    background: #bd4c5e !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-net.is-positive {
+    color: #111a38 !important;
+    border-color: rgba(39, 136, 91, 0.2) !important;
+    background: #f7fcf9 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-net.is-positive::before {
+    background: #27885b !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi h3 {
+    margin: 0 0 8px !important;
+    color: #111a38 !important;
+    font-size: 11px !important;
+    font-weight: 950 !important;
+    line-height: 1.5 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi strong {
+    display: block !important;
+    max-width: 100% !important;
+    color: #111a38 !important;
+    font-size: 15px !important;
+    font-weight: 950 !important;
+    line-height: 1.45 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-revenue strong {
+    color: #18764a !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-expense strong {
+    color: #8a6710 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-net.is-negative strong {
+    color: #a4384c !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-net.is-positive strong {
+    color: #18764a !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__kpis {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .reports-v2 .kpi-net {
+    grid-column: auto !important;
+  }
+}
+
+/* REPORTS KPI MOBILE FIX END */

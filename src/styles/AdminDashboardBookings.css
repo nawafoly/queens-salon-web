@@ -1,4 +1,4 @@
-﻿/* Admin Bookings V1 — Navy & Gold */
+/* Admin Bookings V1 — Navy & Gold */
 
 .dashboard-skin .bk-page-wrapper {
   --bk-navy: #0b1739;
@@ -973,3 +973,720 @@
     grid-column: auto;
   }
 }
+
+
+/* BOOKINGS MOBILE APP UI START */
+
+@media (max-width: 767px) {
+  .dashboard-skin.madan-admin-shell .bk-page-wrapper {
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-page-wrapper > .container-fluid {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Header */
+
+  .dashboard-skin.madan-admin-shell .bookings-header {
+    display: grid !important;
+    gap: 4px !important;
+    margin: 0 0 10px !important;
+    padding: 14px !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 18px !important;
+    background:
+      radial-gradient(
+        circle at 90% 0%,
+        rgba(242, 183, 5, 0.14),
+        transparent 38%
+      ),
+      #ffffff !important;
+    box-shadow: 0 7px 22px rgba(15, 23, 42, 0.045) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bookings-header h1 {
+    margin: 0 !important;
+    color: #111a38 !important;
+    font-size: 20px !important;
+    font-weight: 950 !important;
+    line-height: 1.35 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bookings-header p {
+    margin: 0 !important;
+    color: #7a8497 !important;
+    font-size: 9px !important;
+    line-height: 1.65 !important;
+  }
+
+  /* Main control card */
+
+  .dashboard-skin.madan-admin-shell .bk-mini {
+    display: grid !important;
+    gap: 10px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* Alerts */
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert,
+    .bk-stale-alert
+  ) {
+    display: grid !important;
+    gap: 10px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 13px !important;
+    overflow: hidden !important;
+    border-radius: 18px !important;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.035) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-new-alert {
+    border: 1px solid rgba(16, 185, 129, 0.2) !important;
+    background: #f0fbf7 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-stale-alert {
+    border: 1px solid rgba(234, 179, 8, 0.26) !important;
+    background: #fffaf0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert-head,
+    .bk-stale-alert-head
+  ) {
+    display: grid !important;
+    gap: 4px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert-head strong,
+    .bk-stale-alert-head strong
+  ) {
+    color: #111a38 !important;
+    font-size: 12px !important;
+    font-weight: 950 !important;
+    line-height: 1.65 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert-head span,
+    .bk-stale-alert-head span
+  ) {
+    color: #748094 !important;
+    font-size: 8px !important;
+    line-height: 1.6 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-new-alert-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) !important;
+    gap: 7px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-new-alert-btn {
+    min-width: 0 !important;
+    min-height: 40px !important;
+    padding: 7px 9px !important;
+    border-radius: 12px !important;
+    font-size: 9px !important;
+    font-weight: 900 !important;
+  }
+
+  /* Alert lists become horizontal cards */
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert-list,
+    .bk-stale-alert-list
+  ) {
+    display: flex !important;
+    gap: 8px !important;
+    width: 100% !important;
+    max-height: none !important;
+    padding: 0 0 3px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x proximity !important;
+    scrollbar-width: none !important;
+    overscroll-behavior-x: contain !important;
+  }
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert-list,
+    .bk-stale-alert-list
+  )::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert-item,
+    .bk-stale-alert-item
+  ) {
+    flex: 0 0 min(78vw, 275px) !important;
+    min-width: 0 !important;
+    min-height: 76px !important;
+    display: grid !important;
+    align-content: center !important;
+    gap: 5px !important;
+    padding: 11px !important;
+    border: 1px solid rgba(15, 23, 42, 0.09) !important;
+    border-radius: 15px !important;
+    background: rgba(255, 255, 255, 0.84) !important;
+    text-align: start !important;
+    scroll-snap-align: start !important;
+  }
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert-ref,
+    .bk-stale-alert-ref
+  ) {
+    overflow: hidden !important;
+    color: #111a38 !important;
+    font-size: 10px !important;
+    font-weight: 950 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert-meta,
+    .bk-stale-alert-meta
+  ) {
+    color: #718097 !important;
+    font-size: 8px !important;
+    line-height: 1.6 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert-more,
+    .bk-stale-alert-more
+  ) {
+    padding: 2px 1px 0 !important;
+    color: #788498 !important;
+    font-size: 8px !important;
+  }
+
+  /* Status and amount */
+
+  .dashboard-skin.madan-admin-shell .bk-headline {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 9px !important;
+    margin: 0 !important;
+    padding: 12px !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 18px !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.035) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-status-tabs {
+    display: flex !important;
+    gap: 7px !important;
+    width: 100% !important;
+    padding: 0 0 3px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none !important;
+    scroll-snap-type: x proximity !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-status-tabs::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-status-tab {
+    flex: 0 0 auto !important;
+    min-width: 82px !important;
+    min-height: 43px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 8px 10px !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 13px !important;
+    color: #667188 !important;
+    background: #f7f8fb !important;
+    font-size: 9px !important;
+    font-weight: 900 !important;
+    scroll-snap-align: start !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-status-tab span {
+    min-width: 22px !important;
+    min-height: 22px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 2px 5px !important;
+    border-radius: 999px !important;
+    background: rgba(15, 23, 42, 0.06) !important;
+    font-size: 8px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-status-tab.is-active {
+    color: #07143d !important;
+    border-color: rgba(242, 183, 5, 0.5) !important;
+    background: #fff2b7 !important;
+    box-shadow: inset 0 -3px 0 #d9a900 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-total-remaining {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    min-height: 44px !important;
+    padding: 9px 11px !important;
+    border: 1px solid rgba(203, 158, 17, 0.25) !important;
+    border-radius: 13px !important;
+    color: #111a38 !important;
+    background: #fffaf0 !important;
+    font-size: 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-total-remaining strong {
+    font-size: 15px !important;
+    font-weight: 950 !important;
+  }
+
+  /* Filters */
+
+  .dashboard-skin.madan-admin-shell .bk-filters {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+    margin: 0 !important;
+    padding: 12px !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 18px !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.035) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-field {
+    display: grid !important;
+    gap: 5px !important;
+    min-width: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-field:first-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-field label {
+    color: #68748a !important;
+    font-size: 8px !important;
+    font-weight: 850 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-input,
+    .bk-select
+  ) {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 46px !important;
+    padding: 9px 11px !important;
+    border: 1px solid rgba(15, 23, 42, 0.11) !important;
+    border-radius: 13px !important;
+    color: #1a2441 !important;
+    background: #fafbfc !important;
+    box-shadow: none !important;
+    font-size: 16px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-actions .exp-btn {
+    min-width: 0 !important;
+    min-height: 45px !important;
+    margin: 0 !important;
+    border-radius: 13px !important;
+    justify-content: center !important;
+    font-size: 9px !important;
+  }
+
+  /* Booking sections */
+
+  .dashboard-skin.madan-admin-shell .bk-bookings-sections {
+    display: grid !important;
+    gap: 12px !important;
+    margin-top: 12px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-bookings-section {
+    display: grid !important;
+    gap: 10px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-bookings-section-head {
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    padding: 12px 13px !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 17px !important;
+    background: #ffffff !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-bookings-section-copy {
+    min-width: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-bookings-section-copy h2 {
+    margin: 0 !important;
+    color: #111a38 !important;
+    font-size: 15px !important;
+    font-weight: 950 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-bookings-section-copy p {
+    margin: 4px 0 0 !important;
+    color: #778397 !important;
+    font-size: 8px !important;
+    line-height: 1.6 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-bookings-section-meta {
+    flex: 0 0 auto !important;
+    display: grid !important;
+    justify-items: end !important;
+    gap: 4px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-bookings-section-count {
+    padding: 5px 8px !important;
+    border-radius: 999px !important;
+    color: #765b00 !important;
+    background: #fff1b6 !important;
+    font-size: 8px !important;
+    font-weight: 950 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-bookings-section-note {
+    max-width: 120px !important;
+    color: #778397 !important;
+    font-size: 7px !important;
+    line-height: 1.4 !important;
+    text-align: end !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bookings-table-card {
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-table-wrap {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-group {
+    display: grid !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-group-head {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    padding: 9px 11px !important;
+    border-radius: 13px !important;
+    color: #745900 !important;
+    background: #fff2bf !important;
+    font-size: 8px !important;
+    font-weight: 900 !important;
+  }
+
+  /* Booking card */
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-card {
+    position: relative !important;
+    display: grid !important;
+    gap: 0 !important;
+    margin: 0 !important;
+    padding: 13px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(15, 23, 42, 0.09) !important;
+    border-radius: 19px !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 25px rgba(15, 23, 42, 0.055) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-card::before {
+    content: "";
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 4px !important;
+    background: #e2e8f0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-card-pending::before {
+    background: #eab308 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-card-confirmed::before {
+    background: #2563eb !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-card-completed::before {
+    background: #10b981 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-card-cancelled::before {
+    background: #ef4444 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-row {
+    display: grid !important;
+    grid-template-columns: 86px minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: 9px !important;
+    min-width: 0 !important;
+    padding: 8px 0 !important;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-row:last-of-type {
+    border-bottom: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-label {
+    color: #7c8799 !important;
+    font-size: 8px !important;
+    font-weight: 850 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-val {
+    min-width: 0 !important;
+    overflow-wrap: anywhere !important;
+    color: #111a38 !important;
+    font-size: 10px !important;
+    font-weight: 850 !important;
+    line-height: 1.6 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-payment-line {
+    display: grid !important;
+    gap: 5px !important;
+    margin-top: 6px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-payment-metric-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 7px !important;
+    min-height: 28px !important;
+    padding: 5px 7px !important;
+    border-radius: 9px !important;
+    background: #f7f8fa !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-payment-metric-label {
+    font-size: 7px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-payment-metric-value {
+    font-size: 8px !important;
+    font-weight: 950 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    margin-top: 11px !important;
+    padding-top: 11px !important;
+    border-top: 1px solid rgba(15, 23, 42, 0.08) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-actions :where(
+    .exp-btn,
+    .bk-select
+  ) {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 42px !important;
+    margin: 0 !important;
+    border-radius: 12px !important;
+    justify-content: center !important;
+    font-size: 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-actions .bk-owner-status-select {
+    grid-column: 1 / -1 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-bookings-section-empty {
+    padding: 25px 15px !important;
+    border: 1px dashed rgba(15, 23, 42, 0.16) !important;
+    border-radius: 17px !important;
+    color: #7b8596 !important;
+    background: #ffffff !important;
+    font-size: 9px !important;
+    text-align: center !important;
+  }
+
+  /* Booking modal */
+
+  .dashboard-skin.madan-admin-shell .bk-modal {
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-modal .modal-head {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 5 !important;
+    min-height: 62px !important;
+    padding:
+      calc(10px + env(safe-area-inset-top))
+      12px
+      10px !important;
+    background: rgba(255, 255, 255, 0.97) !important;
+    backdrop-filter: blur(12px) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-modal .modal-body {
+    padding: 10px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-modal .modal-foot {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 5 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    padding:
+      9px
+      10px
+      calc(9px + env(safe-area-inset-bottom)) !important;
+    background: rgba(255, 255, 255, 0.97) !important;
+    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-modal .modal-foot .exp-btn {
+    min-width: 0 !important;
+    min-height: 43px !important;
+    margin: 0 !important;
+    border-radius: 12px !important;
+    justify-content: center !important;
+    font-size: 9px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-skin.madan-admin-shell .bk-filters {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-field:first-child {
+    grid-column: auto !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-new-alert-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-row {
+    grid-template-columns: 74px minmax(0, 1fr) !important;
+  }
+}
+
+
+  /* Mobile scroll and visibility enforcement */
+  .dashboard-skin.madan-admin-shell .bk-page-wrapper,
+  .dashboard-skin.madan-admin-shell .bk-mini,
+  .dashboard-skin.madan-admin-shell .bookings-table-card,
+  .dashboard-skin.madan-admin-shell .bk-bookings-sections,
+  .dashboard-skin.madan-admin-shell .bk-bookings-section {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-table-wrap {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-mobile-grid {
+    display: grid !important;
+    padding: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell :where(
+    .bk-new-alert-list,
+    .bk-stale-alert-list
+  ) {
+    max-height: none !important;
+    overflow-y: hidden !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 9999 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: rgba(3, 6, 64, 0.38) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-modal {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .bk-modal .modal-body {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+/* BOOKINGS MOBILE APP UI END */

@@ -1,4 +1,4 @@
-/* =========================================================
+﻿/* =========================================================
    Queens Salon Admin — MAEDIN visual system
    Phase 1: shared shell, sidebar, topbar, cards and tables.
    Imported after DashboardSkin.css so legacy behavior remains
@@ -26116,3 +26116,984 @@ body.emp-detail-open {
 .emp-editor-content :where(p, span, small, div) {
   color: inherit;
 }
+
+/* BOOKING INTERNAL MOBILE APP START */
+
+@media (max-width: 767px) {
+  /* ========================================================
+     Route shell — one natural page scroll
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100dvh !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #f4f6f9 !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route > .container-fluid,
+  .dashboard-skin.is-booking-internal-route > .container-fluid > .row {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .dashboard-main.has-single-scroll {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 0 calc(92px + env(safe-area-inset-bottom)) !important;
+    overflow: visible !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route .dashboard-inner {
+    width: 100% !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal {
+    width: 100% !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #f4f6f9 !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-internal-page {
+    width: 100% !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 0 18px !important;
+    overflow: visible !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-internal-container {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 10px 18px !important;
+    overflow: visible !important;
+  }
+
+  /* ========================================================
+     Compact application header
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-page-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1100 !important;
+    width: calc(100% + 20px) !important;
+    min-height: 66px !important;
+    display: grid !important;
+    grid-template-columns: 40px minmax(0, 1fr) 40px !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin: 0 -10px 10px !important;
+    padding:
+      calc(9px + env(safe-area-inset-top))
+      12px
+      9px !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.09) !important;
+    border-radius: 0 !important;
+    color: #fff !important;
+    background:
+      radial-gradient(
+        circle at 88% 0%,
+        rgba(242, 183, 5, 0.21),
+        transparent 40%
+      ),
+      linear-gradient(135deg, #030640, #101a2d) !important;
+    box-shadow: 0 8px 25px rgba(3, 6, 64, 0.18) !important;
+    backdrop-filter: blur(14px) !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-page-header::after {
+    inset-inline: 52px !important;
+    height: 2px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-page-header-center {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-logo {
+    flex: 0 0 34px !important;
+    width: 34px !important;
+    height: 34px !important;
+    padding: 5px !important;
+    border-radius: 11px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-title {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    color: #fff !important;
+    font-size: 17px !important;
+    font-weight: 950 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-close-btn {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+    width: 38px !important;
+    min-width: 38px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+  }
+
+  /* ========================================================
+     Sections layout
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-sections-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-sections-grid > [class*="col-"] {
+    width: 100% !important;
+    max-width: none !important;
+    flex: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-price-guide-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-price-guide-row > [class*="col-"] {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  /* ========================================================
+     App cards
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    .bk-panel,
+    .bk-client-section,
+    .bk-service-section,
+    .bk-cart-panel,
+    .bk-summary-panel,
+    .bk-future-panel,
+    .bk-existing-booking-block,
+    .bk-existing-search-panel,
+    .bk-existing-hint-panel,
+    .bk-price-list-section,
+    .bk-booking-details,
+    .bk-service-hair-guide,
+    .bk-client-cart-block
+  ) {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 13px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(15, 23, 42, 0.085) !important;
+    border-radius: 18px !important;
+    color: #111a38 !important;
+    background: #fff !important;
+    box-shadow: 0 7px 22px rgba(15, 23, 42, 0.045) !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    .bk-panel,
+    .bk-client-section,
+    .bk-service-section,
+    .bk-cart-panel,
+    .bk-summary-panel,
+    .bk-existing-booking-block
+  ) > :where(h1, h2, h3, h4):first-child,
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    .bk-cart-title,
+    .bk-existing-search-title,
+    .bk-future-title-head,
+    .bk-soft-title
+  ) {
+    margin: 0 0 10px !important;
+    color: #101a39 !important;
+    font-size: 15px !important;
+    font-weight: 950 !important;
+    line-height: 1.45 !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    .text-muted,
+    .bk-existing-search-kicker,
+    .bk-existing-hint-body,
+    .bk-cart-service-meta,
+    .bk-cart-summary-line-meta,
+    .bk-future-subhint,
+    .bk-availability-hint,
+    .bk-guide-note
+  ) {
+    color: #748095 !important;
+    font-size: 8px !important;
+    line-height: 1.65 !important;
+  }
+
+  /* ========================================================
+     Existing client booking block
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-existing-layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-existing-search-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: stretch !important;
+    gap: 7px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-existing-search-row > * {
+    width: auto !important;
+    min-width: 0 !important;
+  }
+
+  /* ========================================================
+     Form fields
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    input,
+    select,
+    textarea,
+    .form-control,
+    .form-select,
+    .bk-date-display-input,
+    .bk-existing-search-input,
+    .bk-discount-value-input
+  ) {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 47px !important;
+    padding: 9px 11px !important;
+    border: 1px solid rgba(15, 23, 42, 0.12) !important;
+    border-radius: 13px !important;
+    color: #18213c !important;
+    background: #fafbfc !important;
+    box-shadow: none !important;
+    font-size: 16px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    .form-label,
+    .bk-booking-label
+  ) {
+    margin-bottom: 5px !important;
+    color: #667287 !important;
+    font-size: 8px !important;
+    font-weight: 900 !important;
+  }
+
+  /* ========================================================
+     Buttons
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    .btn,
+    .bk-existing-search-btn,
+    .bk-add-cart-btn,
+    .bk-submit-btn,
+    .bk-cart-confirm-btn,
+    .bk-pay-btn,
+    .bk-pay-confirm-btn,
+    .bk-pay-cancel-btn,
+    .bk-future-booking-btn,
+    .bk-preview-toggle-btn,
+    .bk-guide-upload-btn,
+    .bk-cart-suggest-btn,
+    .bk-date-calendar-toggle
+  ) {
+    min-width: 0 !important;
+    min-height: 43px !important;
+    padding: 8px 11px !important;
+    border-radius: 12px !important;
+    justify-content: center !important;
+    font-size: 9px !important;
+    font-weight: 900 !important;
+  }
+
+  /* ========================================================
+     Staff cards
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-staff-card-grid {
+    display: flex !important;
+    gap: 8px !important;
+    width: 100% !important;
+    padding: 0 0 4px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x proximity !important;
+    scrollbar-width: none !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-staff-card-grid::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-staff-card-grid > * {
+    flex: 0 0 132px !important;
+    min-width: 132px !important;
+    min-height: 98px !important;
+    padding: 11px !important;
+    border-radius: 15px !important;
+    scroll-snap-align: start !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-staff-card-name {
+    font-size: 10px !important;
+  }
+
+  /* ========================================================
+     Time selection
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-time-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-time-pill {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 42px !important;
+    padding: 7px 5px !important;
+    border-radius: 11px !important;
+    font-size: 9px !important;
+    font-variant-numeric: tabular-nums !important;
+  }
+
+  /* ========================================================
+     Cart
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-cart-list {
+    display: grid !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-cart-list > * {
+    min-width: 0 !important;
+    padding: 11px !important;
+    border-radius: 15px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-cart-item-head {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-cart-fields {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-cart-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-cart-actions > * {
+    width: 100% !important;
+  }
+
+  /* ========================================================
+     Summary
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-cart-summary-unified {
+    overflow: hidden !important;
+    border-radius: 15px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-cart-summary-line {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+    padding: 10px 11px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-total-visual {
+    font-size: 16px !important;
+  }
+
+  /* ========================================================
+     Future booking result
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-future-inline {
+    width: 100% !important;
+    min-width: 0 !important;
+    margin-top: 8px !important;
+    padding: 11px !important;
+    overflow: hidden !important;
+    border-radius: 15px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-future-inline > .d-flex {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 7px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-future-inline .table-responsive {
+    width: 100% !important;
+    margin-top: 8px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    border-radius: 12px !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-future-table {
+    min-width: 560px !important;
+    margin: 0 !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-future-table :where(th, td) {
+    padding: 9px 10px !important;
+    font-size: 8px !important;
+    white-space: nowrap !important;
+  }
+
+  /* ========================================================
+     Payment modal — full application sheet
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-pay-modal {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding:
+      calc(14px + env(safe-area-inset-top))
+      12px
+      calc(14px + env(safe-area-inset-bottom)) !important;
+    overflow-y: auto !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #f7f8fb !important;
+    box-shadow: none !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    .bk-pay-methods,
+    .bk-payment-method-grid
+  ) {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    .bk-pay-methods,
+    .bk-payment-method-grid
+  ) > * {
+    min-width: 0 !important;
+    min-height: 54px !important;
+    padding: 8px !important;
+    border-radius: 13px !important;
+    font-size: 9px !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-pay-modal-actions {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 5 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    margin-top: 12px !important;
+    padding:
+      10px
+      0
+      calc(4px + env(safe-area-inset-bottom)) !important;
+    background: rgba(247, 248, 251, 0.97) !important;
+    backdrop-filter: blur(12px) !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-pay-modal-actions > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 47px !important;
+    margin: 0 !important;
+  }
+
+  /* ========================================================
+     Remove nested vertical scrolling
+  ======================================================== */
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    .bk-client-section,
+    .bk-service-section,
+    .bk-cart-panel,
+    .bk-summary-panel,
+    .bk-client-cart-block,
+    .bk-existing-booking-block,
+    .bk-price-list-section
+  ) {
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal :where(
+    .bk-cart-list,
+    .bk-price-list-grid,
+    .bk-existing-layout
+  ) {
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-time-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-existing-search-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-existing-search-row > * {
+    width: 100% !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route
+  .bk-page-wrapper.bk-internal
+  .bk-pay-modal-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* BOOKING INTERNAL MOBILE APP END */
+
+
+
+
+
+
+
+/* INCOME MOBILE COLOR FIX START */
+
+@media (max-width: 767px) {
+  /* منع صفحة الإيرادات من تجاوز عرض الشاشة */
+  .dashboard-skin.madan-admin-shell .income-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding-inline: 0 !important;
+    overflow-x: hidden !important;
+    color: #111827 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .income-page > * {
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* هيدر الإيرادات */
+  .dashboard-skin.madan-admin-shell .income-page .income-header {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 0 10px !important;
+    padding: 15px !important;
+    overflow: hidden !important;
+    border-radius: 18px !important;
+    color: #101a39 !important;
+    background:
+      radial-gradient(
+        circle at 8% 15%,
+        rgba(242, 183, 5, 0.08),
+        transparent 36%
+      ),
+      #ffffff !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-header :where(h1, h2, h3) {
+    color: #101a39 !important;
+    -webkit-text-fill-color: #101a39 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-header :where(p, small, .text-muted) {
+    color: #69758a !important;
+    -webkit-text-fill-color: #69758a !important;
+  }
+
+  /* الإجراءات الثانوية التي كانت بيضاء */
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-actions {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    margin-top: 10px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-actions :where(button, a) {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 40px !important;
+    margin: 0 !important;
+    padding: 7px 8px !important;
+    border: 1px solid rgba(15, 23, 42, 0.1) !important;
+    border-radius: 12px !important;
+    color: #334155 !important;
+    background: #f8fafc !important;
+    -webkit-text-fill-color: #334155 !important;
+    font-size: 8px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-actions :where(button, a) :where(span, svg) {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+
+  /* زر إضافة دخل */
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  :where(.income-add-btn, .btn-primary) {
+    width: 100% !important;
+    min-height: 45px !important;
+    border-color: #101a39 !important;
+    border-radius: 13px !important;
+    color: #ffffff !important;
+    background: #101a39 !important;
+    -webkit-text-fill-color: #ffffff !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  :where(.income-add-btn, .btn-primary) :where(span, svg) {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+  }
+
+  /* بطاقات الإحصائيات: سحب أفقي بدل خروجها من الشاشة */
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-quick {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    display: flex !important;
+    gap: 9px !important;
+    margin: 10px 0 0 !important;
+    padding: 0 0 5px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x proximity !important;
+    overscroll-behavior-x: contain !important;
+    scrollbar-width: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-quick::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-quick
+  .stat-card {
+    flex: 0 0 160px !important;
+    width: 160px !important;
+    min-width: 160px !important;
+    max-width: 160px !important;
+    min-height: 94px !important;
+    display: flex !important;
+    align-items: flex-end !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    margin: 0 !important;
+    padding: 13px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 17px !important;
+    color: #111827 !important;
+    background: #ffffff !important;
+    scroll-snap-align: start !important;
+  }
+
+  /* إلغاء الخلفية الكحلية المتعارضة في بطاقة الإجمالي */
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-quick
+  .stat-card.stat-card-total {
+    color: #111827 !important;
+    background:
+      radial-gradient(
+        circle at 100% 100%,
+        rgba(242, 183, 5, 0.13),
+        transparent 52%
+      ),
+      #fff9e7 !important;
+    border-color: rgba(242, 183, 5, 0.28) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-quick
+  .stat-card
+  .stat-info {
+    position: relative !important;
+    z-index: 2 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-quick
+  .stat-card
+  .stat-info h3 {
+    max-width: 100% !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    color: #111a38 !important;
+    -webkit-text-fill-color: #111a38 !important;
+    font-size: 15px !important;
+    font-weight: 950 !important;
+    line-height: 1.25 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-quick
+  .stat-card
+  .stat-info p {
+    margin: 5px 0 0 !important;
+    color: #69758a !important;
+    -webkit-text-fill-color: #69758a !important;
+    font-size: 8px !important;
+    font-weight: 850 !important;
+  }
+
+  /* ضمان وضوح النص في بطاقة الإجمالي تحديدًا */
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-quick
+  .stat-card-total
+  :where(h3, p, span, strong) {
+    color: #111a38 !important;
+    -webkit-text-fill-color: #111a38 !important;
+  }
+
+  /* المحتوى والفلاتر لا تتجاوز الشاشة */
+  .dashboard-skin.madan-admin-shell
+  .income-page :where(
+    .income-filters,
+    .income-filter-grid,
+    .income-table-wrap,
+    .income-mobile-list
+  ) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell
+  .income-page
+  .income-filter-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* INCOME MOBILE COLOR FIX END */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

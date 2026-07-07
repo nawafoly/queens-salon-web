@@ -1,4 +1,4 @@
-
+﻿
 
 // ✅ src/pages/DashboardIncome.tsx
 import { useEffect, useMemo, useState } from "react";
@@ -1065,6 +1065,90 @@ export default function DashboardIncome() {
         </div>
 
         {/* Quick Stat */}
+        {/* INCOME_INLINE_STATS_FIX */}
+        <style>{`
+          @media (max-width: 900px) {
+            .income-page .income-container {
+              width: 100% !important;
+              max-width: 100% !important;
+              min-width: 0 !important;
+              padding-inline: 10px !important;
+              overflow-x: hidden !important;
+              box-sizing: border-box !important;
+            }
+
+            .income-page .income-quick {
+              width: 100% !important;
+              max-width: 100% !important;
+              min-width: 0 !important;
+
+              display: grid !important;
+              grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+              gap: 8px !important;
+
+              margin: 10px 0 0 !important;
+              padding: 0 !important;
+
+              overflow: hidden !important;
+              overflow-x: hidden !important;
+              box-sizing: border-box !important;
+            }
+
+            .income-page .income-quick > .stat-card {
+              width: 100% !important;
+              max-width: 100% !important;
+              min-width: 0 !important;
+
+              height: 78px !important;
+              min-height: 78px !important;
+
+              margin: 0 !important;
+              padding: 9px !important;
+
+              flex: none !important;
+              grid-column: auto !important;
+
+              overflow: hidden !important;
+              box-sizing: border-box !important;
+              border-radius: 14px !important;
+            }
+
+            .income-page .income-quick .stat-info {
+              width: 100% !important;
+              min-width: 0 !important;
+              max-width: 100% !important;
+            }
+
+            .income-page .income-quick .stat-info h3 {
+              width: 100% !important;
+              margin: 0 !important;
+              overflow: hidden !important;
+
+              color: #101a39 !important;
+              -webkit-text-fill-color: #101a39 !important;
+
+              font-size: 11px !important;
+              line-height: 1.25 !important;
+
+              text-overflow: ellipsis !important;
+              white-space: nowrap !important;
+            }
+
+            .income-page .income-quick .stat-info p {
+              width: 100% !important;
+              margin: 4px 0 0 !important;
+              overflow: hidden !important;
+
+              color: #68758a !important;
+              -webkit-text-fill-color: #68758a !important;
+
+              font-size: 8px !important;
+
+              text-overflow: ellipsis !important;
+              white-space: nowrap !important;
+            }
+          }
+        `}</style>
         <div className="income-quick">
           <div className="stat-card stat-card-total">
             <div className="stat-info">
@@ -1752,3 +1836,5 @@ export default function DashboardIncome() {
 // 🔕 silence unused helpers
 void loadBookings;
 void isRevenueStatus;
+
+
