@@ -1,4 +1,4 @@
-import "../styles/AdminDashboardShell.css";
+﻿import "../styles/AdminDashboardShell.css";
 import "../styles/AdminDashboardOverview.css";
 import "../styles/AdminDashboardBookings.css";
 // ✅ src/pages/Dashboard.tsx
@@ -26,6 +26,7 @@ import {
   faTv,
 } from "@fortawesome/free-solid-svg-icons";
 import LoadingBrand from "../components/LoadingBrand";
+import DashboardMobileNav from "../components/DashboardMobileNav";
 import Modal from "../components/Modal";
 
 import DashboardBookings from "../pages/DashboardBookings";
@@ -3201,6 +3202,15 @@ const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* ✅ Modal تفاصيل الحجز */}
+      <DashboardMobileNav
+        hasAdminPower={hasAdminPower}
+        isReception={isReception}
+        isStaff={isStaff}
+        canManageAdminUsers={Boolean(canManageAdminUsers)}
+        allowStaffViewClients={Boolean(allowStaffViewClients)}
+        missingExpenseNotesCount={missingExpenseNotesCount}
+        onLogout={handleLogout}
+      />
       {selectedBooking && (
         <Modal
           open={!!selectedBooking}
@@ -3403,3 +3413,5 @@ const Dashboard: React.FC<DashboardProps> = ({
 };
 
 export default Dashboard;
+
+

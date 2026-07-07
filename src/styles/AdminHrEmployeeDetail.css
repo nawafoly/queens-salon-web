@@ -10397,3 +10397,576 @@
 }
 
 /* EMPLOYEE SERVICES SECTION END */
+
+
+
+
+
+
+/* EMPLOYEE DETAIL MOBILE APP START */
+
+.emp-editor-overlay,
+.emp-editor-overlay * {
+  box-sizing: border-box;
+}
+
+.emp-editor-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 3000 !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 18px !important;
+  background: rgba(7, 15, 35, 0.68) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+.emp-editor-panel {
+  width: min(1380px, calc(100vw - 36px)) !important;
+  height: min(920px, calc(100dvh - 36px)) !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  border-radius: 24px !important;
+  background: #f7f8fb !important;
+  box-shadow: 0 34px 90px rgba(4, 12, 30, 0.34) !important;
+}
+
+.emp-editor-header {
+  position: relative !important;
+  z-index: 4 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  min-width: 0 !important;
+  padding: 20px 22px !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(242, 183, 5, 0.15), transparent 32%),
+    linear-gradient(135deg, #ffffff 0%, #fbfcff 100%) !important;
+}
+
+.emp-editor-identity {
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  min-width: 0 !important;
+}
+
+.emp-editor-avatar {
+  flex: 0 0 auto !important;
+  width: 70px !important;
+  height: 70px !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: hidden !important;
+  border: 3px solid #ffffff !important;
+  border-radius: 22px !important;
+  color: #735a00 !important;
+  background: linear-gradient(135deg, #fff7cf, #f2b705) !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.13) !important;
+  font-size: 19px !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-avatar img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.emp-editor-title {
+  display: grid !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+}
+
+.emp-editor-title > span {
+  color: #9a7900 !important;
+  font-size: 10px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.04em !important;
+}
+
+.emp-editor-title h3 {
+  margin: 0 !important;
+  overflow: hidden !important;
+  color: #111827 !important;
+  font-size: 22px !important;
+  font-weight: 950 !important;
+  line-height: 1.3 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.emp-editor-title p {
+  max-width: 760px !important;
+  margin: 0 !important;
+  color: #6c788c !important;
+  font-size: 11px !important;
+  line-height: 1.7 !important;
+}
+
+.emp-editor-chips {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 7px !important;
+  margin-top: 4px !important;
+}
+
+.emp-editor-header > .exp-btn {
+  flex: 0 0 auto !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  border-radius: 14px !important;
+  font-size: 17px !important;
+}
+
+.emp-editor-tabs {
+  position: relative !important;
+  z-index: 3 !important;
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+  padding: 10px 14px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+  background: #ffffff !important;
+  scrollbar-width: thin !important;
+  overscroll-behavior-x: contain !important;
+  scroll-snap-type: x proximity !important;
+}
+
+.emp-editor-tab {
+  flex: 0 0 auto !important;
+  min-width: 120px !important;
+  min-height: 56px !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 7px !important;
+  padding: 9px 12px !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  border-radius: 15px !important;
+  color: #596579 !important;
+  background: #f8f9fb !important;
+  box-shadow: none !important;
+  text-align: start !important;
+  scroll-snap-align: start !important;
+  cursor: pointer !important;
+}
+
+.emp-editor-tab svg {
+  color: #8792a5 !important;
+  font-size: 13px !important;
+}
+
+.emp-editor-tab span {
+  color: inherit !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  white-space: nowrap !important;
+}
+
+.emp-editor-tab small {
+  grid-column: 1 / -1 !important;
+  overflow: hidden !important;
+  color: #8993a4 !important;
+  font-size: 8px !important;
+  line-height: 1.4 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.emp-editor-tab.active {
+  border-color: rgba(242, 183, 5, 0.65) !important;
+  color: #6c5400 !important;
+  background: linear-gradient(135deg, #fff8d8, #ffffff) !important;
+  box-shadow: 0 8px 20px rgba(242, 183, 5, 0.11) !important;
+}
+
+.emp-editor-tab.active svg {
+  color: #b58c00 !important;
+}
+
+.emp-editor-fieldset {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
+}
+
+.emp-editor-fieldset.is-readonly {
+  opacity: 1 !important;
+}
+
+.emp-editor-fieldset.is-readonly :where(input, select, textarea, button) {
+  pointer-events: none;
+}
+
+.emp-editor-content {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 18px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  scrollbar-gutter: stable !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.emp-editor-content > * {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-inline: auto !important;
+}
+
+.emp-editor-content .emp-modal-section {
+  display: grid !important;
+  gap: 16px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 18px !important;
+  border: 1px solid rgba(15, 23, 42, 0.09) !important;
+  border-radius: 20px !important;
+  background: #ffffff !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.045) !important;
+}
+
+.emp-editor-content .emp-section-header {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  min-width: 0 !important;
+  padding-bottom: 14px !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+.emp-editor-content .emp-section-header__main {
+  min-width: 0 !important;
+}
+
+.emp-editor-content .emp-modal-section-title {
+  margin: 0 !important;
+  color: #111827 !important;
+  font-size: 18px !important;
+  font-weight: 950 !important;
+}
+
+.emp-editor-content .emp-section-lead {
+  margin: 6px 0 0 !important;
+  color: #758195 !important;
+  font-size: 10px !important;
+  line-height: 1.75 !important;
+}
+
+.emp-editor-content :where(.dash-field, .emp-field) {
+  min-width: 0 !important;
+}
+
+.emp-editor-content :where(.dash-input, .dash-select, .dash-textarea) {
+  width: 100% !important;
+  min-width: 0 !important;
+  border-radius: 13px !important;
+}
+
+.emp-editor-footer {
+  position: relative !important;
+  z-index: 5 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  min-width: 0 !important;
+  padding: 14px 18px !important;
+  border-top: 1px solid rgba(15, 23, 42, 0.1) !important;
+  background: rgba(255, 255, 255, 0.97) !important;
+  box-shadow: 0 -12px 28px rgba(15, 23, 42, 0.07) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+.emp-editor-footer > span {
+  max-width: 620px !important;
+  color: #747f91 !important;
+  font-size: 9px !important;
+  line-height: 1.65 !important;
+}
+
+.emp-editor-footer-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 9px !important;
+  flex: 0 0 auto !important;
+}
+
+.emp-editor-footer-actions .exp-btn {
+  min-height: 42px !important;
+  border-radius: 13px !important;
+}
+
+/* Mobile employee editor */
+
+@media (max-width: 767px) {
+  body.emp-editor-open {
+    overflow: hidden !important;
+    padding-right: 0 !important;
+    touch-action: none !important;
+  }
+
+  .emp-editor-overlay {
+    display: block !important;
+    padding: 0 !important;
+    background: #f6f7fa !important;
+    backdrop-filter: none !important;
+  }
+
+  .emp-editor-panel {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    min-width: 0 !important;
+    min-height: 100dvh !important;
+    max-width: none !important;
+    max-height: none !important;
+    grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #f4f6f9 !important;
+    box-shadow: none !important;
+  }
+
+  .emp-editor-header {
+    min-height: 0 !important;
+    padding:
+      calc(12px + env(safe-area-inset-top))
+      13px
+      13px !important;
+    gap: 10px !important;
+    border-radius: 0 !important;
+  }
+
+  .emp-editor-identity {
+    align-items: center !important;
+    gap: 10px !important;
+    min-width: 0 !important;
+  }
+
+  .emp-editor-avatar {
+    width: 52px !important;
+    height: 52px !important;
+    min-width: 52px !important;
+    border-width: 2px !important;
+    border-radius: 16px !important;
+    font-size: 15px !important;
+  }
+
+  .emp-editor-title {
+    gap: 2px !important;
+  }
+
+  .emp-editor-title > span {
+    font-size: 8px !important;
+  }
+
+  .emp-editor-title h3 {
+    max-width: calc(100vw - 128px) !important;
+    font-size: 17px !important;
+    line-height: 1.25 !important;
+  }
+
+  .emp-editor-title p {
+    display: none !important;
+  }
+
+  .emp-editor-chips {
+    gap: 5px !important;
+    margin-top: 3px !important;
+  }
+
+  .emp-editor-chips :where(.staff-pill, .emp-meta-chip) {
+    min-height: 21px !important;
+    padding: 3px 7px !important;
+    font-size: 7px !important;
+  }
+
+  .emp-editor-header > .exp-btn {
+    width: 38px !important;
+    min-width: 38px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    border-radius: 12px !important;
+  }
+
+  .emp-editor-tabs {
+    gap: 7px !important;
+    padding: 8px 10px !important;
+    scroll-padding-inline: 10px !important;
+  }
+
+  .emp-editor-tab {
+    min-width: 104px !important;
+    min-height: 45px !important;
+    grid-template-columns: auto auto !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 8px 10px !important;
+    border-radius: 13px !important;
+  }
+
+  .emp-editor-tab span {
+    font-size: 9px !important;
+  }
+
+  .emp-editor-tab small {
+    display: none !important;
+  }
+
+  .emp-editor-tab svg {
+    font-size: 11px !important;
+  }
+
+  .emp-editor-content {
+    padding: 10px 10px 18px !important;
+    overflow-y: auto !important;
+    touch-action: pan-y !important;
+  }
+
+  .emp-editor-content .emp-modal-section {
+    gap: 13px !important;
+    padding: 13px !important;
+    border-radius: 17px !important;
+    box-shadow: 0 7px 20px rgba(15, 23, 42, 0.04) !important;
+  }
+
+  .emp-editor-content .emp-section-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 9px !important;
+    padding-bottom: 11px !important;
+  }
+
+  .emp-editor-content .emp-section-header__aside {
+    justify-self: start !important;
+  }
+
+  .emp-editor-content .emp-modal-section-title {
+    font-size: 15px !important;
+  }
+
+  .emp-editor-content .emp-section-lead {
+    font-size: 8px !important;
+  }
+
+  .emp-editor-content :where(
+    .dash-row,
+    .emp-form-grid,
+    .staff-payroll-form,
+    .staff-leave-settings-grid,
+    .emp-profile-rating-grid,
+    .emp-profile-workspace
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .emp-editor-content :where(.dash-input, .dash-select, .dash-textarea) {
+    min-height: 47px !important;
+    font-size: 16px !important;
+  }
+
+  .emp-editor-footer {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding:
+      10px
+      10px
+      calc(10px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .emp-editor-footer > span {
+    display: none !important;
+  }
+
+  .emp-editor-footer-actions {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.3fr) !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .emp-editor-footer-actions .exp-btn {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 46px !important;
+    margin: 0 !important;
+    padding: 8px 9px !important;
+    justify-content: center !important;
+    border-radius: 13px !important;
+    font-size: 10px !important;
+  }
+
+  .emp-editor-footer-actions .exp-btn.text-danger {
+    width: 46px !important;
+    min-width: 46px !important;
+    padding: 0 !important;
+  }
+
+  .emp-editor-footer-actions .exp-btn.primary {
+    font-size: 11px !important;
+    font-weight: 950 !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .emp-editor-avatar {
+    width: 46px !important;
+    height: 46px !important;
+    min-width: 46px !important;
+  }
+
+  .emp-editor-title h3 {
+    max-width: calc(100vw - 118px) !important;
+    font-size: 15px !important;
+  }
+
+  .emp-editor-tab {
+    min-width: 94px !important;
+  }
+
+  .emp-editor-footer-actions {
+    grid-template-columns: 42px minmax(0, 0.9fr) minmax(0, 1.2fr) !important;
+  }
+
+  .emp-editor-footer-actions .exp-btn {
+    padding-inline: 6px !important;
+    font-size: 9px !important;
+  }
+
+  .emp-editor-footer-actions .exp-btn.text-danger {
+    width: 42px !important;
+    min-width: 42px !important;
+  }
+}
+
+/* EMPLOYEE DETAIL MOBILE APP END */
+
