@@ -231,10 +231,10 @@ export default function DashboardMobileNav({
         item.to !== "/" &&
         location.pathname.startsWith(item.to)
     ) &&
-    !location.pathname.startsWith("/dashboard/overview") &&
     !location.pathname.startsWith("/dashboard/bookings") &&
-    !location.pathname.startsWith("/dashboard/employees") &&
-    !location.pathname.startsWith("/dashboard/clients");
+    !location.pathname.startsWith("/dashboard/income") &&
+    !location.pathname.startsWith("/dashboard/expenses") &&
+    !location.pathname.startsWith("/dashboard/reports");
 
   return (
     <>
@@ -243,60 +243,54 @@ export default function DashboardMobileNav({
         aria-label="تنقل لوحة التحكم"
       >
         <NavLink
-          to="/dashboard/overview"
+          to="/dashboard/bookings"
           className={({ isActive }) =>
             `dashboard-mobile-bottom-nav__item ${
               isActive ? "is-active" : ""
             }`
           }
         >
-          <FontAwesomeIcon icon={faHouse} />
-          <span>الرئيسية</span>
+          <FontAwesomeIcon icon={faCalendarAlt} />
+          <span>الحجوزات</span>
         </NavLink>
 
-        {(hasAdminPower || isReception) && (
-          <NavLink
-            to="/dashboard/bookings"
-            className={({ isActive }) =>
-              `dashboard-mobile-bottom-nav__item ${
-                isActive ? "is-active" : ""
-              }`
-            }
-          >
-            <FontAwesomeIcon icon={faCalendarAlt} />
-            <span>الحجوزات</span>
-          </NavLink>
-        )}
+        <NavLink
+          to="/dashboard/income"
+          className={({ isActive }) =>
+            `dashboard-mobile-bottom-nav__item ${
+              isActive ? "is-active" : ""
+            }`
+          }
+        >
+          <FontAwesomeIcon icon={faWallet} />
+          <span>الإيرادات</span>
+        </NavLink>
 
-        {hasAdminPower && (
-          <NavLink
-            to="/dashboard/employees"
-            className={({ isActive }) =>
-              `dashboard-mobile-bottom-nav__item dashboard-mobile-bottom-nav__item--primary ${
-                isActive ? "is-active" : ""
-              }`
-            }
-          >
-            <span className="dashboard-mobile-bottom-nav__primary-icon">
-              <FontAwesomeIcon icon={faUserTie} />
-            </span>
-            <span>الموظفات</span>
-          </NavLink>
-        )}
+        <NavLink
+          to="/dashboard/expenses"
+          className={({ isActive }) =>
+            `dashboard-mobile-bottom-nav__item dashboard-mobile-bottom-nav__item--primary ${
+              isActive ? "is-active" : ""
+            }`
+          }
+        >
+          <span className="dashboard-mobile-bottom-nav__primary-icon">
+            <FontAwesomeIcon icon={faMoneyBillWave} />
+          </span>
+          <span>المصروفات</span>
+        </NavLink>
 
-        {canViewClients && (
-          <NavLink
-            to="/dashboard/clients"
-            className={({ isActive }) =>
-              `dashboard-mobile-bottom-nav__item ${
-                isActive ? "is-active" : ""
-              }`
-            }
-          >
-            <FontAwesomeIcon icon={faUsers} />
-            <span>العملاء</span>
-          </NavLink>
-        )}
+        <NavLink
+          to="/dashboard/reports"
+          className={({ isActive }) =>
+            `dashboard-mobile-bottom-nav__item ${
+              isActive ? "is-active" : ""
+            }`
+          }
+        >
+          <FontAwesomeIcon icon={faChartPie} />
+          <span>التقارير</span>
+        </NavLink>
 
         <button
           type="button"
@@ -310,7 +304,6 @@ export default function DashboardMobileNav({
           <span>المزيد</span>
         </button>
       </nav>
-
       {moreOpen ? (
         <div
           className="dashboard-mobile-more-overlay"
@@ -388,3 +381,5 @@ export default function DashboardMobileNav({
     </>
   );
 }
+
+
