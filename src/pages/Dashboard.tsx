@@ -10,7 +10,6 @@ import {
   faCalendarAlt,
   faChartLine,
   faCog,
-  faSignOutAlt,
   faUserShield,
   faUserTie,
   faUser,
@@ -2973,55 +2972,6 @@ const Dashboard: React.FC<DashboardProps> = ({
               </ul>
             </nav>
 
-            <div className="sidebar-footer">
-              <button
-                className="exp-btn home"
-                type="button"
-                onClick={() => navigate("/")}
-                title="الصفحة الرئيسية"
-                aria-label="الصفحة الرئيسية"
-              >
-                <FontAwesomeIcon icon={faHouse} />
-                الصفحة الرئيسية
-              </button>
-
-              {(isStaff || hasAdminPower || isReception) && (
-                <button
-                  className="exp-btn hr"
-                  type="button"
-                  onClick={() => {
-                    setIsSidebarOpen(false);
-                    navigate("/employee/overview");
-                  }}
-                  title="بوابة الموظف"
-                  aria-label="بوابة الموظف"
-                >
-                  <FontAwesomeIcon icon={faUserTie} />
-                  بوابة الموظف
-                </button>
-              )}
-
-              {hasAdminPower && (
-                <button
-                  className="exp-btn hr"
-                  type="button"
-                  onClick={() => {
-                    setIsSidebarOpen(false);
-                    navigate("/admin");
-                  }}
-                  title="لوحة HR"
-                  aria-label="لوحة HR"
-                >
-                  <FontAwesomeIcon icon={faUserShield} />
-                  لوحة HR
-                </button>
-              )}
-
-              <button className="exp-btn logout" onClick={handleLogout} type="button">
-                <FontAwesomeIcon icon={faSignOutAlt} />
-                تسجيل الخروج
-              </button>
-            </div>
           </div>
 
           {/* Main Content */}

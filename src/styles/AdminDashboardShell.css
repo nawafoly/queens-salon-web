@@ -1037,3 +1037,36 @@
 
 /* DASHBOARD MOBILE APP NAV END */
 
+
+/* Dashboard shell: keep desktop header and sidebar in the document flow */
+@media (min-width: 768px) {
+  .dashboard-skin.madan-admin-shell.dashboard-page
+    > .container-fluid
+    > .row {
+    align-items: stretch !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
+    position: relative !important;
+    top: auto !important;
+    align-self: stretch !important;
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow: visible !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav {
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-footer {
+    margin-top: 12px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar {
+    position: relative !important;
+    top: auto !important;
+  }
+}

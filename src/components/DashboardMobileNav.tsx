@@ -15,7 +15,6 @@ import {
   faUser,
   faUsers,
   faUserShield,
-  faUserTie,
   faWallet,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
@@ -77,15 +76,6 @@ export default function DashboardMobileNav({
 
   const moreItems = useMemo<MoreItem[]>(() => {
     const items: MoreItem[] = [];
-
-    if (isStaff || hasAdminPower || isReception) {
-      items.push({
-        to: "/employee/overview",
-        label: "بوابة الموظف",
-        description: "الحضور والطلبات والملف الوظيفي",
-        icon: faUserTie,
-      });
-    }
 
     if (hasAdminPower || isReception) {
       items.push(
@@ -188,12 +178,6 @@ export default function DashboardMobileNav({
         }
       );
     }
-
-    items.push({
-      to: "/",
-      label: "الموقع الرئيسي",
-      icon: faHouse,
-    });
 
     return items;
   }, [
