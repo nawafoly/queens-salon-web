@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    Employee mobile application navigation
    ========================================================= */
 
@@ -8262,3 +8262,268 @@
 
 /* EMPLOYEE PAYROLL APP UI END */
 
+/* EMPLOYEE DESKTOP EXPANDED WIDTH START */
+
+@media (min-width: 821px) {
+  html:has(.employee-portal.madan-employee-portal),
+  body:has(.employee-portal.madan-employee-portal),
+  body:has(.employee-portal.madan-employee-portal) #root {
+    width: 100% !important;
+    min-height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #f3f5f8 !important;
+  }
+
+  .employee-portal.madan-employee-portal {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 100vh !important;
+
+    margin: 0 !important;
+    padding: 8px !important;
+
+    background: #f3f5f8 !important;
+    overflow: visible !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-portal-layout--app {
+    display: flex !important;
+    flex-direction: row !important;
+
+    width: 100% !important;
+    max-width: none !important;
+    min-height: calc(100vh - 16px) !important;
+
+    align-items: flex-start !important;
+    gap: 8px !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-portal-sidebar--desktop {
+    position: sticky !important;
+    top: 8px !important;
+
+    flex: 0 0 286px !important;
+    width: 286px !important;
+    max-width: 286px !important;
+
+    height: calc(100vh - 16px) !important;
+    max-height: calc(100vh - 16px) !important;
+
+    margin: 0 !important;
+    overflow-y: auto !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-portal-main {
+    flex: 1 1 auto !important;
+
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+
+    overflow: visible !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-app-route-scroll,
+  .employee-portal.madan-employee-portal
+    .employee-app-route-scroll > *,
+  .employee-portal.madan-employee-portal
+    .employee-workspace {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    margin-inline: 0 !important;
+  }
+}
+
+/* EMPLOYEE DESKTOP EXPANDED WIDTH END */
+
+/* EMPLOYEE DESKTOP TYPOGRAPHY SCALE START */
+
+@media (min-width: 821px) {
+  /* عنوان الصفحة */
+  .employee-portal.madan-employee-portal
+    .hr-comms-page
+    .hr-ops-hero > div > span {
+    font-size: 13px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-page
+    .hr-ops-hero h2 {
+    font-size: 34px !important;
+    line-height: 1.2 !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-page
+    .hr-ops-hero p {
+    font-size: 14px !important;
+    line-height: 1.8 !important;
+  }
+
+  /* أزرار التحديث والرسالة الجديدة */
+  .employee-portal.madan-employee-portal
+    .hr-comms-page
+    .hr-ops-button {
+    min-height: 46px !important;
+    padding-inline: 18px !important;
+    font-size: 14px !important;
+  }
+
+  /* بطاقات الإحصائيات */
+  .employee-portal.madan-employee-portal
+    .hr-comms-page
+    .hr-ops-stats article {
+    min-height: 108px !important;
+    padding: 18px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-page
+    .hr-ops-stats article > span {
+    font-size: 13px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-page
+    .hr-ops-stats article > strong {
+    font-size: 27px !important;
+  }
+
+  /* عنوان صندوق الرسائل */
+  .employee-portal.madan-employee-portal
+    .hr-comms-inbox__head span {
+    font-size: 12px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-inbox__head strong {
+    font-size: 17px !important;
+  }
+
+  /* البحث والفلاتر */
+  .employee-portal.madan-employee-portal
+    .hr-ops-search input {
+    min-height: 48px !important;
+    font-size: 14px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-filters button {
+    min-height: 38px !important;
+    padding-inline: 13px !important;
+    font-size: 12px !important;
+  }
+
+  /* قائمة المحادثات */
+  .employee-portal.madan-employee-portal
+    .hr-comms-list > button {
+    min-height: 96px !important;
+    padding: 15px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-list__copy strong {
+    font-size: 15px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-list__copy small {
+    font-size: 11px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-list__copy p {
+    font-size: 13px !important;
+    line-height: 1.6 !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-list__meta time {
+    font-size: 10px !important;
+  }
+
+  /* رأس المحادثة */
+  .employee-portal.madan-employee-portal
+    .hr-comms-thread__head > div > span,
+  .employee-portal.madan-employee-portal
+    .hr-comms-thread__head > div > small {
+    font-size: 12px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-thread__head > div > strong {
+    font-size: 18px !important;
+  }
+
+  /* الرسائل */
+  .employee-portal.madan-employee-portal
+    .hr-comms-bubble {
+    min-width: 230px !important;
+    max-width: 560px !important;
+    padding: 15px 17px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-bubble header strong {
+    font-size: 14px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-bubble header span {
+    font-size: 11px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-bubble p {
+    font-size: 15px !important;
+    line-height: 1.8 !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-bubble footer {
+    font-size: 10px !important;
+  }
+
+  /* مربع كتابة الرد */
+  .employee-portal.madan-employee-portal
+    .hr-comms-composer textarea {
+    min-height: 74px !important;
+    padding: 14px !important;
+    font-size: 14px !important;
+    line-height: 1.7 !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .hr-comms-composer button {
+    width: 52px !important;
+    height: 52px !important;
+    font-size: 17px !important;
+  }
+
+  /* نصوص السايدبار */
+  .employee-portal.madan-employee-portal
+    .employee-portal-sidebar--desktop
+    .employee-portal-desktop-link__copy strong {
+    font-size: 14px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-portal-sidebar--desktop
+    .employee-portal-desktop-link__copy small {
+    font-size: 11px !important;
+  }
+}
+
+/* EMPLOYEE DESKTOP TYPOGRAPHY SCALE END */

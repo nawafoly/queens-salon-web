@@ -324,7 +324,7 @@ export async function verifyAssignedWorkZone(args: {
       reason: "accuracy_too_low",
     });
     throw attachVerificationError(
-      `دقة الموقع غير كافية. الدقة الحالية ${location.accuracy} م والحد المسموح ${maxAllowedAccuracyMeters} م`,
+      `دقة الموقع غير كافية بعد محاولة تحسين القراءة. الدقة الحالية ${location.accuracy} م والحد المسموح ${maxAllowedAccuracyMeters} م. فعّل GPS وWi-Fi ثم حاول مرة أخرى.`,
       {
         location,
         workZoneMatch,
@@ -362,28 +362,137 @@ export function getBrowserPosition(options?: PositionOptions): Promise<Attendanc
     return Promise.reject(new Error("الموقع غير مدعوم في هذا المتصفح."));
   }
 
+  const requestedTimeout = Number(options?.timeout);
+  const timeoutMs =
+    Number.isFinite(requestedTimeout) && requestedTimeout > 0
+      ? Math.max(8000, Math.round(requestedTimeout))
+      : 20000;
+
+  const positionOptions: PositionOptions = {
+    ...(options || {}),
+    enableHighAccuracy: true,
+    timeout: timeoutMs,
+    maximumAge: 0,
+  };
+
+  const targetAccuracyMeters = 60;
+  const maximumReadings = 5;
+
   return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        resolve({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          accuracy: Math.round(position.coords.accuracy || 0),
-        });
-      },
-      (error) => {
-        if (error.code === error.PERMISSION_DENIED) {
-          reject(new Error("اسمح بالوصول للموقع حتى يتم تسجيل الحضور."));
-          return;
-        }
-        reject(new Error("تعذر قراءة موقعك الحالي. حاول مرة أخرى."));
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 30000,
-        ...(options || {}),
+    let settled = false;
+    let watchId = -1;
+    let readingCount = 0;
+    let bestLocation: AttendanceLocation | null = null;
+
+    const cleanup = () => {
+      window.clearTimeout(stopTimer);
+
+      if (watchId >= 0) {
+        navigator.geolocation.clearWatch(watchId);
       }
-    );
+    };
+
+    const finishSuccess = () => {
+      if (settled || !bestLocation) return;
+
+      settled = true;
+      cleanup();
+      resolve(bestLocation);
+    };
+
+    const finishError = (message: string) => {
+      if (settled) return;
+
+      settled = true;
+      cleanup();
+      reject(new Error(message));
+    };
+
+    const stopTimer = window.setTimeout(() => {
+      if (bestLocation) {
+        finishSuccess();
+        return;
+      }
+
+      finishError(
+        "تعذر الحصول على قراءة دقيقة للموقع. فعّل GPS وWi-Fi ثم حاول مرة أخرى."
+      );
+    }, timeoutMs + 1500);
+
+    try {
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const accuracy = Math.max(
+            0,
+            Math.round(Number(position.coords.accuracy) || 0)
+          );
+
+          const nextLocation: AttendanceLocation = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy,
+          };
+
+          readingCount += 1;
+
+          const nextAccuracy =
+            nextLocation.accuracy ?? Number.MAX_SAFE_INTEGER;
+
+          const bestAccuracy =
+            bestLocation?.accuracy ?? Number.MAX_SAFE_INTEGER;
+
+          if (!bestLocation || nextAccuracy < bestAccuracy) {
+            bestLocation = nextLocation;
+          }
+
+          console.info("[attendance_location_sample]", {
+            readingCount,
+            lat: nextLocation.lat,
+            lng: nextLocation.lng,
+            accuracy: nextLocation.accuracy,
+            bestAccuracy: bestLocation.accuracy,
+          });
+
+          if (
+            accuracy > 0 &&
+            accuracy <= targetAccuracyMeters
+          ) {
+            finishSuccess();
+            return;
+          }
+
+          if (readingCount >= maximumReadings) {
+            finishSuccess();
+          }
+        },
+        (error) => {
+          if (error.code === error.PERMISSION_DENIED) {
+            finishError(
+              "اسمح بالوصول إلى الموقع حتى يتم تسجيل الحضور."
+            );
+            return;
+          }
+
+          if (bestLocation) {
+            finishSuccess();
+            return;
+          }
+
+          if (error.code === error.TIMEOUT) {
+            finishError(
+              "انتهت مهلة تحديد الموقع. فعّل GPS وWi-Fi ثم حاول مرة أخرى."
+            );
+            return;
+          }
+
+          finishError(
+            "تعذر قراءة موقعك الحالي. فعّل GPS وWi-Fi ثم حاول مرة أخرى."
+          );
+        },
+        positionOptions
+      );
+    } catch {
+      finishError("تعذر تشغيل خدمة الموقع في هذا الجهاز.");
+    }
   });
 }

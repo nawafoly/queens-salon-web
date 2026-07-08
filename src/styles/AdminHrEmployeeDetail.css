@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Employee Detail Workspace
  * Scoped to /admin/* through .emp-editor-overlay--hr
  */
@@ -10970,3 +10970,79 @@
 
 /* EMPLOYEE DETAIL MOBILE APP END */
 
+/* EMPLOYEE EDITOR SAVE BAR FIX START */
+
+@media (min-width: 821px) {
+  .emp-editor-overlay.emp-editor-overlay--hr {
+    padding: 12px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .emp-editor-panel {
+    display: grid !important;
+
+    grid-template-areas:
+      "header header"
+      "tabs content"
+      "footer footer" !important;
+
+    grid-template-columns: 270px minmax(0, 1fr) !important;
+    grid-template-rows: auto minmax(0, 1fr) 76px !important;
+
+    height: calc(100dvh - 24px) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 24px) !important;
+
+    overflow: hidden !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .emp-editor-fieldset {
+    grid-area: content !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .emp-editor-content {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+
+    padding-bottom: 24px !important;
+    overflow-y: auto !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .emp-editor-footer {
+    grid-area: footer !important;
+
+    position: relative !important;
+    bottom: auto !important;
+    z-index: 50 !important;
+
+    display: flex !important;
+    visibility: visible !important;
+
+    width: 100% !important;
+    min-height: 76px !important;
+
+    margin: 0 !important;
+    padding: 12px 18px !important;
+
+    background: #ffffff !important;
+    border-top: 1px solid #dfe4eb !important;
+    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08) !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-footer-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 9px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr
+    .emp-editor-footer-actions
+    .exp-btn.primary {
+    min-width: 140px !important;
+  }
+}
+
+/* EMPLOYEE EDITOR SAVE BAR FIX END */
