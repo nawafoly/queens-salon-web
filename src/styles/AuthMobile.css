@@ -1,105 +1,84 @@
-﻿/* Mobile app layout for Login and Forgot Password */
+﻿/* Mobile adaptation for authentication pages. The visual identity stays the same as desktop. */
 @media (max-width: 768px) {
   .login-page.madan-auth-shell,
   .fp-page.madan-auth-shell {
     box-sizing: border-box;
-    min-height: calc(
-      100dvh
-      - 56px
-      - 78px
-      - env(safe-area-inset-top, 0px)
-      - env(safe-area-inset-bottom, 0px)
-    ) !important;
-    place-items: start center !important;
+    min-height: 100dvh !important;
+    place-items: center !important;
     padding:
-      16px
-      10px
-      calc(26px + env(safe-area-inset-bottom, 0px))
-      !important;
+      calc(18px + env(safe-area-inset-top, 0px))
+      12px
+      calc(22px + env(safe-area-inset-bottom, 0px)) !important;
     overflow-x: hidden;
-    overflow-y: visible;
-    color: #251c20;
+    overflow-y: auto;
+    color: var(--madan-text);
     background:
-      radial-gradient(
-        330px 190px at 50% 0%,
-        rgba(180, 84, 123, 0.13),
-        transparent 72%
-      ),
-      #f7f4f5 !important;
-  }
-
-  .login-page.madan-auth-shell::before,
-  .login-page.madan-auth-shell::after,
-  .fp-page.madan-auth-shell::before,
-  .fp-page.madan-auth-shell::after {
-    display: none;
+      radial-gradient(circle at 84% 10%, rgba(242, 183, 5, 0.2), transparent 28%),
+      radial-gradient(circle at 8% 88%, rgba(89, 104, 255, 0.13), transparent 32%),
+      linear-gradient(145deg, var(--madan-navy-950) 0%, #071127 52%, #111c30 100%) !important;
   }
 
   .login-page.madan-auth-shell .login-container {
     width: 100%;
-    max-width: none !important;
+    max-width: 540px !important;
   }
 
   .login-page.madan-auth-shell .login-card,
   .fp-page.madan-auth-shell .fp-card {
     width: 100%;
-    max-width: 520px !important;
     margin: 0 auto;
-    padding: 20px 14px 16px !important;
+    padding: 24px 16px 20px !important;
     overflow: hidden;
-    border: 1px solid rgba(64, 1, 13, 0.1) !important;
-    border-radius: 22px !important;
-    color: #251c20;
-    background: rgba(255, 255, 255, 0.97) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    border-radius: 24px !important;
+    color: var(--madan-text);
+    background: linear-gradient(180deg, #fff, #f8fafc) !important;
     box-shadow:
-      0 14px 34px rgba(64, 1, 13, 0.08),
-      0 2px 7px rgba(13, 13, 13, 0.04) !important;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    animation: none;
+      0 28px 70px rgba(0, 0, 0, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
   }
 
   .login-page.madan-auth-shell .login-card::before,
   .fp-page.madan-auth-shell .fp-card::before {
     inset: 0 12% auto;
-    height: 4px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      #a3486d,
-      transparent
-    );
-  }
-
-  .login-page.madan-auth-shell .login-card::after {
-    display: none;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--madan-gold), transparent);
   }
 
   .login-page.madan-auth-shell .login-header {
-    margin-bottom: 17px !important;
+    margin-bottom: 20px !important;
   }
 
-  /* Navbar already contains the salon logo */
   .login-page.madan-auth-shell .login-logo {
-    display: none;
+    width: 72px;
+    height: 72px;
+    display: grid;
+    margin: 0 auto 13px;
+    border-radius: 21px;
+  }
+
+  .login-page.madan-auth-shell .login-logo-img {
+    width: 54px !important;
+    max-height: 54px;
   }
 
   .login-page.madan-auth-shell .madan-auth-kicker,
   .fp-page.madan-auth-shell .madan-auth-kicker {
     margin-bottom: 6px;
-    color: #9a3f64;
-    font-size: 0.58rem;
-    font-weight: 900;
-    letter-spacing: 0.09em;
+    color: var(--madan-gold-deep);
+    font-size: 0.57rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
   }
 
   .login-page.madan-auth-shell .login-title,
   .fp-page.madan-auth-shell .fp-title {
     margin: 0 !important;
-    color: #40010d !important;
-    font-size: clamp(1.55rem, 8vw, 1.9rem) !important;
-    line-height: 1.3;
-    letter-spacing: 0;
+    color: var(--madan-navy-950) !important;
+    font-size: clamp(1.6rem, 8vw, 2rem) !important;
+    line-height: 1.25;
     text-align: center;
   }
 
@@ -107,14 +86,10 @@
   .fp-page.madan-auth-shell .fp-subtitle {
     max-width: 330px;
     margin: 7px auto 0 !important;
-    color: #686169 !important;
+    color: var(--madan-muted) !important;
     font-size: 0.82rem !important;
     line-height: 1.7;
     text-align: center;
-  }
-
-  .fp-page.madan-auth-shell .fp-subtitle {
-    margin-bottom: 16px !important;
   }
 
   .login-page.madan-auth-shell .login-form,
@@ -122,7 +97,7 @@
   .fp-page.madan-auth-shell .fp-form {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+    gap: 13px;
     margin-top: 0;
   }
 
@@ -138,33 +113,32 @@
   .fp-page.madan-auth-shell .fp-label {
     gap: 6px;
     margin-bottom: 6px !important;
-    color: #40363b !important;
+    color: #334155 !important;
     font-size: 0.78rem !important;
   }
 
   .login-page.madan-auth-shell .label-icon {
-    color: #9a3f64;
+    color: var(--madan-gold-deep);
   }
 
   .login-page.madan-auth-shell .form-control-login,
   .fp-page.madan-auth-shell .fp-input {
     width: 100%;
     min-height: 50px;
-    padding: 0 12px !important;
-    border: 1px solid rgba(64, 1, 13, 0.15) !important;
+    padding: 0 13px !important;
+    border: 1px solid var(--madan-border-strong) !important;
     border-radius: 14px !important;
-    color: #251c20 !important;
-    background: #fbfafb !important;
-    box-shadow: none;
+    color: var(--madan-text) !important;
+    background: #fff !important;
+    box-shadow: 0 7px 20px rgba(15, 23, 42, 0.035);
     font-size: 16px;
     font-weight: 700;
   }
 
   .login-page.madan-auth-shell .form-control-login:focus,
   .fp-page.madan-auth-shell .fp-input:focus {
-    border-color: rgba(143, 54, 91, 0.58) !important;
-    background: #fff !important;
-    box-shadow: 0 0 0 4px rgba(180, 84, 123, 0.1) !important;
+    border-color: rgba(242, 183, 5, 0.82) !important;
+    box-shadow: 0 0 0 4px rgba(242, 183, 5, 0.13) !important;
   }
 
   .login-page.madan-auth-shell .password-input-container .form-control-login,
@@ -178,9 +152,8 @@
     width: 38px;
     height: 38px;
     border-radius: 11px;
-    color: #7f5264 !important;
-    background: rgba(180, 84, 123, 0.09) !important;
-    font-size: 0.72rem;
+    color: #64748b !important;
+    background: #f1f5f9 !important;
   }
 
   .login-page.madan-auth-shell .login-btn,
@@ -189,11 +162,11 @@
     min-height: 50px;
     margin-top: 1px !important;
     padding: 0 15px !important;
-    border: 1px solid #40010d !important;
+    border: 1px solid var(--madan-navy-950) !important;
     border-radius: 14px !important;
     color: #fff !important;
-    background: linear-gradient(135deg, #40010d, #7d294b) !important;
-    box-shadow: 0 10px 24px rgba(64, 1, 13, 0.2);
+    background: linear-gradient(145deg, #101754, var(--madan-navy-950)) !important;
+    box-shadow: 0 16px 32px rgba(3, 6, 64, 0.2);
     font-size: 0.9rem !important;
     touch-action: manipulation;
   }
@@ -201,15 +174,8 @@
   .login-page.madan-auth-shell .login-btn:hover,
   .fp-page.madan-auth-shell .fp-btn:hover {
     transform: none;
-    border-color: #40010d !important;
-    background: linear-gradient(135deg, #40010d, #7d294b) !important;
-  }
-
-  .fp-page.madan-auth-shell .fp-btn.fp-secondary {
-    color: #40010d !important;
-    border-color: rgba(64, 1, 13, 0.15) !important;
-    background: #fff !important;
-    box-shadow: none;
+    border-color: var(--madan-gold) !important;
+    background: linear-gradient(145deg, #151e69, var(--madan-navy-950)) !important;
   }
 
   .madan-auth-alert,
@@ -221,14 +187,10 @@
     text-align: center;
   }
 
-  .madan-auth-link-row {
-    margin-top: -1px;
-  }
-
   .madan-auth-link-row a,
   .login-page.madan-auth-shell :where(.register-link, .back-home-link),
   .fp-page.madan-auth-shell :where(.fp-link, .fp-login) {
-    color: #7d294b !important;
+    color: var(--madan-navy-950) !important;
     font-size: 0.76rem;
   }
 
@@ -236,33 +198,14 @@
     gap: 10px;
     margin-top: 17px !important;
     padding-top: 15px;
-    border-color: rgba(64, 1, 13, 0.08);
+    border-color: rgba(3, 6, 64, 0.08);
     font-size: 0.76rem !important;
   }
 
   .login-page.madan-auth-shell .back-home-link {
     padding: 8px 12px;
-    border-color: rgba(64, 1, 13, 0.1);
-    background: #fbfafb;
-  }
-
-  .fp-page.madan-auth-shell .fp-form {
-    margin-top: 15px;
-  }
-
-  .fp-page.madan-auth-shell .fp-row {
-    justify-content: center;
-    gap: 14px;
-  }
-
-  .fp-page.madan-auth-shell .fp-hint,
-  .fp-page.madan-auth-shell .fp-done {
-    margin-top: 10px;
-    padding: 11px 12px;
-    border-radius: 13px;
-    font-size: 0.76rem;
-    line-height: 1.7;
-    text-align: center;
+    border-color: rgba(3, 6, 64, 0.1);
+    background: #fff;
   }
 }
 
@@ -275,18 +218,7 @@
 
   .login-page.madan-auth-shell .login-card,
   .fp-page.madan-auth-shell .fp-card {
-    padding-right: 11px !important;
-    padding-left: 11px !important;
-  }
-}
-
-/* Center password recovery card in the available mobile viewport */
-@media (max-width: 768px) {
-  .fp-page.madan-auth-shell {
-    place-items: center !important;
-  }
-
-  .fp-page.madan-auth-shell .fp-card {
-    margin-block: auto;
+    padding-right: 12px !important;
+    padding-left: 12px !important;
   }
 }

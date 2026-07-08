@@ -32,6 +32,7 @@ import EmployeeLeavePage from "./hr/EmployeeLeave";
 import EmployeePayrollPage from "./hr/EmployeePayroll";
 import EmployeeProfilePage from "./hr/EmployeeProfile";
 import { useEmployeeSession } from "./hr/shared";
+import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import "../styles/EmployeePortalMobileNav.css";
 
 function PortalSkeleton({ title, subtitle }: { title: string; subtitle: string }) {
@@ -73,20 +74,12 @@ type EmployeeMorePageProps = {
     payroll: number;
     profile: number;
   };
-  canOpenHr: boolean;
-  canOpenDashboard: boolean;
-  loggingOut: boolean;
-  onLogout: () => void;
 };
 
 function EmployeeMorePage({
   displayName,
   roleLabel,
   notificationCounts,
-  canOpenHr,
-  canOpenDashboard,
-  loggingOut,
-  onLogout,
 }: EmployeeMorePageProps) {
   const items = [
     {
@@ -156,44 +149,6 @@ function EmployeeMorePage({
         ))}
       </div>
 
-      {canOpenHr || canOpenDashboard ? (
-        <section className="employee-more-management">
-          <div className="employee-more-section-title">
-            <strong>أنظمة الإدارة</strong>
-            <span>تظهر حسب صلاحيات الحساب</span>
-          </div>
-
-          <div className="employee-more-management__links">
-            {canOpenHr ? (
-              <Link to="/admin">
-                <FontAwesomeIcon icon={faUserShield} />
-                <span>لوحة الموارد البشرية</span>
-              </Link>
-            ) : null}
-
-            {canOpenDashboard ? (
-              <Link to="/dashboard/overview">
-                <FontAwesomeIcon icon={faTableColumns} />
-                <span>لوحة التحكم</span>
-              </Link>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
-      <button
-        type="button"
-        className="employee-more-logout"
-        disabled={loggingOut}
-        onClick={onLogout}
-      >
-        <FontAwesomeIcon icon={faRightFromBracket} />
-        <span>
-          {loggingOut
-            ? "جاري تسجيل الخروج..."
-            : "تسجيل الخروج"}
-        </span>
-      </button>
     </section>
   );
 }
@@ -361,38 +316,13 @@ export default function EmployeePortal() {
           className="employee-app-topbar__actions"
           aria-label="اختصارات بوابة الموظف"
         >
-          <button
-            type="button"
-            className="employee-app-topbar__action employee-app-topbar__action--logout"
-            onClick={() => void handleLogout()}
-            disabled={loggingOut}
-            aria-label="تسجيل الخروج"
-            title="تسجيل الخروج"
-          >
-            <FontAwesomeIcon icon={faRightFromBracket} />
-          </button>
-
-          {canOpenDashboard ? (
-            <Link
-              to="/dashboard/overview"
-              className="employee-app-topbar__action employee-app-topbar__action--dashboard"
-              aria-label="فتح لوحة التحكم"
-              title="لوحة التحكم"
-            >
-              <FontAwesomeIcon icon={faTableColumns} />
-            </Link>
-          ) : null}
-
-          {canOpenHr ? (
-            <Link
-              to="/admin"
-              className="employee-app-topbar__action employee-app-topbar__action--hr"
-              aria-label="فتح لوحة الموارد البشرية"
-              title="لوحة HR"
-            >
-              <FontAwesomeIcon icon={faUserShield} />
-            </Link>
-          ) : null}
+          <InternalPortalSwitcher
+            canOpenDashboard={canOpenDashboard}
+            canOpenHr={canOpenHr}
+            canOpenEmployee={true}
+            loggingOut={loggingOut}
+            onLogout={handleLogout}
+          />
 
           <Link
             to="/employee/notifications"
@@ -510,10 +440,6 @@ export default function EmployeePortal() {
                   displayName={displayName}
                   roleLabel={roleLabel}
                   notificationCounts={notificationCounts}
-                  canOpenHr={canOpenHr}
-                  canOpenDashboard={canOpenDashboard}
-                  loggingOut={loggingOut}
-                  onLogout={() => void handleLogout()}
                 />
               }
             />

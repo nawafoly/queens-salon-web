@@ -32,3 +32,16 @@ dist-ssr
 
 .vercel
 .env*.local
+
+dist-customer
+dist-staff
+.env.customer
+.env.staff
+.env.web
+dist-staff/
+android-hr/.gradle/
+android-hr/build/
+android-hr/app/build/
+android-hr/local.properties
+android-hr/app/src/main/assets/public/
+android-hr/app/src/main/assets/capacitor.config.json

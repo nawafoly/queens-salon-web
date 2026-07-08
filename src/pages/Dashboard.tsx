@@ -1,4 +1,4 @@
-﻿import "../styles/AdminDashboardShell.css";
+import "../styles/AdminDashboardShell.css";
 import "../styles/AdminDashboardOverview.css";
 import "../styles/AdminDashboardBookings.css";
 // ✅ src/pages/Dashboard.tsx
@@ -27,6 +27,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import LoadingBrand from "../components/LoadingBrand";
 import DashboardMobileNav from "../components/DashboardMobileNav";
+import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import Modal from "../components/Modal";
 
 import DashboardBookings from "../pages/DashboardBookings";
@@ -3044,6 +3045,20 @@ const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               <div className="dash-topbar-right">
+                {!isTvQueuePage ? (
+                  <InternalPortalSwitcher
+                    canOpenDashboard={true}
+                    canOpenHr={hasAdminPower}
+                    canOpenEmployee={
+                      hasAdminPower ||
+                      isReception ||
+                      isStaff
+                    }
+                    onLogout={handleLogout}
+                    className="dash-topbar-actions"
+                  />
+                ) : null}
+
                 <div className={`dash-topbar-user ${isTvQueuePage ? "is-tv-clock" : ""}`}>
                   <span
                     className="dash-topbar-name"
@@ -3209,7 +3224,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         canManageAdminUsers={Boolean(canManageAdminUsers)}
         allowStaffViewClients={Boolean(allowStaffViewClients)}
         missingExpenseNotesCount={missingExpenseNotesCount}
-        onLogout={handleLogout}
       />
       {selectedBooking && (
         <Modal

@@ -5,13 +5,25 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build --mode web",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:web": "vite --mode web",
+    "dev:customer": "vite --mode customer",
+    "dev:staff": "vite --mode staff",
+    "build:web": "tsc -b && vite build --mode web",
+    "build:customer": "tsc -b && vite build --mode customer",
+    "build:staff": "tsc -b && vite build --mode staff",
+    "cap:sync:customer": "npm run build:customer && cross-env CAP_APP_VARIANT=customer cap sync android",
+    "cap:open:customer": "cross-env CAP_APP_VARIANT=customer cap open android",
+    "cap:sync:staff": "npm run build:staff && cross-env CAP_APP_VARIANT=staff cap sync android",
+    "cap:open:staff": "cross-env CAP_APP_VARIANT=staff cap open android"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",
     "@aws-sdk/s3-request-presigner": "^3.990.0",
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
     "@fortawesome/fontawesome-svg-core": "^7.1.0",
     "@fortawesome/free-brands-svg-icons": "^7.1.0",
     "@fortawesome/free-solid-svg-icons": "^7.1.0",
@@ -28,12 +40,14 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.1",
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vercel/node": "^5.6.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "cross-env": "^7.0.3",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

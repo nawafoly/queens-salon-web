@@ -1,0 +1,11 @@
+html[data-app-variant="staff"],
+html[data-app-variant="staff"] body,
+body[data-app-variant="staff"],
+body[data-app-variant="staff"] #root {
+  min-height: 100%;
+  background: #05093f;
+}
+
+body[data-app-variant="staff"] {
+  overscroll-behavior-y: none;
+}

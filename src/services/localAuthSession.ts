@@ -1,4 +1,5 @@
 import type { UiRole } from "./userProfile";
+import { normalizeAuthRole } from "./authAccess";
 
 export type StoredAuthSession = {
   uid: string;
@@ -6,6 +7,16 @@ export type StoredAuthSession = {
   role: UiRole;
   displayName: string;
   phone?: string;
+  authToken?: string;
+  active?: boolean;
+  permissions?: unknown[];
+  permissionOverrides?: Record<string, unknown>;
+  permissionVersion?: number;
+};
+
+export type StoredAuthSessionInput = StoredAuthSession & {
+  profile?: Record<string, unknown> | null;
+  showWelcome?: boolean;
 };
 
 const AUTH_TOKEN_KEY = "authToken";
@@ -17,28 +28,6 @@ const USER_UID_KEY = "userUid";
 const USER_EMAIL_KEY = "userEmail";
 const USER_PHONE_KEY = "userPhone";
 const SHOW_WELCOME_KEY = "showWelcome";
-
-function normalizeRole(raw: unknown): UiRole {
-  const role = String(raw || "").toLowerCase().trim();
-  if (role === "administrator") return "admin";
-  if (role === "employee") return "staff";
-  if (role === "receptionist" || role === "frontdesk" || role === "desk") {
-    return "reception";
-  }
-  if (
-    role === "owner" ||
-    role === "admin" ||
-    role === "hr" ||
-    role === "reception" ||
-    role === "staff" ||
-    role === "client" ||
-    role === "pending" ||
-    role === "guest"
-  ) {
-    return role as UiRole;
-  }
-  return "guest";
-}
 
 function parseJson<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -57,10 +46,18 @@ function hasRecognizedAuthToken(authToken: string) {
   return authToken === "firebase" || authToken.startsWith("client-token-");
 }
 
+export function isLegacyClientSession(session: StoredAuthSession | null | undefined) {
+  return Boolean(
+    session &&
+      session.role === "client" &&
+      String(session.authToken || "").startsWith("client-token-")
+  );
+}
+
 export function readStoredAuthSession(): StoredAuthSession | null {
   try {
-    const authUser = parseJson<any>(localStorage.getItem(AUTH_USER_KEY));
-    const profile = parseJson<any>(localStorage.getItem(USER_PROFILE_KEY));
+    const authUser = parseJson<Record<string, unknown>>(localStorage.getItem(AUTH_USER_KEY));
+    const profile = parseJson<Record<string, unknown>>(localStorage.getItem(USER_PROFILE_KEY));
     const authToken = safeString(localStorage.getItem(AUTH_TOKEN_KEY));
 
     const uid = safeString(
@@ -69,7 +66,7 @@ export function readStoredAuthSession(): StoredAuthSession | null {
     const email = safeString(
       authUser?.email || profile?.email || localStorage.getItem(USER_EMAIL_KEY)
     );
-    const role = normalizeRole(
+    const role = normalizeAuthRole(
       authUser?.role || profile?.role || localStorage.getItem(USER_ROLE_KEY)
     );
     const displayName = safeString(
@@ -79,6 +76,12 @@ export function readStoredAuthSession(): StoredAuthSession | null {
         localStorage.getItem(USER_NAME_KEY)
     );
     const phone = safeString(profile?.phone || localStorage.getItem(USER_PHONE_KEY));
+    const active =
+      typeof profile?.active === "boolean"
+        ? profile.active
+        : typeof authUser?.active === "boolean"
+          ? authUser.active
+          : undefined;
     const isTempSession =
       authToken === "local-temp" ||
       uid.startsWith("temp:") ||
@@ -90,9 +93,7 @@ export function readStoredAuthSession(): StoredAuthSession | null {
       return null;
     }
     if (!hasRecognizedAuthToken(authToken)) {
-      if (authUser || profile || uid || email || displayName) {
-        clearStoredAuthSession();
-      }
+      clearStoredAuthSession();
       return null;
     }
 
@@ -102,49 +103,106 @@ export function readStoredAuthSession(): StoredAuthSession | null {
       role,
       displayName,
       phone: phone || undefined,
+      authToken,
+      active,
+      permissions: Array.isArray(authUser?.permissions)
+        ? authUser.permissions
+        : Array.isArray(profile?.permissions)
+          ? profile.permissions
+          : undefined,
+      permissionOverrides:
+        authUser?.permissionOverrides && typeof authUser.permissionOverrides === "object"
+          ? (authUser.permissionOverrides as Record<string, unknown>)
+          : profile?.permissionOverrides && typeof profile.permissionOverrides === "object"
+            ? (profile.permissionOverrides as Record<string, unknown>)
+            : undefined,
+      permissionVersion:
+        Number(authUser?.permissionVersion || profile?.permissionVersion || 0) || undefined,
     };
   } catch {
     return null;
   }
 }
 
-export function writeStoredAuthSession(session: StoredAuthSession) {
+export function writeStoredAuthSession(session: StoredAuthSessionInput) {
   clearStoredAuthSession();
 
-  const payload = {
+  const sourceProfile =
+    session.profile && typeof session.profile === "object" ? session.profile : {};
+  const role = normalizeAuthRole(session.role);
+  const displayName =
+    safeString(session.displayName) ||
+    safeString(sourceProfile.displayName) ||
+    safeString(sourceProfile.name);
+  const email = safeString(session.email || sourceProfile.email);
+  const phone = safeString(session.phone || sourceProfile.phone);
+  const city = safeString(sourceProfile.city);
+  const birthdate = safeString(sourceProfile.birthdate);
+  const avatarUrl = safeString(sourceProfile.avatarUrl);
+  const active =
+    typeof session.active === "boolean"
+      ? session.active
+      : typeof sourceProfile.active === "boolean"
+        ? sourceProfile.active
+        : undefined;
+  const permissions = Array.isArray(session.permissions)
+    ? session.permissions
+    : Array.isArray(sourceProfile.permissions)
+      ? sourceProfile.permissions
+      : [];
+  const permissionOverrides =
+    session.permissionOverrides && typeof session.permissionOverrides === "object"
+      ? session.permissionOverrides
+      : sourceProfile.permissionOverrides && typeof sourceProfile.permissionOverrides === "object"
+        ? sourceProfile.permissionOverrides
+        : undefined;
+  const permissionVersion =
+    Number(session.permissionVersion || sourceProfile.permissionVersion || 0) || undefined;
+  const authToken = safeString(session.authToken) || "firebase";
+
+  const authPayload = {
     uid: session.uid,
-    email: session.email,
-    role: session.role,
-    displayName: session.displayName,
+    email,
+    role,
+    displayName,
+    active,
+    permissions,
+    permissionOverrides,
+    permissionVersion,
+  };
+
+  const profilePayload = {
+    ...sourceProfile,
+    uid: session.uid,
+    email,
+    name: displayName,
+    displayName,
+    phone,
+    role,
+    ...(typeof active === "boolean" ? { active } : {}),
+    permissions,
+    ...(permissionOverrides ? { permissionOverrides } : {}),
+    ...(permissionVersion ? { permissionVersion } : {}),
   };
 
   localStorage.removeItem("currentUser");
   localStorage.removeItem("userAvatar");
   localStorage.removeItem("userCity");
   localStorage.removeItem("userBirthdate");
-  localStorage.setItem(AUTH_TOKEN_KEY, "firebase");
+  localStorage.setItem(AUTH_TOKEN_KEY, authToken);
   localStorage.setItem(USER_UID_KEY, session.uid);
-  localStorage.setItem(USER_ROLE_KEY, session.role);
-  if (session.displayName) localStorage.setItem(USER_NAME_KEY, session.displayName);
-  else localStorage.removeItem(USER_NAME_KEY);
-  if (session.email) localStorage.setItem(USER_EMAIL_KEY, session.email);
-  else localStorage.removeItem(USER_EMAIL_KEY);
-  if (session.phone) localStorage.setItem(USER_PHONE_KEY, session.phone);
-  else localStorage.removeItem(USER_PHONE_KEY);
-  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(payload));
-  localStorage.setItem(
-    USER_PROFILE_KEY,
-    JSON.stringify({
-      uid: session.uid,
-      email: session.email,
-      name: session.displayName,
-      displayName: session.displayName,
-      phone: session.phone || "",
-      role: session.role,
-      active: true,
-    })
-  );
-  localStorage.setItem(SHOW_WELCOME_KEY, "true");
+  localStorage.setItem(USER_ROLE_KEY, role);
+  if (displayName) localStorage.setItem(USER_NAME_KEY, displayName);
+  if (email) localStorage.setItem(USER_EMAIL_KEY, email);
+  if (phone) localStorage.setItem(USER_PHONE_KEY, phone);
+  if (city) localStorage.setItem("userCity", city);
+  if (birthdate) localStorage.setItem("userBirthdate", birthdate);
+  if (avatarUrl) localStorage.setItem("userAvatar", avatarUrl);
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authPayload));
+  localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profilePayload));
+  if (session.showWelcome === true) {
+    localStorage.setItem(SHOW_WELCOME_KEY, "true");
+  }
   window.dispatchEvent(new Event("authChanged"));
 }
 

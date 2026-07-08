@@ -1,10 +1,9 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
   faCalendarAlt,
-  faChartLine,
   faChartPie,
   faClockRotateLeft,
   faCog,
@@ -12,7 +11,6 @@ import {
   faHouse,
   faMoneyBillWave,
   faPercent,
-  faSignOutAlt,
   faTv,
   faUser,
   faUsers,
@@ -29,7 +27,6 @@ type DashboardMobileNavProps = {
   canManageAdminUsers: boolean;
   allowStaffViewClients: boolean;
   missingExpenseNotesCount: number;
-  onLogout: () => void;
 };
 
 type MoreItem = {
@@ -48,7 +45,6 @@ export default function DashboardMobileNav({
   canManageAdminUsers,
   allowStaffViewClients,
   missingExpenseNotesCount,
-  onLogout,
 }: DashboardMobileNavProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -189,29 +185,15 @@ export default function DashboardMobileNav({
           to: "/dashboard/settings/attendance",
           label: "الحضور والبصمة",
           icon: faFingerprint,
-        },
-        {
-          to: "/admin",
-          label: "لوحة HR",
-          description: "إدارة الموارد البشرية والموظفات",
-          icon: faUserShield,
         }
       );
     }
 
-    items.push(
-      {
-        to: "/",
-        label: "الموقع الرئيسي",
-        icon: faHouse,
-      },
-      {
-        label: "تسجيل الخروج",
-        icon: faSignOutAlt,
-        danger: true,
-        action: onLogout,
-      }
-    );
+    items.push({
+      to: "/",
+      label: "الموقع الرئيسي",
+      icon: faHouse,
+    });
 
     return items;
   }, [
@@ -221,7 +203,6 @@ export default function DashboardMobileNav({
     isReception,
     isStaff,
     missingExpenseNotesCount,
-    onLogout,
   ]);
 
   const isMoreActive =
@@ -321,19 +302,23 @@ export default function DashboardMobileNav({
             aria-label="المزيد من أقسام لوحة التحكم"
           >
             <header className="dashboard-mobile-more-header">
-              <div>
-                <span>لوحة التحكم</span>
-                <h2>المزيد</h2>
-                <p>الإدارة والتقارير والإعدادات في مكان واحد.</p>
+              <div className="dashboard-mobile-more-header__top">
+                <div className="dashboard-mobile-more-header__title">
+                  <span>القائمة الإدارية</span>
+                  <h2>المزيد</h2>
+                  <p>الإدارة والتقارير والإعدادات في مكان واحد.</p>
+                </div>
+
+                <button
+                  type="button"
+                  className="dashboard-mobile-more-header__close"
+                  onClick={() => setMoreOpen(false)}
+                  aria-label="إغلاق"
+                >
+                  <FontAwesomeIcon icon={faXmark} />
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setMoreOpen(false)}
-                aria-label="إغلاق"
-              >
-                <FontAwesomeIcon icon={faXmark} />
-              </button>
             </header>
 
             <div className="dashboard-mobile-more-grid">

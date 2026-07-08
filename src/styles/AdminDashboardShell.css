@@ -1,4 +1,4 @@
-﻿/* Admin Dashboard Shell V1 */
+/* Admin Dashboard Shell V1 */
 
 .dashboard-skin.madan-admin-shell.dashboard-page {
   --admin-wine: #40010d;
@@ -303,6 +303,52 @@
 
 .dashboard-skin .dash-topbar-title {
   min-width: 0;
+}
+
+.dashboard-skin .dash-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.dashboard-skin .dash-topbar-action {
+  display: inline-flex !important;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px !important;
+  border: 1px solid var(--admin-border) !important;
+  border-radius: 11px !important;
+  color: #17213f !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  font-family: inherit;
+  font-size: 0.68rem !important;
+  font-weight: 900 !important;
+  white-space: nowrap;
+}
+
+.dashboard-skin .dash-topbar-action svg {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+}
+
+.dashboard-skin .dash-topbar-action--hr {
+  color: #765800 !important;
+  border-color: rgba(197, 157, 45, 0.32) !important;
+  background: #fff8dc !important;
+}
+
+.dashboard-skin .dash-topbar-action--danger {
+  color: #a12b43 !important;
+  border-color: rgba(193, 51, 79, 0.2) !important;
+  background: #fff7f9 !important;
+}
+
+.dashboard-skin .dash-topbar-action-label--mobile {
+  display: none;
 }
 
 .dashboard-skin .dash-topbar-title h2 {
@@ -642,6 +688,70 @@
     white-space: nowrap !important;
   }
 
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar {
+    gap: 6px !important;
+    padding-right: 9px !important;
+    padding-left: 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-left {
+    flex: 0 1 auto;
+    gap: 6px;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-right {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    gap: 5px;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-actions {
+    gap: 3px;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-action {
+    display: grid !important;
+    width: 36px;
+    min-width: 36px;
+    height: 39px;
+    min-height: 39px;
+    place-items: center;
+    align-content: center;
+    gap: 1px;
+    padding: 2px !important;
+    border-radius: 10px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-action svg {
+    font-size: 11px;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-action-label {
+    max-width: 32px;
+    overflow: hidden;
+    font-size: 6px !important;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-action-label--desktop {
+    display: none;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-action-label--mobile {
+    display: inline;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-user {
+    max-width: 76px;
+    padding: 5px 6px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-name {
+    max-width: 64px !important;
+  }
+
   .dashboard-mobile-bottom-nav {
     position: fixed;
     right: 0;
@@ -751,42 +861,56 @@
   }
 
   .dashboard-mobile-more-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 14px;
-    padding: 18px 16px 14px;
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    display: grid;
+    gap: 12px;
+    padding:
+      calc(13px + env(safe-area-inset-top))
+      13px
+      12px;
     border-bottom: 1px solid rgba(15, 23, 42, 0.08);
     background:
       radial-gradient(circle at 15% 0%, rgba(242, 183, 5, 0.16), transparent 36%),
       #fff;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.055);
   }
 
-  .dashboard-mobile-more-header > div {
+  .dashboard-mobile-more-header__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .dashboard-mobile-more-header__title {
     display: grid;
     gap: 3px;
+    min-width: 0;
   }
 
-  .dashboard-mobile-more-header span {
+  .dashboard-mobile-more-header__title > span {
     color: #9b7900;
     font-size: 8px;
     font-weight: 950;
   }
 
-  .dashboard-mobile-more-header h2 {
+  .dashboard-mobile-more-header__title h2 {
     margin: 0;
     color: #101a39;
     font-size: 21px;
     font-weight: 950;
   }
 
-  .dashboard-mobile-more-header p {
+  .dashboard-mobile-more-header__title p {
     margin: 0;
     color: #778296;
     font-size: 9px;
   }
 
-  .dashboard-mobile-more-header > button {
+  .dashboard-mobile-more-header__close {
+    flex: 0 0 auto;
     width: 39px;
     height: 39px;
     display: grid;
@@ -796,6 +920,46 @@
     border-radius: 13px;
     color: #18213e;
     background: #fff;
+  }
+
+  .dashboard-mobile-more-header__actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+    gap: 8px;
+  }
+
+  .dashboard-mobile-more-header__action {
+    min-width: 0;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 9px;
+    border: 1px solid rgba(15, 23, 42, 0.09);
+    border-radius: 12px;
+    color: #111a37;
+    background: #f8f9fc;
+    font-family: inherit;
+    font-size: 8.5px;
+    font-weight: 950;
+    white-space: nowrap;
+  }
+
+  .dashboard-mobile-more-header__action svg {
+    flex: 0 0 auto;
+    color: #9b7900;
+    font-size: 13px;
+  }
+
+  .dashboard-mobile-more-header__action--danger {
+    color: #9a243c;
+    border-color: rgba(154, 36, 60, 0.14);
+    background: #fff5f7;
+  }
+
+  .dashboard-mobile-more-header__action--danger svg {
+    color: #9a243c;
   }
 
   .dashboard-mobile-more-grid {

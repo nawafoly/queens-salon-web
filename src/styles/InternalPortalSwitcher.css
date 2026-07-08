@@ -1,0 +1,198 @@
+.internal-portal-switcher {
+  direction: rtl;
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.internal-portal-switcher__item {
+  position: relative;
+  display: inline-flex;
+  min-width: 42px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid rgba(15, 23, 42, 0.11);
+  border-radius: 12px;
+  color: #243047;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+  font-family: inherit;
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.internal-portal-switcher__item svg {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+}
+
+.internal-portal-switcher__item:hover,
+.internal-portal-switcher__item:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(8, 20, 50, 0.24);
+  color: #081432;
+  outline: none;
+}
+
+.internal-portal-switcher__item.is-current {
+  border-color: rgba(202, 157, 24, 0.46);
+  color: #6d5100;
+  background: #fff8da;
+}
+
+.internal-portal-switcher__item--hr {
+  color: #081432;
+  background: #f2f5fa;
+}
+
+.internal-portal-switcher__item--employee {
+  color: #4c3a00;
+  background: #fffaf0;
+}
+
+.internal-portal-switcher__item--logout {
+  color: #b42342;
+  border-color: rgba(190, 24, 63, 0.17);
+  background: #fff6f8;
+}
+
+.internal-portal-switcher__item:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  transform: none;
+}
+
+@media (max-width: 820px) {
+  .internal-portal-switcher {
+    direction: ltr;
+    gap: 4px;
+  }
+
+  .internal-portal-switcher__item {
+    direction: rtl;
+    display: grid;
+    width: 39px;
+    min-width: 39px;
+    height: 40px;
+    min-height: 40px;
+    place-items: center;
+    align-content: center;
+    gap: 1px;
+    padding: 2px;
+    border-radius: 11px;
+  }
+
+  .internal-portal-switcher__item svg {
+    font-size: 0.7rem;
+  }
+
+  .internal-portal-switcher__item span {
+    max-width: 36px;
+    overflow: hidden;
+    font-size: 0.43rem;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 390px) {
+  .internal-portal-switcher__item {
+    width: 35px;
+    min-width: 35px;
+    height: 37px;
+    min-height: 37px;
+    border-radius: 10px;
+  }
+
+  .internal-portal-switcher__item span {
+    font-size: 0.39rem;
+  }
+}
+
+@media (max-width: 350px) {
+  .internal-portal-switcher__item span {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .internal-portal-switcher__item {
+    transition: none;
+  }
+}
+
+/* Portal-specific integration */
+.hr-shell-user {
+  align-items: stretch;
+}
+
+.hr-shell-user__identity {
+  display: grid;
+  gap: 2px;
+}
+
+.hr-shell-user .internal-portal-switcher {
+  margin-top: 7px;
+}
+
+.hr-shell-header--compact {
+  min-height: 78px !important;
+}
+
+@media (max-width: 820px) {
+  .hr-shell .hr-mobile-appbar__brand {
+    flex: 1 1 auto;
+    max-width: 128px;
+    overflow: hidden;
+  }
+
+  .hr-shell .hr-mobile-appbar__actions {
+    direction: ltr;
+    display: flex !important;
+    flex: 0 0 auto;
+    gap: 4px !important;
+  }
+
+  .hr-shell .hr-mobile-appbar .internal-portal-switcher__item {
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
+  }
+
+  .hr-shell .hr-mobile-appbar .internal-portal-switcher__item.is-current {
+    border-color: rgba(242, 184, 0, 0.72);
+    color: #11172a;
+    background: #f2b800;
+  }
+
+  .hr-shell .hr-mobile-appbar .internal-portal-switcher__item--logout {
+    border-color: rgba(255, 174, 188, 0.25);
+    color: #ffd5de;
+    background: rgba(127, 29, 29, 0.2);
+  }
+
+  .employee-app-topbar__actions > .internal-portal-switcher {
+    flex: 0 0 auto;
+  }
+
+  .dashboard-skin .dash-topbar-actions.internal-portal-switcher {
+    flex: 0 0 auto;
+  }
+}

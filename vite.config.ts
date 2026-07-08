@@ -1,23 +1,34 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: true,        // ✅ يفتح على الشبكة
-    port: 5173,
-    strictPort: true,
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const variant = String(env.VITE_APP_VARIANT || "web").trim().toLowerCase();
+  const outDir =
+    variant === "staff"
+      ? "dist-staff"
+      : variant === "customer"
+        ? "dist-customer"
+        : "dist";
 
-    // ✅ مهم: خلي /api تروح لـ Vercel بدل localhost
-    proxy: {
-      "/api": {
-        target: "https://queens-salon-web-gnxk.vercel.app",
-        changeOrigin: true,
-        secure: true,
+  return {
+    plugins: [react()],
+    server: {
+      host: true,
+      port: 5173,
+      strictPort: true,
+      proxy: {
+        "/api": {
+          target: "https://queens-salon-web-gnxk.vercel.app",
+          changeOrigin: true,
+          secure: true,
+        },
       },
     },
-  },
-  build: {
-    chunkSizeWarningLimit: 2000,
-  },
+    build: {
+      outDir,
+      emptyOutDir: true,
+      chunkSizeWarningLimit: 2000,
+    },
+  };
 });

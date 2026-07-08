@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getIdTokenResult, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { getDoc } from "firebase/firestore";
 
 import { auth } from "../../services/firebase";
-import { SALON_ID, hrDoc } from "../../services/hrCollections";
-import { readStoredAuthSession } from "../../services/localAuthSession";
+import { hrDoc } from "../../services/hrCollections";
+import { normalizeAuthRole } from "../../services/authAccess";
 
 export type HrSession = {
   user: FirebaseUser | null;
@@ -54,37 +54,12 @@ function createGuestSession(loading: boolean): HrSession {
   };
 }
 
-function createBootstrapSession(): HrSession {
-  const stored = readStoredAuthSession();
-  if (!stored) return createGuestSession(true);
-
-  const uid = cleanText(stored.uid);
-  const email = cleanEmail(stored.email || "");
-  const displayName = cleanText(stored.displayName || "");
-  const role = cleanText(stored.role || "guest").toLowerCase() || "guest";
-
-  return {
-    user: uid
-      ? ({ uid, email: email || null, displayName: displayName || null } as FirebaseUser)
-      : null,
-    uid,
-    email,
-    displayName,
-    role,
-    employeeId: uid,
-    userDoc: null,
-    employeeDoc: null,
-    staffDoc: null,
-    loading: false,
-  };
-}
-
 function createLoggedOutSession(): HrSession {
   return createGuestSession(false);
 }
 
 export function useEmployeeSession() {
-  const [session, setSession] = useState<HrSession>(() => createBootstrapSession());
+  const [session, setSession] = useState<HrSession>(() => createGuestSession(true));
   const requestSeqRef = useRef(0);
 
   useEffect(() => {
@@ -96,8 +71,7 @@ export function useEmployeeSession() {
 
       if (!user) {
         if (requestId !== requestSeqRef.current) return;
-        const storedSession = readStoredAuthSession();
-        setSession(storedSession ? createBootstrapSession() : createLoggedOutSession());
+        setSession(createLoggedOutSession());
         return;
       }
 
@@ -105,23 +79,15 @@ export function useEmployeeSession() {
       const email = cleanEmail(user.email || "");
       const displayName = cleanText(user.displayName || "");
 
-      const storedSession = readStoredAuthSession();
-      const [tokenResult, userDoc] = await Promise.all([
-        getIdTokenResult(user).catch((error) => {
-          console.error("[useEmployeeSession] failed to load auth token", error);
+      const userDoc = await getDoc(hrDoc("users", uid))
+        .then((snap) => (snap.exists() ? (snap.data() as Record<string, any>) : null))
+        .catch((error) => {
+          console.error("[useEmployeeSession] failed to load user doc", error);
           return null;
-        }),
-        getDoc(hrDoc("users", uid))
-          .then((snap) => (snap.exists() ? (snap.data() as Record<string, any>) : null))
-          .catch((error) => {
-            console.error("[useEmployeeSession] failed to load user doc", error);
-            return null;
-          }),
-      ]);
-      const claimRole = cleanText((tokenResult as any)?.claims?.role || "").toLowerCase();
-      const role = cleanText(userDoc?.role || claimRole || storedSession?.role || "guest").toLowerCase() || "guest";
+        });
+      const role = normalizeAuthRole(userDoc?.role || "guest");
       const employeeId = cleanText(
-        userDoc?.employeeId || userDoc?.linkedEmployeeDocId || storedSession?.uid || uid
+        userDoc?.employeeId || userDoc?.linkedEmployeeDocId || uid
       );
 
       const [employeeDoc, staffDoc] = await Promise.all([
@@ -147,9 +113,9 @@ export function useEmployeeSession() {
       setSession({
         user,
         uid: cleanText(uid),
-        email: cleanEmail(userDoc?.email || storedSession?.email || email || ""),
+        email: cleanEmail(userDoc?.email || email || ""),
         displayName: cleanText(
-          userDoc?.displayName || userDoc?.name || storedSession?.displayName || displayName || ""
+          userDoc?.displayName || userDoc?.name || displayName || ""
         ),
         role,
         employeeId,

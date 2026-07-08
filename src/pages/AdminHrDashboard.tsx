@@ -1,6 +1,6 @@
 import "../styles/AdminHrMobileShell.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
@@ -10,14 +10,13 @@ import {
   faHouse,
   faMagnifyingGlass,
   faPlus,
-  faRightFromBracket,
   faUserShield,
   faUsers,
   faUserTie,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { useEmployeeSession, cleanText } from "./hr/shared";
-import { resolveDashboardLandingPath } from "../helpers/routePaths";
+import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import { logoutFirebase } from "../services/authService";
 import RecruitmentApplicationsPage from "./hr/RecruitmentApplications";
 import CreateStaffAccountPage from "./hr/CreateStaffAccount";
@@ -1026,8 +1025,6 @@ export default function AdminHrDashboard() {
   const session = useEmployeeSession();
   const navigate = useNavigate();
   const location = useLocation();
-  const dashboardPath = resolveDashboardLandingPath(session.role);
-  const dashboardLabel = session.role === "hr" ? "لوحة HR" : "لوحة التحكم";
   const adminSection = useMemo(() => {
     const section = location.pathname.replace(/^\/admin\/?/, "").split("/")[0];
     return section || "overview";
@@ -1180,33 +1177,6 @@ export default function AdminHrDashboard() {
           </div>
         </div>
 
-        <div className="hr-shell-switcher" aria-label="تنقل سريع">
-          <Link to="/" className="hr-shell-link hr-shell-link--soft">
-            <FontAwesomeIcon icon={faHouse} />
-            <span>الموقع الرئيسي</span>
-          </Link>
-          <Link to="/employee/overview" className="hr-shell-link hr-shell-link--soft">
-            <FontAwesomeIcon icon={faUserTie} />
-            <span>بوابة الموظف</span>
-          </Link>
-          <NavLink
-            to={dashboardPath}
-            className={({ isActive }) => `hr-shell-link hr-shell-link--accent ${isActive ? "is-active" : ""}`}
-          >
-            <FontAwesomeIcon icon={faChartLine} />
-            <span>{dashboardLabel}</span>
-          </NavLink>
-          <button
-            type="button"
-            className="hr-shell-link hr-shell-link--danger"
-            onClick={() => void handleLogout()}
-            disabled={loggingOut}
-          >
-            <FontAwesomeIcon icon={faRightFromBracket} />
-            <span>{loggingOut ? "جارِ الخروج..." : "تسجيل الخروج"}</span>
-          </button>
-        </div>
-
         <nav className="hr-shell-nav" aria-label="HR navigation">
           <NavLink to="/admin/overview" className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}>
             <FontAwesomeIcon icon={faHouse} />
@@ -1251,53 +1221,56 @@ export default function AdminHrDashboard() {
           </div>
         </div>
 
-        <div className="hr-mobile-appbar__actions">
-          <Link
-            to={dashboardPath}
-            className="hr-mobile-appbar__button"
-            aria-label={dashboardLabel}
-            title={dashboardLabel}
-          >
-            <FontAwesomeIcon icon={faChartLine} />
-          </Link>
-
-          <button
-            type="button"
-            className="hr-mobile-appbar__button hr-mobile-appbar__button--logout"
-            onClick={() => void handleLogout()}
-            disabled={loggingOut}
-            aria-label="تسجيل الخروج"
-            title="تسجيل الخروج"
-          >
-            <FontAwesomeIcon icon={faRightFromBracket} />
-          </button>
-        </div>
+        <InternalPortalSwitcher
+          canOpenDashboard={true}
+          canOpenHr={true}
+          canOpenEmployee={true}
+          loggingOut={loggingOut}
+          onLogout={handleLogout}
+          className="hr-mobile-appbar__actions"
+        />
       </header>
       <main className={`hr-shell-main ${isEmployeesRoute ? "hr-shell-main--workspace" : ""}`}>
-        {!isEmployeesRoute ? (
-          <header className="hr-shell-header">
+        <header className={`hr-shell-header ${isEmployeesRoute ? "hr-shell-header--compact" : ""}`}>
+          {!isEmployeesRoute ? (
             <div>
               <p className="hr-shell-kicker">{routeMeta.kicker}</p>
               <h1>{routeMeta.title}</h1>
               <p className="hr-shell-subtitle">{routeMeta.subtitle}</p>
             </div>
+          ) : (
+            <div>
+              <p className="hr-shell-kicker">الموارد البشرية</p>
+              <h1>إدارة الموظفات</h1>
+            </div>
+          )}
 
-            <div className="hr-shell-user">
+          <div className="hr-shell-user">
+            <div className="hr-shell-user__identity">
               <strong>{session.displayName || "مستخدم الموارد البشرية"}</strong>
               <span>{readableRole(session.role)}</span>
-              {isOverviewRoute ? (
-                <button
-                  className="hr-refresh"
-                  type="button"
-                  onClick={() => void loadData(true)}
-                  disabled={loadingData}
-                >
-                  {loadingData ? "جارٍ التحديث..." : "تحديث الملخص"}
-                </button>
-              ) : null}
             </div>
-          </header>
-        ) : null}
+
+            <InternalPortalSwitcher
+              canOpenDashboard={true}
+              canOpenHr={true}
+              canOpenEmployee={true}
+              loggingOut={loggingOut}
+              onLogout={handleLogout}
+            />
+
+            {isOverviewRoute ? (
+              <button
+                className="hr-refresh"
+                type="button"
+                onClick={() => void loadData(true)}
+                disabled={loadingData}
+              >
+                {loadingData ? "جارٍ التحديث..." : "تحديث الملخص"}
+              </button>
+            ) : null}
+          </div>
+        </header>
 
         {isOverviewRoute && error ? <div className="hr-alert">{error}</div> : null}
 

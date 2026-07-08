@@ -14,6 +14,8 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { writeAuditLog } from "./logService";
+import { normalizeAuthRole } from "./authAccess";
+import { writeStoredAuthSession } from "./localAuthSession";
 import {
   buildPermissionOverrides,
   getEffectiveAppPermissions,
@@ -78,28 +80,7 @@ function safeStr(v: unknown) {
 }
 
 function normalizeRole(roleRaw: unknown): UiRole {
-  const r = String(roleRaw || "").toLowerCase().trim();
-
-  if (r === "administrator") return "admin";
-  if (r === "employee") return "staff";
-  if (r === "hr" || r === "human resources" || r === "humanresources") return "hr";
-  if (r === "receptionist" || r === "frontdesk" || r === "desk")
-    return "reception";
-
-  if (
-    r === "owner" ||
-    r === "admin" ||
-    r === "hr" ||
-    r === "reception" ||
-    r === "staff" ||
-    r === "client" ||
-    r === "pending" ||
-    r === "guest"
-  ) {
-    return r as UiRole;
-  }
-
-  return "guest";
+  return normalizeAuthRole(roleRaw);
 }
 
 function buildDefaultName(role: UiRole) {
@@ -134,39 +115,19 @@ function isPlaceholderName(name: string, role: UiRole) {
 }
 
 
-function isBootstrapAdminEmail(email: string) {
-  const e = String(email || "").toLowerCase().trim();
-  return (
-    e === "nawafaaa0@gmail.com" ||
-    e === "nawafaaa6@gmail.com" ||
-    e === "alolayan3@gmail.com"
-  );
-}
-
-function isMalikatAdminEmail(email: string) {
-  const e = String(email || "").toLowerCase().trim();
-  return e.endsWith("@malikat.com");
-}
-
 function writeLocalCache(profile: UserProfile) {
-  localStorage.setItem("user_profile_v1", JSON.stringify(profile));
-  localStorage.setItem("userName", profile.name);
-  localStorage.setItem("userRole", profile.role);
-  if (profile.email) localStorage.setItem("userEmail", profile.email);
-
-  // ✅ مهم: auth_user يعتمد عليه App.tsx/Dashboard
-  localStorage.setItem(
-    "auth_user",
-    JSON.stringify({
-      uid: profile.uid,
-      email: profile.email,
-      role: profile.role,
-      displayName: profile.name,
-      permissions: profile.permissions || [],
-    })
-  );
-
-  window.dispatchEvent(new Event("authChanged"));
+  writeStoredAuthSession({
+    uid: profile.uid,
+    email: profile.email,
+    role: profile.role,
+    displayName: profile.name,
+    phone: profile.phone,
+    active: profile.active,
+    permissions: profile.permissions,
+    permissionOverrides: profile.permissionOverrides,
+    permissionVersion: profile.permissionVersion,
+    profile: profile as Record<string, any>,
+  });
 }
 
 function stripUndefined(obj: Record<string, any>) {
@@ -241,7 +202,6 @@ async function consumeInvite(params: {
 /**
  * ✅ createOrLoadUserProfile (FINAL ✅ + Invites ✅)
  * - Source of Truth: salons/main/users/{uid}
- * - Bootstrap Admin safety: nawafaaa0@gmail.com / nawafaaa6@gmail.com / alolayan3@gmail.com => owner
  * - If missing users doc:
  *    1) إن وجد invite بالإيميل => role/active منها
  *    2) غير ذلك => client (AUTO)
@@ -262,32 +222,15 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
   const refSalon = salonUserRef(uid);
   const snapSalon = await getDoc(refSalon);
 
-  const isBootstrap = isBootstrapAdminEmail(emailLower);
-  const isMalikatDomain = isMalikatAdminEmail(emailLower);
-
-  // ✅ 1) موجود: نقرأه ونرجع بدون لعب (إلا bootstrap يفرض owner)
+  // ✅ 1) موجود: الدور والتفعيل يأتيان من وثيقة المستخدم فقط.
   if (snapSalon.exists()) {
     const data = snapSalon.data() as any;
 
-    // For @malikat.com accounts, activation must be explicit (active === true).
-    let active =
-      !isBootstrap && isMalikatDomain
-        ? data?.active === true
-        : data?.active !== false; // default true for non-admin-domain users
-
+    const active = data?.active !== false;
     let role = normalizeRole(data?.role);
 
-    // ✅ إذا غير مفعّل => Pending (حتى لو role مكتوب admin بالغلط)
-    if (!active) role = "pending";
-
-    // Harden legacy/bad docs where @malikat.com was stored as client/guest.
-    if (!isBootstrap && isMalikatDomain && (role === "client" || role === "guest")) {
-      role = "pending";
-      active = false;
-    }
-
-    // ✅ Bootstrap يفرض owner دائماً
-    if (isBootstrap) role = "owner";
+    // الحساب الداخلي غير النشط يبقى pending حتى تتم إعادة تفعيله.
+    if (!active && role !== "client" && role !== "guest") role = "pending";
     const permissionOverrides = normalizePermissionOverrides(data?.permissionOverrides);
     const permissions = getEffectiveAppPermissions({
       role,
@@ -356,11 +299,6 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     // ✅ FIX: لو createdAt ناقص (حساب قديم) نكتبه مرة وحدة فقط
     if (!data?.createdAt) patch.createdAt = serverTimestamp();
 
-    // role:
-    // - only bootstrap account can self-heal role -> owner
-    if (isBootstrap && String(data?.role || "").toLowerCase().trim() !== "owner")
-      patch.role = "owner";
-
     if (Object.keys(patch).length) {
       patch.updatedAt = serverTimestamp(); // ✅ فقط updatedAt يتغير كل مرة
       await setDoc(refSalon, patch, { merge: true });
@@ -385,19 +323,14 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     return profile;
   }
 
-  // ✅ 2) مفقود: قبل ما نقول client… نفحص Invite بالإيميل
-  // @malikat.com defaults to pending (not client) until explicitly activated.
-  let role: UiRole = isBootstrap
-    ? "owner"
-    : isMalikatDomain
-      ? "pending"
-      : "client";
-  let active = isBootstrap ? true : isMalikatDomain ? false : true;
+  // ✅ 2) مفقود: نفحص الدعوة أولًا، وإلا ننشئ حساب عميل.
+  let role: UiRole = "client";
+  let active = true;
 
   let inviteId: string | null = null;
   let inviteData: InviteDoc | null = null;
 
-  if (!isBootstrap && emailLower) {
+  if (emailLower) {
     try {
       const invite = await findInviteByEmail(emailLower);
       if (invite) {
@@ -414,11 +347,6 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     } catch {
       // ignore
     }
-  }
-
-  // Safety: admin-domain accounts must never auto-fallback to client/guest.
-  if (!isBootstrap && isMalikatDomain) {
-    if (role === "pending") active = false;
   }
 
   const name = authDisplayName || buildPersistedDefaultName(role);
@@ -552,32 +480,28 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
     }
   } catch { }
 
-  // ✅ تحديث الكاش المحلي
+  // ✅ تحديث الكاش المحلي عبر الكاتب المركزي فقط.
   try {
     const current = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
     const merged = { ...(current || {}), ...updates, uid };
 
-    // ✅ تأكيد: ما نغير role/active/createdAt في الكاش من update
+    // لا نغير role/active/createdAt في الكاش من updateUserProfile.
     if (current?.role) merged.role = current.role;
     if (typeof current?.active === "boolean") merged.active = current.active;
-    if (current?.createdAt) merged.createdAt = current.createdAt; // ✅ FIX
+    if (current?.createdAt) merged.createdAt = current.createdAt;
 
-    localStorage.setItem("user_profile_v1", JSON.stringify(merged));
-    if (merged?.name) localStorage.setItem("userName", String(merged.name));
-    if (merged?.role) localStorage.setItem("userRole", String(merged.role));
-    if (merged?.email) localStorage.setItem("userEmail", String(merged.email));
-
-    localStorage.setItem(
-      "auth_user",
-      JSON.stringify({
-        uid: merged.uid,
-        email: merged.email,
-        role: merged.role,
-        displayName: merged.name,
-      })
-    );
-
-    window.dispatchEvent(new Event("authChanged"));
+    writeStoredAuthSession({
+      uid,
+      email: safeStr(merged?.email),
+      role: normalizeRole(merged?.role),
+      displayName: safeStr(merged?.name || merged?.displayName),
+      phone: safeStr(merged?.phone),
+      active: typeof merged?.active === "boolean" ? merged.active : undefined,
+      permissions: Array.isArray(merged?.permissions) ? merged.permissions : undefined,
+      permissionOverrides: normalizePermissionOverrides(merged?.permissionOverrides),
+      permissionVersion: Number(merged?.permissionVersion || 0) || undefined,
+      profile: merged,
+    });
   } catch { }
 }
 

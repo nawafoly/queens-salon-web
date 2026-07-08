@@ -52,8 +52,8 @@ export async function loginWithEmail(email: string, password: string): Promise<U
 
     const cred = await signInWithEmailAndPassword(auth, e, p);
     return cred.user;
-  } catch (err: any) {
-    const code = String(err?.code || "").toLowerCase();
+  } catch (err: unknown) {
+    const code = String((err as { code?: unknown } | null)?.code || "").toLowerCase();
     if (code.includes("auth/invalid-credential") || code.includes("auth/wrong-password")) {
       throw new Error("البريد أو كلمة المرور غير صحيحة.");
     }
@@ -67,9 +67,9 @@ export async function loginWithEmail(email: string, password: string): Promise<U
       throw new Error("مشكلة اتصال بالشبكة. تأكد من الإنترنت.");
     }
     if (code.includes("auth/invalid-api-key")) {
-      throw new Error("مفتاح Firebase غير صالح حاليًا. استخدم زر الدخول المؤقت للدخول إلى الداشبورد.");
+      throw new Error("إعدادات Firebase غير صالحة حاليًا. راجع إعدادات المشروع.");
     }
-    throw new Error(err?.message || "فشل تسجيل الدخول.");
+    throw new Error(err instanceof Error ? err.message : "فشل تسجيل الدخول.");
   }
 }
 
@@ -88,6 +88,9 @@ export async function registerClientWithEmail(params: {
   if (!name) throw new Error("الاسم مطلوب.");
   if (isClientPlaceholderName(name)) throw new Error("الرجاء كتابة الاسم الحقيقي.");
   if (!email || !email.includes("@")) throw new Error("صيغة البريد الإلكتروني غير صحيحة.");
+  if (email.endsWith("@malikat.com")) {
+    throw new Error("هذا البريد مخصص للحسابات الداخلية.");
+  }
   if (!password || password.length < 6) throw new Error("كلمة المرور لازم 6 أحرف على الأقل.");
 
   // ✅ ثبّت الجلسة محليًا
@@ -112,6 +115,7 @@ export async function registerClientWithEmail(params: {
     birthdate: params.birthdate ?? "",
     membershipId,
     membershipPercent: 0,
+    active: true,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -119,8 +123,12 @@ export async function registerClientWithEmail(params: {
   // ✅ 1) المسار المعتمد عندك
   await setDoc(doc(db, "salons", "main", "users", uid), profileDoc, { merge: true });
 
-  // ✅ 2) ROOT users/{uid} (مهم عشان createOrLoadUserProfile يلقاه أولاً)
-  await setDoc(doc(db, "users", uid), profileDoc, { merge: true });
+  // مرآة توافقية فقط؛ قد تمنع القواعد العميل من الكتابة في المسار الجذري.
+  try {
+    await setDoc(doc(db, "users", uid), profileDoc, { merge: true });
+  } catch {
+    // المسار المعتمد salons/main/users/{uid} تم إنشاؤه بالفعل.
+  }
 
   return cred.user;
 }
