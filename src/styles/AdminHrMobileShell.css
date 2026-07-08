@@ -437,3 +437,87 @@
     height: 16px;
   }
 }
+
+/* HR DESKTOP COMPACT HEADER START */
+
+@media (min-width: 821px) {
+  .hr-shell .hr-shell-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1500 !important;
+
+    display: flex !important;
+    min-height: 74px !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 18px !important;
+
+    margin: 0 !important;
+    padding: 9px 20px !important;
+
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+    background: rgba(255, 255, 255, 0.97) !important;
+    box-shadow: 0 5px 18px rgba(15, 23, 42, 0.05) !important;
+    backdrop-filter: blur(14px);
+  }
+
+  .hr-shell .hr-shell-header > div:first-child {
+    display: grid !important;
+    gap: 1px !important;
+    min-width: 0 !important;
+  }
+
+  .hr-shell .hr-shell-kicker,
+  .hr-shell .hr-shell-subtitle {
+    margin: 0 !important;
+  }
+
+  .hr-shell .hr-shell-header h1 {
+    margin: 0 !important;
+    font-size: 1.35rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .hr-shell .hr-shell-user {
+    display: flex !important;
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    align-items: center !important;
+    gap: 8px !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .hr-shell .hr-shell-user__identity {
+    display: grid !important;
+    gap: 1px !important;
+    min-width: 120px !important;
+    padding: 0 4px !important;
+  }
+
+  .hr-shell .hr-shell-user__identity strong {
+    font-size: 0.8rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .hr-shell .hr-shell-user__identity span {
+    font-size: 0.64rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .hr-shell .hr-shell-user .internal-portal-switcher {
+    margin: 0 !important;
+  }
+
+  .hr-shell .hr-shell-user .internal-portal-switcher__item {
+    min-height: 38px !important;
+  }
+}
+
+/* HR DESKTOP COMPACT HEADER END */

@@ -1037,36 +1037,51 @@
 
 /* DASHBOARD MOBILE APP NAV END */
 
+/* DESKTOP DASHBOARD SCROLL LAYOUT START */
 
-/* Dashboard shell: keep desktop header and sidebar in the document flow */
 @media (min-width: 768px) {
   .dashboard-skin.madan-admin-shell.dashboard-page
     > .container-fluid
     > .row {
     align-items: stretch !important;
+    overflow: visible !important;
   }
 
-  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
+  /* السايدبار يتحرك مع Scroll الصفحة */
+  .dashboard-skin.madan-admin-shell.dashboard-page
+    .dashboard-sidebar {
     position: relative !important;
     top: auto !important;
-    align-self: stretch !important;
+    bottom: auto !important;
     height: auto !important;
     min-height: 100dvh !important;
+    align-self: stretch !important;
     overflow: visible !important;
   }
 
-  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav {
+  /* بدون Scroll داخلي منفصل */
+  .dashboard-skin.madan-admin-shell.dashboard-page
+    .sidebar-nav {
     flex: 0 0 auto !important;
+    width: 100% !important;
+    height: auto !important;
     min-height: 0 !important;
+    max-height: none !important;
     overflow: visible !important;
   }
 
-  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-footer {
-    margin-top: 12px !important;
+  .dashboard-skin.madan-admin-shell.dashboard-page
+    .dashboard-main {
+    overflow: visible !important;
   }
 
-  .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar {
-    position: relative !important;
-    top: auto !important;
+  /* النافبار الأبيض ثابت أعلى الصفحة */
+  .dashboard-skin.madan-admin-shell.dashboard-page
+    .dash-topbar {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 2000 !important;
   }
 }
+
+/* DESKTOP DASHBOARD SCROLL LAYOUT END */
