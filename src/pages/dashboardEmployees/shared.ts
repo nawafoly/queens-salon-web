@@ -84,6 +84,7 @@ export type StaffPublicDoc = {
   includeInEmployeeManagement?: boolean;
   source?: "staff_public" | "employees" | "users";
   profileIncomplete?: boolean;
+  employeeKind?: "service" | "administrative";
   name: string;
   active: boolean;
   employmentEndDate?: string;
@@ -341,7 +342,12 @@ export function normalizeRoleText(v: any) {
 
 export function isAdministrativeRoleText(v: any) {
   const role = normalizeRoleText(v);
-  return role === "owner" || role === "admin" || role === "reception";
+  return (
+    role === "owner" ||
+    role === "admin" ||
+    role === "hr" ||
+    role === "reception"
+  );
 }
 
 export function isAdministrativeStaffRecord(

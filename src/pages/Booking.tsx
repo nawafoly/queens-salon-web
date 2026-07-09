@@ -2843,9 +2843,32 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     String(v || "")
       .trim()
       .toLowerCase()
+      .replace(/[أإآ]/g, "ا")
+      .replace(/ى/g, "ي")
+      .replace(/ة/g, "ه")
       .replace(/[_\-–—/|]+/g, " ")
       .replace(/[^\p{L}\p{N}\s:]/gu, " ")
       .replace(/\s+/g, " ");
+
+  const specialtyMatches = (
+    specialty: string,
+    wanted: string
+  ) => {
+    const left = normalizeSpecialty(specialty);
+    const right = normalizeSpecialty(wanted);
+
+    if (!left || !right) return false;
+    if (left === right) return true;
+
+    return (
+      left.length >= 3 &&
+      right.length >= 3 &&
+      (
+        left.includes(right) ||
+        right.includes(left)
+      )
+    );
+  };
 
   const serviceIdBySpecialtyLabel = useMemo(() => {
     const map = new Map<string, string>();
@@ -2918,7 +2941,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     wanted.add(normalizeSpecialty(sid));
     wanted.add(normalizeSpecialty(String(target?.name || "")));
     wanted.add(normalizeSpecialty(String(target?.sectionId || "")));
+    wanted.add(normalizeSpecialty(String(target?.sectionTitle || "")));
     wanted.add(normalizeSpecialty(String(target?.categoryId || "")));
+    wanted.add(normalizeSpecialty(String(target?.category || "")));
 
     if (target?.kind === "package") {
       (target.packageServiceIds || []).forEach((x: any) => wanted.add(normalizeSpecialty(String(x || ""))));
@@ -2935,10 +2960,24 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
     const loadPromise: Promise<StaffPublicWithId[]> = (async () => {
       const all = await getAllActiveStaffCached(forceRefresh);
-      const matchesAny = (all || []).filter((st: any) => {
-        const specs = normalizeStaffSpecialties(st);
-        return wantedKeys.some((k) => specs.includes(k));
-      });
+      const visibleStaff = (all || []).filter(
+        (st: any) => st?.showOnBooking !== false
+      );
+
+      const matchesAny = visibleStaff.filter(
+        (st: any) => {
+          const specs = normalizeStaffSpecialties(st);
+
+          return wantedKeys.some((wantedKey) =>
+            specs.some((specialty: string) =>
+              specialtyMatches(
+                specialty,
+                wantedKey
+              )
+            )
+          );
+        }
+      );
 
       // للبكجات: جرّب المطابقة الصارمة أولاً (كل serviceId)، وإذا ما فيه نتائج ارجع لأي تطابق.
       if (target?.kind === "package") {
@@ -2946,7 +2985,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           new Set((target.packageServiceIds || []).map((x: any) => normalizeSpecialty(String(x || ""))).filter(Boolean))
         );
         if (strictIds.length) {
-          const strict = (all || []).filter((st: any) => {
+          const strict = visibleStaff.filter((st: any) => {
             const specs = normalizeStaffSpecialties(st);
             return strictIds.every((id) => specs.includes(id));
           });

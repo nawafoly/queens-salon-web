@@ -544,6 +544,221 @@ export async function listAttendanceByDateRangeFromWorker(
     );
 }
 
+export type AttendanceWorkerEmployeeRef = {
+  employeeUid: string;
+  employeeId: string;
+};
+
+export async function listAttendanceForEmployeesDateFromWorker(
+  input: {
+    employees: AttendanceWorkerEmployeeRef[];
+    date: string;
+  }
+): Promise<StaffAttendanceToday[]> {
+  const date = cleanText(input.date);
+  const employees: AttendanceWorkerEmployeeRef[] = [];
+  const seenEmployeeIds = new Set<string>();
+
+  for (
+    const rawEmployee of Array.isArray(input.employees)
+      ? input.employees
+      : []
+  ) {
+    const employeeUid = cleanText(rawEmployee?.employeeUid);
+    const employeeId = cleanText(rawEmployee?.employeeId);
+
+    if (!employeeId || seenEmployeeIds.has(employeeId)) {
+      continue;
+    }
+
+    seenEmployeeIds.add(employeeId);
+    employees.push({
+      employeeUid,
+      employeeId,
+    });
+  }
+
+  if (!date || !employees.length) {
+    return [];
+  }
+
+  const result = await fetchAttendanceRecordsFromWorker({
+    employeeUid: "",
+    fromDate: date,
+    toDate: date,
+    result: "allowed",
+    limit: 200,
+  });
+
+  return employees.map((employee) => {
+    const employeeRecords = result.records.filter((record) => {
+      const uidMatches =
+        Boolean(employee.employeeUid) &&
+        record.employeeUid === employee.employeeUid;
+
+      const documentMatches =
+        record.employeeDocId === employee.employeeId;
+
+      return uidMatches || documentMatches;
+    });
+
+    return buildAttendanceDay(
+      employeeRecords,
+      employee.employeeId,
+      date
+    );
+  });
+}
+
+export async function listAttendanceByDateRangeForEmployeeFromWorker(
+  input: {
+    employeeUid?: string;
+    employeeId: string;
+    fromDate: string;
+    toDate: string;
+  }
+): Promise<StaffAttendanceWithId[]> {
+  const employeeUid = cleanText(input.employeeUid);
+  const employeeId = cleanText(input.employeeId);
+  const fromDate = cleanText(input.fromDate);
+  const toDate = cleanText(input.toDate);
+
+  if (!employeeId || !fromDate || !toDate) {
+    return [];
+  }
+
+  const result = await fetchAttendanceRecordsFromWorker({
+    employeeUid: "",
+    fromDate,
+    toDate,
+    result: "allowed",
+    limit: 200,
+  });
+
+  const employeeRecords = result.records.filter((record) => {
+    const uidMatches =
+      Boolean(employeeUid) &&
+      record.employeeUid === employeeUid;
+
+    const documentMatches =
+      record.employeeDocId === employeeId;
+
+    return uidMatches || documentMatches;
+  });
+
+  const dates = new Set<string>();
+
+  for (const record of employeeRecords) {
+    const date = toRiyadhDateKey(record.serverTime);
+
+    if (date && date >= fromDate && date <= toDate) {
+      dates.add(date);
+    }
+  }
+
+  return Array.from(dates)
+    .sort()
+    .map((date) =>
+      buildAttendanceDay(
+        employeeRecords,
+        employeeId,
+        date
+      )
+    );
+}
+
+
+export type AttendanceAdminAdjustmentResponse = {
+  ok: boolean;
+  action?: string;
+  date?: string;
+  clearedRecords?: number;
+  records?: Array<{
+    id: string;
+    type: AttendanceWorkerType;
+    action: "created" | "updated";
+    serverTime: string;
+  }>;
+  message?: string;
+  detail?: string;
+};
+
+export async function adjustAttendanceDayFromWorker(
+  input: {
+    employeeUid: string;
+    employeeId: string;
+    date: string;
+    checkInTime: string;
+    checkOutTime?: string;
+    note?: string;
+  }
+) {
+  const payload =
+    await requestAttendanceWorker<AttendanceAdminAdjustmentResponse>(
+      "/attendance/admin-adjustment",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          employeeUid: cleanText(input.employeeUid),
+          employeeDocId: cleanText(input.employeeId),
+          date: cleanText(input.date),
+          checkInTime: cleanText(input.checkInTime),
+          checkOutTime: cleanText(input.checkOutTime),
+          note: cleanText(input.note),
+        }),
+      }
+    );
+
+  if (payload.ok !== true) {
+    throw new Error(
+      cleanText(
+        payload.message ||
+          payload.detail ||
+          "تعذر تعديل بصمة الموظفة."
+      )
+    );
+  }
+
+  return payload;
+}
+
+export async function clearAttendanceDayFromWorker(
+  input: {
+    employeeUid: string;
+    employeeId: string;
+    date: string;
+    note?: string;
+  }
+) {
+  const payload =
+    await requestAttendanceWorker<AttendanceAdminAdjustmentResponse>(
+      "/attendance/admin-adjustment",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          employeeUid: cleanText(input.employeeUid),
+          employeeDocId: cleanText(input.employeeId),
+          date: cleanText(input.date),
+          action: "clear",
+          clear: true,
+          note: cleanText(input.note),
+        }),
+      }
+    );
+
+  if (payload.ok !== true) {
+    throw new Error(
+      cleanText(
+        payload.message ||
+          payload.detail ||
+          "تعذر مسح بصمة الموظفة."
+      )
+    );
+  }
+
+  return payload;
+}
+
 export function getAttendanceWorkerMessage(
   response: AttendanceWorkerResponse
 ) {

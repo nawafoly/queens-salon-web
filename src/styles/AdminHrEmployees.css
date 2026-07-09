@@ -1,4 +1,4 @@
-﻿/*
+/*
  * HR Employee Management
  * Scoped exclusively to /admin/employees through .hr-shell.
  */
@@ -1891,3 +1891,321 @@
 
 /* EMPLOYEE DIRECTORY COMPONENT REDESIGN END */
 
+
+/* العنوان يبقى واضحًا */
+.dashboard-skin
+  .emp-page-wrapper
+  .dash-topbar
+  .dash-topbar-title
+  h2,
+.dashboard-skin
+  .emp-page-wrapper
+  .dash-topbar
+  .dash-topbar-title
+  h2 * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.dashboard-skin
+  .emp-page-wrapper
+  .dash-topbar
+  .emp-topbar-kicker {
+  color: #ffc61a !important;
+  -webkit-text-fill-color: #ffc61a !important;
+}
+
+.dashboard-skin
+  .emp-page-wrapper
+  .dash-topbar
+  .dash-sub {
+  color: rgba(255, 255, 255, 0.78) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.78) !important;
+}
+/* الهيدر الداكن ثابت أسفل الشريط الأبيض */
+html body
+  .dashboard-skin.madan-admin-shell.dashboard-page
+  .dashboard-main
+  .dashboard-inner
+  .emp-page-wrapper
+  > .container
+  > .dash-topbar {
+  position: sticky !important;
+  top: 70px !important;
+  z-index: 85 !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  inset-inline: auto !important;
+  transform: none !important;
+}
+
+/* عنوان إدارة الموظفات أبيض وواضح */
+html body
+  .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar
+  .dash-topbar-title
+  h2,
+html body
+  .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar
+  .dash-topbar-title
+  h2 * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: 1 !important;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* أيقونة العنوان بيضاء */
+html body
+  .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar
+  .dash-topbar-title
+  h2
+  svg {
+  color: #ffffff !important;
+  fill: currentColor !important;
+  -webkit-text-fill-color: initial !important;
+}
+
+/* العنوان الصغير ذهبي */
+html body
+  .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar
+  .emp-topbar-kicker {
+  color: #ffc61a !important;
+  -webkit-text-fill-color: #ffc61a !important;
+}
+
+/* الوصف فاتح */
+html body
+  .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar
+  .dash-sub {
+  color: rgba(255, 255, 255, 0.8) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* ارتفاع الشريط الأبيض على الجوال */
+@media (max-width: 991px) {
+  html body
+    .dashboard-skin.madan-admin-shell.dashboard-page
+    .dashboard-main
+    .dashboard-inner
+    .emp-page-wrapper
+    > .container
+    > .dash-topbar {
+    top: auto !important;
+  }
+}
+
+/* EMPLOYEES HERO FINAL EXACT FIX */
+
+html body
+.hr-shell.madan-admin-shell.hr-shell--employees
+.hr-shell-main.hr-shell-main--workspace
+.hr-stage.hr-stage--workspace
+.emp-page-wrapper
+> .container
+> .emp-page-hero-sticky {
+  position: relative !important;
+  top: auto !important;
+  z-index: 1 !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  inset-inline: auto !important;
+  transform: none !important;
+  translate: none !important;
+}
+
+html body
+.hr-shell.madan-admin-shell.hr-shell--employees
+.emp-page-hero-sticky
+.dash-topbar-title
+h2,
+html body
+.hr-shell.madan-admin-shell.hr-shell--employees
+.emp-page-hero-sticky
+.dash-topbar-title
+h2 * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: 1 !important;
+  text-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.26) !important;
+}
+
+html body
+.hr-shell.madan-admin-shell.hr-shell--employees
+.emp-page-hero-sticky
+.dash-topbar-title
+h2 svg {
+  color: #ffffff !important;
+  fill: currentColor !important;
+  -webkit-text-fill-color: initial !important;
+}
+
+html body
+.hr-shell.madan-admin-shell.hr-shell--employees
+.emp-page-hero-sticky
+.emp-topbar-kicker {
+  color: #ffc61a !important;
+  -webkit-text-fill-color: #ffc61a !important;
+}
+
+html body
+.hr-shell.madan-admin-shell.hr-shell--employees
+.emp-page-hero-sticky
+.dash-sub {
+  color: rgba(255, 255, 255, 0.82) !important;
+  -webkit-text-fill-color:
+    rgba(255, 255, 255, 0.82) !important;
+}
+
+@media (max-width: 991px) {
+  html body
+  .hr-shell.madan-admin-shell.hr-shell--employees
+  .hr-stage.hr-stage--workspace
+  .emp-page-wrapper
+  > .container
+  > .emp-page-hero-sticky {
+    top: auto !important;
+  }
+}
+
+
+/* ATTENDANCE TIME EDITOR V2 */
+
+.emp-attendance-edit-panel {
+  padding: 20px !important;
+}
+
+.emp-attendance-edit-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.emp-attendance-time-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #dfe5ee;
+  border-radius: 16px;
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff,
+      #f8fafc
+    );
+}
+
+.emp-attendance-time-card__title {
+  color: #17213a;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.emp-attendance-time-input {
+  width: 100%;
+  height: 62px;
+  padding: 0 18px;
+  border: 1px solid #ccd5e2;
+  border-radius: 14px;
+  outline: none;
+  color: #111a32;
+  background: #ffffff;
+  font-family: inherit;
+  font-size: 1.45rem;
+  font-weight: 950;
+  text-align: center;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.emp-attendance-time-input:focus {
+  border-color: #e6ad00;
+  box-shadow:
+    0 0 0 4px rgba(230, 173, 0, 0.13);
+}
+
+.emp-attendance-time-card small {
+  color: #7a8598;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.emp-attendance-time-card__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.emp-attendance-time-clear {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid #f0c9cd;
+  border-radius: 9px;
+  color: #b42332;
+  background: #fff5f6;
+  font-family: inherit;
+  font-size: 0.58rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.emp-attendance-time-clear:hover {
+  border-color: #dc6672;
+  background: #ffebed;
+}
+
+.emp-attendance-edit-note {
+  grid-column: 1 / -1;
+}
+
+.emp-attendance-edit-note .dash-input {
+  min-height: 50px;
+}
+
+@media (max-width: 767px) {
+  .emp-attendance-edit-panel {
+    padding: 14px !important;
+  }
+
+  .emp-attendance-edit-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emp-attendance-time-input {
+    height: 58px;
+    font-size: 1.3rem;
+  }
+
+  .emp-attendance-edit-note {
+    grid-column: auto;
+  }
+
+  .emp-attendance-edit-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .emp-attendance-edit-actions button {
+    width: 100%;
+    min-height: 44px;
+  }
+}

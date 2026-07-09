@@ -18804,3 +18804,48 @@ textarea.form-control {
   color: #0d0d0d !important;
   filter: none !important;
 }
+
+/* HR OPS HERO TEXT CONTRAST FIX */
+
+/* عناوين البطاقات الداكنة في صفحات الموارد البشرية */
+.hr-shell .hr-ops-hero h1,
+.hr-shell .hr-ops-hero h2,
+.hr-shell .hr-ops-hero h3,
+.hr-ops-page .hr-ops-hero h1,
+.hr-ops-page .hr-ops-hero h2,
+.hr-ops-page .hr-ops-hero h3 {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+}
+
+/* العنوان الصغير الذهبي */
+.hr-shell .hr-ops-hero > div > span,
+.hr-ops-page .hr-ops-hero > div > span {
+  color: #ffc61a !important;
+  -webkit-text-fill-color: #ffc61a !important;
+  font-weight: 900 !important;
+}
+
+/* الوصف أسفل العنوان */
+.hr-shell .hr-ops-hero p,
+.hr-ops-page .hr-ops-hero p {
+  color: rgba(255, 255, 255, 0.76) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.76) !important;
+}
+
+/* أيقونة الهيدر */
+.hr-shell .hr-ops-hero__icon,
+.hr-shell .hr-ops-hero__icon svg,
+.hr-ops-page .hr-ops-hero__icon,
+.hr-ops-page .hr-ops-hero__icon svg {
+  color: #ffc61a !important;
+  fill: currentColor !important;
+  -webkit-text-fill-color: initial !important;
+}
+
+/* منع أي قاعدة عامة من إعادة العنوان للون الداكن */
+.hr-shell .hr-ops-hero *,
+.hr-ops-page .hr-ops-hero * {
+  border-color: inherit;
+}

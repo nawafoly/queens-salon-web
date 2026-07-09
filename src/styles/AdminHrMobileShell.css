@@ -521,3 +521,67 @@
 }
 
 /* HR DESKTOP COMPACT HEADER END */
+
+/* HR SESSION LOADING STABLE SIZE */
+
+@media (min-width: 821px) {
+  .hr-shell.madan-admin-shell
+    .hr-shell-sidebar--loading
+    + .hr-shell-main
+    > .hr-shell-header {
+    display: flex !important;
+    height: 70px !important;
+    min-height: 70px !important;
+    max-height: 70px !important;
+    align-items: center !important;
+    padding: 8px 28px !important;
+    overflow: hidden !important;
+  }
+
+  .hr-shell.madan-admin-shell
+    .hr-shell-sidebar--loading
+    + .hr-shell-main
+    > .hr-shell-header
+    > div {
+    display: grid !important;
+    gap: 1px !important;
+    min-width: 0 !important;
+  }
+
+  .hr-shell.madan-admin-shell
+    .hr-shell-sidebar--loading
+    + .hr-shell-main
+    .hr-shell-kicker {
+    margin: 0 !important;
+    font-size: 0.58rem !important;
+    line-height: 1.1 !important;
+  }
+
+  .hr-shell.madan-admin-shell
+    .hr-shell-sidebar--loading
+    + .hr-shell-main
+    .hr-shell-header
+    h1 {
+    margin: 0 !important;
+    font-size: 1.08rem !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+  }
+
+  .hr-shell.madan-admin-shell
+    .hr-shell-sidebar--loading
+    + .hr-shell-main
+    .hr-shell-subtitle {
+    margin: 0 !important;
+    font-size: 0.62rem !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+  }
+
+  .hr-shell.madan-admin-shell
+    .hr-shell-sidebar--loading
+    + .hr-shell-main
+    .hr-loading-panel {
+    padding-top: 14px !important;
+  }
+}

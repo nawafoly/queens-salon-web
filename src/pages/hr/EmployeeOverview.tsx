@@ -417,8 +417,8 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       const location: AttendanceLocation =
         await getBrowserPosition({
           enableHighAccuracy: true,
-          maximumAge: 0,
-          timeout: 20000,
+          maximumAge: 10000,
+          timeout: 7000,
         });
 
       setLastLocation(location);

@@ -16,6 +16,10 @@ import {
   orderBy,
   writeBatch,
 } from "firebase/firestore";
+import {
+  adjustAttendanceDayFromWorker,
+  clearAttendanceDayFromWorker,
+} from "../services/attendanceWorkerService";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -42,11 +46,11 @@ import { AppSettingsService } from "../services/AppSettingsService";
 import { listWorkZones, type WorkZone } from "../services/attendanceSettingsService";
 import {
   getTodayAttendanceDateKey,
-  listStaffAttendanceByDateRange,
-  removeStaffAttendance,
-  setStaffAttendancePunchOverride,
   type StaffAttendanceWithId,
 } from "../services/firestoreAttendance";
+import {
+  listAttendanceByDateRangeForEmployeeFromWorker,
+} from "../services/attendanceWorkerService";
 import {
   createEmployeeNotification,
   listEmployeeLeaveRequests,
@@ -581,9 +585,23 @@ export default function DashboardEmployees() {
       .slice(0, 10);
     setEmployeeAttendanceLoading(true);
     try {
-      const employeeProfile = list.find((item) => item.id === employeeId) || { id: employeeId };
+      const employeeProfile =
+        list.find(
+          (item) => item.id === employeeId
+        ) || { id: employeeId };
+
+      const employeeUid = cleanText(
+        (employeeProfile as any)?.linkedUid ||
+          (employeeProfile as any)?.uid ||
+          (employeeProfile as any)?.linkedUserId ||
+          (employeeProfile as any)?.employeeKey ||
+          (employeeProfile as any)?.employeeId ||
+          employeeId
+      );
+
       const [rows, leaveRows] = await Promise.all([
-        listStaffAttendanceByDateRange({
+        listAttendanceByDateRangeForEmployeeFromWorker({
+          employeeUid,
           employeeId,
           fromDate: monthStart,
           toDate: monthEnd,
@@ -658,14 +676,30 @@ export default function DashboardEmployees() {
     setSaving(true);
     setErrorMsg("");
     try {
-      await setStaffAttendancePunchOverride({
+      const employeeProfile =
+        list.find(
+          (item) => item.id === selectedEmployeeId
+        ) || { id: selectedEmployeeId };
+
+      const employeeUid = cleanText(
+        (employeeProfile as any)?.linkedUid ||
+          (employeeProfile as any)?.uid ||
+          (employeeProfile as any)?.linkedUserId ||
+          (employeeProfile as any)?.employeeKey ||
+          (employeeProfile as any)?.employeeId ||
+          selectedEmployeeId
+      );
+
+      await adjustAttendanceDayFromWorker({
+        employeeUid,
         employeeId: selectedEmployeeId,
         date,
-        checkInAtClient: checkInIso,
-        checkOutAtClient: checkOutIso || undefined,
-        notes: attendanceEditNote,
-        createdByUid: authUser?.uid,
-        createdByName: authUser?.displayName || authUser?.email,
+        checkInTime:
+          attendanceEditCheckIn.slice(11, 16),
+        checkOutTime: attendanceEditCheckOut
+          ? attendanceEditCheckOut.slice(11, 16)
+          : undefined,
+        note: attendanceEditNote,
       });
       void writeAuditLog({
         action: "attendance_updated",
@@ -694,6 +728,7 @@ export default function DashboardEmployees() {
     canManageAttendance,
     closeAttendancePunchEditor,
     loadSelectedEmployeeAttendance,
+    list,
     selectedEmployeeId,
   ]);
 
@@ -710,7 +745,26 @@ export default function DashboardEmployees() {
     setSaving(true);
     setErrorMsg("");
     try {
-      await removeStaffAttendance({ employeeId: selectedEmployeeId, date });
+      const employeeProfile =
+        list.find(
+          (item) => item.id === selectedEmployeeId
+        ) || { id: selectedEmployeeId };
+
+      const employeeUid = cleanText(
+        (employeeProfile as any)?.linkedUid ||
+          (employeeProfile as any)?.uid ||
+          (employeeProfile as any)?.linkedUserId ||
+          (employeeProfile as any)?.employeeKey ||
+          (employeeProfile as any)?.employeeId ||
+          selectedEmployeeId
+      );
+
+      await clearAttendanceDayFromWorker({
+        employeeUid,
+        employeeId: selectedEmployeeId,
+        date,
+        note: "مسح بصمة اليوم من إدارة الموظفات",
+      });
       void writeAuditLog({
         action: "attendance_deleted",
         entityType: "attendance",
@@ -726,7 +780,12 @@ export default function DashboardEmployees() {
     } finally {
       setSaving(false);
     }
-  }, [canManageAttendance, loadSelectedEmployeeAttendance, selectedEmployeeId]);
+  }, [
+    canManageAttendance,
+    list,
+    loadSelectedEmployeeAttendance,
+    selectedEmployeeId,
+  ]);
 
   const resetForm = () => {
     setEditId(null);
@@ -950,7 +1009,13 @@ export default function DashboardEmployees() {
           const linkedUid = cleanText(data?.linkedUid || data?.uid || data?.linkedUserId);
           const linkedUser = linkedUid ? userByUid.get(linkedUid) || {} : {};
           const combined = { ...linkedUser, ...data };
-          if (isAdministrativeStaffRecord(rawDocId, combined, linkedUserRoleByUid)) return;
+
+          const administrative =
+            isAdministrativeStaffRecord(
+              rawDocId,
+              combined,
+              linkedUserRoleByUid
+            );
 
           const role = cleanText(combined?.role).toLowerCase();
           if (["client", "pending", "guest"].includes(role)) return;
@@ -959,9 +1024,9 @@ export default function DashboardEmployees() {
             combined?.employeeId || combined?.linkedEmployeeDocId || rawDocId || linkedUid
           );
           const isEmployeeCandidate =
+            administrative ||
             source === "staff_public" ||
             role === "staff" ||
-            role === "hr" ||
             combined?.employeeProfileEnabled === true ||
             combined?.includeInEmployeeManagement === true ||
             (source === "employees" && !!employeeId);
@@ -993,11 +1058,16 @@ export default function DashboardEmployees() {
             includeInEmployeeManagement: combined?.includeInEmployeeManagement === true,
             source,
             profileIncomplete: source !== "staff_public",
+            employeeKind: administrative
+              ? "administrative"
+              : "service",
             name: cleanText(combined?.name || combined?.displayName || combined?.fullName || combined?.email),
             active: combined?.active !== false && combined?.isActive !== false,
             showOnAbout: source === "staff_public" ? combined?.showOnAbout !== false : false,
             showOnBooking:
-              source === "staff_public" && specialties.length > 0
+              !administrative &&
+              source === "staff_public" &&
+              specialties.length > 0
                 ? combined?.showOnBooking !== false
                 : false,
             employmentEndDate: normalizeLeaveUntil(combined?.employmentEndDate),
@@ -1733,13 +1803,38 @@ export default function DashboardEmployees() {
     const leaveUntil = normalizeLeaveUntil(employee?.leaveUntil);
     return !!employee?.onLeave && (!leaveUntil || leaveUntil >= todayIso());
   };
+  const serviceEmployeeRows = list.filter(
+    (employee) =>
+      employee.employeeKind !== "administrative"
+  );
+
   const totalEmployeeCount = list.length;
-  const availableEmployeeCount = list.filter((employee) => employee.active && !isEmployeeOnLeave(employee)).length;
-  const leaveEmployeeCount = list.filter((employee) => isEmployeeOnLeave(employee)).length;
-  const inactiveEmployeeCount = list.filter((employee) => !employee.active).length;
-  const noServiceEmployeeCount = list.filter(
-    (employee) => normalizeSpecialties(employee.specialties).length === 0
-  ).length;
+
+  const availableEmployeeCount =
+    serviceEmployeeRows.filter(
+      (employee) =>
+        employee.active &&
+        !isEmployeeOnLeave(employee)
+    ).length;
+
+  const leaveEmployeeCount =
+    serviceEmployeeRows.filter(
+      (employee) =>
+        isEmployeeOnLeave(employee)
+    ).length;
+
+  const inactiveEmployeeCount =
+    serviceEmployeeRows.filter(
+      (employee) => !employee.active
+    ).length;
+
+  const noServiceEmployeeCount =
+    serviceEmployeeRows.filter(
+      (employee) =>
+        normalizeSpecialties(
+          employee.specialties
+        ).length === 0
+    ).length;
   const incompleteEmployeeCount = list.filter((employee) => employee.profileIncomplete).length;
   const showPayrollSubTab = selectedEmployeeId ? activeTab === "payroll" : activeStatsSubTab === "payroll";
   const showStatsSubTab = selectedEmployeeId ? activeTab === "leave" : activeStatsSubTab === "stats";
@@ -3468,7 +3563,7 @@ export default function DashboardEmployees() {
   return (
     <div className="emp-page-wrapper">
       <div className="container">
-        <div className="dash-topbar dash-topbar--sticky">
+        <div className="dash-topbar emp-page-hero-sticky">
           <div className="dash-topbar-title">
             <p className="emp-topbar-kicker">Human Resources</p>
             <h2>
@@ -3702,32 +3797,94 @@ export default function DashboardEmployees() {
                     </button>
                   </div>
                   <div className="emp-attendance-edit-grid">
-                    <label className="dash-field">
-                      <span className="emp-label">وقت الحضور</span>
+                    <label className="emp-attendance-time-card">
+                      <span className="emp-attendance-time-card__title">
+                        وقت الحضور
+                      </span>
+
                       <input
-                        className="dash-input"
-                        type="datetime-local"
-                        value={attendanceEditCheckIn}
-                        onChange={(event) => setAttendanceEditCheckIn(event.target.value)}
+                        className="emp-attendance-time-input"
+                        type="time"
+                        dir="ltr"
+                        step={300}
+                        value={
+                          attendanceEditCheckIn
+                            ? attendanceEditCheckIn.slice(11, 16)
+                            : ""
+                        }
+                        onChange={(event) =>
+                          setAttendanceEditCheckIn(
+                            event.target.value
+                              ? `${attendanceEditDate}T${event.target.value}`
+                              : ""
+                          )
+                        }
                         disabled={saving}
                       />
+
+                      <small>
+                        اختاري ساعة ودقيقة الحضور فقط
+                      </small>
                     </label>
-                    <label className="dash-field">
-                      <span className="emp-label">وقت الانصراف</span>
+
+                    <label className="emp-attendance-time-card">
+                      <span className="emp-attendance-time-card__title">
+                        وقت الانصراف
+                      </span>
+
                       <input
-                        className="dash-input"
-                        type="datetime-local"
-                        value={attendanceEditCheckOut}
-                        onChange={(event) => setAttendanceEditCheckOut(event.target.value)}
+                        className="emp-attendance-time-input"
+                        type="time"
+                        dir="ltr"
+                        step={300}
+                        value={
+                          attendanceEditCheckOut
+                            ? attendanceEditCheckOut.slice(11, 16)
+                            : ""
+                        }
+                        onChange={(event) =>
+                          setAttendanceEditCheckOut(
+                            event.target.value
+                              ? `${attendanceEditDate}T${event.target.value}`
+                              : ""
+                          )
+                        }
                         disabled={saving}
                       />
+
+                      <div className="emp-attendance-time-card__bottom">
+                        <small>
+                          يمكن تركه فارغًا إذا لم تسجل انصرافًا
+                        </small>
+
+                        {attendanceEditCheckOut ? (
+                          <button
+                            type="button"
+                            className="emp-attendance-time-clear"
+                            onClick={() =>
+                              setAttendanceEditCheckOut("")
+                            }
+                            disabled={saving}
+                          >
+                            مسح الوقت
+                          </button>
+                        ) : null}
+                      </div>
                     </label>
+
                     <label className="dash-field emp-attendance-edit-note">
-                      <span className="emp-label">ملاحظة الإدارة</span>
+                      <span className="emp-label">
+                        ملاحظة الإدارة
+                      </span>
+
                       <input
                         className="dash-input"
                         value={attendanceEditNote}
-                        onChange={(event) => setAttendanceEditNote(event.target.value)}
+                        onChange={(event) =>
+                          setAttendanceEditNote(
+                            event.target.value
+                          )
+                        }
                         disabled={saving}
                         placeholder="مثال: تصحيح بصمة من الإدارة"
                       />

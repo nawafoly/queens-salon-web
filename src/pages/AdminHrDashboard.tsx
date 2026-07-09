@@ -51,10 +51,12 @@ import {
 } from "../helpers/hr/employeeAbsence";
 import {
   getTodayAttendanceDateKey,
-  listStaffAttendanceByDateRange,
-  listStaffAttendanceForDate,
   type StaffAttendanceToday,
 } from "../services/firestoreAttendance";
+import {
+  listAttendanceByDateRangeForEmployeeFromWorker,
+  listAttendanceForEmployeesDateFromWorker,
+} from "../services/attendanceWorkerService";
 import {
   getShiftExpectedHours,
   getAttendanceDayStatus,
@@ -582,7 +584,8 @@ function HrOverview({
       const calculationDateKeys = buildDateKeysInRange(parsedMonth.monthStart, calculationEndDate);
 
       const [attendanceRows, absenceRows] = await Promise.all([
-        listStaffAttendanceByDateRange({
+        listAttendanceByDateRangeForEmployeeFromWorker({
+          employeeUid,
           employeeId,
           fromDate: parsedMonth.monthStart,
           toDate: calculationEndDate,
@@ -1086,14 +1089,26 @@ export default function AdminHrDashboard() {
         listEmployeeFiles(40),
         listEmployeeAbsences(80),
       ]);
-      const employeeIds = Array.from(
-        new Set(
-          (Array.isArray(rosterRows) ? rosterRows : [])
-            .map((item) => getRosterAttendanceId(item as DirectoryEmployee))
-            .filter(Boolean)
-        )
-      );
-      const attendanceRows = await listStaffAttendanceForDate({ employeeIds });
+      const attendanceEmployees = (
+        Array.isArray(rosterRows)
+          ? rosterRows
+          : []
+      )
+        .map((item) => ({
+          employeeId: getRosterAttendanceId(
+            item as DirectoryEmployee
+          ),
+          employeeUid: getRosterEmployeeUid(
+            item as DirectoryEmployee
+          ),
+        }))
+        .filter((item) => item.employeeId);
+
+      const attendanceRows =
+        await listAttendanceForEmployeesDateFromWorker({
+          employees: attendanceEmployees,
+          date: getTodayAttendanceDateKey(),
+        });
       if (requestId !== loadRequestRef.current) return;
       setRoster(Array.isArray(rosterRows) ? rosterRows : []);
       setApplications(Array.isArray(applicationRows) ? applicationRows : []);

@@ -365,18 +365,35 @@ export function getBrowserPosition(options?: PositionOptions): Promise<Attendanc
   const requestedTimeout = Number(options?.timeout);
   const timeoutMs =
     Number.isFinite(requestedTimeout) && requestedTimeout > 0
-      ? Math.max(8000, Math.round(requestedTimeout))
-      : 20000;
+      ? Math.min(
+          10000,
+          Math.max(4000, Math.round(requestedTimeout))
+        )
+      : 10000;
+
+  const requestedMaximumAge = Number(
+    options?.maximumAge
+  );
+
+  const maximumAgeMs =
+    Number.isFinite(requestedMaximumAge) &&
+    requestedMaximumAge >= 0
+      ? Math.min(
+          15000,
+          Math.round(requestedMaximumAge)
+        )
+      : 0;
 
   const positionOptions: PositionOptions = {
     ...(options || {}),
-    enableHighAccuracy: true,
+    enableHighAccuracy:
+      options?.enableHighAccuracy !== false,
     timeout: timeoutMs,
-    maximumAge: 0,
+    maximumAge: maximumAgeMs,
   };
 
-  const targetAccuracyMeters = 60;
-  const maximumReadings = 5;
+  const targetAccuracyMeters = 150;
+  const maximumReadings = 3;
 
   return new Promise((resolve, reject) => {
     let settled = false;
