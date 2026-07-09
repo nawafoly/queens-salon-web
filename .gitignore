@@ -45,3 +45,5 @@ android-hr/app/build/
 android-hr/local.properties
 android-hr/app/src/main/assets/public/
 android-hr/app/src/main/assets/capacitor.config.json
+
+.wrangler/
