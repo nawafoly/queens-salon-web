@@ -1,5 +1,8 @@
 {
 	"appId": "com.queenssalon.app",
 	"appName": "Queens Salon",
-	"webDir": "dist"
+	"webDir": "dist",
+	"android": {
+		"path": "android"
+	}
 }
