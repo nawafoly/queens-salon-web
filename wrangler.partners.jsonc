@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "queens-salon-partners-api",
   "main": "workers/partners-worker.js",
@@ -9,7 +9,7 @@
   "vars": {
     "FIREBASE_PROJECT_ID": "waves-hotel-dashboard",
     "BOOTSTRAP_ADMIN_EMAILS": "nawafaaa0@gmail.com,nawafaaa6@gmail.com",
-    "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173,http://localhost,capacitor://localhost"
+    "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173,http://localhost,capacitor://localhost,https://queens-salon-web-gnxk.vercel.app"
   },
   "d1_databases": [
     {

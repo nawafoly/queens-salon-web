@@ -11,11 +11,16 @@ import {
   faCircleExclamation,
   faClock,
   faFileContract,
+  faEnvelope,
+  faKey,
   faMagnifyingGlass,
   faMoneyBillTransfer,
   faPercent,
+  faPhone,
   faPlus,
   faStore,
+  faUserPlus,
+  faUserShield,
   faUsers,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
@@ -23,6 +28,7 @@ import {
 import Modal from "../components/Modal";
 import { auth } from "../services/firebase";
 import { PartnerService } from "../services/partnerService";
+import { PartnerAccountService } from "../services/partnerAccountService";
 import type {
   Partner,
   PartnerBillingModel,
@@ -38,8 +44,8 @@ import type {
 } from "../types/partner";
 import "../styles/AdminDashboardPartners.css";
 
-type ActiveTab = "partners" | "resources" | "contracts";
-type CreateModal = "partner" | "resource" | "contract" | null;
+type ActiveTab = "partners" | "resources" | "team" | "contracts";
+type CreateModal = "partner" | "resource" | "member" | "account" | "contract" | null;
 
 type PartnerFormState = {
   displayName: string;
@@ -60,6 +66,25 @@ type ResourceFormState = {
   floor: string;
   description: string;
   equipmentNotes: string;
+};
+
+type MemberFormState = {
+  partnerId: string;
+  displayName: string;
+  email: string;
+  phone: string;
+  memberType: "employee" | "contractor";
+  createLogin: boolean;
+  password: string;
+  canWorkAsProvider: boolean;
+  canManageTeam: boolean;
+  canManageInventory: boolean;
+  canViewFinancials: boolean;
+};
+
+type AccountFormState = {
+  email: string;
+  password: string;
 };
 
 type ContractFormState = {
@@ -153,6 +178,25 @@ const EMPTY_PARTNER_FORM: PartnerFormState = {
   category: "hair",
   status: "active",
   notes: "",
+};
+
+const EMPTY_MEMBER_FORM: MemberFormState = {
+  partnerId: "",
+  displayName: "",
+  email: "",
+  phone: "",
+  memberType: "employee",
+  createLogin: true,
+  password: "",
+  canWorkAsProvider: true,
+  canManageTeam: false,
+  canManageInventory: false,
+  canViewFinancials: false,
+};
+
+const EMPTY_ACCOUNT_FORM: AccountFormState = {
+  email: "",
+  password: "",
 };
 
 const EMPTY_RESOURCE_FORM: ResourceFormState = {
@@ -300,6 +344,13 @@ function translatePartnerError(error: unknown) {
   if (message.includes("fixed_rent_required")) return "أدخل قيمة الإيجار الثابت.";
   if (message.includes("hourly_rate_required")) return "أدخل قيمة الإيجار بالساعة.";
   if (message.includes("daily_rate_required")) return "أدخل قيمة الإيجار اليومي.";
+  if (message.includes("partner_account:email_invalid")) return "أدخل بريدًا إلكترونيًا صحيحًا للحساب.";
+  if (message.includes("partner_account:password_too_short")) return "كلمة المرور المؤقتة يجب ألا تقل عن 8 أحرف.";
+  if (message.includes("auth/email-already-in-use")) return "البريد الإلكتروني مستخدم في حساب آخر.";
+  if (message.includes("account_already_linked")) return "هذا الحساب مرتبط بعضوة أخرى بالفعل.";
+  if (message.includes("member_account_exists")) return "يوجد حساب دخول مرتبط بهذه العضوة بالفعل.";
+  if (message.includes("email_required")) return "البريد الإلكتروني مطلوب لإنشاء الحساب.";
+  if (message.includes("member_not_found")) return "تعذر العثور على عضوة الفريق المحددة.";
 
   return message || "حدث خطأ غير متوقع. حاول مرة أخرى.";
 }
@@ -349,6 +400,9 @@ export default function DashboardPartners() {
   const [partnerForm, setPartnerForm] = useState<PartnerFormState>(EMPTY_PARTNER_FORM);
   const [resourceForm, setResourceForm] = useState<ResourceFormState>(EMPTY_RESOURCE_FORM);
   const [contractForm, setContractForm] = useState<ContractFormState>(() => createEmptyContractForm());
+  const [memberForm, setMemberForm] = useState<MemberFormState>(EMPTY_MEMBER_FORM);
+  const [accountForm, setAccountForm] = useState<AccountFormState>(EMPTY_ACCOUNT_FORM);
+  const [selectedMember, setSelectedMember] = useState<PartnerMember | null>(null);
 
   const loadData = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "initial") setLoading(true);
@@ -505,11 +559,31 @@ export default function DashboardPartners() {
     });
   }, [contracts, partnerNameById, resourceById, search]);
 
+  const filteredMembers = useMemo(() => {
+    const query = normalizeSearch(search);
+    if (!query) return members;
+    return members.filter((member) =>
+      normalizeSearch(
+        `${member.displayName} ${member.email || ""} ${member.phone || ""} ${
+          partnerNameById.get(member.partnerId) || ""
+        }`
+      ).includes(query)
+    );
+  }, [members, partnerNameById, search]);
+
   const openCreateModal = (modal: Exclude<CreateModal, null>) => {
     setError("");
     setSuccessMessage("");
     if (modal === "partner") setPartnerForm(EMPTY_PARTNER_FORM);
     if (modal === "resource") setResourceForm(EMPTY_RESOURCE_FORM);
+    if (modal === "member") {
+      setSelectedMember(null);
+      setMemberForm({
+        ...EMPTY_MEMBER_FORM,
+        partnerId: eligiblePartners[0]?.id || "",
+      });
+    }
+    if (modal === "account") setAccountForm(EMPTY_ACCOUNT_FORM);
     if (modal === "contract") {
       setContractForm(createEmptyContractForm(suggestContractNumber(contracts)));
     }
@@ -519,6 +593,7 @@ export default function DashboardPartners() {
   const closeCreateModal = () => {
     if (saving) return;
     setCreateModal(null);
+    setSelectedMember(null);
   };
 
   const handleCreatePartner = async (event: FormEvent<HTMLFormElement>) => {
@@ -654,6 +729,84 @@ export default function DashboardPartners() {
     }
   };
 
+  const handleCreateMember = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saving) return;
+
+    setSaving(true);
+    setError("");
+    try {
+      const memberInput = {
+        partnerId: memberForm.partnerId,
+        memberType: memberForm.memberType,
+        status: "active" as const,
+        displayName: memberForm.displayName,
+        email: memberForm.email || undefined,
+        phone: memberForm.phone || undefined,
+        canWorkAsProvider: memberForm.canWorkAsProvider,
+        canManageTeam: memberForm.canManageTeam,
+        canManageInventory: memberForm.canManageInventory,
+        canViewFinancials: memberForm.canViewFinancials,
+      };
+
+      if (memberForm.createLogin) {
+        await PartnerAccountService.createMemberWithAccount(memberInput, memberForm.password);
+      } else {
+        await PartnerService.createPartnerMember(memberInput, auth.currentUser?.uid);
+      }
+
+      setCreateModal(null);
+      setActiveTab("team");
+      setSuccessMessage(
+        memberForm.createLogin
+          ? `تمت إضافة «${memberForm.displayName.trim()}» وإنشاء حساب دخول لها.`
+          : `تمت إضافة «${memberForm.displayName.trim()}» إلى فريق الشريكة.`
+      );
+      await loadData("refresh");
+    } catch (saveError) {
+      console.error("DashboardPartners.createMember error:", saveError);
+      setError(translatePartnerError(saveError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openAccountModal = (member: PartnerMember) => {
+    setError("");
+    setSuccessMessage("");
+    setSelectedMember(member);
+    setAccountForm({
+      email: member.email || "",
+      password: "",
+    });
+    setCreateModal("account");
+  };
+
+  const handleCreateMemberAccount = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saving || !selectedMember) return;
+
+    setSaving(true);
+    setError("");
+    try {
+      await PartnerAccountService.linkExistingMemberAccount({
+        memberId: selectedMember.id,
+        displayName: selectedMember.displayName,
+        email: accountForm.email,
+        password: accountForm.password,
+      });
+      setCreateModal(null);
+      setSelectedMember(null);
+      setSuccessMessage(`تم إنشاء حساب دخول لـ «${selectedMember.displayName}».`);
+      await loadData("refresh");
+    } catch (saveError) {
+      console.error("DashboardPartners.createMemberAccount error:", saveError);
+      setError(translatePartnerError(saveError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const toggleContractResource = (resourceId: string) => {
     setContractForm((previous) => ({
       ...previous,
@@ -678,7 +831,9 @@ export default function DashboardPartners() {
       ? "بحث باسم الشريكة أو المالكة..."
       : activeTab === "resources"
         ? "بحث بالرمز أو اسم المساحة..."
-        : "بحث برقم العقد أو الشريكة أو المساحة...";
+        : activeTab === "team"
+          ? "بحث باسم العضوة أو البريد أو الشريكة..."
+          : "بحث برقم العقد أو الشريكة أو المساحة...";
 
   return (
     <div className="partner-admin-page" dir="rtl">
@@ -709,6 +864,15 @@ export default function DashboardPartners() {
           >
             <FontAwesomeIcon icon={faPlus} />
             إضافة شريكة
+          </button>
+          <button
+            type="button"
+            className="partner-admin-btn partner-admin-btn--team"
+            onClick={() => openCreateModal("member")}
+            disabled={eligiblePartners.length === 0}
+          >
+            <FontAwesomeIcon icon={faUserPlus} />
+            إضافة عضوة
           </button>
           <button
             type="button"
@@ -792,6 +956,17 @@ export default function DashboardPartners() {
               <FontAwesomeIcon icon={faChair} />
               المساحات
               <span>{resources.length}</span>
+            </button>
+            <button
+              type="button"
+              className={activeTab === "team" ? "is-active" : ""}
+              onClick={() => { setActiveTab("team"); setSearch(""); }}
+              role="tab"
+              aria-selected={activeTab === "team"}
+            >
+              <FontAwesomeIcon icon={faUserShield} />
+              الفريق والحسابات
+              <span>{members.length}</span>
             </button>
             <button
               type="button"
@@ -934,6 +1109,72 @@ export default function DashboardPartners() {
               {!search ? (
                 <button type="button" onClick={() => openCreateModal("resource")}>
                   <FontAwesomeIcon icon={faPlus} /> إضافة أول مساحة
+                </button>
+              ) : null}
+            </div>
+          )
+        ) : activeTab === "team" ? (
+          filteredMembers.length > 0 ? (
+            <div className="partner-team-grid">
+              {filteredMembers.map((member) => (
+                <article className="partner-team-card" key={member.id}>
+                  <header>
+                    <span className="partner-team-card__avatar">
+                      {member.displayName.trim().slice(0, 1) || "م"}
+                    </span>
+                    <div>
+                      <h3>{member.displayName}</h3>
+                      <p>{partnerNameById.get(member.partnerId) || "شريكة غير معروفة"}</p>
+                    </div>
+                    <span className={`partner-team-status is-${member.status}`}>
+                      {member.status === "active" ? "نشطة" : member.status === "suspended" ? "موقوفة" : "غير نشطة"}
+                    </span>
+                  </header>
+
+                  <div className="partner-team-card__meta">
+                    <span>
+                      <FontAwesomeIcon icon={faUserShield} />
+                      {member.memberType === "owner" ? "مالكة النشاط" : member.memberType === "contractor" ? "متعاقدة" : "موظفة"}
+                    </span>
+                    <span>
+                      <FontAwesomeIcon icon={faEnvelope} />
+                      {member.email || "لا يوجد بريد"}
+                    </span>
+                    <span>
+                      <FontAwesomeIcon icon={faPhone} />
+                      {member.phone || "لا يوجد جوال"}
+                    </span>
+                  </div>
+
+                  <div className="partner-team-card__permissions">
+                    <span className={member.canWorkAsProvider ? "is-enabled" : ""}>تنفيذ خدمات</span>
+                    <span className={member.canManageTeam ? "is-enabled" : ""}>إدارة فريق</span>
+                    <span className={member.canManageInventory ? "is-enabled" : ""}>إدارة مخزون</span>
+                    <span className={member.canViewFinancials ? "is-enabled" : ""}>عرض المالية</span>
+                  </div>
+
+                  <footer>
+                    {member.userUid ? (
+                      <span className="partner-account-badge is-linked">
+                        <FontAwesomeIcon icon={faCircleCheck} /> حساب دخول مرتبط
+                      </span>
+                    ) : (
+                      <button type="button" onClick={() => openAccountModal(member)}>
+                        <FontAwesomeIcon icon={faKey} /> إنشاء حساب دخول
+                      </button>
+                    )}
+                  </footer>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="partner-admin-empty">
+              <FontAwesomeIcon icon={faUsers} />
+              <h3>{search ? "لا توجد نتائج مطابقة" : "لا يوجد أعضاء فريق"}</h3>
+              <p>{search ? "غيّر عبارة البحث وحاول مجددًا." : "أضف موظفات أو متعاقدات واربط لهن حسابات دخول مستقلة."}</p>
+              {!search && eligiblePartners.length > 0 ? (
+                <button type="button" onClick={() => openCreateModal("member")}>
+                  <FontAwesomeIcon icon={faUserPlus} /> إضافة أول عضوة
                 </button>
               ) : null}
             </div>
@@ -1230,6 +1471,200 @@ export default function DashboardPartners() {
             </button>
             <button type="submit" className="partner-admin-btn partner-admin-btn--dark" disabled={saving}>
               {saving ? "جاري الإنشاء..." : "إنشاء المساحة"}
+            </button>
+          </footer>
+        </form>
+      </Modal>
+
+      <Modal
+        open={createModal === "member"}
+        onClose={closeCreateModal}
+        ariaLabel="إضافة عضوة إلى فريق شريكة"
+        size="lg"
+        panelClassName="partner-admin-modal"
+      >
+        <form onSubmit={handleCreateMember}>
+          <header className="partner-admin-modal__header">
+            <div>
+              <span>TEAM MEMBER</span>
+              <h2>إضافة عضوة إلى فريق شريكة</h2>
+              <p>يمكن إضافتها كسجل فقط أو إنشاء حساب دخول مستقل لها مباشرة.</p>
+            </div>
+            <button type="button" onClick={closeCreateModal} aria-label="إغلاق">
+              <FontAwesomeIcon icon={faXmark} />
+            </button>
+          </header>
+
+          <div className="partner-admin-form-grid">
+            <label>
+              <span>الشريكة التابعة لها *</span>
+              <select
+                value={memberForm.partnerId}
+                onChange={(event) => setMemberForm((previous) => ({ ...previous, partnerId: event.target.value }))}
+                required
+                autoFocus
+              >
+                <option value="">اختر الشريكة</option>
+                {eligiblePartners.map((partner) => (
+                  <option key={partner.id} value={partner.id}>{partner.displayName}</option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>نوع العضوة</span>
+              <select
+                value={memberForm.memberType}
+                onChange={(event) => setMemberForm((previous) => ({ ...previous, memberType: event.target.value as "employee" | "contractor" }))}
+              >
+                <option value="employee">موظفة</option>
+                <option value="contractor">متعاقدة</option>
+              </select>
+            </label>
+
+            <label>
+              <span>الاسم الكامل *</span>
+              <input
+                value={memberForm.displayName}
+                onChange={(event) => setMemberForm((previous) => ({ ...previous, displayName: event.target.value }))}
+                placeholder="مثال: سارة أحمد"
+                required
+              />
+            </label>
+
+            <label>
+              <span>رقم الجوال</span>
+              <input
+                value={memberForm.phone}
+                onChange={(event) => setMemberForm((previous) => ({ ...previous, phone: event.target.value }))}
+                placeholder="05xxxxxxxx"
+                inputMode="tel"
+              />
+            </label>
+
+            <label className="partner-admin-field--wide partner-member-login-toggle">
+              <input
+                type="checkbox"
+                checked={memberForm.createLogin}
+                onChange={(event) => setMemberForm((previous) => ({ ...previous, createLogin: event.target.checked }))}
+              />
+              <span>
+                <strong>إنشاء حساب دخول الآن</strong>
+                <small>تستطيع العضوة الدخول من صفحة بوابة الشريكات بنفس البريد وكلمة المرور.</small>
+              </span>
+            </label>
+
+            <label>
+              <span>البريد الإلكتروني {memberForm.createLogin ? "*" : ""}</span>
+              <input
+                type="email"
+                value={memberForm.email}
+                onChange={(event) => setMemberForm((previous) => ({ ...previous, email: event.target.value }))}
+                placeholder="employee@example.com"
+                required={memberForm.createLogin}
+              />
+            </label>
+
+            {memberForm.createLogin ? (
+              <label>
+                <span>كلمة مرور مؤقتة *</span>
+                <input
+                  type="text"
+                  minLength={8}
+                  value={memberForm.password}
+                  onChange={(event) => setMemberForm((previous) => ({ ...previous, password: event.target.value }))}
+                  placeholder="8 أحرف أو أكثر"
+                  required
+                />
+              </label>
+            ) : null}
+
+            <div className="partner-admin-form-section partner-admin-field--wide">
+              <FontAwesomeIcon icon={faUserShield} />
+              <div><strong>صلاحيات العضوة</strong><span>يمكن تعديلها لاحقًا من نظام الفريق.</span></div>
+            </div>
+
+            <div className="partner-member-permission-grid partner-admin-field--wide">
+              {[
+                ["canWorkAsProvider", "تنفيذ الخدمات", "تظهر كمنفذة للخدمة في الحجوزات"],
+                ["canManageTeam", "إدارة الفريق", "إضافة وتعديل أعضاء فريق الشريكة"],
+                ["canManageInventory", "إدارة المخزون", "الوصول إلى مخزون الشريكة"],
+                ["canViewFinancials", "عرض المالية", "مشاهدة العقد والمستحقات والنسب"],
+              ].map(([field, title, description]) => (
+                <label key={field}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(memberForm[field as keyof MemberFormState])}
+                    onChange={(event) => setMemberForm((previous) => ({ ...previous, [field]: event.target.checked }))}
+                  />
+                  <span><strong>{title}</strong><small>{description}</small></span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <footer className="partner-admin-modal__footer">
+            <button type="button" className="partner-admin-btn partner-admin-btn--secondary" onClick={closeCreateModal} disabled={saving}>إلغاء</button>
+            <button type="submit" className="partner-admin-btn partner-admin-btn--team" disabled={saving}>
+              {saving ? "جاري إنشاء العضوة..." : memberForm.createLogin ? "إضافة العضوة وإنشاء الحساب" : "إضافة العضوة"}
+            </button>
+          </footer>
+        </form>
+      </Modal>
+
+      <Modal
+        open={createModal === "account"}
+        onClose={closeCreateModal}
+        ariaLabel="إنشاء حساب دخول لعضوة الفريق"
+        size="md"
+        panelClassName="partner-admin-modal"
+      >
+        <form onSubmit={handleCreateMemberAccount}>
+          <header className="partner-admin-modal__header">
+            <div>
+              <span>LOGIN ACCOUNT</span>
+              <h2>إنشاء حساب دخول</h2>
+              <p>سيتم ربط الحساب مباشرة بـ {selectedMember?.displayName || "عضوة الفريق"} دون تغيير حساب الإدارة الحالي.</p>
+            </div>
+            <button type="button" onClick={closeCreateModal} aria-label="إغلاق">
+              <FontAwesomeIcon icon={faXmark} />
+            </button>
+          </header>
+
+          <div className="partner-admin-form-grid">
+            <label className="partner-admin-field--wide">
+              <span>البريد الإلكتروني *</span>
+              <input
+                type="email"
+                value={accountForm.email}
+                onChange={(event) => setAccountForm((previous) => ({ ...previous, email: event.target.value }))}
+                placeholder="partner@example.com"
+                required
+                autoFocus
+              />
+            </label>
+            <label className="partner-admin-field--wide">
+              <span>كلمة مرور مؤقتة *</span>
+              <input
+                type="text"
+                minLength={8}
+                value={accountForm.password}
+                onChange={(event) => setAccountForm((previous) => ({ ...previous, password: event.target.value }))}
+                placeholder="8 أحرف أو أكثر"
+                required
+              />
+            </label>
+          </div>
+
+          <div className="partner-account-note">
+            <FontAwesomeIcon icon={faKey} />
+            <span>رابط الدخول الخاص بالشريكات: <strong>/partner/login</strong></span>
+          </div>
+
+          <footer className="partner-admin-modal__footer">
+            <button type="button" className="partner-admin-btn partner-admin-btn--secondary" onClick={closeCreateModal} disabled={saving}>إلغاء</button>
+            <button type="submit" className="partner-admin-btn partner-admin-btn--primary" disabled={saving}>
+              {saving ? "جاري إنشاء الحساب..." : "إنشاء وربط الحساب"}
             </button>
           </footer>
         </form>

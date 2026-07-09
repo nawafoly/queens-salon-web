@@ -292,4 +292,19 @@ export const PartnerService = {
       }
     );
   },
+
+  async linkPartnerMemberAccount(
+    id: string,
+    account: { userUid: string; email: string },
+    salonId: string = PARTNER_SALON_ID
+  ) {
+    const normalizedId = requireText(id, "id");
+    return partnerApiRequest<{ id: string; userUid: string; email: string }>(
+      `${PARTNER_API_PATHS.partnerMembers}/${encodeURIComponent(normalizedId)}/link-account`,
+      {
+        method: "POST",
+        body: JSON.stringify({ salonId, account }),
+      }
+    );
+  },
 };

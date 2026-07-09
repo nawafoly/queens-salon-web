@@ -162,3 +162,38 @@ export type CreatePartnerMemberInput = Omit<
 >;
 
 export type UpdatePartnerMemberInput = Partial<CreatePartnerMemberInput>;
+
+export type PartnerPortalMember = Omit<
+  PartnerMember,
+  "userUid" | "createdByUid" | "updatedByUid"
+> & {
+  hasLogin: boolean;
+};
+
+export type PartnerPortalPermissions = {
+  canManageTeam: boolean;
+  canManageInventory: boolean;
+  canViewFinancials: boolean;
+  canWorkAsProvider: boolean;
+};
+
+export type PartnerPortalSession =
+  | {
+      kind: "admin";
+      identity: { uid: string; email?: string; name?: string };
+    }
+  | {
+      kind: "partner";
+      identity: { uid: string; email?: string; name?: string };
+      partner: Partner;
+      member: PartnerPortalMember;
+    };
+
+export type PartnerPortalOverview = {
+  partner: Partner;
+  member: PartnerPortalMember;
+  contracts: PartnerContract[];
+  resources: RentalResource[];
+  team: PartnerPortalMember[];
+  permissions: PartnerPortalPermissions;
+};

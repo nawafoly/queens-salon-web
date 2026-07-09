@@ -35,6 +35,8 @@ import ForgotPassword from "./pages/ForgotPassword";
 import Track from "./pages/Track";
 import SuccessInternal from "./pages/SuccessInternal";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import PartnerLogin from "./pages/PartnerLogin";
+import PartnerPortal from "./pages/PartnerPortal";
 
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
@@ -262,12 +264,15 @@ const App: React.FC = () => {
     location.pathname.startsWith("/dashboard-pending") ||
     location.pathname.startsWith("/hr") ||
     location.pathname.startsWith("/admin") ||
-    location.pathname.startsWith("/employee");
+    location.pathname.startsWith("/employee") ||
+    location.pathname.startsWith("/partner");
 
   const isProfilePage =
     location.pathname === "/profile" || location.pathname === "/client";
   const isAuthPage =
-    location.pathname === "/login" || location.pathname.startsWith("/hr");
+    location.pathname === "/login" ||
+    location.pathname.startsWith("/hr") ||
+    location.pathname === "/partner/login";
 
   const readWelcomeFromStorage = () => {
     const flag = localStorage.getItem("showWelcome");
@@ -643,6 +648,10 @@ const App: React.FC = () => {
             )
           }
         />
+
+        {/* Partner Portal */}
+        <Route path="/partner/login" element={<PartnerLogin />} />
+        <Route path="/partner/*" element={<PartnerPortal />} />
 
         {/* HR Entry - يرجع شكل بوابة الموارد البشرية كما هو */}
         <Route

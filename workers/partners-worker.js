@@ -208,6 +208,9 @@ function normalizeError(error) {
   if (message.includes("UNIQUE constraint failed: partner_contracts")) {
     return new AppError(409, "partner_validation:contract_number_exists", message);
   }
+  if (message.includes("UNIQUE constraint failed: partner_members.user_uid")) {
+    return new AppError(409, "partner_validation:account_already_linked", message);
+  }
   if (message.includes("partner_validation:")) {
     const code = message.slice(message.indexOf("partner_validation:")).split("\n")[0];
     return new AppError(400, code, message);
@@ -336,7 +339,7 @@ function bootstrapAdminEmails(env) {
   );
 }
 
-async function requireAdmin(request, env) {
+async function authenticateRequest(request, env) {
   if (!env.PARTNERS_DB) {
     throw new AppError(503, "partner_api:d1_not_configured");
   }
@@ -351,18 +354,20 @@ async function requireAdmin(request, env) {
     throw new AppError(401, "partner_auth:login_required");
   }
 
-  const identity = await verifyFirebaseIdToken(
+  return verifyFirebaseIdToken(
     authorization.slice("Bearer ".length).trim(),
     projectId
   );
+}
 
+async function ensureAdminIdentity(env, identity) {
   const admin = await env.PARTNERS_DB.prepare(
     `SELECT uid, email, active FROM partner_admins WHERE uid = ? LIMIT 1`
   )
     .bind(identity.uid)
     .first();
 
-  if (admin && Number(admin.active) === 1) return identity;
+  if (admin && Number(admin.active) === 1) return true;
 
   if (identity.email && bootstrapAdminEmails(env).has(identity.email)) {
     const timestamp = nowIso();
@@ -377,10 +382,56 @@ async function requireAdmin(request, env) {
     )
       .bind(identity.uid, identity.email, identity.name, timestamp, timestamp)
       .run();
-    return identity;
+    return true;
   }
 
+  return false;
+}
+
+async function requireAdmin(request, env) {
+  const identity = await authenticateRequest(request, env);
+  if (await ensureAdminIdentity(env, identity)) return identity;
   throw new AppError(403, "partner_auth:admin_access_required");
+}
+
+async function resolvePartnerAccess(env, identity) {
+  const memberResult = await env.PARTNERS_DB.prepare(
+    `SELECT * FROM partner_members
+     WHERE user_uid = ? AND status = 'active'
+     ORDER BY created_at ASC
+     LIMIT 2`
+  )
+    .bind(identity.uid)
+    .all();
+
+  if (memberResult.results.length === 0) {
+    throw new AppError(403, "partner_auth:partner_access_required");
+  }
+  if (memberResult.results.length > 1) {
+    throw new AppError(409, "partner_auth:multiple_partner_memberships");
+  }
+
+  const memberRow = memberResult.results[0];
+  const partnerRow = await env.PARTNERS_DB.prepare(
+    `SELECT * FROM partners WHERE salon_id = ? AND id = ? LIMIT 1`
+  )
+    .bind(memberRow.salon_id, memberRow.partner_id)
+    .first();
+
+  if (!partnerRow) {
+    throw new AppError(404, "partner_auth:partner_not_found");
+  }
+  if (partnerRow.status !== "active" && partnerRow.status !== "draft") {
+    throw new AppError(403, "partner_auth:partner_inactive");
+  }
+
+  return {
+    identity,
+    memberRow,
+    partnerRow,
+    salonId: memberRow.salon_id,
+    partnerId: memberRow.partner_id,
+  };
 }
 
 function mapPartner(row) {
@@ -1191,6 +1242,166 @@ async function updateContract(env, salonId, id, patch, identity) {
   await audit(env, identity, salonId, "partner_contract", id, "update", patch).run();
 }
 
+async function linkMemberAccount(env, salonId, memberId, input, identity) {
+  const userUid = requiredText(input.userUid, "userUid");
+  const email = lowerEmail(input.email);
+  if (!email) throw new AppError(400, "partner_validation:email_required");
+
+  const member = await env.PARTNERS_DB.prepare(
+    `SELECT * FROM partner_members WHERE salon_id = ? AND id = ? LIMIT 1`
+  )
+    .bind(salonId, memberId)
+    .first();
+  if (!member) throw new AppError(404, "partner_validation:member_not_found");
+  if (member.user_uid) throw new AppError(409, "partner_validation:member_account_exists");
+
+  const duplicate = await env.PARTNERS_DB.prepare(
+    `SELECT id FROM partner_members WHERE user_uid = ? AND id <> ? LIMIT 1`
+  )
+    .bind(userUid, memberId)
+    .first();
+  if (duplicate) throw new AppError(409, "partner_validation:account_already_linked");
+
+  const timestamp = nowIso();
+  const statements = [
+    env.PARTNERS_DB.prepare(
+      `UPDATE partner_members
+       SET user_uid = ?, email = ?, updated_at = ?, updated_by_uid = ?
+       WHERE salon_id = ? AND id = ?`
+    ).bind(userUid, email, timestamp, identity.uid, salonId, memberId),
+    audit(env, identity, salonId, "partner_member", memberId, "link_account", {
+      email,
+      userUid,
+    }),
+  ];
+
+  if (member.member_type === "owner") {
+    statements.push(
+      env.PARTNERS_DB.prepare(
+        `UPDATE partners
+         SET owner_uid = ?, email = COALESCE(email, ?), updated_at = ?, updated_by_uid = ?
+         WHERE salon_id = ? AND id = ?`
+      ).bind(userUid, email, timestamp, identity.uid, salonId, member.partner_id)
+    );
+  }
+
+  await env.PARTNERS_DB.batch(statements);
+  return { id: memberId, userUid, email };
+}
+
+function sanitizePortalMember(member) {
+  const mapped = mapMember(member);
+  const hasLogin = Boolean(mapped.userUid);
+  delete mapped.userUid;
+  delete mapped.createdByUid;
+  delete mapped.updatedByUid;
+  return { ...mapped, hasLogin };
+}
+
+function sanitizePortalContract(contract, canViewFinancials) {
+  if (canViewFinancials) return contract;
+  const sanitized = { ...contract };
+  delete sanitized.fixedRentAmount;
+  delete sanitized.hourlyRate;
+  delete sanitized.dailyRate;
+  delete sanitized.partnerSharePercent;
+  delete sanitized.salonSharePercent;
+  delete sanitized.revenueShareBasis;
+  delete sanitized.minimumSalonShareAmount;
+  delete sanitized.depositAmount;
+  return sanitized;
+}
+
+async function getPortalSession(env, identity) {
+  if (await ensureAdminIdentity(env, identity)) {
+    return {
+      kind: "admin",
+      identity,
+    };
+  }
+
+  const access = await resolvePartnerAccess(env, identity);
+  return {
+    kind: "partner",
+    identity,
+    partner: mapPartner(access.partnerRow),
+    member: sanitizePortalMember(access.memberRow),
+  };
+}
+
+async function getPortalOverview(env, identity) {
+  const access = await resolvePartnerAccess(env, identity);
+  const canViewFinancials = Number(access.memberRow.can_view_financials) === 1;
+
+  const [contractsResult, linksResult, resourcesResult, membersResult] =
+    await env.PARTNERS_DB.batch([
+      env.PARTNERS_DB.prepare(
+        `SELECT * FROM partner_contracts
+         WHERE salon_id = ? AND partner_id = ?
+         ORDER BY start_date DESC, created_at DESC`
+      ).bind(access.salonId, access.partnerId),
+      env.PARTNERS_DB.prepare(
+        `SELECT pcr.contract_id, pcr.resource_id
+         FROM partner_contract_resources pcr
+         INNER JOIN partner_contracts pc ON pc.id = pcr.contract_id
+         WHERE pcr.salon_id = ? AND pc.partner_id = ?`
+      ).bind(access.salonId, access.partnerId),
+      env.PARTNERS_DB.prepare(
+        `SELECT * FROM rental_resources
+         WHERE salon_id = ? AND current_partner_id = ?
+         ORDER BY code COLLATE NOCASE ASC`
+      ).bind(access.salonId, access.partnerId),
+      env.PARTNERS_DB.prepare(
+        `SELECT * FROM partner_members
+         WHERE salon_id = ? AND partner_id = ?
+         ORDER BY CASE member_type WHEN 'owner' THEN 0 ELSE 1 END,
+                  display_name COLLATE NOCASE ASC`
+      ).bind(access.salonId, access.partnerId),
+    ]);
+
+  const resourcesByContract = new Map();
+  for (const row of linksResult.results) {
+    const current = resourcesByContract.get(row.contract_id) || [];
+    current.push(row.resource_id);
+    resourcesByContract.set(row.contract_id, current);
+  }
+
+  const contracts = contractsResult.results.map((row) =>
+    sanitizePortalContract(
+      mapContract(row, resourcesByContract.get(row.id) || []),
+      canViewFinancials
+    )
+  );
+
+  return {
+    partner: mapPartner(access.partnerRow),
+    member: sanitizePortalMember(access.memberRow),
+    contracts,
+    resources: resourcesResult.results.map(mapResource),
+    team: membersResult.results.map(sanitizePortalMember),
+    permissions: {
+      canManageTeam: Number(access.memberRow.can_manage_team) === 1,
+      canManageInventory: Number(access.memberRow.can_manage_inventory) === 1,
+      canViewFinancials,
+      canWorkAsProvider: Number(access.memberRow.can_work_as_provider) === 1,
+    },
+  };
+}
+
+async function routePortalApi(request, env, identity, url) {
+  const method = request.method.toUpperCase();
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+
+  if (method === "GET" && path === "/api/session") {
+    return getPortalSession(env, identity);
+  }
+  if (method === "GET" && path === "/api/portal/overview") {
+    return getPortalOverview(env, identity);
+  }
+
+  throw new AppError(404, "partner_api:not_found");
+}
+
 async function routeApi(request, env, identity, url) {
   const method = request.method.toUpperCase();
   const path = url.pathname.replace(/\/+$/, "") || "/";
@@ -1261,6 +1472,17 @@ async function routeApi(request, env, identity, url) {
     const salonId = cleanSalonId(body.salonId);
     return { id: await createMember(env, salonId, body.member || {}, identity) };
   }
+  if (
+    method === "POST" &&
+    path.startsWith("/api/members/") &&
+    path.endsWith("/link-account")
+  ) {
+    const body = await readBody(request);
+    const encodedId = path.slice("/api/members/".length, -"/link-account".length);
+    const id = decodeURIComponent(encodedId);
+    const salonId = cleanSalonId(body.salonId);
+    return linkMemberAccount(env, salonId, id, body.account || {}, identity);
+  }
   if (method === "PATCH" && path.startsWith("/api/members/")) {
     const body = await readBody(request);
     const id = decodeURIComponent(path.slice("/api/members/".length));
@@ -1298,6 +1520,12 @@ export default {
       }
       if (!url.pathname.startsWith("/api/")) {
         throw new AppError(404, "partner_api:not_found");
+      }
+
+      if (url.pathname === "/api/session" || url.pathname.startsWith("/api/portal/")) {
+        const identity = await authenticateRequest(request, env);
+        const data = await routePortalApi(request, env, identity, url);
+        return ok(request, env, data, requestId);
       }
 
       const identity = await requireAdmin(request, env);

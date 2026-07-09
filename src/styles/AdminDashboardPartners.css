@@ -1315,3 +1315,235 @@
     display: grid;
   }
 }
+
+/* Phase 2A — partner team accounts and portal access */
+.dashboard-skin .partner-admin-btn--team {
+  color: #ffffff;
+  background: linear-gradient(135deg, #0f6a71, #164b63);
+  box-shadow: 0 7px 18px rgba(15, 106, 113, 0.22);
+}
+
+.dashboard-skin .partner-team-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+  padding: 16px;
+}
+
+.dashboard-skin .partner-team-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e2e6eb;
+  border-radius: 15px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(21, 34, 71, 0.045);
+}
+
+.dashboard-skin .partner-team-card > header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.dashboard-skin .partner-team-card__avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #164b63, #0f6a71);
+  font-weight: 950;
+}
+
+.dashboard-skin .partner-team-card h3 {
+  margin: 0;
+  color: #17213a;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.dashboard-skin .partner-team-card p {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: #7a8391;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-skin .partner-team-status {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #7b8492;
+  background: #eef1f4;
+  font-size: 0.53rem;
+  font-weight: 950;
+}
+
+.dashboard-skin .partner-team-status.is-active {
+  color: #21704b;
+  background: #e8f7ef;
+}
+
+.dashboard-skin .partner-team-status.is-suspended {
+  color: #9d3848;
+  background: #fff0f2;
+}
+
+.dashboard-skin .partner-team-card__meta {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-skin .partner-team-card__meta > span {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  color: #606b7c;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-skin .partner-team-card__meta svg {
+  width: 13px;
+  color: #9b7b25;
+}
+
+.dashboard-skin .partner-team-card__permissions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dashboard-skin .partner-team-card__permissions span {
+  padding: 5px 7px;
+  border-radius: 7px;
+  color: #8b94a1;
+  background: #f2f4f6;
+  font-size: 0.51rem;
+  font-weight: 900;
+}
+
+.dashboard-skin .partner-team-card__permissions span.is-enabled {
+  color: #126045;
+  background: #e9f7f0;
+}
+
+.dashboard-skin .partner-team-card > footer {
+  padding-top: 11px;
+  border-top: 1px solid #edf0f3;
+}
+
+.dashboard-skin .partner-team-card > footer button,
+.dashboard-skin .partner-account-badge {
+  display: inline-flex;
+  min-height: 33px;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 0.58rem;
+  font-weight: 900;
+}
+
+.dashboard-skin .partner-team-card > footer button {
+  color: #ffffff;
+  background: #182442;
+  cursor: pointer;
+}
+
+.dashboard-skin .partner-account-badge.is-linked {
+  color: #1c6f4a;
+  background: #eaf8f1;
+}
+
+.partner-member-login-toggle,
+.partner-member-permission-grid > label {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 10px !important;
+  padding: 12px;
+  border: 1px solid #e0e5eb;
+  border-radius: 11px;
+  background: #f9fafb;
+}
+
+.partner-member-login-toggle > input,
+.partner-member-permission-grid input {
+  width: 17px !important;
+  min-height: 17px !important;
+  margin-top: 2px;
+  accent-color: #0f6a71;
+}
+
+.partner-member-login-toggle > span,
+.partner-member-permission-grid label > span {
+  display: grid;
+  gap: 3px;
+}
+
+.partner-member-login-toggle strong,
+.partner-member-permission-grid strong {
+  color: #1d2943;
+  font-size: 0.64rem;
+}
+
+.partner-member-login-toggle small,
+.partner-member-permission-grid small {
+  color: #7b8594;
+  font-size: 0.54rem;
+  line-height: 1.55;
+}
+
+.partner-member-permission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.partner-account-note {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin: 0 22px 18px;
+  padding: 12px;
+  border: 1px solid #dce4e8;
+  border-radius: 11px;
+  color: #455369;
+  background: #f5f8fa;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.partner-account-note svg { color: #9b7b25; }
+
+@media (max-width: 1100px) {
+  .dashboard-skin .partner-team-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-skin .partner-team-grid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .partner-member-permission-grid {
+    grid-template-columns: 1fr;
+  }
+}
