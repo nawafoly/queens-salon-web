@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -23,12 +23,7 @@ import {
   type EmployeeNotification,
 } from "../../services/employeeHub";
 import {
-  buildAttendanceVerification,
-  checkInStaffAttendance,
-  checkOutStaffAttendance,
-  getStaffAttendanceForDate,
   getTodayAttendanceDateKey,
-  listStaffAttendanceByDateRange,
   type StaffAttendanceWithId,
   type StaffAttendanceToday,
 } from "../../services/firestoreAttendance";
@@ -38,10 +33,16 @@ import {
   type BookingDocWithId,
 } from "../../services/firestoreBookings";
 import {
-  verifyEmployeeWorkZone,
+  getBrowserPosition,
   type AttendanceLocation,
   type WorkZoneMatch,
 } from "../../services/attendanceSettingsService";
+import {
+  getAttendanceForDateFromWorker,
+  getAttendanceWorkerMessage,
+  listAttendanceByDateRangeFromWorker,
+  submitAttendanceToWorker,
+} from "../../services/attendanceWorkerService";
 import { requestAttendanceBiometric } from "../../helpers/attendanceBiometric";
 import {
   computeAttendanceDay,
@@ -211,51 +212,75 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   });
 
   const loadAttendance = async () => {
-    if (!attendanceEmployeeId) return;
+    if (!attendanceEmployeeId || !session.uid) return;
+
     setAttendanceLoading(true);
     setAttendanceMessage("");
+
     try {
-      const row = await getStaffAttendanceForDate({
+      const row = await getAttendanceForDateFromWorker({
+        employeeUid: session.uid,
         employeeId: attendanceEmployeeId,
         date: attendanceDate,
       });
+
       setAttendance(row);
-    } catch (e) {
-      setAttendanceMessage(cleanText((e as any)?.message || "Failed to load attendance."));
+    } catch (error) {
+      setAttendanceMessage(
+        cleanText(
+          (error as any)?.message ||
+            "تعذر تحميل حالة الحضور من Cloudflare."
+        )
+      );
     } finally {
       setAttendanceLoading(false);
     }
   };
 
   const loadAttendanceMonth = useCallback(async () => {
-    if (!attendanceEmployeeId) {
+    if (!attendanceEmployeeId || !session.uid) {
       setAttendanceMonthRows([]);
       return;
     }
+
     const monthKey = /^\d{4}-\d{2}$/.test(attendanceMonth)
       ? attendanceMonth
       : getTodayAttendanceDateKey().slice(0, 7);
+
     const fromDate = `${monthKey}-01`;
     const toDate = new Date(
-      Date.UTC(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)), 0)
+      Date.UTC(
+        Number(monthKey.slice(0, 4)),
+        Number(monthKey.slice(5, 7)),
+        0
+      )
     )
       .toISOString()
       .slice(0, 10);
+
     setAttendanceMonthLoading(true);
+
     try {
-      const rows = await listStaffAttendanceByDateRange({
+      const rows = await listAttendanceByDateRangeFromWorker({
+        employeeUid: session.uid,
         employeeId: attendanceEmployeeId,
         fromDate,
         toDate,
       });
+
       setAttendanceMonthRows(rows);
     } catch (error) {
       setAttendanceMonthRows([]);
-      setAttendanceMessage(cleanText((error as any)?.message || "تعذر تحميل سجل الحضور الشهري."));
+      setAttendanceMessage(
+        cleanText(
+          (error as any)?.message ||
+            "تعذر تحميل سجل الحضور الشهري من Cloudflare."
+        )
+      );
     } finally {
       setAttendanceMonthLoading(false);
     }
-  }, [attendanceEmployeeId, attendanceMonth]);
+  }, [attendanceEmployeeId, attendanceMonth, session.uid]);
 
   useEffect(() => {
     void loadAttendance();
@@ -356,82 +381,106 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     }
   };
 
-  const handleAttendancePunch = async (type: "check_in" | "check_out") => {
-    if (!attendanceEmployeeId || attendanceBusy) return;
+  const handleAttendancePunch = async (
+    type: "check_in" | "check_out"
+  ) => {
+    if (!attendanceEmployeeId || !session.uid || attendanceBusy) {
+      return;
+    }
+
     setAttendanceBusy(true);
     setAttendanceMessage("");
     setLastLocation(null);
     setLastWorkZone(null);
+
     try {
-      const effectiveAttendanceSettings = attendanceSettings || AppSettingsService.getDefaults().attendance!;
+      const effectiveAttendanceSettings =
+        attendanceSettings ||
+        AppSettingsService.getDefaults().attendance!;
+
       if (effectiveAttendanceSettings.enabled === false) {
-        throw new Error("تسجيل الحضور متوقف من إعدادات الإدارة.");
+        throw new Error(
+          "تسجيل الحضور متوقف من إعدادات الإدارة."
+        );
       }
 
       if (!active) {
-        throw new Error("لا يمكن تسجيل الحضور لموظفة غير نشطة.");
+        throw new Error(
+          "لا يمكن تسجيل الحضور لموظفة غير نشطة."
+        );
       }
 
-      let location: AttendanceLocation | undefined;
-      let workZoneMatch: WorkZoneMatch | null = null;
+      setAttendanceMessage(
+        "جاري الحصول على موقعك بدقة..."
+      );
 
-      setAttendanceMessage("جاري التحقق من الموقع...");
-      const zoneVerification = await verifyEmployeeWorkZone({
-        employeeId: attendanceEmployeeId,
-        profile,
-        maxAllowedAccuracyMeters: effectiveAttendanceSettings.maxLocationAccuracyMeters,
-      });
-      location = zoneVerification.location;
-      workZoneMatch = {
-        zone: zoneVerification.zone,
-        distanceMeters: zoneVerification.distanceMeters,
-      };
+      const location: AttendanceLocation =
+        await getBrowserPosition({
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 20000,
+        });
+
       setLastLocation(location);
-      setLastWorkZone(workZoneMatch);
 
-      let biometric: Awaited<ReturnType<typeof requestAttendanceBiometric>> | undefined;
       if (effectiveAttendanceSettings.requireBiometric) {
-        setAttendanceMessage("افتح التحقق بالبصمة من جهازك...");
-        biometric = await requestAttendanceBiometric({
+        setAttendanceMessage(
+          "افتح التحقق بالبصمة من جهازك..."
+        );
+
+        await requestAttendanceBiometric({
           employeeId: attendanceEmployeeId,
           displayName,
           action: type,
         });
       }
 
-      const verification = buildAttendanceVerification({
-        biometric,
+      setAttendanceMessage(
+        type === "check_in"
+          ? "جاري إرسال الحضور إلى Cloudflare..."
+          : "جاري إرسال الانصراف إلى Cloudflare..."
+      );
+
+      const response = await submitAttendanceToWorker({
+        employeeId: attendanceEmployeeId,
+        type,
         location,
-        workZoneMatch,
       });
 
-      if (type === "check_in") {
-        await checkInStaffAttendance({
-          employeeId: attendanceEmployeeId,
-          date: attendanceDate,
-          createdByUid: session.uid,
-          createdByName: displayName,
-          verification,
-        });
-      } else {
-        await checkOutStaffAttendance({
-          employeeId: attendanceEmployeeId,
-          date: attendanceDate,
-          createdByUid: session.uid,
-          createdByName: displayName,
-          verification,
-        });
+      if (response.result !== "allowed") {
+        throw new Error(
+          getAttendanceWorkerMessage(response)
+        );
       }
+
       await loadAttendance();
+
       if (attendanceOnly) {
         await loadAttendanceMonth();
       }
-      setAttendanceMessage(type === "check_in" ? "تم تسجيل الحضور بنجاح" : "تم تسجيل الانصراف بنجاح");
-    } catch (e) {
-      const zoneError = e as any;
-      if (zoneError?.location) setLastLocation(zoneError.location);
-      if (zoneError?.workZoneMatch) setLastWorkZone(zoneError.workZoneMatch);
-      setAttendanceMessage(cleanText((e as any)?.message || "Failed to save attendance."));
+
+      setAttendanceMessage(
+        getAttendanceWorkerMessage(response)
+      );
+    } catch (error) {
+      const attendanceError = error as any;
+
+      if (attendanceError?.location) {
+        setLastLocation(attendanceError.location);
+      }
+
+      if (attendanceError?.workZoneMatch) {
+        setLastWorkZone(
+          attendanceError.workZoneMatch
+        );
+      }
+
+      setAttendanceMessage(
+        cleanText(
+          attendanceError?.message ||
+            "تعذر حفظ عملية الحضور."
+        )
+      );
     } finally {
       setAttendanceBusy(false);
     }
