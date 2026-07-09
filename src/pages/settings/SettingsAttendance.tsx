@@ -17,6 +17,10 @@ import {
   type WorkZone,
 } from "../../services/attendanceSettingsService";
 import {
+  deleteWorkZoneFromAttendanceWorker,
+  upsertWorkZoneInAttendanceWorker,
+} from "../../services/attendanceWorkerService";
+import {
   SettingsPageActions,
   SettingsPageHeader,
   SettingsSection,
@@ -309,18 +313,40 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     }));
   };
 
+  const syncZonesToAttendanceWorker = async (sourceZones: WorkZone[]) => {
+    const zonesById = new Map<string, WorkZone>();
+
+    sourceZones.forEach((zone) => {
+      if (zone.id) zonesById.set(zone.id, zone);
+    });
+
+    for (const zone of zonesById.values()) {
+      await upsertWorkZoneInAttendanceWorker(zone);
+    }
+  };
+
   const saveSettings = async () => {
     if (!hasAdminPower) return;
     setSaving(true);
     setMessage("");
     try {
+      let latestZones = zones;
+
       if (zoneDraftHasChanges) {
-        await saveWorkZone({
+        const savedZone = await saveWorkZone({
           ...zoneDraft,
           name: zoneDraft.name.trim() || "منطقة عمل جديدة",
         });
-        applyZonesResult(await listWorkZones());
+        await upsertWorkZoneInAttendanceWorker(savedZone);
+        latestZones = await listWorkZones();
+        applyZonesResult(latestZones);
+      } else if (!latestZones.length) {
+        latestZones = await listWorkZones();
+        applyZonesResult(latestZones);
       }
+
+      await syncZonesToAttendanceWorker(latestZones);
+
       const saved = await AppSettingsService.saveRemote(settings);
       setSettings(saved);
       setMessage("تم حفظ إعدادات الحضور والبصمة.");
@@ -354,10 +380,11 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     setSaving(true);
     setMessage("");
     try {
-      await saveWorkZone({
+      const savedZone = await saveWorkZone({
         ...zoneDraft,
         name: zoneDraft.name.trim() || "منطقة عمل جديدة",
       });
+      await upsertWorkZoneInAttendanceWorker(savedZone);
       setZoneDraft(emptyZone);
       setMapFrameCenter({ lat: emptyZone.lat, lng: emptyZone.lng });
       setManualMarkerOffset({ x: 0, y: 0 });
@@ -376,6 +403,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     setSaving(true);
     setMessage("");
     try {
+      await deleteWorkZoneFromAttendanceWorker(id);
       await removeWorkZone(id);
       setZones((current) => current.filter((zone) => zone.id !== id));
       if (zoneDraft.id === id) setZoneDraft(emptyZone);

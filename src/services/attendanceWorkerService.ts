@@ -2,6 +2,7 @@ import { auth } from "./firebase";
 import {
   getBrowserPosition,
   type AttendanceLocation,
+  type WorkZone,
 } from "./attendanceSettingsService";
 import type {
   AttendanceVerification,
@@ -75,6 +76,13 @@ type AttendanceRecordsResponse = {
   nextCursor?: string | null;
   message?: string;
   detail?: string;
+};
+
+type AttendanceWorkerZoneResponse = {
+  ok?: boolean;
+  zone?: unknown;
+  id?: string;
+  message?: string;
 };
 
 function cleanText(value: unknown) {
@@ -176,6 +184,56 @@ export function getAttendanceDeviceId() {
   }
 
   return deviceId;
+}
+
+export async function upsertWorkZoneInAttendanceWorker(zone: WorkZone) {
+  const id = cleanText(zone.id);
+
+  if (!id) {
+    throw new Error("معرف نطاق الحضور مطلوب لمزامنة خادم الحضور.");
+  }
+
+  return requestAttendanceWorker<AttendanceWorkerZoneResponse>(
+    "/attendance/work-zones",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        id,
+        name: cleanText(zone.name) || id,
+        type: "radius",
+        center: {
+          lat: Number(zone.lat),
+          lng: Number(zone.lng),
+        },
+        radiusMeters: Number(zone.radiusMeters),
+        active: zone.active !== false,
+      }),
+    }
+  );
+}
+
+export async function deleteWorkZoneFromAttendanceWorker(id: string) {
+  const cleanId = cleanText(id);
+
+  if (!cleanId) {
+    return { ok: true, id: "" };
+  }
+
+  try {
+    return await requestAttendanceWorker<AttendanceWorkerZoneResponse>(
+      `/attendance/work-zones/${encodeURIComponent(cleanId)}`,
+      { method: "DELETE" }
+    );
+  } catch (error) {
+    const status = Number((error as { status?: number })?.status);
+    const message = cleanText((error as { message?: string })?.message);
+
+    if (status === 404 || message === "work_zone_not_found") {
+      return { ok: true, id: cleanId };
+    }
+
+    throw error;
+  }
 }
 
 function getDeviceInfo() {
@@ -303,7 +361,9 @@ function normalizeLocation(
 }
 
 export async function submitAttendanceToWorker(input: {
+  employeeUid?: string;
   employeeId: string;
+  attendanceZoneId?: string;
   type: AttendanceWorkerType;
   location?: AttendanceLocation;
 }) {
@@ -313,8 +373,12 @@ export async function submitAttendanceToWorker(input: {
     input.location ||
       (await getBrowserPosition({
         enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 20000,
+        maximumAge: 10000,
+        timeout: 12000,
+        targetAccuracyMeters: 50,
+        acceptableAccuracyMeters: 150,
+        acceptableReadingDelayMs: 400,
+        acceptFirstUsableReading: true,
       }))
   );
 
@@ -323,7 +387,9 @@ export async function submitAttendanceToWorker(input: {
     {
       method: "POST",
       body: JSON.stringify({
+        employeeUid: cleanText(input.employeeUid),
         employeeId: cleanText(input.employeeId),
+        attendanceZoneId: cleanText(input.attendanceZoneId),
         type: input.type,
         clientTime: new Date().toISOString(),
         location,
@@ -779,6 +845,30 @@ export function getAttendanceWorkerMessage(
     return response.type === "check_in"
       ? "تم تسجيل الحضور بنجاح"
       : "تم تسجيل الانصراف بنجاح";
+  }
+
+  if (response.rejectionReason === "outside_zone") {
+    return [
+      "أنت خارج نطاق العمل",
+      response.distanceMeters != null
+        ? `المسافة الفعلية ${Math.round(response.distanceMeters)} م`
+        : "",
+      response.allowedRadiusMeters != null
+        ? `نصف القطر المسموح ${Math.round(response.allowedRadiusMeters)} م`
+        : "",
+    ].filter(Boolean).join(" · ");
+  }
+
+  if (response.rejectionReason === "zone_not_assigned") {
+    return "نطاق الحضور غير معيّن لهذه الموظفة. يرجى تحديد نطاق الحضور من ملف الموظفة.";
+  }
+
+  if (response.rejectionReason === "attendance_zone_mismatch") {
+    return "نطاق الحضور المرسل لا يطابق النطاق المعيّن للموظفة.";
+  }
+
+  if (response.rejectionReason === "zone_not_found") {
+    return "النطاق المعيّن للموظفة غير موجود أو لم تتم مزامنته مع خادم الحضور.";
   }
 
   switch (response.rejectionReason) {

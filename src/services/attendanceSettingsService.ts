@@ -39,6 +39,13 @@ export type AttendanceZoneVerification = WorkZoneMatch & {
   maxAllowedAccuracyMeters: number;
 };
 
+export type AttendancePositionOptions = PositionOptions & {
+  targetAccuracyMeters?: number;
+  acceptableAccuracyMeters?: number;
+  acceptableReadingDelayMs?: number;
+  acceptFirstUsableReading?: boolean;
+};
+
 function cleanText(v: any) {
   return String(v ?? "").trim();
 }
@@ -357,7 +364,7 @@ export async function verifyEmployeeWorkZone(args: {
   });
 }
 
-export function getBrowserPosition(options?: PositionOptions): Promise<AttendanceLocation> {
+export function getBrowserPosition(options?: AttendancePositionOptions): Promise<AttendanceLocation> {
   if (typeof navigator === "undefined" || !navigator.geolocation) {
     return Promise.reject(new Error("الموقع غير مدعوم في هذا المتصفح."));
   }
@@ -379,7 +386,7 @@ export function getBrowserPosition(options?: PositionOptions): Promise<Attendanc
     Number.isFinite(requestedMaximumAge) &&
     requestedMaximumAge >= 0
       ? Math.min(
-          5000,
+          10000,
           Math.round(requestedMaximumAge)
         )
       : 0;
@@ -392,9 +399,19 @@ export function getBrowserPosition(options?: PositionOptions): Promise<Attendanc
     maximumAge: maximumAgeMs,
   };
 
-  const targetAccuracyMeters = 50;
-  const acceptableAccuracyMeters = 150;
-  const acceptableReadingDelayMs = 3500;
+  const targetAccuracyMeters = Math.max(
+    10,
+    Math.round(safeNumber(options?.targetAccuracyMeters, 50))
+  );
+  const acceptableAccuracyMeters = Math.max(
+    targetAccuracyMeters,
+    Math.round(safeNumber(options?.acceptableAccuracyMeters, 150))
+  );
+  const acceptableReadingDelayMs = Math.min(
+    3500,
+    Math.max(400, Math.round(safeNumber(options?.acceptableReadingDelayMs, 1200)))
+  );
+  const acceptFirstUsableReading = options?.acceptFirstUsableReading === true;
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -443,59 +460,77 @@ export function getBrowserPosition(options?: PositionOptions): Promise<Attendanc
       );
     }, timeoutMs + 1500);
 
-    try {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          const accuracy = Math.max(
-            0,
-            Math.round(Number(position.coords.accuracy) || 0)
+    const handlePosition = (position: GeolocationPosition) => {
+      const accuracy = Math.max(
+        0,
+        Math.round(Number(position.coords.accuracy) || 0)
+      );
+
+      const nextLocation: AttendanceLocation = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        accuracy,
+      };
+
+      readingCount += 1;
+
+      const nextAccuracy =
+        nextLocation.accuracy ?? Number.MAX_SAFE_INTEGER;
+
+      const bestAccuracy =
+        bestLocation?.accuracy ?? Number.MAX_SAFE_INTEGER;
+
+      if (!bestLocation || nextAccuracy < bestAccuracy) {
+        bestLocation = nextLocation;
+      }
+
+      console.info("[attendance_location_sample]", {
+        readingCount,
+        lat: nextLocation.lat,
+        lng: nextLocation.lng,
+        accuracy: nextLocation.accuracy,
+        bestAccuracy: bestLocation.accuracy,
+      });
+
+      if (
+        accuracy > 0 &&
+        accuracy <= targetAccuracyMeters
+      ) {
+        finishSuccess();
+        return;
+      }
+
+      if (
+        accuracy > 0 &&
+        accuracy <= acceptableAccuracyMeters
+      ) {
+        if (acceptFirstUsableReading) {
+          finishSuccess();
+          return;
+        }
+
+        if (acceptableReadingTimer === null) {
+          acceptableReadingTimer = window.setTimeout(
+            finishSuccess,
+            acceptableReadingDelayMs
           );
+        }
+      }
+    };
 
-          const nextLocation: AttendanceLocation = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            accuracy,
-          };
+    try {
+      navigator.geolocation.getCurrentPosition(
+        handlePosition,
+        () => undefined,
+        {
+          ...positionOptions,
+          timeout: Math.min(1200, timeoutMs),
+          maximumAge: maximumAgeMs,
+        }
+      );
 
-          readingCount += 1;
-
-          const nextAccuracy =
-            nextLocation.accuracy ?? Number.MAX_SAFE_INTEGER;
-
-          const bestAccuracy =
-            bestLocation?.accuracy ?? Number.MAX_SAFE_INTEGER;
-
-          if (!bestLocation || nextAccuracy < bestAccuracy) {
-            bestLocation = nextLocation;
-          }
-
-          console.info("[attendance_location_sample]", {
-            readingCount,
-            lat: nextLocation.lat,
-            lng: nextLocation.lng,
-            accuracy: nextLocation.accuracy,
-            bestAccuracy: bestLocation.accuracy,
-          });
-
-          if (
-            accuracy > 0 &&
-            accuracy <= targetAccuracyMeters
-          ) {
-            finishSuccess();
-            return;
-          }
-
-          if (
-            accuracy > 0 &&
-            accuracy <= acceptableAccuracyMeters &&
-            acceptableReadingTimer === null
-          ) {
-            acceptableReadingTimer = window.setTimeout(
-              finishSuccess,
-              acceptableReadingDelayMs
-            );
-          }
-        },
+      watchId = navigator.geolocation.watchPosition(
+        handlePosition,
         (error) => {
           if (error.code === error.PERMISSION_DENIED) {
             finishError(

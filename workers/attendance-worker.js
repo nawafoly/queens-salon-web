@@ -20,8 +20,10 @@ export async function handleAttendanceRequest({
   url,
   db,
   directoryDb,
+  salonId = "main",
   resolveRequesterContext,
   fetchFirestoreDocument,
+  queryFirestoreDocuments,
 }) {
   const pathname = url.pathname;
   const zoneMatch = pathname.match(/^\/attendance\/work-zones\/([^/]+)$/);
@@ -137,7 +139,9 @@ export async function handleAttendanceRequest({
       request,
       db,
       requester,
+      salonId,
       fetchFirestoreDocument,
+      queryFirestoreDocuments,
     });
   }
 
@@ -1164,9 +1168,14 @@ async function createWorkZone(request, db, requester) {
   const zone = normalizeWorkZoneInput(input.data);
   if (!zone.ok) return zone.response;
 
-  const id = crypto.randomUUID();
+  const id = normalizeWorkZoneId(input.data?.id) || crypto.randomUUID();
   const now = new Date().toISOString();
   try {
+    const existing = await db
+      .prepare("SELECT id FROM work_zones WHERE id = ?")
+      .bind(id)
+      .first();
+
     await db
       .prepare(
         `
@@ -1174,6 +1183,16 @@ async function createWorkZone(request, db, requester) {
         id, name, type, center_lat, center_lng, radius_meters, active, office_ip,
         created_by_uid, created_at, updated_by_uid, updated_at
       ) VALUES (?, ?, 'radius', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        type = 'radius',
+        center_lat = excluded.center_lat,
+        center_lng = excluded.center_lng,
+        radius_meters = excluded.radius_meters,
+        active = excluded.active,
+        office_ip = excluded.office_ip,
+        updated_by_uid = excluded.updated_by_uid,
+        updated_at = excluded.updated_at
     `
       )
       .bind(
@@ -1190,7 +1209,7 @@ async function createWorkZone(request, db, requester) {
         now
       )
       .run();
-    return json(201, {
+    return json(existing ? 200 : 201, {
       ok: true,
       zone: { id, ...zone.value, createdAt: now, updatedAt: now },
     });
@@ -1253,11 +1272,380 @@ async function deleteWorkZone(db, id) {
   }
 }
 
+function uniqueTextValues(values) {
+  return Array.from(
+    new Set((values || []).map(value => normalizeText(value)).filter(Boolean))
+  );
+}
+
+function employeeRecordUidCandidates(data) {
+  return uniqueTextValues([
+    data?.linkedUid,
+    data?.uid,
+    data?.linkedUserId,
+    data?.employeeUid,
+  ]);
+}
+
+function employeeRecordEmailCandidates(data) {
+  return uniqueTextValues([data?.email, data?.userEmail]).map(value =>
+    value.toLowerCase()
+  );
+}
+
+function attendanceRecordHasZone(data) {
+  return pickAllowedZoneIds(data || {}, {}).length > 0;
+}
+
+function mergeAttendanceEmployeeData(...sources) {
+  const output = {};
+
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+
+    for (const [key, value] of Object.entries(source)) {
+      if (value === undefined || value === null) continue;
+
+      if (Array.isArray(value)) {
+        if (value.length || !Array.isArray(output[key])) {
+          output[key] = value;
+        }
+        continue;
+      }
+
+      if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        !(value instanceof Date)
+      ) {
+        output[key] = mergeAttendanceEmployeeData(
+          output[key],
+          value
+        );
+        continue;
+      }
+
+      const isEmptyString =
+        typeof value === "string" && !normalizeText(value);
+
+      if (!isEmptyString || output[key] === undefined) {
+        output[key] = value;
+      }
+    }
+  }
+
+  return output;
+}
+
+async function fetchAttendanceEmployeeRecord({
+  requester,
+  fetchFirestoreDocument,
+  collectionName,
+  id,
+}) {
+  const cleanId = normalizeText(id);
+  if (!cleanId || typeof fetchFirestoreDocument !== "function") return null;
+
+  const result = await fetchFirestoreDocument({
+    projectId: requester.projectId,
+    idToken: requester.idToken,
+    documentPath: `${collectionName}/${cleanId}`,
+  });
+
+  if (!result?.ok || !result.found) return null;
+
+  const documentId = normalizeText(result.data?.documentId || cleanId);
+  return {
+    id: documentId,
+    source: collectionName,
+    data: {
+      documentId,
+      id: documentId,
+      ...(result.data?.data || {}),
+    },
+  };
+}
+
+async function queryAttendanceEmployeeRecords({
+  requester,
+  queryFirestoreDocuments,
+  collectionName,
+  fieldPath,
+  value,
+}) {
+  const cleanValue = normalizeText(value);
+  if (!cleanValue || typeof queryFirestoreDocuments !== "function") return [];
+
+  const result = await queryFirestoreDocuments({
+    projectId: requester.projectId,
+    idToken: requester.idToken,
+    collectionPath: collectionName,
+    filters: [{ fieldPath, op: "EQUAL", value: cleanValue }],
+    limit: 5,
+  });
+
+  if (!result?.ok || !Array.isArray(result.documents)) return [];
+
+  return result.documents.map(document => {
+    const documentId = normalizeText(document?.documentId);
+    return {
+      id: documentId,
+      source: collectionName,
+      data: {
+        documentId,
+        id: documentId,
+        ...(document?.data || {}),
+      },
+    };
+  }).filter(record => record.id);
+}
+
+function employeeRecordBelongsToRequester(
+  record,
+  requester,
+  linkedEmployeeId,
+  trustedEmailIds
+) {
+  const uid = normalizeText(requester.uid);
+  const email = normalizeText(requester.email).toLowerCase();
+  const recordUids = employeeRecordUidCandidates(record?.data);
+
+  if (record?.id && record.id === uid) return true;
+  if (linkedEmployeeId && record?.id === linkedEmployeeId) return true;
+  if (recordUids.includes(uid)) return true;
+
+  if (recordUids.length && !recordUids.includes(uid)) {
+    return false;
+  }
+
+  return Boolean(
+    email &&
+      trustedEmailIds?.has(record?.id) &&
+      employeeRecordEmailCandidates(record?.data).includes(email)
+  );
+}
+
+function attendanceEmployeeRecordScore(record, preferredIds) {
+  let score = 0;
+  if (preferredIds.has(record.id)) score += 100;
+  if (employeeRecordUidCandidates(record.data).length) score += 60;
+  if (attendanceRecordHasZone(record.data)) score += 20;
+  if (record.source === "employees") score += 10;
+  return score;
+}
+
+async function resolveAttendanceEmployee({
+  requester,
+  requestedEmployeeId,
+  fetchFirestoreDocument,
+  queryFirestoreDocuments,
+}) {
+  const userData = requester.userData || {};
+  const linkedEmployeeId = normalizeText(
+    userData.linkedEmployeeId ||
+      userData.linkedEmployeeDocId ||
+      userData.employeeId
+  );
+  const explicitIds = uniqueTextValues([
+    requestedEmployeeId,
+    linkedEmployeeId,
+    userData.employeeId,
+    userData.linkedEmployeeDocId,
+  ]).filter(id => id !== requester.uid);
+  const lookupIds = uniqueTextValues([
+    ...explicitIds,
+    requester.uid,
+  ]);
+
+  const directRecords = await Promise.all(
+    lookupIds.flatMap(id => [
+      fetchAttendanceEmployeeRecord({
+        requester,
+        fetchFirestoreDocument,
+        collectionName: "employees",
+        id,
+      }),
+      fetchAttendanceEmployeeRecord({
+        requester,
+        fetchFirestoreDocument,
+        collectionName: "staff_public",
+        id,
+      }),
+    ])
+  );
+
+  const uidQueries = await Promise.all([
+    queryAttendanceEmployeeRecords({
+      requester,
+      queryFirestoreDocuments,
+      collectionName: "employees",
+      fieldPath: "linkedUid",
+      value: requester.uid,
+    }),
+    queryAttendanceEmployeeRecords({
+      requester,
+      queryFirestoreDocuments,
+      collectionName: "employees",
+      fieldPath: "uid",
+      value: requester.uid,
+    }),
+    queryAttendanceEmployeeRecords({
+      requester,
+      queryFirestoreDocuments,
+      collectionName: "employees",
+      fieldPath: "linkedUserId",
+      value: requester.uid,
+    }),
+    queryAttendanceEmployeeRecords({
+      requester,
+      queryFirestoreDocuments,
+      collectionName: "staff_public",
+      fieldPath: "linkedUid",
+      value: requester.uid,
+    }),
+    queryAttendanceEmployeeRecords({
+      requester,
+      queryFirestoreDocuments,
+      collectionName: "staff_public",
+      fieldPath: "uid",
+      value: requester.uid,
+    }),
+    queryAttendanceEmployeeRecords({
+      requester,
+      queryFirestoreDocuments,
+      collectionName: "staff_public",
+      fieldPath: "linkedUserId",
+      value: requester.uid,
+    }),
+  ]);
+
+  const email = normalizeText(requester.email).toLowerCase();
+  const emailQueries = email
+    ? await Promise.all([
+        queryAttendanceEmployeeRecords({
+          requester,
+          queryFirestoreDocuments,
+          collectionName: "staff_public",
+          fieldPath: "email",
+          value: email,
+        }),
+        queryAttendanceEmployeeRecords({
+          requester,
+          queryFirestoreDocuments,
+          collectionName: "staff_public",
+          fieldPath: "userEmail",
+          value: email,
+        }),
+      ])
+    : [];
+
+  const byKey = new Map();
+  for (const record of [
+    ...directRecords.filter(Boolean),
+    ...uidQueries.flat(),
+    ...emailQueries.flat(),
+  ]) {
+    byKey.set(`${record.source}:${record.id}`, record);
+  }
+
+  const allRecords = Array.from(byKey.values());
+  const emailMatchedIds = new Set(
+    allRecords
+      .filter(record => {
+        const recordUids = employeeRecordUidCandidates(record.data);
+        return (
+          email &&
+          employeeRecordEmailCandidates(record.data).includes(email) &&
+          !recordUids.some(candidate => candidate !== requester.uid)
+        );
+      })
+      .map(record => record.id)
+  );
+  const trustedEmailIds =
+    emailMatchedIds.size === 1 ? emailMatchedIds : new Set();
+  const preferredIds = new Set(explicitIds);
+  const linkedRecords = allRecords
+    .filter(record =>
+      employeeRecordBelongsToRequester(
+        record,
+        requester,
+        linkedEmployeeId,
+        trustedEmailIds
+      )
+    )
+    .sort(
+      (left, right) =>
+        attendanceEmployeeRecordScore(right, preferredIds) -
+        attendanceEmployeeRecordScore(left, preferredIds)
+    );
+
+  const selected = linkedRecords[0] || null;
+  const employeeDocId = normalizeText(
+    selected?.id ||
+      requestedEmployeeId ||
+      linkedEmployeeId ||
+      requester.uid
+  );
+
+  const [employeeRecord, staffRecord] = await Promise.all([
+    fetchAttendanceEmployeeRecord({
+      requester,
+      fetchFirestoreDocument,
+      collectionName: "employees",
+      id: employeeDocId,
+    }),
+    fetchAttendanceEmployeeRecord({
+      requester,
+      fetchFirestoreDocument,
+      collectionName: "staff_public",
+      id: employeeDocId,
+    }),
+  ]);
+
+  const employeeData = mergeAttendanceEmployeeData(
+    staffRecord?.data,
+    employeeRecord?.data,
+    selected?.data
+  );
+
+  return {
+    linkedEmployeeId,
+    employeeDocId,
+    employeeData,
+    employeeFound: Boolean(
+      selected ||
+        employeeRecord ||
+        staffRecord
+    ),
+    identityIds: uniqueTextValues([
+      requester.uid,
+      linkedEmployeeId,
+      selected?.id,
+      employeeRecord?.id,
+      staffRecord?.id,
+      employeeData.employeeId,
+      employeeData.linkedEmployeeDocId,
+      employeeData.linkedUid,
+      employeeData.uid,
+      employeeData.linkedUserId,
+    ]),
+  };
+}
+
+function requestedEmployeeMatchesResolution(requestedEmployeeId, resolution) {
+  const requested = normalizeText(requestedEmployeeId);
+  if (!requested) return true;
+  return resolution.identityIds.includes(requested);
+}
+
 async function recordAttendance({
   request,
   db,
   requester,
+  salonId,
   fetchFirestoreDocument,
+  queryFirestoreDocuments,
 }) {
   const input = await readJsonBody(request);
   if (!input.ok) return input.response;
@@ -1274,16 +1662,29 @@ async function recordAttendance({
     return json(400, { ok: false, message: "invalid_gps_location" });
 
   const userData = requester.userData || {};
-  const linkedEmployeeId = normalizeText(
-    userData.linkedEmployeeId ||
-      userData.linkedEmployeeDocId ||
-      userData.employeeId
+  const requestedEmployeeId = normalizeText(
+    input.data?.employeeId || input.data?.employeeDocId
   );
-  const requestedEmployeeId = normalizeText(input.data?.employeeId);
+  const requestedAttendanceZoneId = normalizeText(
+    input.data?.attendanceZoneId ||
+      input.data?.workZoneId ||
+      input.data?.zoneId
+  );
+  const employeeResolution = await resolveAttendanceEmployee({
+    requester,
+    requestedEmployeeId,
+    fetchFirestoreDocument,
+    queryFirestoreDocuments,
+  });
+  const linkedEmployeeId = employeeResolution.linkedEmployeeId;
+  const employeeDocId = employeeResolution.employeeDocId;
+  const employeeData = employeeResolution.employeeData || {};
+
   if (
-    requestedEmployeeId &&
-    requestedEmployeeId !== requester.uid &&
-    requestedEmployeeId !== linkedEmployeeId
+    !requestedEmployeeMatchesResolution(
+      requestedEmployeeId,
+      employeeResolution
+    )
   ) {
     return json(403, { ok: false, message: "attendance_employee_mismatch" });
   }
@@ -1297,24 +1698,28 @@ async function recordAttendance({
     return json(403, { ok: false, message: "attendance_not_enabled" });
   }
 
-  const employeeDocId = requestedEmployeeId || linkedEmployeeId || requester.uid;
-  const employeeResult = await fetchFirestoreDocument({
-    projectId: requester.projectId,
-    idToken: requester.idToken,
-    documentPath: `employees/${employeeDocId}`,
-  });
-  if (!employeeResult.ok) {
-    return json(employeeResult.status || 403, {
-      ok: false,
-      message: "firebase_employee_lookup_failed",
-      detail: employeeResult.error || null,
-    });
-  }
-  const employeeData = employeeResult.found
-    ? employeeResult.data?.data || {}
-    : {};
-  const allowedZoneIds = pickAllowedZoneIds(employeeData, userData);
-  const zoneResolution = await resolveZones(db, allowedZoneIds);
+  const employeeAllowedZoneIds = pickAllowedZoneIds(employeeData, userData);
+  const allowedZoneIds =
+    requestedAttendanceZoneId &&
+    employeeAllowedZoneIds.includes(requestedAttendanceZoneId)
+      ? [requestedAttendanceZoneId]
+      : employeeAllowedZoneIds;
+  const zoneResolution =
+    requestedAttendanceZoneId &&
+    employeeAllowedZoneIds.length > 0 &&
+    !employeeAllowedZoneIds.includes(requestedAttendanceZoneId)
+      ? {
+          zones: [],
+          error: "attendance_zone_mismatch",
+          requestedZoneIds: [requestedAttendanceZoneId],
+          resolvedZoneIds: [],
+          missingZoneIds: [],
+        }
+      : await resolveZones(db, allowedZoneIds, {
+          fetchFirestoreDocument,
+          requester,
+          salonId,
+        });
   const zoneCheck = evaluateAttendanceZones(location, zoneResolution.zones);
   const clientIp = getRequestClientIp(request);
 
@@ -1330,8 +1735,10 @@ async function recordAttendance({
     requestedEmployeeId,
     linkedEmployeeId,
     employeeDocId,
-    employeeFound: Boolean(employeeResult.found),
+    employeeFound: Boolean(employeeResolution.employeeFound),
     allowedZoneIds,
+    requestedAttendanceZoneId,
+    employeeAllowedZoneIds,
     zoneResolution,
     zoneCheck,
     location,
@@ -1667,11 +2074,11 @@ async function readLastSuccessfulDeviceId(db, employeeUid) {
   return normalizeText(row?.device_id) || null;
 }
 
-async function resolveZones(db, allowedZoneIds) {
+async function resolveZones(db, allowedZoneIds, options = {}) {
   if (!allowedZoneIds.length)
     return {
       zones: [],
-      error: "zone_not_found",
+      error: "zone_not_assigned",
       requestedZoneIds: [],
       resolvedZoneIds: [],
       missingZoneIds: [],
@@ -1687,11 +2094,28 @@ async function resolveZones(db, allowedZoneIds) {
     )
     .bind(...allowedZoneIds)
     .all();
-  const rows = result.results || [];
-  const resolvedZoneIds = rows.map(row => normalizeText(row.id)).filter(Boolean);
-  const resolvedZoneIdSet = new Set(resolvedZoneIds);
-  const missingZoneIds = allowedZoneIds.filter(id => !resolvedZoneIdSet.has(id));
-  if (!rows.length)
+  let zones = (result.results || []).map(mapWorkZoneRow);
+  let resolvedZoneIds = zones.map(zone => normalizeText(zone.id)).filter(Boolean);
+  let resolvedZoneIdSet = new Set(resolvedZoneIds);
+  let missingZoneIds = allowedZoneIds.filter(id => !resolvedZoneIdSet.has(id));
+
+  if (missingZoneIds.length) {
+    const syncedZones = await syncMissingWorkZonesFromFirestore(
+      db,
+      missingZoneIds,
+      options
+    );
+    if (syncedZones.length) {
+      zones = [...zones, ...syncedZones];
+      resolvedZoneIds = zones
+        .map(zone => normalizeText(zone.id))
+        .filter(Boolean);
+      resolvedZoneIdSet = new Set(resolvedZoneIds);
+      missingZoneIds = allowedZoneIds.filter(id => !resolvedZoneIdSet.has(id));
+    }
+  }
+
+  if (!zones.length)
     return {
       zones: [],
       error: "zone_not_found",
@@ -1699,7 +2123,6 @@ async function resolveZones(db, allowedZoneIds) {
       resolvedZoneIds,
       missingZoneIds,
     };
-  const zones = rows.map(mapWorkZoneRow);
   if (zones.some(zone => zone.type !== "radius"))
     return {
       zones: [],
@@ -1986,6 +2409,14 @@ function uniqueStrings(...values) {
   return output;
 }
 
+function normalizeWorkZoneId(value) {
+  const id = clampText(value, 220);
+  if (!id || id.includes("/") || /[\u0000-\u001f\u007f]/.test(id)) {
+    return "";
+  }
+  return id;
+}
+
 function normalizeWorkZoneInput(value) {
   const data = value && typeof value === "object" ? value : {};
   const name = clampText(data.name, 160);
@@ -2060,6 +2491,130 @@ function normalizeDeviceInfo(value) {
     language: clampText(info.language, 40) || null,
     timeZone: clampText(info.timeZone, 80) || null,
   };
+}
+
+function normalizeFirestoreWorkZone(id, data) {
+  const raw = data && typeof data === "object" ? data : {};
+  const center =
+    raw.center && typeof raw.center === "object" ? raw.center : {};
+  const zone = normalizeWorkZoneInput({
+    name: raw.name || raw.title || id,
+    type: raw.type || "radius",
+    center: {
+      lat:
+        raw.lat ??
+        raw.latitude ??
+        raw.centerLat ??
+        raw.center_lat ??
+        center.lat ??
+        center.latitude,
+      lng:
+        raw.lng ??
+        raw.longitude ??
+        raw.centerLng ??
+        raw.center_lng ??
+        center.lng ??
+        center.longitude,
+    },
+    radiusMeters:
+      raw.radiusMeters ??
+      raw.radius ??
+      raw.radius_meters,
+    active:
+      raw.active ??
+      (normalizeText(raw.status).toLowerCase() === "inactive"
+        ? false
+        : true),
+    officeIp: raw.officeIp ?? raw.office_ip,
+  });
+
+  if (!zone.ok) return null;
+
+  return {
+    id,
+    ...zone.value,
+    createdAt: raw.createdAt || null,
+    updatedAt: raw.updatedAt || null,
+  };
+}
+
+async function syncWorkZoneRow(db, zone, requesterUid) {
+  const now = new Date().toISOString();
+  const actorUid = normalizeText(requesterUid) || "firestore_sync";
+
+  await db
+    .prepare(
+      `
+      INSERT INTO work_zones (
+        id, name, type, center_lat, center_lng, radius_meters, active, office_ip,
+        created_by_uid, created_at, updated_by_uid, updated_at
+      ) VALUES (?, ?, 'radius', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        type = 'radius',
+        center_lat = excluded.center_lat,
+        center_lng = excluded.center_lng,
+        radius_meters = excluded.radius_meters,
+        active = excluded.active,
+        office_ip = excluded.office_ip,
+        updated_by_uid = excluded.updated_by_uid,
+        updated_at = excluded.updated_at
+    `
+    )
+    .bind(
+      zone.id,
+      zone.name,
+      zone.center.lat,
+      zone.center.lng,
+      zone.radiusMeters,
+      zone.active ? 1 : 0,
+      zone.officeIp,
+      actorUid,
+      now,
+      actorUid,
+      now
+    )
+    .run();
+}
+
+async function syncMissingWorkZonesFromFirestore(db, missingZoneIds, options) {
+  const fetchFirestoreDocument = options?.fetchFirestoreDocument;
+  const requester = options?.requester || {};
+  const salonId = normalizeText(options?.salonId) || "main";
+
+  if (
+    typeof fetchFirestoreDocument !== "function" ||
+    !requester.projectId ||
+    !requester.idToken
+  ) {
+    return [];
+  }
+
+  const syncedZones = [];
+
+  for (const rawId of missingZoneIds) {
+    const id = normalizeWorkZoneId(rawId);
+    if (!id) continue;
+
+    const result = await fetchFirestoreDocument({
+      projectId: requester.projectId,
+      idToken: requester.idToken,
+      documentPath: `salons/${salonId}/work_zones/${id}`,
+    }).catch(() => null);
+
+    if (!result?.ok || !result.found) continue;
+
+    const zone = normalizeFirestoreWorkZone(
+      id,
+      result.data?.data || {}
+    );
+    if (!zone) continue;
+
+    await syncWorkZoneRow(db, zone, requester.uid);
+    syncedZones.push(zone);
+  }
+
+  return syncedZones;
 }
 
 function mapWorkZoneRow(row) {
@@ -2163,6 +2718,8 @@ function buildAttendanceDebug({
   employeeDocId,
   employeeFound,
   allowedZoneIds,
+  requestedAttendanceZoneId,
+  employeeAllowedZoneIds,
   zoneResolution,
   zoneCheck,
   location,
@@ -2186,6 +2743,8 @@ function buildAttendanceDebug({
     },
     zones: {
       allowedZoneIds,
+      employeeAllowedZoneIds: employeeAllowedZoneIds || allowedZoneIds,
+      requestedAttendanceZoneId: requestedAttendanceZoneId || null,
       allowedZoneIdsCount: allowedZoneIds.length,
       resolutionError: zoneResolution.error || null,
       requestedZoneIds: zoneResolution.requestedZoneIds || allowedZoneIds,

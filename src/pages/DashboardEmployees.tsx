@@ -1624,6 +1624,25 @@ export default function DashboardEmployees() {
     const employeeProfilePatch = {
       employment: attendanceZoneProfilePatch,
     };
+    const linkedUidForSave = cleanText(
+      payload.linkedUid || payload.uid || payload.linkedUserId
+    );
+    const linkedUserPatch = {
+      uid: linkedUidForSave,
+      role: cleanText(payload.role || "staff"),
+      active: payload.active !== false,
+      isActive: payload.active !== false,
+      employeeId: targetEmployeeId,
+      linkedEmployeeDocId: targetEmployeeId,
+      allowedAttendanceZoneId: normalizedAttendanceZoneId,
+      attendanceZoneId: normalizedAttendanceZoneId,
+      assignedAttendanceZoneId: normalizedAttendanceZoneId,
+      attendanceScopeId: normalizedAttendanceZoneId,
+      allowedZoneIds: normalizedAttendanceZoneId ? [normalizedAttendanceZoneId] : [],
+      employment: attendanceZoneProfilePatch,
+      employeeProfile: employeeProfilePatch,
+      updatedAt: serverTimestamp(),
+    };
 
     try {
       if (!editId) {
@@ -1674,6 +1693,13 @@ export default function DashboardEmployees() {
           employeeProfile: employeeProfilePatch,
           updatedAt: serverTimestamp(),
         }, { merge: true });
+      }
+
+      if (linkedUidForSave) {
+        await Promise.all([
+          setDoc(doc(db, "salons", SALON_ID, "users", linkedUidForSave), linkedUserPatch, { merge: true }),
+          setDoc(doc(db, "salons", SALON_ID, "admin_users", linkedUidForSave), linkedUserPatch, { merge: true }),
+        ]);
       }
 
       selectedEmployeeIdentityRef.current = {

@@ -118,10 +118,16 @@ export default {
       url,
       db: env.ATTENDANCE_DB,
       directoryDb: null,
+      salonId: getSalonId(env),
       resolveRequesterContext: currentRequest =>
         resolveRequesterContext(currentRequest, env),
       fetchFirestoreDocument: args =>
         fetchFirestoreDocument({
+          ...args,
+          env,
+        }),
+      queryFirestoreDocuments: args =>
+        queryFirestoreDocuments({
           ...args,
           env,
         }),
@@ -302,6 +308,121 @@ async function fetchFirestoreDocument({
   };
 }
 
+async function queryFirestoreDocuments({
+  projectId,
+  idToken,
+  collectionPath,
+  filters,
+  limit = 5,
+  env,
+}) {
+  const expectedProjectId = getExpectedProjectId(env);
+
+  if (cleanText(projectId) !== expectedProjectId) {
+    return {
+      ok: false,
+      status: 401,
+      error: "firebase_project_mismatch",
+      documents: [],
+    };
+  }
+
+  const normalizedPath = normalizeFirestoreCollectionPath(
+    collectionPath,
+    env
+  );
+  const segments = normalizedPath.split("/").filter(Boolean);
+  const collectionId = segments.pop() || "";
+  const parentPath = segments
+    .map(segment => encodeURIComponent(segment))
+    .join("/");
+  const queryFilters = Array.isArray(filters) ? filters : [];
+
+  if (!collectionId || !queryFilters.length) {
+    return {
+      ok: false,
+      status: 400,
+      error: "invalid_firestore_query",
+      documents: [],
+    };
+  }
+
+  const where =
+    queryFilters.length === 1
+      ? buildFirestoreFieldFilter(queryFilters[0])
+      : {
+          compositeFilter: {
+            op: "AND",
+            filters: queryFilters.map(buildFirestoreFieldFilter),
+          },
+        };
+
+  const url =
+    `https://firestore.googleapis.com/v1/projects/` +
+    `${encodeURIComponent(expectedProjectId)}/databases/(default)/documents` +
+    `${parentPath ? `/${parentPath}` : ""}:runQuery`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId }],
+        where,
+        limit: Math.min(20, Math.max(1, Number(limit || 5))),
+      },
+    }),
+  });
+
+  const payload = await safeReadJson(response);
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status === 401 ? 401 : 403,
+      error:
+        cleanText(payload?.error?.message) ||
+        `firestore_query_failed_${response.status}`,
+      documents: [],
+    };
+  }
+
+  const rows = Array.isArray(payload) ? payload : [];
+
+  return {
+    ok: true,
+    status: 200,
+    documents: rows
+      .map(row => row?.document)
+      .filter(Boolean)
+      .map(parseFirestoreDocument),
+  };
+}
+
+function buildFirestoreFieldFilter(filter) {
+  return {
+    fieldFilter: {
+      field: { fieldPath: cleanText(filter?.fieldPath) },
+      op: cleanText(filter?.op || "EQUAL") || "EQUAL",
+      value: toFirestoreQueryValue(filter?.value),
+    },
+  };
+}
+
+function toFirestoreQueryValue(value) {
+  if (typeof value === "boolean") return { booleanValue: value };
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Number.isInteger(value)
+      ? { integerValue: String(value) }
+      : { doubleValue: value };
+  }
+  return { stringValue: cleanText(value) };
+}
+
 function normalizeFirestoreDocumentPath(documentPath, env) {
   const cleanPath = cleanText(documentPath)
     .replace(/^\/+|\/+$/g, "");
@@ -321,6 +442,29 @@ function normalizeFirestoreDocumentPath(documentPath, env) {
   if (
     nestedCollections.some(prefix => cleanPath.startsWith(prefix))
   ) {
+    return `salons/${getSalonId(env)}/${cleanPath}`;
+  }
+
+  return cleanPath;
+}
+
+function normalizeFirestoreCollectionPath(collectionPath, env) {
+  const cleanPath = cleanText(collectionPath)
+    .replace(/^\/+|\/+$/g, "");
+
+  if (cleanPath.startsWith("salons/")) {
+    return cleanPath;
+  }
+
+  const nestedCollections = new Set([
+    "users",
+    "admin_users",
+    "employees",
+    "staff_public",
+    "work_zones",
+  ]);
+
+  if (nestedCollections.has(cleanPath)) {
     return `salons/${getSalonId(env)}/${cleanPath}`;
   }
 

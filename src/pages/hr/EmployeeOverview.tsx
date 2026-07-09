@@ -34,6 +34,7 @@ import {
 } from "../../services/firestoreBookings";
 import {
   getBrowserPosition,
+  resolveAssignedAttendanceZoneId,
   type AttendanceLocation,
   type WorkZoneMatch,
 } from "../../services/attendanceSettingsService";
@@ -47,6 +48,7 @@ import { requestAttendanceBiometric } from "../../helpers/attendanceBiometric";
 import {
   computeAttendanceDay,
   getAttendanceDayStatus,
+  type AttendanceStatus,
   type AttendanceRecord,
 } from "../../helpers/hr/attendanceCalculations";
 import { buildApprovedLeaveDateKeys } from "../../helpers/hr/attendanceCalendarData";
@@ -115,6 +117,17 @@ function getAttendanceStatusLabel(status: StaffAttendanceToday["status"]) {
   return "لم يسجل حضور";
 }
 
+function getAttendanceDayStatusLabel(status: AttendanceStatus) {
+  if (status === "present") return "حضور مكتمل";
+  if (status === "partial") return "حضور يحتاج مراجعة";
+  if (status === "absent") return "غياب";
+  if (status === "leave") return "إجازة";
+  if (status === "off_day") return "يوم راحة";
+  if (status === "future") return "يوم قادم";
+  if (status === "today_pending") return "بانتظار تسجيل الحضور اليوم";
+  return "بانتظار تسجيل الحضور اليوم";
+}
+
 function getBookingStatusLabel(status: string | undefined) {
   const normalized = cleanText(status || "pending").toLowerCase();
   if (normalized === "confirmed") return "مؤكد";
@@ -148,6 +161,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [employeeBookingsLoading, setEmployeeBookingsLoading] = useState(false);
   const [employeeLeaveRequests, setEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
   const attendanceEmployeeId = cleanText(session.employeeId || session.uid);
+  const assignedAttendanceZoneId = resolveAssignedAttendanceZoneId(profile);
   const attendanceDate = getTodayAttendanceDateKey();
 
   const unread = notifications.filter((note) => !note.isRead);
@@ -417,8 +431,12 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       const location: AttendanceLocation =
         await getBrowserPosition({
           enableHighAccuracy: true,
-          maximumAge: 0,
-          timeout: 20000,
+          maximumAge: 10000,
+          timeout: 12000,
+          targetAccuracyMeters: 50,
+          acceptableAccuracyMeters: 150,
+          acceptableReadingDelayMs: 400,
+          acceptFirstUsableReading: true,
         });
 
       setLastLocation(location);
@@ -442,7 +460,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       );
 
       const response = await submitAttendanceToWorker({
+        employeeUid: session.uid,
         employeeId: attendanceEmployeeId,
+        attendanceZoneId: assignedAttendanceZoneId,
         type,
         location,
       });
@@ -494,6 +514,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       ? "نشط"
       : "غير نشط";
   const attendanceStatus = attendance?.status || "not_started";
+  const attendanceDayStatusLabel = getAttendanceDayStatusLabel(attendanceDayStatus);
   const canCheckIn = !attendanceBusy && !attendanceLoading && attendanceStatus === "not_started";
   const canCheckOut = !attendanceBusy && !attendanceLoading && attendanceStatus === "checked_in";
   const punchAction = canCheckOut ? "check_out" : "check_in";
@@ -626,7 +647,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
         <div className={`employee-attendance-status employee-attendance-status--${attendanceStatus}`} aria-live="polite">
           <span>{attendanceLoading ? "جاري تحديث حالة اليوم..." : getAttendanceStatusLabel(attendanceStatus)}</span>
-          <small>{attendanceDayStatus}</small>
+          <small>{attendanceDayStatusLabel}</small>
         </div>
 
         <div className="employee-attendance-records">
@@ -654,7 +675,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           aria-live="polite"
         >
           <span>
-            {attendanceMessage || attendanceDayStatus}
+            {attendanceMessage || attendanceDayStatusLabel}
             {visibleAccuracyLabel ? ` · ${visibleAccuracyLabel}` : ""}
             {visibleDistance !== null ? ` · المسافة: ${visibleDistance} م` : visibleZoneName ? ` · النطاق: ${visibleZoneName}` : ""}
           </span>

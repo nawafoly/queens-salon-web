@@ -36,7 +36,7 @@ const Footer: React.FC = () => {
               <Link to="/terms">الشروط والأحكام</Link>
             </li>
             <li>
-              <Link to="/privacy">سياسة الخصوصية</Link>
+              <Link to="/privacy-policy">سياسة الخصوصية</Link>
             </li>
           </ul>
         </div>

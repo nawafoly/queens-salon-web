@@ -34,6 +34,7 @@ import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import Track from "./pages/Track";
 import SuccessInternal from "./pages/SuccessInternal";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
@@ -568,6 +569,8 @@ const App: React.FC = () => {
           path="/pricing"
           element={IS_STAFF_APP ? <Navigate to="/hr" replace /> : <Pricing />}
         />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
         <Route path="/chat" element={<Navigate to="/" replace />} />
 
         {/* Track */}
