@@ -4,11 +4,19 @@ const DEFAULT_FIREBASE_PROJECT_ID = "waves-hotel-dashboard";
 const DEFAULT_SALON_ID = "main";
 
 const DEFAULT_ALLOWED_ORIGINS = new Set([
+  "http://localhost",
+  "https://localhost",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
   "http://localhost:4173",
   "capacitor://localhost",
+  "ionic://localhost",
+  "https://queens-salon-web-gnxk.vercel.app",
 ]);
+
+const DEFAULT_ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/queens-salon-web(?:-[a-z0-9-]+)?\.vercel\.app$/i,
+];
 
 const KNOWN_ROLES = new Set([
   "owner",
@@ -534,7 +542,13 @@ function resolveCorsOrigin(request, env) {
 
   if (!origin) return "";
 
-  return getAllowedOrigins(env).has(origin)
+  if (getAllowedOrigins(env).has(origin)) {
+    return origin;
+  }
+
+  return DEFAULT_ALLOWED_ORIGIN_PATTERNS.some(pattern =>
+    pattern.test(origin)
+  )
     ? origin
     : "";
 }

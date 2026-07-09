@@ -366,10 +366,10 @@ export function getBrowserPosition(options?: PositionOptions): Promise<Attendanc
   const timeoutMs =
     Number.isFinite(requestedTimeout) && requestedTimeout > 0
       ? Math.min(
-          10000,
-          Math.max(4000, Math.round(requestedTimeout))
+          30000,
+          Math.max(5000, Math.round(requestedTimeout))
         )
-      : 10000;
+      : 20000;
 
   const requestedMaximumAge = Number(
     options?.maximumAge
@@ -379,7 +379,7 @@ export function getBrowserPosition(options?: PositionOptions): Promise<Attendanc
     Number.isFinite(requestedMaximumAge) &&
     requestedMaximumAge >= 0
       ? Math.min(
-          15000,
+          5000,
           Math.round(requestedMaximumAge)
         )
       : 0;
@@ -392,17 +392,24 @@ export function getBrowserPosition(options?: PositionOptions): Promise<Attendanc
     maximumAge: maximumAgeMs,
   };
 
-  const targetAccuracyMeters = 150;
-  const maximumReadings = 3;
+  const targetAccuracyMeters = 50;
+  const acceptableAccuracyMeters = 150;
+  const acceptableReadingDelayMs = 3500;
 
   return new Promise((resolve, reject) => {
     let settled = false;
     let watchId = -1;
     let readingCount = 0;
     let bestLocation: AttendanceLocation | null = null;
+    let acceptableReadingTimer: number | null = null;
 
     const cleanup = () => {
       window.clearTimeout(stopTimer);
+
+      if (acceptableReadingTimer !== null) {
+        window.clearTimeout(acceptableReadingTimer);
+        acceptableReadingTimer = null;
+      }
 
       if (watchId >= 0) {
         navigator.geolocation.clearWatch(watchId);
@@ -478,8 +485,15 @@ export function getBrowserPosition(options?: PositionOptions): Promise<Attendanc
             return;
           }
 
-          if (readingCount >= maximumReadings) {
-            finishSuccess();
+          if (
+            accuracy > 0 &&
+            accuracy <= acceptableAccuracyMeters &&
+            acceptableReadingTimer === null
+          ) {
+            acceptableReadingTimer = window.setTimeout(
+              finishSuccess,
+              acceptableReadingDelayMs
+            );
           }
         },
         (error) => {

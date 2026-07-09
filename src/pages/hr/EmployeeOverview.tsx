@@ -417,8 +417,8 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       const location: AttendanceLocation =
         await getBrowserPosition({
           enableHighAccuracy: true,
-          maximumAge: 10000,
-          timeout: 7000,
+          maximumAge: 0,
+          timeout: 20000,
         });
 
       setLastLocation(location);
@@ -515,6 +515,12 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const visibleAccuracy =
     visibleLocation?.accuracy ??
     null;
+  const visibleAccuracyLabel =
+    visibleAccuracy === null
+      ? ""
+      : visibleAccuracy <= 150
+        ? `دقة الموقع مقبولة: ${visibleAccuracy} م`
+        : `دقة الموقع ضعيفة: ${visibleAccuracy} م`;
   const leaveBalanceValue = cleanText(profile.leaveBalanceDays ?? profile.leaveBalance ?? "") || "—";
   const attendanceDateLabel = formatAttendanceDateLabel(attendanceDate);
   const punchHint = attendanceStatus === "checked_out"
@@ -649,12 +655,12 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         >
           <span>
             {attendanceMessage || attendanceDayStatus}
-            {visibleAccuracy !== null ? ` · الدقة: ${visibleAccuracy} م` : ""}
+            {visibleAccuracyLabel ? ` · ${visibleAccuracyLabel}` : ""}
             {visibleDistance !== null ? ` · المسافة: ${visibleDistance} م` : visibleZoneName ? ` · النطاق: ${visibleZoneName}` : ""}
           </span>
           <div>
             {visibleZoneName ? <small>{visibleZoneName}</small> : null}
-            {visibleAccuracy !== null ? <small>الدقة: {visibleAccuracy} م</small> : null}
+            {visibleAccuracyLabel ? <small>{visibleAccuracyLabel}</small> : null}
             {visibleDistance !== null ? <small>المسافة: {visibleDistance} م</small> : null}
           </div>
         </div>

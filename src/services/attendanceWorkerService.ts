@@ -214,21 +214,34 @@ async function requestAttendanceWorker<T>(
     );
   }
 
-  const response = await fetch(
-    buildWorkerUrl(pathname, params),
-    {
-      ...init,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${await currentUser.getIdToken()}`,
-        ...(init.body
-          ? { "Content-Type": "application/json" }
-          : {}),
-        ...(init.headers || {}),
-      },
-      cache: "no-store",
-    }
-  );
+  let response: Response;
+
+  try {
+    response = await fetch(
+      buildWorkerUrl(pathname, params),
+      {
+        ...init,
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${await currentUser.getIdToken()}`,
+          ...(init.body
+            ? { "Content-Type": "application/json" }
+            : {}),
+          ...(init.headers || {}),
+        },
+        cache: "no-store",
+      }
+    );
+  } catch (cause) {
+    const error = new Error(
+      "تم التقاط الموقع، لكن تعذر الاتصال بخادم الحضور. تحقق من اتصال الإنترنت وإعدادات CORS الخاصة بـ Cloudflare Worker."
+    ) as Error & {
+      cause?: unknown;
+    };
+
+    error.cause = cause;
+    throw error;
+  }
 
   const payload = (await response
     .json()
