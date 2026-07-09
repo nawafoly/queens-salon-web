@@ -213,11 +213,6 @@ function formatHours(value: number) {
   return `${minutes} دقيقة`;
 }
 
-function formatSignedHours(value: number) {
-  if (!Number.isFinite(value) || value === 0) return "0";
-  const sign = value > 0 ? "+" : "-";
-  return `${sign}${formatHours(Math.abs(value))}`;
-}
 
 function recordsFromRow(row: StaffAttendanceWithId | null): AttendanceRecord[] {
   const records: AttendanceRecord[] = [];
@@ -241,23 +236,14 @@ function statusTone(status: AttendanceStatus) {
 
 function statusLabel(status: AttendanceStatus) {
   if (status === "present") return "حضور مكتمل";
-  if (status === "partial") return "حضور يحتاج مراجعة";
+  if (status === "partial") return "يحتاج إكمال";
   if (status === "absent") return "غياب";
-  if (status === "off_day") return "يوم راحة أسبوعية";
+  if (status === "off_day") return "يوم راحة";
   if (status === "leave") return "إجازة";
-  if (status === "today_pending") return "بانتظار تسجيل اليوم";
+  if (status === "today_pending") return "لم يسجل بعد";
   return "يوم قادم";
 }
 
-function statusMessage(status: AttendanceStatus) {
-  if (status === "present") return "تم تسجيل الحضور والانصراف لهذا اليوم.";
-  if (status === "partial") return "يوجد حضور بدون اكتمال الانصراف أو يحتاج مراجعة.";
-  if (status === "absent") return "غياب - لا يوجد سجل حضور.";
-  if (status === "off_day") return "هذا اليوم ضمن أيام الراحة الأسبوعية.";
-  if (status === "leave") return "هذا اليوم مسجل ضمن الإجازات.";
-  if (status === "today_pending") return "لم يتم تسجيل حضور لهذا اليوم حتى الآن.";
-  return "هذا اليوم لم يبدأ بعد.";
-}
 
 function selectedEventCount(row: StaffAttendanceWithId | null) {
   return (row?.checkInAtClient ? 1 : 0) + (row?.checkOutAtClient ? 1 : 0);
@@ -348,8 +334,42 @@ export default function AttendanceMonthView({
   const shouldShowEdit = canShowAdminControls && (canEdit ?? showAdminActions);
   const shouldShowDelete = canShowAdminControls && (canDelete ?? showAdminActions);
   const shouldShowReview = canShowAdminControls && (canReview ?? showAdminActions);
-  const differenceHours = selectedComputation.actualHours - selectedComputation.expectedHours;
-  const isWeeklyOff = isWeeklyOffDateKey(safeSelectedDate, selectedSchedule.weeklyOffDays);
+  const isWeeklyOff = isWeeklyOffDateKey(
+    safeSelectedDate,
+    selectedSchedule.weeklyOffDays
+  );
+
+  const isRestDay =
+    selectedStatus === "off_day" ||
+    isWeeklyOff;
+
+  const isLeaveDay =
+    selectedStatus === "leave";
+
+  const isAbsentDay =
+    selectedStatus === "absent";
+
+  const isPendingDay =
+    selectedStatus === "future" ||
+    selectedStatus === "today_pending";
+
+  const isPartialDay =
+    selectedStatus === "partial";
+
+  const isWorkedDay =
+    !isRestDay &&
+    !isLeaveDay &&
+    !isAbsentDay &&
+    !isPendingDay;
+
+  const hasLate =
+    selectedComputation.lateHours > 0.001;
+
+  const hasMissingHours =
+    selectedComputation.missingHours > 0.001;
+
+  const hasOvertime =
+    selectedComputation.overtimeHours > 0.001;
 
   return (
     <section className="attendance-month" dir="rtl">
@@ -444,7 +464,9 @@ export default function AttendanceMonthView({
         </div>
 
         <div className="attendance-month__records-meta">
-          {canShowAdminControls ? (
+          {canShowAdminControls &&
+          !isRestDay &&
+          !isLeaveDay ? (
             <div className="attendance-month__actions">
               {shouldShowReview ? (
                 <button type="button" onClick={() => (onReviewDay || onEditPunch)?.(safeSelectedDate)}>
@@ -453,7 +475,10 @@ export default function AttendanceMonthView({
               ) : null}
               {shouldShowEdit ? (
                 <button type="button" onClick={() => onEditPunch?.(safeSelectedDate)} disabled={!onEditPunch}>
-                  <FontAwesomeIcon icon={faPenToSquare} /> تعديل البصمة
+                  <FontAwesomeIcon icon={faPenToSquare} />
+                  {selectedCount > 0
+                    ? "تعديل البصمة"
+                    : "إضافة بصمة"}
                 </button>
               ) : null}
               {shouldShowDelete ? (
@@ -470,84 +495,186 @@ export default function AttendanceMonthView({
           ) : (
             <div />
           )}
-          <div className="attendance-month__count">
-            <span className={`attendance-month__badge is-${selectedTone}`}>{statusLabel(selectedStatus)}</span>
-            <b>{selectedCount}</b>
-            <FontAwesomeIcon icon={faFingerprint} />
-          </div>
+          {isWorkedDay ? (
+            <div className="attendance-month__status-summary">
+              <span
+                className={`attendance-month__badge is-${selectedTone}`}
+              >
+                {statusLabel(selectedStatus)}
+              </span>
+
+              <span className="attendance-month__record-count">
+                <FontAwesomeIcon icon={faFingerprint} />
+
+                {selectedCount === 1
+                  ? "سجل واحد"
+                  : `${selectedCount} سجل`}
+              </span>
+            </div>
+          ) : null}
         </div>
 
-        {selectedStatus === "off_day" || isWeeklyOff ? (
-          <div className="attendance-month__empty is-off-day">
-            <FontAwesomeIcon icon={faCalendarDay} />
-            <strong>يوم راحة أسبوعية</strong>
-            <span>هذا اليوم ضمن أيام الراحة الأسبوعية، ولا يعرض كغياب محسوب.</span>
+        {isRestDay ? (
+          <div className="attendance-month__state-card is-off-day">
+            <div className="attendance-month__state-icon">
+              <FontAwesomeIcon icon={faCalendarDay} />
+            </div>
+
+            <strong>يوم راحة</strong>
           </div>
-        ) : selectedStatus === "absent" ? (
-          <div className="attendance-month__empty is-absent">
-            <FontAwesomeIcon icon={faCalendarDay} />
-            <strong>غياب - لا يوجد سجل حضور</strong>
-            <span>هذا يوم عمل سابق بلا سجلات حضور، ويظهر كغياب محسوب.</span>
+        ) : isLeaveDay ? (
+          <div className="attendance-month__state-card is-leave">
+            <div className="attendance-month__state-icon">
+              <FontAwesomeIcon icon={faCalendarDay} />
+            </div>
+
+            <strong>إجازة</strong>
           </div>
-        ) : selectedStatus === "future" || selectedStatus === "today_pending" ? (
-          <div className="attendance-month__empty">
-            <FontAwesomeIcon icon={faCalendarDay} />
-            <strong>{statusMessage(selectedStatus)}</strong>
-            <span>{safeSelectedDate}</span>
+        ) : isAbsentDay ? (
+          <div className="attendance-month__state-card is-absent">
+            <div className="attendance-month__state-icon">
+              <FontAwesomeIcon icon={faCalendarDay} />
+            </div>
+
+            <strong>غياب</strong>
+          </div>
+        ) : isPendingDay ? (
+          <div className="attendance-month__state-card is-pending">
+            <div className="attendance-month__state-icon">
+              <FontAwesomeIcon icon={faCalendarDay} />
+            </div>
+
+            <strong>{statusLabel(selectedStatus)}</strong>
           </div>
         ) : (
-          <div className={`attendance-month__record is-${selectedTone}`}>
-            <div className="attendance-month__record-main">
-              <button type="button" aria-label="خيارات السجل">
-                <FontAwesomeIcon icon={faEllipsisVertical} />
-              </button>
-              <strong>
-                {formatTime(selectedRow?.checkInAtClient)} — {formatTime(selectedRow?.checkOutAtClient)}
-              </strong>
-              <span>
-                <FontAwesomeIcon icon={faClock} /> {formatHours(selectedComputation.actualHours)}
-              </span>
+          <div className="attendance-month__worked-day">
+            <div
+              className={`attendance-month__record attendance-month__record--premium is-${selectedTone}`}
+            >
+              <div className="attendance-month__record-main">
+                <button
+                  type="button"
+                  aria-label="خيارات السجل"
+                >
+                  <FontAwesomeIcon
+                    icon={faEllipsisVertical}
+                  />
+                </button>
+
+                <strong>
+                  {formatTime(
+                    selectedRow?.checkInAtClient
+                  )}
+                  {" — "}
+                  {formatTime(
+                    selectedRow?.checkOutAtClient
+                  )}
+                </strong>
+
+                <span>
+                  <FontAwesomeIcon icon={faClock} />
+
+                  {formatHours(
+                    selectedComputation.actualHours
+                  )}
+                </span>
+              </div>
             </div>
           </div>
         )}
 
-        <div className={`attendance-month__metrics is-${selectedTone}`}>
-          <div>
-            <span>الحالة</span>
-            <b>{statusLabel(selectedStatus)}</b>
-          </div>
-          <div>
-            <span>أول حضور</span>
-            <b>{formatTime(selectedRow?.checkInAtClient)}</b>
-          </div>
-          <div>
-            <span>آخر انصراف</span>
-            <b>{formatTime(selectedRow?.checkOutAtClient)}</b>
-          </div>
-          <div>
-            <span>مدة العمل</span>
-            <b>{formatHours(selectedComputation.actualHours)}</b>
-          </div>
-          <div>
-            <span>الفرق</span>
-            <b>{selectedStatus === "absent" ? "0" : formatSignedHours(differenceHours)}</b>
-          </div>
-        </div>
+        {isWorkedDay ? (
+          <div className="attendance-month__worked-details">
+            <div className="attendance-month__worked-metrics">
+              <div className="attendance-month__worked-metric">
+                <span>الحالة</span>
+                <b>{statusLabel(selectedStatus)}</b>
+              </div>
 
-        <div className={`attendance-month__wide-metrics is-${selectedTone}`}>
-          <div>
-            <span>الأوفر تايم</span>
-            <b>{formatHours(selectedComputation.overtimeHours)}</b>
+              <div className="attendance-month__worked-metric">
+                <span>وقت الحضور</span>
+                <b>
+                  {formatTime(
+                    selectedRow?.checkInAtClient
+                  )}
+                </b>
+              </div>
+
+              <div className="attendance-month__worked-metric">
+                <span>وقت الانصراف</span>
+                <b>
+                  {formatTime(
+                    selectedRow?.checkOutAtClient
+                  )}
+                </b>
+              </div>
+
+              <div className="attendance-month__worked-metric">
+                <span>مدة العمل</span>
+                <b>
+                  {formatHours(
+                    selectedComputation.actualHours
+                  )}
+                </b>
+              </div>
+            </div>
+
+            <div className="attendance-month__performance">
+              {isPartialDay ? (
+                <div className="attendance-month__performance-item is-review">
+                  <FontAwesomeIcon icon={faClock} />
+                  <span>حالة السجل</span>
+                  <b>يحتاج إكمال</b>
+                </div>
+              ) : (
+                <>
+                  {hasLate ? (
+                    <div className="attendance-month__performance-item is-late">
+                      <span>التأخير</span>
+                      <b>
+                        {formatHours(
+                          selectedComputation.lateHours
+                        )}
+                      </b>
+                    </div>
+                  ) : null}
+
+                  {hasMissingHours ? (
+                    <div className="attendance-month__performance-item is-missing">
+                      <span>نقص الساعات</span>
+                      <b>
+                        {formatHours(
+                          selectedComputation.missingHours
+                        )}
+                      </b>
+                    </div>
+                  ) : null}
+
+                  {hasOvertime ? (
+                    <div className="attendance-month__performance-item is-overtime">
+                      <span>وقت إضافي</span>
+                      <b>
+                        {formatHours(
+                          selectedComputation.overtimeHours
+                        )}
+                      </b>
+                    </div>
+                  ) : null}
+
+                  {!hasLate &&
+                  !hasMissingHours &&
+                  !hasOvertime ? (
+                    <div className="attendance-month__performance-item is-committed">
+                      <FontAwesomeIcon icon={faCheck} />
+                      <span>الالتزام</span>
+                      <b>ملتزم</b>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
           </div>
-          <div>
-            <span>التأخير</span>
-            <b>{formatHours(selectedComputation.lateHours)}</b>
-          </div>
-          <div>
-            <span>نقص الساعات</span>
-            <b>{formatHours(selectedComputation.missingHours)}</b>
-          </div>
-        </div>
+        ) : null}
       </div>
     </section>
   );

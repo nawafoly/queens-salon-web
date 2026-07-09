@@ -3176,6 +3176,144 @@
 
 .employee-portal.madan-employee-portal
   .employee-attendance-month-page
+  .attendance-month__daily-card {
+  display: grid !important;
+  gap: 9px !important;
+  padding: 11px !important;
+
+  border: 1px solid #b8e3ca !important;
+  border-inline-start: 5px solid #22a66f !important;
+  border-radius: 14px !important;
+
+  background: #effaf4 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-card.is-partial {
+  border-color: #f4d39b !important;
+  border-inline-start-color: #f59e0b !important;
+
+  background: #fff8eb !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-card-head {
+  display: grid !important;
+  gap: 8px !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-card-head
+  p {
+  margin: 0 !important;
+
+  color: #69768a !important;
+
+  font-size: 0.53rem !important;
+  font-weight: 750 !important;
+  line-height: 1.55 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-state {
+  width: fit-content;
+  padding: 5px 9px !important;
+
+  border-radius: 999px !important;
+
+  color: #047857 !important;
+  background: rgba(16, 185, 129, 0.13) !important;
+  border: 1px solid rgba(16, 185, 129, 0.26) !important;
+
+  font-size: 0.54rem !important;
+  font-weight: 950 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-state.is-warning {
+  color: #9a3412 !important;
+  background: rgba(251, 146, 60, 0.15) !important;
+  border-color: rgba(251, 146, 60, 0.34) !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-time {
+  color: #081432 !important;
+
+  font-size: 0.68rem !important;
+  font-weight: 950 !important;
+  white-space: normal !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-grid {
+  display: grid !important;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr)) !important;
+  gap: 7px !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-grid
+  > div {
+  display: grid !important;
+  align-content: center !important;
+  gap: 4px !important;
+
+  min-width: 0;
+  min-height: 62px !important;
+  padding: 9px !important;
+
+  border: 1px solid #e2e7ee !important;
+  border-radius: 12px !important;
+
+  background: rgba(255, 255, 255, 0.72) !important;
+
+  text-align: start !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-grid
+  > div.is-warning {
+  border-color: #f4d39b !important;
+  background: #fffaf1 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-grid
+  span {
+  color: #7a8698 !important;
+
+  font-size: 0.5rem !important;
+  font-weight: 750 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__daily-grid
+  b {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+
+  color: #081432 !important;
+
+  font-size: 0.66rem !important;
+  font-weight: 950 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
   .attendance-month__metrics,
 .employee-portal.madan-employee-portal
   .employee-attendance-month-page

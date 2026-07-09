@@ -17231,6 +17231,107 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   font-weight: 700;
 }
 
+.attendance-month__daily-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  border-inline-start: 8px solid var(--attendance-complete);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.96), #ffffff);
+}
+
+.attendance-month__daily-card.is-partial {
+  border-color: rgba(251, 146, 60, 0.36);
+  border-inline-start-color: var(--attendance-partial);
+  background: linear-gradient(135deg, rgba(255, 247, 237, 0.98), #ffffff);
+}
+
+.attendance-month__daily-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.attendance-month__daily-card-head > div {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.attendance-month__daily-card-head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.7;
+}
+
+.attendance-month__daily-state {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 11px;
+  color: #047857;
+  background: rgba(16, 185, 129, 0.13);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.attendance-month__daily-state.is-warning {
+  color: #9a3412;
+  background: rgba(251, 146, 60, 0.15);
+  border-color: rgba(251, 146, 60, 0.34);
+}
+
+.attendance-month__daily-time {
+  color: #0f172a;
+  font-size: 18px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.attendance-month__daily-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.attendance-month__daily-grid > div {
+  min-height: 78px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  text-align: right;
+}
+
+.attendance-month__daily-grid > div.is-warning {
+  border-color: rgba(251, 146, 60, 0.38);
+  background: rgba(255, 247, 237, 0.96);
+}
+
+.attendance-month__daily-grid span {
+  color: #7a8698;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.attendance-month__daily-grid b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 950;
+}
+
 .attendance-month__metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -17317,6 +17418,18 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   .attendance-month__grid {
     grid-template-columns: repeat(7, minmax(42px, 1fr));
     column-gap: 8px;
+  }
+
+  .attendance-month__daily-card-head {
+    display: grid;
+  }
+
+  .attendance-month__daily-time {
+    white-space: normal;
+  }
+
+  .attendance-month__daily-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .attendance-month__day-marker {
