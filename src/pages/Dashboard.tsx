@@ -23,6 +23,7 @@ import {
   faClockRotateLeft,
   faFingerprint,
   faTv,
+  faStore,
 } from "@fortawesome/free-solid-svg-icons";
 import LoadingBrand from "../components/LoadingBrand";
 import DashboardMobileNav from "../components/DashboardMobileNav";
@@ -41,6 +42,7 @@ import DashboardLogs from "../pages/DashboardLogs";
 import DashboardQueueTv from "../pages/DashboardQueueTv";
 import DashboardDayAudit from "../pages/DashboardDayAudit";
 import DashboardAdminProfile from "../pages/DashboardAdminProfile";
+import DashboardPartners from "../pages/DashboardPartners";
 
 
 // ✅ NEW: الحجز الداخلي داخل الداشبورد
@@ -2795,6 +2797,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                 {hasAdminPower && (
                   <li>
                     <NavLink
+                      to="/dashboard/partners"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faStore} />
+                      الشريكات والمساحات
+                    </NavLink>
+                  </li>
+                )}
+
+                {hasAdminPower && (
+                  <li>
+                    <NavLink
                       to="/dashboard/offers"
                       className="nav-link"
                       onClick={() => setIsSidebarOpen(false)}
@@ -3108,10 +3123,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                   )}
 
                 {hasAdminPower && (
-                  <Route path="loyalty" element={<DashboardLoyalty />} />
+                  <Route path="partners" element={<DashboardPartners />} />
                 )}
 
-
+                {hasAdminPower && (
+                  <Route path="loyalty" element={<DashboardLoyalty />} />
+                )}
 
                 {hasAdminPower && (
                   <Route path="offers" element={<DashboardOffers />} />

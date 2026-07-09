@@ -1,9 +1,11 @@
 import {
   addDoc,
+  doc,
   getDoc,
   getDocs,
   serverTimestamp,
   setDoc,
+  writeBatch,
 } from "firebase/firestore";
 
 import type {
@@ -327,6 +329,60 @@ export const PartnerService = {
     });
     const reference = await addDoc(partnerCollection("partners", salonId), payload);
     return reference.id;
+  },
+
+  async createPartnerWithOwnerMember(
+    input: CreatePartnerInput,
+    actorUid?: string,
+    salonId: string = PARTNER_SALON_ID
+  ) {
+    const uid = cleanOptionalText(actorUid);
+    const partnerRef = doc(partnerCollection("partners", salonId));
+    const ownerMemberRef = doc(partnerCollection("partnerMembers", salonId));
+    const timestamp = serverTimestamp();
+
+    const partnerPayload = stripUndefined({
+      displayName: requireText(input.displayName, "displayName"),
+      legalName: cleanOptionalText(input.legalName),
+      ownerName: requireText(input.ownerName, "ownerName"),
+      ownerUid: cleanOptionalText(input.ownerUid),
+      email: cleanOptionalText(input.email)?.toLowerCase(),
+      phone: cleanOptionalText(input.phone),
+      nationalId: cleanOptionalText(input.nationalId),
+      commercialRegistration: cleanOptionalText(input.commercialRegistration),
+      taxNumber: cleanOptionalText(input.taxNumber),
+      businessCategories: cleanCategories(input.businessCategories),
+      status: PARTNER_STATUSES.has(input.status) ? input.status : "draft",
+      notes: cleanOptionalText(input.notes),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      createdByUid: uid,
+      updatedByUid: uid,
+    });
+
+    const ownerMemberPayload = stripUndefined({
+      partnerId: partnerRef.id,
+      memberType: "owner" as const,
+      status: "active" as const,
+      displayName: requireText(input.ownerName, "ownerName"),
+      userUid: cleanOptionalText(input.ownerUid),
+      email: cleanOptionalText(input.email)?.toLowerCase(),
+      phone: cleanOptionalText(input.phone),
+      canWorkAsProvider: true,
+      canManageTeam: true,
+      canManageInventory: true,
+      canViewFinancials: true,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      createdByUid: uid,
+      updatedByUid: uid,
+    });
+
+    const batch = writeBatch(partnerRef.firestore);
+    batch.set(partnerRef, partnerPayload);
+    batch.set(ownerMemberRef, ownerMemberPayload);
+    await batch.commit();
+    return partnerRef.id;
   },
 
   async updatePartner(

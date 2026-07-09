@@ -11,6 +11,7 @@ import {
   faHouse,
   faMoneyBillWave,
   faPercent,
+  faStore,
   faTv,
   faUser,
   faUsers,
@@ -102,6 +103,12 @@ export default function DashboardMobileNav({
 
     if (hasAdminPower) {
       items.push(
+        {
+          to: "/dashboard/partners",
+          label: "الشريكات والمساحات",
+          description: "إدارة المستأجرات ومقاعد العمل",
+          icon: faStore,
+        },
         {
           to: "/dashboard/offers",
           label: "العروض والكوبونات",
