@@ -1166,6 +1166,50 @@ service cloud.firestore {
       );
     }
 
+    /* =========================
+       Partner workspace foundation
+       الوصول الذاتي للشريكات سيضاف عند بناء البوابة والحسابات.
+    ========================= */
+    match /salons/{salonId}/partners/{partnerId} {
+      allow read: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","hr"]
+      );
+      allow create, update: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin"]
+      );
+      allow delete: if false;
+    }
+
+    match /salons/{salonId}/rental_resources/{resourceId} {
+      allow read: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","hr"]
+      );
+      allow create, update: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin"]
+      );
+      allow delete: if false;
+    }
+
+    match /salons/{salonId}/partner_contracts/{contractId} {
+      allow read: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin"]
+      );
+      allow create, update: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin"]
+      );
+      allow delete: if false;
+    }
+
+    match /salons/{salonId}/partner_members/{memberId} {
+      allow read: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","hr"]
+      );
+      allow create, update: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin"]
+      );
+      allow delete: if false;
+    }
+
     // catch-all لأي كولكشن ثانية داخل salon (اختياري)
     match /salons/{salonId}/{colName}/{docId} {
       allow read, write: if signedIn() && (
@@ -1193,6 +1237,10 @@ service cloud.firestore {
         && colName != "notifications"
         && colName != "weekly_reports"
         && colName != "job_applications"
+        && colName != "partners"
+        && colName != "rental_resources"
+        && colName != "partner_contracts"
+        && colName != "partner_members"
         && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"])
       );
     }
