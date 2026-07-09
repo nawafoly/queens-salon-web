@@ -1,0 +1,22 @@
+﻿{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "queens-salon-partners-api",
+  "main": "workers/partners-worker.js",
+  "compatibility_date": "2026-07-09",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "FIREBASE_PROJECT_ID": "waves-hotel-dashboard",
+    "BOOTSTRAP_ADMIN_EMAILS": "nawafaaa0@gmail.com,nawafaaa6@gmail.com",
+    "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173,http://localhost,capacitor://localhost"
+  },
+  "d1_databases": [
+    {
+      "binding": "PARTNERS_DB",
+      "database_name": "queens-salon-partners",
+      "database_id": "89f5427d-bbf4-42a8-8359-c69511480744",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

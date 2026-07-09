@@ -30,6 +30,7 @@
     "@fortawesome/react-fontawesome": "^3.1.1",
     "bootstrap": "^5.3.8",
     "firebase": "^12.7.0",
+    "jose": "^6.2.3",
     "qr-scanner": "^1.4.2",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",

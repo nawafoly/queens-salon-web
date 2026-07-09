@@ -1,40 +1,15 @@
-import { collection, doc } from "firebase/firestore";
-
-import { db } from "./firebase";
-
 export const PARTNER_SALON_ID = "main" as const;
 
-export const PARTNER_COLLECTIONS = {
-  partners: "partners",
-  rentalResources: "rental_resources",
-  partnerContracts: "partner_contracts",
-  partnerMembers: "partner_members",
+export const PARTNER_API_PATHS = {
+  partners: "/api/partners",
+  rentalResources: "/api/resources",
+  partnerContracts: "/api/contracts",
+  partnerMembers: "/api/members",
 } as const;
 
-export type PartnerCollectionKey = keyof typeof PARTNER_COLLECTIONS;
-
-export function partnerCollection(
-  key: PartnerCollectionKey,
-  salonId: string = PARTNER_SALON_ID
-) {
-  return collection(
-    db,
-    "salons",
-    String(salonId || PARTNER_SALON_ID).trim() || PARTNER_SALON_ID,
-    PARTNER_COLLECTIONS[key]
-  );
-}
-
-export function partnerDoc(
-  key: PartnerCollectionKey,
-  id: string,
-  salonId: string = PARTNER_SALON_ID
-) {
-  return doc(
-    db,
-    "salons",
-    String(salonId || PARTNER_SALON_ID).trim() || PARTNER_SALON_ID,
-    PARTNER_COLLECTIONS[key],
-    String(id || "").trim()
-  );
+export function getPartnersWorkerBaseUrl() {
+  const configured = String(import.meta.env.VITE_PARTNERS_WORKER_URL || "").trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  if (import.meta.env.DEV) return "http://127.0.0.1:8787";
+  throw new Error("partner_api:not_configured");
 }

@@ -240,8 +240,26 @@ function suggestContractNumber(contracts: PartnerContract[]) {
 function translatePartnerError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
 
-  if (message.includes("permission-denied")) {
-    return "لا توجد صلاحية للوصول إلى نظام الشريكات. تأكد من نشر قواعد Firestore الجديدة.";
+  if (message.includes("partner_api:not_configured")) {
+    return "رابط Cloudflare Worker غير مضبوط في VITE_PARTNERS_WORKER_URL.";
+  }
+  if (message.includes("partner_api:d1_not_configured")) {
+    return "قاعدة D1 غير مربوطة بالـWorker. أنشئ القاعدة وحدّث ملف Wrangler.";
+  }
+  if (message.includes("partner_api:migrations_not_applied")) {
+    return "جداول نظام الشريكات غير منشأة في D1. طبّق migrations أولًا.";
+  }
+  if (message.includes("partner_auth:login_required")) {
+    return "انتهت جلسة الدخول. سجّل الدخول من جديد.";
+  }
+  if (message.includes("partner_auth:admin_access_required")) {
+    return "الحساب الحالي غير مصرح له بإدارة نظام الشريكات.";
+  }
+  if (message.includes("partner_auth:")) {
+    return "تعذر التحقق من جلسة الدخول لدى Cloudflare. حدّث الصفحة وحاول مجددًا.";
+  }
+  if (message.includes("Failed to fetch")) {
+    return "تعذر الاتصال بخدمة الشريكات في Cloudflare. تأكد أن Wrangler يعمل على المنفذ 8787.";
   }
   if (message.includes("displayName_required")) return "اسم النشاط مطلوب.";
   if (message.includes("ownerName_required")) return "اسم مالكة النشاط مطلوب.";
@@ -259,8 +277,8 @@ function translatePartnerError(error: unknown) {
     return "العقد النشط يتطلب أن تكون حالة الشريكة نشطة.";
   }
   if (message.includes("resource_not_found")) return "إحدى المساحات المحددة لم تعد موجودة.";
-  if (message.includes("resource_already_assigned")) {
-    return "إحدى المساحات مرتبطة بعقد آخر. حدّث الصفحة واختر مساحة متاحة.";
+  if (message.includes("resource_already_assigned") || message.includes("resource_not_available_or_assigned")) {
+    return "إحدى المساحات مرتبطة بعقد آخر أو لم تعد متاحة. حدّث الصفحة واختر مساحة متاحة.";
   }
   if (message.includes("resource_not_available")) {
     return "لا يمكن ربط مساحة تحت الصيانة أو غير نشطة بالعقد.";
