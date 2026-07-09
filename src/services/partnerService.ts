@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  runTransaction,
   serverTimestamp,
   setDoc,
   writeBatch,
@@ -280,6 +281,104 @@ function normalizeMember(
   };
 }
 
+function buildContractDocumentId(contractNumber: string) {
+  const normalized = requireText(contractNumber, "contractNumber").toLocaleLowerCase("en-US");
+  return `contract_${encodeURIComponent(normalized).replace(/%/g, "_")}`;
+}
+
+function buildContractCreatePayload(
+  input: CreatePartnerContractInput,
+  actorUid?: string
+) {
+  const partnerId = requireText(input.partnerId, "partnerId");
+  const resourceIds = cleanStringList(input.resourceIds);
+  const contractNumber = requireText(input.contractNumber, "contractNumber");
+  const startDate = requireText(input.startDate, "startDate");
+  const endDate = cleanOptionalText(input.endDate);
+  const status = CONTRACT_STATUSES.has(input.status) ? input.status : "draft";
+  const billingModel = input.billingModel;
+  const partnerSharePercent = cleanPercent(input.partnerSharePercent);
+  const salonSharePercent = cleanPercent(input.salonSharePercent);
+  const fixedRentAmount = cleanOptionalNumber(input.fixedRentAmount);
+  const hourlyRate = cleanOptionalNumber(input.hourlyRate);
+  const dailyRate = cleanOptionalNumber(input.dailyRate);
+  const paymentDueDay = cleanOptionalNumber(input.paymentDueDay, 1);
+  const timeOffMonthlyHours = cleanOptionalNumber(input.timeOffMonthlyHours);
+  const timeOffMaxHoursPerRolling14Days = cleanOptionalNumber(
+    input.timeOffMaxHoursPerRolling14Days
+  );
+
+  if (resourceIds.length === 0) {
+    throw new Error("partner_validation:resource_required");
+  }
+  if (status !== "draft" && status !== "active") {
+    throw new Error("partner_validation:create_contract_status_invalid");
+  }
+  if (endDate && endDate < startDate) {
+    throw new Error("partner_validation:end_date_before_start_date");
+  }
+  if (paymentDueDay !== undefined && (paymentDueDay < 1 || paymentDueDay > 28)) {
+    throw new Error("partner_validation:payment_due_day_invalid");
+  }
+  if (
+    timeOffMonthlyHours !== undefined &&
+    timeOffMaxHoursPerRolling14Days !== undefined &&
+    timeOffMaxHoursPerRolling14Days > timeOffMonthlyHours
+  ) {
+    throw new Error("partner_validation:rolling_time_off_exceeds_monthly");
+  }
+
+  const usesRevenueShare = billingModel === "revenue_share" || billingModel === "hybrid";
+  if (usesRevenueShare) {
+    if (partnerSharePercent === undefined || salonSharePercent === undefined) {
+      throw new Error("partner_validation:revenue_shares_required");
+    }
+    if (Math.abs(partnerSharePercent + salonSharePercent - 100) > 0.001) {
+      throw new Error("partner_validation:revenue_shares_must_equal_100");
+    }
+    if (!input.revenueShareBasis) {
+      throw new Error("partner_validation:revenue_share_basis_required");
+    }
+  }
+  if ((billingModel === "fixed_rent" || billingModel === "hybrid") && !(fixedRentAmount && fixedRentAmount > 0)) {
+    throw new Error("partner_validation:fixed_rent_required");
+  }
+  if (billingModel === "hourly" && !(hourlyRate && hourlyRate > 0)) {
+    throw new Error("partner_validation:hourly_rate_required");
+  }
+  if (billingModel === "daily" && !(dailyRate && dailyRate > 0)) {
+    throw new Error("partner_validation:daily_rate_required");
+  }
+
+  const timestamp = serverTimestamp();
+  return stripUndefined({
+    partnerId,
+    resourceIds,
+    contractNumber,
+    status,
+    billingModel,
+    startDate,
+    endDate,
+    currency: cleanText(input.currency) || "SAR",
+    fixedRentAmount,
+    hourlyRate,
+    dailyRate,
+    partnerSharePercent,
+    salonSharePercent,
+    revenueShareBasis: input.revenueShareBasis,
+    minimumSalonShareAmount: cleanOptionalNumber(input.minimumSalonShareAmount),
+    depositAmount: cleanOptionalNumber(input.depositAmount),
+    paymentDueDay,
+    timeOffMonthlyHours,
+    timeOffMaxHoursPerRolling14Days,
+    notes: cleanOptionalText(input.notes),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    createdByUid: cleanOptionalText(actorUid),
+    updatedByUid: cleanOptionalText(actorUid),
+  });
+}
+
 function buildAuditPatch(actorUid?: string) {
   const uid = cleanOptionalText(actorUid);
   return stripUndefined({
@@ -529,46 +628,74 @@ export const PartnerService = {
     actorUid?: string,
     salonId: string = PARTNER_SALON_ID
   ) {
-    const partnerSharePercent = cleanPercent(input.partnerSharePercent);
-    const salonSharePercent = cleanPercent(input.salonSharePercent);
-    if (
-      partnerSharePercent !== undefined &&
-      salonSharePercent !== undefined &&
-      Math.abs(partnerSharePercent + salonSharePercent - 100) > 0.001
-    ) {
-      throw new Error("partner_validation:revenue_shares_must_equal_100");
-    }
+    const payload = buildContractCreatePayload(input, actorUid);
+    const contractNumber = requireText(input.contractNumber, "contractNumber");
+    const partnerId = requireText(input.partnerId, "partnerId");
+    const resourceIds = cleanStringList(input.resourceIds);
+    const contractRef = partnerDoc(
+      "partnerContracts",
+      buildContractDocumentId(contractNumber),
+      salonId
+    );
+    const partnerRef = partnerDoc("partners", partnerId, salonId);
+    const resourceRefs = resourceIds.map((resourceId) =>
+      partnerDoc("rentalResources", resourceId, salonId)
+    );
 
-    const payload = stripUndefined({
-      partnerId: requireText(input.partnerId, "partnerId"),
-      resourceIds: cleanStringList(input.resourceIds),
-      contractNumber: requireText(input.contractNumber, "contractNumber"),
-      status: CONTRACT_STATUSES.has(input.status) ? input.status : "draft",
-      billingModel: input.billingModel,
-      startDate: requireText(input.startDate, "startDate"),
-      endDate: cleanOptionalText(input.endDate),
-      currency: cleanText(input.currency) || "SAR",
-      fixedRentAmount: cleanOptionalNumber(input.fixedRentAmount),
-      hourlyRate: cleanOptionalNumber(input.hourlyRate),
-      dailyRate: cleanOptionalNumber(input.dailyRate),
-      partnerSharePercent,
-      salonSharePercent,
-      revenueShareBasis: input.revenueShareBasis,
-      minimumSalonShareAmount: cleanOptionalNumber(input.minimumSalonShareAmount),
-      depositAmount: cleanOptionalNumber(input.depositAmount),
-      paymentDueDay: cleanOptionalNumber(input.paymentDueDay, 1),
-      timeOffMonthlyHours: cleanOptionalNumber(input.timeOffMonthlyHours),
-      timeOffMaxHoursPerRolling14Days: cleanOptionalNumber(
-        input.timeOffMaxHoursPerRolling14Days
-      ),
-      notes: cleanOptionalText(input.notes),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      createdByUid: cleanOptionalText(actorUid),
-      updatedByUid: cleanOptionalText(actorUid),
+    await runTransaction(contractRef.firestore, async (transaction) => {
+      const [contractSnapshot, partnerSnapshot, ...resourceSnapshots] = await Promise.all([
+        transaction.get(contractRef),
+        transaction.get(partnerRef),
+        ...resourceRefs.map((reference) => transaction.get(reference)),
+      ]);
+
+      if (contractSnapshot.exists()) {
+        throw new Error("partner_validation:contract_number_exists");
+      }
+      if (!partnerSnapshot.exists()) {
+        throw new Error("partner_validation:partner_not_found");
+      }
+
+      const partnerStatus = cleanText(partnerSnapshot.data().status);
+      if (partnerStatus === "suspended" || partnerStatus === "ended") {
+        throw new Error("partner_validation:partner_not_available");
+      }
+      if (input.status === "active" && partnerStatus !== "active") {
+        throw new Error("partner_validation:active_contract_requires_active_partner");
+      }
+
+      resourceSnapshots.forEach((snapshot) => {
+        if (!snapshot.exists()) {
+          throw new Error("partner_validation:resource_not_found");
+        }
+        const data = snapshot.data();
+        const currentContractId = cleanOptionalText(data.currentContractId);
+        const currentPartnerId = cleanOptionalText(data.currentPartnerId);
+        const resourceStatus = cleanText(data.status);
+        if (currentContractId || currentPartnerId || resourceStatus === "rented") {
+          throw new Error("partner_validation:resource_already_assigned");
+        }
+        if (resourceStatus === "maintenance" || resourceStatus === "inactive") {
+          throw new Error("partner_validation:resource_not_available");
+        }
+      });
+
+      transaction.set(contractRef, payload);
+      resourceRefs.forEach((reference) => {
+        transaction.set(
+          reference,
+          stripUndefined({
+            currentPartnerId: partnerId,
+            currentContractId: contractRef.id,
+            status: input.status === "active" ? "rented" : "reserved",
+            ...buildAuditPatch(actorUid),
+          }),
+          { merge: true }
+        );
+      });
     });
-    const reference = await addDoc(partnerCollection("partnerContracts", salonId), payload);
-    return reference.id;
+
+    return contractRef.id;
   },
 
   async updatePartnerContract(
