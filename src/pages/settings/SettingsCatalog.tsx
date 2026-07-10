@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   collection,
   deleteDoc,
@@ -116,6 +117,24 @@ type ComposerMode = null | "section" | "service";
 type ServiceComposerSpot = "pricing" | "variants";
 
 const DEFAULT_PACKAGE_SESSIONS = 10;
+
+function CatalogModalPortal(props: { active: boolean; children: ReactNode }) {
+  const { active, children } = props;
+
+  if (!active || typeof document === "undefined") {
+    return <>{children}</>;
+  }
+
+  return createPortal(
+    <div
+      className="dashboard-skin madan-admin-shell scatalog-modal-portal"
+      dir="rtl"
+    >
+      {children}
+    </div>,
+    document.body
+  );
+}
 
 function resetPackageFormState(setters: {
   setPackageName: (value: string) => void;
@@ -2490,10 +2509,11 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             <div className="scatalog-ref__list">{renderCatalogList()}</div>
           </aside>
 
-          {hasSelection ? (
-            <button
-              type="button"
-              className="scatalog-ref__modal-backdrop"
+          <CatalogModalPortal active={hasSelection}>
+            {hasSelection ? (
+              <button
+                type="button"
+                className="scatalog-ref__modal-backdrop"
               aria-label="إغلاق تفاصيل الكتالوج"
               onClick={closeCatalogDetail}
             />
@@ -3262,7 +3282,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                   {openedServiceViewCard}
                 </section>
               )}
-          </section>
+            </section>
+          </CatalogModalPortal>
         </div>
         )}
 
