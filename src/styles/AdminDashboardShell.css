@@ -1340,3 +1340,417 @@
     display: none !important;
   }
 }
+
+/* =========================================================
+   Dashboard sidebar refinement + catalog header visibility
+   Compact, high-contrast navigation inspired by modern tools.
+========================================================= */
+
+.dashboard-skin.madan-admin-shell.dashboard-page {
+  --dash-pro-sidebar-width: 252px;
+  --dash-pro-sidebar-collapsed: 76px;
+  --dash-pro-sidebar-bg: #090a0f;
+  --dash-pro-sidebar-line: rgba(255, 255, 255, 0.075);
+  --dash-pro-sidebar-text: rgba(255, 255, 255, 0.76);
+  --dash-pro-sidebar-muted: rgba(255, 255, 255, 0.38);
+  --dash-pro-sidebar-active: rgba(255, 255, 255, 0.095);
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
+  flex-basis: var(--dash-pro-sidebar-width) !important;
+  width: var(--dash-pro-sidebar-width) !important;
+  max-width: var(--dash-pro-sidebar-width) !important;
+  padding: 10px 9px 9px !important;
+  border-left: 1px solid var(--dash-pro-sidebar-line) !important;
+  background:
+    radial-gradient(circle at 88% -8%, rgba(242, 183, 5, 0.08), transparent 27%),
+    linear-gradient(180deg, #0b0c12 0%, var(--dash-pro-sidebar-bg) 100%) !important;
+  box-shadow: -8px 0 26px rgba(3, 6, 18, 0.08) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-header {
+  min-height: 62px !important;
+  margin: 0 0 8px !important;
+  padding: 8px 10px 11px !important;
+  justify-content: flex-start !important;
+  border-bottom: 1px solid var(--dash-pro-sidebar-line) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-logo {
+  max-width: 132px !important;
+  max-height: 42px !important;
+  filter: brightness(0) invert(1) !important;
+  opacity: 0.96;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .dash-sidebar-collapse {
+  left: 7px !important;
+  width: 31px !important;
+  min-width: 31px !important;
+  height: 31px !important;
+  border: 1px solid var(--dash-pro-sidebar-line) !important;
+  border-radius: 8px !important;
+  color: rgba(255, 255, 255, 0.62) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .dash-sidebar-collapse:hover {
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.075) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .user-info {
+  gap: 9px !important;
+  margin: 8px 0 0 !important;
+  padding: 9px 8px !important;
+  border: 1px solid var(--dash-pro-sidebar-line) !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.025) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .user-info:hover {
+  background: rgba(255, 255, 255, 0.055) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .user-avatar {
+  flex-basis: 34px !important;
+  width: 34px !important;
+  height: 34px !important;
+  border: 1px solid rgba(242, 183, 5, 0.22) !important;
+  border-radius: 9px !important;
+  color: #f5cf55 !important;
+  background: rgba(242, 183, 5, 0.08) !important;
+  font-size: 0.78rem !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .user-details h5 {
+  margin-bottom: 2px !important;
+  font-size: 0.75rem !important;
+  font-weight: 850 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .user-details p {
+  color: rgba(255, 255, 255, 0.43) !important;
+  font-size: 0.61rem !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav {
+  padding: 2px 0 8px !important;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent !important;
+  scrollbar-width: thin !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav::-webkit-scrollbar {
+  width: 4px !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav::-webkit-scrollbar-thumb {
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav-section {
+  margin: 13px 8px 5px !important;
+  padding: 10px 2px 0 !important;
+  border-top: 1px solid var(--dash-pro-sidebar-line) !important;
+  color: var(--dash-pro-sidebar-muted) !important;
+  font-size: 0.58rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav-section:first-child {
+  margin-top: 4px !important;
+  padding-top: 0 !important;
+  border-top: 0 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link {
+  position: relative;
+  gap: 9px !important;
+  min-height: 38px !important;
+  margin: 2px 0 !important;
+  padding: 8px 9px !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  color: var(--dash-pro-sidebar-text) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  line-height: 1.25;
+  transition:
+    color 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 3px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link svg,
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link .svg-inline--fa {
+  flex-basis: 16px !important;
+  width: 16px !important;
+  min-width: 16px !important;
+  color: rgba(255, 255, 255, 0.46) !important;
+  font-size: 0.76rem !important;
+  transition: color 150ms ease, transform 150ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link:hover {
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.045) !important;
+  background: rgba(255, 255, 255, 0.052) !important;
+  transform: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link:hover svg,
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link:hover .svg-inline--fa {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link.active {
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.075) !important;
+  background: var(--dash-pro-sidebar-active) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link.active::before {
+  background: #f2b705 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link.active svg,
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav .nav-link.active .svg-inline--fa {
+  color: #f5cf55 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .dash-badge {
+  min-width: 18px !important;
+  height: 18px !important;
+  padding: 0 5px !important;
+  color: #16120a !important;
+  background: #f2b705 !important;
+  font-size: 0.56rem !important;
+}
+
+@media (min-width: 992px) {
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
+    position: sticky !important;
+    top: 0 !important;
+    align-self: flex-start !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .user-info {
+    order: 3;
+    flex: 0 0 auto;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav {
+    order: 2;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed {
+    --dash-sidebar-width: var(--dash-pro-sidebar-collapsed);
+    --madan-sidebar-width: var(--dash-pro-sidebar-collapsed);
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed .dashboard-sidebar {
+    flex-basis: var(--dash-pro-sidebar-collapsed) !important;
+    width: var(--dash-pro-sidebar-collapsed) !important;
+    max-width: var(--dash-pro-sidebar-collapsed) !important;
+    padding-inline: 8px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed .sidebar-header {
+    min-height: 72px !important;
+    padding: 10px 5px 37px !important;
+    justify-content: center !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed .sidebar-logo {
+    max-width: 45px !important;
+    max-height: 30px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed .dash-sidebar-collapse {
+    bottom: 5px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed .user-info {
+    padding: 7px 5px !important;
+    justify-content: center !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed .user-avatar {
+    width: 32px !important;
+    height: 32px !important;
+    flex-basis: 32px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed .sidebar-nav .nav-link {
+    width: 40px !important;
+    min-height: 38px !important;
+    border-radius: 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed .sidebar-nav .nav-link::before {
+    top: 8px;
+    bottom: 8px;
+    inset-inline-start: 2px;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
+    width: min(86vw, 286px) !important;
+    max-width: min(86vw, 286px) !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+  }
+}
+
+/* Catalog header: the white panel must not hide its title and description. */
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header {
+  min-height: 128px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 22px !important;
+  padding: 24px 26px !important;
+  border: 1px solid rgba(15, 23, 42, 0.09) !important;
+  border-radius: 24px !important;
+  color: #0b1537 !important;
+  background:
+    radial-gradient(circle at 8% 18%, rgba(242, 183, 5, 0.1), transparent 24%),
+    linear-gradient(145deg, #ffffff 0%, #fbfcff 100%) !important;
+  box-shadow: 0 18px 44px -34px rgba(3, 6, 64, 0.34) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header::after {
+  inset-inline-end: auto !important;
+  inset-inline-start: -58px !important;
+  top: -78px !important;
+  bottom: auto !important;
+  width: 214px !important;
+  height: 214px !important;
+  border: 1px solid rgba(242, 183, 5, 0.18) !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  box-shadow:
+    0 0 0 34px rgba(242, 183, 5, 0.04),
+    0 0 0 70px rgba(242, 183, 5, 0.018) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header .settings-shell__subhead-copy {
+  position: relative !important;
+  z-index: 2 !important;
+  max-width: 760px !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header .settings-shell__eyebrow {
+  display: inline-flex !important;
+  width: fit-content !important;
+  min-height: 28px !important;
+  align-items: center !important;
+  padding: 5px 11px !important;
+  border: 1px solid rgba(242, 183, 5, 0.16) !important;
+  border-radius: 999px !important;
+  color: #b77900 !important;
+  background: rgba(242, 183, 5, 0.1) !important;
+  font-size: 0.62rem !important;
+  letter-spacing: 0 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header h1,
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header h1 * {
+  margin: 7px 0 5px !important;
+  color: #071341 !important;
+  opacity: 1 !important;
+  font-size: clamp(1.85rem, 3vw, 2.55rem) !important;
+  line-height: 1.18 !important;
+  text-shadow: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header p,
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header small {
+  margin: 0 !important;
+  color: #596579 !important;
+  opacity: 1 !important;
+  font-size: 0.84rem !important;
+  line-height: 1.75 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header .settings-shell__subhead-meta {
+  position: relative !important;
+  z-index: 2 !important;
+  align-self: center !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header .settings-shell__subhead-meta .exp-btn {
+  min-width: 76px !important;
+  min-height: 40px !important;
+  border: 1px solid rgba(15, 23, 42, 0.11) !important;
+  border-radius: 11px !important;
+  color: #25324a !important;
+  background: #fff !important;
+  box-shadow: 0 9px 22px -20px rgba(3, 6, 64, 0.4) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header .settings-shell__subhead-meta .exp-btn:hover {
+  border-color: rgba(242, 183, 5, 0.45) !important;
+  color: #071341 !important;
+  background: rgba(242, 183, 5, 0.08) !important;
+}
+
+@media (max-width: 700px) {
+  .dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header {
+    min-height: 0 !important;
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+    padding: 20px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header .settings-shell__subhead-meta {
+    width: 100% !important;
+    justify-content: stretch !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .scatalog__header .settings-shell__subhead-meta .exp-btn {
+    width: 100% !important;
+  }
+}
