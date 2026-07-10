@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { formatTime12 } from "../helpers/timeDisplay";
 import {
   bookingPaymentMethodLabelAr,
@@ -73,6 +73,40 @@ function safeParse<T>(key: string, fallback: T): T {
   }
 }
 
+function safeStorageText(key: string): string {
+  try {
+    return String(localStorage.getItem(key) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+type InternalReceiptPrintState = {
+  activeKey: string;
+  activeSince: number;
+  lastPrintedKey: string;
+  lastPrintedAt: number;
+  printCount: number;
+};
+
+type InternalReceiptPrintWindow = Window & {
+  __malikatInternalReceiptPrintState?: InternalReceiptPrintState;
+};
+
+function getInternalReceiptPrintState(): InternalReceiptPrintState {
+  const w = window as InternalReceiptPrintWindow;
+  if (!w.__malikatInternalReceiptPrintState) {
+    w.__malikatInternalReceiptPrintState = {
+      activeKey: "",
+      activeSince: 0,
+      lastPrintedKey: "",
+      lastPrintedAt: 0,
+      printCount: 0,
+    };
+  }
+  return w.__malikatInternalReceiptPrintState;
+}
+
 function formatCurrency(num: number): string {
   return new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
@@ -138,6 +172,7 @@ function resolveItemPayment(item: BookingItem) {
 }
 
 export default function SuccessInternal() {
+  const printEffectStartedRef = useRef(false);
   const bookingInfo = useMemo<CurrentBooking | null>(
     () => safeParse<CurrentBooking | null>("currentBooking", null),
     []
@@ -147,6 +182,7 @@ export default function SuccessInternal() {
     () => safeParse<BookingItem[]>("allBookings", []),
     []
   );
+  const printRequestId = useMemo(() => safeStorageText("internalInvoicePrintRequestId"), []);
 
   const firstItem = allBookings[0] || {};
 
@@ -212,11 +248,72 @@ export default function SuccessInternal() {
   const offerTitle =
     String((allBookings.find((x) => String(x.offerTitle || "").trim())?.offerTitle || "")).trim() ||
     "";
+  const invoicePrintKey = useMemo(() => {
+    const rowKeys = allBookings
+      .map((item, index) =>
+        [
+          item.id || index,
+          item.publicId || "",
+          readItemServiceName(item),
+          item.date || "",
+          item.time || "",
+          Number(item.finalPrice || 0),
+          Number(item.paidAmount || 0),
+          Number(item.remainingAmount || 0),
+        ].join(":")
+      )
+      .join("|");
+    return [
+      "internal-receipt",
+      printRequestId || "legacy",
+      publicId,
+      totalFinalPrice,
+      paidTotal,
+      remainingTotal,
+      rowKeys,
+    ].join("::");
+  }, [allBookings, paidTotal, printRequestId, publicId, remainingTotal, totalFinalPrice]);
 
   useEffect(() => {
     if (allBookings.length === 0) return;
+    if (printEffectStartedRef.current) return;
+
+    const receiptCount = document.querySelectorAll("#booking-print-receipt").length;
+    if (receiptCount !== 1) {
+      console.warn(`Expected one #booking-print-receipt element, found ${receiptCount}.`);
+      if (receiptCount < 1) return;
+    }
+
+    const state = getInternalReceiptPrintState();
+    const now = Date.now();
+    const printKey = invoicePrintKey;
+    const activeIsFresh = state.activeKey === printKey && now - state.activeSince < 15_000;
+    const justPrinted = state.lastPrintedKey === printKey && now - state.lastPrintedAt < 3_000;
+    if (activeIsFresh || justPrinted) return;
+
+    printEffectStartedRef.current = true;
+    state.activeKey = printKey;
+    state.activeSince = now;
+
+    let closed = false;
+    let printed = false;
     let closeTimer: number | null = null;
+    let finishTimer: number | null = null;
+    let resetTimer: number | null = null;
+
+    const finishPrintCycle = () => {
+      if (state.activeKey === printKey) {
+        state.activeKey = "";
+        state.activeSince = 0;
+      }
+      if (printed) {
+        state.lastPrintedKey = printKey;
+        state.lastPrintedAt = Date.now();
+      }
+    };
+
     const closeAfterPrint = () => {
+      finishPrintCycle();
       // Close only when the page is opened as a popup/tab by script.
       if (window.opener || window.name === "internal_print_popup") {
         closeTimer = window.setTimeout(() => {
@@ -230,13 +327,29 @@ export default function SuccessInternal() {
     };
 
     window.addEventListener("afterprint", closeAfterPrint);
-    const timer = window.setTimeout(() => window.print(), 800);
+    const timer = window.setTimeout(() => {
+      if (closed) return;
+      printed = true;
+      state.printCount += 1;
+      window.print();
+      finishTimer = window.setTimeout(finishPrintCycle, 1200);
+    }, 650);
+    resetTimer = window.setTimeout(finishPrintCycle, 15_000);
+
     return () => {
+      closed = true;
       window.clearTimeout(timer);
+      if (finishTimer != null) window.clearTimeout(finishTimer);
+      if (resetTimer != null) window.clearTimeout(resetTimer);
       if (closeTimer != null) window.clearTimeout(closeTimer);
       window.removeEventListener("afterprint", closeAfterPrint);
+      if (!printed && state.activeKey === printKey) {
+        state.activeKey = "";
+        state.activeSince = 0;
+        printEffectStartedRef.current = false;
+      }
     };
-  }, [allBookings]);
+  }, [allBookings.length, invoicePrintKey]);
 
   if (allBookings.length === 0) {
     return (
@@ -427,17 +540,18 @@ export default function SuccessInternal() {
   body * {
     visibility: hidden !important;
   }
-  #print-area,
-  #print-area * {
+  #booking-print-receipt,
+  #booking-print-receipt * {
     visibility: visible !important;
   }
-  #print-area {
-    position: fixed !important;
+  #booking-print-receipt {
+    position: absolute !important;
     top: 0 !important;
     left: 0 !important;
-    width: 80mm !important;
+    width: var(--receipt-width) !important;
     height: auto !important;
     min-height: 0 !important;
+    margin: 0 !important;
   }
   html,
   body {
@@ -462,7 +576,11 @@ export default function SuccessInternal() {
         `}
       </style>
 
-      <div className="receipt-container">
+      <div
+        id="booking-print-receipt"
+        className="receipt-container"
+        data-print-request-id={printRequestId || undefined}
+      >
         <header className="header">
           <h1 className="brand-logo">Malikat</h1>
           <p className="subtitle">MALIKAT SALON - فاتورة حجز</p>

@@ -1226,8 +1226,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const internalPaidAmountRef = useRef<number | null>(null);
   const internalPaymentBreakdownRef = useRef<BookingPaymentBreakdown | null>(null);
   const internalSubmitModeRef = useRef<"payment" | "future">("payment");
+  const internalSubmitQueueLockRef = useRef(false);
+  const internalSubmitLockRef = useRef(false);
   const internalBookingFormRef = useRef<HTMLFormElement | null>(null);
   const pendingInvoicePopupRef = useRef<Window | null>(null);
+  const internalInvoiceActionLockRef = useRef(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [confirmTargetBooking, setConfirmTargetBooking] = useState<any | null>(null);
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<BookingPaymentMethod>("cash");
@@ -2015,6 +2018,24 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     pendingInvoicePopupRef.current = null;
   }
 
+  function createInternalInvoicePrintRequestId(source: string) {
+    const randomPart =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2, 12);
+    const requestId = `${Date.now()}-${randomPart}`;
+    localStorage.setItem("internalInvoicePrintRequestId", requestId);
+    localStorage.setItem("internalInvoicePrintRequestSource", source);
+    return requestId;
+  }
+
+  function stageInternalInvoiceForPrint(bookings: any[], source: string) {
+    const rows = Array.isArray(bookings) ? bookings.filter(Boolean) : [];
+    createInternalInvoicePrintRequestId(source);
+    localStorage.setItem("allBookings", JSON.stringify(rows));
+    localStorage.setItem("currentBooking", JSON.stringify(rows[0] || null));
+  }
+
   function openInternalPrintPopup() {
     const invoiceUrl = `${window.location.origin}/success-internal`;
     const pending = pendingInvoicePopupRef.current;
@@ -2131,6 +2152,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   ) {
     const id = String(b?.id || "").trim();
     if (!id) return;
+    if (internalInvoiceActionLockRef.current) return;
     if (isCancelledStatus(b) || isRefundedBooking(b)) {
       openModal({
         title: "لا يمكن تأكيد هذا الحجز",
@@ -2153,6 +2175,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return;
     }
 
+    internalInvoiceActionLockRef.current = true;
     setIsLoading(true);
     try {
       const now = Date.now();
@@ -2224,8 +2247,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         String(prev?.id || "") === id ? { ...prev, ...refreshed } : prev
       );
 
-      localStorage.setItem("currentBooking", JSON.stringify(printReady));
-      localStorage.setItem("allBookings", JSON.stringify([printReady]));
+      stageInternalInvoiceForPrint([printReady], "internal_existing_confirm_and_print");
       setPaymentModalOpen(false);
       setConfirmTargetBooking(null);
       setConfirmPaymentError("");
@@ -2241,6 +2263,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         confirmText: "تمام",
       });
     } finally {
+      internalInvoiceActionLockRef.current = false;
       setIsLoading(false);
     }
   }
@@ -2433,10 +2456,17 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }
 
   function printExistingBooking(b: any) {
+    if (internalInvoiceActionLockRef.current) return;
+    internalInvoiceActionLockRef.current = true;
     const printReady = enrichBookingForPrint(b);
-    localStorage.setItem("currentBooking", JSON.stringify(printReady));
-    localStorage.setItem("allBookings", JSON.stringify([printReady]));
-    if (!openInternalPrintPopup()) notifyInvoicePopupBlocked();
+    stageInternalInvoiceForPrint([printReady], "internal_existing_reprint");
+    try {
+      if (!openInternalPrintPopup()) notifyInvoicePopupBlocked();
+    } finally {
+      window.setTimeout(() => {
+        internalInvoiceActionLockRef.current = false;
+      }, 1500);
+    }
   }
 
   // =========================
@@ -4965,6 +4995,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return;
     }
 
+    if (internalSubmitLockRef.current) return;
+    internalSubmitLockRef.current = true;
     setIsLoading(true);
 
     try {
@@ -5617,8 +5649,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         ]);
       }
 
-      localStorage.setItem("allBookings", JSON.stringify(createdBookings));
-      localStorage.setItem("currentBooking", JSON.stringify(createdBookings[0] || null));
+      stageInternalInvoiceForPrint(
+        createdBookings,
+        shouldSaveAsPending ? "internal_pending_booking_created" : "internal_booking_created_and_paid"
+      );
       localStorage.removeItem("bookingDraft");
       internalPaymentMethodRef.current = null;
       internalPaymentTypeRef.current = null;
@@ -5685,6 +5719,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         confirmText: "حسنًا",
       });
     } finally {
+      internalSubmitQueueLockRef.current = false;
+      internalSubmitLockRef.current = false;
       setIsLoading(false);
       internalPaymentMethodRef.current = null;
       internalPaymentTypeRef.current = null;
@@ -6154,6 +6190,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     ? { ...EMPTY_PAYMENT_BREAKDOWN }
                     : paymentBreakdownForSingleMethod(methodForSubmit, paidAmount);
                 }
+                if (internalSubmitQueueLockRef.current || internalSubmitLockRef.current) return;
+                internalSubmitQueueLockRef.current = true;
+                window.setTimeout(() => {
+                  internalSubmitQueueLockRef.current = false;
+                }, 2500);
                 if (!isNoPayment && internalSubmitModeRef.current !== "future") {
                   primeInternalPrintPopup();
                 }
@@ -6352,6 +6393,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               type="button"
               className="btn btn-primary bk-pay-confirm-btn"
               onClick={() => {
+                if (isLoading || internalInvoiceActionLockRef.current) return;
                 primeInternalPrintPopup();
                 void confirmAndPrintExistingBooking();
               }}
@@ -6720,6 +6762,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                             className="btn btn-sm bk-action-print"
                                             style={{ borderRadius: 10 }}
                                             onClick={() => {
+                                              if (isLoading || internalInvoiceActionLockRef.current) return;
                                               primeInternalPrintPopup();
                                               printExistingBooking(b);
                                             }}
@@ -6735,6 +6778,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                                 className="btn btn-sm bk-action-confirm"
                                                 style={{ borderRadius: 10 }}
                                                 onClick={() => {
+                                                  if (isLoading || internalInvoiceActionLockRef.current) return;
                                                   primeInternalPrintPopup();
                                                   void completeAndPrintExistingBooking(b);
                                                 }}
@@ -8052,6 +8096,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     className="btn btn-primary bk-pay-btn bk-submit-btn"
                     disabled={isLoading}
                     onClick={() => {
+                      if (internalSubmitLockRef.current) return;
                       internalSubmitModeRef.current = "payment";
                     }}
                   >
@@ -8069,6 +8114,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     className="btn btn-outline-primary bk-future-booking-btn bk-submit-btn"
                     disabled={isLoading}
                     onClick={() => {
+                      if (internalSubmitQueueLockRef.current || internalSubmitLockRef.current) return;
+                      internalSubmitQueueLockRef.current = true;
+                      window.setTimeout(() => {
+                        internalSubmitQueueLockRef.current = false;
+                      }, 2500);
                       internalSubmitModeRef.current = "future";
                       internalBookingFormRef.current?.requestSubmit();
                     }}

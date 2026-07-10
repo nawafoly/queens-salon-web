@@ -13,11 +13,24 @@
   display: grid !important;
   gap: 15px;
   width: 100%;
-  max-width: none !important;
+  max-width: 100% !important;
+  min-width: 0;
   margin: 0 !important;
   padding: 0 !important;
+  box-sizing: border-box;
   color: var(--bk-text);
   background: transparent !important;
+}
+
+.dashboard-skin .bk-page-wrapper,
+.dashboard-skin .bk-page-wrapper .container-fluid,
+.dashboard-skin .bk-page-wrapper .bk-bookings-sections,
+.dashboard-skin .bk-page-wrapper .bk-bookings-section,
+.dashboard-skin .bk-page-wrapper .bookings-table-card,
+.dashboard-skin .bk-page-wrapper .bk-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Header */
@@ -568,16 +581,40 @@
 
 .dashboard-skin .bk-page-wrapper .bk-table-wrap {
   width: 100%;
-  overflow-x: auto;
+  max-width: 100%;
+  overflow-x: hidden;
   scrollbar-width: thin;
 }
 
 .dashboard-skin .bk-page-wrapper .bookings-table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 0 !important;
+  max-width: 100%;
   border-collapse: collapse !important;
+  table-layout: fixed;
   background: #fff !important;
 }
+
+.dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(1),
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(1) { width: 3.5% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(2),
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(2) { width: 9.5% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(3),
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(3) { width: 12% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(4),
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(4) { width: 16% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(5),
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(5) { width: 8% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(6),
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(6) { width: 10% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(7),
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(7) { width: 10.5% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(8),
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(8) { width: 9.5% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(9),
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(9) { width: 11% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(10),
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(10) { width: 10% !important; }
 
 .dashboard-skin .bk-page-wrapper .bookings-table thead th {
   position: sticky;
@@ -592,16 +629,22 @@
   font-weight: 950 !important;
   text-align: right;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dashboard-skin .bk-page-wrapper .bookings-table tbody td {
-  padding: 10px 9px !important;
+  min-width: 0;
+  padding: 9px 8px !important;
   border: 0 !important;
   border-bottom: 1px solid #edf0f4 !important;
   color: #303744 !important;
   background: #fff !important;
   font-size: 0.67rem !important;
-  vertical-align: middle;
+  line-height: 1.45;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .dashboard-skin .bk-page-wrapper .bookings-table tbody tr:hover td {
@@ -613,23 +656,28 @@
 }
 
 .dashboard-skin .bk-page-wrapper .bk-row {
-  border-right: 3px solid transparent;
+  border-right: 0 !important;
 }
 
-.dashboard-skin .bk-page-wrapper .bk-row-pending {
-  border-right-color: #d4a62d;
+.dashboard-skin .bk-page-wrapper .bk-row td:first-child {
+  box-shadow: inset -3px 0 0 transparent;
 }
 
-.dashboard-skin .bk-page-wrapper .bk-row-confirmed {
-  border-right-color: #2c85b7;
+.dashboard-skin .bk-page-wrapper .bk-row-pending td:first-child,
+.dashboard-skin .bk-page-wrapper .bk-row-pending-deposit td:first-child {
+  box-shadow: inset -3px 0 0 #d4a62d;
 }
 
-.dashboard-skin .bk-page-wrapper .bk-row-completed {
-  border-right-color: #26965f;
+.dashboard-skin .bk-page-wrapper .bk-row-confirmed td:first-child {
+  box-shadow: inset -3px 0 0 #2c85b7;
 }
 
-.dashboard-skin .bk-page-wrapper .bk-row-cancelled {
-  border-right-color: #c74d61;
+.dashboard-skin .bk-page-wrapper .bk-row-completed td:first-child {
+  box-shadow: inset -3px 0 0 #26965f;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-row-cancelled td:first-child {
+  box-shadow: inset -3px 0 0 #c74d61;
 }
 
 .dashboard-skin .bk-page-wrapper .bookings-group-row td {
@@ -766,21 +814,32 @@
 }
 
 .dashboard-skin .bk-page-wrapper .bk-actions-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
-  min-width: 170px;
+  min-width: 0;
 }
 
 .dashboard-skin .bk-page-wrapper .bk-actions-row .exp-btn,
 .dashboard-skin .bk-page-wrapper .bk-actions-row .bk-select {
+  width: 100%;
+  min-width: 0;
   min-height: 33px !important;
   padding: 5px 8px !important;
   font-size: 0.6rem !important;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-print-invoice-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
 
 .dashboard-skin .bk-page-wrapper .bk-owner-status-select {
-  min-width: 105px;
+  min-width: 0;
 }
 
 .dashboard-skin .bk-page-wrapper .bk-select-checkbox {
@@ -1114,6 +1173,7 @@
     position: relative;
     display: grid !important;
     gap: 0;
+    min-width: 0;
     padding: 10px !important;
     overflow: hidden;
     border: 1px solid #e0e4ea !important;
@@ -1162,6 +1222,7 @@
     grid-template-columns: 82px minmax(0, 1fr);
     align-items: start;
     gap: 7px;
+    min-width: 0;
     min-height: 34px;
     padding: 7px 3px !important;
     border-bottom: 1px solid #edf0f4;
@@ -1200,6 +1261,7 @@
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px !important;
+    min-width: 0;
     margin-top: 9px;
     padding-top: 9px;
     border-top: 1px solid #e8ebef;

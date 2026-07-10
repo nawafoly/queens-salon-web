@@ -10,6 +10,7 @@ import {
   faXmark,
   faRotate,
   faPlus,
+  faPrint,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { auth, db } from "../services/firebase";
@@ -205,16 +206,21 @@ function paymentMethodLabel(method: PaymentMethodFilterOption | PaymentMethod | 
   return "الكل";
 }
 
-function readPaymentBreakdown(raw: any): { cash: number; card: number } {
+function readPaymentBreakdown(raw: any): { cash: number; card: number; transfer: number } {
   const source = raw?.paymentBreakdown && typeof raw.paymentBreakdown === "object" ? raw.paymentBreakdown : {};
   const cash = Math.max(0, Number((source as any).cash || 0));
   const card = Math.max(0, Number((source as any).card || 0));
-  return { cash: round2(cash), card: round2(card) };
+  const transfer = Math.max(0, Number((source as any).transfer || 0));
+  return { cash: round2(cash), card: round2(card), transfer: round2(transfer) };
 }
 
 function paymentBreakdownAmount(raw: any) {
   const breakdown = readPaymentBreakdown(raw);
-  return round2(Number(breakdown.cash || 0) + Number(breakdown.card || 0));
+  return round2(
+    Number(breakdown.cash || 0) +
+      Number(breakdown.card || 0) +
+      Number(breakdown.transfer || 0)
+  );
 }
 
 function bookingPaymentMethodFilterValue(b: Booking): PaymentMethodFilterOption {
@@ -233,7 +239,161 @@ function paymentMethodDisplayText(b: Booking) {
   const method = bookingPaymentMethodFilterValue(b);
   if (method !== "mixed") return paymentMethodLabel(method);
   const breakdown = readPaymentBreakdown(b);
-  return `مختلط: ${breakdown.cash} كاش + ${breakdown.card} شبكة`;
+  return `مختلط: ${breakdown.cash} كاش + ${breakdown.card} شبكة + ${breakdown.transfer} تحويل`;
+}
+
+function createInvoicePrintRequestId(source: string) {
+  const randomPart =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2, 12);
+  const requestId = `${Date.now()}-${randomPart}`;
+  localStorage.setItem("internalInvoicePrintRequestId", requestId);
+  localStorage.setItem("internalInvoicePrintRequestSource", source);
+  return requestId;
+}
+
+function paymentMethodForInvoice(b: Booking): "cash" | "card" | "transfer" | "mixed" | undefined {
+  const method = bookingPaymentMethodFilterValue(b);
+  if (method === "none") return undefined;
+  if (method === "cash" || method === "card" || method === "transfer" || method === "mixed") return method;
+  const fallback = detectPaymentMethod(b);
+  if (fallback === "cash" || fallback === "card" || fallback === "transfer" || fallback === "mixed") {
+    return fallback;
+  }
+  return undefined;
+}
+
+function buildInvoiceBaseFields(b: Booking) {
+  const payment = resolveBookingPaymentSummary(b);
+  const totalAmount = readBookingTotalAmount(b);
+  const paymentMethod = paymentMethodForInvoice(b);
+  const paymentBreakdown = readPaymentBreakdown(b);
+  const createdAtMs = toMillisSafe(b.createdAt) || toMillisSafe(b.updatedAt) || bookingCreationRefMs(b) || Date.now();
+
+  return {
+    id: String(b.id || "").trim(),
+    bookingId: String(b.id || "").trim(),
+    publicId: String(b.publicId || "").trim(),
+    clientName: String(b.customerName || "").trim(),
+    clientPhone: String(b.phone || "").trim(),
+    name: String(b.customerName || "").trim(),
+    phone: String(b.phone || "").trim(),
+    employeeName: String(b.employeeName || "").trim(),
+    employeeId: String(b.employeeId || "").trim() || undefined,
+    employeeUid: String(b.employeeUid || "").trim() || undefined,
+    date: String(b.date || "").trim(),
+    time: String(b.time || "").trim(),
+    status: b.status,
+    total: totalAmount,
+    finalPrice: totalAmount,
+    paymentMethod,
+    paymentBreakdown,
+    paymentType: payment.paymentType,
+    paidAmount: payment.paidAmount,
+    remainingAmount: payment.remainingAmount,
+    createdAt: createdAtMs,
+    channel: b.channel || "dashboard",
+  };
+}
+
+function splitAmountByWeights(amountRaw: number, weightsRaw: number[]) {
+  const amount = round2(Math.max(0, Number(amountRaw || 0)));
+  const weights = weightsRaw.map((value) => round2(Math.max(0, Number(value || 0))));
+  const totalWeight = round2(weights.reduce((sum, value) => sum + value, 0));
+  if (amount <= 0 || totalWeight <= 0 || !weights.length) return weights.map(() => 0);
+
+  let allocated = 0;
+  return weights.map((weight, index) => {
+    if (index === weights.length - 1) return round2(Math.max(0, amount - allocated));
+    const part = round2((amount * weight) / totalWeight);
+    allocated = round2(allocated + part);
+    return part;
+  });
+}
+
+function paymentTypeFromAmounts(paidAmount: number, remainingAmount: number): BookingPaymentType {
+  if (round2(paidAmount) <= 0 && round2(remainingAmount) > 0) return "none";
+  if (round2(remainingAmount) > 0) return "partial";
+  return "full";
+}
+
+function buildBookingInvoiceRows(b: Booking) {
+  const base = buildInvoiceBaseFields(b);
+  const totalAmount = Number(base.finalPrice || 0);
+  const services = extractServicesFromAny(b);
+  const pricedServices = services.filter((service) => Number.isFinite(Number(service.price)));
+  const servicePricesTotal = round2(pricedServices.reduce((sum, service) => sum + Number(service.price || 0), 0));
+
+  if (services.length > 0 && pricedServices.length === services.length && servicePricesTotal === round2(totalAmount)) {
+    const rowPrices = services.map((service) => Number(service.price || 0));
+    const paidParts = splitAmountByWeights(Number(base.paidAmount || 0), rowPrices);
+    const remainingParts = splitAmountByWeights(Number(base.remainingAmount || 0), rowPrices);
+    const cashParts = splitAmountByWeights(Number(base.paymentBreakdown.cash || 0), rowPrices);
+    const cardParts = splitAmountByWeights(Number(base.paymentBreakdown.card || 0), rowPrices);
+    const transferParts = splitAmountByWeights(Number(base.paymentBreakdown.transfer || 0), rowPrices);
+
+    return services.map((service, index) => ({
+      ...base,
+      id: `${base.id || base.publicId || "booking"}_${String(service.serviceId || index)}`,
+      serviceId: String(service.serviceId || "").trim() || undefined,
+      serviceName: String(service.serviceName || "").trim() || serviceSummaryForTable(b),
+      serviceSectionTitle: String(service.sectionLabel || "").trim() || undefined,
+      serviceCategoryName: String(service.categoryLabel || "").trim() || undefined,
+      durationMin: Number.isFinite(Number(service.durationMin)) ? Number(service.durationMin) : b.durationMin,
+      total: Number(service.price || 0),
+      finalPrice: Number(service.price || 0),
+      paymentBreakdown: {
+        cash: cashParts[index] || 0,
+        card: cardParts[index] || 0,
+        transfer: transferParts[index] || 0,
+      },
+      paymentType: paymentTypeFromAmounts(paidParts[index] || 0, remainingParts[index] || 0),
+      paidAmount: paidParts[index] || 0,
+      remainingAmount: remainingParts[index] || 0,
+      serviceSnapshot: {
+        serviceNameAtBooking: String(service.serviceName || "").trim() || serviceSummaryForTable(b),
+        sectionTitleAtBooking: String(service.sectionLabel || "").trim() || undefined,
+        categoryNameAtBooking: String(service.categoryLabel || "").trim() || undefined,
+      },
+    }));
+  }
+
+  const snapshot = b.serviceSnapshot || {};
+  const packageSnapshot = b.packageSnapshot || {};
+  const serviceName =
+    String(packageSnapshot.packageName || "").trim() ||
+    String(snapshot.serviceNameAtBooking || "").trim() ||
+    serviceSummaryForTable(b);
+
+  return [
+    {
+      ...base,
+      serviceId: String(b.serviceId || "").trim() || undefined,
+      serviceName,
+      serviceSectionTitle: String(snapshot.sectionTitleAtBooking || "").trim() || undefined,
+      serviceCategoryName: String(snapshot.categoryNameAtBooking || "").trim() || undefined,
+      durationMin:
+        Number(packageSnapshot.totalDurationMinAtBooking || 0) > 0
+          ? Number(packageSnapshot.totalDurationMinAtBooking || 0)
+          : b.durationMin,
+      serviceSnapshot: {
+        serviceNameAtBooking: serviceName,
+        sectionIdAtBooking: String(snapshot.sectionIdAtBooking || "").trim() || undefined,
+        sectionTitleAtBooking: String(snapshot.sectionTitleAtBooking || "").trim() || undefined,
+        categoryIdAtBooking: String(snapshot.categoryIdAtBooking || "").trim() || undefined,
+        categoryNameAtBooking: String(snapshot.categoryNameAtBooking || "").trim() || undefined,
+      },
+    },
+  ];
+}
+
+function stageBookingInvoiceForPrint(b: Booking) {
+  const rows = buildBookingInvoiceRows(b);
+  createInvoicePrintRequestId("dashboard_booking_reprint");
+  localStorage.setItem("allBookings", JSON.stringify(rows));
+  localStorage.setItem("currentBooking", JSON.stringify(rows[0] || null));
+  return rows;
 }
 
 function toLocalISODate(d: Date) {
@@ -490,6 +650,7 @@ type Booking = {
   paymentBreakdown?: {
     cash?: number;
     card?: number;
+    transfer?: number;
   };
   paymentType?: BookingPaymentType;
   paidAmount?: number;
@@ -1914,6 +2075,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [refundBusyId, setRefundBusyId] = useState("");
+  const [printInvoiceBusyId, setPrintInvoiceBusyId] = useState("");
+  const printInvoiceLockRef = useRef(false);
   const [refundMapByBookingId, setRefundMapByBookingId] = useState<Record<string, RefundRecord>>({});
   const [refundTarget, setRefundTarget] = useState<Booking | null>(null);
   const [refundSaving, setRefundSaving] = useState(false);
@@ -3924,6 +4087,52 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     }
   }, [bulkTargetStatus, filterSummaryText, getLocalActorAudit, selectedBookings]);
 
+  const handlePrintBookingInvoice = useCallback(async (booking: Booking) => {
+    const bookingId = String(booking?.id || "").trim();
+    if (!bookingId || printInvoiceLockRef.current) return;
+
+    printInvoiceLockRef.current = true;
+    setPrintInvoiceBusyId(bookingId);
+    setError("");
+
+    try {
+      let sourceBooking = booking;
+      try {
+        const bookingSnap = await getDoc(doc(db, "salons", SALON_ID, "bookings", bookingId));
+        if (bookingSnap?.ref?.path) {
+          FirestoreReadStats.bump(bookingSnap.ref.path, "DashboardBookings.printInvoice", "getDoc");
+        }
+        if (bookingSnap.exists()) {
+          sourceBooking = { id: bookingSnap.id, ...(bookingSnap.data() as any) } as Booking;
+        }
+      } catch (readError) {
+        console.warn("Could not refresh booking before invoice print; using current row data.", readError);
+      }
+
+      const rows = stageBookingInvoiceForPrint(sourceBooking);
+      if (!rows.length) throw new Error("NO_INVOICE_ROWS");
+
+      const popup = window.open(
+        `${window.location.origin}/success-internal`,
+        "internal_print_popup",
+        "width=980,height=900,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes"
+      );
+      if (!popup || popup === window) {
+        setError("تم منع فتح نافذة الفاتورة. فعّلي النوافذ المنبثقة للموقع ثم جرّبي مرة أخرى.");
+        return;
+      }
+      popup.focus();
+    } catch (e) {
+      console.error("print booking invoice error:", e);
+      setError("تعذر تجهيز الفاتورة للطباعة.");
+    } finally {
+      window.setTimeout(() => {
+        printInvoiceLockRef.current = false;
+        setPrintInvoiceBusyId("");
+      }, 1500);
+    }
+  }, []);
+
   const renderBookingSection = useCallback((section: BookingDisplaySection) => (
     <section
       key={section.key}
@@ -4084,6 +4293,16 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           <div className="bk-actions-row">
                             <button className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
                               تفاصيل
+                            </button>
+                            <button
+                              type="button"
+                              className="exp-btn ghost sm bk-print-invoice-btn"
+                              onClick={() => void handlePrintBookingInvoice(b)}
+                              disabled={printInvoiceBusyId === b.id}
+                              title="طباعة الفاتورة"
+                            >
+                              <FontAwesomeIcon icon={faPrint} />
+                              {printInvoiceBusyId === b.id ? "جاري التجهيز..." : "طباعة الفاتورة"}
                             </button>
                             {canEditBookings && (
                               <button className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
@@ -4246,6 +4465,15 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       </div>
                       <div className="bk-mobile-actions">
                         <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
+                        <button
+                          type="button"
+                          className="exp-btn ghost sm w-100 bk-print-invoice-btn"
+                          onClick={() => void handlePrintBookingInvoice(b)}
+                          disabled={printInvoiceBusyId === b.id}
+                        >
+                          <FontAwesomeIcon icon={faPrint} />
+                          {printInvoiceBusyId === b.id ? "جاري تجهيز الفاتورة..." : "طباعة الفاتورة"}
+                        </button>
                         {canEditBookings && (
                           <button className="exp-btn ghost sm w-100" onClick={() => openEditBookingModal(b)}>
                             تعديل
@@ -4327,12 +4555,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     canEditBookings,
     canManageRefund,
     handleDeleteBooking,
+    handlePrintBookingInvoice,
     handleUpdateStatus,
     hasActiveBookingFilters,
     lastUpdateMap,
     openEditBookingModal,
     openRefundModal,
     paymentSummaryByBookingId,
+    printInvoiceBusyId,
     refundBusyId,
     refundMapByBookingId,
     resetBookingFilters,
