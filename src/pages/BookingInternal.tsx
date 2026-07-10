@@ -274,6 +274,7 @@ type FlatService = {
 
 type PriceLookupItem = {
   id: string;
+  kind: "service" | "package";
   name: string;
   basePrice: number;
   seasonPrice?: number;
@@ -282,6 +283,7 @@ type PriceLookupItem = {
   sectionId: string;
   categoryId: string;
   categoryName: string;
+  packageId?: string;
 };
 
 type CategoryOption = { id: string; name: string };
@@ -2676,6 +2678,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
             return {
               id: String(d.id || "").trim(),
+              kind: "service" as const,
               active: raw?.active === true,
               name: String(name || "").trim(),
               basePrice: price,
@@ -3250,23 +3253,70 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     [priceLookupQuery]
   );
 
+  const priceLookupPackages = useMemo<PriceLookupItem[]>(() => {
+    return (fsPackages || [])
+      .map((pkg) => {
+        const packageId = String(pkg?.id || "").trim();
+        const name = String(pkg?.name || "").trim();
+        const serviceTerms = Array.isArray(pkg?.services)
+          ? pkg.services
+              .map((service) => String(service?.serviceName || "").trim())
+              .filter(Boolean)
+              .join(" ")
+          : "";
+
+        return {
+          id: packageId ? `pkg:${packageId}` : "",
+          kind: "package" as const,
+          name,
+          basePrice: Number(pkg?.finalPrice || 0),
+          imageUrl: String(pkg?.imageUrl || "").trim(),
+          searchText: normalizeSearchText(
+            `${name} ${String(pkg?.description || "").trim()} ${serviceTerms}`
+          ),
+          sectionId: PACKAGE_SECTION_ID,
+          categoryId: PACKAGE_SECTION_ID,
+          categoryName: PACKAGE_SECTION_TITLE,
+          packageId,
+        };
+      })
+      .filter((pkg) => pkg.id && pkg.name)
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
+  }, [fsPackages]);
+
   const priceLookupResults = useMemo(() => {
-    const rows = priceLookupServices.map((s) => {
-      const displayPrice = pickEffectivePrice({
-        basePrice: Number(s.basePrice || 0),
-        seasonPrice: Number(s.seasonPrice || 0) || undefined,
-        appSettings,
-        dateISO: todayISO(),
-      }).price;
+    const sourceRows =
+      pickerScope === "packages" ? priceLookupPackages : priceLookupServices;
+
+    const rows = sourceRows.map((row) => {
+      const displayPrice =
+        row.kind === "package"
+          ? Number(row.basePrice || 0)
+          : pickEffectivePrice({
+              basePrice: Number(row.basePrice || 0),
+              seasonPrice: Number(row.seasonPrice || 0) || undefined,
+              appSettings,
+              dateISO: todayISO(),
+            }).price;
+
       return {
-        ...s,
+        ...row,
         price: displayPrice,
         displayPrice,
       };
     });
+
     if (!priceLookupNeedle) return rows;
-    return rows.filter((s) => String(s.searchText || "").includes(priceLookupNeedle));
-  }, [priceLookupServices, priceLookupNeedle, appSettings]);
+    return rows.filter((row) =>
+      String(row.searchText || "").includes(priceLookupNeedle)
+    );
+  }, [
+    pickerScope,
+    priceLookupPackages,
+    priceLookupServices,
+    priceLookupNeedle,
+    appSettings,
+  ]);
 
   const futureStaffOptions = useMemo(() => {
     const sid = String(resolvedFutureServiceId || "").trim();
@@ -4695,6 +4745,44 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         confirmText: "حسنًا",
       });
     }
+  };
+
+  const selectPackageFromPriceList = (row: PriceLookupItem) => {
+    const packageValue = String(row?.id || "").trim();
+    if (!packageValue || row?.kind !== "package") return;
+
+    const packageExists = packageOptions.some(
+      (pkg) => String(pkg?.id || "").trim() === packageValue
+    );
+    if (!packageExists) {
+      openModal({
+        title: "تعذر تحديد البكج",
+        message: "البكج ظاهر في قائمة الأسعار، لكنه غير موجود ضمن خيارات الحجز الحالية.",
+        variant: "info",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
+
+    setPickerScope("packages");
+    setSelectedSectionId(PACKAGE_SECTION_ID);
+    setSelectedCategory("");
+    setServicePicker(packageValue);
+
+    requestAnimationFrame(() => {
+      serviceSectionCardRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  };
+
+  const selectPriceLookupItem = (row: PriceLookupItem) => {
+    if (row?.kind === "package") {
+      selectPackageFromPriceList(row);
+      return;
+    }
+    void selectServiceFromPriceList(row);
   };
 
   const basePrice = useMemo(() => {
@@ -7370,14 +7458,20 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         className="form-control"
                         value={priceLookupQuery}
                         onChange={(e) => setPriceLookupQuery(String(e.target.value || ""))}
-                        placeholder="ابحث عن خدمة..."
+                        placeholder={
+                          pickerScope === "packages"
+                            ? "ابحث عن بكج..."
+                            : "ابحث عن خدمة..."
+                        }
                       />
                     </div>
 
                     <div className="bk-price-list-body">
-                      {priceLookupLoading ? (
+                      {(pickerScope === "packages" ? catalogLoading : priceLookupLoading) ? (
                         <div className="alert alert-secondary mb-0 bk-soft-alert">
-                          جاري تحميل قائمة الأسعار...
+                          {pickerScope === "packages"
+                            ? "جاري تحميل البكجات..."
+                            : "جاري تحميل الخدمات..."}
                         </div>
                       ) : priceLookupResults.length ? (
                         <div className="bk-price-list-grid" role="list">
@@ -7399,12 +7493,16 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 aria-pressed={
                                   String(servicePicker || "").trim() === String(row.id || "").trim()
                                 }
-                                title="اضغطي لاختيار الخدمة وتعبئة الحقول"
-                                onClick={() => void selectServiceFromPriceList(row)}
+                                title={
+                                  row.kind === "package"
+                                    ? "اضغطي لاختيار البكج وتعبئة الحقل"
+                                    : "اضغطي لاختيار الخدمة وتعبئة الحقول"
+                                }
+                                onClick={() => selectPriceLookupItem(row)}
                                 onKeyDown={(event) => {
                                   if (event.key === "Enter" || event.key === " ") {
                                     event.preventDefault();
-                                    void selectServiceFromPriceList(row);
+                                    selectPriceLookupItem(row);
                                   }
                                 }}
                               >
@@ -7438,7 +7536,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         </div>
                       ) : (
                         <div className="alert alert-secondary mb-0 bk-soft-alert">
-                          لا توجد نتائج مطابقة.
+                          {pickerScope === "packages"
+                            ? "لا توجد بكجات مطابقة."
+                            : "لا توجد خدمات مطابقة."}
                         </div>
                       )}
                     </div>
