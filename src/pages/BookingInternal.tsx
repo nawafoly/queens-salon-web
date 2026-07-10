@@ -279,6 +279,9 @@ type PriceLookupItem = {
   seasonPrice?: number;
   imageUrl: string;
   searchText: string;
+  sectionId: string;
+  categoryId: string;
+  categoryName: string;
 };
 
 type CategoryOption = { id: string; name: string };
@@ -2679,6 +2682,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               seasonPrice,
               imageUrl,
               searchText: normalizeSearchText(`${name} ${variantTerms}`),
+              sectionId: String(
+                raw?.sectionId ?? raw?.serviceSectionId ?? raw?.section ?? ""
+              ).trim(),
+              categoryId: String(
+                raw?.categoryId ?? raw?.serviceCategoryId ?? ""
+              ).trim(),
+              categoryName: String(
+                raw?.category ?? raw?.categoryName ?? raw?.["التصنيف"] ?? ""
+              ).trim(),
             };
           })
           .filter((x) => x.active && x.id && x.name)
@@ -4534,6 +4546,155 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const categoryId = String(categoryRaw || "").trim();
     setSelectedCategory(categoryId);
     setServicePicker("");
+  };
+
+  const selectServiceFromPriceList = async (row: PriceLookupItem) => {
+    const requestedServiceId = String(row?.id || "").trim();
+    if (!requestedServiceId) return;
+
+    setPickerScope("services");
+
+    try {
+      // When Firestore is available, resolve the exact section/category/service
+      // from the same catalog used by the dropdowns. This avoids showing a value
+      // that is not present in the dropdown options.
+      if (catalogMode === "firestore") {
+        let sectionId = String(row?.sectionId || "").trim();
+        let categoryId = String(row?.categoryId || "").trim();
+        let categoryName = String(row?.categoryName || "").trim();
+        let serviceValue = requestedServiceId;
+        let sectionPayload: FsSectionCatalogCacheRow | null = null;
+        let matchedService: any = null;
+
+        const candidateSectionIds = Array.from(
+          new Set(
+            [
+              sectionId,
+              ...fsSections.map((section: any) => String(section?.id || "").trim()),
+            ].filter(Boolean)
+          )
+        );
+
+        for (const candidateSectionId of candidateSectionIds) {
+          const payload = await loadSectionCatalogFromFirestore(candidateSectionId);
+          const candidate = (payload.services || []).find((service: any) => {
+            const candidateId = String(service?.id || "").trim();
+            if (candidateId === requestedServiceId) return true;
+
+            return (
+              normalizeSearchText(readDisplayLabel(service, candidateId)) ===
+              normalizeSearchText(String(row?.name || ""))
+            );
+          }) as any;
+
+          if (!candidate) continue;
+
+          sectionPayload = payload;
+          matchedService = candidate;
+          serviceValue = String(candidate?.id || requestedServiceId).trim();
+          sectionId = String(
+            candidate?.sectionId || candidateSectionId || sectionId
+          ).trim();
+          categoryId = String(candidate?.categoryId || categoryId).trim();
+          categoryName = String(
+            candidate?.category ||
+              candidate?.categoryName ||
+              candidate?.["التصنيف"] ||
+              categoryName
+          ).trim();
+          break;
+        }
+
+        if (!sectionId || !matchedService) {
+          openModal({
+            title: "تعذر تحديد الخدمة",
+            message:
+              "الخدمة موجودة في قائمة الأسعار، لكن تعذر ربطها بالقسم والخدمة داخل نموذج الحجز.",
+            variant: "info",
+            confirmText: "حسنًا",
+          });
+          return;
+        }
+
+        const payload =
+          sectionPayload || (await loadSectionCatalogFromFirestore(sectionId));
+        const categories = Array.isArray(payload.categories) ? payload.categories : [];
+        const services = Array.isArray(payload.services) ? payload.services : [];
+
+        setFsCategories(categories);
+        setFsServices(services);
+
+        // The category dropdown stores an ID when category documents exist,
+        // and stores the category name when the catalog has no category documents.
+        let categoryValue = "";
+        if (categories.length > 0) {
+          const categoryById = categories.find(
+            (category: any) => String(category?.id || "").trim() === categoryId
+          ) as any;
+          const categoryByName = categories.find(
+            (category: any) =>
+              normalizeSearchText(readDisplayLabel(category, String(category?.id || ""))) ===
+              normalizeSearchText(categoryName)
+          ) as any;
+          categoryValue = String(
+            categoryById?.id || categoryByName?.id || categoryId || ""
+          ).trim();
+        } else {
+          categoryValue = String(
+            matchedService?.category ||
+              matchedService?.categoryName ||
+              matchedService?.["التصنيف"] ||
+              categoryName ||
+              "عام"
+          ).trim();
+        }
+
+        setSelectedSectionId(sectionId);
+        setSelectedCategory(categoryValue);
+        setServicePicker(serviceValue);
+      } else {
+        // Static pricing fallback uses generated service IDs, so select the
+        // matching local option instead of copying the Firestore document ID.
+        const fallback = servicesFlat.find((service) => {
+          if (service.kind !== "service") return false;
+          if (String(service.id || "").trim() === requestedServiceId) return true;
+          return (
+            normalizeSearchText(String(service.name || "")) ===
+            normalizeSearchText(String(row?.name || ""))
+          );
+        });
+
+        if (!fallback) {
+          openModal({
+            title: "تعذر تحديد الخدمة",
+            message:
+              "الخدمة موجودة في قائمة الأسعار، لكنها غير موجودة ضمن خيارات نموذج الحجز الحالية.",
+            variant: "info",
+            confirmText: "حسنًا",
+          });
+          return;
+        }
+
+        setSelectedSectionId(String(fallback.sectionId || "").trim());
+        setSelectedCategory(String(fallback.category || "").trim());
+        setServicePicker(String(fallback.id || "").trim());
+      }
+
+      requestAnimationFrame(() => {
+        serviceSectionCardRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      });
+    } catch (error) {
+      console.error("[price-list-select] failed", error);
+      openModal({
+        title: "تعذر اختيار الخدمة",
+        message: "حدث خطأ أثناء تعبئة القسم والتصنيف والخدمة. حاولي مرة أخرى.",
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+    }
   };
 
   const basePrice = useMemo(() => {
@@ -7226,7 +7387,27 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                             const seasonPrice = Number(row.seasonPrice || 0);
 
                             return (
-                              <div key={row.id} className="bk-price-list-item" role="listitem">
+                              <div
+                                key={row.id}
+                                className={`bk-price-list-item ${
+                                  String(servicePicker || "").trim() === String(row.id || "").trim()
+                                    ? "is-selected"
+                                    : ""
+                                }`}
+                                role="button"
+                                tabIndex={0}
+                                aria-pressed={
+                                  String(servicePicker || "").trim() === String(row.id || "").trim()
+                                }
+                                title="اضغطي لاختيار الخدمة وتعبئة الحقول"
+                                onClick={() => void selectServiceFromPriceList(row)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    void selectServiceFromPriceList(row);
+                                  }
+                                }}
+                              >
                                 <div
                                   className="bk-price-list-thumb bk-price-list-icon"
                                   title={icon.label}
