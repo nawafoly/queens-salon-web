@@ -31,6 +31,7 @@ import {
   listBookings,
   watchAllBookings, // ✅ Realtime
   updateBookingStatus,
+  updateBookingsStatusBatch,
   createDashboardBooking,
   updateBookingDetails as updateBookingFields,
   deleteBooking,
@@ -112,7 +113,12 @@ import {
 
 type StatusOption = BookingStatus | "all";
 type ExcludedStatusOption = "" | BookingStatus;
-type SettlementFilterOption = "all" | "unpaid";
+type SettlementFilterOption = "all" | "paid" | "partial" | "unpaid";
+type DatePresetOption = "all" | "today" | "yesterday" | "week" | "month" | "last_month" | "custom";
+type PaymentMethodFilterOption = "all" | "cash" | "card" | "transfer" | "mixed" | "other" | "none";
+type BookingSourceFilterOption = "all" | "client" | "dashboard" | "internal" | "unknown";
+type SortOrderOption = "newest" | "oldest";
+type OldPendingFilterOption = "off" | "before_today" | "older_7" | "older_30" | "custom";
 
 const NOTES_KEY = "dashboard_booking_notes_v1";
 const BOOKING_ACTION_PIN = "598867395";
@@ -123,6 +129,8 @@ const LIVE_ACTIVE_STATUSES: BookingStatus[] = ["pending", "confirmed"];
 const NON_LIVE_HISTORY_STATUSES: BookingStatus[] = ["completed", "cancelled"];
 
 const allStatusOptions: BookingStatus[] = ["pending", "confirmed", "completed", "cancelled"];
+const DEFAULT_PAGE_SIZE = 25;
+const pageSizeOptions = [10, 25, 50, 100] as const;
 
 /* =========================
    Helpers
@@ -176,14 +184,102 @@ function getAuthUserSafe(): { displayName: string; email: string } {
 
 function detectPaymentMethod(b: Booking): PaymentMethod {
   const stored = String((b as any)?.paymentMethod || "").toLowerCase().trim();
-  if (stored === "card" || stored === "cash" || stored === "transfer") {
+  if (stored === "card" || stored === "cash" || stored === "transfer" || stored === "mixed" || stored === "other") {
     return stored as PaymentMethod;
   }
   const s = String((b as any)?.note || "").toLowerCase();
+  if (s.includes("مختلط") || s.includes("mixed")) return "mixed";
   if (s.includes("شبكة") || s.includes("مدى") || s.includes("card")) return "card";
   if (s.includes("تحويل") || s.includes("transfer")) return "transfer";
   if (s.includes("كاش") || s.includes("cash") || s.includes("نقد")) return "cash";
   return "transfer";
+}
+
+function paymentMethodLabel(method: PaymentMethodFilterOption | PaymentMethod | "none") {
+  if (method === "cash") return "كاش";
+  if (method === "card") return "شبكة";
+  if (method === "transfer") return "تحويل";
+  if (method === "mixed") return "مختلط";
+  if (method === "other") return "أخرى";
+  if (method === "none") return "بدون دفع";
+  return "الكل";
+}
+
+function readPaymentBreakdown(raw: any): { cash: number; card: number } {
+  const source = raw?.paymentBreakdown && typeof raw.paymentBreakdown === "object" ? raw.paymentBreakdown : {};
+  const cash = Math.max(0, Number((source as any).cash || 0));
+  const card = Math.max(0, Number((source as any).card || 0));
+  return { cash: round2(cash), card: round2(card) };
+}
+
+function paymentBreakdownAmount(raw: any) {
+  const breakdown = readPaymentBreakdown(raw);
+  return round2(Number(breakdown.cash || 0) + Number(breakdown.card || 0));
+}
+
+function bookingPaymentMethodFilterValue(b: Booking): PaymentMethodFilterOption {
+  const stored = String((b as any)?.paymentMethod || "").toLowerCase().trim();
+  if (stored === "mixed") return "mixed";
+  const payment = resolveBookingPaymentSummary(b);
+  if (payment.paidAmount <= 0) return "none";
+  const method = detectPaymentMethod(b);
+  if (method === "cash" || method === "card" || method === "transfer" || method === "mixed" || method === "other") {
+    return method;
+  }
+  return "other";
+}
+
+function paymentMethodDisplayText(b: Booking) {
+  const method = bookingPaymentMethodFilterValue(b);
+  if (method !== "mixed") return paymentMethodLabel(method);
+  const breakdown = readPaymentBreakdown(b);
+  return `مختلط: ${breakdown.cash} كاش + ${breakdown.card} شبكة`;
+}
+
+function toLocalISODate(d: Date) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function monthRangeFromOffset(offset: number) {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + offset, 1, 12);
+  const last = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0, 12);
+  return { from: toLocalISODate(first), to: toLocalISODate(last) };
+}
+
+function datePresetRange(preset: DatePresetOption) {
+  const today = todayISOLocal();
+  if (preset === "today") return { from: today, to: today };
+  if (preset === "yesterday") {
+    const yesterday = shiftISODate(today, -1);
+    return { from: yesterday, to: yesterday };
+  }
+  if (preset === "week") {
+    const now = new Date();
+    const sundayOffset = now.getDay();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - sundayOffset, 12);
+    return { from: toLocalISODate(start), to: today };
+  }
+  if (preset === "month") return monthRangeFromOffset(0);
+  if (preset === "last_month") return monthRangeFromOffset(-1);
+  return { from: "", to: "" };
+}
+
+function dateFilterLabel(dateFrom: string, dateTo: string, datePreset: DatePresetOption) {
+  if (datePreset === "all" || (!dateFrom && !dateTo)) return "كل الحجوزات";
+  const labels: Record<DatePresetOption, string> = {
+    all: "كل الحجوزات",
+    today: "اليوم",
+    yesterday: "أمس",
+    week: "هذا الأسبوع",
+    month: "هذا الشهر",
+    last_month: "الشهر الماضي",
+    custom: "نطاق مخصص",
+  };
+  return `${labels[datePreset] || "نطاق مخصص"} (${dateFrom || "البداية"} - ${dateTo || "النهاية"})`;
 }
 
 function normalizeEditBookingTimeInput(raw: string): string {
@@ -269,6 +365,8 @@ type EditBookingDraft = {
   paymentMethod: EditPaymentMethodOption;
   paymentType: BookingPaymentType;
   paidAmount: string;
+  mixedCashAmount: string;
+  mixedCardAmount: string;
 };
 
 function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
@@ -276,6 +374,7 @@ function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
   const paymentMethod = detectPaymentMethod(b);
   const primaryService = resolvePrimaryBookingServiceSelection(b);
   const hasNoPayment = Number(payment.paidAmount || 0) <= 0;
+  const breakdown = readPaymentBreakdown(b);
 
   return {
     customerName: String(b.customerName || "").trim(),
@@ -291,6 +390,8 @@ function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
     paymentMethod: (hasNoPayment ? "none" : paymentMethod) as EditPaymentMethodOption,
     paymentType: hasNoPayment ? "partial" : payment.paymentType,
     paidAmount: String(payment.paidAmount || 0),
+    mixedCashAmount: String(breakdown.cash || ""),
+    mixedCardAmount: String(breakdown.card || ""),
   };
 }
 
@@ -316,11 +417,13 @@ function resolvePrimaryBookingServiceSelection(booking: Partial<Booking> | null 
     ).trim(),
     sectionId: String(
       booking?.serviceSnapshot?.sectionIdAtBooking ||
+        (firstService as any)?.sectionId ||
         firstPackageService?.sectionId ||
         ""
     ).trim(),
     categoryId: String(
       booking?.serviceSnapshot?.categoryIdAtBooking ||
+        (firstService as any)?.categoryId ||
         firstPackageService?.categoryId ||
         ""
     ).trim(),
@@ -384,6 +487,10 @@ type Booking = {
   time: string;
   status: BookingStatus;
   paymentMethod?: string;
+  paymentBreakdown?: {
+    cash?: number;
+    card?: number;
+  };
   paymentType?: BookingPaymentType;
   paidAmount?: number;
   remainingAmount?: number;
@@ -849,11 +956,15 @@ type EditBookingPaymentSectionProps = {
   paymentMethod: EditPaymentMethodOption;
   paymentType: BookingPaymentType;
   paidAmount: string;
+  mixedCashAmount: string;
+  mixedCardAmount: string;
   disabled: boolean;
   onPriceChange: (value: string) => void;
   onPaymentModeChange: (mode: UiPaymentMode) => void;
-  onPaymentMethodChange: (method: PaymentMethod) => void;
+  onPaymentMethodChange: (method: EditPaymentMethodOption) => void;
   onPaidAmountChange: (value: string) => void;
+  onMixedCashAmountChange: (value: string) => void;
+  onMixedCardAmountChange: (value: string) => void;
 };
 
 const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
@@ -861,22 +972,32 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
   paymentMethod,
   paymentType,
   paidAmount,
+  mixedCashAmount,
+  mixedCardAmount,
   disabled,
   onPriceChange,
   onPaymentModeChange,
   onPaymentMethodChange,
   onPaidAmountChange,
+  onMixedCashAmountChange,
+  onMixedCardAmountChange,
 }: EditBookingPaymentSectionProps) {
+  const total = Math.max(0, Number(price || 0));
+  const mixedCash = Math.max(0, Number(mixedCashAmount || 0));
+  const mixedCard = Math.max(0, Number(mixedCardAmount || 0));
+  const mixedPaid = round2(mixedCash + mixedCard);
+  const mixedRemaining = round2(total - mixedPaid);
   const remainingAfterEditText = useMemo(() => {
-    const total = Math.max(0, Number(price || 0));
     const paid =
       paymentMethod === "none"
         ? 0
+        : paymentMethod === "mixed"
+          ? Math.max(0, Number(mixedCashAmount || 0)) + Math.max(0, Number(mixedCardAmount || 0))
         : paymentType === "full"
           ? total
           : Math.max(0, Number(paidAmount || 0));
     return `${round2(Math.max(0, total - paid))} ر.س`;
-  }, [paidAmount, paymentMethod, paymentType, price]);
+  }, [mixedCardAmount, mixedCashAmount, paidAmount, paymentMethod, paymentType, price, total]);
 
   return (
     <>
@@ -914,18 +1035,53 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
           <select
             className="bk-select"
             value={paymentMethod}
-            onChange={(e) => onPaymentMethodChange((e.target.value as PaymentMethod) || "transfer")}
+            onChange={(e) => onPaymentMethodChange((e.target.value as EditPaymentMethodOption) || "transfer")}
             disabled={disabled}
           >
             <option value="cash">كاش</option>
             <option value="card">شبكة</option>
             <option value="transfer">تحويل</option>
+            <option value="mixed">دفع مختلط</option>
             <option value="other">أخرى</option>
           </select>
         </label>
       ) : null}
 
-      {paymentMethod !== "none" && paymentType === "partial" ? (
+      {paymentMethod === "mixed" ? (
+        <div className="bk-mixed-payment-box">
+          <label>
+            <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ الكاش</div>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              className="bk-input"
+              value={mixedCashAmount}
+              onChange={(e) => onMixedCashAmountChange(e.target.value)}
+              placeholder="مثال: 100"
+              disabled={disabled}
+            />
+          </label>
+          <label>
+            <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ الشبكة</div>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              className="bk-input"
+              value={mixedCardAmount}
+              onChange={(e) => onMixedCardAmountChange(e.target.value)}
+              placeholder="مثال: 200"
+              disabled={disabled}
+            />
+          </label>
+          <div className={`bk-mixed-payment-balance ${mixedRemaining === 0 ? "is-balanced" : "is-unbalanced"}`}>
+            المجموع: {mixedPaid} ر.س | المتبقي: {round2(Math.max(0, mixedRemaining))} ر.س
+          </div>
+        </div>
+      ) : null}
+
+      {paymentMethod !== "none" && paymentMethod !== "mixed" && paymentType === "partial" ? (
         <label>
           <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ العربون</div>
           <input
@@ -1008,6 +1164,8 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
           paymentMethod: "transfer",
           paymentType: "full",
           paidAmount: "",
+          mixedCashAmount: "",
+          mixedCardAmount: "",
         }
   );
   const draftTargetIdRef = useRef<string>(target?.id || "");
@@ -1288,14 +1446,24 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
   const onServiceChange = useCallback(
     (nextServiceId: string) => {
       const nextService = filteredServices.find((service) => service.id === nextServiceId) || null;
-      setDraft((prev) => ({
-        ...prev,
-        serviceId: nextServiceId,
-        categoryId: nextService?.categoryId || prev.categoryId,
-        price: nextService ? String(nextService.price || 0) : prev.price,
-      }));
+      setDraft((prev) => {
+        const originalServiceId = resolvePrimaryBookingServiceSelection(target).serviceId;
+        const isOriginalService = nextServiceId === originalServiceId;
+        return {
+          ...prev,
+          serviceId: nextServiceId,
+          categoryId: nextService?.categoryId || prev.categoryId,
+          // Preserve the historical booked price when the same service is selected.
+          // Use the current catalog price only when the administrator intentionally changes the service.
+          price: nextService
+            ? isOriginalService
+              ? String(readBookingTotalAmount(target))
+              : String(nextService.price || 0)
+            : prev.price,
+        };
+      });
     },
-    [filteredServices]
+    [filteredServices, target]
   );
   const onEmployeeChange = useCallback((value: string) => {
     setDraft((prev) => (prev.employeeId === value ? prev : { ...prev, employeeId: value }));
@@ -1320,6 +1488,13 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
           paidAmount: "0",
         };
       }
+      if (nextMode !== "full" && p.paymentMethod === "mixed") {
+        return {
+          ...p,
+          paymentType: "partial",
+          paymentMethod: "cash",
+        };
+      }
       return {
         ...p,
         paymentType: nextMode === "full" ? "full" : "partial",
@@ -1327,11 +1502,21 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
       };
     });
   }, []);
-  const onPaymentMethodChange = useCallback((method: PaymentMethod) => {
-    setDraft((p) => ({ ...p, paymentMethod: method || "transfer" }));
+  const onPaymentMethodChange = useCallback((method: EditPaymentMethodOption) => {
+    setDraft((p) => ({
+      ...p,
+      paymentMethod: method || "transfer",
+      paymentType: method === "mixed" ? "full" : p.paymentType,
+    }));
   }, []);
   const onPaidAmountChange = useCallback((value: string) => {
     setDraft((prev) => (prev.paidAmount === value ? prev : { ...prev, paidAmount: value }));
+  }, []);
+  const onMixedCashAmountChange = useCallback((value: string) => {
+    setDraft((prev) => (prev.mixedCashAmount === value ? prev : { ...prev, mixedCashAmount: value }));
+  }, []);
+  const onMixedCardAmountChange = useCallback((value: string) => {
+    setDraft((prev) => (prev.mixedCardAmount === value ? prev : { ...prev, mixedCardAmount: value }));
   }, []);
   const onNoteChange = useCallback((value: string) => {
     setDraft((prev) => (prev.note === value ? prev : { ...prev, note: value }));
@@ -1354,9 +1539,12 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     const price = priceInput === "" ? fallbackPrice : Number(priceInput);
     const paymentType = draft.paymentType === "partial" ? "partial" : "full";
     const hasNoPaymentMethod = draft.paymentMethod === "none";
-    const paymentMethod = (["cash", "card", "transfer", "other"] as const).includes(draft.paymentMethod as any)
+    const isMixedPayment = draft.paymentMethod === "mixed";
+    const paymentMethod = (["cash", "card", "transfer", "other", "mixed"] as const).includes(draft.paymentMethod as any)
       ? (draft.paymentMethod as PaymentMethod)
       : "transfer";
+    const mixedCashAmount = Math.max(0, Number(draft.mixedCashAmount || 0));
+    const mixedCardAmount = Math.max(0, Number(draft.mixedCardAmount || 0));
 
     const selectedEmployee = staffOptions.find(
       (row) => String(row.id || "").trim() === employeeId
@@ -1373,7 +1561,11 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     const selectedCategory =
       categories.find((category) => String(category.id || "").trim() === categoryId) || null;
 
-    let paidAmount = paymentType === "full" ? price : Number(draft.paidAmount || 0);
+    let paidAmount = isMixedPayment
+      ? round2(mixedCashAmount + mixedCardAmount)
+      : paymentType === "full"
+        ? price
+        : Number(draft.paidAmount || 0);
     if (hasNoPaymentMethod) paidAmount = 0;
 
     if (!customerName) {
@@ -1408,7 +1600,22 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
       setError("السعر غير صحيح.");
       return;
     }
-    if (paymentType === "partial") {
+    if (isMixedPayment) {
+      if (
+        !Number.isFinite(mixedCashAmount) ||
+        !Number.isFinite(mixedCardAmount) ||
+        mixedCashAmount < 0 ||
+        mixedCardAmount < 0
+      ) {
+        setError("مبالغ الدفع المختلط يجب أن تكون 0 أو أكثر.");
+        return;
+      }
+      if (round2(mixedCashAmount + mixedCardAmount) !== round2(price)) {
+        setError("مجموع الكاش والشبكة يجب أن يساوي إجمالي الحجز.");
+        return;
+      }
+    }
+    if (!isMixedPayment && paymentType === "partial") {
       if (!Number.isFinite(paidAmount) || paidAmount < 0) {
         setError("أدخلي مبلغ عربون صحيح (0 أو أكثر).");
         return;
@@ -1421,11 +1628,18 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
 
     let nextPaymentType: BookingPaymentType = paymentType;
     if (hasNoPaymentMethod) nextPaymentType = "partial";
+    if (isMixedPayment) nextPaymentType = "full";
     if (paidAmount >= price) {
       nextPaymentType = "full";
       paidAmount = price;
     }
     const remainingAmount = round2(Math.max(0, price - paidAmount));
+    const paymentBreakdown = isMixedPayment
+      ? {
+          cash: round2(mixedCashAmount),
+          card: round2(mixedCardAmount),
+        }
+      : null;
     const durationMin = Math.max(5, Number(selectedService?.durationMin || target.durationMin || 60));
     const serviceName = selectedService?.name || target.serviceName || "";
     const sectionName = selectedSection?.name || sectionId;
@@ -1498,6 +1712,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
         finalPrice: price,
         total: price,
         paymentMethod: hasNoPaymentMethod ? null : paymentMethod,
+        paymentBreakdown,
         paymentType: nextPaymentType,
         paidAmount: round2(paidAmount),
         remainingAmount,
@@ -1525,6 +1740,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
         finalPrice: price,
         total: price,
         paymentMethod: hasNoPaymentMethod ? undefined : paymentMethod,
+        paymentBreakdown: paymentBreakdown || undefined,
         paymentType: nextPaymentType,
         paidAmount: round2(paidAmount),
         remainingAmount,
@@ -1542,7 +1758,19 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
       } else if (e?.code === "EMPLOYEE_UNAVAILABLE") {
         setError("الموظفة المعينة على هذا الحجز لم تعد نشطة تشغيليًا لهذا الموعد. اختاري موظفة أخرى أو أعيدي جدولة الحجز.");
       } else {
-        setError("تعذر حفظ تعديل الحجز.");
+        console.error("[DashboardBookings] update booking failed", {
+          bookingId: target.id,
+          code: e?.code,
+          message: e?.message,
+          name: e?.name,
+          error: e,
+        });
+        const code = String(e?.code || "").trim();
+        setError(
+          code
+            ? `تعذر حفظ تعديل الحجز (${code}).`
+            : "تعذر حفظ تعديل الحجز. راجعي Console لمعرفة الخطأ التفصيلي."
+        );
       }
     } finally {
       setSaving(false);
@@ -1606,11 +1834,15 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
             paymentMethod={draft.paymentMethod}
             paymentType={draft.paymentType}
             paidAmount={draft.paidAmount}
+            mixedCashAmount={draft.mixedCashAmount}
+            mixedCardAmount={draft.mixedCardAmount}
             disabled={saving}
             onPriceChange={onPriceChange}
             onPaymentModeChange={onPaymentModeChange}
             onPaymentMethodChange={onPaymentMethodChange}
             onPaidAmountChange={onPaidAmountChange}
+            onMixedCashAmountChange={onMixedCashAmountChange}
+            onMixedCardAmountChange={onMixedCardAmountChange}
           />
 
           <EditBookingNoteSection note={draft.note} disabled={saving} onNoteChange={onNoteChange} />
@@ -1650,6 +1882,22 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const [settlementFilter, setSettlementFilter] = useState<SettlementFilterOption>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [datePreset, setDatePreset] = useState<DatePresetOption>("all");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<PaymentMethodFilterOption>("all");
+  const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [serviceFilter, setServiceFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState<BookingSourceFilterOption>("all");
+  const [sortOrder, setSortOrder] = useState<SortOrderOption>("newest");
+  const [oldPendingFilter, setOldPendingFilter] = useState<OldPendingFilterOption>("off");
+  const [oldPendingFrom, setOldPendingFrom] = useState("");
+  const [oldPendingTo, setOldPendingTo] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(() => new Set());
+  const [bulkTargetStatus, setBulkTargetStatus] = useState<BookingStatus | null>(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkResultMessage, setBulkResultMessage] = useState("");
+  const [bulkError, setBulkError] = useState("");
 
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [notesMap, setNotesMap] = useState<Record<string, string>>({});
@@ -1690,6 +1938,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     paymentMode: "full" as UiPaymentMode,
     paymentType: "full" as BookingPaymentType,
     paidAmount: "",
+    paymentMethod: "transfer" as EditPaymentMethodOption,
+    mixedCashAmount: "",
+    mixedCardAmount: "",
   });
   const [pendingSensitiveAction, setPendingSensitiveAction] = useState<SensitiveBookingAction | null>(null);
   const [newBookingsSeenAt, setNewBookingsSeenAt] = useState<number>(() => {
@@ -2268,6 +2519,42 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     }>;
   }, [selectedBooking, bookings, notesMap]);
 
+  const employeeFilterOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    bookings.forEach((b) => {
+      const id = String(b.employeeId || b.employeeUid || b.employeeName || "").trim();
+      const label = String(b.employeeName || id || "").trim();
+      if (id && label) map.set(id, label);
+    });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [bookings]);
+
+  const serviceFilterOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    bookings.forEach((b) => {
+      const services = extractServicesFromAny(b);
+      if (services.length) {
+        services.forEach((service) => {
+          const key = String(service.serviceId || service.serviceName || "").trim();
+          const label = String(service.serviceName || service.serviceId || "").trim();
+          if (key && label) map.set(key, label);
+        });
+        return;
+      }
+      const fallback = serviceSummaryForTable(b);
+      if (fallback && fallback !== "—") map.set(fallback, fallback);
+    });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [bookings]);
+
+  const applyDatePreset = useCallback((preset: DatePresetOption) => {
+    setDatePreset(preset);
+    if (preset === "custom") return;
+    const range = datePresetRange(preset);
+    setDateFrom(range.from);
+    setDateTo(range.to);
+  }, []);
+
   const filteredBase = useMemo(() => {
     let list = [...bookings];
     if (dateFrom || dateTo) {
@@ -2282,15 +2569,67 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         const phone = String(b.phone || "").toLowerCase();
         const phoneDigits = normalizedDigitsOnly(phone);
         const emp = normalizeArabicName(b.employeeName || "");
+        const service = normalizeArabicName(`${serviceSummaryForTable(b)} ${serviceMetaSummaryForTable(b)}`);
         const ref = bookingRef(b).toLowerCase();
         const refDigits = normalizedDigitsOnly(ref);
         return (
-          (search ? name.includes(search) || emp.includes(search) : false) ||
+          (search ? name.includes(search) || emp.includes(search) || service.includes(search) : false) ||
           phone.includes(searchRaw) ||
           (!!searchDigits && phoneDigits.includes(searchDigits)) ||
           ref.includes(searchRaw) ||
           (!!searchDigits && refDigits.includes(searchDigits))
         );
+      });
+    }
+    if (employeeFilter !== "all") {
+      list = list.filter((b) => {
+        const target = String(employeeFilter || "").trim();
+        return (
+          String(b.employeeId || "").trim() === target ||
+          String(b.employeeUid || "").trim() === target ||
+          String(b.employeeName || "").trim() === target
+        );
+      });
+    }
+    if (serviceFilter !== "all") {
+      list = list.filter((b) => {
+        const target = String(serviceFilter || "").trim();
+        const services = extractServicesFromAny(b);
+        return (
+          services.some((service) => {
+            const id = String(service.serviceId || "").trim();
+            const name = String(service.serviceName || "").trim();
+            return id === target || name === target;
+          }) ||
+          serviceSummaryForTable(b) === target
+        );
+      });
+    }
+    if (sourceFilter !== "all") {
+      list = list.filter((b) => {
+        const channel = String(b.channel || "").trim() || "unknown";
+        return channel === sourceFilter;
+      });
+    }
+    if (paymentMethodFilter !== "all") {
+      list = list.filter((b) => bookingPaymentMethodFilterValue(b) === paymentMethodFilter);
+    }
+    if (oldPendingFilter !== "off") {
+      const today = todayISOLocal();
+      const cutoff =
+        oldPendingFilter === "before_today"
+          ? today
+          : oldPendingFilter === "older_7"
+            ? shiftISODate(today, -7)
+            : oldPendingFilter === "older_30"
+              ? shiftISODate(today, -30)
+              : "";
+      list = list.filter((b) => {
+        if (b.status !== "pending") return false;
+        const date = String(b.date || "").trim();
+        if (!date) return false;
+        if (oldPendingFilter === "custom") return inDateRange(date, oldPendingFrom, oldPendingTo);
+        return cutoff ? date < cutoff : true;
       });
     }
     // Filter by role if staff
@@ -2305,8 +2644,23 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         return bName && normalizeArabicName(bName).includes(normalizeArabicName(authUserDisplayName));
       });
     }
-    return list.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-  }, [bookings, q, dateFrom, dateTo, uiRole, authUserUid, authUserDisplayName]);
+    return list;
+  }, [
+    bookings,
+    q,
+    dateFrom,
+    dateTo,
+    employeeFilter,
+    serviceFilter,
+    sourceFilter,
+    paymentMethodFilter,
+    oldPendingFilter,
+    oldPendingFrom,
+    oldPendingTo,
+    uiRole,
+    authUserUid,
+    authUserDisplayName,
+  ]);
 
   const filtered = useMemo(() => {
     const statusScoped =
@@ -2316,12 +2670,63 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           : filteredBase
         : filteredBase.filter((b) => b.status === statusFilter);
 
-    if (settlementFilter === "unpaid") {
-      return statusScoped.filter((b) => resolveBookingPaymentSummary(b).remainingAmount > 0);
+    if (settlementFilter !== "all") {
+      return statusScoped.filter((b) => {
+        const payment = resolveBookingPaymentSummary(b);
+        if (settlementFilter === "paid") return payment.totalAmount > 0 && payment.remainingAmount <= 0;
+        if (settlementFilter === "partial") return payment.paidAmount > 0 && payment.remainingAmount > 0;
+        if (settlementFilter === "unpaid") return payment.paidAmount <= 0 && payment.remainingAmount > 0;
+        return true;
+      });
     }
 
     return statusScoped;
   }, [filteredBase, statusFilter, excludedStatus, settlementFilter]);
+
+  const filteredSorted = useMemo(() => {
+    const rows = [...filtered];
+    rows.sort((a, b) => {
+      const aMs = parseBookingDateTimeMs(String(a.date || ""), String(a.time || "")) || 0;
+      const bMs = parseBookingDateTimeMs(String(b.date || ""), String(b.time || "")) || 0;
+      const diff = aMs !== bMs ? aMs - bMs : String(a.id || "").localeCompare(String(b.id || ""));
+      return sortOrder === "oldest" ? diff : -diff;
+    });
+    return rows;
+  }, [filtered, sortOrder]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredSorted.length / Math.max(1, pageSize))),
+    [filteredSorted.length, pageSize]
+  );
+
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(Math.max(1, prev), totalPages));
+  }, [totalPages]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    q,
+    statusFilter,
+    excludedStatus,
+    settlementFilter,
+    dateFrom,
+    dateTo,
+    paymentMethodFilter,
+    employeeFilter,
+    serviceFilter,
+    sourceFilter,
+    oldPendingFilter,
+    oldPendingFrom,
+    oldPendingTo,
+    sortOrder,
+    pageSize,
+  ]);
+
+  const pagedBookings = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredSorted.slice(start, start + pageSize);
+  }, [currentPage, filteredSorted, pageSize]);
 
   useEffect(() => {
     const rows = filtered;
@@ -2387,7 +2792,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const normalRows: Booking[] = [];
     const internalRows: Booking[] = [];
 
-    filtered.forEach((b) => {
+    pagedBookings.forEach((b) => {
       if (resolveBookingSectionKind(b) === "internal") {
         internalRows.push(b);
         return;
@@ -2415,7 +2820,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         temporaryInternalCount: 0,
       },
     ];
-  }, [filtered]);
+  }, [pagedBookings]);
 
   const unseenNewBookings = useMemo(() => {
     return bookings
@@ -2561,6 +2966,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         paymentMode,
         paymentType: payment.paymentType === "partial" ? "partial" : "full",
         paidAmount: String(round2(payment.paidAmount || 0)),
+        paymentMethod: paymentMode === "none" ? "none" : detectPaymentMethod(target),
+        mixedCashAmount: String(readPaymentBreakdown(target).cash || ""),
+        mixedCardAmount: String(readPaymentBreakdown(target).card || ""),
       });
       setConfirmError("");
       setConfirmTarget(target);
@@ -2601,15 +3009,36 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     if (!confirmTarget?.id) return;
     const totalAmount = readBookingTotalAmount(confirmTarget);
     const nextMode = confirmDraft.paymentMode;
-    const nextType = nextMode === "full" ? "full" : "partial";
+    const isMixedPayment = confirmDraft.paymentMethod === "mixed";
+    const nextType = nextMode === "full" || isMixedPayment ? "full" : "partial";
+    const mixedCashAmount = Math.max(0, Number(confirmDraft.mixedCashAmount || 0));
+    const mixedCardAmount = Math.max(0, Number(confirmDraft.mixedCardAmount || 0));
     let paidAmount =
-      nextMode === "full"
+      isMixedPayment
+        ? round2(mixedCashAmount + mixedCardAmount)
+        : nextMode === "full"
         ? totalAmount
         : nextMode === "none"
           ? 0
           : Number(confirmDraft.paidAmount || 0);
 
-    if (nextMode === "partial") {
+    if (isMixedPayment) {
+      if (
+        !Number.isFinite(mixedCashAmount) ||
+        !Number.isFinite(mixedCardAmount) ||
+        mixedCashAmount < 0 ||
+        mixedCardAmount < 0
+      ) {
+        setConfirmError("مبالغ الدفع المختلط يجب أن تكون 0 أو أكثر.");
+        return;
+      }
+      if (round2(mixedCashAmount + mixedCardAmount) !== round2(totalAmount)) {
+        setConfirmError("مجموع الكاش والشبكة يجب أن يساوي إجمالي الحجز.");
+        return;
+      }
+    }
+
+    if (!isMixedPayment && nextMode === "partial") {
       if (!Number.isFinite(paidAmount) || paidAmount < 0) {
         setConfirmError("أدخلي مبلغ عربون صحيح (0 أو أكثر).");
         return;
@@ -2626,12 +3055,23 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       paidAmount = totalAmount;
     }
     const remainingAmount = round2(Math.max(0, totalAmount - paidAmount));
+    const paymentMethod =
+      confirmDraft.paymentMethod === "none"
+        ? null
+        : (["cash", "card", "transfer", "other", "mixed"] as const).includes(confirmDraft.paymentMethod as any)
+          ? (confirmDraft.paymentMethod as PaymentMethod)
+          : detectPaymentMethod(confirmTarget);
+    const paymentBreakdown = isMixedPayment
+      ? { cash: round2(mixedCashAmount), card: round2(mixedCardAmount) }
+      : null;
 
     try {
       setConfirmSaving(true);
       setConfirmError("");
 
       await updateBookingFields(confirmTarget.id, {
+        paymentMethod,
+        paymentBreakdown,
         paymentType,
         paidAmount: round2(paidAmount),
         remainingAmount,
@@ -2644,6 +3084,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         const syncMethod = detectPaymentMethod({
           ...confirmTarget,
           status: "confirmed",
+          paymentMethod: paymentMethod || undefined,
+          paymentBreakdown: paymentBreakdown || undefined,
           paymentType,
           paidAmount: round2(paidAmount),
           remainingAmount,
@@ -2651,7 +3093,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
         if (bookingId && Number(paidAmount) > 0) {
           const incomeNote =
-            paymentType === "partial"
+            syncMethod === "mixed"
+              ? paymentMethodDisplayText({
+                  ...confirmTarget,
+                  paymentMethod: "mixed",
+                  paymentBreakdown: paymentBreakdown || undefined,
+                } as Booking)
+              : paymentType === "partial"
               ? `عربون: ${round2(paidAmount)} ر.س | المتبقي: ${remainingAmount} ر.س`
               : undefined;
 
@@ -2662,6 +3110,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             date: incomeDate,
             amount: round2(paidAmount),
             method: syncMethod,
+            paymentBreakdown: paymentBreakdown || undefined,
             source: "booking",
             note: incomeNote,
             createdAt: Date.now(),
@@ -2675,6 +3124,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
       const localAuditPatch = getLocalActorAudit();
       const localPatch = {
+        paymentMethod: paymentMethod || undefined,
+        paymentBreakdown: paymentBreakdown || undefined,
         paymentType,
         paidAmount: round2(paidAmount),
         remainingAmount,
@@ -3208,6 +3659,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         "الحالة",
         "الإجمالي",
         "نوع الدفع",
+        "طريقة الدفع",
         "المدفوع",
         "المتبقي",
       ],
@@ -3224,6 +3676,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         statusLabel[b.status],
         String(payment.totalAmount),
         paymentStatusLabel(payment),
+        paymentMethodDisplayText(b),
         String(payment.paidAmount),
         String(payment.remainingAmount),
       ];
@@ -3255,9 +3708,34 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         excludedStatus ||
         settlementFilter !== "all" ||
         dateFrom ||
-        dateTo
+        dateTo ||
+        datePreset !== "all" ||
+        paymentMethodFilter !== "all" ||
+        employeeFilter !== "all" ||
+        serviceFilter !== "all" ||
+        sourceFilter !== "all" ||
+        oldPendingFilter !== "off" ||
+        oldPendingFrom ||
+        oldPendingTo ||
+        sortOrder !== "newest"
       ),
-    [dateFrom, dateTo, excludedStatus, q, settlementFilter, statusFilter]
+    [
+      dateFrom,
+      dateTo,
+      datePreset,
+      employeeFilter,
+      excludedStatus,
+      oldPendingFilter,
+      oldPendingFrom,
+      oldPendingTo,
+      paymentMethodFilter,
+      q,
+      serviceFilter,
+      settlementFilter,
+      sortOrder,
+      sourceFilter,
+      statusFilter,
+    ]
   );
 
   const resetBookingFilters = useCallback(() => {
@@ -3267,7 +3745,184 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     setSettlementFilter("all");
     setDateFrom("");
     setDateTo("");
+    setDatePreset("all");
+    setPaymentMethodFilter("all");
+    setEmployeeFilter("all");
+    setServiceFilter("all");
+    setSourceFilter("all");
+    setSortOrder("newest");
+    setOldPendingFilter("off");
+    setOldPendingFrom("");
+    setOldPendingTo("");
   }, []);
+
+  const filterSummaryText = useMemo(() => {
+    const parts = [
+      dateFilterLabel(dateFrom, dateTo, datePreset),
+      statusFilter === "all" ? "كل الحالات" : `الحالة: ${statusLabel[statusFilter]}`,
+      settlementFilter === "all"
+        ? ""
+        : `حالة الدفع: ${
+            settlementFilter === "paid"
+              ? "مدفوع بالكامل"
+              : settlementFilter === "partial"
+                ? "مدفوع جزئيا"
+                : "غير مدفوع"
+          }`,
+      paymentMethodFilter === "all" ? "" : `طريقة الدفع: ${paymentMethodLabel(paymentMethodFilter)}`,
+      employeeFilter === "all"
+        ? ""
+        : `الموظفة: ${employeeFilterOptions.find(([id]) => id === employeeFilter)?.[1] || employeeFilter}`,
+      serviceFilter === "all"
+        ? ""
+        : `الخدمة: ${serviceFilterOptions.find(([id]) => id === serviceFilter)?.[1] || serviceFilter}`,
+      sourceFilter === "all" ? "" : `المصدر: ${sourceFilter}`,
+      oldPendingFilter === "off" ? "" : "حجوزات قديمة ما زالت بالانتظار",
+      q.trim() ? `بحث: ${q.trim()}` : "",
+    ].filter(Boolean);
+    return parts.join(" | ");
+  }, [
+    dateFrom,
+    datePreset,
+    dateTo,
+    employeeFilter,
+    employeeFilterOptions,
+    oldPendingFilter,
+    paymentMethodFilter,
+    q,
+    serviceFilter,
+    serviceFilterOptions,
+    settlementFilter,
+    sourceFilter,
+    statusFilter,
+  ]);
+
+  const filteredBookingIds = useMemo(
+    () => filteredSorted.map((b) => String(b.id || "").trim()).filter(Boolean),
+    [filteredSorted]
+  );
+  const pageBookingIds = useMemo(
+    () => pagedBookings.map((b) => String(b.id || "").trim()).filter(Boolean),
+    [pagedBookings]
+  );
+  const selectedBookings = useMemo(() => {
+    const selected = new Set(selectedBookingIds);
+    return bookings.filter((b) => selected.has(String(b.id || "").trim()));
+  }, [bookings, selectedBookingIds]);
+  const selectedPageCount = useMemo(
+    () => pageBookingIds.filter((id) => selectedBookingIds.has(id)).length,
+    [pageBookingIds, selectedBookingIds]
+  );
+  const allPageSelected = pageBookingIds.length > 0 && selectedPageCount === pageBookingIds.length;
+  const selectedMatchingCount = useMemo(
+    () => filteredBookingIds.filter((id) => selectedBookingIds.has(id)).length,
+    [filteredBookingIds, selectedBookingIds]
+  );
+
+  const toggleBookingSelection = useCallback((bookingId: string) => {
+    const id = String(bookingId || "").trim();
+    if (!id) return;
+    setSelectedBookingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleCurrentPageSelection = useCallback(() => {
+    setSelectedBookingIds((prev) => {
+      const next = new Set(prev);
+      const shouldClear = pageBookingIds.length > 0 && pageBookingIds.every((id) => next.has(id));
+      pageBookingIds.forEach((id) => {
+        if (shouldClear) next.delete(id);
+        else next.add(id);
+      });
+      return next;
+    });
+  }, [pageBookingIds]);
+
+  const selectAllMatchingBookings = useCallback(() => {
+    if (!filteredBookingIds.length) return;
+    const ok = window.confirm(
+      `سيتم تحديد ${filteredBookingIds.length} حجز مطابق للفلاتر الحالية، وليس الصفحة الحالية فقط. هل تريد المتابعة؟`
+    );
+    if (!ok) return;
+    setSelectedBookingIds(new Set(filteredBookingIds));
+  }, [filteredBookingIds]);
+
+  const clearSelectedBookings = useCallback(() => {
+    setSelectedBookingIds(new Set());
+  }, []);
+
+  const openBulkStatusModal = useCallback((nextStatus: BookingStatus) => {
+    setBulkResultMessage("");
+    setBulkError("");
+    const eligible = selectedBookings.filter((b) => b.status !== nextStatus);
+    if (!eligible.length) {
+      setBulkError("لا توجد حجوزات محددة تحتاج إلى هذا التغيير.");
+      return;
+    }
+    setBulkTargetStatus(nextStatus);
+  }, [selectedBookings]);
+
+  const closeBulkStatusModal = useCallback(() => {
+    if (bulkSaving) return;
+    setBulkTargetStatus(null);
+    setBulkError("");
+  }, [bulkSaving]);
+
+  const confirmBulkStatusUpdate = useCallback(async () => {
+    if (!bulkTargetStatus) return;
+    const targets = selectedBookings.filter((b) => b.status !== bulkTargetStatus);
+    const bookingIds = targets.map((b) => String(b.id || "").trim()).filter(Boolean);
+    if (!bookingIds.length) {
+      setBulkError("لا توجد حجوزات محددة تحتاج إلى هذا التغيير.");
+      return;
+    }
+
+    setBulkSaving(true);
+    setBulkError("");
+    setBulkResultMessage("");
+    try {
+      const result = await updateBookingsStatusBatch({
+        bookingIds,
+        status: bulkTargetStatus,
+        filterSummary: filterSummaryText,
+        note: `تحديث جماعي لحالة الحجوزات إلى ${statusLabel[bulkTargetStatus]}`,
+      });
+      const localAuditPatch = getLocalActorAudit();
+      setBookings((prev) =>
+        prev.map((row) =>
+          bookingIds.includes(String(row.id || "").trim())
+            ? { ...row, status: bulkTargetStatus, ...localAuditPatch }
+            : row
+        )
+      );
+      setSelectedBooking((prev) =>
+        prev && bookingIds.includes(String(prev.id || "").trim())
+          ? { ...prev, status: bulkTargetStatus, ...localAuditPatch }
+          : prev
+      );
+      setBulkResultMessage(
+        `تم تحديث ${result.successCount} حجز. فشل ${result.failedCount} حجز.`
+      );
+      if (result.failedCount === 0) {
+        setSelectedBookingIds((prev) => {
+          const next = new Set(prev);
+          bookingIds.forEach((id) => next.delete(id));
+          return next;
+        });
+        setBulkTargetStatus(null);
+      } else {
+        setBulkError(result.failures.map((failure) => `${failure.bookingId}: ${failure.message}`).join(" | "));
+      }
+    } catch (e: any) {
+      setBulkError(String(e?.message || e || "تعذر تنفيذ التحديث الجماعي."));
+    } finally {
+      setBulkSaving(false);
+    }
+  }, [bulkTargetStatus, filterSummaryText, getLocalActorAudit, selectedBookings]);
 
   const renderBookingSection = useCallback((section: BookingDisplaySection) => (
     <section
@@ -3296,6 +3951,15 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             <table className="bookings-table">
               <thead>
                 <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      className="bk-select-checkbox"
+                      checked={allPageSelected}
+                      onChange={toggleCurrentPageSelection}
+                      aria-label="تحديد حجوزات الصفحة الحالية"
+                    />
+                  </th>
                   <th>رقم الحجز</th>
                   <th>العميلة</th>
                   <th>الخدمة</th>
@@ -3313,7 +3977,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   if (block.rows.length > 1) {
                     rows.push(
                       <tr key={`${section.key}-group-${block.key}`} className="bookings-group-row">
-                        <td colSpan={9}>
+                        <td colSpan={10}>
                           <div className="bookings-group-row-inner">
                             <span className="bookings-group-title">حجز مجمّع</span>
                             <span className="bookings-group-meta">
@@ -3340,6 +4004,15 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         key={b.id}
                         className={`bk-row bk-row-${safeStatus}${isPendingDeposit ? " bk-row-pending-deposit" : ""}`}
                       >
+                        <td>
+                          <input
+                            type="checkbox"
+                            className="bk-select-checkbox"
+                            checked={selectedBookingIds.has(String(b.id || "").trim())}
+                            onChange={() => toggleBookingSelection(b.id)}
+                            aria-label={`تحديد الحجز ${bookingRef(b)}`}
+                          />
+                        </td>
                         <td>
                           <div className="bk-ref-cell">
                             <div className="bk-ref-code">{bookingRef(b)}</div>
@@ -3389,6 +4062,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               }`}
                             >
                               {paymentStatusLabel(payment)}
+                            </span>
+                            <span className={`bk-payment-method-chip bk-payment-method-${bookingPaymentMethodFilterValue(b)}`}>
+                              {paymentMethodDisplayText(b)}
                             </span>
                           </div>
                         </td>
@@ -3499,6 +4175,15 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       key={b.id}
                       className={`bk-mobile-card bk-mobile-card-${safeStatus}${isPendingDeposit ? " is-pending-deposit" : ""}`}
                     >
+                      <label className="bk-mobile-select-row">
+                        <input
+                          type="checkbox"
+                          className="bk-select-checkbox"
+                          checked={selectedBookingIds.has(String(b.id || "").trim())}
+                          onChange={() => toggleBookingSelection(b.id)}
+                        />
+                        <span>تحديد هذا الحجز</span>
+                      </label>
                       <div className="bk-mobile-row">
                         <span className="bk-mobile-label">رقم الحجز:</span>
                         <span className="bk-mobile-val" style={{ fontWeight: 900 }}>{bookingRef(b)}</span>
@@ -3544,6 +4229,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         <span className="bk-mobile-label">الدفع:</span>
                         <div className="bk-mobile-val bk-mobile-payment-val">
                           <strong>{paymentStatusLabel(payment)}</strong>
+                          <span className={`bk-payment-method-chip bk-payment-method-${bookingPaymentMethodFilterValue(b)}`}>
+                            {paymentMethodDisplayText(b)}
+                          </span>
                           <div className="bk-mobile-payment-line">
                             {paymentAmountsDisplayLines(payment).map((line) => (
                               <div key={`mob_pay_${b.id}_${line.key}`} className={`bk-payment-metric-row ${line.tone}`}>
@@ -3635,6 +4323,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       )}
     </section>
   ), [
+    allPageSelected,
     canEditBookings,
     canManageRefund,
     handleDeleteBooking,
@@ -3647,6 +4336,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     refundBusyId,
     refundMapByBookingId,
     resetBookingFilters,
+    selectedBookingIds,
+    toggleBookingSelection,
+    toggleCurrentPageSelection,
     uiRole,
   ]);
 
@@ -3654,6 +4346,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     () => bookingSections.map(renderBookingSection),
     [bookingSections, renderBookingSection]
   );
+
+  const bulkTargetBookings = useMemo(
+    () => (bulkTargetStatus ? selectedBookings.filter((b) => b.status !== bulkTargetStatus) : []),
+    [bulkTargetStatus, selectedBookings]
+  );
+  const bulkCurrentStatusSummary = useMemo(() => {
+    const counts = new Map<BookingStatus, number>();
+    bulkTargetBookings.forEach((b) => counts.set(b.status, (counts.get(b.status) || 0) + 1));
+    return Array.from(counts.entries())
+      .map(([status, count]) => `${statusLabel[status]}: ${count}`)
+      .join(" | ");
+  }, [bulkTargetBookings]);
 
   if (loading) return <div className="p-5 text-center">جاري التحميل...</div>;
 
@@ -3878,6 +4582,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </div>
           </div>
 
+          <div className="bk-result-summary" role="status">
+            <span>المحمّل: {bookings.length}</span>
+            <span>بعد الفلترة: {filteredSorted.length}</span>
+            <span>المعروض الآن: {pagedBookings.length}</span>
+            <span>الصفحة {currentPage} من {totalPages}</span>
+          </div>
+
           <div className="bk-filters">
             <div className="bk-field">
               <label>بحث</label>
@@ -3888,10 +4599,26 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="none"
-                placeholder="اسم، هاتف، موظفة، أو رقم الحجز (MK)..." 
+                placeholder="اسم، جوال، رقم الحجز، موظفة، أو خدمة..."
                 value={q} 
                 onChange={e => setQ(e.target.value)} 
               />
+            </div>
+            <div className="bk-field">
+              <label>الفترة الزمنية</label>
+              <select
+                className="bk-select"
+                value={datePreset}
+                onChange={(e) => applyDatePreset(e.target.value as DatePresetOption)}
+              >
+                <option value="all">كل الحجوزات</option>
+                <option value="today">اليوم</option>
+                <option value="yesterday">أمس</option>
+                <option value="week">هذا الأسبوع</option>
+                <option value="month">هذا الشهر</option>
+                <option value="last_month">الشهر الماضي</option>
+                <option value="custom">نطاق مخصص</option>
+              </select>
             </div>
             <div className="bk-field bk-field-date">
               <label>من تاريخ</label>
@@ -3901,7 +4628,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 lang="ar-SA"
                 dir="rtl"
                 value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
+                onChange={e => {
+                  setDatePreset("custom");
+                  setDateFrom(e.target.value);
+                }}
                 onClick={(e) => {
                   const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
                   if (typeof el.showPicker === "function") el.showPicker();
@@ -3916,7 +4646,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 lang="ar-SA"
                 dir="rtl"
                 value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
+                onChange={e => {
+                  setDatePreset("custom");
+                  setDateTo(e.target.value);
+                }}
                 onClick={(e) => {
                   const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
                   if (typeof el.showPicker === "function") el.showPicker();
@@ -3947,9 +4680,118 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 onChange={(e) => setSettlementFilter(e.target.value as SettlementFilterOption)}
               >
                 <option value="all">الكل</option>
-                <option value="unpaid">لم يتم السداد</option>
+                <option value="paid">مدفوع بالكامل</option>
+                <option value="partial">مدفوع جزئيا</option>
+                <option value="unpaid">غير مدفوع</option>
               </select>
             </div>
+            <div className="bk-field">
+              <label>طريقة الدفع</label>
+              <select
+                className="bk-select"
+                value={paymentMethodFilter}
+                onChange={(e) => setPaymentMethodFilter(e.target.value as PaymentMethodFilterOption)}
+              >
+                <option value="all">كل الطرق</option>
+                <option value="cash">كاش</option>
+                <option value="card">شبكة</option>
+                <option value="transfer">تحويل</option>
+                <option value="mixed">مختلط</option>
+                <option value="other">أخرى</option>
+                <option value="none">بدون دفع</option>
+              </select>
+            </div>
+            <div className="bk-field">
+              <label>الموظفة</label>
+              <select
+                className="bk-select"
+                value={employeeFilter}
+                onChange={(e) => setEmployeeFilter(e.target.value)}
+              >
+                <option value="all">كل الموظفات</option>
+                {employeeFilterOptions.map(([id, label]) => (
+                  <option key={`employee_filter_${id}`} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="bk-field">
+              <label>الخدمة</label>
+              <select
+                className="bk-select"
+                value={serviceFilter}
+                onChange={(e) => setServiceFilter(e.target.value)}
+              >
+                <option value="all">كل الخدمات</option>
+                {serviceFilterOptions.map(([id, label]) => (
+                  <option key={`service_filter_${id}`} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="bk-field">
+              <label>مصدر الحجز</label>
+              <select
+                className="bk-select"
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value as BookingSourceFilterOption)}
+              >
+                <option value="all">كل المصادر</option>
+                <option value="client">موقع العميلات</option>
+                <option value="dashboard">الداشبورد</option>
+                <option value="internal">الحجز الداخلي</option>
+                <option value="unknown">غير محدد</option>
+              </select>
+            </div>
+            <div className="bk-field">
+              <label>الترتيب</label>
+              <select
+                className="bk-select"
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as SortOrderOption)}
+              >
+                <option value="newest">الأحدث أولا</option>
+                <option value="oldest">الأقدم أولا</option>
+              </select>
+            </div>
+            <div className="bk-field">
+              <label>حجوزات قديمة بالانتظار</label>
+              <select
+                className="bk-select"
+                value={oldPendingFilter}
+                onChange={(e) => setOldPendingFilter(e.target.value as OldPendingFilterOption)}
+              >
+                <option value="off">بدون فلتر</option>
+                <option value="before_today">الأقدم من اليوم</option>
+                <option value="older_7">الأقدم من 7 أيام</option>
+                <option value="older_30">الأقدم من 30 يوما</option>
+                <option value="custom">نطاق مخصص</option>
+              </select>
+            </div>
+            {oldPendingFilter === "custom" ? (
+              <>
+                <div className="bk-field bk-field-date">
+                  <label>قديم من</label>
+                  <input
+                    type="date"
+                    className="bk-input bk-date-input"
+                    value={oldPendingFrom}
+                    onChange={(e) => setOldPendingFrom(e.target.value)}
+                  />
+                </div>
+                <div className="bk-field bk-field-date">
+                  <label>قديم إلى</label>
+                  <input
+                    type="date"
+                    className="bk-input bk-date-input"
+                    value={oldPendingTo}
+                    onChange={(e) => setOldPendingTo(e.target.value)}
+                  />
+                </div>
+              </>
+            ) : null}
           </div>
           <div className="bk-actions">
             <button className="exp-btn" onClick={handleExport}>
@@ -3958,9 +4800,79 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             <button
               className="exp-btn ghost"
               onClick={resetBookingFilters}
+              disabled={!hasActiveBookingFilters}
             >
-              <FontAwesomeIcon icon={faRotate} /> إعادة ضبط
+              <FontAwesomeIcon icon={faRotate} /> مسح الفلاتر
             </button>
+          </div>
+
+          <div className="bk-bulk-toolbar">
+            <div className="bk-bulk-summary">
+              <strong>{selectedBookingIds.size}</strong>
+              <span>حجز محدد</span>
+              <span>منها {selectedMatchingCount} ضمن النتائج الحالية</span>
+            </div>
+            <div className="bk-bulk-actions">
+              <button type="button" className="exp-btn ghost" onClick={toggleCurrentPageSelection} disabled={!pageBookingIds.length}>
+                {allPageSelected ? "إلغاء تحديد الصفحة" : "تحديد الصفحة الحالية"}
+              </button>
+              <button type="button" className="exp-btn ghost" onClick={selectAllMatchingBookings} disabled={!filteredBookingIds.length}>
+                تحديد كل النتائج المطابقة
+              </button>
+              <button type="button" className="exp-btn ghost" onClick={clearSelectedBookings} disabled={!selectedBookingIds.size}>
+                إلغاء التحديد
+              </button>
+              <button type="button" className="exp-btn" onClick={() => openBulkStatusModal("completed")} disabled={!selectedBookingIds.size}>
+                تحويل إلى مكتمل
+              </button>
+              <button type="button" className="exp-btn" onClick={() => openBulkStatusModal("confirmed")} disabled={!selectedBookingIds.size}>
+                تحويل إلى مؤكد
+              </button>
+              <button type="button" className="exp-btn danger" onClick={() => openBulkStatusModal("cancelled")} disabled={!selectedBookingIds.size}>
+                تحويل إلى ملغي
+              </button>
+            </div>
+            {bulkResultMessage ? <div className="bk-bulk-result">{bulkResultMessage}</div> : null}
+            {bulkError ? <div className="bk-bulk-error">{bulkError}</div> : null}
+          </div>
+
+          <div className="bk-pagination-bar">
+            <div className="bk-pagination-count">
+              عرض {pagedBookings.length ? (currentPage - 1) * pageSize + 1 : 0}
+              {" - "}
+              {Math.min(currentPage * pageSize, filteredSorted.length)}
+              {" من "}
+              {filteredSorted.length} حجز
+            </div>
+            <div className="bk-pagination-controls">
+              <label>
+                لكل صفحة
+                <select
+                  className="bk-select"
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value) || DEFAULT_PAGE_SIZE)}
+                >
+                  {pageSizeOptions.map((size) => (
+                    <option key={`page_size_${size}`} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1}>
+                الأولى
+              </button>
+              <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1}>
+                السابق
+              </button>
+              <span className="bk-page-number">صفحة {currentPage} / {totalPages}</span>
+              <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages}>
+                التالي
+              </button>
+              <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>
+                الأخيرة
+              </button>
+            </div>
           </div>
         </div>
 
@@ -4361,6 +5273,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     <div className="bk-item">
                       <span className="bk-item-label">نوع الدفع</span>
                       <span className="bk-item-val">{paymentStatusLabel(selectedBookingPayment)}</span>
+                    </div>
+                    <div className="bk-item">
+                      <span className="bk-item-label">طريقة الدفع</span>
+                      <span className="bk-item-val">{paymentMethodDisplayText(selectedBooking)}</span>
                     </div>
                     <div className="bk-item">
                       <span className="bk-item-label">المدفوع</span>
@@ -4770,6 +5686,53 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         */}
 
         <Modal
+          open={!!bulkTargetStatus}
+          onClose={closeBulkStatusModal}
+          ariaLabel="تأكيد الإجراء الجماعي للحجوزات"
+          panelClassName="bk-cancel-modal bk-bulk-modal"
+          size="sm"
+        >
+          <div className="bk-cancel-head">تأكيد الإجراء الجماعي</div>
+          <div className="bk-cancel-body">
+            <div className="bk-bulk-confirm-list">
+              <div>
+                <span>عدد الحجوزات التي ستتغير</span>
+                <strong>{bulkTargetBookings.length}</strong>
+              </div>
+              <div>
+                <span>الحالة الحالية</span>
+                <strong>{bulkCurrentStatusSummary || "غير محدد"}</strong>
+              </div>
+              <div>
+                <span>الحالة الجديدة</span>
+                <strong>{bulkTargetStatus ? statusLabel[bulkTargetStatus] : "غير محدد"}</strong>
+              </div>
+              <div>
+                <span>التاريخ/الفلاتر المستخدمة</span>
+                <strong>{filterSummaryText || "بدون فلاتر"}</strong>
+              </div>
+            </div>
+            <div className="bk-action-pin-warning">
+              تنبيه: هذا الإجراء سيؤثر في عدة حجوزات محددة فقط. لن يتم تعديل أي حجز غير محدد.
+            </div>
+            {bulkError ? <div className="bk-action-pin-error">{bulkError}</div> : null}
+          </div>
+          <div className="bk-cancel-foot">
+            <button type="button" className="exp-btn ghost" onClick={closeBulkStatusModal} disabled={bulkSaving}>
+              رجوع
+            </button>
+            <button
+              type="button"
+              className={`exp-btn ${bulkTargetStatus === "cancelled" ? "danger" : ""}`}
+              onClick={() => void confirmBulkStatusUpdate()}
+              disabled={bulkSaving || !bulkTargetBookings.length}
+            >
+              {bulkSaving ? "جاري التحديث..." : "تأكيد التحديث الجماعي"}
+            </button>
+          </div>
+        </Modal>
+
+        <Modal
           open={!!refundTarget}
           onClose={closeRefundModal}
           ariaLabel="الاسترجاع"
@@ -4935,6 +5898,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           ...p,
                           paymentMode: "none",
                           paymentType: "partial",
+                          paymentMethod: "none",
                           paidAmount: "0",
                         };
                       }
@@ -4942,6 +5906,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         ...p,
                         paymentMode: nextMode,
                         paymentType: nextMode === "full" ? "full" : "partial",
+                        paymentMethod: p.paymentMethod === "none" ? "transfer" : p.paymentMethod,
                       };
                     })
                   }
@@ -4953,7 +5918,82 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 </select>
               </label>
 
-              {confirmDraft.paymentMode === "partial" ? (
+              {confirmDraft.paymentMode !== "none" ? (
+                <label>
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>طريقة الدفع</div>
+                  <select
+                    className="bk-select"
+                    value={confirmDraft.paymentMethod}
+                    onChange={(e) =>
+                      setConfirmDraft((p) => {
+                        const method = e.target.value as EditPaymentMethodOption;
+                        return {
+                          ...p,
+                          paymentMethod: method,
+                          paymentMode: method === "mixed" ? "full" : p.paymentMode,
+                          paymentType: method === "mixed" ? "full" : p.paymentType,
+                        };
+                      })
+                    }
+                    disabled={confirmSaving}
+                  >
+                    <option value="cash">كاش</option>
+                    <option value="card">شبكة</option>
+                    <option value="transfer">تحويل</option>
+                    <option value="mixed">دفع مختلط</option>
+                    <option value="other">أخرى</option>
+                  </select>
+                </label>
+              ) : null}
+
+              {confirmDraft.paymentMethod === "mixed" ? (
+                <div className="bk-mixed-payment-box">
+                  <label>
+                    <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ الكاش</div>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="bk-input"
+                      value={confirmDraft.mixedCashAmount}
+                      onChange={(e) =>
+                        setConfirmDraft((p) => ({ ...p, mixedCashAmount: e.target.value }))
+                      }
+                      disabled={confirmSaving}
+                    />
+                  </label>
+                  <label>
+                    <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ الشبكة</div>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="bk-input"
+                      value={confirmDraft.mixedCardAmount}
+                      onChange={(e) =>
+                        setConfirmDraft((p) => ({ ...p, mixedCardAmount: e.target.value }))
+                      }
+                      disabled={confirmSaving}
+                    />
+                  </label>
+                  {(() => {
+                    const total = readBookingTotalAmount(confirmTarget);
+                    const paid = paymentBreakdownAmount({
+                      paymentBreakdown: {
+                        cash: Number(confirmDraft.mixedCashAmount || 0),
+                        card: Number(confirmDraft.mixedCardAmount || 0),
+                      },
+                    });
+                    return (
+                      <div className={`bk-mixed-payment-balance ${round2(total - paid) === 0 ? "is-balanced" : "is-unbalanced"}`}>
+                        المجموع: {paid} ر.س | المتبقي: {round2(Math.max(0, total - paid))} ر.س
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : null}
+
+              {confirmDraft.paymentMode === "partial" && confirmDraft.paymentMethod !== "mixed" ? (
                 <label>
                   <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ العربون</div>
                   <input
@@ -4975,7 +6015,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 {(() => {
                   const total = readBookingTotalAmount(confirmTarget);
                   const paid =
-                    confirmDraft.paymentType === "full"
+                    confirmDraft.paymentMethod === "mixed"
+                      ? paymentBreakdownAmount({
+                          paymentBreakdown: {
+                            cash: Number(confirmDraft.mixedCashAmount || 0),
+                            card: Number(confirmDraft.mixedCardAmount || 0),
+                          },
+                        })
+                    : confirmDraft.paymentType === "full"
                       ? total
                       : Math.max(0, Number(confirmDraft.paidAmount || 0));
                   const remaining = round2(Math.max(0, total - paid));

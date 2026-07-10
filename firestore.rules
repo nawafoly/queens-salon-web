@@ -978,7 +978,8 @@ service cloud.firestore {
       // Existing slot documents may only be reused by authorized administrators.
       // createdAt is immutable; operational changes use updatedAt.
       allow update: if canManageBookingSlots(salonId)
-        && request.resource.data.createdAt == resource.data.createdAt
+        // Legacy slot documents may not contain createdAt. In both cases it must remain unchanged.
+        && request.resource.data.get("createdAt", null) == resource.data.get("createdAt", null)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "bookingId",
           "employeeId",
