@@ -596,25 +596,25 @@
 }
 
 .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(1),
-.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(1) { width: 3.5% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(1) { width: 3% !important; }
 .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(2),
-.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(2) { width: 9.5% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(2) { width: 9% !important; }
 .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(3),
-.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(3) { width: 12% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(3) { width: 11% !important; }
 .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(4),
-.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(4) { width: 16% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(4) { width: 14% !important; }
 .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(5),
-.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(5) { width: 8% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(5) { width: 7% !important; }
 .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(6),
-.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(6) { width: 10% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(6) { width: 9% !important; }
 .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(7),
-.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(7) { width: 10.5% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(7) { width: 9% !important; }
 .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(8),
 .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(8) { width: 9.5% !important; }
 .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(9),
-.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(9) { width: 11% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(9) { width: 11.5% !important; }
 .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(10),
-.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(10) { width: 10% !important; }
+.dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(10) { width: 17% !important; }
 
 .dashboard-skin .bk-page-wrapper .bookings-table thead th {
   position: sticky;
@@ -627,7 +627,7 @@
   background: #f5f7fa !important;
   font-size: 0.62rem !important;
   font-weight: 950 !important;
-  text-align: right;
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -640,10 +640,10 @@
   border-bottom: 1px solid #edf0f4 !important;
   color: #303744 !important;
   background: #fff !important;
-  font-size: 0.67rem !important;
-  line-height: 1.45;
-  vertical-align: top;
-  overflow-wrap: anywhere;
+  font-size: 0.72rem !important;
+  line-height: 1.4;
+  vertical-align: middle;
+  overflow-wrap: break-word;
   word-break: normal;
 }
 
@@ -717,9 +717,10 @@
 .dashboard-skin .bk-page-wrapper .bk-datetime-time,
 .dashboard-skin .bk-page-wrapper .bk-update-at,
 .dashboard-skin .bk-page-wrapper .bk-update-by {
-  margin-top: 2px;
-  color: #89909b;
-  font-size: 0.59rem;
+  margin-top: 3px;
+  color: #727b89;
+  font-size: 0.62rem;
+  line-height: 1.35;
 }
 
 .dashboard-skin .bk-page-wrapper .bk-employee-pill,
@@ -753,7 +754,16 @@
 .dashboard-skin .bk-page-wrapper .bk-payment-cell,
 .dashboard-skin .bk-page-wrapper .bk-payment-breakdown {
   display: grid;
-  gap: 4px;
+  gap: 5px;
+  align-content: center;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-payment-cell {
+  justify-items: center;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-payment-details-cell {
+  padding-inline: 7px !important;
 }
 
 .dashboard-skin .bk-page-wrapper .bk-payment-method-chip {
@@ -800,8 +810,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  font-size: 0.59rem;
+  gap: 7px;
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 1px solid #e8ebf0;
+  border-radius: 9px;
+  background: #f8fafc;
+  font-size: 0.62rem;
 }
 
 .dashboard-skin .bk-page-wrapper .bk-payment-metric-label {
@@ -813,33 +828,103 @@
   font-weight: 900;
 }
 
+.dashboard-skin .bk-page-wrapper .bk-numeric {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-money {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+  direction: ltr;
+  unicode-bidi: isolate;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-money-number {
+  color: inherit;
+  font-weight: 950;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-money-currency {
+  direction: rtl;
+  color: inherit;
+  font-size: 0.9em;
+  font-weight: 850;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-actions-cell {
+  padding: 8px 7px !important;
+  overflow: visible;
+}
+
 .dashboard-skin .bk-page-wrapper .bk-actions-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  align-content: center;
+  gap: 6px;
   min-width: 0;
 }
 
 .dashboard-skin .bk-page-wrapper .bk-actions-row .exp-btn,
 .dashboard-skin .bk-page-wrapper .bk-actions-row .bk-select {
-  width: 100%;
-  min-width: 0;
-  min-height: 33px !important;
-  padding: 5px 8px !important;
-  font-size: 0.6rem !important;
-  white-space: normal;
-  line-height: 1.25;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 34px !important;
+  height: 34px !important;
+  margin: 0 !important;
+  padding: 5px 7px !important;
+  border-radius: 9px !important;
+  font-size: 0.65rem !important;
+  font-weight: 850 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal !important;
+  word-break: keep-all !important;
 }
 
-.dashboard-skin .bk-page-wrapper .bk-print-invoice-btn {
+.dashboard-skin .bk-page-wrapper .bk-actions-row .exp-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
 }
 
+.dashboard-skin .bk-page-wrapper .bk-actions-row .exp-btn:focus-visible,
+.dashboard-skin .bk-page-wrapper .bk-actions-row .bk-select:focus-visible {
+  outline: 2px solid rgba(14, 116, 144, 0.34);
+  outline-offset: 2px;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-actions-row .exp-btn:disabled,
+.dashboard-skin .bk-page-wrapper .bk-actions-row .bk-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-print-invoice-btn svg {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+}
+
 .dashboard-skin .bk-page-wrapper .bk-owner-status-select {
-  min-width: 0;
+  min-width: 0 !important;
+  text-align: center;
+  text-align-last: center;
+}
+
+@media (min-width: 768px) and (max-width: 1180px) {
+  .dashboard-skin .bk-page-wrapper .bk-actions-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .dashboard-skin .bk-page-wrapper .bk-select-checkbox {

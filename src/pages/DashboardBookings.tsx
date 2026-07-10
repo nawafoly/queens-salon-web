@@ -133,6 +133,23 @@ const allStatusOptions: BookingStatus[] = ["pending", "confirmed", "completed", 
 const DEFAULT_PAGE_SIZE = 25;
 const pageSizeOptions = [10, 25, 50, 100] as const;
 
+function formatBookingAmount(value: unknown) {
+  const amount = round2(Math.max(0, Number(value || 0)));
+  return amount.toLocaleString("en-US", {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function BookingMoney({ value }: { value: unknown }) {
+  return (
+    <span className="bk-money" dir="ltr">
+      <bdi className="bk-money-number">{formatBookingAmount(value)}</bdi>
+      <span className="bk-money-currency">ر.س</span>
+    </span>
+  );
+}
+
 /* =========================
    Helpers
 ========================= */
@@ -4224,7 +4241,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td>
                           <div className="bk-ref-cell">
-                            <div className="bk-ref-code">{bookingRef(b)}</div>
+                            <div className="bk-ref-code"><bdi className="bk-numeric" dir="ltr">{bookingRef(b)}</bdi></div>
                             <div className="bk-ref-meta">
                               <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
                                 {statusLabel[safeStatus]}
@@ -4241,7 +4258,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td>
                           <div className="bk-customer-name">{b.customerName || "—"}</div>
-                          <div className="bk-customer-phone">{b.phone || "—"}</div>
+                          <div className="bk-customer-phone"><bdi className="bk-numeric" dir="ltr">{b.phone || "—"}</bdi></div>
                         </td>
                         <td>
                           <div className="bk-service-main">{serviceSummaryForTable(b)}</div>
@@ -4251,16 +4268,16 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           <span className="bk-employee-pill">{b.employeeName || "—"}</span>
                         </td>
                         <td>
-                          <div className="bk-datetime-date">{b.date}</div>
-                          <div className="bk-datetime-time">{formatTime12(b.time)}</div>
+                          <div className="bk-datetime-date"><bdi className="bk-numeric" dir="ltr">{b.date}</bdi></div>
+                          <div className="bk-datetime-time"><bdi className="bk-numeric" dir="ltr">{formatTime12(b.time)}</bdi></div>
                         </td>
                         <td>
                           <div className="bk-update-by">{lastUpdateMap[b.id]?.by || "—"}</div>
-                          <div className="bk-update-at">{lastUpdateMap[b.id]?.at || "—"}</div>
+                          <div className="bk-update-at"><bdi className="bk-numeric" dir="ltr">{lastUpdateMap[b.id]?.at || "—"}</bdi></div>
                         </td>
                         <td>
                           <div className="bk-payment-cell">
-                            <span className="bk-price-pill">{payment.totalAmount} ر.س</span>
+                            <span className="bk-price-pill"><BookingMoney value={payment.totalAmount} /></span>
                             <span
                               className={`bk-payment-status ${
                                 payment.remainingAmount <= 0
@@ -4273,7 +4290,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               {paymentStatusLabel(payment)}
                             </span>
                             <span className={`bk-payment-method-chip bk-payment-method-${bookingPaymentMethodFilterValue(b)}`}>
-                              {paymentMethodDisplayText(b)}
+                              {paymentMethodLabel(bookingPaymentMethodFilterValue(b))}
                             </span>
                           </div>
                         </td>
@@ -4283,7 +4300,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               <div key={line.key} className={`bk-payment-metric-row ${line.tone}`}>
                                 <span className="bk-payment-metric-label">{line.label}</span>
                                 {typeof line.amount === "number" ? (
-                                  <span className="bk-payment-metric-value">{line.amount} ر.س</span>
+                                  <span className="bk-payment-metric-value"><BookingMoney value={line.amount} /></span>
                                 ) : null}
                               </div>
                             ))}
@@ -4301,8 +4318,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               disabled={printInvoiceBusyId === b.id}
                               title="طباعة الفاتورة"
                             >
-                              <FontAwesomeIcon icon={faPrint} />
-                              {printInvoiceBusyId === b.id ? "جاري التجهيز..." : "طباعة الفاتورة"}
+                              <FontAwesomeIcon icon={faPrint} aria-hidden="true" />
+                              <span>{printInvoiceBusyId === b.id ? "تجهيز..." : "طباعة"}</span>
                             </button>
                             {canEditBookings && (
                               <button className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
@@ -4330,7 +4347,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                                 )}
                                 <select
                                   className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
-                                  style={{ width: "auto", height: 40, padding: "0 12px", fontSize: 12 }}
                                   value={b.status}
                                   onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
                                 >
@@ -4405,7 +4421,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       </label>
                       <div className="bk-mobile-row">
                         <span className="bk-mobile-label">رقم الحجز:</span>
-                        <span className="bk-mobile-val" style={{ fontWeight: 900 }}>{bookingRef(b)}</span>
+                        <bdi className="bk-mobile-val bk-numeric" dir="ltr" style={{ fontWeight: 900 }}>{bookingRef(b)}</bdi>
                       </div>
                       <div className="bk-mobile-row">
                         <span className="bk-mobile-label">العميلة:</span>
@@ -4413,7 +4429,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       </div>
                       <div className="bk-mobile-row">
                         <span className="bk-mobile-label">الجوال:</span>
-                        <span className="bk-mobile-val">{b.phone || "—"}</span>
+                        <bdi className="bk-mobile-val bk-numeric" dir="ltr">{b.phone || "—"}</bdi>
                       </div>
                       <div className="bk-mobile-row">
                         <span className="bk-mobile-label">الخدمة:</span>
@@ -4428,7 +4444,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       </div>
                       <div className="bk-mobile-row">
                         <span className="bk-mobile-label">التاريخ:</span>
-                        <span className="bk-mobile-val bk-mobile-date-val">{b.date} {formatTime12(b.time)}</span>
+                        <bdi className="bk-mobile-val bk-mobile-date-val bk-numeric" dir="ltr">{b.date} {formatTime12(b.time)}</bdi>
                       </div>
                       <div className="bk-mobile-row">
                         <span className="bk-mobile-label">الحالة:</span>
@@ -4456,7 +4472,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               <div key={`mob_pay_${b.id}_${line.key}`} className={`bk-payment-metric-row ${line.tone}`}>
                                 <span className="bk-payment-metric-label">{line.label}</span>
                                 {typeof line.amount === "number" ? (
-                                  <span className="bk-payment-metric-value">{line.amount} ر.س</span>
+                                  <span className="bk-payment-metric-value"><BookingMoney value={line.amount} /></span>
                                 ) : null}
                               </div>
                             ))}
@@ -5160,7 +5176,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       >
                         <td>
                           <div className="bk-ref-cell">
-                            <div className="bk-ref-code">{bookingRef(b)}</div>
+                            <div className="bk-ref-code"><bdi className="bk-numeric" dir="ltr">{bookingRef(b)}</bdi></div>
                             <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
                               {statusLabel[safeStatus]}
                             </span>
@@ -5168,7 +5184,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td>
                           <div className="bk-customer-name">{b.customerName || "—"}</div>
-                          <div className="bk-customer-phone">{b.phone || "—"}</div>
+                          <div className="bk-customer-phone"><bdi className="bk-numeric" dir="ltr">{b.phone || "—"}</bdi></div>
                         </td>
                         <td>
                           <div className="bk-service-main">{serviceSummaryForTable(b)}</div>
@@ -5178,16 +5194,16 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           <span className="bk-employee-pill">{b.employeeName || "—"}</span>
                         </td>
                         <td>
-                          <div className="bk-datetime-date">{b.date}</div>
-                          <div className="bk-datetime-time">{formatTime12(b.time)}</div>
+                          <div className="bk-datetime-date"><bdi className="bk-numeric" dir="ltr">{b.date}</bdi></div>
+                          <div className="bk-datetime-time"><bdi className="bk-numeric" dir="ltr">{formatTime12(b.time)}</bdi></div>
                         </td>
                         <td>
                           <div className="bk-update-by">{lastUpdateMap[b.id]?.by || "—"}</div>
-                          <div className="bk-update-at">{lastUpdateMap[b.id]?.at || "—"}</div>
+                          <div className="bk-update-at"><bdi className="bk-numeric" dir="ltr">{lastUpdateMap[b.id]?.at || "—"}</bdi></div>
                         </td>
                         <td>
                           <div className="bk-payment-cell">
-                            <span className="bk-price-pill">{payment.totalAmount} ر.س</span>
+                            <span className="bk-price-pill"><BookingMoney value={payment.totalAmount} /></span>
                             <span
                               className={`bk-payment-status ${
                                 payment.remainingAmount <= 0
@@ -5207,7 +5223,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               <div key={line.key} className={`bk-payment-metric-row ${line.tone}`}>
                                 <span className="bk-payment-metric-label">{line.label}</span>
                                 {typeof line.amount === "number" ? (
-                                  <span className="bk-payment-metric-value">{line.amount} ر.س</span>
+                                  <span className="bk-payment-metric-value"><BookingMoney value={line.amount} /></span>
                                 ) : null}
                               </div>
                             ))}
@@ -5316,7 +5332,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     </div>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">الجوال:</span>
-                      <span className="bk-mobile-val">{b.phone || "—"}</span>
+                      <bdi className="bk-mobile-val bk-numeric" dir="ltr">{b.phone || "—"}</bdi>
                     </div>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">الخدمة:</span>
@@ -5331,7 +5347,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     </div>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">التاريخ:</span>
-                      <span className="bk-mobile-val bk-mobile-date-val">{b.date} {formatTime12(b.time)}</span>
+                      <bdi className="bk-mobile-val bk-mobile-date-val bk-numeric" dir="ltr">{b.date} {formatTime12(b.time)}</bdi>
                     </div>
                     <div className="bk-mobile-row">
                       <span className="bk-mobile-label">الحالة:</span>
@@ -5348,7 +5364,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                             <div key={`mob_pay_${b.id}_${line.key}`} className={`bk-payment-metric-row ${line.tone}`}>
                               <span className="bk-payment-metric-label">{line.label}</span>
                               {typeof line.amount === "number" ? (
-                                <span className="bk-payment-metric-value">{line.amount} ر.س</span>
+                                <span className="bk-payment-metric-value"><BookingMoney value={line.amount} /></span>
                               ) : null}
                             </div>
                           ))}
