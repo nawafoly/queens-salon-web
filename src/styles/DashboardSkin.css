@@ -31088,8 +31088,7 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   height: auto !important;
   max-height: none !important;
   min-height: calc(100vh - 24px) !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
+  overflow: visible !important;
 }
 
 .dashboard-skin.is-booking-internal-route .dashboard-inner {
@@ -31202,52 +31201,4 @@ body:has(.dashboard-skin) .modal-box .dash-select,
 .emp-modal .modal-foot .exp-btn {
   flex: 0 0 auto;
   min-width: 118px;
-}
-
-/* FIX: /dashboard/booking-internal must scroll inside dashboard content */
-.dashboard-skin.is-booking-internal-route {
-  height: 100dvh !important;
-  min-height: 100dvh !important;
-  overflow: hidden !important;
-}
-
-.dashboard-skin.is-booking-internal-route > .container-fluid,
-.dashboard-skin.is-booking-internal-route > .container-fluid > .row {
-  height: 100% !important;
-  min-height: 0 !important;
-  overflow: hidden !important;
-}
-
-.dashboard-skin.is-booking-internal-route .dashboard-main.has-single-scroll {
-  display: flex !important;
-  flex-direction: column !important;
-  height: 100% !important;
-  max-height: 100% !important;
-  min-height: 0 !important;
-  overflow: hidden !important;
-}
-
-.dashboard-skin.is-booking-internal-route .dashboard-main.has-single-scroll > .dash-topbar,
-.dashboard-skin.is-booking-internal-route .dashboard-main.has-single-scroll > .dashboard-header {
-  flex: 0 0 auto !important;
-}
-
-.dashboard-skin.is-booking-internal-route .dashboard-main.has-single-scroll > .dashboard-inner {
-  flex: 1 1 auto !important;
-  height: auto !important;
-  min-height: 0 !important;
-  max-height: none !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-}
-
-.dashboard-skin.is-booking-internal-route .bk-internal,
-.dashboard-skin.is-booking-internal-route .bk-internal-page,
-.dashboard-skin.is-booking-internal-route .bk-internal-container {
-  height: auto !important;
-  min-height: max-content !important;
-  overflow: visible !important;
 }

@@ -102,9 +102,12 @@ import {
 } from "../helpers/bookingAvailabilityUtils";
 import {
   allocatePaidAcrossTargets,
+  bookingPaymentMethodLabelAr,
   bookingStatusClass,
   canRefundBooking,
   describeBookingPaymentState,
+  EMPTY_PAYMENT_BREAKDOWN,
+  hasPaymentBreakdownValue,
   isCancelledStatus,
   isCompletedStatus,
   isLegacyPackageLinkedOffer,
@@ -113,9 +116,15 @@ import {
   mapBookingStatusAr,
   normalizeCouponCode,
   normalizeExistingPaymentMethod,
+  normalizePaymentBreakdown,
+  paymentBreakdownForSingleMethod,
+  paymentBreakdownLines,
   readBookingTotalAmount,
   resolveExistingBookingPayment,
   roundMoney2,
+  sumPaymentBreakdown,
+  type BookingPaymentBreakdown,
+  type BookingPaymentMethod,
   type BookingPaymentType,
 } from "../helpers/bookingPaymentUtils";
 import {
@@ -278,6 +287,87 @@ type FsSectionCatalogCacheRow = {
   categories: CategoryDoc[];
   services: ServiceDoc[];
 };
+type PaymentBreakdownDraft = Record<keyof BookingPaymentBreakdown, string>;
+
+const PAYMENT_BREAKDOWN_KEYS: Array<keyof BookingPaymentBreakdown> = [
+  "cash",
+  "card",
+  "transfer",
+];
+const PAYMENT_BREAKDOWN_DRAFT_EMPTY: PaymentBreakdownDraft = {
+  cash: "",
+  card: "",
+  transfer: "",
+};
+const PAYMENT_BREAKDOWN_LABELS: Record<keyof BookingPaymentBreakdown, string> = {
+  cash: "كاش",
+  card: "شبكة",
+  transfer: "تحويل",
+};
+
+function parsePaymentBreakdownDraft(draft: PaymentBreakdownDraft) {
+  const parsed: BookingPaymentBreakdown = { ...EMPTY_PAYMENT_BREAKDOWN };
+
+  for (const key of PAYMENT_BREAKDOWN_KEYS) {
+    const raw = String(draft[key] ?? "").trim();
+    if (!raw) {
+      parsed[key] = 0;
+      continue;
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+      return { ok: false as const, breakdown: parsed, invalidKey: key };
+    }
+    parsed[key] = roundMoney2(value);
+  }
+
+  return { ok: true as const, breakdown: normalizePaymentBreakdown(parsed) };
+}
+
+function paymentBreakdownDraftFromBreakdown(raw: any): PaymentBreakdownDraft {
+  const breakdown = normalizePaymentBreakdown(raw);
+  return {
+    cash: breakdown.cash > 0 ? String(breakdown.cash) : "",
+    card: breakdown.card > 0 ? String(breakdown.card) : "",
+    transfer: breakdown.transfer > 0 ? String(breakdown.transfer) : "",
+  };
+}
+
+function formatPaymentBreakdownSummary(raw: any) {
+  const lines = paymentBreakdownLines(raw);
+  return lines.length ? lines.join(" - ") : "لا توجد دفعة مسجلة";
+}
+
+function allocateBreakdownAcrossTargets(
+  targetTotals: number[],
+  breakdownRaw: BookingPaymentBreakdown
+): BookingPaymentBreakdown[] {
+  const totals = targetTotals.map((value) => roundMoney2(Math.max(0, Number(value || 0))));
+  const breakdown = normalizePaymentBreakdown(breakdownRaw);
+  const byMethod = {
+    cash: allocatePaidAcrossTargets(totals, breakdown.cash),
+    card: allocatePaidAcrossTargets(totals, breakdown.card),
+    transfer: allocatePaidAcrossTargets(totals, breakdown.transfer),
+  };
+
+  return totals.map((total, idx) => {
+    const row = normalizePaymentBreakdown({
+      cash: byMethod.cash[idx] || 0,
+      card: byMethod.card[idx] || 0,
+      transfer: byMethod.transfer[idx] || 0,
+    });
+    let overage = roundMoney2(sumPaymentBreakdown(row) - total);
+    if (overage > 0) {
+      for (const key of [...PAYMENT_BREAKDOWN_KEYS].reverse()) {
+        if (overage <= 0) break;
+        const reduceBy = roundMoney2(Math.min(row[key], overage));
+        row[key] = roundMoney2(Math.max(0, row[key] - reduceBy));
+        overage = roundMoney2(Math.max(0, overage - reduceBy));
+      }
+    }
+    return normalizePaymentBreakdown(row);
+  });
+}
 
 const QUICK_CLIENT_HISTORY_KEY = "internal_quick_clients_history_v1";
 
@@ -1124,20 +1214,25 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [bookingSearchMsg, setBookingSearchMsg] = useState("");
   const [internalPaymentModalOpen, setInternalPaymentModalOpen] = useState(false);
   const [internalPaymentMethodDraft, setInternalPaymentMethodDraft] = useState<
-    "" | "cash" | "card" | "transfer"
+    "" | BookingPaymentMethod
   >("");
   const [internalPaymentTypeDraft, setInternalPaymentTypeDraft] = useState<BookingPaymentType>("full");
   const [internalPaymentPaidAmountDraft, setInternalPaymentPaidAmountDraft] = useState("");
+  const [internalPaymentBreakdownDraft, setInternalPaymentBreakdownDraft] =
+    useState<PaymentBreakdownDraft>(() => ({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY }));
   const [internalPaymentError, setInternalPaymentError] = useState("");
-  const internalPaymentMethodRef = useRef<"cash" | "card" | "transfer" | null>(null);
+  const internalPaymentMethodRef = useRef<BookingPaymentMethod | null>(null);
   const internalPaymentTypeRef = useRef<BookingPaymentType | null>(null);
   const internalPaidAmountRef = useRef<number | null>(null);
+  const internalPaymentBreakdownRef = useRef<BookingPaymentBreakdown | null>(null);
   const internalSubmitModeRef = useRef<"payment" | "future">("payment");
   const internalBookingFormRef = useRef<HTMLFormElement | null>(null);
   const pendingInvoicePopupRef = useRef<Window | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [confirmTargetBooking, setConfirmTargetBooking] = useState<any | null>(null);
-  const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<"cash" | "card" | "transfer">("cash");
+  const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<BookingPaymentMethod>("cash");
+  const [confirmPaymentBreakdownDraft, setConfirmPaymentBreakdownDraft] =
+    useState<PaymentBreakdownDraft>(() => ({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY }));
   const [confirmPaymentError, setConfirmPaymentError] = useState("");
   const [refundModalOpen, setRefundModalOpen] = useState(false);
   const [refundTargetBooking, setRefundTargetBooking] = useState<any | null>(null);
@@ -1868,8 +1963,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   };
 
   function openConfirmAndPrintModal(b: any) {
+    const method = normalizeExistingPaymentMethod((b as any)?.paymentMethod);
     setConfirmTargetBooking(b || null);
-    setConfirmPaymentMethod(normalizeExistingPaymentMethod((b as any)?.paymentMethod));
+    setConfirmPaymentMethod(method);
+    setConfirmPaymentBreakdownDraft(
+      method === "mixed"
+        ? paymentBreakdownDraftFromBreakdown((b as any)?.paymentBreakdown)
+        : { ...PAYMENT_BREAKDOWN_DRAFT_EMPTY }
+    );
     setConfirmPaymentError("");
     setPaymentModalOpen(true);
   }
@@ -1999,6 +2100,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     return {
       ...booking,
+      paymentMethod: payment.paymentMethod,
+      paymentBreakdown: payment.paymentBreakdown,
       paymentType: payment.paymentType,
       paidAmount: payment.paidAmount,
       remainingAmount: payment.remainingAmount,
@@ -2019,8 +2122,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   async function completeAndPrintExistingBooking(
     b: any,
-    paymentMethodOverride?: "cash" | "card" | "transfer",
-    paymentOverride?: Partial<{ paymentType: BookingPaymentType; paidAmount: number }>
+    paymentMethodOverride?: BookingPaymentMethod,
+    paymentOverride?: Partial<{
+      paymentType: BookingPaymentType;
+      paidAmount: number;
+      paymentBreakdown: Partial<BookingPaymentBreakdown>;
+    }>
   ) {
     const id = String(b?.id || "").trim();
     if (!id) return;
@@ -2051,10 +2158,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       const now = Date.now();
       const nextPaymentMethod =
         paymentMethodOverride || normalizeExistingPaymentMethod((b as any)?.paymentMethod);
-      const payment = resolveExistingBookingPayment(b, paymentOverride);
+      const payment = resolveExistingBookingPayment(b, {
+        ...paymentOverride,
+        paymentMethod: nextPaymentMethod,
+      });
 
       await updateBookingFields(id, {
         paymentMethod: nextPaymentMethod,
+        paymentBreakdown: payment.paymentBreakdown,
         paymentType: payment.paymentType,
         paidAmount: payment.paidAmount,
         remainingAmount: payment.remainingAmount,
@@ -2073,6 +2184,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         after: {
           status: "confirmed",
           paymentMethod: nextPaymentMethod,
+          paymentBreakdown: payment.paymentBreakdown,
           paymentType: payment.paymentType,
           paidAmount: payment.paidAmount,
           remainingAmount: payment.remainingAmount,
@@ -2097,6 +2209,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         ...b,
         status: "confirmed",
         paymentMethod: nextPaymentMethod,
+        paymentBreakdown: payment.paymentBreakdown,
         paymentType: payment.paymentType,
         paidAmount: payment.paidAmount,
         remainingAmount: payment.remainingAmount,
@@ -2136,10 +2249,34 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     if (!confirmTargetBooking) return;
     const basePayment = resolveExistingBookingPayment(confirmTargetBooking);
     const totalAmount = roundMoney2(basePayment.totalAmount);
+    let paymentBreakdown = paymentBreakdownForSingleMethod(confirmPaymentMethod, totalAmount);
+
+    if (confirmPaymentMethod === "mixed") {
+      const parsed = parsePaymentBreakdownDraft(confirmPaymentBreakdownDraft);
+      if (!parsed.ok) {
+        setConfirmPaymentError(`راجعي مبلغ ${PAYMENT_BREAKDOWN_LABELS[parsed.invalidKey]}.`);
+        closePendingInvoicePopup();
+        return;
+      }
+      const breakdownTotal = sumPaymentBreakdown(parsed.breakdown);
+      if (breakdownTotal <= 0) {
+        setConfirmPaymentError("أدخلي مبالغ الدفع المختلط أولًا.");
+        closePendingInvoicePopup();
+        return;
+      }
+      if (breakdownTotal !== totalAmount) {
+        setConfirmPaymentError("مجموع الدفع المختلط يجب أن يساوي إجمالي الحجز.");
+        closePendingInvoicePopup();
+        return;
+      }
+      paymentBreakdown = parsed.breakdown;
+    }
+
     setConfirmPaymentError("");
     await completeAndPrintExistingBooking(confirmTargetBooking, confirmPaymentMethod, {
       paymentType: "full",
       paidAmount: totalAmount,
+      paymentBreakdown,
     });
   }
 
@@ -4673,24 +4810,31 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const selectedPaymentMethod = internalPaymentMethodRef.current;
     const selectedPaymentType = internalPaymentTypeRef.current;
     const selectedPaidAmount = internalPaidAmountRef.current;
+    const selectedPaymentBreakdown = internalPaymentBreakdownRef.current;
     const selectedPaidAmountSafe = Number.isFinite(Number(selectedPaidAmount))
       ? roundMoney2(Math.max(0, Number(selectedPaidAmount)))
       : null;
+    const selectedPaymentBreakdownSafe = normalizePaymentBreakdown(
+      selectedPaymentBreakdown || EMPTY_PAYMENT_BREAKDOWN
+    );
     const isNoPaymentNow =
-      selectedPaymentType === "partial" &&
+      selectedPaymentType === "none" ||
+      (selectedPaymentType === "partial" &&
       selectedPaidAmountSafe !== null &&
-      selectedPaidAmountSafe <= 0;
+      selectedPaidAmountSafe <= 0);
     const shouldSaveAsPending = isFutureBooking || isNoPaymentNow;
     const createdBookingStatus = shouldSaveAsPending ? "pending" : "confirmed";
     if (
       !selectedPaymentType ||
       selectedPaidAmountSafe === null ||
-      (!selectedPaymentMethod && !isNoPaymentNow)
+      (!selectedPaymentMethod && !isNoPaymentNow) ||
+      (selectedPaymentMethod === "mixed" && !selectedPaymentBreakdown)
     ) {
       const totalAmount = roundMoney2(Math.max(0, Number(finalPrice || 0)));
       setInternalPaymentMethodDraft("");
       setInternalPaymentTypeDraft("full");
       setInternalPaymentPaidAmountDraft(String(totalAmount));
+      setInternalPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
       setInternalPaymentError("");
       setInternalPaymentModalOpen(true);
       return;
@@ -4909,7 +5053,20 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         : "";
 
       const paymentNote = selectedPaymentMethod ? `payment_method:${selectedPaymentMethod}` : "";
-      const noteFinal = [userNote, offerNote, paymentNote].filter(Boolean).join(" | ") || undefined;
+      const effectivePaymentBreakdown = isNoPaymentNow
+        ? { ...EMPTY_PAYMENT_BREAKDOWN }
+        : selectedPaymentMethod === "mixed"
+          ? normalizePaymentBreakdown(selectedPaymentBreakdownSafe)
+          : paymentBreakdownForSingleMethod(selectedPaymentMethod, selectedPaidAmountSafe || 0);
+      const paymentBreakdownNote =
+        selectedPaymentMethod === "mixed" && hasPaymentBreakdownValue(effectivePaymentBreakdown)
+          ? `payment_breakdown:${PAYMENT_BREAKDOWN_KEYS.map(
+            (key) => `${key}=${Number(effectivePaymentBreakdown[key] || 0)}`
+          ).join(",")}`
+          : "";
+      const noteFinal = [userNote, offerNote, paymentNote, paymentBreakdownNote]
+        .filter(Boolean)
+        .join(" | ") || undefined;
 
       const paymentTargets: Array<{ key: string; total: number }> = [];
       const seenPackageTargets = new Set<string>();
@@ -4940,24 +5097,45 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
       const paymentByTargetKey = new Map<
         string,
-        { paymentType: BookingPaymentType; paidAmount: number; remainingAmount: number; totalAmount: number }
+        {
+          paymentType: BookingPaymentType;
+          paymentMethod?: BookingPaymentMethod;
+          paymentBreakdown: BookingPaymentBreakdown;
+          paidAmount: number;
+          remainingAmount: number;
+          totalAmount: number;
+        }
       >();
       const targetsTotal = roundMoney2(
         paymentTargets.reduce((sum, target) => sum + Number(target.total || 0), 0)
       );
       const requestedPaid = roundMoney2(
-        Math.max(0, Math.min(targetsTotal, Number(selectedPaidAmountSafe || 0)))
+        Math.max(
+          0,
+          Math.min(
+            targetsTotal,
+            selectedPaymentMethod === "mixed"
+              ? sumPaymentBreakdown(effectivePaymentBreakdown)
+              : Number(selectedPaidAmountSafe || 0)
+          )
+        )
       );
-      const allocated = allocatePaidAcrossTargets(
-        paymentTargets.map((target) => Number(target.total || 0)),
-        requestedPaid
+      const targetTotals = paymentTargets.map((target) => Number(target.total || 0));
+      const allocatedBreakdowns = allocateBreakdownAcrossTargets(
+        targetTotals,
+        selectedPaymentMethod === "mixed"
+          ? effectivePaymentBreakdown
+          : paymentBreakdownForSingleMethod(selectedPaymentMethod, requestedPaid)
       );
+      const allocated = allocatedBreakdowns.map((breakdown) => sumPaymentBreakdown(breakdown));
       paymentTargets.forEach((target, idx) => {
         const totalAmount = roundMoney2(Math.max(0, Number(target.total || 0)));
         const paidAmount = roundMoney2(Math.max(0, Math.min(totalAmount, Number(allocated[idx] || 0))));
         const remainingAmount = roundMoney2(Math.max(0, totalAmount - paidAmount));
         paymentByTargetKey.set(target.key, {
-          paymentType: paidAmount >= totalAmount ? "full" : "partial",
+          paymentType: paidAmount <= 0 ? "none" : paidAmount >= totalAmount ? "full" : "partial",
+          ...(selectedPaymentMethod && paidAmount > 0 ? { paymentMethod: selectedPaymentMethod } : {}),
+          paymentBreakdown: normalizePaymentBreakdown(allocatedBreakdowns[idx]),
           paidAmount,
           remainingAmount,
           totalAmount,
@@ -4967,7 +5145,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       const createdBookings: any[] = [];
       const processedPackageRuns = new Set<string>();
       const incomeMethod =
-        selectedPaymentMethod === "transfer" ? "bank_transfer" : selectedPaymentMethod;
+        selectedPaymentMethod === "transfer" ? "transfer" : selectedPaymentMethod;
 
       for (let idx = 0; idx < items.length; idx++) {
         const it = items[idx];
@@ -5024,7 +5202,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               return sum + Math.max(0, Number(row.item.basePrice || 0) - d);
             }, 0);
             const groupPayment = paymentByTargetKey.get(`group:${packageRunId}`) || {
-              paymentType: "partial" as BookingPaymentType,
+              paymentType: "none" as BookingPaymentType,
+              paymentBreakdown: { ...EMPTY_PAYMENT_BREAKDOWN },
               paidAmount: 0,
               remainingAmount: roundMoney2(Math.max(0, Number(runFinalTotal || 0))),
               totalAmount: roundMoney2(Math.max(0, Number(runFinalTotal || 0))),
@@ -5114,7 +5293,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 discountValue: Number(finalApplied.discountValue || 0),
                 offerTitle: finalApplied.title || null,
                 status: createdBookingStatus,
-                ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
+                ...(groupPayment.paymentMethod ? { paymentMethod: groupPayment.paymentMethod } : {}),
+                paymentBreakdown: groupPayment.paymentBreakdown,
                 paymentType: groupPayment.paymentType,
                 paidAmount: groupPayment.paidAmount,
                 remainingAmount: groupPayment.remainingAmount,
@@ -5177,8 +5357,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   discountValue: Number(finalApplied.discountValue || 0),
                   offerTitle: finalApplied.title || null,
                   status: createdBookingStatus,
-                  ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
-                  paymentType: "partial" as BookingPaymentType,
+                  paymentBreakdown: { ...EMPTY_PAYMENT_BREAKDOWN },
+                  paymentType: "none" as BookingPaymentType,
                   paidAmount: 0,
                   remainingAmount: roundMoney2(Math.max(0, Number(currentFinal || 0))),
                   note: currentItemNote,
@@ -5224,7 +5404,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               discountValue: Number(finalApplied.discountValue || 0),
               durationMin: parentDurationMin,
               status: createdBookingStatus,
-              ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
+              ...(groupPayment.paymentMethod ? { paymentMethod: groupPayment.paymentMethod } : {}),
+              paymentBreakdown: groupPayment.paymentBreakdown,
               paymentType: groupPayment.paymentType,
               paidAmount: groupPayment.paidAmount,
               remainingAmount: groupPayment.remainingAmount,
@@ -5242,9 +5423,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   date: normalizeIsoDate(runDateISO) || todayISO(),
                   amount: Number(groupPayment.paidAmount || 0),
                   method: incomeMethod as any,
+                  paymentBreakdown: groupPayment.paymentBreakdown,
                   source: "booking",
                   bookingId: String(groupRes.parentId || "").trim(),
-                  note: `internal_payment:${selectedPaymentMethod}`,
+                  note: `internal_payment:${selectedPaymentMethod}${
+                    selectedPaymentMethod === "mixed"
+                      ? ` | ${formatPaymentBreakdownSummary(groupPayment.paymentBreakdown)}`
+                      : ""
+                  }`,
                   createdAt: Date.now(),
                 } as any,
                 SALON_ID
@@ -5283,7 +5469,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           categoryNameAtBooking,
         };
         const itemPayment = paymentByTargetKey.get(`item:${idx}`) || {
-          paymentType: "partial" as BookingPaymentType,
+          paymentType: "none" as BookingPaymentType,
+          paymentBreakdown: { ...EMPTY_PAYMENT_BREAKDOWN },
           paidAmount: 0,
           remainingAmount: roundMoney2(Math.max(0, Number(itemFinal || 0))),
           totalAmount: roundMoney2(Math.max(0, Number(itemFinal || 0))),
@@ -5321,7 +5508,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           offerTitle: finalApplied.title || null,
 
           status: createdBookingStatus,
-          ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
+          ...(itemPayment.paymentMethod ? { paymentMethod: itemPayment.paymentMethod } : {}),
+          paymentBreakdown: itemPayment.paymentBreakdown,
           paymentType: itemPayment.paymentType,
           paidAmount: itemPayment.paidAmount,
           remainingAmount: itemPayment.remainingAmount,
@@ -5376,7 +5564,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           toolsSource: String(it.toolsSource || "").trim() || null,
           toolsFeeApplied: Number(it.toolsFeeApplied || 0),
           status: createdBookingStatus,
-          ...(selectedPaymentMethod ? { paymentMethod: selectedPaymentMethod } : {}),
+          ...(itemPayment.paymentMethod ? { paymentMethod: itemPayment.paymentMethod } : {}),
+          paymentBreakdown: itemPayment.paymentBreakdown,
           paymentType: itemPayment.paymentType,
           paidAmount: itemPayment.paidAmount,
           remainingAmount: itemPayment.remainingAmount,
@@ -5434,6 +5623,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       internalPaymentMethodRef.current = null;
       internalPaymentTypeRef.current = null;
       internalPaidAmountRef.current = null;
+      internalPaymentBreakdownRef.current = null;
 
       if (shouldSaveAsPending) {
         const successNav = buildSuccessNavigationPayload(createdBookings, "created");
@@ -5499,6 +5689,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       internalPaymentMethodRef.current = null;
       internalPaymentTypeRef.current = null;
       internalPaidAmountRef.current = null;
+      internalPaymentBreakdownRef.current = null;
       internalSubmitModeRef.current = "payment";
     }
   };
@@ -5698,42 +5889,68 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           setInternalPaymentMethodDraft("");
           setInternalPaymentTypeDraft("full");
           setInternalPaymentPaidAmountDraft(String(roundMoney2(Math.max(0, Number(finalPrice || 0)))));
+          setInternalPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
           setInternalPaymentError("");
           internalPaymentMethodRef.current = null;
           internalPaymentTypeRef.current = null;
           internalPaidAmountRef.current = null;
+          internalPaymentBreakdownRef.current = null;
         }}
         ariaLabel={"اختر طريقة الدفع"}
-        size="sm"
+        size="lg"
       >
         <div className="p-3 bk-pay-modal">
           <h5 className="mb-2 bk-pay-modal-title">
             {"اختر طريقة الدفع"}
           </h5>
-          <div className="d-grid gap-2 bk-pay-methods">
+          <div className="form-label mb-2">طريقة الدفع</div>
+          <div className="d-grid gap-2 bk-pay-methods bk-pay-methods-four">
             <button
               type="button"
               className={`btn bk-pay-method-btn ${internalPaymentMethodDraft === "card" ? "is-active" : ""}`}
-              onClick={() => setInternalPaymentMethodDraft("card")}
+              onClick={() => {
+                setInternalPaymentMethodDraft("card");
+                setInternalPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
+                setInternalPaymentError("");
+              }}
               disabled={isLoading}
             >
-              {"💳 شبكة"}
+              {"شبكة"}
             </button>
             <button
               type="button"
               className={`btn bk-pay-method-btn ${internalPaymentMethodDraft === "cash" ? "is-active" : ""}`}
-              onClick={() => setInternalPaymentMethodDraft("cash")}
+              onClick={() => {
+                setInternalPaymentMethodDraft("cash");
+                setInternalPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
+                setInternalPaymentError("");
+              }}
               disabled={isLoading}
             >
-              {"💵 كاش"}
+              {"كاش"}
             </button>
             <button
               type="button"
               className={`btn bk-pay-method-btn ${internalPaymentMethodDraft === "transfer" ? "is-active" : ""}`}
-              onClick={() => setInternalPaymentMethodDraft("transfer")}
+              onClick={() => {
+                setInternalPaymentMethodDraft("transfer");
+                setInternalPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
+                setInternalPaymentError("");
+              }}
               disabled={isLoading}
             >
-              {"🏦 تحويل"}
+              {"تحويل"}
+            </button>
+            <button
+              type="button"
+              className={`btn bk-pay-method-btn ${internalPaymentMethodDraft === "mixed" ? "is-active" : ""}`}
+              onClick={() => {
+                setInternalPaymentMethodDraft("mixed");
+                setInternalPaymentError("");
+              }}
+              disabled={isLoading}
+            >
+              {"مختلط"}
             </button>
           </div>
           <div className="mt-3">
@@ -5759,7 +5976,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 onClick={() => {
                   setInternalPaymentTypeDraft("partial");
                   if (!String(internalPaymentPaidAmountDraft || "").trim()) {
-                    setInternalPaymentPaidAmountDraft("0");
+                    setInternalPaymentPaidAmountDraft("");
                   }
                   setInternalPaymentError("");
                 }}
@@ -5769,15 +5986,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               </button>
               <button
                 type="button"
-                className={`btn bk-pay-method-btn ${
-                  internalPaymentTypeDraft === "partial" &&
-                  roundMoney2(Math.max(0, Number(internalPaymentPaidAmountDraft || 0))) <= 0
-                    ? "is-active"
-                    : ""
-                }`}
+                className={`btn bk-pay-method-btn ${internalPaymentTypeDraft === "none" ? "is-active" : ""}`}
                 onClick={() => {
-                  setInternalPaymentTypeDraft("partial");
+                  setInternalPaymentTypeDraft("none");
+                  setInternalPaymentMethodDraft("");
                   setInternalPaymentPaidAmountDraft("0");
+                  setInternalPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
                   setInternalPaymentError("");
                 }}
                 disabled={isLoading}
@@ -5785,7 +5999,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 بدون دفع الآن
               </button>
             </div>
-            {internalPaymentTypeDraft === "partial" ? (
+            {internalPaymentTypeDraft === "partial" && internalPaymentMethodDraft !== "mixed" ? (
               <div className="mt-2">
                 <label className="form-label mb-1">مبلغ العربون</label>
                 <input
@@ -5798,20 +6012,68 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     setInternalPaymentPaidAmountDraft(String(e.target.value || ""));
                     setInternalPaymentError("");
                   }}
-                  placeholder="مثال: 150 (أو 0 بدون دفع)"
+                  placeholder="مثال: 150"
                   disabled={isLoading}
                 />
                 <div className="small text-muted mt-1">
-                  اكتبي 0 إذا كانت العميلة حجزت بدون أي دفعة حالياً.
+                  للدفع الجزئي يجب أن يكون العربون أكبر من صفر وأقل من الإجمالي.
                 </div>
               </div>
             ) : null}
-            <div className="small text-muted mt-2">
-              {formatInternalPaymentDraftSummary(
-                finalPrice,
-                internalPaymentTypeDraft,
-                internalPaymentPaidAmountDraft
-              )}
+            {internalPaymentMethodDraft === "mixed" && internalPaymentTypeDraft !== "none" ? (
+              <div className="bk-mixed-payment-card mt-3">
+                <div className="bk-mixed-payment-title">تفاصيل الدفع المختلط</div>
+                <div className="bk-mixed-payment-grid">
+                  {PAYMENT_BREAKDOWN_KEYS.map((key) => (
+                    <label className="bk-mixed-payment-field" key={key}>
+                      <span>{PAYMENT_BREAKDOWN_LABELS[key]}</span>
+                      <input
+                        type="number"
+                        className="form-control"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        value={internalPaymentBreakdownDraft[key]}
+                        onChange={(e) => {
+                          const value = String(e.target.value || "");
+                          setInternalPaymentBreakdownDraft((prev) => ({
+                            ...prev,
+                            [key]: value,
+                          }));
+                          setInternalPaymentError("");
+                        }}
+                        disabled={isLoading}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="bk-mixed-payment-balance">
+                  {(() => {
+                    const parsed = parsePaymentBreakdownDraft(internalPaymentBreakdownDraft);
+                    const paid = parsed.ok ? sumPaymentBreakdown(parsed.breakdown) : 0;
+                    const total = roundMoney2(Math.max(0, Number(finalPrice || 0)));
+                    const remaining = roundMoney2(Math.max(0, total - paid));
+                    return `المجموع ${paid.toFixed(2)} ر.س - المتبقي ${remaining.toFixed(2)} ر.س`;
+                  })()}
+                </div>
+              </div>
+            ) : null}
+            <div
+              className={
+                internalPaymentMethodDraft === "mixed" && internalPaymentTypeDraft !== "none"
+                  ? "bk-mixed-payment-summary"
+                  : "small text-muted mt-2"
+              }
+            >
+              {internalPaymentMethodDraft === "mixed" && internalPaymentTypeDraft !== "none"
+                ? formatPaymentBreakdownSummary(
+                    parsePaymentBreakdownDraft(internalPaymentBreakdownDraft).breakdown
+                  )
+                : formatInternalPaymentDraftSummary(
+                    finalPrice,
+                    internalPaymentTypeDraft,
+                    internalPaymentPaidAmountDraft
+                  )}
             </div>
             {internalPaymentError ? (
               <div className="small mt-2" style={{ color: "#b42318" }}>
@@ -5825,28 +6087,60 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               className="btn btn-primary bk-pay-confirm-btn"
               onClick={() => {
                 const totalAmount = roundMoney2(Math.max(0, Number(finalPrice || 0)));
-                const desiredType = internalPaymentTypeDraft === "partial" ? "partial" : "full";
-                let paidAmount =
-                  desiredType === "full"
-                    ? totalAmount
-                    : Number(internalPaymentPaidAmountDraft || 0);
-                const isNoPayment =
-                  desiredType === "partial" &&
-                  roundMoney2(Math.max(0, Number(paidAmount || 0))) <= 0;
-                const methodForSubmit: "cash" | "card" | "transfer" | null = isNoPayment
+                const desiredType: BookingPaymentType = internalPaymentTypeDraft;
+                let paidAmount = desiredType === "none"
+                  ? 0
+                  : desiredType === "full"
+                  ? totalAmount
+                  : Number(internalPaymentPaidAmountDraft || 0);
+                let paymentBreakdown = { ...EMPTY_PAYMENT_BREAKDOWN };
+
+                if (internalPaymentMethodDraft === "mixed" && desiredType !== "none") {
+                  const parsed = parsePaymentBreakdownDraft(internalPaymentBreakdownDraft);
+                  if (!parsed.ok) {
+                    setInternalPaymentError(`راجعي مبلغ ${PAYMENT_BREAKDOWN_LABELS[parsed.invalidKey]}.`);
+                    return;
+                  }
+                  paidAmount = sumPaymentBreakdown(parsed.breakdown);
+                  paymentBreakdown = parsed.breakdown;
+                }
+
+                const isNoPayment = desiredType === "none";
+                const methodForSubmit: BookingPaymentMethod | null = isNoPayment
                   ? null
                   : internalPaymentMethodDraft || null;
                 if (!methodForSubmit && !isNoPayment) {
                   setInternalPaymentError("اختاري طريقة الدفع أولًا.");
                   return;
                 }
-                if (desiredType === "partial") {
-                  if (!Number.isFinite(paidAmount) || paidAmount < 0) {
-                    setInternalPaymentError("اكتبي مبلغ العربون بشكل صحيح (0 أو أكثر).");
+                if (methodForSubmit === "mixed" && !isNoPayment) {
+                  if (paidAmount <= 0) {
+                    setInternalPaymentError("أدخلي مبلغًا واحدًا على الأقل في الدفع المختلط.");
+                    return;
+                  }
+                  if (paidAmount > totalAmount) {
+                    setInternalPaymentError("مجموع الدفع المختلط لا يمكن أن يتجاوز إجمالي الحجز.");
+                    return;
+                  }
+                  if (desiredType === "full" && roundMoney2(paidAmount) !== totalAmount) {
+                    setInternalPaymentError("الدفع الكامل المختلط يجب أن يساوي إجمالي الحجز.");
+                    return;
+                  }
+                  if (desiredType === "partial" && paidAmount >= totalAmount) {
+                    setInternalPaymentError("للدفع الجزئي يجب أن يكون المجموع أقل من إجمالي الحجز.");
+                    return;
+                  }
+                } else if (desiredType === "partial") {
+                  if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
+                    setInternalPaymentError("مبلغ العربون يجب أن يكون أكبر من صفر.");
                     return;
                   }
                   if (paidAmount > totalAmount) {
                     setInternalPaymentError("مبلغ العربون لا يمكن أن يتجاوز إجمالي الحجز.");
+                    return;
+                  }
+                  if (paidAmount >= totalAmount) {
+                    setInternalPaymentError("للدفع الجزئي يجب أن يكون العربون أقل من إجمالي الحجز.");
                     return;
                   }
                 }
@@ -5855,12 +6149,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   finalType = "full";
                   paidAmount = totalAmount;
                 }
+                if (methodForSubmit !== "mixed") {
+                  paymentBreakdown = isNoPayment
+                    ? { ...EMPTY_PAYMENT_BREAKDOWN }
+                    : paymentBreakdownForSingleMethod(methodForSubmit, paidAmount);
+                }
                 if (!isNoPayment && internalSubmitModeRef.current !== "future") {
                   primeInternalPrintPopup();
                 }
                 internalPaymentMethodRef.current = methodForSubmit;
                 internalPaymentTypeRef.current = finalType;
                 internalPaidAmountRef.current = roundMoney2(Math.max(0, paidAmount));
+                internalPaymentBreakdownRef.current = normalizePaymentBreakdown(paymentBreakdown);
                 setInternalPaymentError("");
                 setInternalPaymentModalOpen(false);
                 // Let the popup render first, then run the heavy submit flow.
@@ -5870,11 +6170,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               }}
               disabled={
                 isLoading ||
-                (!internalPaymentMethodDraft &&
-                  !(
-                    internalPaymentTypeDraft === "partial" &&
-                    roundMoney2(Math.max(0, Number(internalPaymentPaidAmountDraft || 0))) <= 0
-                  ))
+                (!internalPaymentMethodDraft && internalPaymentTypeDraft !== "none")
               }
             >
               {"تأكيد الدفع"}
@@ -5887,10 +6183,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 setInternalPaymentMethodDraft("");
                 setInternalPaymentTypeDraft("full");
                 setInternalPaymentPaidAmountDraft(String(roundMoney2(Math.max(0, Number(finalPrice || 0)))));
+                setInternalPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
                 setInternalPaymentError("");
                 internalPaymentMethodRef.current = null;
                 internalPaymentTypeRef.current = null;
                 internalPaidAmountRef.current = null;
+                internalPaymentBreakdownRef.current = null;
               }}
               disabled={isLoading}
             >
@@ -5905,10 +6203,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           if (isLoading) return;
           setPaymentModalOpen(false);
           setConfirmTargetBooking(null);
+          setConfirmPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
           setConfirmPaymentError("");
         }}
         ariaLabel="تأكيد الدفع"
-        size="sm"
+        size="lg"
       >
         <div className="p-3 bk-pay-modal">
           <h5 className="mb-2 bk-pay-modal-title">تأكيد الدفع + الطباعة</h5>
@@ -5938,12 +6237,16 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           })()}
           <div className="form-label mb-2">طريقة الدفع</div>
           <div
-            className="d-grid gap-2 bk-payment-method-grid"
+            className="d-grid gap-2 bk-payment-method-grid bk-pay-methods-four"
           >
             <button
               type="button"
               className={`btn bk-pay-method-btn ${confirmPaymentMethod === "cash" ? "is-active" : ""}`}
-              onClick={() => setConfirmPaymentMethod("cash")}
+              onClick={() => {
+                setConfirmPaymentMethod("cash");
+                setConfirmPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
+                setConfirmPaymentError("");
+              }}
               disabled={isLoading}
             >
               كاش
@@ -5951,7 +6254,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             <button
               type="button"
               className={`btn bk-pay-method-btn ${confirmPaymentMethod === "card" ? "is-active" : ""}`}
-              onClick={() => setConfirmPaymentMethod("card")}
+              onClick={() => {
+                setConfirmPaymentMethod("card");
+                setConfirmPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
+                setConfirmPaymentError("");
+              }}
               disabled={isLoading}
             >
               شبكة
@@ -5959,16 +6266,81 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             <button
               type="button"
               className={`btn bk-pay-method-btn ${confirmPaymentMethod === "transfer" ? "is-active" : ""}`}
-              onClick={() => setConfirmPaymentMethod("transfer")}
+              onClick={() => {
+                setConfirmPaymentMethod("transfer");
+                setConfirmPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
+                setConfirmPaymentError("");
+              }}
               disabled={isLoading}
             >
               تحويل
             </button>
+            <button
+              type="button"
+              className={`btn bk-pay-method-btn ${confirmPaymentMethod === "mixed" ? "is-active" : ""}`}
+              onClick={() => {
+                setConfirmPaymentMethod("mixed");
+                setConfirmPaymentError("");
+              }}
+              disabled={isLoading}
+            >
+              مختلط
+            </button>
           </div>
-          <div className="small text-muted mt-2">
-            {formatConfirmExistingBookingPaymentSummary(
-              resolveExistingBookingPayment(confirmTargetBooking).totalAmount
-            )}
+          {confirmPaymentMethod === "mixed" ? (
+            <div className="bk-mixed-payment-card mt-3">
+              <div className="bk-mixed-payment-title">تفاصيل الدفع المختلط</div>
+              <div className="bk-mixed-payment-grid">
+                {PAYMENT_BREAKDOWN_KEYS.map((key) => (
+                  <label className="bk-mixed-payment-field" key={key}>
+                    <span>{PAYMENT_BREAKDOWN_LABELS[key]}</span>
+                    <input
+                      type="number"
+                      className="form-control"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={confirmPaymentBreakdownDraft[key]}
+                      onChange={(e) => {
+                        const value = String(e.target.value || "");
+                        setConfirmPaymentBreakdownDraft((prev) => ({
+                          ...prev,
+                          [key]: value,
+                        }));
+                        setConfirmPaymentError("");
+                      }}
+                      disabled={isLoading}
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="bk-mixed-payment-balance">
+                {(() => {
+                  const parsed = parsePaymentBreakdownDraft(confirmPaymentBreakdownDraft);
+                  const paid = parsed.ok ? sumPaymentBreakdown(parsed.breakdown) : 0;
+                  const total = roundMoney2(
+                    resolveExistingBookingPayment(confirmTargetBooking).totalAmount
+                  );
+                  const remaining = roundMoney2(Math.max(0, total - paid));
+                  return `المجموع ${paid.toFixed(2)} ر.س - المتبقي ${remaining.toFixed(2)} ر.س`;
+                })()}
+              </div>
+            </div>
+          ) : null}
+          <div
+            className={
+              confirmPaymentMethod === "mixed"
+                ? "bk-mixed-payment-summary"
+                : "small text-muted mt-2"
+            }
+          >
+            {confirmPaymentMethod === "mixed"
+              ? formatPaymentBreakdownSummary(
+                  parsePaymentBreakdownDraft(confirmPaymentBreakdownDraft).breakdown
+                )
+              : formatConfirmExistingBookingPaymentSummary(
+                  resolveExistingBookingPayment(confirmTargetBooking).totalAmount
+                )}
           </div>
           {confirmPaymentError ? (
             <div className="small mt-2" style={{ color: "#b42318" }}>
@@ -5993,6 +6365,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               onClick={() => {
                 setPaymentModalOpen(false);
                 setConfirmTargetBooking(null);
+                setConfirmPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
                 setConfirmPaymentError("");
               }}
               disabled={isLoading}
@@ -6264,6 +6637,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 const paymentState = describeBookingPaymentState(payment);
                                 const showPaidLine = roundMoney2(payment.paidAmount) > 0;
                                 const showRemainingLine = roundMoney2(payment.remainingAmount) > 0;
+                                const paymentMethodLabel = showPaidLine
+                                  ? bookingPaymentMethodLabelAr(payment.paymentMethod)
+                                  : "";
+                                const paymentBreakdownDetail =
+                                  payment.paymentMethod === "mixed"
+                                    ? paymentBreakdownLines(payment.paymentBreakdown)
+                                    : [];
                                 const paymentStateClass = !hasPrice
                                   ? "bk-payment-line-paid"
                                   : isFullyPaid
@@ -6301,6 +6681,19 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                                 دفعت {payment.paidAmount.toFixed(2)} ر.س
                                               </div>
                                             ) : null}
+                                            {paymentMethodLabel ? (
+                                              <div className="bk-payment-line bk-payment-line-method">
+                                                طريقة الدفع: {paymentMethodLabel}
+                                              </div>
+                                            ) : null}
+                                            {paymentBreakdownDetail.map((line) => (
+                                              <div
+                                                className="bk-payment-line bk-payment-line-breakdown"
+                                                key={line}
+                                              >
+                                                {line}
+                                              </div>
+                                            ))}
                                             {showRemainingLine ? (
                                               <div
                                                 className={`bk-payment-line ${remainingLineClass}`}
@@ -6445,6 +6838,25 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                 describeBookingPaymentState(
                                   resolveExistingBookingPayment(selectedExistingBooking)
                                 ),
+                              ],
+                              [
+                                "طريقة الدفع",
+                                (() => {
+                                  const payment = resolveExistingBookingPayment(selectedExistingBooking);
+                                  return payment.paidAmount > 0
+                                    ? bookingPaymentMethodLabelAr(payment.paymentMethod)
+                                    : "";
+                                })(),
+                              ],
+                              [
+                                "تفاصيل الدفع",
+                                (() => {
+                                  const payment = resolveExistingBookingPayment(selectedExistingBooking);
+                                  const lines = paymentBreakdownLines(payment.paymentBreakdown);
+                                  return payment.paymentMethod === "mixed" && lines.length
+                                    ? lines.join(" / ")
+                                    : "";
+                                })(),
                               ],
                               [
                                 "المدفوع",

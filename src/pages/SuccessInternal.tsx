@@ -1,7 +1,16 @@
 import { useEffect, useMemo } from "react";
 import { formatTime12 } from "../helpers/timeDisplay";
-
-type BookingPaymentType = "full" | "partial";
+import {
+  bookingPaymentMethodLabelAr,
+  normalizePaymentBreakdown,
+  paymentBreakdownLines,
+  resolveExistingBookingPayment,
+  roundMoney2,
+  sumPaymentBreakdown,
+  type BookingPaymentBreakdown,
+  type BookingPaymentMethod,
+  type BookingPaymentType,
+} from "../helpers/bookingPaymentUtils";
 
 type BookingItem = {
   id?: string;
@@ -34,6 +43,8 @@ type BookingItem = {
   couponCode?: string;
   toolsSource?: "client" | "salon" | string | null;
   toolsFeeApplied?: number;
+  paymentMethod?: BookingPaymentMethod | string;
+  paymentBreakdown?: Partial<BookingPaymentBreakdown>;
   paymentType?: BookingPaymentType | string;
   paidAmount?: number;
   remainingAmount?: number;
@@ -122,44 +133,8 @@ function toEpoch(v: any): number {
   return NaN;
 }
 
-function normalizePaymentType(raw: any): BookingPaymentType | null {
-  const s = String(raw || "").trim().toLowerCase();
-  if (!s) return null;
-  if (s === "full" || s === "complete" || s === "كامل") return "full";
-  if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
-  return null;
-}
-
 function resolveItemPayment(item: BookingItem) {
-  const totalAmount = Math.max(0, Number(item?.finalPrice ?? item?.total ?? 0) || 0);
-  const normalizedType = normalizePaymentType(item?.paymentType);
-  const hasExplicitPaid = Number.isFinite(Number(item?.paidAmount));
-  const explicitPaid = hasExplicitPaid ? Number(item?.paidAmount) : NaN;
-  const status = String(item?.status || "").trim().toLowerCase();
-  const isRevenueStatus = status === "confirmed" || status === "completed";
-
-  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "partial");
-  let paidAmount: number;
-  if (hasExplicitPaid) {
-    paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
-  } else if (paymentType === "partial") {
-    paidAmount = 0;
-  } else {
-    paidAmount = isRevenueStatus ? totalAmount : totalAmount;
-  }
-
-  if (paymentType === "full") {
-    paidAmount = Math.max(0, Math.min(totalAmount, paidAmount));
-  } else {
-    paymentType = paidAmount >= totalAmount ? "full" : "partial";
-  }
-  const remainingAmount = Math.max(0, Math.round((totalAmount - paidAmount) * 100) / 100);
-  return {
-    paymentType,
-    paidAmount: Math.round(Math.max(0, Math.min(totalAmount, paidAmount)) * 100) / 100,
-    remainingAmount,
-    totalAmount: Math.round(totalAmount * 100) / 100,
-  };
+  return resolveExistingBookingPayment(item);
 }
 
 export default function SuccessInternal() {
@@ -209,7 +184,30 @@ export default function SuccessInternal() {
   const paymentTotals = allBookings.map((item) => resolveItemPayment(item));
   const paidTotal = paymentTotals.reduce((sum, item) => sum + Number(item.paidAmount || 0), 0);
   const remainingTotal = paymentTotals.reduce((sum, item) => sum + Number(item.remainingAmount || 0), 0);
-  const invoicePaymentType: BookingPaymentType = remainingTotal > 0 ? "partial" : "full";
+  const invoicePaymentType: BookingPaymentType =
+    paidTotal <= 0 && remainingTotal > 0 ? "none" : remainingTotal > 0 ? "partial" : "full";
+  const paymentBreakdownTotal = normalizePaymentBreakdown(
+    paymentTotals.reduce(
+      (sum, item) => {
+        const breakdown = normalizePaymentBreakdown(item.paymentBreakdown);
+        return {
+          cash: roundMoney2(sum.cash + breakdown.cash),
+          card: roundMoney2(sum.card + breakdown.card),
+          transfer: roundMoney2(sum.transfer + breakdown.transfer),
+        };
+      },
+      { cash: 0, card: 0, transfer: 0 }
+    )
+  );
+  const paymentBreakdownTotalLines = paymentBreakdownLines(paymentBreakdownTotal);
+  const firstPaidPayment = paymentTotals.find((item) => Number(item.paidAmount || 0) > 0);
+  const hasMixedPayment = paymentTotals.some(
+    (item) => Number(item.paidAmount || 0) > 0 && item.paymentMethod === "mixed"
+  );
+  const invoicePaymentMethod =
+    hasMixedPayment && sumPaymentBreakdown(paymentBreakdownTotal) > 0
+      ? "mixed"
+      : firstPaidPayment?.paymentMethod || null;
   const totalBeforeDiscount = totalFinalPrice + discountTotal;
   const offerTitle =
     String((allBookings.find((x) => String(x.offerTitle || "").trim())?.offerTitle || "")).trim() ||
@@ -263,7 +261,10 @@ export default function SuccessInternal() {
 .receipt-container {
   width: var(--receipt-width);
   margin: 0 auto;
-  padding: 15px 5px;
+  box-sizing: border-box;
+  height: auto;
+  min-height: 0;
+  padding: 12px 6px 10px;
   background: #fff;
   color: #000;
   font-family: var(--font-family);
@@ -298,10 +299,10 @@ export default function SuccessInternal() {
 
 .info-section {
   text-align: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .info-item {
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
 .info-item .key {
   font-weight: 700;
@@ -320,7 +321,7 @@ export default function SuccessInternal() {
 .items-table {
   width: 100%;
   border-collapse: collapse;
-  margin: 14px 0;
+  margin: 10px 0;
   font-size: var(--font-size-normal);
   text-align: center;
 }
@@ -330,7 +331,7 @@ export default function SuccessInternal() {
   font-weight: 700;
 }
 .items-table td {
-  padding: 8px 2px;
+  padding: 6px 2px;
   vertical-align: top;
   border-bottom: 1px dotted #888;
 }
@@ -372,12 +373,15 @@ export default function SuccessInternal() {
 }
 
 .totals-section {
-  margin-top: 14px;
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px dashed #000;
 }
 .totals-section .total-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   font-size: var(--font-size-normal);
   padding: 3px 0;
 }
@@ -396,16 +400,23 @@ export default function SuccessInternal() {
   margin-top: 6px;
   font-size: var(--font-size-large);
   font-weight: 700;
-  padding: 8px;
+  padding: 8px 7px;
   background: #eee;
+  border: 1px solid #000;
   border-radius: 4px;
 }
 
 .footer {
   text-align: center;
-  margin-top: 20px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px dashed #000;
   font-size: var(--font-size-small);
   font-weight: 600;
+}
+
+.footer p {
+  margin: 0;
 }
 
 @media print {
@@ -425,11 +436,15 @@ export default function SuccessInternal() {
     top: 0 !important;
     left: 0 !important;
     width: 80mm !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
   html,
   body {
     margin: 0 !important;
     padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
     background: #fff !important;
   }
   * {
@@ -439,7 +454,9 @@ export default function SuccessInternal() {
     text-shadow: none !important;
   }
   .receipt-container {
-    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 3mm 2mm 2mm !important;
   }
 }
         `}
@@ -539,8 +556,30 @@ export default function SuccessInternal() {
           </div>
           <div className="total-line">
             <span>نوع الدفع:</span>
-            <span className="value">{invoicePaymentType === "partial" ? "عربون" : "كامل"}</span>
+            <span className="value">
+              {invoicePaymentType === "none"
+                ? "بدون دفع"
+                : invoicePaymentType === "partial"
+                  ? "عربون"
+                  : "كامل"}
+            </span>
           </div>
+          {invoicePaymentMethod && paidTotal > 0 ? (
+            <div className="total-line">
+              <span>طريقة الدفع:</span>
+              <span className="value">{bookingPaymentMethodLabelAr(invoicePaymentMethod)}</span>
+            </div>
+          ) : null}
+          {invoicePaymentMethod === "mixed" && paymentBreakdownTotalLines.length > 0 ? (
+            <div className="receipt-payment-breakdown">
+              {paymentBreakdownTotalLines.map((line) => (
+                <div className="total-line is-breakdown" key={line}>
+                  <span>{line.split(" ")[0]}:</span>
+                  <span className="value">{line.replace(/^[^\s]+\s+/, "")}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <div className="total-line">
             <span>المدفوع:</span>
             <span className="value">{formatCurrency(paidTotal)} ر.س</span>

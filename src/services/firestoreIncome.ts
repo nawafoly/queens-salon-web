@@ -90,10 +90,14 @@ function normalizePaymentBreakdown(raw: any): PaymentBreakdown | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const cash = Number((raw as any).cash ?? 0);
   const card = Number((raw as any).card ?? 0);
+  const transfer = Number((raw as any).transfer ?? 0);
   const out: PaymentBreakdown = {};
   if (Number.isFinite(cash) && cash > 0) out.cash = Math.round(cash * 100) / 100;
   if (Number.isFinite(card) && card > 0) out.card = Math.round(card * 100) / 100;
-  return out.cash || out.card ? out : undefined;
+  if (Number.isFinite(transfer) && transfer > 0) {
+    out.transfer = Math.round(transfer * 100) / 100;
+  }
+  return out.cash || out.card || out.transfer ? out : undefined;
 }
 
 function normalizeIncome(raw: any, id: string): IncomeItem {

@@ -36,10 +36,11 @@ import { normalizeBookedSlotsMap } from "./firestoreAvailabilityDays";
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
 export type BookingChannel = "client" | "dashboard" | "internal";
 type BookingPaymentMethod = "cash" | "card" | "transfer" | "mixed";
-export type BookingPaymentType = "full" | "partial";
+export type BookingPaymentType = "full" | "partial" | "none";
 export type BookingPaymentBreakdown = {
   cash?: number;
   card?: number;
+  transfer?: number;
 };
 
 // ✅ NEW: Snapshot ثابت للعرض وعدم تأثر الحجوزات بتغيير الأسعار لاحقًا
@@ -556,21 +557,32 @@ function normalizePaymentMethod(raw: any): BookingPaymentMethod | null {
 
 function normalizePaymentBreakdown(raw: any): BookingPaymentBreakdown | undefined {
   if (!raw || typeof raw !== "object") return undefined;
+  const hasExplicitBreakdown =
+    Object.prototype.hasOwnProperty.call(raw, "cash") ||
+    Object.prototype.hasOwnProperty.call(raw, "card") ||
+    Object.prototype.hasOwnProperty.call(raw, "transfer");
 
   const cash = Number((raw as any).cash ?? 0);
   const card = Number((raw as any).card ?? 0);
+  const transfer = Number((raw as any).transfer ?? 0);
   const out: BookingPaymentBreakdown = {};
 
   if (Number.isFinite(cash) && cash > 0) out.cash = round2(cash);
   if (Number.isFinite(card) && card > 0) out.card = round2(card);
+  if (Number.isFinite(transfer) && transfer > 0) out.transfer = round2(transfer);
 
-  return out.cash || out.card ? out : undefined;
+  if (out.cash || out.card || out.transfer) return out;
+  return hasExplicitBreakdown ? { cash: 0, card: 0, transfer: 0 } : undefined;
 }
 
 function paymentBreakdownPaidAmount(raw: any): number | null {
   const breakdown = normalizePaymentBreakdown(raw?.paymentBreakdown);
   if (!breakdown) return null;
-  const total = round2(Number(breakdown.cash || 0) + Number(breakdown.card || 0));
+  const total = round2(
+    Number(breakdown.cash || 0) +
+      Number(breakdown.card || 0) +
+      Number(breakdown.transfer || 0)
+  );
   return Number.isFinite(total) && total > 0 ? total : null;
 }
 
@@ -578,12 +590,15 @@ function paymentBreakdownIncomeNote(raw: any): string | undefined {
   if (normalizePaymentMethod(raw?.paymentMethod) !== "mixed") return undefined;
   const breakdown = normalizePaymentBreakdown(raw?.paymentBreakdown);
   if (!breakdown) return "مختلط";
-  return `مختلط: ${round2(Number(breakdown.cash || 0))} كاش + ${round2(Number(breakdown.card || 0))} شبكة`;
+  return `مختلط: ${round2(Number(breakdown.cash || 0))} كاش + ${round2(
+    Number(breakdown.card || 0)
+  )} شبكة + ${round2(Number(breakdown.transfer || 0))} تحويل`;
 }
 
 function normalizePaymentType(raw: any): BookingPaymentType | null {
   const s = String(raw ?? "").toLowerCase().trim();
   if (!s) return null;
+  if (s === "none" || s === "no_payment" || s === "unpaid" || s === "بدون دفع") return "none";
   if (s === "full" || s === "complete" || s === "كامل") return "full";
   if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
   return null;
@@ -626,9 +641,11 @@ function resolveBookingPaymentState(raw: any): {
   const status = String(raw?.status || "").toLowerCase().trim() as BookingStatus;
   const isRevenueStatus = status === "confirmed" || status === "completed";
 
-  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "partial");
+  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "none");
   let paidAmount: number;
-  if (hasExplicitPaid) {
+  if (paymentType === "none") {
+    paidAmount = 0;
+  } else if (hasExplicitPaid) {
     paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
   } else if (paymentType === "partial") {
     paidAmount = 0;
@@ -636,7 +653,9 @@ function resolveBookingPaymentState(raw: any): {
     paidAmount = isRevenueStatus ? totalAmount : 0;
   }
 
-  if (paymentType === "full") {
+  if (paidAmount <= 0 && totalAmount > 0) {
+    paymentType = "none";
+  } else if (paymentType === "full") {
     paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
   } else {
     paymentType = paidAmount >= totalAmount ? "full" : "partial";

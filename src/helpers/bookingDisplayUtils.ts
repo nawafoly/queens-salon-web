@@ -75,17 +75,19 @@ export function formatSarDisplay(value: any, fractionDigits = 0, unit = "ريا�
 
 export function formatInternalPaymentDraftSummary(
   totalAmountRaw: any,
-  paymentType: "full" | "partial",
+  paymentType: "full" | "partial" | "none",
   paidAmountRaw: any
 ) {
   const total = roundMoney2(Math.max(0, Number(totalAmountRaw || 0)));
   const paid =
-    paymentType === "full"
+    paymentType === "none"
+      ? 0
+      : paymentType === "full"
       ? total
       : roundMoney2(Math.max(0, Number(paidAmountRaw || 0)));
   const remaining = roundMoney2(Math.max(0, total - paid));
 
-  if (paymentType === "partial" && paid <= 0) {
+  if (paymentType === "none") {
     return `بدون دفع الآن - المتبقي ${remaining} ر.س`;
   }
   return `دفعت ${paid} ر.س - المتبقي ${remaining} ر.س`;

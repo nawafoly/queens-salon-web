@@ -213,6 +213,7 @@ export function readBookingTotalAmount(raw: any) {
 export function normalizeBookingPaymentType(raw: any): BookingPaymentType | null {
   const s = String(raw || "").trim().toLowerCase();
   if (!s) return null;
+  if (s === "none" || s === "no_payment" || s === "unpaid" || s === "بدون دفع") return "none";
   if (s === "full" || s === "complete" || s === "كامل") return "full";
   if (s === "partial" || s === "deposit" || s === "عربون" || s === "جزئي") return "partial";
   return null;
@@ -226,9 +227,11 @@ export function resolveBookingPaymentSummary(raw: any): BookingPaymentSummary {
   const status = String(raw?.status || "").trim().toLowerCase();
   const isRevenueStatus = status === "confirmed" || status === "completed";
 
-  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "partial");
+  let paymentType: BookingPaymentType = normalizedType || (isRevenueStatus ? "full" : "none");
   let paidAmount: number;
-  if (hasExplicitPaid) {
+  if (paymentType === "none") {
+    paidAmount = 0;
+  } else if (hasExplicitPaid) {
     paidAmount = Math.max(0, Math.min(totalAmount, explicitPaid));
   } else if (paymentType === "partial") {
     paidAmount = 0;
@@ -236,7 +239,9 @@ export function resolveBookingPaymentSummary(raw: any): BookingPaymentSummary {
     paidAmount = isRevenueStatus ? totalAmount : 0;
   }
 
-  if (paymentType === "full") {
+  if (paidAmount <= 0 && totalAmount > 0) {
+    paymentType = "none";
+  } else if (paymentType === "full") {
     paidAmount = isRevenueStatus ? totalAmount : Math.max(0, Math.min(totalAmount, paidAmount));
   } else {
     paymentType = paidAmount >= totalAmount ? "full" : "partial";
@@ -906,6 +911,7 @@ function bookingPaymentModeLabelAr(args: {
   const paymentMethod = String(args.paymentMethod || "").trim().toLowerCase();
   const paidAmount = Number(args.paidAmount ?? 0);
 
+  if (paymentType === "none") return "بدون دفع";
   if (!paymentMethod && paymentType === "partial" && paidAmount <= 0) return "بدون دفع";
   if (paymentMethod === "none") return "بدون دفع";
   if (paymentType === "full") return "دفع كامل";

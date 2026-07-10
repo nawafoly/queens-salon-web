@@ -38,18 +38,19 @@
 /* Sidebar */
 
 .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
-  position: sticky !important;
-  top: 0;
+  position: relative !important;
+  top: auto;
   z-index: 120;
   display: flex !important;
   flex: 0 0 270px !important;
   flex-direction: column;
   width: 270px !important;
   max-width: 270px !important;
-  height: 100dvh;
+  align-self: stretch;
+  height: auto;
   min-height: 100dvh;
   padding: 14px 12px !important;
-  overflow: hidden;
+  overflow: visible;
   border: 0 !important;
   border-left: 1px solid rgba(255, 255, 255, 0.07) !important;
   color: #fff;
@@ -129,10 +130,9 @@
 
 .dashboard-skin .sidebar-nav {
   flex: 1;
-  min-height: 0;
+  min-height: auto;
   padding: 2px 1px 12px;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: visible;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
   scrollbar-width: thin;
 }
@@ -1133,22 +1133,21 @@
   }
 
   .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
-    position: sticky !important;
-    top: 0 !important;
-    align-self: flex-start !important;
-    height: 100dvh !important;
+    position: relative !important;
+    top: auto !important;
+    align-self: stretch !important;
+    height: auto !important;
     min-height: 100dvh !important;
-    max-height: 100dvh !important;
-    overflow: hidden !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 
   .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav {
     flex: 1 1 auto !important;
-    min-height: 0 !important;
+    min-height: auto !important;
     height: auto !important;
     max-height: none !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
+    overflow: visible !important;
     padding-bottom: 8px !important;
     scrollbar-width: none !important;
   }
@@ -1197,7 +1196,8 @@
   .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
     > .container-fluid
     > .row {
-    grid-template-columns: 88px minmax(0, 1fr) !important;
+    display: flex !important;
+    grid-template-columns: none !important;
   }
 
   .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
@@ -1210,8 +1210,9 @@
 
   .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
     .dashboard-main {
-    width: calc(100% - 88px) !important;
-    max-width: calc(100% - 88px) !important;
+    width: auto !important;
+    max-width: none !important;
+    flex: 1 1 auto !important;
   }
 
   .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed

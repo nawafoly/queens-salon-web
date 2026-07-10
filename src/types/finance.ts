@@ -5,6 +5,7 @@ export type PaymentMethod = "cash" | "card" | "transfer" | "other" | "mixed";
 export type PaymentBreakdown = {
   cash?: number;
   card?: number;
+  transfer?: number;
 };
 
 /** مصروف */

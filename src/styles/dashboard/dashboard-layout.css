@@ -39,6 +39,14 @@
   align-items: start;
 }
 
+.dashboard-skin.madan-admin-shell.dashboard-page > .container-fluid > .row {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  grid-template-columns: none !important;
+}
+
 .dashboard-skin .dashboard-sidebar,
 .dashboard-skin .dashboard-main {
   width: auto !important;
@@ -209,12 +217,12 @@
 }
 
 .dashboard-skin .dashboard-sidebar {
-  position: sticky !important;
-  top: 14px !important;
-  min-height: calc(100vh - 28px);
-  max-height: calc(100vh - 28px);
-  overflow-y: auto;
-  overflow-x: hidden;
+  position: relative !important;
+  top: auto !important;
+  align-self: stretch;
+  min-height: 100dvh;
+  max-height: none;
+  overflow: visible;
   padding: 16px !important;
   border-radius: var(--dash-radius-2xl) !important;
   background: linear-gradient(180deg, #121827 0%, #111827 52%, #1c1220 100%) !important;
@@ -404,15 +412,15 @@
 .dashboard-skin.is-booking-internal-route {
   height: auto !important;
   min-height: 100vh !important;
-  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
 }
 
 .dashboard-skin.is-booking-internal-route .dashboard-main.has-single-scroll {
   height: auto !important;
   max-height: none !important;
   min-height: calc(100vh - 24px) !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
+  overflow: visible !important;
 }
 
 .dashboard-skin.is-booking-internal-route .dashboard-inner {
