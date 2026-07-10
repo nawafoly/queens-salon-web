@@ -27790,3 +27790,177 @@ body.scatalog-modal-open {
     animation: none !important;
   }
 }
+
+/* =========================================================
+   Catalog controls — unmistakable button/select affordance
+   Active states use the class emitted by SettingsTabs: .primary.
+========================================================= */
+.dashboard-skin.madan-admin-shell .scatalog-work-tabs .settings-tab-card,
+.dashboard-skin.madan-admin-shell .scatalog-mode-tabs button,
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__tabs button,
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__detail-actions .exp-btn {
+  cursor: pointer !important;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-work-tabs .settings-tab-card {
+  border-width: 1.5px !important;
+  border-color: #cbd5e1 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  box-shadow:
+    0 7px 16px -13px rgba(15, 23, 42, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-work-tabs .settings-tab-card:hover {
+  transform: translateY(-2px) !important;
+  border-color: rgba(3, 6, 64, 0.5) !important;
+  box-shadow: 0 12px 24px -16px rgba(3, 6, 64, 0.42) !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-work-tabs .settings-tab-card.is-active {
+  transform: translateY(-1px) !important;
+  border-color: #030640 !important;
+  background: linear-gradient(145deg, rgba(3, 6, 64, 0.07), rgba(242, 183, 5, 0.12)) !important;
+  box-shadow:
+    0 12px 25px -17px rgba(3, 6, 64, 0.5),
+    inset 0 0 0 1px #030640 !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-work-tabs .settings-tab-card.is-active .settings-tab-card__copy strong {
+  color: #030640 !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-mode-tabs {
+  gap: 9px !important;
+  padding: 8px !important;
+  border: 1px solid #d8dee8 !important;
+  background: #f1f5f9 !important;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-mode-tabs button {
+  min-height: 48px !important;
+  padding: 8px 18px !important;
+  border: 1.5px solid #cbd5e1 !important;
+  color: #334155 !important;
+  background: #ffffff !important;
+  box-shadow: 0 7px 15px -12px rgba(15, 23, 42, 0.65) !important;
+  font-size: 12px !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-mode-tabs button:hover:not(:disabled) {
+  transform: translateY(-1px) !important;
+  border-color: rgba(3, 6, 64, 0.48) !important;
+  color: #030640 !important;
+  background: #ffffff !important;
+  box-shadow: 0 10px 20px -14px rgba(3, 6, 64, 0.45) !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-mode-tabs button.primary {
+  border-color: #030640 !important;
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #030640 0%, #111a4d 100%) !important;
+  box-shadow:
+    0 11px 22px -14px rgba(3, 6, 64, 0.75),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.13) !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-mode-tabs button.primary small {
+  color: #f6cf57 !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-ref__filters select.settings-input {
+  min-height: 46px !important;
+  cursor: pointer !important;
+  border-width: 1.5px !important;
+  border-color: #cbd5e1 !important;
+  color: #1e293b !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 7px 16px -14px rgba(15, 23, 42, 0.72) !important;
+  font-weight: 850 !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-ref__filters select.settings-input:hover {
+  border-color: rgba(3, 6, 64, 0.5) !important;
+  background-color: #f8fafc !important;
+}
+
+.dashboard-skin.madan-admin-shell .scatalog-ref__filters select.settings-input:focus {
+  border-color: #030640 !important;
+  box-shadow: 0 0 0 3px rgba(242, 183, 5, 0.2) !important;
+  outline: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__right--modal .scatalog-ref__tabs {
+  gap: 9px !important;
+  padding: 12px 22px !important;
+  background: #f8fafc !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__right--modal .scatalog-ref__tabs button {
+  min-height: 42px !important;
+  padding: 9px 17px !important;
+  border-width: 1.5px !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+  background: #ffffff !important;
+  box-shadow: 0 7px 15px -13px rgba(15, 23, 42, 0.72) !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__right--modal .scatalog-ref__tabs button:hover:not(:disabled) {
+  transform: translateY(-1px) !important;
+  border-color: rgba(3, 6, 64, 0.48) !important;
+  color: #030640 !important;
+  background: #ffffff !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__right--modal .scatalog-ref__tabs button.primary {
+  border-color: #030640 !important;
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #030640 0%, #111a4d 100%) !important;
+  box-shadow:
+    0 10px 21px -13px rgba(3, 6, 64, 0.72),
+    inset 0 -3px 0 rgba(242, 183, 5, 0.72) !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__detail-actions .exp-btn {
+  min-height: 42px !important;
+  border-width: 1.5px !important;
+  border-color: rgba(255, 255, 255, 0.58) !important;
+  box-shadow: 0 9px 20px -13px rgba(0, 0, 0, 0.62) !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__detail-actions .exp-btn.danger {
+  border-color: #fca5a5 !important;
+  color: #991b1b !important;
+  background: #fff1f2 !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__detail-actions .scatalog-ref__modal-close {
+  border-color: rgba(255, 255, 255, 0.78) !important;
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__detail-actions .scatalog-ref__modal-close:hover:not(:disabled) {
+  border-color: #ffffff !important;
+  color: #030640 !important;
+  background: #ffffff !important;
+}
+
+.dashboard-skin.madan-admin-shell :where(
+  .scatalog-work-tabs .settings-tab-card,
+  .scatalog-mode-tabs button,
+  .scatalog-ref__filters select.settings-input,
+  .scatalog-ref__tabs button,
+  .scatalog-ref__detail-actions .exp-btn
+):focus-visible {
+  outline: 3px solid rgba(242, 183, 5, 0.42) !important;
+  outline-offset: 2px !important;
+}

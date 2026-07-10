@@ -1454,18 +1454,15 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   useEffect(() => {
     if (!hasSelection) return;
 
-    const previousOverflow = document.body.style.overflow;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         closeCatalogDetail();
       }
     };
 
-    document.body.style.overflow = "hidden";
     document.addEventListener("keydown", onKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [hasSelection]);
